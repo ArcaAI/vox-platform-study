@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending — spec written, awaiting owner review before the implementation plan |
+| **Status** | Pending — spec approved (OD-1 hash-wasm, OD-2 unquoted bucket, OD-3 no global user status restore); plan written (§6), awaiting owner review |
 | **Type** | feature (full-stack: database → domain → services → API → console → infra) |
 | **Branch** | `dev-2.2` (active) |
 | **Rules** | 00, 01, 02, 03, 04, 05, 09, 13 (+07/10/11), 14 |
@@ -451,7 +451,7 @@ W4  ┌─ R1 security review ─┐ ┌─ R2 data-integrity review ─┐ ┌�
 | **L1** domain trio | 1 | `packages/domains/src/{entities,factories,mappers,repositories}/generated/core/TenantCheckpoint*` (+Restore), barrels, `core.database.module.ts`, `packages/database/src/extensions/tenant-scope.ts` | `sonnet` · low | Mechanical, exemplar `AiRoutingPolicy*`; mapper OCC strip spelled out in the brief |
 | **L2** registry | 1 | `tenant-checkpoint/registry/**` | `opus` · medium | ~103 classification calls are the security/data-loss verdict of the whole feature (rule 14: never downshift the deciding stage); medium because the inventory in §2 is supplied |
 | **L3** archive + sealing + store | 1 | `tenant-checkpoint/{archive,sealing,store}/**`, `vault-secrets.provider.ts` + `ISecretsProvider` (`sign`/`verify`), other providers' fail-closed stubs, `scripts/checkpoint-open.ts` + root `checkpoint:open` script | `opus` · high | Streaming AEAD, nonce discipline, signature binding and tamper cases — a subtle crypto bug is silent and fatal |
-| **L4** tenant lock | 1 | `tenant-checkpoint/lock/**`, `apps/api/src/guards/tenant-lock.guard.ts`, `@TenantLockExempt()` decorator, `SttWsGateway` open-path check | `sonnet` · medium | Patterned on `app-settings:invalidate` + an existing guard; the subtle part (which paths carry tenant context) is listed in the brief |
+| **L4** tenant lock | 1 | `tenant-checkpoint/lock/**`, `apps/api/src/guards/tenant-lock.guard.ts`, `@TenantLockExempt()` decorator, `SttWsGateway` open-path check, worker-session lock check | `sonnet` · high | Patterned on `app-settings:invalidate` + an existing guard; raised to high because it must also postpone in-process BullMQ jobs (§6.0 C-11) |
 | **L5** platform plumbing | 1 | `dev-init.sh`, `hope-app.hcl`, compose `minio-setup`, `tests/docker-compose.test.yml`, `platformBuckets.ts`, settings-registry descriptors, `seed/01-policy.ts` (CASL), `.env.sample`s if any | `sonnet` · low | Copy-the-neighbour edits across known files |
 | **L9** console | 1→2 | `apps/admin-console/src/features/tenant-checkpoints/**`, `src/app/(console)/(shared)/checkpoints/**`, `nav-config.ts` + its pinned test, tenant-detail link, console Playwright spec | `sonnet` · medium | Heavily patterned (ScreenTemplate, DetailDrawer, break-glass dialog exists in `features/rbac`); rule density is high but specified; codes against §3.1, so it spans W1–W2 without blocking |
 | **L6a** export | 2 | `tenant-checkpoint/export/**` (processor, retention sweeper, stale-export + idle-upload sweepers) | `opus` · medium | Snapshot correctness + streaming back-pressure; unit-tested with mocked `pg`/store, no DB |
@@ -514,12 +514,1016 @@ only after their merge commit exists (rule 14 §5).
 
 ---
 
-## 6. Implementation Summary
+## 6. Implementation Plan — lane briefs
+
+> **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (orchestrator)
+> or superpowers:executing-plans (a lane executing its own brief). Steps use checkbox (`- [ ]`) syntax.
+> Each lane reads §1–§5 (the spec), §6.0–§6.3, and **only its own lane section**.
+
+**Goal:** platform and tenant admins can create, download, upload and category-selectively restore a
+sealed checkpoint of one tenant, in place, on the same deployment.
+
+**Architecture:** a declarative model registry drives a Postgres `COPY` export into a framed, chunked
+AES-256-GCM archive (data key wrapped by Vault Transit, digest signed by Vault Ed25519), stored in a
+platform bucket; restore verifies the seal, stages the checkpoint rows into temp tables and reconciles
+them set-wise in one transaction under a hard tenant lock, after taking a safety checkpoint.
+
+**Tech stack:** Prisma 7 / PostgreSQL 18, NestJS 11 + BullMQ, `pg` + `pg-copy-streams`, Node `crypto`
+(AES-256-GCM, sha256), `hash-wasm` (Argon2id), Vault Transit, S3/MinIO multipart, Next.js 16 + TanStack
+Query + `@arcaai/ui`.
+
+**Spec:** this README, §1–§5. §6.0 lists the corrections found while planning; where they disagree, §6.0 wins.
+
+### 6.0 Spec corrections found while planning (supersede §3)
+
+| Id | Correction | Why |
+|---|---|---|
+| C-1 | The archive body is a **framed entry stream** (§6.2), not tar | tar needs each entry's size before its bytes; `COPY` output size is unknown until it ends. `tar-stream` is dropped from the deps |
+| C-2 | Console route is **`(console)/(tenant)/checkpoints`** wrapped in `WorkingTenantGate` (tier 30–49) | that gate is the only console pattern giving super admins a pick-a-tenant state and the "Acting on" banner; no `(shared)` screen uses it |
+| C-3 | `sourceDeploymentId` = **hex sha256 of the `hope-checkpoint-sign` public key** | the signing key already *is* the deployment identity; no new env var |
+| C-4 | The passphrase is used **only inside the create request**: the API generates the data key, wraps it (Vault + optional Argon2id) and stores both wraps in `TenantCheckpoint.keyEnvelope`; jobs carry ids only | a passphrase in a BullMQ payload would sit in Redis |
+| C-5 | A live `WorkflowRun` still `RUNNING` for a consultation the restore retired → existing status **`CANCELED`**, `_metadata.canceledBy = 'tenant-restore:<restoreId>'` | `WorkflowRunStatus` has no `ABANDONED`; no enum migration needed |
+| C-6 | `KnowledgeChunk` is **derived**: captured, never reconciled. Post-commit, restored-or-changed `KnowledgeDocument`s are re-ingested from the checkpoint's decrypted chunk text; retired documents get their Qdrant vectors deleted | the raw document text is not persisted anywhere; the ingest job is the only path that writes chunks + vectors consistently |
+| C-7 | Policies are `RECONCILE \| INSERT_ONLY \| RETIRE_ONLY \| CAPTURE_ONLY \| EXCLUDED`. WORM change logs are `CAPTURE_ONLY` (no `APPEND_ONLY`); credentials are `RETIRE_ONLY`; `User` + its children are `INSERT_ONLY` | a log category is never restored, so append-only was dead; RETIRE_ONLY is "never revive" stated as a policy |
+| C-8 | The checkpoint bucket is created **by the worker at boot** (`ensureBucket()`, idempotent); the deployment repo only grants it in the `hope-platform-rw` policy | never re-run `minio-bootstrap` (it rotates a key Vault then holds stale) |
+| C-9 | Agent spec caches are **TTL-only (15 s)**; the restore holds the lock for `POST_COMMIT_SETTLE_MS` after commit, ≥ the longest TTL of every in-process cache over a restored table | no invalidation channel exists for agents, origins, IdP, rate-limit rules |
+| C-10 | `reason` is required on **every** restore (10–1000 chars) | stricter than D-5, one rule instead of two, every restore is force-audited anyway |
+| C-11 | **In-process BullMQ jobs** of a locked tenant are postponed (not run, not failed) | the HTTP guard does not see queue workers inside the gateway |
+| C-12 | `confirmationName` must equal the tenant's **current** `Tenant.name` | break-glass semantics: retype the target's name |
+| C-13 | Verification gate order becomes: 1 magic + format → 2 header `sourceDeploymentId` = own `deploymentId()` (`FOREIGN_DEPLOYMENT`) → 3 signature → 4 `tenantId` (`WRONG_TENANT`) → 5 segments → 6 manifest → 7 duplicate | a foreign file would otherwise always fail the signature first and `FOREIGN_DEPLOYMENT` could never fire |
+
+### 6.1 Global Constraints (every lane's requirements include these)
+
+- **Merge target: `dev-2.2`** ⚠ owner wrote `main` on 2026-10-01 — confirm before W1 merges. The deployment repo merges to its own `main`.
+- **No gating tests in lanes (owner rule, 2026-10-01).** A lane runs ONLY the test files it authors, RED then GREEN, with
+  `pnpm --filter <pkg> exec vitest run <path>` (applications/domains/database/admin-console), or the single integration
+  file named in its brief. Never `pnpm test`, `test:unit`, `lint`, `lint:all`, `typecheck`, `verify`, `build:apps`, e2e
+  suites, or any `*:check`. The orchestrator merges everything into `dev-2.2` first, then runs the one gate pass (§6.7 W3).
+- **Shared surfaces are orchestrator-only:** `pnpm install`/`add`, `db:push`, `db:migrate*`, `db:generate`, `test:db:reset`,
+  `infra:*`, Docker, `apps/api/src/app.module.ts`, `apps/api/route-manifest.json`, `apps/api/openapi.json`, the portal,
+  `packages/vox-node/src/resources/admin/**`, merges, branch switches.
+- **Never** run `pnpm gen:mapper` or `gen:repository` (destructive/broken — rule 03).
+- **Never `git stash`** in a worktree. Commit your own work on your lane branch; never commit to `dev-2.2`.
+- Versions: Node ≥ 22.12, TypeScript 6.0, Prisma 7, NestJS 11, Next.js 16.3.4, React 19.2, Vitest 4, Playwright.
+- New runtime deps (added by W0 only): `pg-copy-streams` + `@types/pg-copy-streams`, `hash-wasm`, `pg` + `@types/pg` in `@arcaai/applications`.
+- **No new env vars.** Tunables are settings descriptors (§3.1). Code constants are allowed only for format facts:
+  `CHECKPOINT_FORMAT_VERSION`, bucket name, Transit key names, segment size, error codes (all in `contracts.ts`).
+- Every HTTP error the service raises carries a `code` field: `new ConflictException({ code, message })`.
+- Cross-tenant miss = **404**; privilege failure = **403**; the SYSTEM tenant id `00000000-0000-0000-0000-000000000000` is refused (403 `SYSTEM_TENANT_NOT_CHECKPOINTABLE`).
+- No ticket ids in code comments (pre-release rule). `// AUTH-NOTE:` marker on imperative privilege checks.
+- Every mutation broadcasts a sys-event; downloads and restores are `forceAuditLog: true`.
+
+### 6.2 Review Focus — inputs the spec implies but no happy-path test exercises
+
+1. **In-process background jobs during a restore** (DNA ingest, knowledge ingest, async summary — BullMQ inside the gateway)
+   for the locked tenant: expected **postponed** until unlock, never run mid-restore and never failed for good. → L4 Task 3.
+2. **A row whose immutable content diverged** (DRAFT at checkpoint time, PUBLISHED with different content later): expected
+   the live row is left untouched, the restore completes, and a `IMMUTABLE_DIVERGED` warning names model + id. → L6b Task 3.
+3. **A browser multipart upload that is abandoned or completed with a missing/duplicate/out-of-order part list**: expected
+   `complete` refuses with `UPLOAD_PARTS_INVALID`, and an idle upload is aborted by the sweeper after 24 h. → L3 Task 4, L6a Task 3.
+4. **Wrong or forgotten passphrase in the offline opener**: expected a clear `PASSPHRASE_INVALID` message, non-zero exit,
+   and **no partial plaintext left in `--out`**. → L3 Task 5.
+5. **Tenant renamed or re-keyed between checkpoint and restore**: expected `confirmationName` checks the CURRENT name, and a
+   header `tenantKey` that differs from the current key is NOT a failure (the `tenantId` is the authority). → L7 Task 3, L3 Task 3.
+
+### 6.3 Lane protocol (identical for every writer lane)
+
+**Worktree** (orchestrator creates it; the lane never runs `pnpm install`):
+
+```bash
+P=/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2
+L=<lane>           # e.g. l3-archive
+W=$P/../hope-v2-task-1032-$L
+git -C $P worktree add $W -b task-1032/$L dev-2.2
+ln -s $P/node_modules $W/node_modules
+for d in $P/packages/*/node_modules $P/apps/*/node_modules; do rel=${d#$P/}; ln -s $d $W/$rel; done
+ln -s $P/packages/database/src/generated/core-prisma-client $W/packages/database/src/generated/core-prisma-client
+for d in $P/packages/*/dist; do rel=${d#$P/}; ln -s $d $W/$rel; done   # then DELETE the dist symlink of every package the lane modifies
+cp $P/.env.dev $P/.env.test $W/
+```
+
+A lane that modifies a package which another package's test imports through `dist` rebuilds only that package:
+`pnpm --filter <pkg> build` (a build to make imports resolve — not a gate).
+
+**Return contract** — the lane's final message is DATA for the orchestrator, exactly these fields:
+
+```
+lane: <id>        branch: task-1032/<lane>        head: <sha>
+files: <list of created/modified paths>
+tests: <each test file> — RED output excerpt (the failing assertion) — GREEN output excerpt (pass count)
+could_run_tests: yes | no (why)
+deviations: <anything that differs from this brief, with the reason>   | none
+findings: <defects or surprises found outside the lane boundary — reported, NOT fixed> | none
+```
+
+---
+
+### 6.4 Wave 0 — orchestrator, inline, in the primary on `dev-2.2`
+
+#### Task W0-1: Schema + migration
+
+**Files:** create `packages/database/src/prisma/db_main/tenant-checkpoint.prisma`; modify `enums.prisma`,
+`audit.prisma` (ResourceType); migration `<ts>_task_1032_tenant_checkpoint`.
+
+- [ ] **Step 1:** append to `enums.prisma`:
+
+```prisma
+enum TenantCheckpointKind {
+  MANUAL
+  SAFETY
+
+  @@schema("core")
+}
+
+enum TenantCheckpointOrigin {
+  CREATED
+  UPLOADED
+
+  @@schema("core")
+}
+
+enum TenantCheckpointStatus {
+  PENDING
+  UPLOADING
+  RUNNING
+  READY
+  FAILED
+  CANCELLED
+
+  @@schema("core")
+}
+
+enum TenantCheckpointCategory {
+  CONFIG_CONTENT
+  USERS_ACCESS
+  CLINICAL
+
+  @@schema("core")
+}
+
+enum TenantCheckpointRestoreStatus {
+  PENDING
+  LOCKING
+  SAFETY_CHECKPOINT
+  VERIFYING
+  RECONCILING
+  POST_COMMIT
+  COMPLETED
+  COMPLETED_WITH_WARNINGS
+  FAILED
+
+  @@schema("core")
+}
+```
+
+- [ ] **Step 2:** create `tenant-checkpoint.prisma`:
+
+```prisma
+/// One sealed backup of one tenant. Object bytes live in the platform bucket
+/// `hope-tenant-checkpoints`; this row is the durable job state (Redis is not durable).
+model TenantCheckpoint {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+  // multi tenant fields
+  tenantId String
+  // core (business) fields
+  label               String
+  kind                TenantCheckpointKind   @default(MANUAL)
+  origin              TenantCheckpointOrigin @default(CREATED)
+  status              TenantCheckpointStatus @default(PENDING)
+  includesMedia       Boolean                @default(true)
+  passphraseProtected Boolean                @default(false)
+  /// { platform: <Vault hope-checkpoint ciphertext>, passphrase?: PassphraseWrap } — ciphertext only
+  keyEnvelope         Json?                  @db.JsonB
+  objectKey           String?
+  uploadId            String?
+  sizeBytes           BigInt?
+  manifestDigest      String?
+  /// { tables: [{ model, columns, rowCount }] } — lets the API answer SCHEMA_INCOMPATIBLE synchronously
+  manifestSummary     Json?                  @db.JsonB
+  schemaFingerprint   String?
+  sourceDeploymentId  String?
+  formatVersion       Int                    @default(1)
+  /// { phase, tablesDone, tablesTotal, bytesWritten }
+  progress            Json?                  @db.JsonB
+  heartbeatAt         DateTime?
+  cancelRequestedAt   DateTime?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  expiresAt           DateTime?
+  failureReason       String?
+  failureDetail       String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // relations
+  restores TenantCheckpointRestore[] @relation("TenantCheckpointRestoreSource")
+
+  @@index([tenantId], name: "TenantCheckpoint_tenantId_idx")
+  @@index([tenantId, status], name: "TenantCheckpoint_tenantId_status_idx")
+  @@index([status, heartbeatAt], name: "TenantCheckpoint_status_heartbeatAt_idx")
+  @@schema("core")
+}
+
+/// One restore of a tenant from a checkpoint. While its status is between LOCKING and a terminal
+/// state, the tenant is locked (423) — this row IS the lock.
+model TenantCheckpointRestore {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+  // multi tenant fields
+  tenantId String
+  // core (business) fields
+  checkpointId       String
+  categories         TenantCheckpointCategory[]
+  reason             String
+  status             TenantCheckpointRestoreStatus @default(PENDING)
+  safetyCheckpointId String?
+  /// [{ model, inserted, updated, retired }]
+  counts             Json?                         @db.JsonB
+  /// [{ code, message, detail? }]
+  warnings           Json?                         @db.JsonB
+  requestedBy        String
+  heartbeatAt        DateTime?
+  lockAcquiredAt     DateTime?
+  lockReleasedAt     DateTime?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  failureReason      String?
+  failureDetail      String?
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // relations
+  checkpoint TenantCheckpoint @relation("TenantCheckpointRestoreSource", fields: [checkpointId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId], name: "TenantCheckpointRestore_tenantId_idx")
+  @@index([checkpointId], name: "TenantCheckpointRestore_checkpointId_idx")
+  @@index([tenantId, status], name: "TenantCheckpointRestore_tenantId_status_idx")
+  @@schema("core")
+}
+```
+
+- [ ] **Step 3:** append to `enum ResourceType` in `audit.prisma` (before `@@schema`), with a comment: `TenantCheckpoint` and `TenantCheckpointRestore`.
+- [ ] **Step 4:** author the migration on a shadow DB (rule 02 recipe), name `task_1032_tenant_checkpoint`. Hand-append to
+  the generated SQL the race guard (copy the way `AiRoutingPolicy_tenant_task_default_unique` was added — raw SQL in its migration):
+
+```sql
+-- At most one non-terminal restore per tenant: the database, not the service, decides the race.
+CREATE UNIQUE INDEX "TenantCheckpointRestore_one_active_per_tenant"
+  ON core."TenantCheckpointRestore" ("tenantId")
+  WHERE "status" NOT IN ('COMPLETED', 'COMPLETED_WITH_WARNINGS', 'FAILED') AND "resourceStatus" <> 'DELETED';
+```
+
+  Also the `ALTER TYPE core."ResourceType" ADD VALUE` lines Prisma generates. Prove zero drift (rule 02 step 3), then `pnpm db:push` on dev and `pnpm db:generate`, `pnpm gen:model`.
+- [ ] **Step 5:** `packages/domains/src/enums/generated/ResourceType.ts`: add `TenantCheckpoint = 'TenantCheckpoint'` and `TenantCheckpointRestore = 'TenantCheckpointRestore'` with a comment block. Add the five new enums to `packages/domains/src/enums/generated/` (one file each, barrel lines in `enums/generated/index.ts`, copy `AiRoutingPolicyStatus`'s file shape).
+- [ ] **Step 6:** `JobQueue.enum.ts`: add `TenantCheckpointExport = 'TenantCheckpointExport'` and `TenantCheckpointRestore = 'TenantCheckpointRestore'`; `queue-concurrency.ts`: both `1`, NOT in `DB_BOUND_QUEUES` (they use their own `pg` pool).
+- [ ] **Step 7:** deps in `packages/applications/package.json`: `pg`, `pg-copy-streams`, `hash-wasm`; dev: `@types/pg`, `@types/pg-copy-streams`. `pnpm install` from the primary root.
+
+#### Task W0-2: Shared contracts (every lane imports these; nobody else edits them)
+
+**Files:** create `packages/applications/src/services/tenant-checkpoint/contracts.ts`,
+`packages/applications/src/services/tenant-checkpoint/db/checkpoint-pg.ts`.
+
+- [ ] **Step 1:** write `contracts.ts`:
+
+```ts
+import type { Readable, Writable } from 'node:stream';
+
+// ---- format facts -------------------------------------------------------------------------
+export const CHECKPOINT_FORMAT_VERSION = 1 as const;
+export const CHECKPOINT_MAGIC = 'HOPECKPT' as const;
+export const CHECKPOINT_BUCKET = 'hope-tenant-checkpoints' as const;
+export const CHECKPOINT_WRAP_KEY = 'hope-checkpoint' as const;
+export const CHECKPOINT_SIGN_KEY = 'hope-checkpoint-sign' as const;
+export const CHECKPOINT_SEGMENT_BYTES = 64 * 1024;
+export const CHECKPOINT_UPLOAD_PART_BYTES = 64 * 1024 * 1024;
+export const TENANT_LOCK_CHANNEL = 'tenant-lock:invalidate' as const;
+export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000' as const;
+
+// ---- categories & registry ------------------------------------------------------------------
+export type CheckpointCategory = 'CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL' | 'LOGS' | 'EXCLUDED';
+export type RestorableCategory = 'CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL';
+export const RESTORABLE_CATEGORIES: readonly RestorableCategory[] = ['CONFIG_CONTENT', 'USERS_ACCESS', 'CLINICAL'];
+
+export type CheckpointPolicy = 'RECONCILE' | 'INSERT_ONLY' | 'RETIRE_ONLY' | 'CAPTURE_ONLY' | 'EXCLUDED';
+
+export type CheckpointScope =
+  | { kind: 'tenantColumn'; column?: string }          // WHERE "<column ?? tenantId>" = $tenantId
+  | { kind: 'parent'; fk: string; parent: string }     // WHERE "<fk>" IN (SELECT "id" FROM <parent> WHERE <parent scope>)
+  | { kind: 'tenantMembers' }                          // User: id IN (role assignments ∪ user departments of the tenant)
+  | { kind: 'none' };                                  // EXCLUDED
+
+export type CheckpointRetire =
+  | { kind: 'softDelete' }                             // resourceStatus='DELETED', stamps, _version+1
+  | { kind: 'hardDelete' }                             // only for models without soft delete and without triggers
+  | { kind: 'revoke'; setSql: string }                 // e.g. `"resourceStatus" = 'DELETED', "revokedAt" = now()`
+  | { kind: 'never' };
+
+export interface CheckpointModelDescriptor {
+  model: string;                      // Prisma model name
+  table?: string;                     // only when @@map differs (Fedl*)
+  category: CheckpointCategory;
+  policy: CheckpointPolicy;
+  scope: CheckpointScope;
+  softDelete: boolean;                // false ⇔ in MODELS_WITHOUT_SOFT_DELETE
+  retire: CheckpointRetire;
+  immutableColumns?: readonly string[];   // equals the trigger's guarded columns
+  immutableWhen?: string;                 // SQL over the LIVE row alias "l", e.g. `l."status" IN ('PUBLISHED','DEPRECATED')`
+  derivedFrom?: string;                   // KnowledgeChunk → 'KnowledgeDocument'
+  notes?: string;
+}
+
+/** Run SQL with positional params ($1…). Implemented over `pg` (worker) or Prisma $queryRawUnsafe (API). */
+export type SqlQuery = <T = Record<string, unknown>>(sql: string, params?: readonly unknown[]) => Promise<T[]>;
+
+// ---- archive --------------------------------------------------------------------------------
+export interface PassphraseWrap {
+  kdf: 'argon2id';
+  salt: string;       // base64, 16 bytes
+  m: number;          // KiB
+  t: number;
+  p: number;
+  nonce: string;      // base64, 12 bytes
+  wrapped: string;    // base64, AES-256-GCM(dataKey) ‖ tag
+}
+export interface KeyEnvelope { platform: string; passphrase?: PassphraseWrap }
+
+export interface CheckpointHeader {
+  magic: typeof CHECKPOINT_MAGIC;
+  formatVersion: number;
+  checkpointId: string;
+  tenantId: string;
+  tenantKey: string;
+  sourceDeploymentId: string;
+  createdAt: string;           // ISO
+  schemaFingerprint: string;
+  includesMedia: boolean;
+  noncePrefix: string;         // base64, 7 bytes
+  keys: KeyEnvelope;
+}
+
+export interface ManifestTable { model: string; columns: string[]; rowCount: number; sha256: string }
+export interface ManifestObject { entry: string; size: number; sha256: string }
+export interface CheckpointManifest {
+  formatVersion: number;
+  schemaFingerprint: string;
+  tables: ManifestTable[];
+  media: (ManifestObject & { bucketId: string; key: string })[];
+  claimChecks: (ManifestObject & { contentKey: string })[];
+  transitKeyVersions: Record<string, number>;   // "<Model>.<column>" → max vN seen
+  notCaptured: string[];
+}
+export type ManifestSummary = { tables: { model: string; columns: string[]; rowCount: number }[] };
+
+export interface CheckpointArchiveWriter {
+  /** Streams one entry, sequentially; resolves with plaintext sha256 (hex) and length. */
+  writeEntry(name: string, body: Readable | Buffer): Promise<{ sha256: string; bytes: number }>;
+  /** Writes `manifest.json` as the final entry, the end marker and the trailer; ends the sink. */
+  finish(manifest: CheckpointManifest): Promise<{ sizeBytes: number; digestHex: string; manifestDigestHex: string }>;
+  abort(error: Error): Promise<void>;
+}
+export interface CheckpointArchiveReader {
+  readonly header: CheckpointHeader;
+  /** Entries in archive order, `manifest.json` excluded; consume each body fully before the next. */
+  entries(): AsyncIterable<{ name: string; body: Readable }>;
+  /** Available once entries() has completed. */
+  manifest(): CheckpointManifest;
+}
+export interface VerifiedArchive { header: CheckpointHeader; manifest: CheckpointManifest; sizeBytes: number }
+
+// ---- sealing --------------------------------------------------------------------------------
+export interface ICheckpointSealing {
+  generateDataKey(): Promise<{ plaintext: Buffer; platformWrapped: string }>;
+  unwrapPlatform(wrapped: string): Promise<Buffer>;
+  wrapWithPassphrase(dataKey: Buffer, passphrase: string): Promise<PassphraseWrap>;
+  unwrapWithPassphrase(wrap: PassphraseWrap, passphrase: string): Promise<Buffer>;
+  sign(digest: Buffer): Promise<string>;
+  verify(digest: Buffer, signature: string): Promise<boolean>;
+  deploymentId(): Promise<string>;
+}
+export const ICheckpointSealing = Symbol('ICheckpointSealing');
+
+// ---- store ----------------------------------------------------------------------------------
+export interface ICheckpointStore {
+  ensureBucket(): Promise<void>;
+  objectKey(tenantId: string, checkpointId: string): string;              // `${tenantId}/${checkpointId}.hcp`
+  openWriteStream(key: string): { stream: Writable; done: Promise<{ sizeBytes: number }>; abort(): Promise<void> };
+  openReadStream(key: string): Promise<Readable>;
+  presignDownload(key: string, filename: string, ttlSeconds: number): Promise<string>;
+  createUpload(key: string): Promise<{ uploadId: string }>;
+  presignUploadParts(key: string, uploadId: string, partCount: number, ttlSeconds: number): Promise<{ partNumber: number; url: string }[]>;
+  completeUpload(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<{ sizeBytes: number }>;
+  abortUpload(key: string, uploadId: string): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+export const ICheckpointStore = Symbol('ICheckpointStore');
+
+// ---- lock -----------------------------------------------------------------------------------
+export interface TenantLockState { locked: boolean; restoreId?: string }
+export interface ITenantLockService {
+  state(tenantId: string): Promise<TenantLockState>;
+  /** Drop every node's cached state for the tenant (publishes on TENANT_LOCK_CHANNEL). */
+  publishChange(tenantId: string): Promise<void>;
+}
+export const ITenantLockService = Symbol('ITenantLockService');
+export const TENANT_LOCKING_STATUSES = ['LOCKING', 'SAFETY_CHECKPOINT', 'VERIFYING', 'RECONCILING', 'POST_COMMIT'] as const;
+
+// ---- runners (worker side) -----------------------------------------------------------------
+export interface ICheckpointExportRunner { run(checkpointId: string): Promise<void> }
+export const ICheckpointExportRunner = Symbol('ICheckpointExportRunner');
+export interface ICheckpointVerifyRunner { run(checkpointId: string): Promise<void> }
+export const ICheckpointVerifyRunner = Symbol('ICheckpointVerifyRunner');
+export interface CheckpointExportJob { kind: 'create' | 'verify-upload'; checkpointId: string; tenantId: string }
+export interface CheckpointRestoreJob { restoreId: string; tenantId: string }
+
+export interface ReconcileCount { model: string; inserted: number; updated: number; retired: number }
+export interface RestoreWarning { code: string; message: string; detail?: Record<string, unknown> }
+
+// ---- errors ---------------------------------------------------------------------------------
+export type CheckpointFailureReason =
+  | 'UNSUPPORTED_FORMAT' | 'SIGNATURE_INVALID' | 'WRONG_TENANT' | 'FOREIGN_DEPLOYMENT'
+  | 'CORRUPT_SEGMENT' | 'MANIFEST_MISMATCH' | 'DUPLICATE' | 'PASSPHRASE_INVALID'
+  | 'SEALING_UNAVAILABLE' | 'UPLOAD_PARTS_INVALID' | 'SCHEMA_INCOMPATIBLE'
+  | 'EXPORT_FAILED' | 'RESTORE_FAILED' | 'LOCK_TIMEOUT' | 'WORKER_LOST' | 'CANCELLED';
+
+export class CheckpointError extends Error {
+  constructor(
+    readonly reason: CheckpointFailureReason,
+    message: string,
+    readonly detail?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'CheckpointError';
+  }
+}
+```
+
+- [ ] **Step 2:** write `db/checkpoint-pg.ts` — the first production raw `pg` pool; worker-only:
+
+```ts
+import { Pool } from 'pg';
+import type { SqlQuery } from '../contracts';
+
+/** Direct (un-pooled) connection for COPY; Prisma cannot COPY. Worker process only, max 2. */
+export function createCheckpointPool(env: NodeJS.ProcessEnv = process.env): Pool {
+  const url = env.DIRECT_URL?.trim() || env.DATABASE_URL?.trim();
+  if (!url) throw new Error('checkpoint worker needs DIRECT_URL or DATABASE_URL');
+  return new Pool({ connectionString: url, max: 2, idleTimeoutMillis: 30_000, application_name: 'hope-checkpoint-worker' });
+}
+
+export function sqlQueryOver(client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }): SqlQuery {
+  return async <T,>(sql: string, params: readonly unknown[] = []) => (await client.query(sql, [...params])).rows as T[];
+}
+```
+
+  (In Vault mode the DB credential comes from `VAULT_PRISMA_FACTORY`; W3 checks whether the worker must obtain the `pg` URL from that factory instead and adapts `createCheckpointPool` — recorded as a W3 step.)
+- [ ] **Step 3:** barrel `tenant-checkpoint/index.ts` exporting `./contracts`. Commit:
+
+```bash
+git add packages/database packages/domains/src/enums packages/applications/package.json pnpm-lock.yaml packages/applications/src/services/tenant-checkpoint packages/applications/src/services/baseServices/redis/queue-concurrency.ts
+git commit -m "feat(task-1032): checkpoint schema, enums, queues, deps and shared contracts"
+```
+
+- [ ] **Step 4:** re-check HEAD is still what W0 started from plus W0's commit (second-writer rule); create the six W1 worktrees (§6.3); start the test infra (`pnpm infra:test:up`, `pnpm test:db:reset`) so L6b can use it in W2.
+
+---
+
+### 6.5 Wave 1 lanes (parallel)
+
+#### L1 — Domain trio · `sonnet` · effort low
+
+**Rules:** 00, 01, 03, 14. **Owns:** `packages/domains/src/{entities,factories,mappers,repositories}/generated/core/TenantCheckpoint*.ts` and
+`TenantCheckpointRestore*.ts`, the four barrels' new lines, `packages/domains/src/common/databaseServices/core/core.database.module.ts`,
+`packages/database/src/extensions/tenant-scope.ts`. **Must not touch:** anything else; never run `gen:mapper`/`gen:repository`.
+
+**Interfaces — produces:** `TenantCheckpointEntity`, `TenantCheckpointFactory.CreateTenantCheckpoint(props)`,
+`TenantCheckpointRepository` (+ the same four for `TenantCheckpointRestore`) with these custom methods:
+
+```ts
+// TenantCheckpointRepository
+findByTenant(tenantId: string, opts: { skip: number; take: number; kind?: 'MANUAL' | 'SAFETY' }, tx?: unknown): Promise<{ rows: TenantCheckpointEntity[]; total: number }>;
+findRunningByTenant(tenantId: string, tx?: unknown): Promise<TenantCheckpointEntity[]>;          // status IN (PENDING, UPLOADING, RUNNING)
+findStale(heartbeatBefore: Date, tx?: unknown): Promise<TenantCheckpointEntity[]>;                 // status RUNNING AND heartbeatAt < x, any tenant (worker)
+findExpired(now: Date, tx?: unknown): Promise<TenantCheckpointEntity[]>;                           // status READY AND expiresAt < now, any tenant (worker)
+// TenantCheckpointRestoreRepository
+findActiveByTenant(tenantId: string, tx?: unknown): Promise<TenantCheckpointRestoreEntity | null>; // status NOT terminal
+findByTenant(tenantId: string, opts: { skip: number; take: number }, tx?: unknown): Promise<{ rows: TenantCheckpointRestoreEntity[]; total: number }>;
+findStaleActive(heartbeatBefore: Date, tx?: unknown): Promise<TenantCheckpointRestoreEntity[]>;    // non-terminal AND heartbeatAt < x
+```
+
+`sizeBytes` is `BigInt` in Prisma; the entity exposes it as `number | null` (convert in the mapper `$toDomain`/`$toPersistence` handlers — safe below 2^53).
+
+- [ ] **Task 1 / Step 1 — failing test** `packages/domains/src/repositories/generated/core/__tests__/tenant-checkpoint.mapper.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { TenantCheckpointFactory } from '../../../../factories';
+import { TenantCheckpointEntityMapper } from '../../../../mappers';
+
+describe('TenantCheckpoint mapper', () => {
+  it('never writes _version and maps sizeBytes number ↔ bigint', () => {
+    const entity = TenantCheckpointFactory.CreateTenantCheckpoint({ tenantId: 't-1', label: 'before upgrade' });
+    entity.sizeBytes = 1234;
+    const row = TenantCheckpointEntityMapper.getInstance().toPersistence(entity) as Record<string, unknown>;
+    expect(row).not.toHaveProperty('version');
+    expect(row.sizeBytes).toBe(1234n);
+    const back = TenantCheckpointEntityMapper.getInstance().toDomainEntity({ ...row, version: 3 } as never);
+    expect(back.sizeBytes).toBe(1234);
+    expect(back.status).toBe('PENDING');
+    expect(back.kind).toBe('MANUAL');
+  });
+});
+```
+
+- [ ] **Step 2:** run `pnpm --filter @arcaai/domains exec vitest run src/repositories/generated/core/__tests__/tenant-checkpoint.mapper.test.ts` → FAIL (module not found).
+- [ ] **Step 3:** hand-author entity/factory/mapper/repository ×2 copying `AiRoutingPolicy*` (paths in §2.4 / rule 03); mapper keeps `FIELDS_NOT_WRITABLE = ['version']` + `stripNonWritableFields`; repository delegate names `'tenantCheckpoint'` / `'tenantCheckpointRestore'`; the "any tenant" worker methods use the passed `tx` or `this.db` without a tenant filter and say so in a JSDoc line.
+- [ ] **Step 4:** register both repositories in `core.database.module.ts` (import + `repositories` array); add barrel lines (entity, factory, mapper, repository, model barrels — `gen:model` already wrote the model files).
+- [ ] **Step 5:** add both models to `TENANT_SCOPED_MODELS` under a `// tenant-checkpoint.prisma` banner.
+- [ ] **Step 6:** add a second test file `tenant-checkpoint-restore.mapper.test.ts` asserting `categories` round-trips as a string array and `version` is stripped; RED → implement → GREEN. Commit `feat(task-1032/l1): TenantCheckpoint + TenantCheckpointRestore domain trio`.
+
+#### L2 — Model registry · `opus` · effort medium
+
+**Rules:** 00, 01, 02, 03, 14 + this spec §2.1, §3.4, §3.5, §6.0 C-6/C-7. **Owns:** `packages/applications/src/services/tenant-checkpoint/registry/**`.
+**Must not touch:** anything outside that directory.
+
+**Interfaces — consumes:** `contracts.ts` types. **Produces:**
+
+```ts
+// registry/registry.ts
+export const CHECKPOINT_REGISTRY: readonly CheckpointModelDescriptor[];
+export function descriptorFor(model: string): CheckpointModelDescriptor;           // throws on unknown
+export function tableName(d: CheckpointModelDescriptor): string;                   // `core."${d.table ?? d.model}"`
+// registry/scope.ts
+/** WHERE-clause over alias `alias` for this descriptor; tenant id is always `$1`. Recurses through `parent`. */
+export function scopePredicate(d: CheckpointModelDescriptor, alias: string): string;
+// registry/order.ts
+export interface FkEdge { child: string; parent: string; column: string }
+export function loadFkEdges(query: SqlQuery): Promise<FkEdge[]>;                    // pg_constraint, schema core
+/** Parents before children over the given models; self-edges ignored (a single INSERT…SELECT satisfies them). */
+export function insertOrder(models: readonly string[], edges: readonly FkEdge[]): string[];
+// registry/schema.ts
+export function currentColumns(query: SqlQuery, tables: readonly string[]): Promise<Record<string, string[]>>;
+export function schemaFingerprint(query: SqlQuery): Promise<string>;               // sha256 over migration names + sorted column lists
+export interface CompatibilityProblem { model: string; column: string; problem: 'NOT_NULL_WITHOUT_DEFAULT' | 'TABLE_MISSING' }
+export function checkCompatibility(summary: ManifestSummary, query: SqlQuery): Promise<CompatibilityProblem[]>;
+```
+
+Classification is taken from §3.5 with C-6/C-7 applied. Specific calls the lane must encode (the verdicts of this feature):
+
+| Model(s) | category · policy · retire |
+|---|---|
+| `User` | USERS_ACCESS · INSERT_ONLY · never · scope `tenantMembers` |
+| `UserProfile`, `UserSettings` | USERS_ACCESS · INSERT_ONLY · never · scope `parent` → `User` |
+| `ApiKey`, `ServiceAccount`, `StorageAccessKey` | USERS_ACCESS · RETIRE_ONLY · `revoke` (read each model for its revocation columns; `ServiceAccount`/`ApiKey` are unscoped in Prisma but carry `tenantId` → `tenantColumn`) |
+| `UserRoleAssignment`, `UserDepartment` | USERS_ACCESS · RECONCILE · per soft-delete flag |
+| `Role` | USERS_ACCESS · RECONCILE · scope `tenantColumn` (SYSTEM built-ins excluded by the predicate) |
+| `RolePolicy` | USERS_ACCESS · RECONCILE · scope `parent` → `Role`, hardDelete |
+| `KnowledgeChunk` | CONFIG_CONTENT · CAPTURE_ONLY · never · `derivedFrom: 'KnowledgeDocument'` |
+| `Agent`, `WorkflowDefinition`, `AgentModelFallback`, `DocumentTemplateVersion` | RECONCILE · softDelete (or `never` where the trigger forbids every UPDATE — read it) · `immutableColumns` + `immutableWhen` from the trigger |
+| `AgentAssignmentChange`, `WorkflowAssignmentChange`, `HarnessPolicyChange`, `AgentPromotion`, `HarnessAuditEvent` | LOGS · CAPTURE_ONLY |
+| `PasswordResetToken`, `Tenant`, `TenantEntitlement`, `PlanEntitlement`, `AiPriceBook`, `ModelResidencyPolicy`, `ServiceRelease`, `ServiceInstance`, `ChangelogEntry`, `Policy`, `FedlClient`, `FedlRound`, `FedlUpdate`, `FedlModelVersion` | EXCLUDED · scope `none` |
+| `AiModel` | CONFIG_CONTENT · RECONCILE · `tenantColumn` (BYO rows only — the SYSTEM rows never match `$1`) |
+| `TenantCheckpoint`, `TenantCheckpointRestore` | EXCLUDED (a checkpoint never contains checkpoints) |
+
+- [ ] **Task 1 / Step 1 — failing test** `registry/__tests__/registry.completeness.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { Prisma, MODELS_WITHOUT_SOFT_DELETE } from '@arcaai/database';
+import { CHECKPOINT_REGISTRY } from '../registry';
+
+describe('checkpoint registry', () => {
+  it('describes every Prisma model exactly once', () => {
+    const models = Object.values(Prisma.ModelName).sort();
+    const described = CHECKPOINT_REGISTRY.map((d) => d.model).sort();
+    expect(described).toEqual(models);
+  });
+
+  it('agrees with MODELS_WITHOUT_SOFT_DELETE', () => {
+    for (const d of CHECKPOINT_REGISTRY) {
+      expect({ model: d.model, softDelete: d.softDelete }).toEqual({ model: d.model, softDelete: !MODELS_WITHOUT_SOFT_DELETE.has(d.model) });
+    }
+  });
+
+  it('never soft-deletes a model without soft delete and never restores an EXCLUDED/LOGS model', () => {
+    for (const d of CHECKPOINT_REGISTRY) {
+      if (!d.softDelete) expect(d.retire.kind, d.model).not.toBe('softDelete');
+      if (d.category === 'LOGS') expect(d.policy, d.model).toBe('CAPTURE_ONLY');
+      if (d.category === 'EXCLUDED') expect([d.policy, d.scope.kind], d.model).toEqual(['EXCLUDED', 'none']);
+    }
+  });
+});
+```
+
+  If `MODELS_WITHOUT_SOFT_DELETE` is not exported from the `@arcaai/database` root barrel, import it from its module path and record that under `deviations`.
+- [ ] **Step 2:** run `pnpm --filter @arcaai/applications exec vitest run src/services/tenant-checkpoint/registry/__tests__/registry.completeness.test.ts` → FAIL.
+- [ ] **Step 3:** write `registry.ts` — one descriptor per model, grouped by category with a banner comment per group, every `notes` field explaining any non-obvious call.
+- [ ] **Step 4:** GREEN. Commit.
+- [ ] **Task 2 — trigger parity.** Test `registry.trigger-parity.test.ts`: read every `migration.sql` under `packages/database/src/prisma/db_main/migrations/` in name order; for each of the five guard functions take the LAST `CREATE OR REPLACE FUNCTION <name>` body; extract every `"<col>" IS DISTINCT FROM` column; assert the set equals the guarded model's `immutableColumns`. Map: `workflow_definition_immutability_guard` → WorkflowDefinition, `agent_immutability_guard` → Agent, `agent_model_fallback_immutability_guard` → AgentModelFallback (refuses all UPDATE/DELETE while the parent Agent is published → `immutableWhen` over the parent), `document_template_version_immutability_guard` → DocumentTemplateVersion (refuses ALL update/delete → policy RECONCILE with `retire: never` and an `immutableWhen` of `true`), `agent_assignment_change_worm_guard` → AgentAssignmentChange (CAPTURE_ONLY, so asserted absent from restore). RED → implement → GREEN → commit.
+- [ ] **Task 3 — scope predicates.** Test `scope.test.ts` with literal expectations:
+
+```ts
+expect(scopePredicate(descriptorFor('Agent'), 's')).toBe('s."tenantId" = $1');
+expect(scopePredicate(descriptorFor('WebhookRunHistory'), 's')).toBe(
+  's."webhookId" IN (SELECT p."id" FROM core."Webhook" p WHERE p."tenantId" = $1)');
+expect(scopePredicate(descriptorFor('User'), 's')).toBe(
+  's."id" IN (SELECT "userId" FROM core."UserRoleAssignment" WHERE "tenantId" = $1 UNION SELECT "userId" FROM core."UserDepartment" WHERE "tenantId" = $1)');
+expect(() => scopePredicate(descriptorFor('Tenant'), 's')).toThrow(/EXCLUDED/);
+```
+
+  (Nested parents alias `p`, `p2`, … so a two-level parent stays valid SQL; add a case for `UserProfile` → `User`.) RED → implement → GREEN → commit.
+- [ ] **Task 4 — insert order.** Test `order.test.ts`: `insertOrder(['ContextItem','Consultation','AudioRecording'], [{child:'ContextItem',parent:'Consultation',column:'consultationId'},{child:'AudioRecording',parent:'ContextItem',column:'contextItemId'},{child:'Consultation',parent:'Consultation',column:'parentConsultationId'}])` returns `['Consultation','ContextItem','AudioRecording']`; a cycle between two distinct tables throws naming both. `loadFkEdges` SQL:
+
+```sql
+SELECT c.conrelid::regclass::text AS child, c.confrelid::regclass::text AS parent, a.attname AS column
+FROM pg_constraint c
+JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+WHERE c.contype = 'f' AND c.connamespace = 'core'::regnamespace
+```
+
+  (strip the `core."…"` quoting to model names). RED → implement → GREEN → commit.
+- [ ] **Task 5 — compatibility.** Test `schema.test.ts` with a fake `SqlQuery`: a summary column absent from the table → no problem (dropped); a live `NOT NULL` column with no default absent from the summary → `NOT_NULL_WITHOUT_DEFAULT`; a summary table absent live → `TABLE_MISSING`. `checkCompatibility` reads `information_schema.columns` (`is_nullable`, `column_default`, `is_identity`). RED → implement → GREEN → commit.
+
+#### L3 — Archive, sealing, store, offline opener · `opus` · effort high
+
+**Rules:** 00, 01, 04, 09, 14. **Owns:** `tenant-checkpoint/{archive,sealing,store}/**`,
+`packages/applications/src/services/baseServices/_meta/secrets/{SecretsService.ts,providers/vault-secrets.provider.ts}` (sign/verify/public key),
+`packages/applications/src/services/baseServices/storage/providers/{IBlobStorageProvider.ts,s3-blob.provider.ts,azure-blob.provider.ts}` (multipart + streaming put),
+`scripts/checkpoint-open.ts`, root `package.json` script line `"checkpoint:open"`.
+**Must not touch:** the registry, processors, API, console.
+
+**Archive byte layout (normative):**
+
+```
+file    := HEADER BODY TRAILER
+HEADER  := "HOPECKPT" (8 bytes) ‖ u32be headerLen ‖ headerJson (UTF-8, CheckpointHeader)
+BODY    := SEGMENT*      each SEGMENT := u32be cipherLen ‖ AES-256-GCM(ciphertext ‖ 16-byte tag)
+           plaintext of segment i is ≤ 64 KiB of the ENTRY STREAM; nonce_i = noncePrefix(7) ‖ u32be(i) ‖ lastFlag(1: 0x00 | 0x01)
+           AAD of segment 0 = the HEADER bytes; AAD of every other segment = empty
+ENTRY STREAM := ENTRY* END
+ENTRY   := 0x01 ‖ u16be nameLen ‖ name ‖ CHUNK* ‖ u32be 0      (CHUNK := u32be len ‖ bytes, len > 0)
+END     := 0x00
+TRAILER := "HCPTRAIL" ‖ 32-byte sha256(HEADER ‖ BODY) ‖ u16be sigLen ‖ signature (UTF-8 "vault:v1:…")
+```
+
+`manifest.json` is always the LAST entry. The data key is 32 random bytes from `crypto.randomBytes`.
+
+**Interfaces — produces** (all exported from `tenant-checkpoint/index.ts` by W3; the lane exports them from its own dirs):
+
+```ts
+// archive/writer.ts
+export function createArchiveWriter(args: {
+  header: Omit<CheckpointHeader, 'magic' | 'formatVersion' | 'noncePrefix'>;   // keys already filled by the caller
+  dataKey: Buffer;
+  sink: Writable;
+  sealing: Pick<ICheckpointSealing, 'sign'>;
+}): CheckpointArchiveWriter;
+// archive/reader.ts
+export function readHeader(source: Readable): Promise<{ header: CheckpointHeader; rest: Readable }>;
+export function openArchive(source: Readable, dataKey: Buffer): Promise<CheckpointArchiveReader>;
+// archive/verify.ts — the §3.2 gate; `open` is called twice (pass 1: digest + signature, pass 2: decrypt)
+export function verifyArchive(args: {
+  open: () => Promise<Readable>;
+  expectTenantId: string;
+  sealing: ICheckpointSealing;
+  existingCheckpointIds?: ReadonlySet<string>;     // upload only → DUPLICATE
+}): Promise<VerifiedArchive>;
+// sealing/checkpoint-sealing.ts
+@Injectable() export class CheckpointSealing implements ICheckpointSealing { constructor(secrets: SecretsService) }
+// store/checkpoint-store.ts
+@Injectable() export class CheckpointStore implements ICheckpointStore { constructor(factory: BlobStorageProviderFactory) }
+// SecretsService additions
+supportsSigning(): boolean;
+sign(keyName: string, data: Buffer): Promise<string>;               // transit/sign/<key>, input base64; returns "vault:v1:…"
+verify(keyName: string, data: Buffer, signature: string): Promise<boolean>;   // transit/verify/<key>
+publicKey(keyName: string): Promise<string>;                        // transit/keys/<key> → keys[latest].public_key
+```
+
+`SecretsService.sign`/`verify`/`publicKey` throw `CheckpointError('SEALING_UNAVAILABLE', …)` when the provider is not Vault (same
+runtime capability check as `encrypt`). Argon2id parameters: `m = 65536` KiB, `t = 3`, `p = 1` (hash-wasm `argon2id`, 32-byte output).
+
+- [ ] **Task 1 — round trip.** Test `archive/__tests__/archive.roundtrip.test.ts` using an in-memory fake sealing:
+
+```ts
+import { PassThrough, Readable } from 'node:stream';
+import { randomBytes } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
+import { createArchiveWriter } from '../writer';
+import { openArchive } from '../reader';
+import { fakeSealing, collect, baseHeader, manifestFor } from './helpers';
+
+describe('archive round trip', () => {
+  it('returns every entry byte-identical, in order, with the manifest last', async () => {
+    const dataKey = randomBytes(32);
+    const sink = new PassThrough();
+    const bytes = collect(sink);
+    const w = createArchiveWriter({ header: baseHeader(), dataKey, sink, sealing: fakeSealing() });
+    const big = randomBytes(300 * 1024);                     // spans several 64 KiB segments
+    const a = await w.writeEntry('db/Agent.csv.gz', Readable.from([big.subarray(0, 1000), big.subarray(1000)]));
+    await w.writeEntry('media/b1/2026/10/01/x.wav', Buffer.from('tiny'));
+    await w.finish(manifestFor([{ model: 'Agent', sha256: a.sha256 }]));
+    const r = await openArchive(Readable.from(await bytes), dataKey);
+    const seen: [string, Buffer][] = [];
+    for await (const e of r.entries()) seen.push([e.name, Buffer.concat(await e.body.toArray())]);
+    expect(seen.map(([n]) => n)).toEqual(['db/Agent.csv.gz', 'media/b1/2026/10/01/x.wav']);
+    expect(seen[0][1].equals(big)).toBe(true);
+    expect(r.manifest().tables[0].sha256).toBe(a.sha256);
+  });
+});
+```
+
+  `helpers.ts` (same dir) provides `fakeSealing()` (AES key wrap with a fixed test key; `sign` = HMAC; `deploymentId` = `'test-deployment'`), `collect(stream): Promise<Buffer>`, `baseHeader()`, `manifestFor(tables)`. RED → implement writer + reader → GREEN → commit.
+- [ ] **Task 2 — tamper matrix.** Test `archive/__tests__/archive.tamper.test.ts`, one `it` per row; each builds a valid archive then mutates it and calls `verifyArchive`:
+
+| Mutation | Expected `reason` |
+|---|---|
+| first 8 bytes changed | `UNSUPPORTED_FORMAT` |
+| `formatVersion` 99 in header | `UNSUPPORTED_FORMAT` |
+| one byte flipped in BODY | `SIGNATURE_INVALID` (digest differs) |
+| one byte flipped AND trailer re-signed with the fake key (passphrase-holder forgery path) | `CORRUPT_SEGMENT` |
+| last segment dropped, re-signed | `CORRUPT_SEGMENT` (no last-flag segment) |
+| segments 2 and 3 swapped, re-signed | `CORRUPT_SEGMENT` |
+| header `tenantId` swapped to tenant B, re-signed, verified with `expectTenantId` = B | `CORRUPT_SEGMENT` (segment-0 AAD binds the header) |
+| valid archive, `expectTenantId` = other tenant | `WRONG_TENANT` |
+| header `sourceDeploymentId` ≠ `sealing.deploymentId()` | `FOREIGN_DEPLOYMENT` |
+| manifest sha256 for an entry altered before sealing | `MANIFEST_MISMATCH` |
+| `existingCheckpointIds` contains the header id | `DUPLICATE` |
+
+  Gate order is exactly C-13 (§6.0), which supersedes §3.2. RED → implement `verify.ts` → GREEN → commit.
+- [ ] **Task 3 — sealing.** Test `sealing/__tests__/checkpoint-sealing.test.ts` with a stub `SecretsService` (records calls): `generateDataKey` returns 32 bytes and calls `encrypt(…, 'hope-checkpoint')`; `wrapWithPassphrase`→`unwrapWithPassphrase` round-trips; a wrong passphrase rejects with `PASSPHRASE_INVALID`; `deploymentId()` = hex sha256 of `publicKey('hope-checkpoint-sign')` and is memoised; a non-Vault provider → `SEALING_UNAVAILABLE`. Also `vault-secrets.provider` unit test for `sign`/`verify`/`publicKey` against a stub node-vault client asserting paths `transit/sign/hope-checkpoint-sign`, `transit/verify/hope-checkpoint-sign`, `transit/keys/hope-checkpoint-sign` and base64 input. RED → implement → GREEN → commit.
+- [ ] **Task 4 — store.** Test `store/__tests__/checkpoint-store.test.ts` with a fake provider: `objectKey('t','c') === 't/c.hcp'`; `presignDownload` passes `ResponseContentDisposition: attachment; filename="<name>"`; `completeUpload` with parts `[2,1]`, `[1,1]`, `[]` or a gap rejects `UPLOAD_PARTS_INVALID` before calling the provider; `ensureBucket` calls `createBucket` only when `bucketExists` is false. Extend `IBlobStorageProvider` with optional `putObjectStream`, `createMultipartUpload`, `presignUploadPart`, `completeMultipartUpload`, `abortMultipartUpload`; implement in `s3-blob.provider.ts` (copy `ai-model/publish/model-store.ts:142-185`; presign parts with the provider's `presignClient` so URLs use the public endpoint); `azure-blob.provider.ts` throws `Error('checkpoint multipart is S3-only')`. RED → implement → GREEN → commit.
+- [ ] **Task 5 — offline opener.** Test `scripts/__tests__/checkpoint-open.test.ts` (run with `pnpm exec vitest run scripts/__tests__/checkpoint-open.test.ts` from the root): build a passphrase-sealed archive with the fake sealing into a tmp file; `openCheckpointFile({ file, out, passphrase })` writes every entry under `out/` with entry names as relative paths and refuses names containing `..` or starting with `/`; a wrong passphrase rejects `PASSPHRASE_INVALID` and leaves `out/` absent; output reports `signature: present, not verified` without `--public-key`, `verified` with the right PEM, `INVALID` with another. The CLI wrapper reads the passphrase from a TTY prompt (no echo) or `HOPE_CHECKPOINT_PASSPHRASE` for non-interactive use; no network. Root script `"checkpoint:open": "tsx scripts/checkpoint-open.ts"` (use whatever TS runner existing root scripts use — check `package.json`). RED → implement → GREEN → commit.
+
+#### L4 — Tenant lock · `sonnet` · effort high
+
+**Rules:** 00, 01, 04, 05, 14. **Owns:** `tenant-checkpoint/lock/**`, `apps/api/src/guards/tenant-lock.guard.ts` (+ test),
+`apps/api/src/decorators/tenant-lock-exempt.decorator.ts` (+ re-export in `apps/api/src/decorators/index.ts`),
+`apps/api/src/modules/streaming/stt-ws.gateway.ts` (the open-path check only), and the shared worker-session helper in
+`packages/applications/src/common/worker-session*` (lock check only). **Must not touch:** `app.module.ts` (W3 registers the guard).
+
+**Interfaces — consumes:** `ITenantLockService`, `TENANT_LOCK_CHANNEL`, `TENANT_LOCKING_STATUSES`, `TenantCheckpointRestoreRepository.findActiveByTenant` (L1, same wave — it does not exist in your worktree: inject it with `@Inject(TenantCheckpointRestoreRepository)` imported from `@arcaai/domains` and type the test double with a local `interface ActiveRestoreReader { findActiveByTenant(tenantId: string): Promise<{ id: string; status: string } | null> }`; report it as an expected unresolved import — W3 resolves it after L1 merges).
+**Produces:**
+
+```ts
+// lock/tenant-lock.service.ts
+@Injectable() export class TenantLockService implements ITenantLockService, OnModuleInit
+// per-process Map<tenantId, { state, expiresAt }>, TTL 5 s; subscribes TENANT_LOCK_CHANNEL via RedisSubscriberService
+// (copy app-settings:invalidate — appSettings.service.ts:561/586); publishChange → IRedisCacheService.publish
+// lock/tenant-lock.module.ts — exports ITenantLockService
+// lock/tenant-locked.error.ts
+export class TenantLockedError extends Error { constructor(readonly tenantId: string, readonly restoreId?: string) }
+// apps/api: @TenantLockExempt() sets metadata TENANT_LOCK_EXEMPT_KEY
+export const TENANT_LOCK_EXEMPT_KEY = 'tenantLockExempt';
+// guard → HttpException(423) body { statusCode: 423, code: 'TENANT_RESTORE_IN_PROGRESS', message, restoreId }
+```
+
+- [ ] **Task 1 — service.** Test `lock/__tests__/tenant-lock.service.test.ts`: state comes from `findActiveByTenant` (status ∈ `TENANT_LOCKING_STATUSES` ⇒ locked; `PENDING` ⇒ not locked); second call within 5 s does not hit the repository; a channel message for the tenant drops the cache; `publishChange` publishes `{ tenantId }`; a repository error ⇒ `locked: false` is NOT acceptable — it rethrows (fail closed: the guard turns it into 503). RED → implement → GREEN → commit.
+- [ ] **Task 2 — guard.** Test `apps/api/src/guards/__tests__/tenant-lock.guard.test.ts`:
+
+```ts
+it('423s a request whose CLS tenant is locked', async () => {
+  const guard = new TenantLockGuard(reflectorReturning(false), clsWith({ tenantId: 'T' }), lockService({ T: { locked: true, restoreId: 'R' } }));
+  await expect(guard.canActivate(httpContext())).rejects.toMatchObject({ status: 423, response: { code: 'TENANT_RESTORE_IN_PROGRESS', restoreId: 'R' } });
+});
+it('lets an exempt handler through', async () => { /* reflector returns true → resolves true, lock never queried */ });
+it('ignores requests with no tenant context', async () => { /* tenantId undefined → true */ });
+it('ignores non-http contexts (ws is checked in the gateway)', async () => { /* getType() === 'ws' → true */ });
+it('fails closed with 503 when the lock state cannot be read', async () => { /* lockService.state rejects → ServiceUnavailableException, code TENANT_LOCK_UNAVAILABLE */ });
+```
+
+  The guard reads `this.cls.get('tenantId')` (pattern: `tenant-owned-resource.interceptor.ts:65`). Before writing it, confirm how internal routes (`/api/v1/internal/*`, harness/STT callbacks carrying `X-Tenant-Id`) populate CLS `tenantId`, and state the answer in the report; if they do not, the guard also reads the validated `X-Tenant-Id` the same way that path's auth does, and the test gains a case for it. RED → implement → GREEN → commit.
+- [ ] **Task 3 — background jobs (Review Focus 1).** Find the shared helper processors use to enter a tenant (`createWorkerSession` / `runJobInContext` under `packages/applications/src/common/`). Test: when the tenant is locked, the helper throws `TenantLockedError` BEFORE running the job body; then make each BullMQ `WorkerHost` path that uses the helper translate `TenantLockedError` into a postponement — `await job.moveToDelayed(Date.now() + 30_000, token); throw new DelayedError();` (BullMQ's documented pattern; the job keeps its attempt count). If processors do not receive `token`, implement the translation once in the helper's caller layer and list every processor it covers in the report. The checkpoint queues themselves are exempt (they hold the lock). RED → implement → GREEN → commit.
+- [ ] **Task 4 — STT socket.** In `SttWsGateway.handleConnection`, after the ticket is consumed and `stored.tenantId` is known, a locked tenant closes the socket with code `4423` and reason `TENANT_RESTORE_IN_PROGRESS` before any session state is created. Test in the gateway's existing test file style. RED → implement → GREEN → commit.
+
+#### L5 — Platform plumbing · `sonnet` · effort low
+
+**Rules:** 00, 01, 09, 14. **Owns:** `infrastructure/docker/configs/vault/{dev-init.sh,test-init.sh}`, `infrastructure/docker/configs/vault/policies/hope-app.hcl`,
+`infrastructure/docker/docker-compose.yml` (minio-setup), `tests/docker-compose.test.yml` (minio init), `packages/domains/src/utils/platformBuckets.ts` (+ its test),
+`packages/applications/src/services/settings-registry/descriptors/tenant-checkpoint.descriptors.ts` + its line in `registry.ts`,
+`packages/database/src/prisma/db_main/seed/01-policy.ts`.
+
+- [ ] **Task 1 — Vault.** `dev-init.sh` and `test-init.sh`: after the `hope-phi` block, create `hope-checkpoint` (`vault write -f transit/keys/hope-checkpoint` + config `min_decryption_version=1 deletion_allowed=false exportable=false`) and `hope-checkpoint-sign` (`vault write transit/keys/hope-checkpoint-sign type=ed25519` + config `deletion_allowed=false`). `hope-app.hcl`: `transit/encrypt/hope-checkpoint`, `transit/decrypt/hope-checkpoint` (`update`), `transit/sign/hope-checkpoint-sign`, `transit/verify/hope-checkpoint-sign` (`update`), `transit/keys/hope-checkpoint-sign` (`read`). No test (shell config); `bash -n` both scripts and paste the output.
+- [ ] **Task 2 — bucket.** Test first in the existing `platformBuckets` test: `isPlatformBucket('hope-tenant-checkpoints')` is true. Add the constant with a `/** … */` comment; add `/usr/bin/mc mb minio/hope-tenant-checkpoints --ignore-existing;` to compose (no double quotes in comments inside that block) and `/usr/bin/mc mb --ignore-existing local/hope-tenant-checkpoints;` to the test compose. RED → GREEN → commit.
+- [ ] **Task 3 — settings.** Test `settings-registry/descriptors/__tests__/tenant-checkpoint.descriptors.test.ts`: the four keys exist in `HOPE_SETTINGS_REGISTRY` with defaults 30 / 10 / 50 / 60, `failMode: 'open-to-default'`, `dataType: 'number'`, tenant-overridable (`maxScope: 'tenant'`, `globalOnly: false` — copy an existing tenant-overridable descriptor's shape), and `validate` rejects 0, negatives and non-integers (`maxLockMinutes` max 240, `maxUploadSizeGb` max 500). Export the key constants `TENANT_CHECKPOINT_RETENTION_DAYS_KEY`, `TENANT_CHECKPOINT_MAX_RETAINED_KEY`, `TENANT_CHECKPOINT_MAX_UPLOAD_GB_KEY`, `TENANT_CHECKPOINT_MAX_LOCK_MINUTES_KEY` and `TENANT_CHECKPOINT_DEFAULTS`. RED → GREEN → commit.
+- [ ] **Task 4 — CASL.** In `tenant-full-access` add `{ action: 'manage', subject: 'TenantCheckpoint', conditions: { tenantId: '${context.tenantId}' } }` next to `TenantTelemetry`. If a seed conformance test pins the rule list, update it in the same commit. Commit.
+
+#### L9 — Console · `sonnet` · effort medium (spans W1 → W2)
+
+**Rules:** 00, 01, 07, 10, 11, 12, 13, 14 + skills `web-accessibility`, `shadcn-ui`. **Owns:** `apps/admin-console/src/features/tenant-checkpoints/**`,
+`apps/admin-console/src/app/(console)/(tenant)/checkpoints/**` (`page.tsx`, `loading.tsx`), `src/shared/navigation/nav-config.ts` + `__tests__/nav-config.test.ts`
+(one entry + its pinned row), the tenant-detail link in `src/features/tenants/components/tenant-detail-screen.tsx`, `apps/admin-console/tests/e2e/tenant-checkpoints.spec.ts`.
+
+**API contract (from §3.1; the backend lands in W2 — code against this):** base `admin/tenants/${tenantId}/checkpoints`, through `@/shared/api`.
+
+```ts
+export type CheckpointStatus = 'PENDING' | 'UPLOADING' | 'RUNNING' | 'READY' | 'FAILED' | 'CANCELLED';
+export interface TenantCheckpoint {
+  id: string; tenantId: string; label: string; kind: 'MANUAL' | 'SAFETY'; origin: 'CREATED' | 'UPLOADED';
+  status: CheckpointStatus; includesMedia: boolean; passphraseProtected: boolean; sizeBytes: number | null;
+  progress: { phase: string; tablesDone: number; tablesTotal: number; bytesWritten: number } | null;
+  createdAt: string; createdBy: string | null; expiresAt: string | null; heartbeatAt: string | null;
+  failureReason: string | null; failureDetail: string | null; version: number;
+}
+export type RestoreStatus = 'PENDING' | 'LOCKING' | 'SAFETY_CHECKPOINT' | 'VERIFYING' | 'RECONCILING' | 'POST_COMMIT' | 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'FAILED';
+export type RestoreCategory = 'CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL';
+export interface TenantCheckpointRestore {
+  id: string; checkpointId: string; categories: RestoreCategory[]; reason: string; status: RestoreStatus;
+  safetyCheckpointId: string | null; counts: { model: string; inserted: number; updated: number; retired: number }[] | null;
+  warnings: { code: string; message: string; detail?: Record<string, unknown> }[]; requestedBy: string;
+  createdAt: string; lockAcquiredAt: string | null; lockReleasedAt: string | null; failureReason: string | null; failureDetail: string | null; version: number;
+}
+// GET    ''                         → Paginated<TenantCheckpoint>   (?page,&limit,&kind)
+// POST   ''                         { label, includesMedia, passphrase? }            → 202 TenantCheckpoint
+// GET    ':id'                      → TenantCheckpoint
+// POST   ':id/cancel'               → 202 TenantCheckpoint
+// POST   ':id/download-url'         → { url, expiresAt, filename }
+// DELETE ':id'                      → 204
+// POST   'uploads'                  { filename, sizeBytes }                           → 201 { checkpoint, uploadId, partSizeBytes, parts: {partNumber,url}[], expiresAt }
+// POST   'uploads/:id/complete'     { parts: {partNumber, etag}[] }                  → 202 TenantCheckpoint
+// POST   'uploads/:id/abort'        → 202 TenantCheckpoint
+// POST   ':id/restore'              { categories, reason, password, confirmationName } → 202 TenantCheckpointRestore
+// GET    'restores'                 → Paginated<TenantCheckpointRestore>
+// GET    'restores/:restoreId'      → TenantCheckpointRestore
+// 423 on mutations while a restore runs: { code: 'TENANT_RESTORE_IN_PROGRESS', restoreId }
+```
+
+Screen contract: `WorkingTenantGate` → `Tabs` → `ScreenTemplate contentMode="fill"` (exemplars `features/harness-policy/components/harness-policy-screen.tsx`, `features/api-keys/components/api-keys-screen.tsx`). Tabs `Checkpoints` | `Restore history`. Header actions: **Create checkpoint** (sheet: label*, include-media switch default on, optional passphrase + confirm with a "store it safely — it cannot be recovered" note), **Upload checkpoint** (dialog: `.hcp` file input showing name/size, per-part progress, Abort). Grid columns: label, kind badge, origin, status badge (`READY` default, `FAILED` destructive, running states secondary with progress text), size, created, expires. Row → `DetailDrawer` (meta, failure reason, actions: Download, Restore…, Cancel when running, Delete with confirm). Restore → `BreakGlassDialog` (`src/shared/confirm/break-glass-dialog.tsx`) extended IN THE FEATURE (wrapping, not forking) with category checkboxes — *Clinical data* rendered only when `isSuperAdmin`, with a destructive warning — and a required reason textarea; `confirmationName` = current tenant name. Polling: `refetchInterval` 3 s while any visible row or restore is non-terminal. A 423 anywhere shows the persistent banner "Restore in progress — this tenant is read-only until it finishes" in the `statusBanner` slot. Nav entry: domain = the domain of the existing `/tenant-profile` entry, `tier: '30-49'`, `required: [['read','TenantCheckpoint'],['manage','TenantCheckpoint']]`, `order` = that domain's highest order + 1, label `Checkpoints`; update the pinned table row.
+
+- [ ] **Task 1 — api layer.** Test `features/tenant-checkpoints/api/__tests__/upload.test.ts` for the pure upload driver `uploadInParts(file, init, putPart)`: slices `file` by `partSizeBytes`, calls `putPart(url, blob)` per part, collects the `ETag` response header, returns parts sorted by `partNumber`; a missing `ETag` throws `UPLOAD_ETAG_MISSING` (MinIO CORS must expose it — Review Focus 3); an abort signal stops further parts. RED → implement `client.ts`, `hooks.ts`, `keys.ts`, `types.ts`, `upload.ts` → GREEN → commit.
+- [ ] **Task 2 — restore dialog.** Test `components/__tests__/restore-dialog.test.tsx`: Clinical checkbox absent for a tenant admin, present for a super admin; submit disabled until ≥ 1 category, reason ≥ 10 chars, password, and the typed name; 401/400/403/409 render in-dialog (not toasts); success → `toast.success` and the restore-history tab. RED → implement → GREEN → commit.
+- [ ] **Task 3 — screen + route + nav.** Tests: `components/__tests__/checkpoints-screen.test.tsx` (skeleton while loading, `Empty` state with "Create your first checkpoint", running row shows progress, 423 banner) and the nav pinned-row update. RED → implement page, `loading.tsx` (skeleton matching the grid), screen, drawer, sheets → GREEN → commit.
+- [ ] **Task 4 — e2e spec (authored, NOT run by the lane).** `tests/e2e/tenant-checkpoints.spec.ts` in the `api-keys.spec.ts` shape: create → wait READY → download URL → restore CONFIG_CONTENT with break-glass → restore history shows COMPLETED; axe light + dark. The orchestrator runs it in W3. Commit.
+
+---
+
+### 6.6 Wave 2 lanes (start after the W1 merges; L9 continues)
+
+#### L6a — Export, verify-upload, sweepers · `opus` · effort medium
+
+**Rules:** 00, 01, 04, 14. **Owns:** `tenant-checkpoint/export/**`. **Must not touch:** `restore/`, the registry, archive internals.
+
+**Interfaces — consumes:** registry (`CHECKPOINT_REGISTRY`, `scopePredicate`, `tableName`, `schemaFingerprint`, `currentColumns`), archive (`createArchiveWriter`, `verifyArchive`), `ICheckpointSealing`, `ICheckpointStore`, `createCheckpointPool`/`sqlQueryOver`, L1 repositories, `BlobStorageProviderFactory`, `IAppSettingsService`, `IRedisCacheService`. **Produces:**
+
+```ts
+@Injectable() export class CheckpointExportRunner implements ICheckpointExportRunner { run(checkpointId: string): Promise<void> }
+@Injectable() export class CheckpointVerifyRunner implements ICheckpointVerifyRunner { run(checkpointId: string): Promise<void> }
+@Processor(JobQueue.TenantCheckpointExport, { concurrency: QUEUE_CONCURRENCY[JobQueue.TenantCheckpointExport] })
+export class CheckpointExportProcessor extends WorkerHost   // job.data: CheckpointExportJob → runner by kind
+@Injectable() export class CheckpointSweeper   // every 5 min (@Cron): stale RUNNING exports (heartbeat > 2 min) → FAILED(WORKER_LOST) + abort;
+                                               // UPLOADING idle > 24 h → abortUpload + CANCELLED;
+                                               // daily: retention (§3.3) under Redis lock 'tenant-checkpoint-retention:lock' (copy tenant-storage-purge.service.ts:305-320)
+export class CheckpointExportModule   // providers above + exports ICheckpointExportRunner, ICheckpointVerifyRunner
+```
+
+Export algorithm (`run`):
+1. Load the row; if not `PENDING` → return (idempotent re-delivery). Set `RUNNING`, `startedAt`; heartbeat every 15 s writing `heartbeatAt` + `progress` with `updateWithVersion` (OCC conflicts on heartbeat are swallowed, as `ai-model-download.processor.ts:563-580`).
+2. Unwrap the data key from `keyEnvelope.platform`.
+3. One `pg` client: `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`. `schemaFingerprint`; for every descriptor whose policy ≠ `EXCLUDED`, in `CHECKPOINT_REGISTRY` order: `COPY (SELECT <current columns quoted> FROM <table> s WHERE <scopePredicate(d,'s')>) TO STDOUT (FORMAT csv, HEADER)` with `$1` substituted as a quoted literal of the validated UUID tenant id (COPY takes no bind params — validate `^[0-9a-f-]{36}$` first) → gzip → `writeEntry('db/<Model>.csv.gz')`; count rows by counting CSV records via the gzip-input side (a CSV-aware counter: quoted newlines!). Also `tenant.json` from `SELECT row_to_json(t) FROM core."Tenant" t WHERE id = $1`.
+4. Collect `transitKeyVersions`: for each column whose name starts with `encrypted` or equals a known ciphertext column, `SELECT max(substring(col::text from 'vault:v([0-9]+):')::int)` within the same snapshot.
+5. `COMMIT`. If `includesMedia`: for each `Media` row of the tenant (from the snapshot result — collect `(bucketId, key)` during step 3 via a separate `SELECT` inside the same transaction, before COMMIT), resolve the bucket's descriptor; DEDICATED → push to `notCaptured`; else stream the object → `writeEntry('media/<bucketId>/<key>')`. Claim-check: `WorkflowRun.resultRef` / `AgentTrajectoryStep.payloadRef` of the tenant → content keys (read `apps/harness/src/harness/temporal/claim_check.py` for the ref format) → `harness-claim-check` bucket → `claimcheck/<contentKey>`; a missing object → `notCaptured`.
+6. Between every table and every object: re-read `cancelRequestedAt`; set → `writer.abort`, `store` abort, `CANCELLED`.
+7. `finish(manifest)`; row `READY`, `sizeBytes`, `manifestDigest`, `manifestSummary`, `schemaFingerprint`, `sourceDeploymentId`, `objectKey`, `finishedAt`, `expiresAt = now + retentionDays` (setting resolved for the tenant); broadcast `ResourceUpdated` (`ResourceType.TenantCheckpoint`).
+8. Any error → `FAILED`, `failureReason` (the `CheckpointError.reason` or `EXPORT_FAILED`), `failureDetail` = message (no stack, no PHI), store abort.
+
+Verify-upload (`CheckpointVerifyRunner.run`): `verifyArchive({ open: () => store.openReadStream(key), expectTenantId, sealing, existingCheckpointIds })` → `READY` with header/manifest-derived fields (`label` stays the uploader's, `kind: MANUAL`, `origin: UPLOADED`, `keyEnvelope` = header keys) or `FAILED(reason)`.
+
+- [ ] **Task 1 — export runner (unit, no DB).** Test `export/__tests__/export-runner.test.ts` with fakes (`fakeQuery` that serves COPY streams per table from fixtures, in-memory store and sealing from L3's `archive/__tests__/helpers.ts` — import, don't copy): the archive contains one entry per non-EXCLUDED descriptor in registry order, then media, then the manifest; `rowCount` counts a CSV field containing a quoted newline as ONE row; the tenant id is refused if not a UUID; cancel between tables → `CANCELLED` and `store.abort` called; a thrown error → `FAILED(EXPORT_FAILED)` with no stack in `failureDetail`; a DEDICATED bucket's media → `notCaptured` and no read attempted. RED → implement → GREEN → commit.
+- [ ] **Task 2 — verify runner.** Test `export/__tests__/verify-runner.test.ts`: a valid uploaded archive → `READY` with `origin: UPLOADED` and `manifestSummary` filled; a `WRONG_TENANT` archive → `FAILED` with `failureReason: 'WRONG_TENANT'` and nothing else written. RED → implement → GREEN → commit.
+- [ ] **Task 3 — sweeper (Review Focus 3).** Test `export/__tests__/sweeper.test.ts`: stale RUNNING → `FAILED(WORKER_LOST)`; UPLOADING with `updatedAt` 25 h ago → `abortUpload` + `CANCELLED`; retention deletes past-`expiresAt` and beyond-`maxRetained` READY rows but never the newest READY row nor a SAFETY row younger than 7 days; a held Redis lock → skipped. RED → implement → GREEN → commit.
+
+#### L6b — Restore / reconcile · `opus` · effort high · the ONLY lane allowed to use the test DB
+
+**Rules:** 00, 01, 02, 03, 04, 14. **Owns:** `tenant-checkpoint/restore/**` (+ `restore/__tests__/integration/**`). **Must not touch:** anything else; never `test:db:reset` (the orchestrator reset it in W0).
+
+**Interfaces — consumes:** everything L6a consumes + `ICheckpointExportRunner` (safety checkpoint), `ITenantLockService`, `IJwtRevocationService.revokeAllForUser`, `IAppSettingsService.refreshCache`, the knowledge ingest queue (`JobQueue.IngestKnowledgeDocument`, payload `IngestKnowledgeDocumentJobPayload`) and `knowledge-vector-cleanup.client.ts`, `SecretsService.decryptBatch(…, 'hope-phi')`. **Produces:**
+
+```ts
+// restore/sql.ts — pure, unit-tested
+export function stagingTable(d: CheckpointModelDescriptor): string;                       // pg_temp."stg_<Model>"
+export function retireSql(d: CheckpointModelDescriptor, ctx: { actorId: string }): string | null;
+export function updateSql(d: CheckpointModelDescriptor, columns: readonly string[]): string | null;
+export function insertSql(d: CheckpointModelDescriptor, columns: readonly string[]): string | null;
+export function divergedSql(d: CheckpointModelDescriptor, columns: readonly string[]): string | null;  // ids whose immutable cols differ on an immutable live row
+// restore/reconciler.ts
+export class CheckpointReconciler {
+  reconcile(client: PoolClient, args: {
+    tenantId: string; categories: readonly RestorableCategory[]; reader: CheckpointArchiveReader;
+    actorId: string; restoreId: string;
+  }): Promise<{ counts: ReconcileCount[]; warnings: RestoreWarning[]; touchedUserIds: string[]; knowledge: { reingest: string[]; retired: string[] }; retiredConsultationIds: string[] }>;
+}
+// restore/restore.runner.ts, restore/restore.processor.ts (@Processor(JobQueue.TenantCheckpointRestore)), restore/restore-sweeper.ts, restore/restore.module.ts
+export const POST_COMMIT_SETTLE_MS: number;   // ≥ max TTL of every in-process cache over a restored table (C-9); list each cache + TTL in a comment
+```
+
+SQL semantics (columns = intersection of checkpoint columns and live columns, excluding `version`/`_version` handled explicitly; every statement carries the scope predicate with `$1` = tenant id):
+
+```sql
+-- retire (softDelete), children first:
+UPDATE <table> l SET "resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now(),
+       "resourceStatusUpdatedBy" = $2, "_version" = l."_version" + 1 [, "isActive" = false  -- when the column exists]
+ WHERE <scope(l)> AND l."resourceStatus" <> 'DELETED'
+   AND NOT EXISTS (SELECT 1 FROM <stg> s WHERE s."id" = l."id");
+-- update (RECONCILE only), parents first:
+UPDATE <table> l SET "<c>" = s."<c>", …, "_version" = l."_version" + 1
+  FROM <stg> s
+ WHERE s."id" = l."id" AND <scope(l)>
+   AND NOT (<immutableWhen over l> AND (<any immutable col IS DISTINCT FROM s.col>))   -- diverged rows skipped → warning
+   AND (<any restorable col IS DISTINCT FROM s.col>);                                   -- untouched rows keep their _version
+-- (update SET list never includes "id", "tenantId", the immutable columns when immutableWhen holds, or "_version" from staging)
+-- insert (RECONCILE and INSERT_ONLY), parents first:
+INSERT INTO <table> (<cols>) SELECT <cols> FROM <stg> s
+ WHERE NOT EXISTS (SELECT 1 FROM <table> l WHERE l."id" = s."id");
+```
+
+Staging: `CREATE TEMP TABLE <stg> (LIKE <table> INCLUDING DEFAULTS) ON COMMIT DROP` then `COPY <stg> (<checkpoint columns ∩ live>) FROM STDIN (FORMAT csv, HEADER)`; columns the checkpoint has but live lacks are removed from the CSV stream on the fly. Staging rows whose `tenantId` (or scope) is not the target tenant ⇒ abort with `RESTORE_FAILED` (defence in depth: the archive is signed, but the staging must still prove scope: `SELECT count(*) FROM <stg> s WHERE NOT (<scope(s)>)` must be 0).
+
+Restore runner order = §3.3 worker steps 1–7 with: lock publish via `restoreRepo.update(status LOCKING, lockAcquiredAt)` + `lock.publishChange`; settle `5 s`; safety checkpoint = create a `TenantCheckpoint` row (`kind: SAFETY`, `includesMedia = categories ⊇ CLINICAL`, `keyEnvelope` from `sealing.generateDataKey()`) and `await exportRunner.run(id)` inline; verify; media re-upload; reconcile in one `BEGIN … COMMIT` on a `pg` client; post-commit (settings `refreshCache` + `ResourceUpdated(GlobalSetting)` sys-event; `revokeAllForUser` per `touchedUserIds`; knowledge: delete vectors of `retired`, enqueue ingest per `reingest` with text = the document's checkpoint `KnowledgeChunk.encryptedText` decrypted (`hope-phi`, batch) and joined by `\n\n` in `chunkIndex` order — first read the ingest processor and, if it does not replace prior chunks, delete the document's live chunks before enqueueing; `WorkflowRun` RUNNING of `retiredConsultationIds` → `CANCELED` + `_metadata.canceledBy`); wait `POST_COMMIT_SETTLE_MS` since commit; unlock (`lockReleasedAt`, status terminal, `publishChange`); force-audited `ResourceUpdated` on the restore with categories, reason, counts, safety id. Heartbeat every 15 s throughout. Restore sweeper (every minute): non-terminal with heartbeat > 2 min or `lockAcquiredAt` older than `maxLockMinutes` → `FAILED(WORKER_LOST | LOCK_TIMEOUT)`, `lockReleasedAt`, `publishChange`.
+
+- [ ] **Task 1 — SQL builders (unit).** Test `restore/__tests__/sql.test.ts` with literal SQL expectations for: a soft-delete RECONCILE model (`Department`), a no-soft-delete model (`PromptVersion` → `DELETE`), an `INSERT_ONLY` model (`User` → `retireSql` and `updateSql` null), a `RETIRE_ONLY` model (`ApiKey` → only `retireSql`, using its `revoke.setSql`), `Agent` (`updateSql` contains the `NOT (… IS DISTINCT FROM …)` immutable guard, and `divergedSql` non-null), and a `CAPTURE_ONLY` model (all null). RED → implement → GREEN → commit.
+- [ ] **Task 2 — integration harness.** Create `restore/__tests__/integration/reconcile.integration.test.ts` using the `connection-default-lifecycle.integration.test.ts` shape (`describe.skipIf(!enabled)`, throwaway tenant ids `1032a000-0000-4000-8000-000000001032` and a second tenant `1032b000-…`, raw-SQL cleanup of both before each test and after all). Helper `seedTenant(id)` inserts a minimal graph (Department, PromptTemplate + version, Agent DRAFT + PUBLISHED, Role + UserRoleAssignment for a fresh User, ApiKey, Consultation → ContextItem with `parentConsultationId` self-ref, Media row in a fake bucket id, AuditLog row). Helper `checkpointOf(id)` runs the REAL export path against the test DB with the fake store/sealing; `restore(id, categories)` runs the reconciler on a pool client. Run: `HOPE_INTEG_DB=1 npx dotenv -e .env.test -- npx vitest run --config vitest.integration.config.ts packages/applications/src/services/tenant-checkpoint/restore/__tests__/integration/reconcile.integration.test.ts`.
+- [ ] **Task 3 — the integration cases (RED first, one `it` each, then implement until GREEN):**
+  1. CONFIG_CONTENT alone: change a Department name, add a new PromptTemplate, retire nothing → restore → name back, new template `DELETED`, Consultation and its ContextItems unchanged.
+  2. Published Agent created after the checkpoint → `DELETED` (not removed); the `Agent_tenant_slug_active_unique` slot is free and the checkpoint's active version is active again.
+  3. **Review Focus 2:** Agent DRAFT at checkpoint, then published with different `instruction` → restore leaves it published and unchanged; warnings contain `IMMUTABLE_DIVERGED` with its id; restore status `COMPLETED_WITH_WARNINGS`.
+  4. Every updated row's `_version` is live+1; rows identical to the checkpoint keep their `_version`.
+  5. USERS_ACCESS: an ApiKey revoked after the checkpoint stays revoked; one created after it is revoked; the existing User's `password` and profile are byte-identical; a User hard-deleted after the checkpoint (delete its rows in the test) is re-inserted with its role assignment; `touchedUserIds` lists exactly the users whose assignments changed.
+  6. CLINICAL: a Consultation created after the checkpoint (with a child having `parentConsultationId`) → both `DELETED`; a deleted ContextItem returns; its `retiredConsultationIds` are reported.
+  7. AuditLog / HarnessAuditEvent rows are identical before and after every case (logs never restored).
+  8. A forced failure in the middle (a test-only hook throws after the third model) → zero diff in every table of the tenant.
+  9. The second tenant's rows in every touched table are byte-identical (`md5(string_agg(row::text …))` per table) before and after every case.
+  10. Schema drift: a checkpoint CSV with an extra unknown column restores; a staging row carrying another tenant's id aborts `RESTORE_FAILED`.
+- [ ] **Task 4 — runner + processor + sweeper (unit, fakes).** Test `restore/__tests__/restore-runner.test.ts`: status sequence `LOCKING → SAFETY_CHECKPOINT → VERIFYING → RECONCILING → POST_COMMIT → COMPLETED`; `publishChange` called at lock and at unlock; a verify failure → `FAILED`, lock released, reconciler never called; a post-commit failure → `COMPLETED_WITH_WARNINGS`; unlock happens no earlier than `POST_COMMIT_SETTLE_MS` after commit (fake clock); sweeper releases a stale lock. RED → implement → GREEN → commit.
+
+#### L7 — Service + API · `sonnet` · effort high
+
+**Rules:** 00, 01, 04, 05, 14. **Owns:** `tenant-checkpoint/` root files (`ITenantCheckpointService.ts`, `tenant-checkpoint.service.ts`, `tenant-checkpoint.service.module.ts`, `tenant-checkpoint.dto.mapper.ts`, `dto/**`, `__tests__/tenant-checkpoint.service*.test.ts`),
+`apps/api/src/modules/tenant-checkpoint/**`, `apps/api/src/openapi/tags.ts` (one tag), `apps/api/tests/e2e/tenant-checkpoints.spec.ts`, `apps/api/tests/e2e/tenant-checkpoints-cross-tenant.spec.ts`.
+**Must not touch:** `app.module.ts` (W3), generated artifacts (W3).
+
+**Interfaces — consumes:** L1 repositories, `ICheckpointSealing`, `ICheckpointStore`, `checkCompatibility` (with a `SqlQuery` over `CoreDatabaseService.baseClient.$queryRawUnsafe`), `checkBreakGlass`, `isSuperAdmin`, `TenantSettingsService.resolve`, BullMQ queues `TenantCheckpointExport` / `TenantCheckpointRestore`, the user repository + bcrypt verify used by `role.service.ts:560`. **Produces:** the §3.1 route table with the §6.5-L9 JSON contract, `ITenantCheckpointService` symbol + module.
+
+Service rules: every method first `assertNotSystem(tenantId)` (403 `SYSTEM_TENANT_NOT_CHECKPOINTABLE`); controllers call `assertTenantInScope(cls.get('user'), tenantId, 'notfound')` first. `create`: `generateDataKey` → optional `wrapWithPassphrase` (passphrase 12–256 chars) → row `PENDING` with `keyEnvelope` → enqueue `{ kind: 'create' }` with `jobId = checkpointId` → 202. A running export or active restore for the tenant → 409 `TENANT_CHECKPOINT_BUSY`. `downloadUrl`: READY only (409 `CHECKPOINT_NOT_READY`), TTL 900 s, filename `<tenantKey>-<yyyyMMdd-HHmm>-<id8>.hcp`, `ResourceViewed` with `forceAuditLog: true`. `uploads`: `sizeBytes ≤ maxUploadSizeGb` (413 `CHECKPOINT_TOO_LARGE`), part count = ceil(size / `CHECKPOINT_UPLOAD_PART_BYTES`), presigned TTL 6 h. `restore` order = §3.3 checks 1–5 (break-glass → Clinical 403 `CLINICAL_RESTORE_REQUIRES_PLATFORM_ADMIN` with `// AUTH-NOTE:` → READY → busy (also catch the partial-unique violation on insert as 409 `TENANT_CHECKPOINT_BUSY`) → compatibility 409 `SCHEMA_INCOMPATIBLE` with `problems`) → row `PENDING` → enqueue `{ restoreId }` → 202. Break-glass `expectedName` = current `Tenant.name`; the outcome is audited like `role.service.ts`. Controller: class `@ApiTags('tenant-checkpoints')`, `@ForbidApiKey()`, `@ForbidServiceAccount()`, `@Controller('admin/tenants/:tenantId/checkpoints')`; handlers `@CanRead/@CanCreate/@CanUpdate/@CanDelete/@CanManage('TenantCheckpoint')`; `GET` handlers carry `@TenantLockExempt()` (from L4 — imported by name, resolved after merge); 202 handlers use `@Post` + `@HttpCode(HttpStatus.ACCEPTED)` (not `@ApiEndpoint`); every handler `@ApiOperation` summary + description and ≥ one 4xx `@ApiResponse`; static paths (`uploads`, `restores`) declared before `:id`.
+
+- [ ] **Task 1 — service unit tests** `__tests__/tenant-checkpoint.service.test.ts` (mock repos, queues, sealing, store, EventEmitter2, ClsService — exemplar `department/__tests__`): create stores a `keyEnvelope` with `platform` and (with passphrase) `passphrase`, never the passphrase itself, and the queued job payload contains only ids; SYSTEM tenant → 403; busy → 409; download on RUNNING → 409; upload over the limit → 413; every mutation broadcasts a sys-event. RED → implement → GREEN → commit.
+- [ ] **Task 2 — restore checks.** `__tests__/tenant-checkpoint.service.restore.test.ts`: missing password → 428; wrong password → 401; wrong name → 400; **Review Focus 5:** the expected name is the tenant's CURRENT name (rename the fake tenant between create and restore); tenant admin + CLINICAL → 403 `CLINICAL_RESTORE_REQUIRES_PLATFORM_ADMIN`; super admin + CLINICAL passes; not READY → 409; busy → 409; incompatibility → 409 with `problems`; reason < 10 chars → 400; checks run in exactly that order (a wrong password AND Clinical-by-tenant-admin → 401, not 403). RED → implement → GREEN → commit.
+- [ ] **Task 3 — controller unit test** `apps/api/src/modules/tenant-checkpoint/__tests__/tenant-checkpoint.controller.test.ts`: a tenant admin calling another tenant's `:tenantId` → 404 for every route; metadata check via `Reflector.getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [handler, Controller])` that each handler declares the expected action; `ForbidApiKey`/`ForbidServiceAccount` on the class; `TENANT_LOCK_EXEMPT_KEY` on GET handlers only. RED → implement controller, DTOs (class-validator + `@ApiProperty` on every field; `categories` `@ArrayMinSize(1) @ArrayUnique() @IsIn([...], { each: true })`), module, tag → GREEN → commit.
+- [ ] **Task 4 — e2e specs (authored, NOT run by the lane).** `tenant-checkpoints.spec.ts` (hand-written depth, `rbac.spec.ts` shape): tenant admin 404 on a foreign tenant; CLINICAL 403 for a tenant admin; break-glass 428/401/400; an archive uploaded for tenant A into tenant B ends `FAILED` / `WRONG_TENANT`; 423 on a mutation while a restore runs; GET status routes 200 during it. `tenant-checkpoints-cross-tenant.spec.ts` (`tenant-bucket-cross-tenant.spec.ts` shape): every by-id route probed cross-tenant → 404, body without "tenant". Commit.
+
+#### L10 — Deployment repo · `sonnet` · effort medium
+
+**Rules:** 09 (whole file) + the deployment repo's `README.md` and `docs/deployment-runbook.md`. **Repo:** `~/Desktop/igglo/ARCAAI/hope-v2-deployment`, worktree `../hope-v2-deployment-task-1032` on branch `task-1032/checkpoint-worker` from `main`.
+**Owns:** `deployment/k8s/base/checkpoint-worker.yaml` (new), `base/kustomization.yaml` (one line), `base/vault.yaml` (policy paths + the `for k in …` key list + a sign-key creation line), `out-of-band/minio-bootstrap.yaml` ConfigMap policy JSON for `hope-platform-rw` (bucket ARN added — the ConfigMap only; the Job is NOT re-run), any overlay patch the new Deployment needs to match `model-publisher`.
+
+- [ ] **Task 1 — Deployment.** Copy `base/model-publisher.yaml` → `checkpoint-worker.yaml`: name `hope-checkpoint-worker`, container `checkpoint-worker`, args `[node, --import, ./apps/api/dist/instrumentation.js, apps/api/dist/checkpoint-worker.main.js]`, `OTEL_SERVICE_NAME=hope-checkpoint-worker`, same envFrom/env (incl. `DIRECT_URL` if the publisher omits it — check `hope-api` for where `DIRECT_URL` comes from and mirror it), no staging volume (streams only), requests `cpu 250m / memory 512Mi`, limits `cpu "2" / memory 2Gi`, `strategy: Recreate`, `terminationGracePeriodSeconds: 120`, NetworkPolicy copied from the publisher with egress to Postgres, Redis, Vault, MinIO (the `hope-minio` Service) and DNS only. Image `hope-v2/api` (the overlays already rewrite it).
+- [ ] **Task 2 — Vault + MinIO policy.** `base/vault.yaml`: add the five policy paths from L5 Task 1; add `hope-checkpoint` to the `for k in hope-globalsetting hope-phi` creation loop and a separate idempotent creation of `hope-checkpoint-sign` with `{"type":"ed25519"}`. `minio-bootstrap.yaml` ConfigMap: `hope-platform-rw.json` gains `arn:aws:s3:::hope-tenant-checkpoints` + `/*` with `s3:CreateBucket`, `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`, `s3:AbortMultipartUpload`, `s3:ListMultipartUploadParts`; MinIO CORS must expose `ETag` to the console origin for browser multipart (Review Focus 3) — find where CORS is configured (`MINIO_API_CORS_ALLOW_ORIGIN` or equivalent in `base/silo.yaml`) and report the current value; do not change it without stating why.
+- [ ] **Task 3 — prove render.** `kustomize build deployment/k8s/overlays/dev > /tmp/dev.yaml` and grep the new Deployment + policy lines; paste the excerpt (this is the lane's own artifact check, not a gate). Commit on the lane branch. **Do not push** — the orchestrator pushes after the owner's go, and documents the manual steps (apply the ConfigMap, run `minio-policy-sync`, the Vault policy apply) in the runbook section of this README.
+
+---
+
+### 6.7 Wave 3 — orchestrator integration (primary, `dev-2.2`)
+
+- [ ] Merge in order L5 → L1 → L4 → L3 → L2 (W1, done before W2 starts), then L6a → L6b → L7 → L9 (W2), each with `git merge --no-ff task-1032/<lane>`; resolve conflicts in the primary; re-check HEAD before each merge (second writer).
+- [ ] Worker: `apps/api/src/checkpoint-worker.main.ts` (copy `model-publisher.main.ts`) + `apps/api/src/checkpoint-worker/checkpoint-worker.module.ts` (imports as `ModelPublisherWorkerModule` + `TenantLockModule`, `CheckpointExportModule`, `CheckpointRestoreModule`, `BullModule.registerQueue` ×2; boot hook `ICheckpointStore.ensureBucket()`); `createCheckpointPool` reconciled with `VAULT_PRISMA_FACTORY` in Vault mode; `scripts/dev-service.sh` target `checkpoint-worker` (copy the `publisher` block); root `"checkpoint:dev": "./scripts/dev-service.sh checkpoint-worker"`; `scripts/dev-stack.sh` `DEFAULT_SERVICES` + `ALL_SERVICES` gain `checkpoint-worker`.
+- [ ] `app.module.ts`: import `TenantCheckpointModule`; register `{ provide: APP_GUARD, useClass: TenantLockGuard }` directly after `UnifiedAuthGuard`; confirm both queues are in `queueNames`.
+- [ ] `tenant-checkpoint/index.ts` barrel exports + `@arcaai/applications` root barrel.
+- [ ] `pnpm gen:entity` + `pnpm gen:factory` (reconcile + coverage), then `pnpm api:build && pnpm api:route-manifest && pnpm api:openapi && pnpm api:portal && pnpm --filter @arcaai/vox-node gen:admin` (expected no-op for the SDK) — in a no-dist-symlink worktree per the TASK-983 recipe, merged back.
+- [ ] **The one gate pass** (a bash script, not zsh): `pnpm lint:all`, `pnpm typecheck:all`, `pnpm --filter @arcaai/domains test`, `pnpm --filter @arcaai/applications test`, `pnpm --filter @arcaai/database test`, `pnpm test:unit`, `HOPE_INTEG_DB=1 pnpm test:integration`, `pnpm --filter @arcaai/admin-console build lint test`, `pnpm api:openapi:check`, `pnpm api:portal:check`, `pnpm --filter @arcaai/vox-node gen:admin:check`, `pnpm gen:model:check`/`gen:entity:check`/`gen:factory:check`; then `pnpm test:up:api` + e2e (`task-776-route-authz-matrix.spec.ts`, `tenant-checkpoints*.spec.ts`) with `RESET_DB=false`; console e2e with `API_URL=http://localhost:8868 ADMIN_CONSOLE_URL=http://localhost:5176`. Failures in `packages/ui` are out of scope (owner directive). Defects found → fixed in the primary by the orchestrator, or bounced to a fix lane with the failing output.
+
+### 6.8 Wave 4 — reviews (read-only, parallel) and live proof
+
+| Reviewer | Tier | Lens and the questions it must answer with file:line |
+|---|---|---|
+| R1 security | `opus` · high | authz order (break-glass before privilege), tenant pinning on every route, 404 vs 403, upload trust chain (can a tenant admin get any row of another tenant or any global `User` field written?), crypto (nonce reuse, AAD binding, signature over the full digest, passphrase never persisted/logged), PHI in logs/`failureDetail` |
+| R2 data integrity | `opus` · high | reconcile vs every trigger and partial unique, scope predicate on every statement, cross-tenant byte identity, rollback on failure, lock coverage (HTTP, internal, WS, BullMQ, Temporal callbacks), `POST_COMMIT_SETTLE_MS` vs real cache TTLs |
+| R3 completeness | `sonnet` · medium | every model classified as §3.5/§6.0 say, every §3.1 route/setting/nav item present, docs + README summary, deployment-repo diff matches §6.6 L10 |
+
+Findings are data: the orchestrator verifies each against the code before acting. Then the **live proof** (§5) on the local stack, with evidence (screenshots, restore rows, row counts) recorded in §7.
+
+---
+
+## 7. Implementation Summary
 
 _Pending — filled in after implementation._
 
-## 7. Change History
+## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-01 | Ticket opened; design agreed with the owner (D-1…D-12); spec + lane plan written. Status Pending — awaiting spec review. |
+| 2026-10-01 | Owner approved the spec and OD-1…OD-3 (recommendations). Owner rule restated: lanes run no gating tests; the orchestrator merges everything, then runs one gate pass. §6 implementation plan (lane briefs, C-1…C-13 corrections) written. |
