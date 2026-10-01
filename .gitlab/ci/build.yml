@@ -241,6 +241,29 @@ build-nlp:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^NLP-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
+# The CUDA variant of the same Dockerfile (TASK-1031: NLP runs on GPU 0). It
+# installs the locked CUDA 12.8 torch + nvidia-*-cu12 set (~2.7 GB more than
+# `nlp`), the same wheel class that makes build-stt slow on a cold cache — hence
+# the stt-sized wall. Its own layer cache: the two variants diverge at the first
+# `uv sync`, so a shared cache would buy only the apt + COPY layers.
+build-nlp-gpu:
+  extends: .build-template
+  timeout: 90m
+  needs:
+    - job: warm-up-base-images
+      optional: true
+    - job: build-python-base
+    - job: test-nlp
+      optional: true
+  variables:
+    SERVICE_NAME: nlp-gpu
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/nlp/Dockerfile
+    BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA --build-arg NLP_ACCEL=cuda"
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^NLP-/ || $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── Guardrail ───────────────────────────────────────────────────────────────
 
 build-guardrail:

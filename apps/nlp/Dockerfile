@@ -10,9 +10,30 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/nlp/Dockerfile --target production -t nlp.
+#   docker build -f apps/nlp/Dockerfile --target production -t nlp .
+#   docker build -f apps/nlp/Dockerfile --target production \
+#     --build-arg NLP_ACCEL=cuda -t nlp-gpu .
 #
-# CPU-ONLY TORCH. The locked torch 2.8.0 PyPI wheel for linux/amd64
+# TWO VARIANTS, one Dockerfile, selected by `NLP_ACCEL` (TASK-1031):
+#
+#   cpu  (default, CI job `build-nlp`, image `nlp`)      — CPU-only torch, below.
+#   cuda (CI job `build-nlp-gpu`, image `nlp-gpu`)        — the LOCKED torch 2.8.0
+#        linux/x86_64 wheel, which IS the CUDA 12.8 build, with its hash-pinned
+#        nvidia-*-cu12 12.8 + triton set straight from `uv.lock` (`--frozen`, so
+#        no second index and no unpinned download). No CUDA base image: the wheels
+#        bundle the CUDA runtime; the DRIVER (libcuda) is injected by the NVIDIA
+#        container runtime (`runtimeClassName: nvidia`, CDI). The pod selects it
+#        with `NLP_INFERENCE_DEVICE=cuda`. ~+2.7 GB over the CPU image.
+#        MiniCheck (llama-cpp-python) stays a CPU build in BOTH variants: the
+#        locked 0.3.34 is an sdist compiled here with no CUDA toolkit. A prebuilt
+#        CUDA wheel exists (abetlen index, cu124, manylinux_2_35) but sits outside
+#        the lock's hash pinning, has unverified sm_89 kernels, and resolves
+#        libcudart/libcublas only if torch has already loaded its nvidia-* libs
+#        (they are not on the default loader path). MiniCheck is a small model;
+#        it is not worth that. `NLP_ENTAILMENT_N_GPU_LAYERS` therefore has no
+#        effect in either image, and the metered device stays "cpu".
+#
+# CPU-ONLY TORCH (the `cpu` variant). The locked torch 2.8.0 PyPI wheel for linux/amd64
 # drags in the whole nvidia-cu12 + triton stack (~2.7 GB). `hope-nlp` requests NO
 # GPU (`base/nlp.yaml` declares no `nvidia.com/gpu`), and every GPU code path in
 # this service is already gated on `torch.cuda.is_available()` — which is False in
@@ -26,8 +47,8 @@
 # explicit `--no-install-package` exclusion of the CUDA set plus a separate pinned
 # install from the PyTorch CPU index. Measured on linux/amd64: see
 #
-# If NLP is ever given a GPU, the answer is a SECOND image variant, not putting
-# CUDA back in the default image.
+# NLP on a GPU is that SECOND image variant (`NLP_ACCEL=cuda`, above) — CUDA is
+# never put back in the default image.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
@@ -37,15 +58,19 @@ ARG BASE_IMAGE=hope-python-base:latest
 # index publishes the same version as `<version>+cpu`.
 ARG TORCH_VERSION=2.8.0
 ARG TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
+# `cpu` (default) or `cuda` — see the header. Anything else fails the build.
+ARG NLP_ACCEL=cpu
 
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS builder
 ARG TORCH_VERSION
 ARG TORCH_CPU_INDEX
+ARG NLP_ACCEL
 
 # The CUDA stack `torch` 2.8.0 declares on linux/x86_64. Skipped from the frozen
 # sync and replaced by the CPU-only wheel below; on aarch64 these are already
 # excluded by their environment markers, so the flags are simply no-ops there.
+# The `cuda` variant applies NO skips: it installs exactly this set, as locked.
 ENV UV_NO_CUDA_SKIPS="--no-install-package torch \
     --no-install-package triton \
     --no-install-package nvidia-cublas-cu12 \
@@ -94,22 +119,32 @@ COPY packages/py-env ./packages/py-env
 # or layer 1 fails with "Distribution not found at: file:///app/packages/py-obs".
 COPY packages/py-obs ./packages/py-obs
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package nlp --no-dev --no-install-project --no-editable \
-        ${UV_NO_CUDA_SKIPS}
+    case "${NLP_ACCEL}" in \
+        cpu) skips="${UV_NO_CUDA_SKIPS}" ;; \
+        cuda) skips="" ;; \
+        *) echo "NLP_ACCEL must be 'cpu' or 'cuda', got '${NLP_ACCEL}'" >&2; exit 1 ;; \
+    esac \
+    && uv sync --frozen --package nlp --no-dev --no-install-project --no-editable \
+        ${skips}
 
-# Layer 1b: CPU-only torch, pinned to the lock's version. Kept in its own layer so
-# it is cached alongside the lock rather than re-run on every source edit.
+# Layer 1b (`cpu` only): CPU-only torch, pinned to the lock's version. Kept in its
+# own layer so it is cached alongside the lock rather than re-run on every source
+# edit. The `cuda` variant already has the locked CUDA torch from layer 1.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /app/.venv/bin/python \
-        --index-url "${TORCH_CPU_INDEX}" "torch==${TORCH_VERSION}"
+    if [ "${NLP_ACCEL}" = "cpu" ]; then \
+        uv pip install --python /app/.venv/bin/python \
+            --index-url "${TORCH_CPU_INDEX}" "torch==${TORCH_VERSION}"; \
+    fi
 
 # Layer 2: copy source + install the package itself. `--inexact` keeps the CPU
 # torch installed above (a plain sync would prune it as extraneous).
 COPY apps/nlp/README.md ./apps/nlp/
 COPY apps/nlp/src ./apps/nlp/src
 RUN --mount=type=cache,target=/root/.cache/uv \
+    skips="${UV_NO_CUDA_SKIPS}"; \
+    if [ "${NLP_ACCEL}" = "cuda" ]; then skips=""; fi; \
     uv sync --frozen --package nlp --no-dev --no-editable --inexact \
-        ${UV_NO_CUDA_SKIPS}
+        ${skips}
 
 # Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
 # "docs"/"doc"/"tests" — some packages ship real importable submodules with

@@ -255,6 +255,30 @@
       ]
     },
     {
+      "name": "nlp-gpu",
+      "tagPrefixes": [
+        "NLP"
+      ],
+      "dockerfile": "apps/nlp/Dockerfile",
+      "context": ".",
+      "target": null,
+      "pythonBase": true,
+      "promotable": true,
+      "platforms": [
+        "linux/amd64"
+      ],
+      "buildArgs": {
+        "NLP_ACCEL": "cuda"
+      },
+      "paths": [
+        "apps/nlp/**",
+        "packages/py-env/**",
+        "packages/py-otel/**",
+        "packages/py-runtime-models/**",
+        "uv.lock"
+      ]
+    },
+    {
       "name": "qdrant-init",
       "tagPrefixes": [],
       "dockerfile": "infrastructure/docker/qdrant-init/Dockerfile",

@@ -1,8 +1,11 @@
 """nlp's model-residency wiring and agent (TASK-1005).
 
-nlp runs on the CPU (plan D-10), so all five caches share ONE host `Device`:
-footprints are the process-RSS delta around a load, and a load that overlaps
-another (or an unload) is reported as unmeasured rather than mis-attributed.
+All five caches share ONE `Device` — the one `NLP_INFERENCE_DEVICE` resolves to
+(TASK-1031): host RAM on the default CPU image (footprints are the process-RSS
+delta around a load), the NVML-probed `cuda:0` on the `nlp-gpu` image when the
+device resolves to CUDA (footprints are the device-memory delta). A load that
+overlaps another (or an unload) is reported as unmeasured rather than
+mis-attributed.
 
 `load_spec` names the slot the way the request path keys it — pinned in
 `tests/contracts/model-residency-agent.fixture.json` → `loadSpecExamples.nlp`:
@@ -34,6 +37,7 @@ from hope_runtime_models import (
     Device,
     PrometheusResidencyMetrics,
     cpu_device,
+    gpu_device,
 )
 from hope_runtime_models.residency_agent import (
     CacheBinding,
@@ -56,6 +60,23 @@ RESIDENCY_METRICS = PrometheusResidencyMetrics.create(prometheus_client)
 
 @lru_cache(maxsize=1)
 def nlp_device() -> Device:
+    """The pool the caches load into: the RESOLVED inference device (TASK-1031).
+
+    Accounting only — placement itself is decided by the loaders. An explicit
+    device that is absent makes the LOAD fail closed (`resolve_inference_device`
+    raises there); here it degrades to host RAM so the residency report still
+    renders. NVML unreadable on a CUDA pod degrades the same way.
+    """
+    from nlp.core.config import settings
+    from nlp.core.device import DevicePlacementError, resolve_inference_device
+
+    try:
+        resolved = resolve_inference_device(settings.service.inference_device)
+    except DevicePlacementError:
+        return cpu_device()
+    if resolved == "cuda":
+        # Index 0 INSIDE the container: the pod is given exactly one card.
+        return gpu_device(0) or cpu_device()
     return cpu_device()
 
 

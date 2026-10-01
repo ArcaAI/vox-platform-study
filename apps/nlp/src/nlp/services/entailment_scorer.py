@@ -272,6 +272,16 @@ class MiniCheckLoadSpec:
     n_gpu_layers: int = 0
 
 
+def _supports_gpu_offload() -> bool:
+    """Whether the installed llama.cpp build was compiled with a GPU backend."""
+    try:
+        import llama_cpp
+
+        return bool(llama_cpp.llama_supports_gpu_offload())
+    except Exception:  # noqa: BLE001 — an older binding without the probe ⇒ unknown ⇒ CPU
+        return False
+
+
 def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
     """Load the GGUF MiniCheck scorer; raise ``NliModelUnavailableError`` on any failure.
 
@@ -337,10 +347,12 @@ def load_minicheck_scorer(config: MiniCheckLoadSpec) -> LlamaCppMiniCheckScorer:
         ) from exc
 
     # TASK-959: `n_gpu_layers` IS the placement decision for a llama.cpp model —
-    # 0 means every layer stays on CPU, >0 means some are offloaded to the
+    # 0 means every layer stays on CPU, non-zero (-1 = all) offloads to the
     # accelerator. No separate "mps" case: llama.cpp's GPU offload is the same
     # knob on Metal as on CUDA, and this spec never distinguishes them.
-    device = "cuda" if config.n_gpu_layers > 0 else "cpu"
+    # TASK-1031: a CPU-only llama.cpp build silently ignores the knob, so the
+    # metered device is "cuda" only when the build can actually offload.
+    device = "cuda" if config.n_gpu_layers != 0 and _supports_gpu_offload() else "cpu"
     scorer = LlamaCppMiniCheckScorer(_make_llama_logit_fn(llama), calibration, device=device)
     try:
         scorer.verify_calibration()  # raises NliModelUnavailableError if mis-wired / too-lossy
