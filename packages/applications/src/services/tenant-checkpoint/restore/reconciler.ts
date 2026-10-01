@@ -47,6 +47,8 @@ export interface ReconcileArgs {
   restoreId: string;
   /** Called after each model's statement in each phase. Test seam for mid-transaction failure. */
   onStep?: (step: { phase: ReconcilePhase; model: string }) => void | Promise<void>;
+  /** Last check before COMMIT (e.g. the restore row is still ours); throwing rolls everything back. */
+  beforeCommit?: () => Promise<void>;
 }
 
 export interface KnowledgeChunkText {
@@ -204,6 +206,8 @@ export class CheckpointReconciler {
         for (const r of rows) (result.knowledge.chunks[r.documentId] ??= []).push({ chunkIndex: r.chunkIndex, encryptedText: r.ct });
       }
 
+      where = { phase: 'commit', model: '-' };
+      await args.beforeCommit?.();
       await client.query('COMMIT');
       result.counts = order.map((m) => counts.get(m)!);
       result.touchedUserIds = [...touched].sort();
