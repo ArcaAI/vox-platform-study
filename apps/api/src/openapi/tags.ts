@@ -415,6 +415,7 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The fixtures sandbox runs execute against.',
   },
   { name: 'monitoring', displayName: 'Monitoring', plane: 'admin', description: 'Service health roll-up and dependency probes.' },
+  { name: 'tenant-checkpoints', displayName: 'Tenant Checkpoints', plane: 'admin', description: 'Sealed per-tenant backups: create, download, upload, and the locked restore.' },
   { name: 'tenant-storage', displayName: 'Tenant Storage', plane: 'admin', description: 'Per-tenant bucket administration.' },
   {
     name: 'tenant-storage-keys',
