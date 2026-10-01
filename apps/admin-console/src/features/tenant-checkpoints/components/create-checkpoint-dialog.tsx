@@ -5,14 +5,15 @@ import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@arcaai/ui/components/shadcn/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
+import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
 import { isRestoreLockError, useCreateCheckpoint } from '../api/hooks';
 
 const LABEL_MAX = 120;
 
-export function CreateCheckpointSheet({
+export function CreateCheckpointDialog({
   open,
   onOpenChange,
   tenantId,
@@ -66,13 +67,13 @@ export function CreateCheckpointSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent className="flex flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Create checkpoint</SheetTitle>
-          <SheetDescription>Captures this tenant&apos;s data into an encrypted archive you can download or restore later.</SheetDescription>
-        </SheetHeader>
-        <form id={`${uid}-form`} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className={DIALOG_SIZE_CLASS.md}>
+        <DialogHeader>
+          <DialogTitle>Create checkpoint</DialogTitle>
+          <DialogDescription>Captures this tenant&apos;s data into an encrypted archive you can download or restore later.</DialogDescription>
+        </DialogHeader>
+        <form id={`${uid}-form`} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${uid}-label`}>Label *</Label>
             <Input id={`${uid}-label`} value={label} maxLength={LABEL_MAX} onChange={(event) => setLabel(event.target.value)} autoComplete="off" />
@@ -110,7 +111,7 @@ export function CreateCheckpointSheet({
             </p>
           ) : null}
         </form>
-        <SheetFooter>
+        <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={create.isPending}>
             Cancel
           </Button>
@@ -118,8 +119,8 @@ export function CreateCheckpointSheet({
             {create.isPending ? <Spinner /> : null}
             Create checkpoint
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

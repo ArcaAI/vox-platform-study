@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { IconAlertTriangle, IconArchive, IconPlus, IconUpload } from '@tabler/icons-react';
 import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import type { ColumnDef } from '@arcaai/ui';
@@ -21,7 +21,7 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { isRestoreActive, isRestoreLockError, useCheckpoints, useRestores, useTenantName } from '../api';
 import type { TenantCheckpoint } from '../api';
 import { CheckpointDrawer } from './checkpoint-drawer';
-import { CreateCheckpointSheet } from './create-checkpoint-sheet';
+import { CreateCheckpointDialog } from './create-checkpoint-dialog';
 import { RestoreDialog } from './restore-dialog';
 import { RestoreHistory } from './restore-history';
 import { CheckpointStatusBadge } from './status-badges';
@@ -123,7 +123,7 @@ function CheckpointsBody({ tenantId }: { tenantId: string }) {
   const [restoreTarget, setRestoreTarget] = useState<TenantCheckpoint | null>(null);
   const [lockedByWrite, setLockedByWrite] = useState(false);
 
-  const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId]);
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
   const locked =
     lockedByWrite ||
     isRestoreLockError(list.error) ||
@@ -219,7 +219,7 @@ function CheckpointsBody({ tenantId }: { tenantId: string }) {
         onRestore={(target) => setRestoreTarget(target)}
         onLocked={onLocked}
       />
-      <CreateCheckpointSheet open={createOpen} onOpenChange={setCreateOpen} tenantId={tenantId} onLocked={onLocked} />
+      <CreateCheckpointDialog open={createOpen} onOpenChange={setCreateOpen} tenantId={tenantId} onLocked={onLocked} />
       <UploadCheckpointDialog open={uploadOpen} onOpenChange={setUploadOpen} tenantId={tenantId} onLocked={onLocked} />
       {restoreTarget && resolvedName ? (
         <RestoreDialog

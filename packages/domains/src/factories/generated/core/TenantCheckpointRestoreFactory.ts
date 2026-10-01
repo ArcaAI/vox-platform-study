@@ -23,6 +23,7 @@ export interface CreateTenantCheckpointRestoreProps extends BaseEntityFactoryCre
   finishedAt?: ITenantCheckpointRestoreEntity['finishedAt'];
   failureReason?: ITenantCheckpointRestoreEntity['failureReason'];
   failureDetail?: ITenantCheckpointRestoreEntity['failureDetail'];
+  metaData?: ITenantCheckpointRestoreEntity['metaData'];
 
   createdAt?: ITenantCheckpointRestoreEntity['createdAt'];
   updatedAt?: ITenantCheckpointRestoreEntity['updatedAt'];
@@ -60,6 +61,7 @@ export class TenantCheckpointRestoreFactory {
       finishedAt: props.finishedAt ?? null,
       failureReason: props.failureReason ?? null,
       failureDetail: props.failureDetail ?? null,
+      metaData: props.metaData,
     });
   }
 }

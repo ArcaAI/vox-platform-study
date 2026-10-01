@@ -146,7 +146,10 @@ describe('TenantCheckpointService — uploads', () => {
     expect(out.parts).toHaveLength(3);
     expect(out.partSizeBytes).toBe(CHECKPOINT_UPLOAD_PART_BYTES);
     expect(out.uploadId).toBe('S3-UPLOAD-1');
-    expect(f.store.presignUploadParts).toHaveBeenCalledWith(expect.any(String), 'S3-UPLOAD-1', 3, 6 * 60 * 60);
+    expect(f.store.presignUploadParts).toHaveBeenCalledWith(expect.any(String), 'S3-UPLOAD-1', 3, 6 * 60 * 60, {
+      sizeBytes: size,
+      partSizeBytes: CHECKPOINT_UPLOAD_PART_BYTES,
+    });
     expect(out.checkpoint).toMatchObject({ status: 'UPLOADING', origin: 'UPLOADED', label: 'a.hcp', sizeBytes: size });
   });
 
@@ -167,7 +170,7 @@ describe('TenantCheckpointService — uploads', () => {
 
   it('completing queues the verification job (id verify-<id>) and leaves the row UPLOADING for the runner', async () => {
     const f = buildService();
-    const row = checkpointEntity({ status: TenantCheckpointStatus.UPLOADING, origin: 'UPLOADED' as never, uploadId: 'S3-UPLOAD-1' });
+    const row = checkpointEntity({ status: TenantCheckpointStatus.UPLOADING, origin: 'UPLOADED' as never, uploadId: 'S3-UPLOAD-1', sizeBytes: 123 });
     f.checkpoints.findByIdOrNull.mockResolvedValue(row);
     const out = await f.service.completeUpload(TENANT_A, row.id, { parts: [{ partNumber: 1, etag: 'e' }] });
 
@@ -179,6 +182,40 @@ describe('TenantCheckpointService — uploads', () => {
     const saved = f.checkpoints.updateWithVersion.mock.calls[0][1] as { uploadId: string | null; sizeBytes: number };
     expect(saved.uploadId).toBeNull();
     expect(saved.sizeBytes).toBe(123);
+  });
+});
+
+describe('TenantCheckpointService — completed upload size enforcement', () => {
+  const uploading = () => checkpointEntity({ status: TenantCheckpointStatus.UPLOADING, origin: 'UPLOADED' as never, uploadId: 'S3-UPLOAD-1', sizeBytes: 123 });
+
+  it('an object whose size differs from the declaration → 400 UPLOAD_SIZE_MISMATCH, object deleted, row CANCELLED, nothing queued', async () => {
+    const f = buildService();
+    const row = uploading();
+    f.checkpoints.findByIdOrNull.mockResolvedValue(row);
+    f.store.completeUpload.mockResolvedValue({ sizeBytes: 124 });
+    await expect(f.service.completeUpload(TENANT_A, row.id, { parts: [{ partNumber: 1, etag: 'e' }] })).rejects.toMatchObject({
+      response: { code: 'UPLOAD_SIZE_MISMATCH' },
+      status: 400,
+    });
+    expect(f.store.delete).toHaveBeenCalledWith(row.objectKey);
+    const saved = f.checkpoints.updateWithVersion.mock.calls[0][1] as { status: string };
+    expect(saved.status).toBe(TenantCheckpointStatus.CANCELLED);
+    expect(f.exportQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('an object over maxUploadSizeGb → 413 CHECKPOINT_TOO_LARGE, object deleted, row CANCELLED', async () => {
+    const f = buildService();
+    f.settings.resolve.mockReturnValue({ value: 1 });
+    const row = uploading();
+    f.checkpoints.findByIdOrNull.mockResolvedValue(row);
+    f.store.completeUpload.mockResolvedValue({ sizeBytes: 1024 ** 3 + 1 });
+    await expect(f.service.completeUpload(TENANT_A, row.id, { parts: [{ partNumber: 1, etag: 'e' }] })).rejects.toMatchObject({
+      response: { code: 'CHECKPOINT_TOO_LARGE' },
+      status: 413,
+    });
+    expect(f.store.delete).toHaveBeenCalledWith(row.objectKey);
+    expect((f.checkpoints.updateWithVersion.mock.calls[0][1] as { status: string }).status).toBe(TenantCheckpointStatus.CANCELLED);
+    expect(f.exportQueue.add).not.toHaveBeenCalled();
   });
 });
 

@@ -140,3 +140,38 @@ describe('TenantCheckpointService.restore — the ordered checks', () => {
     expect(JSON.stringify(event)).not.toContain('right-password');
   });
 });
+
+describe('TenantCheckpointService.restore — requester privilege and impersonation attribution', () => {
+  it('stamps metaData.requestedByPlatformAdmin = isSuperAdmin(requester) on the restore row', async () => {
+    for (const [actor, expected] of [
+      [SUPER_ADMIN, true],
+      [TENANT_ADMIN, false],
+    ] as const) {
+      const f = buildService(actor);
+      ready(f);
+      await f.service.restore(TENANT_A, 'c', valid);
+      const created = f.restores.create.mock.calls[0][0] as { metaData?: Record<string, unknown> };
+      expect(created.metaData).toEqual({ requestedByPlatformAdmin: expected });
+    }
+  });
+
+  it('force-audited restore, download and rejected break-glass events carry impersonatedBy', async () => {
+    const f = buildService({ roles: ['SUPER_ADMIN'], impersonatedBy: 'platform-admin-9' });
+    ready(f);
+    await f.service.restore(TENANT_A, 'c', valid);
+    const requested = f.eventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceCreated)?.[1];
+    expect(requested).toMatchObject({ forceAuditLog: true, metaData: { impersonatedBy: 'platform-admin-9' } });
+
+    f.eventEmitter.emit.mockClear();
+    await expect(f.service.restore(TENANT_A, 'c', { ...valid, password: 'wrong' })).rejects.toBeDefined();
+    const rejected = f.eventEmitter.emit.mock.calls[0][1];
+    expect(rejected).toMatchObject({ forceAuditLog: true, metaData: { impersonatedBy: 'platform-admin-9' } });
+
+    f.eventEmitter.emit.mockClear();
+    const row = checkpointEntity();
+    f.checkpoints.findByIdOrNull.mockResolvedValue(row);
+    await f.service.downloadUrl(TENANT_A, row.id);
+    const viewed = f.eventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceViewed)?.[1];
+    expect(viewed).toMatchObject({ forceAuditLog: true, metaData: { impersonatedBy: 'platform-admin-9' } });
+  });
+});

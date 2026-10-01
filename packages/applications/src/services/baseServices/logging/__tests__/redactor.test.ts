@@ -23,6 +23,12 @@ import { hermeticLoggingEnv } from './hermetic-logging-env';
 const HASHED_P1 = redactId('P-1');
 
 describe('redactValue', () => {
+  it('redacts a checkpoint passphrase (TASK-1032)', () => {
+    const out = redactValue({ passphrase: 'correct horse battery', nested: { passphrase: 'x' } }) as Record<string, unknown>;
+    expect(out.passphrase).toBe(REDACTED_VALUE);
+    expect((out.nested as Record<string, unknown>).passphrase).toBe(REDACTED_VALUE);
+  });
+
   it('redacts every canonical PHI key', () => {
     const input = Object.fromEntries(PHI_KEYS.map((k) => [k, 'sensitive']));
 

@@ -31,6 +31,11 @@ describe('TenantLockService', () => {
     await expect(service.state('T')).resolves.toEqual({ locked: true, restoreId: 'R1' });
   });
 
+  it('carries the active restore categories on the locked state', async () => {
+    repo.findActiveByTenant.mockResolvedValue({ id: 'R1', status: 'RECONCILING', categories: ['CONFIG_CONTENT'] });
+    await expect(service.state('T')).resolves.toEqual({ locked: true, restoreId: 'R1', categories: ['CONFIG_CONTENT'] });
+  });
+
   it('does not lock a PENDING restore or a tenant with none', async () => {
     repo.findActiveByTenant.mockResolvedValueOnce({ id: 'R1', status: 'PENDING' });
     await expect(service.state('T')).resolves.toEqual({ locked: false });
@@ -85,16 +90,25 @@ describe('TenantLockService', () => {
       await flush();
       expect(emitter.emit).toHaveBeenCalledTimes(1);
       expect(emitter.emit).toHaveBeenCalledWith(TENANT_RESTORE_COMPLETED_EVENT, { tenantId: 'T' });
+    });
+
+    it('emits on EVERY unlock message, even on a node that never observed the locked state', async () => {
+      // R2 M-8: a node that missed the lock-start message (or served no request) must still drop its
+      // caches; the handlers are idempotent, so a repeat is harmless.
+      repo.findActiveByTenant.mockResolvedValue(null);
       subject.next(JSON.stringify({ tenantId: 'T' }));
       await flush();
       expect(emitter.emit).toHaveBeenCalledTimes(1);
-    });
-
-    it('does not emit on unlocked -> unlocked, nor when a lock begins', async () => {
-      repo.findActiveByTenant.mockResolvedValue(null);
-      await service.state('T');
+      expect(emitter.emit).toHaveBeenCalledWith(TENANT_RESTORE_COMPLETED_EVENT, { tenantId: 'T' });
       subject.next(JSON.stringify({ tenantId: 'T' }));
       await flush();
+      expect(emitter.emit).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not emit on a message that finds the lock beginning, nor on a plain cache-miss read', async () => {
+      repo.findActiveByTenant.mockResolvedValue(null);
+      await service.state('T');
+      expect(emitter.emit).not.toHaveBeenCalled();
       repo.findActiveByTenant.mockResolvedValue({ id: 'R1', status: 'LOCKING' });
       subject.next(JSON.stringify({ tenantId: 'T' }));
       await flush();

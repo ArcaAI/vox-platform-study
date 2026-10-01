@@ -2,7 +2,11 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export class InitCheckpointUploadRequest {
-  @ApiProperty({ description: 'Name of the .hcp file being uploaded; becomes the checkpoint label', example: 'acme-20261001-1200-0a1b2c3d.hcp', maxLength: 255 })
+  @ApiProperty({
+    description: 'Name of the .hcp file being uploaded; becomes the checkpoint label',
+    example: 'acme-20261001-1200-0a1b2c3d.hcp',
+    maxLength: 255,
+  })
   @IsString()
   @MinLength(1)
   @MaxLength(255)

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TenantLockedError } from '../../services/tenant-checkpoint/lock/tenant-locked.error';
 import { TENANT_LOCK_POSTPONE_MS, assertTenantUnlocked, postponeIfTenantLocked } from '../worker-session-lock';
 
-const lockOf = (state: { locked: boolean; restoreId?: string }) => ({ state: vi.fn().mockResolvedValue(state), publishChange: vi.fn() });
+const lockOf = (state: { locked: boolean; restoreId?: string; categories?: ('CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL')[] }) => ({ state: vi.fn().mockResolvedValue(state), publishChange: vi.fn() });
 
 describe('assertTenantUnlocked', () => {
   it('throws TenantLockedError for a locked tenant', async () => {
@@ -12,6 +12,10 @@ describe('assertTenantUnlocked', () => {
       tenantId: 'T',
       restoreId: 'R',
     });
+  });
+  it('passes for a CONFIG_CONTENT / USERS_ACCESS-only lock and throws when CLINICAL is included', async () => {
+    await expect(assertTenantUnlocked(lockOf({ locked: true, categories: ['CONFIG_CONTENT', 'USERS_ACCESS'] }), 'T')).resolves.toBeUndefined();
+    await expect(assertTenantUnlocked(lockOf({ locked: true, categories: ['CLINICAL'] }), 'T')).rejects.toMatchObject({ name: 'TenantLockedError' });
   });
   it('passes for an unlocked tenant, a missing service or a missing tenant', async () => {
     await expect(assertTenantUnlocked(lockOf({ locked: false }), 'T')).resolves.toBeUndefined();

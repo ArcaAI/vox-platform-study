@@ -75,6 +75,7 @@ export const PHI_KEYS: readonly string[] = Object.freeze([
   'accessToken',
   'refreshToken',
   'password',
+  'passphrase',
   'apiKey',
   // Backend-only additions: these appear in server payloads but never in the
   // browser SDK's surface.

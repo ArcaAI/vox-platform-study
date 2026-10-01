@@ -22,6 +22,7 @@ export interface ITenantCheckpointRestoreEntity extends IBaseTenantEntity {
   finishedAt?: Date | null;
   failureReason?: string | null;
   failureDetail?: string | null;
+  metaData?: Record<string, any>;
 }
 
 export class TenantCheckpointRestoreEntity extends BaseTenantEntity {
@@ -40,6 +41,7 @@ export class TenantCheckpointRestoreEntity extends BaseTenantEntity {
   private _finishedAt?: ITenantCheckpointRestoreEntity['finishedAt'];
   private _failureReason?: ITenantCheckpointRestoreEntity['failureReason'];
   private _failureDetail?: ITenantCheckpointRestoreEntity['failureDetail'];
+  private _metaData?: ITenantCheckpointRestoreEntity['metaData'];
 
   constructor(init: ITenantCheckpointRestoreEntity) {
     super(init);
@@ -58,6 +60,7 @@ export class TenantCheckpointRestoreEntity extends BaseTenantEntity {
     this._finishedAt = init.finishedAt;
     this._failureReason = init.failureReason;
     this._failureDetail = init.failureDetail;
+    this._metaData = init.metaData;
   }
 
   get checkpointId(): ITenantCheckpointRestoreEntity['checkpointId'] {
@@ -178,6 +181,14 @@ export class TenantCheckpointRestoreEntity extends BaseTenantEntity {
 
   set failureDetail(value: ITenantCheckpointRestoreEntity['failureDetail']) {
     this.setProperty('failureDetail', value);
+  }
+
+  get metaData(): ITenantCheckpointRestoreEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: ITenantCheckpointRestoreEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   public override validate(): void {

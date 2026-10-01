@@ -300,7 +300,14 @@ export class S3BlobProvider implements IBlobStorageProvider {
       const partNumber = parts.length + 1;
       if (partNumber > MAX_PARTS) throw new Error(`object '${params.key}' exceeds ${MAX_PARTS} parts`);
       const res = await this.client.send(
-        new UploadPartCommand({ Bucket: params.bucket, Key: params.key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: body.length }),
+        new UploadPartCommand({
+          Bucket: params.bucket,
+          Key: params.key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: body,
+          ContentLength: body.length,
+        }),
         sendOpts,
       );
       parts.push({ PartNumber: partNumber, ETag: String(res?.ETag ?? '') });
@@ -363,7 +370,13 @@ export class S3BlobProvider implements IBlobStorageProvider {
   async presignUploadPart(params: PresignUploadPartParams): Promise<string> {
     return getSignedUrl(
       this.presignClient,
-      new UploadPartCommand({ Bucket: params.bucket, Key: params.key, UploadId: params.uploadId, PartNumber: params.partNumber }),
+      new UploadPartCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+        UploadId: params.uploadId,
+        PartNumber: params.partNumber,
+        ...(params.contentLength !== undefined ? { ContentLength: params.contentLength } : {}),
+      }),
       { expiresIn: params.expiresInSeconds },
     );
   }

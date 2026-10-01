@@ -17,8 +17,27 @@ const httpContext = (req: Record<string, unknown> = { url: '/api/v1/admin/depart
     getType: () => type,
     getHandler: () => () => undefined,
     getClass: () => class {},
-    switchToHttp: () => ({ getRequest: () => req }),
+    switchToHttp: () => ({ getRequest: () => req, getResponse: () => ({ setHeader: vi.fn() }) }),
   }) as unknown as ExecutionContext;
+
+describe('TenantLockGuard — categories', () => {
+  it.each([[['CONFIG_CONTENT']], [['CONFIG_CONTENT', 'CLINICAL']]])('still 423s human traffic for a %j lock', async (categories) => {
+    const guard = new TenantLockGuard(
+      reflectorReturning(false),
+      clsWith({ tenantId: 'T' }),
+      lockService({ T: { locked: true, restoreId: 'R', categories } as never }),
+    );
+    await expect(guard.canActivate(httpContext())).rejects.toMatchObject({ status: 423 });
+  });
+
+  it('lets /internal/ callers through a CONFIG_CONTENT lock (503 only with CLINICAL)', async () => {
+    const req = { url: '/api/v1/internal/stt/transcripts', headers: { 'x-tenant-id': 'T' } };
+    const open = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, categories: ['CONFIG_CONTENT'] } as never }));
+    await expect(open.canActivate(httpContext(req))).resolves.toBe(true);
+    const shut = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, categories: ['CLINICAL'] } as never }));
+    await expect(shut.canActivate(httpContext(req))).rejects.toMatchObject({ status: 503 });
+  });
+});
 
 describe('TenantLockGuard', () => {
   it('423s a request whose CLS tenant is locked', async () => {
@@ -67,7 +86,7 @@ describe('TenantLockGuard', () => {
   it('falls back to X-Tenant-Id on internal routes that have no CLS tenant yet', async () => {
     const guard = new TenantLockGuard(reflectorReturning(false), clsWith({}), lockService({ T: { locked: true, restoreId: 'R' } }));
     const req = { url: '/api/v1/internal/harness/policy', headers: { 'x-tenant-id': 'T' } };
-    await expect(guard.canActivate(httpContext(req))).rejects.toMatchObject({ status: 423 });
+    await expect(guard.canActivate(httpContext(req))).rejects.toMatchObject({ status: 503, response: { code: 'TENANT_RESTORE_IN_PROGRESS', restoreId: 'R' } });
   });
 
   it('does not trust X-Tenant-Id on non-internal routes', async () => {

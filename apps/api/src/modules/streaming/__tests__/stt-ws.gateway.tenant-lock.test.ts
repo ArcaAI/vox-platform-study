@@ -4,7 +4,7 @@ import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SttWsGateway, WS_CLOSE_CODES } from '../stt-ws.gateway';
 
-const build = (lockState: { locked: boolean; restoreId?: string } | Error) => {
+const build = (lockState: { locked: boolean; restoreId?: string; categories?: string[] } | Error) => {
   const sessionBinding = {
     lookupBinding: vi.fn().mockResolvedValue({ tenantId: 'tenant-abc', userId: 'user-123' }),
     lookupSessionMeta: vi.fn().mockResolvedValue(null),
@@ -62,6 +62,18 @@ describe('SttWsGateway — tenant lock on open', () => {
     expect(WS_CLOSE_CODES.TENANT_LOCKED).toBe(4423);
     expect(sessionBinding.lookupSessionMeta).not.toHaveBeenCalled();
     expect(bridge.subscribeToResults).not.toHaveBeenCalled();
+  });
+
+  it('admits the open under a CONFIG_CONTENT-only lock, refuses it when CLINICAL is included', async () => {
+    const open = build({ locked: true, restoreId: 'R', categories: ['CONFIG_CONTENT'] });
+    const c1 = socket();
+    await open.gateway.handleConnection(c1 as never, req as never);
+    expect(c1.close).not.toHaveBeenCalledWith(4423, 'TENANT_RESTORE_IN_PROGRESS');
+
+    const shut = build({ locked: true, restoreId: 'R', categories: ['USERS_ACCESS', 'CLINICAL'] });
+    const c2 = socket();
+    await shut.gateway.handleConnection(c2 as never, req as never);
+    expect(c2.close).toHaveBeenCalledWith(4423, 'TENANT_RESTORE_IN_PROGRESS');
   });
 
   it('admits an unlocked tenant', async () => {
