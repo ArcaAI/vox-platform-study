@@ -1,6 +1,7 @@
 import {
   IconActivity,
   IconApi,
+  IconArchive,
   IconAtom,
   IconBinaryTree,
   IconBinaryTree2,
@@ -300,6 +301,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'Department']],
     implemented: true,
     order: 1,
+  },
+  {
+    route: '/checkpoints',
+    domain: 'tenancy',
+    label: 'Checkpoints',
+    tier: '30-49',
+    icon: IconArchive,
+    required: [
+      ['read', 'TenantCheckpoint'],
+      ['manage', 'TenantCheckpoint'],
+    ],
+    implemented: true,
+    order: 2,
   },
 
   // ---------------------------------------------------------------------

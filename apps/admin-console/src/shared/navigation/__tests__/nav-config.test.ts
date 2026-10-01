@@ -59,14 +59,14 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // AI models from 10-19 to 20-29 (shared, read-only for a tenant admin): 22/13/19/5
   // (the prose above predates the later additions; the asserts below are current).
   it('covers the full 58-route rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(59);
+    expect(NAV_ENTRIES).toHaveLength(60);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(62);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(63);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -463,6 +463,16 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
     ],
   ],
   ['/departments', 'tenancy', '30-49', 1, [['manage', 'Department']]],
+  [
+    '/checkpoints',
+    'tenancy',
+    '30-49',
+    2,
+    [
+      ['read', 'TenantCheckpoint'],
+      ['manage', 'TenantCheckpoint'],
+    ],
+  ],
   // Platform Ops — TASK-932 R-2 (moved ahead of AI Platform), R-4 (gained the
   // three gated entries it absorbed from AI Platform / Knowledge & Agents
   // plus the new /features matrix).
@@ -932,7 +942,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       tenancy: {
         '10-19': ['Tenants', 'Entitlements & plans', 'Tenant storage', 'Billing & invoices'],
         '20-29': ['Tenant profile'],
-        '30-49': ['Departments'],
+        '30-49': ['Departments', 'Checkpoints'],
       },
       'platform-ops': {
         '10-19': [

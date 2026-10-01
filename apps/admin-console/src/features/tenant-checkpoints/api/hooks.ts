@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { GatewayError, type ListParams } from '@/shared/api';
+import { GatewayError, getJson, type ListParams } from '@/shared/api';
 import {
   abortUpload,
   cancelCheckpoint,
@@ -90,5 +90,18 @@ export function useRestoreCheckpoint(tenantId: string) {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: RestoreRequest }) => restoreCheckpoint(tenantId, id, body),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * The tenant's CURRENT name, which the restore break-glass matches exactly.
+ * `knownName` short-circuits the fetch when the session already carries it.
+ */
+export function useTenantName(tenantId: string, knownName?: string | null) {
+  return useQuery({
+    queryKey: [...checkpointKeys.tenant(tenantId), 'tenant-name'],
+    queryFn: () => getJson<{ name: string }>(`admin/tenants/${encodeURIComponent(tenantId)}`),
+    enabled: !knownName,
+    select: (tenant) => tenant.name,
   });
 }
