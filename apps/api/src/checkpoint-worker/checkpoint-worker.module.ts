@@ -1,6 +1,7 @@
 import {
   BlobStorageModule,
   CheckpointExportModule,
+  CheckpointRestoreModule,
   CommonServiceModule,
   ConfigModule,
   LoggingServiceModule,
@@ -42,6 +43,8 @@ import { VaultPrismaFactoryModule } from '../vault-prisma.module';
     SysEventServiceModule,
     TenantLockModule,
     CheckpointExportModule,
+    // The restore's safety checkpoint runs the export runner inline.
+    CheckpointRestoreModule.withExport(CheckpointExportModule),
   ],
 })
 export class CheckpointWorkerModule {}

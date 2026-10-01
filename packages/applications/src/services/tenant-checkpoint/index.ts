@@ -57,3 +57,4 @@ export * from './archive';
 export * from './sealing';
 export * from './store';
 export * from './export';
+export * from './restore';
