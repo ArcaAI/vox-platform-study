@@ -534,6 +534,7 @@ _pending_entailment_calibration: dict[str, Any] = {}
 
 
 async def _create_entailment_scorer(cache_key: str) -> Any:
+    from nlp.core.config import settings
     from nlp.services.entailment_scorer import MiniCheckLoadSpec, load_minicheck_scorer
 
     model_name, model_path = _split_cache_key(cache_key)
@@ -545,6 +546,8 @@ async def _create_entailment_scorer(cache_key: str) -> Any:
         model_id=model_name,
         model_path=model_path,
         calibration=_pending_entailment_calibration.pop(cache_key, None),
+        # Host fact, like `inference_device` (TASK-1031): 0 on the CPU image.
+        n_gpu_layers=settings.service.entailment_n_gpu_layers,
     )
     return await asyncio.to_thread(load_minicheck_scorer, spec)
 

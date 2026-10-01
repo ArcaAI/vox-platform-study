@@ -343,7 +343,11 @@ echo "── Promoting ${SOURCE_TAG} → ${DEPLOY_ENV} (env tag: ${ENV_TAG}) ─
 # forms `$REGISTRY/$CI_PROJECT_PATH/<name>` — and the `hope-v2/<name>` key the
 # overlays use. A name with no matching `sha-<sha8>` tag is skipped with a
 # warning rather than failing the whole promotion.
-SERVICES="api lmstudio stt-ml-runtime stt-worker text guardrail harness harness-worker nlp tts vllm admin-console database qdrant-init gpu-process-exporter"
+#
+# `nlp-gpu` (TASK-1031) is the CUDA variant of `nlp` (build-nlp-gpu, same
+# Dockerfile, `NLP_ACCEL=cuda`); the overlay that runs NLP on GPU 0 references
+# `hope-v2/nlp-gpu`, and `nlp` stays pinned for any overlay that runs it on CPU.
+SERVICES="api lmstudio stt-ml-runtime stt-worker text guardrail harness harness-worker nlp nlp-gpu tts vllm admin-console database qdrant-init gpu-process-exporter"
 
 PROMOTED=""
 for svc in $SERVICES; do

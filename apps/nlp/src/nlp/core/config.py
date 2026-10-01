@@ -39,7 +39,8 @@ _MODEL_IDENTITY_FIELDS = frozenset({"model_name", "tokenizer_name", "model_path"
 # the control plane is unreachable — which is why the fields are not simply
 # deleted.
 #
-# Deliberately ABSENT: `inference_device` and `inference_device_cpu_only_modules`.
+# Deliberately ABSENT: `inference_device`, `inference_device_cpu_only_modules`
+# and `entailment_n_gpu_layers`.
 # Those are HOST facts (which accelerator this pod has; which submodule the
 # installed torch/gliner2 build SIGABRTs on), not platform policy — serving them
 # from the control plane would push one host's hardware onto every other.
@@ -397,6 +398,13 @@ class NLPServiceConfig(BaseSettings):
     # wherever that build is used. A torch release that fixes it is answered by
     # emptying this list, not by editing code.
     inference_device_cpu_only_modules: str = Field(default="count_embed.gru")
+
+    # llama.cpp layer offload for the MiniCheck entailment scorer (TASK-1031).
+    # A HOST fact like `inference_device` (which build of llama.cpp this image
+    # carries), so env-tier and kept off the control plane. 0 = every layer on
+    # CPU (the only value correct on every host); -1 = offload all layers. A
+    # CPU-only llama.cpp build ignores it, and the metered `device` says so.
+    entailment_n_gpu_layers: int = Field(default=0, ge=-1)
 
     # ── How many threads execute them ───────────────────────────
     #
