@@ -31,11 +31,13 @@ import {
   Query,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { timingSafeEqual } from 'node:crypto';
 import { Authorize, RequiredScopes } from '../../decorators';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 
 @ApiTags('internal-stt')
@@ -69,6 +71,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 // — proven by `api-key-scope-audit.test.ts`'s "carve-out is policed, not a hole"
 // case. Do not "converge" this onto a service-token guard without changing
 // `apps/stt` in the same commit. Recorded in `docs/architecture/api-controller-inventory.md`
+@UseGuards(InternalTenantLockGuard)
 @Controller('internal/stt')
 export class SttInternalController {
   constructor(

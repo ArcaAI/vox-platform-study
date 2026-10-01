@@ -11,6 +11,7 @@ import { DirectorySyncService } from './directory-sync.service';
 import { DirectorySyncProcessor } from './directory-sync.processor';
 import { MsGraphDirectoryProvider } from './ms-graph-directory.provider';
 import { GoogleDirectoryProvider } from './google-directory.provider';
+import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
 
 /**
  * DirectorySyncServiceModule — admin-triggered directory
@@ -23,6 +24,7 @@ import { GoogleDirectoryProvider } from './google-directory.provider';
  */
 @Module({
   imports: [
+    TenantLockModule,
     ConfigModule,
     HttpModule,
     CommonServiceModule,

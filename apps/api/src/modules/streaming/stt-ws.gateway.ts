@@ -21,6 +21,7 @@ import {
   extractTraceCarrier,
   injectTraceCarrier,
   isMetadataObject,
+  ITenantLockService,
   jsonSchemaValueProblems,
   metadataByteLength,
   setMetadataAt,
@@ -70,7 +71,11 @@ import { logWsFailure, wsClientIp, type WsFailureContext } from './ws-failure-lo
 export const WS_CLOSE_CODES = {
   AUTH_FAILED: 4401,
   SESSION_SUPERSEDED: 4409,
+  TENANT_LOCKED: 4423,
 } as const;
+
+/** Close reason for a socket opened while the tenant is locked by a restore. */
+export const WS_TENANT_LOCKED_REASON = 'TENANT_RESTORE_IN_PROGRESS';
 
 /**
  * The literal that goes onto the wire when we close a handshake.
@@ -529,6 +534,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(IProviderCapacityService)
     private readonly providerCapacity?: IProviderCapacityService,
+    // The per-tenant restore lock: a locked tenant cannot open a session. Optional and TRAILING so
+    // positional constructions keep compiling; absent => no lock check.
+    @Optional()
+    @Inject(ITenantLockService)
+    private readonly tenantLock?: ITenantLockService,
   ) {}
 
   /**
@@ -981,6 +991,28 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
       client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       return;
+    }
+
+    // The restore lock. The ticket owner is proven by now, so the specific reason is safe to send;
+    // nothing session-shaped exists yet, so closing here leaves no state to unwind. A lock state
+    // that cannot be read refuses the open rather than admitting a write path into a restore.
+    if (this.tenantLock && stored.tenantId) {
+      try {
+        const lock = await this.tenantLock.state(stored.tenantId);
+        if (lock.locked) {
+          this.logger.warn({ message: 'WS handshake refused — tenant is locked by a restore', sessionId, tenantId: stored.tenantId, restoreId: lock.restoreId });
+          client.close(WS_CLOSE_CODES.TENANT_LOCKED, WS_TENANT_LOCKED_REASON);
+          return;
+        }
+      } catch (err) {
+        this.logger.error({
+          message: 'WS handshake refused — tenant lock state unreadable (fail-closed)',
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        client.close(1011, 'TENANT_LOCK_UNAVAILABLE');
+        return;
+      }
     }
 
     // Read the negotiated sampleRate bound at session

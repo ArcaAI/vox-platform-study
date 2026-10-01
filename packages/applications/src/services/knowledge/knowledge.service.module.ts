@@ -10,6 +10,7 @@ import { KnowledgeIngestClient } from './knowledge-ingest.client';
 import { KnowledgeVectorCleanupClient } from './knowledge-vector-cleanup.client';
 import { IngestKnowledgeDocumentProcessor } from './ingest-knowledge-document.processor';
 import { IKnowledgeDocumentService } from './IKnowledgeDocumentService';
+import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
 
 /**
  * KnowledgeServiceModule — institutional RAG.
@@ -33,6 +34,7 @@ import { IKnowledgeDocumentService } from './IKnowledgeDocumentService';
  */
 @Module({
   imports: [
+    TenantLockModule,
     ConfigModule,
     HttpModule,
     CoreDatabaseModule,

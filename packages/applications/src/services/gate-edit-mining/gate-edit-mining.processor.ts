@@ -1,6 +1,8 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { ITenantLockService } from '../tenant-checkpoint/contracts';
+import { postponeIfTenantLocked } from '../../common/worker-session-lock';
 import { Queue, Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { ContextItemRepository, ContextItemVersionRepository, ConsultationRepository, JobQueue } from '@arcaai/domains';
@@ -133,16 +135,19 @@ export class GateEditMiningProcessor extends WorkerHost {
     // asked, but a toggle flipped between enqueue and drain must be honoured, and this read runs
     // immediately before anything is persisted. Optional + trailing like the resolver above it.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
+    @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
   ) {
     super();
   }
 
-  async process(job: Job<GateEditMiningJob>): Promise<void> {
+  async process(job: Job<GateEditMiningJob>, token?: string): Promise<void> {
     const { tenantId, consultationId, contextItemId, gateDecision, signedAt } = job.data;
     if (!tenantId) {
       throw new Error(`Gate-edit mining job ${job.id} is missing required tenantId`);
     }
 
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
     // Rebind CLS so the tenant-scope Prisma extension sees the right context —
     // the queue worker has no request context of its own.
     return runJobInContext(this.cls, job, async () => {

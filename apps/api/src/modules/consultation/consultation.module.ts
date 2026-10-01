@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TenantLockModule } from '@arcaai/applications';
 import {
   ConsultationServiceModule,
   ContextServiceModule,
@@ -51,6 +52,7 @@ import { ConsentInternalController } from './consent-internal.controller';
 
 @Module({
   imports: [
+    TenantLockModule,
     ConsultationServiceModule,
     ContextServiceModule,
     ConsultationJobServiceModule,

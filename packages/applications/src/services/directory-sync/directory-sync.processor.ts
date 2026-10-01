@@ -1,5 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
+import { ITenantLockService } from '../tenant-checkpoint/contracts';
+import { postponeIfTenantLocked } from '../../common/worker-session-lock';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
 import { CoreDatabaseService, FederatedIdentityRepository, JobQueue, ResourceStatusType, TenantIdentityProviderRepository } from '@arcaai/domains';
@@ -65,16 +67,19 @@ export class DirectorySyncProcessor extends WorkerHost {
     // TASK-870 item 12 — the per-tenant availability gate. @Optional like the
     // entitlements service; absent DENIES, because a capability never grants itself.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
+    @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
   ) {
     super();
   }
 
-  async process(job: Job<SyncTenantDirectoryUsersJobPayload>): Promise<SyncTenantDirectoryUsersResult> {
+  async process(job: Job<SyncTenantDirectoryUsersJobPayload>, token?: string): Promise<SyncTenantDirectoryUsersResult> {
     const { jobId, tenantId, providerId } = job.data;
     if (!tenantId) {
       throw new Error(`Job ${jobId ?? job.id} is missing required tenantId`);
     }
 
+    await postponeIfTenantLocked(this.tenantLock, job, token, tenantId);
     return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'directory-sync' }));

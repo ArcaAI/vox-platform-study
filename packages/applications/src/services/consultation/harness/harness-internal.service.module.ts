@@ -20,6 +20,7 @@ import { AiRoutingPolicyServiceModule } from '../../ai-routing-policy/ai-routing
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
 import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
+import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -28,6 +29,7 @@ import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/co
  */
 @Module({
   imports: [
+    TenantLockModule,
     VisitTypeServiceModule,
     CoreDatabaseModule,
     // TASK-1001 wave 6 — `persistDraft` starts the completion timeout; the processor below ends it.
