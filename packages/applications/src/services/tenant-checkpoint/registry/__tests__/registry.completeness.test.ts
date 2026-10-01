@@ -65,7 +65,7 @@ describe('checkpoint registry', () => {
       Agent: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       AgentAssignment: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       AgentAssignmentChange: 'LOGS CAPTURE_ONLY never tenantColumn',
-      AgentModelFallback: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
+      AgentModelFallback: 'CONFIG_CONTENT RECONCILE hardDelete tenantColumn',
       AgentPromotion: 'LOGS CAPTURE_ONLY never tenantColumn',
       AgentTrajectoryStep: 'LOGS CAPTURE_ONLY never tenantColumn',
       AiModel: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',

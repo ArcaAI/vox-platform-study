@@ -200,8 +200,8 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     const edges = await loadFkEdges(sqlQueryOver(c));
     expect(edges).toEqual(
       expect.arrayContaining([
-        { child: 'Consultation', parent: 'Consultation', column: 'parentConsultationId' },
-        { child: 'ContextItem', parent: 'Consultation', column: 'consultationId' },
+        { child: 'Consultation', parent: 'Consultation', column: 'parentConsultationId', parentColumn: 'id' },
+        { child: 'ContextItem', parent: 'Consultation', column: 'consultationId', parentColumn: 'id' },
       ]),
     );
   });
