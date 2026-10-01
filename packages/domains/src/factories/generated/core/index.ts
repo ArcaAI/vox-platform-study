@@ -97,3 +97,5 @@ export * from './AiRoutingPolicyFactory';
 export * from './WorkflowWebhookSecretFactory';
 export * from './TenantGuardrailPolicyFactory';
 export * from './ModelResidencyPolicyFactory';
+export * from './TenantCheckpointFactory';
+export * from './TenantCheckpointRestoreFactory';

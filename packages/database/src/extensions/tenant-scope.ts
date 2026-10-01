@@ -373,6 +373,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AgentModelFallback',
   'AgentAssignment',
   'AgentAssignmentChange',
+  // tenant-checkpoint.prisma (2) — tenant-scoped job state, never shared-read.
+  'TenantCheckpoint',
+  'TenantCheckpointRestore',
 ]);
 
 /**
