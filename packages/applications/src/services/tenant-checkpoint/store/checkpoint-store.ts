@@ -58,7 +58,10 @@ export class CheckpointStore implements ICheckpointStore {
     const controller = new AbortController();
     const done = (async () => {
       const p = await this.provider();
-      return multipart(p, 'putObjectStream')({
+      return multipart(
+        p,
+        'putObjectStream',
+      )({
         bucket: CHECKPOINT_BUCKET,
         key,
         body: stream,
@@ -76,7 +79,7 @@ export class CheckpointStore implements ICheckpointStore {
       abort: async () => {
         controller.abort();
         if (!stream.destroyed) stream.destroy();
-        await done.catch(() => undefined);
+        await done.catch(() => undefined); // swallow-ok: the upload's own failure is reported through `done` to the writer
       },
     };
   }
@@ -99,7 +102,13 @@ export class CheckpointStore implements ICheckpointStore {
     return multipart(p, 'createMultipartUpload')({ bucket: CHECKPOINT_BUCKET, key, contentType: 'application/octet-stream' });
   }
 
-  async presignUploadParts(key: string, uploadId: string, partCount: number, ttlSeconds: number): Promise<{ partNumber: number; url: string }[]> {
+  async presignUploadParts(
+    key: string,
+    uploadId: string,
+    partCount: number,
+    ttlSeconds: number,
+    sizing?: { sizeBytes: number; partSizeBytes: number },
+  ): Promise<{ partNumber: number; url: string }[]> {
     if (!Number.isInteger(partCount) || partCount < 1 || partCount > MAX_UPLOAD_PARTS) {
       throw new Error(`partCount must be an integer in 1..${MAX_UPLOAD_PARTS}`);
     }
@@ -107,7 +116,18 @@ export class CheckpointStore implements ICheckpointStore {
     const presign = multipart(p, 'presignUploadPart');
     const out: { partNumber: number; url: string }[] = [];
     for (let partNumber = 1; partNumber <= partCount; partNumber++) {
-      out.push({ partNumber, url: await presign({ bucket: CHECKPOINT_BUCKET, key, uploadId, partNumber, expiresInSeconds: ttlSeconds }) });
+      const contentLength = sizing ? Math.min(sizing.partSizeBytes, sizing.sizeBytes - (partNumber - 1) * sizing.partSizeBytes) : undefined;
+      out.push({
+        partNumber,
+        url: await presign({
+          bucket: CHECKPOINT_BUCKET,
+          key,
+          uploadId,
+          partNumber,
+          expiresInSeconds: ttlSeconds,
+          ...(contentLength !== undefined ? { contentLength } : {}),
+        }),
+      });
     }
     return out;
   }

@@ -173,7 +173,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // -3 (86): TASK-1006 retires `AsrPipeline`, `AsrPipelineVersion` and
     // `TenantSttConfig` — the pre-agent ASR pipeline stack; `agentSlug` → the
     // ASR Agent is the only selector.
-    expect(TENANT_SCOPED_MODELS.size).toBe(86);
+    // +2 (88): TASK-1032 adds `TenantCheckpoint` and `TenantCheckpointRestore` — both tenantId-bearing,
+    // tenant-owned rows (a checkpoint is never SYSTEM-shared).
+    expect(TENANT_SCOPED_MODELS.size).toBe(88);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

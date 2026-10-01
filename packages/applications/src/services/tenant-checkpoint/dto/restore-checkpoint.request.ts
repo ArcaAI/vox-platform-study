@@ -18,7 +18,11 @@ export class RestoreCheckpointRequest {
   @IsIn([...RESTORABLE_CATEGORIES], { each: true })
   categories!: RestorableCategory[];
 
-  @ApiProperty({ description: 'Why this restore is being done; recorded in the audit trail', minLength: RESTORE_REASON_MIN, maxLength: RESTORE_REASON_MAX })
+  @ApiProperty({
+    description: 'Why this restore is being done; recorded in the audit trail',
+    minLength: RESTORE_REASON_MIN,
+    maxLength: RESTORE_REASON_MAX,
+  })
   @IsString()
   @MinLength(RESTORE_REASON_MIN)
   @MaxLength(RESTORE_REASON_MAX)

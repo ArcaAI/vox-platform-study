@@ -368,6 +368,7 @@
         "HOPE_API_BASE_URL",
         "HOPE_API_KEY",
         "HOPE_API_TOKEN",
+        "HOPE_CHECKPOINT_PASSPHRASE",
         "HOPE_KVCONFIG_ENFORCE",
         "HOPE_REVIEW_NODE_ID",
         "HOPE_SECRETS_DIR",

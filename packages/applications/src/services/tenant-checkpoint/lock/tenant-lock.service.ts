@@ -41,8 +41,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
       const messages$ = await this.redisSubscriber.subscribeToChannel(TENANT_LOCK_CHANNEL);
       messages$.subscribe({
         next: (message) => this.handleMessage(message),
-        error: (error) =>
-          this.logger.warn({ message: 'Tenant lock subscription errored — falling back to the cache TTL', error: String(error) }),
+        error: (error) => this.logger.warn({ message: 'Tenant lock subscription errored — falling back to the cache TTL', error: String(error) }),
       });
     } catch (error) {
       this.logger.warn({ message: 'Tenant lock subscription failed — falling back to the cache TTL', error: String(error) });
@@ -52,12 +51,16 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
   async state(tenantId: string): Promise<TenantLockState> {
     const hit = this.cache.get(tenantId);
     if (hit && hit.expiresAt > Date.now()) return hit.state;
+    return this.read(tenantId, false);
+  }
 
+  /** Reads and caches the lock state. `emitOnUnlock` makes an unlocked answer announce the restore's end. */
+  private async read(tenantId: string, emitOnUnlock: boolean): Promise<TenantLockState> {
     const active = await this.restores.findActiveByTenant(tenantId);
     const locked = !!active && (TENANT_LOCKING_STATUSES as readonly string[]).includes(active.status);
     const state: TenantLockState = locked ? { locked: true, restoreId: active!.id } : { locked: false };
     this.cache.set(tenantId, { state, expiresAt: Date.now() + TENANT_LOCK_CACHE_TTL_MS });
-    this.noteTransition(tenantId, locked);
+    this.noteTransition(tenantId, locked, emitOnUnlock);
     return state;
   }
 
@@ -72,13 +75,17 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
     }
   }
 
-  /** Emits once per locked -> unlocked transition this node observes. */
-  private noteTransition(tenantId: string, locked: boolean): void {
+  /**
+   * Emits once per locked -> unlocked transition this node observes — and, when `force` is set (a
+   * lock-channel message just proved the restore ended), on every unlocked answer, so a node that
+   * missed the lock start still drops its caches. Handlers are idempotent.
+   */
+  private noteTransition(tenantId: string, locked: boolean, force = false): void {
     if (locked) {
       this.seenLocked.add(tenantId);
       return;
     }
-    if (!this.seenLocked.delete(tenantId)) return;
+    if (!this.seenLocked.delete(tenantId) && !force) return;
     const payload: TenantRestoreCompletedPayload = { tenantId };
     try {
       this.eventEmitter?.emit(TENANT_RESTORE_COMPLETED_EVENT, payload);
@@ -90,7 +97,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
   /** Drop the cached answer and re-read it now, so an unlock is noticed without waiting for a request. */
   private refresh(tenantId: string): void {
     this.cache.delete(tenantId);
-    this.state(tenantId).catch((error) =>
+    this.read(tenantId, true).catch((error) =>
       this.logger.warn({ message: 'Tenant lock refresh failed — the next request will retry', tenantId, error: String(error) }),
     );
   }
@@ -103,7 +110,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
         return;
       }
     } catch {
-      // fall through — an unreadable message is treated as "anything may have changed"
+      // swallow-ok: an unreadable message is treated as "anything may have changed" (every tenant refreshed below)
     }
     for (const tenantId of [...this.seenLocked]) this.refresh(tenantId);
     this.cache.clear();

@@ -50,7 +50,9 @@ export class RestoreWarningResponse {
 export class TenantCheckpointRestoreResponse {
   @ApiProperty() id!: string;
   @ApiProperty() checkpointId!: string;
-  @ApiProperty({ enum: ['CONFIG_CONTENT', 'USERS_ACCESS', 'CLINICAL'], isArray: true }) categories!: ('CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL')[];
+  @ApiProperty({ enum: ['CONFIG_CONTENT', 'USERS_ACCESS', 'CLINICAL'], isArray: true }) categories!: (
+    'CONFIG_CONTENT' | 'USERS_ACCESS' | 'CLINICAL'
+  )[];
   @ApiProperty() reason!: string;
   @ApiProperty({
     enum: ['PENDING', 'LOCKING', 'SAFETY_CHECKPOINT', 'VERIFYING', 'RECONCILING', 'POST_COMMIT', 'COMPLETED', 'COMPLETED_WITH_WARNINGS', 'FAILED'],

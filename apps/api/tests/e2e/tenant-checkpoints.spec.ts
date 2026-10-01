@@ -28,7 +28,14 @@ interface Checkpoint {
   sizeBytes: number | null;
 }
 
-async function waitForStatus(request: APIRequestContext, token: string, tenantId: string, id: string, done: (s: string) => boolean, timeoutMs = 120_000): Promise<Checkpoint> {
+async function waitForStatus(
+  request: APIRequestContext,
+  token: string,
+  tenantId: string,
+  id: string,
+  done: (s: string) => boolean,
+  timeoutMs = 120_000,
+): Promise<Checkpoint> {
   const deadline = Date.now() + timeoutMs;
   let last: Checkpoint | undefined;
   while (Date.now() < deadline) {
@@ -93,7 +100,10 @@ test.describe('Tenant checkpoints — depth', () => {
       expect(list.status()).toBe(404);
       const create = await request.post(base(ARCAAI_TENANT_ID), { headers: auth(tenantAdminToken), data: { label: 'x', includesMedia: false } });
       expect(create.status()).toBe(404);
-      const upload = await request.post(`${base(ARCAAI_TENANT_ID)}/uploads`, { headers: auth(tenantAdminToken), data: { filename: 'a.hcp', sizeBytes: 10 } });
+      const upload = await request.post(`${base(ARCAAI_TENANT_ID)}/uploads`, {
+        headers: auth(tenantAdminToken),
+        data: { filename: 'a.hcp', sizeBytes: 10 },
+      });
       expect(upload.status()).toBe(404);
     });
 
@@ -127,7 +137,9 @@ test.describe('Tenant checkpoints — depth', () => {
       expect(wrongName.status()).toBe(400);
     });
 
-    test('a tenant admin asking for CLINICAL → 403 CLINICAL_RESTORE_REQUIRES_PLATFORM_ADMIN (a privilege failure, not a 404)', async ({ request }) => {
+    test('a tenant admin asking for CLINICAL → 403 CLINICAL_RESTORE_REQUIRES_PLATFORM_ADMIN (a privilege failure, not a 404)', async ({
+      request,
+    }) => {
       test.setTimeout(180_000);
       const checkpoint = await readyCheckpoint(request);
       const response = await request.post(`${base(GLOBAL_TENANT_ID)}/${checkpoint.id}/restore`, {
@@ -151,7 +163,7 @@ test.describe('Tenant checkpoints — depth', () => {
   });
 
   test.describe('a foreign archive', () => {
-    test("an archive made for tenant A and uploaded into tenant B ends FAILED / WRONG_TENANT", async ({ request }) => {
+    test('an archive made for tenant A and uploaded into tenant B ends FAILED / WRONG_TENANT', async ({ request }) => {
       test.setTimeout(300_000);
       const source = await readyCheckpoint(request, GLOBAL_TENANT_ID);
 
@@ -185,7 +197,10 @@ test.describe('Tenant checkpoints — depth', () => {
         etags.push({ partNumber: part.partNumber, etag });
       }
 
-      const complete = await request.post(`${base(ARCAAI_TENANT_ID)}/uploads/${uploadId}/complete`, { headers: auth(superAdminToken), data: { parts: etags } });
+      const complete = await request.post(`${base(ARCAAI_TENANT_ID)}/uploads/${uploadId}/complete`, {
+        headers: auth(superAdminToken),
+        data: { parts: etags },
+      });
       expect(complete.status()).toBe(202);
 
       const settled = await waitForStatus(request, superAdminToken, ARCAAI_TENANT_ID, checkpoint.id, (s) => s === 'READY' || s === 'FAILED');
@@ -194,7 +209,10 @@ test.describe('Tenant checkpoints — depth', () => {
     });
 
     test('completing an upload with an out-of-order part list → 400 UPLOAD_PARTS_INVALID', async ({ request }) => {
-      const init = await request.post(`${base(GLOBAL_TENANT_ID)}/uploads`, { headers: auth(superAdminToken), data: { filename: 'bad-parts.hcp', sizeBytes: 10 } });
+      const init = await request.post(`${base(GLOBAL_TENANT_ID)}/uploads`, {
+        headers: auth(superAdminToken),
+        data: { filename: 'bad-parts.hcp', sizeBytes: 10 },
+      });
       expect(init.status()).toBe(201);
       const { checkpoint, uploadId } = (await init.json()) as { checkpoint: Checkpoint; uploadId: string };
       created.push({ tenantId: GLOBAL_TENANT_ID, id: checkpoint.id });
@@ -238,7 +256,10 @@ test.describe('Tenant checkpoints — depth', () => {
         const listed = await request.get(base(GLOBAL_TENANT_ID), { headers: auth(tenantAdminToken) });
         expect(listed.status(), 'checkpoint list stays readable').toBe(200);
 
-        const mutation = await request.post(base(GLOBAL_TENANT_ID), { headers: auth(tenantAdminToken), data: { label: 'during restore', includesMedia: false } });
+        const mutation = await request.post(base(GLOBAL_TENANT_ID), {
+          headers: auth(tenantAdminToken),
+          data: { label: 'during restore', includesMedia: false },
+        });
         if (mutation.status() === 423) {
           const body = (await mutation.json()) as { code?: string; restoreId?: string; message?: { code?: string; restoreId?: string } };
           expect(body.code ?? body.message?.code).toBe('TENANT_RESTORE_IN_PROGRESS');

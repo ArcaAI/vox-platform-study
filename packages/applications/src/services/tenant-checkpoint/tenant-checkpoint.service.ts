@@ -1,4 +1,13 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, PayloadTooLargeException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  PayloadTooLargeException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
@@ -116,7 +125,6 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
   }
 
-
   /**
    * Broadcast a sys-event attributed to the TARGET tenant (`:tenantId`), not the request's CLS tenant.
    * `BaseService.broadcastSysEvent` deliberately pins attribution to CLS (anti-spoofing), which would
@@ -128,13 +136,22 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     this.eventEmitter.emit(type, {
       id: generateId(),
       type,
-      ...(this.requestServiceAccount ? { responsibleServiceAccountId: this.requestServiceAccount.id } : { responsibleEntityId: this.requestUser?.id }),
+      ...(this.requestServiceAccount
+        ? { responsibleServiceAccountId: this.requestServiceAccount.id }
+        : { responsibleEntityId: this.requestUser?.id }),
       responsibleIp: this.requestIp,
       resourceType: this.resourceType,
       correlationId: this.correlationId,
       ...data,
+      ...this.impersonationMeta(),
       tenantId,
     });
+  }
+
+  /** Same attribution `BaseService.broadcastSysEvent` adds: an impersonating admin is named in `metaData`. */
+  private impersonationMeta(): { metaData?: { impersonatedBy: unknown } } {
+    const impersonatedBy = this.requestUser?.impersonatedBy;
+    return impersonatedBy ? { metaData: { impersonatedBy } } : {};
   }
 
   // ── guards & loaders ────────────────────────────────────────────────────────
@@ -142,7 +159,10 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
   /** The SYSTEM tenant holds platform defaults, not tenant data: it is never checkpointed or restored. */
   private assertNotSystem(tenantId: string): void {
     if (tenantId === SYSTEM_TENANT_ID) {
-      throw new ForbiddenException({ code: 'SYSTEM_TENANT_NOT_CHECKPOINTABLE', message: 'The platform (SYSTEM) tenant cannot be checkpointed or restored.' });
+      throw new ForbiddenException({
+        code: 'SYSTEM_TENANT_NOT_CHECKPOINTABLE',
+        message: 'The platform (SYSTEM) tenant cannot be checkpointed or restored.',
+      });
     }
   }
 
@@ -215,7 +235,10 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       return await this.checkpoints.updateWithVersion(entity.id, entity, entity.version);
     } catch (error) {
       if (error instanceof OptimisticConcurrencyException) {
-        throw new ConflictException({ code: 'CHECKPOINT_STATE_CHANGED', message: 'The checkpoint changed while the request was running; reload and retry.' });
+        throw new ConflictException({
+          code: 'CHECKPOINT_STATE_CHANGED',
+          message: 'The checkpoint changed while the request was running; reload and retry.',
+        });
       }
       throw error;
     }
@@ -259,7 +282,10 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       await this.enqueueExport({ kind: 'create', checkpointId: saved.id, tenantId });
     } catch (error) {
       await this.failEnqueue(saved, error);
-      throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The checkpoint could not be queued; try again shortly.' });
+      throw new ServiceUnavailableException({
+        code: 'CHECKPOINT_QUEUE_UNAVAILABLE',
+        message: 'The checkpoint could not be queued; try again shortly.',
+      });
     }
 
     this.emitFor(tenantId, SysEventType.ResourceCreated, {
@@ -292,7 +318,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     entity.failureReason = 'EXPORT_FAILED';
     entity.failureDetail = `The export job could not be queued: ${error instanceof Error ? error.message : 'unknown error'}`;
     entity.finishedAt = new Date();
-    await this.checkpoints.updateWithVersion(entity.id, entity, entity.version).catch(() => undefined);
+    await this.checkpoints.updateWithVersion(entity.id, entity, entity.version).catch(() => undefined); // swallow-ok: best-effort FAILED stamp; the enqueue error is what is rethrown
   }
 
   async list(tenantId: string, query: ListCheckpointsQuery): Promise<PaginatedTenantCheckpointResponse> {
@@ -371,7 +397,10 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     this.assertNotSystem(tenantId);
     const row = await this.loadCheckpoint(tenantId, checkpointId);
     if ((ACTIVE_STATUSES as readonly string[]).includes(row.status)) {
-      throw new ConflictException({ code: 'CHECKPOINT_IN_PROGRESS', message: 'A checkpoint that is still being written cannot be deleted; cancel it first.' });
+      throw new ConflictException({
+        code: 'CHECKPOINT_IN_PROGRESS',
+        message: 'A checkpoint that is still being written cannot be deleted; cancel it first.',
+      });
     }
     const active = await this.restores.findActiveByTenant(tenantId);
     if (active && active.checkpointId === row.id) {
@@ -417,9 +446,12 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     let parts: { partNumber: number; url: string }[];
     try {
       saved = await this.checkpoints.create(entity);
-      parts = await this.store.presignUploadParts(objectKey, uploadId, partCount, CHECKPOINT_UPLOAD_TTL_SECONDS);
+      parts = await this.store.presignUploadParts(objectKey, uploadId, partCount, CHECKPOINT_UPLOAD_TTL_SECONDS, {
+        sizeBytes: request.sizeBytes,
+        partSizeBytes: CHECKPOINT_UPLOAD_PART_BYTES,
+      });
     } catch (error) {
-      await this.store.abortUpload(objectKey, uploadId).catch(() => undefined);
+      await this.store.abortUpload(objectKey, uploadId).catch(() => undefined); // swallow-ok: best-effort cleanup; the original error is rethrown
       throw error;
     }
 
@@ -455,6 +487,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       }
       throw error;
     }
+    await this.assertUploadedSize(row, tenantId, sizeBytes);
     // The row stays UPLOADING: the verify runner picks up UPLOADING (or PENDING) rows and moves it to
     // RUNNING itself, with a heartbeat. The multipart upload is finished, so its id is dropped — a
     // repeated `complete` is then 409 and the idle-upload sweeper has nothing to abort.
@@ -465,13 +498,43 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       await this.enqueueExport({ kind: 'verify-upload', checkpointId: saved.id, tenantId });
     } catch (error) {
       await this.failEnqueue(saved, error);
-      throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The upload could not be queued for verification; try again shortly.' });
+      throw new ServiceUnavailableException({
+        code: 'CHECKPOINT_QUEUE_UNAVAILABLE',
+        message: 'The upload could not be queued for verification; try again shortly.',
+      });
     }
     this.emitFor(tenantId, SysEventType.ResourceUpdated, {
       resourceId: saved.id,
       data: { tenantId, action: 'upload-complete', sizeBytes },
     });
     return TenantCheckpointDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * The presigned parts are length-bound, but the stored object is the authority: refuse an object
+   * that is not exactly the declared size or exceeds the tenant's limit, delete its bytes and cancel
+   * the row so nothing past the limit is ever kept or verified.
+   */
+  private async assertUploadedSize(row: TenantCheckpointEntity, tenantId: string, actualBytes: number): Promise<void> {
+    const limitGb = this.settings.resolve<number>(TENANT_CHECKPOINT_MAX_UPLOAD_GB_KEY, tenantId).value ?? TENANT_CHECKPOINT_DEFAULTS.maxUploadSizeGb;
+    const tooLarge = actualBytes > limitGb * BYTES_PER_GB;
+    const mismatch = actualBytes !== row.sizeBytes;
+    if (!tooLarge && !mismatch) return;
+    if (row.objectKey) await this.store.delete(row.objectKey);
+    row.status = TenantCheckpointStatus.CANCELLED;
+    row.uploadId = null;
+    row.finishedAt = new Date();
+    await this.transition(row);
+    if (tooLarge) {
+      throw new PayloadTooLargeException({
+        code: 'CHECKPOINT_TOO_LARGE',
+        message: `A checkpoint upload may be at most ${limitGb} GB.`,
+      });
+    }
+    throw new BadRequestException({
+      code: 'UPLOAD_SIZE_MISMATCH',
+      message: 'The uploaded object does not match the size declared when the upload was started.',
+    });
   }
 
   async abortUpload(tenantId: string, uploadRef: string): Promise<TenantCheckpointResponse> {
@@ -545,6 +608,9 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       status: TenantCheckpointRestoreStatus.PENDING,
       requestedBy: this.requestUserId as string,
       createdBy: this.requestUserId,
+      // The runner decides platform-governed rows (RateLimitRule, super-admin routing/settings keys) from
+      // THIS, never from the job payload: it is the elevation the requester held when they asked.
+      metaData: { requestedByPlatformAdmin: isSuperAdmin(this.requestUser) },
     });
     let saved: TenantCheckpointRestoreEntity;
     try {
@@ -563,7 +629,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       saved.status = TenantCheckpointRestoreStatus.FAILED;
       saved.failureReason = 'RESTORE_FAILED';
       saved.failureDetail = `The restore job could not be queued: ${error instanceof Error ? error.message : 'unknown error'}`;
-      await this.restores.updateWithVersion(saved.id, saved, saved.version).catch(() => undefined);
+      await this.restores.updateWithVersion(saved.id, saved, saved.version).catch(() => undefined); // swallow-ok: best-effort FAILED stamp; the enqueue error is what is surfaced
       throw new ServiceUnavailableException({ code: 'CHECKPOINT_QUEUE_UNAVAILABLE', message: 'The restore could not be queued; try again shortly.' });
     }
 
@@ -604,6 +670,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       resourceId: checkpoint.id,
       tenantId: checkpoint.tenantId,
       forceAuditLog: true,
+      ...this.impersonationMeta(),
       data: {
         action: TENANT_RESTORE_BREAK_GLASS_AUDIT_ACTION,
         outcome,
@@ -618,7 +685,9 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
     const summary = checkpoint.manifestSummary as unknown as ManifestSummary | null;
     if (!summary?.tables) return;
     const restorable = new Set(
-      CHECKPOINT_REGISTRY.filter((d) => (categories as readonly string[]).includes(d.category) && RESTORABLE_POLICIES.has(d.policy)).map((d) => d.model),
+      CHECKPOINT_REGISTRY.filter((d) => (categories as readonly string[]).includes(d.category) && RESTORABLE_POLICIES.has(d.policy)).map(
+        (d) => d.model,
+      ),
     );
     const problems = await checkCompatibility({ tables: summary.tables.filter((t) => restorable.has(t.model)) }, this.sqlQuery());
     if (problems.length > 0) {

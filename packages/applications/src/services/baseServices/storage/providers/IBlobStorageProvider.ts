@@ -84,6 +84,11 @@ export interface PresignUploadPartParams extends MultipartUploadParams {
   /** 1-based part number. */
   partNumber: number;
   expiresInSeconds: number;
+  /**
+   * Exact byte length this part must have. When set it is part of the signature, so the object
+   * store rejects a body of any other length (an advisory size limit becomes an enforced one).
+   */
+  contentLength?: number;
 }
 
 export interface CompleteMultipartUploadParams extends MultipartUploadParams {

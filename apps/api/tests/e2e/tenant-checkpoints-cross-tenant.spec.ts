@@ -29,7 +29,8 @@ const BY_ID_ROUTES: Record<string, Probe> = {
       headers: h,
       data: { categories: ['CONFIG_CONTENT'], reason: 'cross-tenant probe', password: SEEDED_USERS.admin.password, confirmationName: 'anything' },
     }),
-  'POST uploads/:id/complete': (r, h, t, id) => r.post(`${base(t)}/uploads/${id}/complete`, { headers: h, data: { parts: [{ partNumber: 1, etag: '"e"' }] } }),
+  'POST uploads/:id/complete': (r, h, t, id) =>
+    r.post(`${base(t)}/uploads/${id}/complete`, { headers: h, data: { parts: [{ partNumber: 1, etag: '"e"' }] } }),
   'POST uploads/:id/abort': (r, h, t, id) => r.post(`${base(t)}/uploads/${id}/abort`, { headers: h }),
   'GET restores/:restoreId': (r, h, t, id) => r.get(`${base(t)}/restores/${id}`, { headers: h }),
 };
@@ -55,7 +56,10 @@ test.describe('Tenant checkpoints — cross-tenant ownership', () => {
     adminHeaders = { Authorization: `Bearer ${ta!.token}` };
 
     // A real ARCAAI row. It exists as soon as the create call answers 202; no worker is needed.
-    const created = await request.post(base(ARCAAI_TENANT_ID), { headers: superHeaders, data: { label: `cross-tenant probe ${Date.now()}`, includesMedia: false } });
+    const created = await request.post(base(ARCAAI_TENANT_ID), {
+      headers: superHeaders,
+      data: { label: `cross-tenant probe ${Date.now()}`, includesMedia: false },
+    });
     expect(created.status(), 'super_admin creates an ARCAAI checkpoint').toBe(202);
     arcaaiCheckpointId = ((await created.json()) as { id: string }).id;
   });

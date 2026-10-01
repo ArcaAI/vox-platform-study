@@ -24,28 +24,28 @@ export const RESTORABLE_CATEGORIES: readonly RestorableCategory[] = ['CONFIG_CON
 export type CheckpointPolicy = 'RECONCILE' | 'INSERT_ONLY' | 'RETIRE_ONLY' | 'CAPTURE_ONLY' | 'EXCLUDED';
 
 export type CheckpointScope =
-  | { kind: 'tenantColumn'; column?: string }          // WHERE "<column ?? tenantId>" = $tenantId
-  | { kind: 'parent'; fk: string; parent: string }     // WHERE "<fk>" IN (SELECT "id" FROM <parent> WHERE <parent scope>)
-  | { kind: 'tenantMembers' }                          // User: id IN (role assignments ∪ user departments of the tenant)
-  | { kind: 'none' };                                  // EXCLUDED
+  | { kind: 'tenantColumn'; column?: string } // WHERE "<column ?? tenantId>" = $tenantId
+  | { kind: 'parent'; fk: string; parent: string } // WHERE "<fk>" IN (SELECT "id" FROM <parent> WHERE <parent scope>)
+  | { kind: 'tenantMembers' } // User: id IN (role assignments ∪ user departments of the tenant)
+  | { kind: 'none' }; // EXCLUDED
 
 export type CheckpointRetire =
-  | { kind: 'softDelete' }                             // resourceStatus='DELETED', stamps, _version+1
-  | { kind: 'hardDelete' }                             // only for models without soft delete and without triggers
-  | { kind: 'revoke'; setSql: string }                 // e.g. `"resourceStatus" = 'DELETED', "revokedAt" = now()`
+  | { kind: 'softDelete' } // resourceStatus='DELETED', stamps, _version+1
+  | { kind: 'hardDelete' } // only for models without soft delete and without triggers
+  | { kind: 'revoke'; setSql: string } // e.g. `"resourceStatus" = 'DELETED', "revokedAt" = now()`
   | { kind: 'never' };
 
 export interface CheckpointModelDescriptor {
-  model: string;                      // Prisma model name
-  table?: string;                     // only when @@map differs (Fedl*)
+  model: string; // Prisma model name
+  table?: string; // only when @@map differs (Fedl*)
   category: CheckpointCategory;
   policy: CheckpointPolicy;
   scope: CheckpointScope;
-  softDelete: boolean;                // false ⇔ in MODELS_WITHOUT_SOFT_DELETE
+  softDelete: boolean; // false ⇔ in MODELS_WITHOUT_SOFT_DELETE
   retire: CheckpointRetire;
-  immutableColumns?: readonly string[];   // equals the trigger's guarded columns
-  immutableWhen?: string;                 // SQL over the LIVE row alias "l", e.g. `l."status" IN ('PUBLISHED','DEPRECATED')`
-  derivedFrom?: string;                   // KnowledgeChunk → 'KnowledgeDocument'
+  immutableColumns?: readonly string[]; // equals the trigger's guarded columns
+  immutableWhen?: string; // SQL over the LIVE row alias "l", e.g. `l."status" IN ('PUBLISHED','DEPRECATED')`
+  derivedFrom?: string; // KnowledgeChunk → 'KnowledgeDocument'
   notes?: string;
 }
 
@@ -55,14 +55,17 @@ export type SqlQuery = <T = Record<string, unknown>>(sql: string, params?: reado
 // ---- archive --------------------------------------------------------------------------------
 export interface PassphraseWrap {
   kdf: 'argon2id';
-  salt: string;       // base64, 16 bytes
-  m: number;          // KiB
+  salt: string; // base64, 16 bytes
+  m: number; // KiB
   t: number;
   p: number;
-  nonce: string;      // base64, 12 bytes
-  wrapped: string;    // base64, AES-256-GCM(dataKey) ‖ tag
+  nonce: string; // base64, 12 bytes
+  wrapped: string; // base64, AES-256-GCM(dataKey) ‖ tag
 }
-export interface KeyEnvelope { platform: string; passphrase?: PassphraseWrap }
+export interface KeyEnvelope {
+  platform: string;
+  passphrase?: PassphraseWrap;
+}
 
 export interface CheckpointHeader {
   magic: typeof CHECKPOINT_MAGIC;
@@ -71,22 +74,31 @@ export interface CheckpointHeader {
   tenantId: string;
   tenantKey: string;
   sourceDeploymentId: string;
-  createdAt: string;           // ISO
+  createdAt: string; // ISO
   schemaFingerprint: string;
   includesMedia: boolean;
-  noncePrefix: string;         // base64, 7 bytes
+  noncePrefix: string; // base64, 7 bytes
   keys: KeyEnvelope;
 }
 
-export interface ManifestTable { model: string; columns: string[]; rowCount: number; sha256: string }
-export interface ManifestObject { entry: string; size: number; sha256: string }
+export interface ManifestTable {
+  model: string;
+  columns: string[];
+  rowCount: number;
+  sha256: string;
+}
+export interface ManifestObject {
+  entry: string;
+  size: number;
+  sha256: string;
+}
 export interface CheckpointManifest {
   formatVersion: number;
   schemaFingerprint: string;
   tables: ManifestTable[];
   media: (ManifestObject & { bucketId: string; key: string })[];
   claimChecks: (ManifestObject & { contentKey: string })[];
-  transitKeyVersions: Record<string, number>;   // "<Model>.<column>" → max vN seen
+  transitKeyVersions: Record<string, number>; // "<Model>.<column>" → max vN seen
   notCaptured: string[];
 }
 export type ManifestSummary = { tables: { model: string; columns: string[]; rowCount: number }[] };
@@ -105,7 +117,11 @@ export interface CheckpointArchiveReader {
   /** Available once entries() has completed. */
   manifest(): CheckpointManifest;
 }
-export interface VerifiedArchive { header: CheckpointHeader; manifest: CheckpointManifest; sizeBytes: number }
+export interface VerifiedArchive {
+  header: CheckpointHeader;
+  manifest: CheckpointManifest;
+  sizeBytes: number;
+}
 
 // ---- sealing --------------------------------------------------------------------------------
 export interface ICheckpointSealing {
@@ -122,12 +138,19 @@ export const ICheckpointSealing = Symbol('ICheckpointSealing');
 // ---- store ----------------------------------------------------------------------------------
 export interface ICheckpointStore {
   ensureBucket(): Promise<void>;
-  objectKey(tenantId: string, checkpointId: string): string;              // `${tenantId}/${checkpointId}.hcp`
+  objectKey(tenantId: string, checkpointId: string): string; // `${tenantId}/${checkpointId}.hcp`
   openWriteStream(key: string): { stream: Writable; done: Promise<{ sizeBytes: number }>; abort(): Promise<void> };
   openReadStream(key: string): Promise<Readable>;
   presignDownload(key: string, filename: string, ttlSeconds: number): Promise<string>;
   createUpload(key: string): Promise<{ uploadId: string }>;
-  presignUploadParts(key: string, uploadId: string, partCount: number, ttlSeconds: number): Promise<{ partNumber: number; url: string }[]>;
+  /** With `sizing`, every part URL is signed for its exact length (full parts, last = remainder). */
+  presignUploadParts(
+    key: string,
+    uploadId: string,
+    partCount: number,
+    ttlSeconds: number,
+    sizing?: { sizeBytes: number; partSizeBytes: number },
+  ): Promise<{ partNumber: number; url: string }[]>;
   completeUpload(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<{ sizeBytes: number }>;
   abortUpload(key: string, uploadId: string): Promise<void>;
   delete(key: string): Promise<void>;
@@ -135,7 +158,10 @@ export interface ICheckpointStore {
 export const ICheckpointStore = Symbol('ICheckpointStore');
 
 // ---- lock -----------------------------------------------------------------------------------
-export interface TenantLockState { locked: boolean; restoreId?: string }
+export interface TenantLockState {
+  locked: boolean;
+  restoreId?: string;
+}
 export interface ITenantLockService {
   state(tenantId: string): Promise<TenantLockState>;
   /** Drop every node's cached state for the tenant (publishes on TENANT_LOCK_CHANNEL). */
@@ -145,22 +171,54 @@ export const ITenantLockService = Symbol('ITenantLockService');
 export const TENANT_LOCKING_STATUSES = ['LOCKING', 'SAFETY_CHECKPOINT', 'VERIFYING', 'RECONCILING', 'POST_COMMIT'] as const;
 
 // ---- runners (worker side) -----------------------------------------------------------------
-export interface ICheckpointExportRunner { run(checkpointId: string): Promise<void> }
+export interface ICheckpointExportRunner {
+  run(checkpointId: string): Promise<void>;
+}
 export const ICheckpointExportRunner = Symbol('ICheckpointExportRunner');
-export interface ICheckpointVerifyRunner { run(checkpointId: string): Promise<void> }
+export interface ICheckpointVerifyRunner {
+  run(checkpointId: string): Promise<void>;
+}
 export const ICheckpointVerifyRunner = Symbol('ICheckpointVerifyRunner');
-export interface CheckpointExportJob { kind: 'create' | 'verify-upload'; checkpointId: string; tenantId: string }
-export interface CheckpointRestoreJob { restoreId: string; tenantId: string }
+export interface CheckpointExportJob {
+  kind: 'create' | 'verify-upload';
+  checkpointId: string;
+  tenantId: string;
+}
+export interface CheckpointRestoreJob {
+  restoreId: string;
+  tenantId: string;
+}
 
-export interface ReconcileCount { model: string; inserted: number; updated: number; retired: number }
-export interface RestoreWarning { code: string; message: string; detail?: Record<string, unknown> }
+export interface ReconcileCount {
+  model: string;
+  inserted: number;
+  updated: number;
+  retired: number;
+}
+export interface RestoreWarning {
+  code: string;
+  message: string;
+  detail?: Record<string, unknown>;
+}
 
 // ---- errors ---------------------------------------------------------------------------------
 export type CheckpointFailureReason =
-  | 'UNSUPPORTED_FORMAT' | 'SIGNATURE_INVALID' | 'WRONG_TENANT' | 'FOREIGN_DEPLOYMENT'
-  | 'CORRUPT_SEGMENT' | 'MANIFEST_MISMATCH' | 'DUPLICATE' | 'PASSPHRASE_INVALID'
-  | 'SEALING_UNAVAILABLE' | 'UPLOAD_PARTS_INVALID' | 'SCHEMA_INCOMPATIBLE'
-  | 'EXPORT_FAILED' | 'RESTORE_FAILED' | 'LOCK_TIMEOUT' | 'WORKER_LOST' | 'CANCELLED';
+  | 'UNSUPPORTED_FORMAT'
+  | 'SIGNATURE_INVALID'
+  | 'WRONG_TENANT'
+  | 'FOREIGN_DEPLOYMENT'
+  | 'CORRUPT_SEGMENT'
+  | 'MANIFEST_MISMATCH'
+  | 'DUPLICATE'
+  | 'PASSPHRASE_INVALID'
+  | 'SEALING_UNAVAILABLE'
+  | 'UPLOAD_PARTS_INVALID'
+  | 'SCHEMA_INCOMPATIBLE'
+  | 'EXPORT_FAILED'
+  | 'RESTORE_FAILED'
+  | 'LOCK_TIMEOUT'
+  | 'WORKER_LOST'
+  | 'CANCELLED';
 
 export class CheckpointError extends Error {
   constructor(

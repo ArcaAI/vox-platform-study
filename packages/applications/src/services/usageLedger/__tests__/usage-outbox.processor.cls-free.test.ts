@@ -35,13 +35,17 @@ describe('cross-tenant processors run outside any CLS scope', () => {
   it('ConsultationCompletionTimeoutProcessor closes with no CLS scope active', async () => {
     let activeDuringClose: boolean | undefined;
     const harnessInternal = { closeOnCompletionTimeout: vi.fn(async () => void (activeDuringClose = clsActive())) };
+    // The second constructor argument is the restore lock (TASK-1032), not the CLS service: the lock
+    // check is tenant-explicit (it takes the job's tenantId), so it also runs with no CLS scope.
+    const tenantLock = { state: vi.fn().mockResolvedValue({ locked: false }), publishChange: vi.fn() };
     const processor = new (ConsultationCompletionTimeoutProcessor as unknown as new (...args: unknown[]) => ConsultationCompletionTimeoutProcessor)(
       harnessInternal,
-      realCls(),
+      tenantLock,
     );
 
     await processor.process(job({ tenantId: 't-1', consultationId: 'c-1' }));
 
+    expect(tenantLock.state).toHaveBeenCalledWith('t-1');
     expect(harnessInternal.closeOnCompletionTimeout).toHaveBeenCalledWith('c-1', 't-1');
     expect(activeDuringClose).toBe(false);
   });

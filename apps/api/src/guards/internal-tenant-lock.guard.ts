@@ -1,5 +1,5 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
-import { ITenantLockService, assertTenantNotLocked } from '@arcaai/applications';
+import { ITenantLockService, TENANT_LOCK_RETRY_AFTER_SECONDS, assertTenantNotLocked } from '@arcaai/applications';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const TENANT_HEADERS = ['x-internal-tenant-id', 'x-tenant-id'];
@@ -22,7 +22,8 @@ const nonEmpty = (value: unknown): string | null => {
  * Those routes are `@Public()` or API-key routes whose handlers pin the CLS tenant themselves,
  * from the body, the query or an internal header, so the global `TenantLockGuard` cannot see the
  * tenant. This guard reads the same three places and refuses a MUTATING call (POST/PUT/PATCH/
- * DELETE) for a locked tenant with the same 423 body, before the handler runs.
+ * DELETE) for a locked tenant with a 503 + `Retry-After: 30` carrying the same code/restoreId body (NOT 423:
+ * STT and the harness treat 4xx as permanent and drop the write, but retry 503), before the handler runs.
  *
  * Apply it at controller level AFTER the controller's own service-token guard
  * (`@UseGuards(XServiceTokenGuard, InternalTenantLockGuard)`), so only authenticated callers
@@ -41,7 +42,15 @@ export class InternalTenantLockGuard implements CanActivate {
     const tenantId = this.resolveTenantId(req);
     if (!tenantId) return true;
 
-    await assertTenantNotLocked(this.lock, tenantId);
+    try {
+      await assertTenantNotLocked(this.lock, tenantId, { internal: true });
+    } catch (error) {
+      context
+        .switchToHttp()
+        .getResponse<{ setHeader?: (name: string, value: string) => void }>()
+        ?.setHeader?.('Retry-After', String(TENANT_LOCK_RETRY_AFTER_SECONDS));
+      throw error;
+    }
     return true;
   }
 

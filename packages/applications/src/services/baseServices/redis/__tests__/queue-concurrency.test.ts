@@ -44,6 +44,9 @@ describe('BullMQ queue concurrency (TASK-993 lane D)', () => {
         JobQueue.ConsultationCompletionTimeout,
         JobQueue.SyncTenantDirectoryUsers,
         JobQueue.DownloadAiModel,
+        // TASK-1032 — tenant checkpoints: export/verify and restore each run one job at a time.
+        JobQueue.TenantCheckpointExport,
+        JobQueue.TenantCheckpointRestore,
         USAGE_OUTBOX_QUEUE,
       ].sort(),
     );

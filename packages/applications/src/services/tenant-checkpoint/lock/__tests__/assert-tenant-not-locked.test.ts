@@ -10,6 +10,12 @@ describe('assertTenantNotLocked', () => {
       response: { statusCode: 423, code: 'TENANT_RESTORE_IN_PROGRESS', restoreId: 'R' },
     });
   });
+  it('throws a retryable 503 with the same code for internal callers', async () => {
+    await expect(assertTenantNotLocked(lockOf({ locked: true, restoreId: 'R' }), 'T', { internal: true })).rejects.toMatchObject({
+      status: 503,
+      response: { statusCode: 503, code: 'TENANT_RESTORE_IN_PROGRESS', restoreId: 'R' },
+    });
+  });
   it('resolves when unlocked', async () => {
     await expect(assertTenantNotLocked(lockOf({ locked: false }), 'T')).resolves.toBeUndefined();
   });

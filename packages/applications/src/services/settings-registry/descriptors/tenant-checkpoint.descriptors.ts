@@ -54,7 +54,8 @@ export const TENANT_CHECKPOINT_SETTINGS: SettingDescriptor[] = [
     ...TENANT_KNOB,
     key: TENANT_CHECKPOINT_MAX_RETAINED_KEY,
     label: 'Checkpoints retained per tenant',
-    description: 'The most checkpoints a tenant may hold at once. Creating one beyond this is refused until one is deleted or expires.',
+    description:
+      'How many READY checkpoints retention keeps per tenant: the newest this many are kept and older ones are deleted by the retention sweep (the newest is never auto-deleted). Creating a checkpoint is not refused when a tenant is at the limit.',
     default: TENANT_CHECKPOINT_DEFAULTS.maxRetained,
     validate: wholeNumber(),
   },
