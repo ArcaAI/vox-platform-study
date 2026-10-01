@@ -1,3 +1,5 @@
+import { OnEvent } from '@nestjs/event-emitter';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../../../tenant-checkpoint/lock/tenant-restore-events';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
 import { StorageProvider } from '@arcaai/types';
@@ -321,6 +323,13 @@ export class BlobStorageProviderFactory {
       if (key.startsWith(prefix)) this.tenantProviderCache.delete(key);
     }
   }
+
+  /** A restore rewrote this tenant's storage config from another process; drop its cached providers. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(payload: { tenantId: string }): void {
+    this.invalidate(payload.tenantId);
+  }
+
 
   private async resolveProviderForBucket(tenantId: string, bucketName?: string): Promise<IBlobStorageProvider> {
     const config = await this.resolveConfig(tenantId, bucketName);

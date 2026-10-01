@@ -1,3 +1,5 @@
+import { OnEvent } from '@nestjs/event-emitter';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AgentTask } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
@@ -121,6 +123,15 @@ export class TextAgentResolverService {
     // work: the agent resolver's own `providerOverride` then serves the primary.
     @Optional() private readonly credentials?: ProviderCredentialResolver,
   ) {}
+
+  /** A restore rewrote this tenant's agents/assignments from another process; drop its cached specs. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(payload: { tenantId: string }): void {
+    const prefix = `${payload.tenantId}::`;
+    for (const key of [...this.specCache.keys()]) if (key.startsWith(prefix)) this.specCache.delete(key);
+    for (const key of [...this.inFlight.keys()]) if (key.startsWith(prefix)) this.inFlight.delete(key);
+  }
+
 
   async resolve(input: ResolveTextSpecInput): Promise<ResolvedTextGenerationSpec> {
     const { tenantId } = input;

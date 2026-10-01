@@ -1,3 +1,5 @@
+import { OnEvent } from '@nestjs/event-emitter';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
@@ -120,6 +122,13 @@ export class RateLimitRuleCache {
     await this.refresh();
     await this.publishCrossInstanceInvalidation();
   }
+
+  /** A restore rewrote rate-limit rules from another process; reload them (peers reload on their own event). */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  async onTenantRestoreCompleted(): Promise<void> {
+    await this.refresh();
+  }
+
 
   private startRefreshCron(): void {
     try {
