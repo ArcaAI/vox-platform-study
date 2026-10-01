@@ -456,4 +456,13 @@ describe('CheckpointRestoreSweeper', () => {
     expect(t.restores.store.get('lost')).toMatchObject({ status: 'FAILED', failureReason: 'WORKER_LOST' });
     expect(t.restores.store.get('queued')).toMatchObject({ status: 'PENDING' });
   });
+
+  it('R3 N-3 — right after the commit: a POST_COMMIT row whose claim stamped the heartbeat at COMMIT time is left alone, though the reconcile outlasted the stale window', async () => {
+    const clock = new FakeClock();
+    // the reconcile transaction ran 10 minutes (heartbeat paused); the claim wrote heartbeatAt with clock_timestamp() 20 s ago
+    const t = sweeperWith([{ id: 'pc', status: 'POST_COMMIT', heartbeatAt: new Date(clock.t - 20_000), lockAcquiredAt: new Date(clock.t - 11 * 60_000) }]);
+    expect(await t.sweeper.sweep()).toBe(0);
+    expect(t.restores.store.get('pc')).toMatchObject({ status: 'POST_COMMIT' });
+    expect(t.lock.publishChange).not.toHaveBeenCalled();
+  });
 });

@@ -276,17 +276,33 @@ const USERS_ACCESS: CheckpointModelDescriptor[] = [
     notes:
       'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ApiKeyService.revoke (keyStatus REVOKED); a key rotated/revoked after the checkpoint stays so, one created after it is revoked.',
   }),
-  m('ServiceAccount', 'USERS_ACCESS', 'RETIRE_ONLY', true, revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
-    redactColumns: ['secretVerifier', 'previousSecretVerifier'],
-    uniqueSlot: 'skip',
-    notes:
-      'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ServiceAccountService.revoke (soft delete); its live exchanged tokens must also be purged post-commit.',
-  }),
-  m('StorageAccessKey', 'USERS_ACCESS', 'RETIRE_ONLY', true, revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
-    redactColumns: ['secretAccessKey'],
-    uniqueSlot: 'skip',
-    notes: 'Revocation mirrors StorageAccessKeyService.revokeKey (soft delete).',
-  }),
+  m(
+    'ServiceAccount',
+    'USERS_ACCESS',
+    'RETIRE_ONLY',
+    true,
+    revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = clock_timestamp()`),
+    TENANT,
+    {
+      redactColumns: ['secretVerifier', 'previousSecretVerifier'],
+      uniqueSlot: 'skip',
+      notes:
+        'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ServiceAccountService.revoke (soft delete); its live exchanged tokens must also be purged post-commit.',
+    },
+  ),
+  m(
+    'StorageAccessKey',
+    'USERS_ACCESS',
+    'RETIRE_ONLY',
+    true,
+    revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = clock_timestamp()`),
+    TENANT,
+    {
+      redactColumns: ['secretAccessKey'],
+      uniqueSlot: 'skip',
+      notes: 'Revocation mirrors StorageAccessKeyService.revokeKey (soft delete).',
+    },
+  ),
   m('FederatedIdentity', 'USERS_ACCESS', 'INSERT_ONLY', true, NEVER, TENANT, {
     uniqueSlot: 'skip',
     notes:

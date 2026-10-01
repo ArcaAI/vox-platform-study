@@ -767,4 +767,30 @@ describe.skipIf(!enabled)('tenant checkpoint restore — reconcile against Postg
     expect((await one(`SELECT status FROM core."TenantCheckpointRestore" WHERE id = $1`, [id])).status).toBe('FAILED');
     expect((await one(`SELECT name FROM core."Department" WHERE id = $1`, [s.dept])).name).toBe('Renamed');
   });
+
+  it('R3 N-3 — the claim stamps heartbeatAt at commit time (clock_timestamp), not at the start of a long transaction', async () => {
+    const id = await restoreRow('RECONCILING');
+    const cp = await checkpointOf(c, A);
+    await mark();
+
+    await restore(cp, A, ['CONFIG_CONTENT'], {
+      onBegin: async (q) => {
+        await q('SELECT 1'); // the transaction (and now()) starts here
+      },
+      beforeCommit: async (q) => {
+        await q('SELECT pg_sleep(1.5)'); // a long reconcile
+        await q(CLAIM_POST_COMMIT_SQL, [id, null]);
+      },
+    });
+
+    // lag of each stamp behind "now", in the column's own (timestamp without time zone) terms
+    const row = await one(
+      `SELECT EXTRACT(EPOCH FROM (localtimestamp(3) - "heartbeatAt")) * 1000 AS h, EXTRACT(EPOCH FROM (localtimestamp(3) - "updatedAt")) * 1000 AS u ` +
+        `FROM core."TenantCheckpointRestore" WHERE id = $1`,
+      [id],
+    );
+    expect(Number(row.h)).toBeLessThan(1_000);
+    expect(Number(row.u)).toBeLessThan(1_000);
+  });
 });
+

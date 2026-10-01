@@ -14,6 +14,7 @@ import {
   uniqueClaimantsSql,
   updateSql,
 } from '../sql';
+import { CLAIM_POST_COMMIT_SQL } from '../restore-row';
 
 const DEPT_COLS = [
   '_metadata', '_version', 'id', 'tenantId', 'name', 'code',
@@ -30,8 +31,8 @@ describe('restore SQL builders', () => {
 
     it('retires by soft delete, stamping the actor and bumping _version', () => {
       expect(retireSql(d, { columns: DEPT_COLS })).toBe(
-        `UPDATE core."Department" l SET "resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now(), "resourceStatusUpdatedBy" = $2, ` +
-          `"updatedAt" = now(), "updatedBy" = $2, "_version" = l."_version" + 1 ` +
+        `UPDATE core."Department" l SET "resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = clock_timestamp(), "resourceStatusUpdatedBy" = $2, ` +
+          `"updatedAt" = clock_timestamp(), "updatedBy" = $2, "_version" = l."_version" + 1 ` +
           `WHERE l."tenantId" = $1 AND l."resourceStatus" <> 'DELETED' ` +
           `AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_Department" s WHERE s."id" = l."id")`,
       );
@@ -49,7 +50,7 @@ describe('restore SQL builders', () => {
       expect(updateSql(d, DEPT_COLS)).toBe(
         `UPDATE core."Department" l SET "_metadata" = s."_metadata", "name" = s."name", "code" = s."code", ` +
           `"resourceStatus" = s."resourceStatus", "resourceStatusUpdatedAt" = s."resourceStatusUpdatedAt", "resourceStatusUpdatedBy" = s."resourceStatusUpdatedBy", ` +
-          `"updatedAt" = now(), "updatedBy" = $2, "_version" = l."_version" + 1 ` +
+          `"updatedAt" = clock_timestamp(), "updatedBy" = $2, "_version" = l."_version" + 1 ` +
           `FROM pg_temp."stg_Department" s WHERE s."id" = l."id" AND l."tenantId" = $1 AND (` +
           `l."_metadata" IS DISTINCT FROM s."_metadata" OR l."name" IS DISTINCT FROM s."name" OR l."code" IS DISTINCT FROM s."code" OR ` +
           `l."resourceStatus" IS DISTINCT FROM s."resourceStatus" OR l."resourceStatusUpdatedAt" IS DISTINCT FROM s."resourceStatusUpdatedAt" OR ` +
@@ -103,7 +104,7 @@ describe('restore SQL builders', () => {
   it('ApiKey — RETIRE_ONLY revokes with its setSql, guarded so revoked keys are not re-stamped', () => {
     const d = descriptorFor('ApiKey');
     expect(retireSql(d, { columns: ['id', 'tenantId', 'keyStatus', '_version', 'updatedAt'] })).toBe(
-      `UPDATE core."ApiKey" l SET "keyStatus" = 'REVOKED', "updatedAt" = now(), "_version" = l."_version" + 1 ` +
+      `UPDATE core."ApiKey" l SET "keyStatus" = 'REVOKED', "updatedAt" = clock_timestamp(), "_version" = l."_version" + 1 ` +
         `WHERE l."tenantId" = $1 AND (l."keyStatus" IS DISTINCT FROM 'REVOKED') ` +
         `AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_ApiKey" s WHERE s."id" = l."id")`,
     );
@@ -111,9 +112,9 @@ describe('restore SQL builders', () => {
     expect(insertSql(d, ['id', 'tenantId', 'keyStatus'])).toBeNull();
   });
 
-  it('ServiceAccount — the now() part of the revoke SET is not part of the guard', () => {
+  it('ServiceAccount — the clock_timestamp() part of the revoke SET is not part of the guard', () => {
     expect(retireSql(descriptorFor('ServiceAccount'), { columns: ['id', 'tenantId', 'resourceStatus', 'resourceStatusUpdatedAt'] })).toBe(
-      `UPDATE core."ServiceAccount" l SET "resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now() ` +
+      `UPDATE core."ServiceAccount" l SET "resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = clock_timestamp() ` +
         `WHERE l."tenantId" = $1 AND (l."resourceStatus" IS DISTINCT FROM 'DELETED') ` +
         `AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_ServiceAccount" s WHERE s."id" = l."id")`,
     );
@@ -299,7 +300,31 @@ describe('restore SQL builders', () => {
     it('R2 I-7 — a retire candidate referenced by a live row of an unselected category is found', () => {
       expect(
         crossCategoryReferencedSql(descriptorFor('TenantBucket'), [{ child: 'Media', parent: 'TenantBucket', column: 'bucketId', parentColumn: 'id' }]),
-      ).toContain(`EXISTS (SELECT 1 FROM core."Media" c WHERE c."bucketId" = l."id" AND c."resourceStatus" <> 'DELETED')`);
+      ).toContain(`EXISTS (SELECT 1 FROM core."Media" c WHERE c."tenantId" = $1 AND c."bucketId" = l."id" AND c."resourceStatus" <> 'DELETED')`);
+    });
+
+    it('R3 N-6 — the referencing child is read within the tenant (its own scope predicate), never across every tenant', () => {
+      expect(
+        crossCategoryReferencedSql(descriptorFor('Department'), [{ child: 'Consultation', parent: 'Department', column: 'departmentId', parentColumn: 'id' }]),
+      ).toContain(`EXISTS (SELECT 1 FROM core."Consultation" c WHERE c."tenantId" = $1 AND c."departmentId" = l."id" AND c."resourceStatus" <> 'DELETED')`);
+      // a parent-scoped child carries its parent chain's tenant predicate
+      expect(
+        crossCategoryReferencedSql(descriptorFor('Role'), [{ child: 'RolePolicy', parent: 'Role', column: 'roleId', parentColumn: 'id' }]),
+      ).toContain(`c."roleId" IN (SELECT p."id" FROM core."Role" p WHERE p."tenantId" = $1) AND c."roleId" = l."id"`);
+    });
+
+    it('R3 N-3 — every timestamp written inside the reconcile transaction is clock_timestamp(), never now() (= transaction start)', () => {
+      const d = descriptorFor('Department');
+      const all = [
+        retireSql(d, { columns: DEPT_COLS, guard: true }),
+        updateSql(d, DEPT_COLS, { guard: true }),
+        retireSql(descriptorFor('ServiceAccount'), { columns: ['id', 'tenantId', 'resourceStatus', 'resourceStatusUpdatedAt', 'updatedAt'] }),
+        retireSql(descriptorFor('StorageAccessKey'), { columns: ['id', 'tenantId', 'resourceStatus', 'resourceStatusUpdatedAt'] }),
+        releaseDeletedMarkersSql(descriptorFor('AiProviderConnection'), { columns: ['id', 'tenantId', 'resourceStatus', 'defaultForProvider', 'updatedAt'] }),
+        CLAIM_POST_COMMIT_SQL,
+      ].join('\n');
+      expect(all).not.toMatch(/\bnow\(\)/);
+      expect(CLAIM_POST_COMMIT_SQL).toContain(`"heartbeatAt" = clock_timestamp()`);
     });
 
     it('R2 I-2 — a unique claimant is only blocked by a holder the restore does not remove', () => {
