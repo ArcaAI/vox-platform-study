@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner answered OD-1…OD-5 and said go (2026-10-01) |
+| Status | **In Progress** — merged locally on `dev-2.2` + deployment `main`, gates green apart from two ambient-env failures; awaiting push, deploy and live verification |
 | Type | bugfix + infrastructure |
 | Branch | `dev-2.2` (hope-v2) · `main` (hope-v2-deployment) |
 | Services | `text`, `nlp`, `stt` (+ worker), LM Studio image (`infrastructure/docker/lmstudio`), gateway (`packages/applications`, `apps/api`), seeds, deployment repo |
@@ -105,6 +105,38 @@ Runtime proof after deploy: no `lms log stream` prompt lines in Loki for the new
 
 ## 6. Implementation summary
 
+Merged into `dev-2.2` (not pushed): lanes `03c344b74` text, `b29602d05` nlp, `e16e2a3de` lmstudio image, `13fe06803` gateway; merges `c7dd02ebc` `4b603d173` `1d4bcaccd` `ec6557de3`; follow-ups `778cccc48` (nlp-gpu scan/sbom/sign jobs, env surface) and `1abd8f045` (stale default pin). Deployment repo `main` `3e96f92` (not pushed).
+
+| Remedy | What shipped |
+|---|---|
+| A — prompts to Loki | `entrypoint.sh` no longer runs `lms log stream`; PID 1 is held on `lms daemon status` (3 misses → exit 1; TERM drains, exit 0). |
+| B — unenforced medical check | `external_guardrail.validate` returns `allowed`, reason `medical_validation_not_required`, with NO guardrail call when the effective posture has `require_medical` off; tenant-ON still calls. |
+| C — concurrency | `lmStudio.serving.parallel` default 10 ("LM Studio concurrent requests per model"); served to `text` (`lmStudioServing.parallel`) and to the new `lmstudio` consumer. TEXT: judge floor 2 → 10, lm-studio user floor 10, served value applied to both lanes (a SYSTEM `maxConcurrent` still wins for the user lane), judge semaphore resized live, judge route refreshes the snapshot. |
+| Placement | Seeds: gemma 65536 / 10 / GPU 1; granite 16384 / 10 / GPU 0 / q8_0 KV (+ flashAttention, required by q8_0 V). New `lmStudio.serving.gpu` (default 1) and `lmStudio.serving.preload`. |
+| D — preload | Loader fetches the plan from `GET /internal/effective-config?service=lmstudio` (shared internal token) → env `LMS_PRELOAD_PLAN` → legacy `LMS_LOAD`; loads and verifies every model with its own kvConfig. |
+| STT / NLP on GPU 0 | Dev overlay: stt + stt-worker drop `nvidia.com/gpu`, `NVIDIA_VISIBLE_DEVICES=<GPU 0 UUID>`; LM Studio requests 5 units so it always spans both cards. New `nlp-gpu` image (CUDA torch from the lock; MiniCheck stays on CPU — no hash-pinned CUDA llama.cpp wheel), `build-nlp-gpu` + scan/sbom/sign + promote. NLP manifest switch waits for the first promotion of `nlp-gpu` (an unresolvable image wedges Argo). |
+
+### Gate pass (primary, after merge)
+| Gate | Result |
+|---|---|
+| `@arcaai/applications` build / typecheck | rc 0 / rc 0 |
+| applications affected suites (settings-registry, effective-config, ai-model, inference-engine) | 120 files, 1313 tests — 1 stale pin (parallel 4) fixed in `1abd8f045`, re-run 21/21 |
+| applications / api lint | 0 errors; no new warnings in changed files |
+| `@arcaai/database` | 110 files, 2017 passed |
+| `tests/contracts` | 30 files, 386 passed |
+| `api:build`, api internal module | 11/11 tasks; 12 files, 131 passed |
+| apps/text unit | 2013 passed, 1 failed (`test_task990_health_contract` — passes alone and the whole suite passes 2014/2014 without `.env.dev`: ambient-env, not this ticket) |
+| apps/nlp | 766 passed, 2 failed (`test_metrics_endpoint_task636` — `.env.dev` sets `OTEL_METRICS_ENABLED=false`; passes without it on the merged code) |
+| ruff / black | ruff clean; black flags `nlp/api/v1/rest/diagnosis.py`, untouched by this ticket |
+| LM Studio loader `node --test` | 42/42; `bash -n entrypoint.sh` ok |
+| `env:sync:check` | OK |
+| `kubectl kustomize overlays/dev` | renders; stt/worker no GPU request + UUID; LM Studio 5 units, plan env, egress 8868 |
+
+### Not yet verified (needs the deploy)
+`nlp-gpu` builds and sees CUDA; LM Studio accepts parallel 10 / q8_0 / per-model split and both models fit (GPU 0 granite + STT pair + NLP, GPU 1 gemma); the boot plan fetch through the network policy; a judge burst without `CONCURRENCY_LIMIT`; OD-3 erasure.
+
+### Lane notes
+
 ### Lane L-GW (gateway: registry, effective config, guard, seeds)
 
 - `lmStudio.serving.parallel` default **4 → 10**, relabelled "LM Studio concurrent requests per model" (decode slots per loaded model AND apps/text's lm-studio user + judge lane; applies on the next LM Studio restart). Validate 1..64 unchanged.
@@ -117,3 +149,4 @@ Runtime proof after deploy: no `lms log stream` prompt lines in Loki for the new
 | Date | Change |
 |---|---|
 | 2026-10-01 | Plan written from the guardrail 503 investigation; status Pending. |
+| 2026-10-01 | Owner answers (§4a); four lanes built and merged; gate pass recorded (§6); deployment change committed. |
