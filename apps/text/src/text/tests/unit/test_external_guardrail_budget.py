@@ -254,10 +254,10 @@ class TestNestingInvariant:
 
     def test_the_values_this_ticket_sized(self) -> None:
         """Sized against the measured judge p99 (50.6 s): the judge keeps 60 s and
-        one attempt, TEXT waits 75 s and keeps two retries for connect/5xx only."""
+        one attempt, TEXT waits 120 s and keeps two retries for connect/5xx only."""
         assert self._judge_timeout_default() == 60
         assert self._guardrail_policy_field("JudgePolicy", "max_attempts") == 1
-        assert runtime_defaults.GUARDRAIL_TIMEOUT_FLOOR_S == 75
+        assert runtime_defaults.GUARDRAIL_TIMEOUT_FLOOR_S == 120
         assert runtime_defaults.GUARDRAIL_MAX_RETRIES_FLOOR == 2
 
 

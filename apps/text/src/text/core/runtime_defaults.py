@@ -168,10 +168,11 @@ LANE_FLOORS: dict[str, LaneBudget] = {"user": USER_LANE_FLOOR, "judge": JUDGE_LA
 GUARDRAIL_ENABLED_FLOOR = False
 #: How long TEXT waits for guardrail's ANSWER. It must outlast one guardrail
 #: validation: admission wait (5 s) + one judge attempt at
-#: `guardrail.judge.timeoutSeconds` (60 s; measured judge p99 50.6 s) + slack.
+#: `guardrail.judge.timeoutSeconds` (60 s; measured judge p99 50.6 s) + slack;
+#: raised to 120 s (2026-10-01) for headroom after live 10 s timeouts failed DNA jobs.
 #: Shorter, and TEXT abandons judgements guardrail is still running. The nesting
 #: is pinned by tests on both services and over the two descriptors.
-GUARDRAIL_TIMEOUT_FLOOR_S = 75
+GUARDRAIL_TIMEOUT_FLOOR_S = 120
 #: Retries apply only to failures that started no work downstream (connect
 #: failures, a connection dropped before any response, 502/503/504) — see
 #: `services/external_guardrail.py`.

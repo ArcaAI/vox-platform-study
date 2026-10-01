@@ -45,7 +45,7 @@ describe('effective-config: the TEXT externalGuardrail view', () => {
 
     expect(response.externalGuardrail).toEqual({
       enabled: false,
-      timeoutS: 75,
+      timeoutS: 120,
       maxRetries: 2,
       retryBackoffMs: 100,
       requireMedical: true,

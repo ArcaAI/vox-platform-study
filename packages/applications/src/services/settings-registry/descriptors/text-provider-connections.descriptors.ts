@@ -76,7 +76,7 @@ import { SettingDescriptor } from '../registry.types';
  */
 export const TEXT_GUARDRAIL_POSTURE_DEFAULTS = {
   'text.externalGuardrail.enabled': false,
-  'text.externalGuardrail.timeoutS': 75,
+  'text.externalGuardrail.timeoutS': 120,
   'text.externalGuardrail.maxRetries': 2,
   'text.externalGuardrail.retryBackoffMs': 100,
   'text.externalGuardrail.requireMedical': true,

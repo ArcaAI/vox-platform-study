@@ -92,7 +92,7 @@ describe('text → guardrail → judge timeouts nest', () => {
 
   it('the values sized against the measured p99 (50.6 s)', () => {
     expect(judgeTimeoutS).toBe(60);
-    expect(TEXT_GUARDRAIL_POSTURE_DEFAULTS[TEXT_TIMEOUT_KEY]).toBe(75);
+    expect(TEXT_GUARDRAIL_POSTURE_DEFAULTS[TEXT_TIMEOUT_KEY]).toBe(120);
     expect(TEXT_GUARDRAIL_POSTURE_DEFAULTS['text.externalGuardrail.maxRetries']).toBe(2);
   });
 
