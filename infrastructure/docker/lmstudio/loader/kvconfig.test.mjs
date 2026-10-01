@@ -20,6 +20,8 @@ import {
   CACHE_QUANTIZATION_TYPES,
   GPU_SPLIT_STRATEGIES,
   assembleLoadRequest,
+  parseGpuCount,
+  resolvePreloadRequests,
   selectModelKey,
 } from './kvconfig.mjs';
 
@@ -386,4 +388,200 @@ test('selectModelKey: a projector-only prefix is no match, never the projector',
 test('selectModelKey: an empty/absent index is a no-match, not a crash', () => {
   assert.deepEqual(selectModelKey([], 'x'), { none: [] });
   assert.deepEqual(selectModelKey(undefined, 'x'), { none: [] });
+});
+
+// ── TASK-1031: the governed multi-model preload plan ────────────────────────
+// Source precedence: gateway effective-config -> LMS_PRELOAD_PLAN -> the
+// legacy single-model LMS_LOAD env. Every plan entry is loaded, pinned (no
+// TTL) and addressed by its slug.
+
+/** The two roles the owner fixed on 2026-10-01 (TASK-1031 §4a). */
+const GEMMA = {
+  slug: 'gemma-4-e2b-it-qat',
+  contextLength: 65536,
+  parallel: 10,
+  flashAttention: true,
+  gpuSplit: null,
+  gpu: 1,
+  kvCacheQuant: { k: 'f16', v: 'f16' },
+};
+const GRANITE = {
+  slug: 'granite-guardian-4.1-8b',
+  contextLength: 16384,
+  parallel: 10,
+  flashAttention: true,
+  gpuSplit: null,
+  gpu: 0,
+  kvCacheQuant: { k: 'q8_0', v: 'q8_0' },
+};
+const DEFAULTS = { contextLength: 65536, parallel: 10, gpu: 1, flashAttention: null, kvCacheQuant: null };
+const servingBody = (preload, defaults = DEFAULTS) => ({ lmStudioServing: { defaults, preload } });
+
+test('plan: the gateway plan wins and loads EVERY entry, each with its own kvConfig', () => {
+  const plan = resolvePreloadRequests({
+    effectiveConfig: servingBody([GEMMA, GRANITE]),
+    env: { LMS_LOAD: 'something-else', LMS_PRELOAD_PLAN: JSON.stringify([GRANITE]) },
+    gpuCount: 2,
+  });
+  assert.equal(plan.source, 'gateway');
+  assert.equal(plan.requests.length, 2);
+
+  const [gemma, granite] = plan.requests;
+  assert.equal(gemma.modelKey, 'gemma-4-e2b-it-qat');
+  assert.equal(gemma.identifier, 'gemma-4-e2b-it-qat');
+  assert.equal(gemma.ttlMs, undefined, 'a preloaded model is pinned — no TTL');
+  assert.deepEqual(fieldMap(gemma), {
+    'llm.load.contextLength': 65536,
+    'llm.load.numParallelSessions': 10,
+    'llm.load.llama.acceleration.offloadRatio': 1,
+    'llm.load.llama.flashAttention': true,
+    'llm.load.llama.kCacheQuantizationType': { checked: true, value: 'f16' },
+    'llm.load.llama.vCacheQuantizationType': { checked: true, value: 'f16' },
+    'load.gpuSplitConfig': { strategy: 'priorityOrder', priority: [1], disabledGpus: [0], customRatio: [] },
+  });
+
+  assert.equal(granite.identifier, 'granite-guardian-4.1-8b');
+  assert.equal(granite.ttlMs, undefined);
+  assert.deepEqual(fieldMap(granite), {
+    'llm.load.contextLength': 16384,
+    'llm.load.numParallelSessions': 10,
+    'llm.load.llama.acceleration.offloadRatio': 1,
+    'llm.load.llama.flashAttention': true,
+    'llm.load.llama.kCacheQuantizationType': { checked: true, value: 'q8_0' },
+    'llm.load.llama.vCacheQuantizationType': { checked: true, value: 'q8_0' },
+    'load.gpuSplitConfig': { strategy: 'priorityOrder', priority: [0], disabledGpus: [1], customRatio: [] },
+  });
+});
+
+test('plan: wire field order matches the legacy env path, so logs stay diffable', () => {
+  const plan = resolvePreloadRequests({ effectiveConfig: servingBody([GRANITE]), env: {}, gpuCount: 2 });
+  assert.deepEqual(plan.requests[0].kvConfig.fields.map((f) => f.key), [
+    'llm.load.contextLength',
+    'llm.load.numParallelSessions',
+    'llm.load.llama.acceleration.offloadRatio',
+    'llm.load.llama.flashAttention',
+    'llm.load.llama.kCacheQuantizationType',
+    'llm.load.llama.vCacheQuantizationType',
+    'load.gpuSplitConfig',
+  ]);
+});
+
+test('plan: `gpu` pins to one card by disabling EVERY other detected GPU', () => {
+  const plan = resolvePreloadRequests({ effectiveConfig: servingBody([{ ...GRANITE, gpu: 2 }]), env: {}, gpuCount: 4 });
+  assert.deepEqual(fieldMap(plan.requests[0])['load.gpuSplitConfig'], {
+    strategy: 'priorityOrder',
+    priority: [2],
+    disabledGpus: [0, 1, 3],
+    customRatio: [],
+  });
+});
+
+test('plan: an explicit gpuSplit wins over gpu and is completed to the daemon shape', () => {
+  const plan = resolvePreloadRequests({
+    effectiveConfig: servingBody([{ ...GEMMA, gpu: 0, gpuSplit: { strategy: 'custom', customRatio: [1, 3] } }]),
+    env: {},
+    gpuCount: undefined, // not needed when the split is explicit
+  });
+  assert.deepEqual(fieldMap(plan.requests[0])['load.gpuSplitConfig'], {
+    strategy: 'custom',
+    priority: [],
+    disabledGpus: [],
+    customRatio: [1, 3],
+  });
+});
+
+test('plan: an absent entry knob takes the served default; null flash attention / KV quant emit nothing', () => {
+  const entry = { slug: 'x-model', contextLength: null, parallel: null, flashAttention: null, gpuSplit: null, gpu: null, kvCacheQuant: null };
+  const plan = resolvePreloadRequests({ effectiveConfig: servingBody([entry]), env: {}, gpuCount: 2 });
+  const fields = fieldMap(plan.requests[0]);
+  assert.equal(fields['llm.load.contextLength'], 65536);
+  assert.equal(fields['llm.load.numParallelSessions'], 10);
+  assert.deepEqual(fields['load.gpuSplitConfig'], { strategy: 'priorityOrder', priority: [1], disabledGpus: [0], customRatio: [] });
+  assert.ok(!('llm.load.llama.flashAttention' in fields));
+  assert.ok(!('llm.load.llama.kCacheQuantizationType' in fields));
+});
+
+test('plan: an empty or absent gateway preload falls back to LMS_PRELOAD_PLAN', () => {
+  for (const effectiveConfig of [null, {}, servingBody([]), { lmStudioServing: null }]) {
+    const plan = resolvePreloadRequests({
+      effectiveConfig,
+      env: { LMS_PRELOAD_PLAN: JSON.stringify([GRANITE]), LMS_LOAD: 'ignored' },
+      gpuCount: 2,
+    });
+    assert.equal(plan.source, 'env-plan');
+    assert.deepEqual(plan.requests.map((r) => r.identifier), ['granite-guardian-4.1-8b']);
+  }
+});
+
+test('plan: an unusable gateway plan falls back to env and says why', () => {
+  const plan = resolvePreloadRequests({
+    effectiveConfig: servingBody([{ ...GRANITE, flashAttention: false }]),
+    env: { LMS_PRELOAD_PLAN: JSON.stringify([GEMMA]) },
+    gpuCount: 2,
+  });
+  assert.equal(plan.source, 'env-plan');
+  assert.match(plan.rejected, /flash attention/);
+});
+
+test('plan: with neither plan, the legacy single-model LMS_LOAD env still works unchanged', () => {
+  const env = base({ LMS_CONTEXT: '65536', LMS_PARALLEL: '4', LMS_TTL: '600', LMS_IDENTIFIER: 'gemma' });
+  const plan = resolvePreloadRequests({ effectiveConfig: null, env, gpuCount: 2 });
+  assert.equal(plan.source, 'env-legacy');
+  assert.deepEqual(plan.requests, [assembleLoadRequest(env)]);
+});
+
+test('plan: a malformed LMS_PRELOAD_PLAN is a configuration error, not a silent fallback', () => {
+  for (const raw of ['not json', '{"slug":"x"}', '[]', '[{"contextLength":4096}]', '[{"slug":"a"},{"slug":"a"}]']) {
+    assert.throws(
+      () => resolvePreloadRequests({ effectiveConfig: null, env: { LMS_PRELOAD_PLAN: raw, LMS_LOAD: 'x' }, gpuCount: 2 }),
+      (err) => err instanceof KvConfigError && /LMS_PRELOAD_PLAN/.test(err.message),
+      raw,
+    );
+  }
+});
+
+test('plan: entry values are validated like the env knobs', () => {
+  const bad = [
+    { ...GEMMA, contextLength: 0 },
+    { ...GEMMA, parallel: 2.5 },
+    { ...GEMMA, kvCacheQuant: { k: 'q9_9' } },
+    { ...GEMMA, flashAttention: 'yes' },
+    { ...GEMMA, gpuSplit: { strategy: 'evenly ' } },
+    { ...GEMMA, gpuSplit: { strategy: 'priorityOrder' } },
+    { ...GEMMA, gpu: -1 },
+    { ...GEMMA, gpu: 2 }, // only two GPUs (0, 1)
+  ];
+  for (const entry of bad) {
+    assert.throws(
+      () => resolvePreloadRequests({ effectiveConfig: null, env: { LMS_PRELOAD_PLAN: JSON.stringify([entry]) }, gpuCount: 2 }),
+      (err) => err instanceof KvConfigError && /LMS_PRELOAD_PLAN\[0\]/.test(err.message),
+      JSON.stringify(entry),
+    );
+  }
+});
+
+test('plan: pinning to a GPU with an unknown GPU count is refused, never guessed', () => {
+  assert.throws(
+    () => resolvePreloadRequests({ effectiveConfig: null, env: { LMS_PRELOAD_PLAN: JSON.stringify([GRANITE]) }, gpuCount: undefined }),
+    (err) => err instanceof KvConfigError && /GPU count/.test(err.message),
+  );
+});
+
+test('plan: "off" in kvCacheQuant disables quantization explicitly and needs no flash attention', () => {
+  const plan = resolvePreloadRequests({
+    effectiveConfig: servingBody([{ ...GEMMA, flashAttention: null, kvCacheQuant: { k: 'off' } }]),
+    env: {},
+    gpuCount: 2,
+  });
+  const fields = fieldMap(plan.requests[0]);
+  assert.deepEqual(fields['llm.load.llama.kCacheQuantizationType'], { checked: false, value: 'f16' });
+  assert.ok(!('llm.load.llama.vCacheQuantizationType' in fields));
+});
+
+test('parseGpuCount: counts nvidia-smi index lines; empty or garbage is unknown', () => {
+  assert.equal(parseGpuCount('0\n1\n'), 2);
+  assert.equal(parseGpuCount('0\n'), 1);
+  assert.equal(parseGpuCount(''), undefined);
+  assert.equal(parseGpuCount(undefined), undefined);
+  assert.equal(parseGpuCount('NVIDIA-SMI has failed\n'), undefined);
 });

@@ -90,6 +90,23 @@ Three properties are worth knowing before changing this:
   1.5.0 while declaring a `gpuSplitConfig.strategy` union npm's 1.5.0 does not have. Same reason
   the image installs its own Node instead of using `~/.lmstudio/.internal/utils/node`.
 
+### A-6 loads a PLAN of models; A-7 never streams logs (TASK-1031)
+
+- **Plan source, first usable wins:** the gateway's governed `lmStudioServing.preload`
+  (`GET ${HOPE_API_URL}/api/v1/internal/effective-config?service=lmstudio`,
+  `X-Service-Token: ${INTERNAL_ACCESS_TOKEN}`, retried for `HOPE_PLAN_FETCH_SECONDS`, default 60)
+  → `LMS_PRELOAD_PLAN` (JSON array, same entry shape) → the legacy single-model `LMS_LOAD` +
+  `LMS_CONTEXT`/`LMS_PARALLEL`/`LMS_GPU_*`. The loader logs which source won.
+- **Every entry is required, pinned (no TTL) and verified**, loaded with its own context,
+  `parallel` (`llm.load.numParallelSessions`), flash attention, K/V cache quantization and GPU.
+  Identifier = slug. `gpu: n` becomes `priorityOrder [n]` with every other GPU disabled; the GPU
+  count comes from `nvidia-smi` (override `LMS_GPU_COUNT`), and a pin with an unknown count fails
+  closed. A KV quantization without `flashAttention: true` is refused, as on the env path.
+- **A governed change applies on the next LM Studio restart** — parallel slots cannot change on a
+  loaded model.
+- **A-7 holds PID 1 on `lms daemon status`** (5 s poll, exit 1 after three consecutive misses).
+  It used to `exec lms log stream`, which put every prompt and completion — PHI — into Loki.
+
 ### Measured facts about the vendor CLI (`llmster` 0.0.23-1)
 
 Observed by running the vendor's own binary in a container. Several correct claims a prior

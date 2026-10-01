@@ -33,8 +33,8 @@
 # A-2 select AND verify the accelerator
 # A-3 publish weights; assert every expected key is visible
 # A-5 start HTTP with explicit --port AND --bind
-# A-6 preload after the server
-# A-7 hold PID 1, drain on SIGTERM
+# A-6 preload the serving plan (every model) after the server
+# A-7 hold PID 1 on daemon liveness (no log stream — PHI), drain on SIGTERM
 #
 # Exit 78 (EX_CONFIG) for every assertion failure, so a misconfiguration is
 # distinguishable from a crash in `kubectl describe`.
@@ -422,9 +422,15 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # env var names are unchanged, and `--parallel` became the same kvConfig field
 # the CLI itself writes (`llm.load.numParallelSessions`).
 #
-# These LMS_* variables remain the BOOTSTRAP FLOOR — what the pod loads with
-# before the database is reachable. Steady-state serving configuration becomes
-# governed in a later phase; env governs cold start.
+# WHAT gets loaded is a PLAN (TASK-1031), not one model: the loader asks the
+# gateway (GET ${HOPE_API_URL}/api/v1/internal/effective-config?service=lmstudio,
+# X-Service-Token: ${INTERNAL_ACCESS_TOKEN}, bounded retry) for the governed
+# `lmStudioServing.preload`, falls back to the env plan LMS_PRELOAD_PLAN, and
+# only then to the legacy single-model LMS_LOAD/LMS_CONTEXT/LMS_PARALLEL/
+# LMS_GPU_*. Every plan model is loaded with its own context, parallel slots,
+# flash attention, KV quantization and GPU, pinned (no TTL), and verified.
+# The env forms are the BOOTSTRAP FLOOR; a governed change applies on the next
+# restart, because parallel slots cannot be changed on a loaded model.
 #
 # The `die` below is deliberately kept even though the loader already exits 78
 # with a more specific message: the posture — a pod that cannot load what it
@@ -433,7 +439,8 @@ log "HTTP server is live on ${BIND}:${PORT}"
 # applied configuration back and refuses when a kvConfig key was silently
 # dropped, which `lms load` could not do because an unknown kvConfig key is
 # ignored rather than rejected.
-if [ -n "${LMS_LOAD:-}" ]; then
+if [ -n "${LMS_LOAD:-}" ] || [ -n "${LMS_PRELOAD_PLAN:-}" ] \
+   || { [ -n "${HOPE_API_URL:-}" ] && [ -n "${INTERNAL_ACCESS_TOKEN:-}" ]; }; then
   # Assert the two halves exist before use, in the spirit of the rest of this
   # file: a missing loader must say so, not surface as "node: not found".
   command -v node >/dev/null 2>&1 || die \
@@ -442,16 +449,41 @@ if [ -n "${LMS_LOAD:-}" ]; then
     "${LOADER_DIR}/load.mjs is absent — the image did not bake in the SDK loader."
 
   node "${LOADER_DIR}/load.mjs" \
-    || die "preload of '${LMS_LOAD}' failed — refusing to serve a pod that would answer \
-with an empty loaded_instances[] forever."
+    || die "preload failed — refusing to serve a pod that would answer with an empty \
+or partial loaded_instances[] forever."
   log "loaded instances:"; lms ps 2>&1 | sed 's/^/    /' >&2 || true
 fi
 
 # -----------------------------------------------------------------------------
-# A-7. Hold PID 1.
+# A-7. Hold PID 1 — on daemon LIVENESS, never on a log stream.
 # -----------------------------------------------------------------------------
-# `lms log stream` is the only long-running foreground command in the CLI, and
-# it doubles as container log output. tini is PID 1 (Dockerfile ENTRYPOINT) and
-# reaps the daemon's children.
-log "ready — holding on 'lms log stream'"
-exec lms log stream
+# This used to `exec lms log stream`. That stream carries every prompt and
+# every completion verbatim, and container stdout goes to Loki (30-day
+# retention) — clinical notes with patient identifiers were found there
+# (TASK-1031 §2.2 #10). Nothing in this file may stream model I/O to stdout.
+#
+# Instead: poll the daemon every 5 s and exit NON-ZERO the moment it is gone,
+# so the kubelet restarts a pod whose engine died (the crash-exit semantics the
+# log stream used to give for free). Matched on OUTPUT TEXT, not `$?` — see the
+# header: `lms daemon status` exits 0 for "not running" too.
+#
+# `sleep & wait` rather than a bare `sleep`: bash runs a trap only after the
+# foreground command returns, but `wait` is interrupted by the signal, so
+# SIGTERM reaches `shutdown` (drain, exit 0) at once instead of up to 5 s late.
+# tini is PID 1 (Dockerfile ENTRYPOINT), forwards the signal here, and reaps.
+#
+# Three consecutive misses (~15 s), not one: a single slow CLI round-trip must
+# not throw away minutes of model loading. `timeout` bounds a hung CLI call.
+log "ready — serving; holding PID 1 on daemon liveness (model I/O is not logged)"
+misses=0
+while :; do
+  if timeout 10 lms daemon status 2>/dev/null | grep -q 'is running'; then
+    misses=0
+  else
+    misses=$((misses + 1))
+    log "WARNING: llmster daemon did not report 'is running' (${misses}/3)"
+    [ "${misses}" -lt 3 ] || { log "FATAL: llmster daemon is gone — exiting so the pod restarts"; exit 1; }
+  fi
+  sleep "${HOPE_LIVENESS_POLL_SECONDS:-5}" &
+  wait $! || true
+done

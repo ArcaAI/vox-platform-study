@@ -66,6 +66,10 @@
 // LMS_GPU has a default here, because `lms load` had one (`--gpu max`) and
 // changing how much of a model is offloaded is not a side effect this ticket
 // gets to have.
+//
+// These LMS_* variables describe ONE model and are now the LAST fallback: a
+// governed multi-model plan (gateway, then LMS_PRELOAD_PLAN) wins when present
+// — see resolvePreloadRequests at the end of this file (TASK-1031).
 // =============================================================================
 
 /**
@@ -244,9 +248,26 @@ const buildGpuSplitConfig = (env) => {
     return undefined;
   }
 
+  return completeGpuSplit(
+    { strategy: rawStrategy, disabledGpus, priority, customRatio },
+    {
+      strategy: 'LMS_GPU_SPLIT_STRATEGY',
+      priority: 'LMS_GPU_PRIORITY',
+      customRatio: 'LMS_GPU_CUSTOM_RATIO',
+      disabledGpus: 'LMS_GPU_DISABLED',
+    },
+  );
+};
+
+/**
+ * Validate a gpu-split and complete it to the four-field shape the daemon
+ * requires. Shared by the env path and the preload-plan path; `names` says
+ * which variable (or plan field) to blame.
+ */
+const completeGpuSplit = ({ strategy: rawStrategy, disabledGpus, priority, customRatio }, names) => {
   if (rawStrategy !== undefined && !GPU_SPLIT_STRATEGIES.includes(rawStrategy)) {
     throw new KvConfigError(
-      'LMS_GPU_SPLIT_STRATEGY',
+      names.strategy,
       `unknown strategy "${rawStrategy}" — expected one of ${GPU_SPLIT_STRATEGIES.join(', ')}`,
     );
   }
@@ -257,14 +278,14 @@ const buildGpuSplitConfig = (env) => {
   // meant to end. Silence here would look like the feature simply not working.
   if (strategy === 'priorityOrder' && (priority === undefined || priority.length === 0)) {
     throw new KvConfigError(
-      'LMS_GPU_SPLIT_STRATEGY',
-      'strategy "priorityOrder" needs LMS_GPU_PRIORITY — without it the daemon splits evenly and the pin is lost',
+      names.strategy,
+      `strategy "priorityOrder" needs ${names.priority} — without it the daemon splits evenly and the pin is lost`,
     );
   }
   if (strategy === 'custom' && (customRatio === undefined || customRatio.length === 0)) {
     throw new KvConfigError(
-      'LMS_GPU_SPLIT_STRATEGY',
-      'strategy "custom" needs LMS_GPU_CUSTOM_RATIO — without it there is no split to apply',
+      names.strategy,
+      `strategy "custom" needs ${names.customRatio} — without it there is no split to apply`,
     );
   }
 
@@ -273,14 +294,15 @@ const buildGpuSplitConfig = (env) => {
   const contradictions = resolvedPriority.filter((gpu) => resolvedDisabled.includes(gpu));
   if (contradictions.length > 0) {
     throw new KvConfigError(
-      'LMS_GPU_PRIORITY',
-      `GPU ${contradictions.join(', ')} is both prioritised and disabled by LMS_GPU_DISABLED`,
+      names.priority,
+      `GPU ${contradictions.join(', ')} is both prioritised and disabled by ${names.disabledGpus}`,
     );
   }
 
-  // Deliberately NOT validated: whether these indices exist. The loader cannot
-  // see the devices, the daemon can, and inventing a device count here would be
-  // a second source of truth about the hardware.
+  // Deliberately NOT validated: whether these indices exist. The daemon can see
+  // the devices and refuses an impossible split itself. (The preload plan's
+  // `gpu` shorthand is the one place a device count is needed — see
+  // assemblePlanRequest — and there it comes from nvidia-smi, never a guess.)
   return { strategy, disabledGpus: resolvedDisabled, priority: resolvedPriority, customRatio: customRatio ?? [] };
 };
 
@@ -381,4 +403,252 @@ export function selectModelKey(entries, requested) {
   if (candidates.length === 1) return { key: candidates[0] };
   if (candidates.length > 1) return { ambiguous: candidates };
   return { none: llms.map((entry) => entry.key) };
+}
+
+// =============================================================================
+// TASK-1031 — the multi-model PRELOAD PLAN
+// =============================================================================
+// LMS_LOAD is single-valued, so only one model was ever preloaded and every
+// other (granite-guardian, the guardrail judge) was JIT-loaded on daemon
+// defaults and dropped by every restart. The pod now loads a PLAN: every entry,
+// each with its own context / parallel / flash attention / KV quantization /
+// GPU placement, addressed by its AiModel slug and pinned (no TTL).
+//
+// Where the plan comes from, first usable source wins:
+//   1. "gateway"    — GET /api/v1/internal/effective-config?service=lmstudio,
+//                     field `lmStudioServing` (governed: lmStudio.serving.*)
+//   2. "env-plan"   — LMS_PRELOAD_PLAN, a JSON array of the same entry shape
+//                     (the manifest's cold-start floor, same values)
+//   3. "env-legacy" — the single-model LMS_LOAD/LMS_CONTEXT/LMS_PARALLEL/
+//                     LMS_GPU_* path, unchanged
+//
+// A gateway plan that is absent, empty or fails validation falls through to
+// the env (reason in `rejected`) — the control plane being wrong or down must
+// not keep the pod from serving its floor. An env plan that fails validation
+// THROWS: that is a manifest someone got wrong, the same posture as every
+// other LMS_* variable.
+
+/**
+ * Count the GPUs listed by `nvidia-smi --query-gpu=index --format=csv,noheader`.
+ * Anything that is not purely index lines is "unknown" — the caller must then
+ * refuse a `gpu` pin rather than invent a device list.
+ */
+export function parseGpuCount(text) {
+  if (typeof text !== 'string') return undefined;
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+  if (lines.length === 0 || !lines.every((l) => /^\d+$/.test(l))) return undefined;
+  return lines.length;
+}
+
+const isAbsent = (value) => value === undefined || value === null;
+
+const planInt = (value, path) => {
+  if (isAbsent(value)) return undefined;
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new KvConfigError(path, `expected a positive integer, got ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
+const planBool = (value, path) => {
+  if (isAbsent(value)) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new KvConfigError(path, `expected true, false or null, got ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
+/** Same checkbox shape and vocabulary as LMS_KV_CACHE_K/V. */
+const planQuant = (value, path) => {
+  if (isAbsent(value)) return undefined;
+  if (value === false || (typeof value === 'string' && FALSE_WORDS.has(value.toLowerCase()))) {
+    return { checked: false, value: 'f16' };
+  }
+  if (!CACHE_QUANTIZATION_TYPES.includes(value)) {
+    throw new KvConfigError(
+      path,
+      `expected one of ${CACHE_QUANTIZATION_TYPES.join(', ')} (or "off" to disable), got ${JSON.stringify(value)}`,
+    );
+  }
+  return { checked: true, value };
+};
+
+const planList = (value, path, { indices }) => {
+  if (isAbsent(value)) return undefined;
+  const ok =
+    Array.isArray(value) &&
+    value.every((v) => (indices ? Number.isSafeInteger(v) && v >= 0 : Number.isFinite(v) && v >= 0));
+  if (!ok) {
+    throw new KvConfigError(
+      path,
+      `expected an array of ${indices ? 'GPU indices (0-based)' : 'non-negative numbers'}, got ${JSON.stringify(value)}`,
+    );
+  }
+  if (indices && new Set(value).size !== value.length) {
+    throw new KvConfigError(path, `repeats a GPU index: ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
+const planGpuIndex = (value, path) => {
+  if (isAbsent(value)) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new KvConfigError(path, `expected a GPU index (0-based integer), got ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
+/** Insertion order IS the wire order (same order as assembleLoadRequest). */
+const toKvConfig = (candidates) => ({
+  fields: candidates.filter(([, value]) => value !== undefined).map(([key, value]) => ({ key, value })),
+});
+
+/**
+ * One plan entry -> one load request. `defaults` (the served
+ * `lmStudioServing.defaults`) fills any knob the entry leaves null.
+ * `path` (e.g. `LMS_PRELOAD_PLAN[1]`) names the culprit in every error.
+ */
+function assemblePlanRequest(entry, path, { env, defaults, gpuCount }) {
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new KvConfigError(path, 'expected an object');
+  }
+  const slug = typeof entry.slug === 'string' ? entry.slug.trim() : '';
+  if (slug === '') {
+    throw new KvConfigError(`${path}.slug`, 'is required — it is the model to load and the identifier it is served under');
+  }
+
+  const pick = (field) => (isAbsent(entry[field]) ? defaults?.[field] : entry[field]);
+
+  const flashAttention = planBool(pick('flashAttention'), `${path}.flashAttention`);
+  const quant = pick('kvCacheQuant');
+  if (!isAbsent(quant) && (typeof quant !== 'object' || Array.isArray(quant))) {
+    throw new KvConfigError(`${path}.kvCacheQuant`, `expected {k?, v?} or null, got ${JSON.stringify(quant)}`);
+  }
+  const kCache = planQuant(quant?.k, `${path}.kvCacheQuant.k`);
+  const vCache = planQuant(quant?.v, `${path}.kvCacheQuant.v`);
+  // Same rule as the env path — see assembleLoadRequest.
+  for (const [name, q] of [[`${path}.kvCacheQuant.k`, kCache], [`${path}.kvCacheQuant.v`, vCache]]) {
+    if (q?.checked && flashAttention !== true) {
+      throw new KvConfigError(
+        name,
+        `KV cache quantization ("${q.value}") requires flash attention — set flashAttention: true, ` +
+          'or drop the quantization. llama.cpp cannot serve this combination',
+      );
+    }
+  }
+
+  let gpuSplitConfig;
+  const split = entry.gpuSplit;
+  if (!isAbsent(split)) {
+    if (typeof split !== 'object' || Array.isArray(split)) {
+      throw new KvConfigError(`${path}.gpuSplit`, `expected an object or null, got ${JSON.stringify(split)}`);
+    }
+    gpuSplitConfig = completeGpuSplit(
+      {
+        strategy: split.strategy,
+        priority: planList(split.priority, `${path}.gpuSplit.priority`, { indices: true }),
+        disabledGpus: planList(split.disabledGpus, `${path}.gpuSplit.disabledGpus`, { indices: true }),
+        customRatio: planList(split.customRatio, `${path}.gpuSplit.customRatio`, { indices: false }),
+      },
+      {
+        strategy: `${path}.gpuSplit.strategy`,
+        priority: `${path}.gpuSplit.priority`,
+        customRatio: `${path}.gpuSplit.customRatio`,
+        disabledGpus: `${path}.gpuSplit.disabledGpus`,
+      },
+    );
+  } else {
+    // `gpu: n` = this model on card n and NOTHING else: priority [n] alone lets
+    // the daemon spill onto another card, so every other detected index is
+    // disabled explicitly. That needs the real device count.
+    const gpu = planGpuIndex(pick('gpu'), `${path}.gpu`);
+    if (gpu !== undefined) {
+      if (!Number.isSafeInteger(gpuCount) || gpuCount < 1) {
+        throw new KvConfigError(
+          `${path}.gpu`,
+          `pins GPU ${gpu} but the GPU count is unknown (nvidia-smi gave nothing usable; set LMS_GPU_COUNT) — ` +
+            'refusing to guess which cards to disable',
+        );
+      }
+      if (gpu >= gpuCount) {
+        throw new KvConfigError(`${path}.gpu`, `GPU ${gpu} does not exist — ${gpuCount} GPU(s) detected (0..${gpuCount - 1})`);
+      }
+      gpuSplitConfig = {
+        strategy: 'priorityOrder',
+        priority: [gpu],
+        disabledGpus: [...Array(gpuCount).keys()].filter((i) => i !== gpu),
+        customRatio: [],
+      };
+    }
+  }
+
+  return {
+    modelKey: slug,
+    identifier: slug,
+    // Pinned: a plan model must stay resident for the readiness probe and for
+    // every judge/summary call; a TTL would hand it back to JIT on idle.
+    ttlMs: undefined,
+    kvConfig: toKvConfig([
+      ['llm.load.contextLength', planInt(pick('contextLength'), `${path}.contextLength`)],
+      ['llm.load.numParallelSessions', planInt(pick('parallel'), `${path}.parallel`)],
+      ['llm.load.llama.acceleration.offloadRatio', parseOffloadRatio(env, 'LMS_GPU', 'max')],
+      ['llm.load.llama.flashAttention', flashAttention],
+      ['llm.load.llama.kCacheQuantizationType', kCache],
+      ['llm.load.llama.vCacheQuantizationType', vCache],
+      ['load.gpuSplitConfig', gpuSplitConfig],
+    ]),
+  };
+}
+
+function assemblePlan(entries, label, ctx) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new KvConfigError(label, 'expected a non-empty array of preload entries');
+  }
+  const requests = entries.map((entry, i) => assemblePlanRequest(entry, `${label}[${i}]`, ctx));
+  const seen = new Set();
+  for (const [i, request] of requests.entries()) {
+    if (seen.has(request.identifier)) {
+      throw new KvConfigError(`${label}[${i}].slug`, `"${request.identifier}" appears twice — one instance per slug`);
+    }
+    seen.add(request.identifier);
+  }
+  return requests;
+}
+
+/**
+ * Decide what to preload. Pure: the caller has already fetched the effective
+ * config (or got nothing) and detected the GPU count.
+ *
+ * @param {{ effectiveConfig: object|null, env: object, gpuCount?: number }} input
+ * @returns {{ source: 'gateway'|'env-plan'|'env-legacy', requests: object[], rejected?: string }}
+ * @throws {KvConfigError} for a malformed env plan or legacy env.
+ */
+export function resolvePreloadRequests({ effectiveConfig, env, gpuCount }) {
+  let rejected;
+  const serving = effectiveConfig?.lmStudioServing;
+  if (Array.isArray(serving?.preload) && serving.preload.length > 0) {
+    try {
+      return {
+        source: 'gateway',
+        requests: assemblePlan(serving.preload, 'lmStudioServing.preload', { env, defaults: serving.defaults, gpuCount }),
+      };
+    } catch (error) {
+      if (!(error instanceof KvConfigError)) throw error;
+      rejected = error.message;
+    }
+  }
+
+  const raw = read(env, 'LMS_PRELOAD_PLAN');
+  if (raw !== undefined) {
+    let entries;
+    try {
+      entries = JSON.parse(raw);
+    } catch {
+      throw new KvConfigError('LMS_PRELOAD_PLAN', 'is not valid JSON');
+    }
+    // The env plan has no separate defaults block: each entry states its values.
+    return { source: 'env-plan', requests: assemblePlan(entries, 'LMS_PRELOAD_PLAN', { env, gpuCount }), rejected };
+  }
+
+  return { source: 'env-legacy', requests: [assembleLoadRequest(env)], rejected };
 }

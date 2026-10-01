@@ -55,12 +55,18 @@
 // `priority` (it tests `gpuSetting.mainGpu ?` — so GPU 0, being falsy, drops
 // out) and an always-empty `customRatio`. Hand-assembling the field list is
 // what makes R-2 and R-6 reachable at all.
+//
+// TASK-1031: the loader loads a PLAN, not one model — every entry of the
+// gateway's `lmStudioServing.preload` (fetched at boot), else LMS_PRELOAD_PLAN,
+// else the legacy single LMS_LOAD. Each entry gets its own kvConfig, is pinned
+// (no TTL), and gets its own read-back; any failure fails the pod.
 // =============================================================================
+import { execFileSync } from 'node:child_process';
 import { writeSync } from 'node:fs';
 
 import { LMStudioClient } from '@lmstudio/sdk';
 
-import { KvConfigError, assembleLoadRequest, selectModelKey } from './kvconfig.mjs';
+import { KvConfigError, parseGpuCount, resolvePreloadRequests, selectModelKey } from './kvconfig.mjs';
 
 const EX_CONFIG = 78; // EX_CONFIG, so a misconfiguration is distinguishable from a crash
 
@@ -153,7 +159,7 @@ async function resolveModelKey(port, requested, timeoutMs = 180_000) {
         if (choice.ambiguous) {
           die(
             `'${requested}' is AMBIGUOUS — ${choice.ambiguous.length} loadable models match: ` +
-              `${choice.ambiguous.join(', ')}. Set LMS_LOAD to one exact key. ` +
+              `${choice.ambiguous.join(', ')}. Set LMS_LOAD (or the plan slug) to one exact key. ` +
               `Refusing to guess between quantizations.`,
           );
         }
@@ -179,16 +185,96 @@ async function resolveModelKey(port, requested, timeoutMs = 180_000) {
   );
 }
 
-async function main() {
-  let request;
+/**
+ * TASK-1031 (D-10): fetch the governed serving plan from the gateway.
+ *
+ * Bounded: HOPE_PLAN_FETCH_SECONDS total (default 60), 5 s per attempt, so a
+ * gateway that is down or still booting costs at most a minute before the
+ * env plan takes over. Returns the parsed body, or null on any failure.
+ * Logs status codes only — never the body, never the token.
+ */
+async function fetchEffectiveConfig(env) {
+  const base = env.HOPE_API_URL?.trim();
+  const token = env.INTERNAL_ACCESS_TOKEN?.trim();
+  if (!base || !token) {
+    log('plan: HOPE_API_URL / INTERNAL_ACCESS_TOKEN not both set — not asking the gateway');
+    return null;
+  }
+  const url = `${base.replace(/\/+$/, '')}/api/v1/internal/effective-config?service=lmstudio`;
+  const budgetMs = Math.max(0, Number(env.HOPE_PLAN_FETCH_SECONDS ?? 60)) * 1000;
+  const deadline = Date.now() + budgetMs;
+  let attempt = 0;
+  let last = '<no attempt>';
+
+  do {
+    attempt += 1;
+    try {
+      const response = await fetch(url, {
+        // The header InternalServiceTokenGuard reads for every service but stt.
+        headers: { 'X-Service-Token': token, Accept: 'application/json' },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        // Tolerate a `{ data: … }` envelope; the controller returns the subset bare today.
+        return body?.lmStudioServing !== undefined ? body : (body?.data ?? body);
+      }
+      last = `HTTP ${response.status}`;
+    } catch (error) {
+      last = error?.name === 'TimeoutError' ? 'timed out' : `unreachable (${error?.message ?? error})`;
+    }
+    if (Date.now() + 3_000 >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  } while (Date.now() < deadline);
+
+  log(`plan: gateway effective-config unavailable after ${attempt} attempt(s) (last: ${last})`);
+  return null;
+}
+
+/**
+ * GPU count for the plan's `gpu: n` shorthand. LMS_GPU_COUNT wins (an operator
+ * override); otherwise nvidia-smi, which the NVIDIA container runtime mounts
+ * into a `runtimeClassName: nvidia` pod. Unknown stays unknown — a `gpu` pin
+ * then fails closed in kvconfig.mjs instead of guessing.
+ */
+function detectGpuCount(env) {
+  const override = env.LMS_GPU_COUNT?.trim();
+  if (override) {
+    const value = Number(override);
+    if (!Number.isSafeInteger(value) || value < 1) die(`LMS_GPU_COUNT: expected a positive integer, got "${override}"`);
+    return value;
+  }
   try {
-    request = assembleLoadRequest(process.env);
+    const out = execFileSync('nvidia-smi', ['--query-gpu=index', '--format=csv,noheader'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10_000,
+    });
+    return parseGpuCount(out);
+  } catch {
+    return undefined;
+  }
+}
+
+async function main() {
+  const effectiveConfig = await fetchEffectiveConfig(process.env);
+  const gpuCount = detectGpuCount(process.env);
+
+  let plan;
+  try {
+    plan = resolvePreloadRequests({ effectiveConfig, env: process.env, gpuCount });
   } catch (error) {
     if (error instanceof KvConfigError) {
       die(`${error.message}. Nothing was sent to the daemon.`);
     }
     throw error;
   }
+  if (plan.rejected) log(`plan: WARNING — the gateway plan was unusable (${plan.rejected}); falling back to env`);
+  log(
+    `plan: source=${plan.source}, ${plan.requests.length} model(s): ` +
+      `${plan.requests.map((r) => r.identifier ?? r.modelKey).join(', ')}` +
+      `${gpuCount === undefined ? '' : `, ${gpuCount} GPU(s) detected`}`,
+  );
 
   const port = Number(process.env.LMS_PORT ?? 1234);
   // Always loopback: the daemon's websocket is reached inside the container.
@@ -197,24 +283,29 @@ async function main() {
   // at best.
   const client = new LMStudioClient({ baseUrl: `ws://127.0.0.1:${port}` });
 
-  // The channel needs the EXACT key; LMS_LOAD is typically the bare, ambiguous
-  // name. See resolveModelKey for the CrashLoopBackOff this prevents. The
-  // IDENTIFIER is unaffected — the platform addresses the instance by the bare
-  // name on the OpenAI wire (TASK-858), and that stays request.identifier.
-  request = { ...request, modelKey: await resolveModelKey(port, request.modelKey) };
-
-  log(`preloading ${request.modelKey}`);
-  for (const { key, value } of request.kvConfig.fields) {
-    log(`  kvConfig ${key} = ${JSON.stringify(value)}`);
-  }
-  if (request.kvConfig.fields.length === 0) {
-    log('  kvConfig <empty> — every knob is unset, the daemon will use its own defaults');
-  }
-
   try {
-    const info = await loadModel(client, request);
-    log(`loaded ${info.modelKey} as "${info.identifier}"`);
-    await verifyApplied(client, info, request.kvConfig.fields);
+    // Sequential on purpose: two concurrent cold reads of a PVC are slower than
+    // two serial ones, and a failure names exactly one model. Every entry is
+    // REQUIRED — the first failure dies and the pod does not serve.
+    for (const planned of plan.requests) {
+      // The channel needs the EXACT key; a slug / LMS_LOAD is typically the bare,
+      // ambiguous name. See resolveModelKey for the CrashLoopBackOff this
+      // prevents. The IDENTIFIER is unaffected — the platform addresses the
+      // instance by the bare name on the OpenAI wire (TASK-858).
+      const request = { ...planned, modelKey: await resolveModelKey(port, planned.modelKey) };
+
+      log(`preloading ${request.modelKey}${request.identifier ? ` as "${request.identifier}"` : ''}`);
+      for (const { key, value } of request.kvConfig.fields) {
+        log(`  kvConfig ${key} = ${JSON.stringify(value)}`);
+      }
+      if (request.kvConfig.fields.length === 0) {
+        log('  kvConfig <empty> — every knob is unset, the daemon will use its own defaults');
+      }
+
+      const info = await loadModel(client, request);
+      log(`loaded ${info.modelKey} as "${info.identifier}"`);
+      await verifyApplied(client, info, request.kvConfig.fields);
+    }
   } finally {
     // The websocket keeps the event loop alive, so without this the process
     // would sit there having already done its job and A-6 would never return.
@@ -324,7 +415,7 @@ main()
   })
   .catch((error) => {
     die(
-      `preload of '${process.env.LMS_LOAD ?? '<unset>'}' failed — refusing to serve a pod that would answer ` +
-        `with an empty loaded_instances[] forever. Cause: ${error?.stack ?? error}`,
+      'preload failed — refusing to serve a pod that would answer with an empty or partial ' +
+        `loaded_instances[] forever. Cause: ${error?.stack ?? error}`,
     );
   });
