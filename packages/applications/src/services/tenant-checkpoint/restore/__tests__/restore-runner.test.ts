@@ -52,12 +52,17 @@ function rowRepo<T extends { id: string; version: number; status?: string }>(row
   };
 }
 
-async function archiveFor(tenantId: string, sealing: ReturnType<typeof fakeSealing>) {
+async function archiveFor(tenantId: string, sealing: ReturnType<typeof fakeSealing>, withMedia = false) {
   const { plaintext, platformWrapped } = await sealing.generateDataKey();
   const sink = new PassThrough();
   const done = collect(sink);
   const writer = createArchiveWriter({ header: baseHeader({ tenantId, keys: { platform: platformWrapped } }), dataKey: plaintext, sink, sealing });
-  await writer.finish(manifestFor([]));
+  const media = [];
+  if (withMedia) {
+    const r = await writer.writeEntry('media/b1/k.wav', Buffer.from('x'));
+    media.push({ entry: 'media/b1/k.wav', size: r.bytes, sha256: r.sha256, bucketId: 'b1', key: 'k.wav' });
+  }
+  await writer.finish(manifestFor([], { media }));
   return done;
 }
 
@@ -71,9 +76,9 @@ const emptyResult = (over: Partial<ReconcileResult> = {}): ReconcileResult => ({
   ...over,
 });
 
-async function setup(opts: { archiveTenant?: string; safety?: 'READY' | 'FAILED'; postCommit?: () => Promise<unknown>; result?: ReconcileResult } = {}) {
+async function setup(opts: { media?: unknown; archiveTenant?: string; safety?: 'READY' | 'FAILED'; postCommit?: () => Promise<unknown>; result?: ReconcileResult } = {}) {
   const sealing = fakeSealing();
-  const file = await archiveFor(opts.archiveTenant ?? TENANT_A, sealing);
+  const file = await archiveFor(opts.archiveTenant ?? TENANT_A, sealing, !!opts.media);
   const clock = new FakeClock();
   const events: string[] = [];
   const restores = rowRepo([
@@ -82,7 +87,7 @@ async function setup(opts: { archiveTenant?: string; safety?: 'READY' | 'FAILED'
       version: 1,
       tenantId: TENANT_A,
       checkpointId: SOURCE_ID,
-      categories: ['CONFIG_CONTENT'],
+      categories: opts.media ? ['CLINICAL'] : ['CONFIG_CONTENT'],
       reason: 'roll back a bad agent publish',
       status: 'PENDING',
       requestedBy: ACTOR,
@@ -114,7 +119,7 @@ async function setup(opts: { archiveTenant?: string; safety?: 'READY' | 'FAILED'
       return (await opts.postCommit?.()) ?? [];
     }),
   };
-  const media = { reupload: vi.fn() };
+  const media = { reupload: vi.fn(async () => opts.media ?? { uploaded: 0, present: 0, warnings: [] }) };
   const client = { release: vi.fn() };
   const db = { connect: vi.fn(async () => client), query: vi.fn(async () => []) };
   const emitter = { emit: vi.fn() };
@@ -233,6 +238,14 @@ describe('CheckpointRestoreRunner', () => {
 
     expect(refusal).toMatchObject({ reason: 'RESTORE_FAILED' });
     expect(t.postCommit.run).not.toHaveBeenCalled();
+  });
+
+  it('a media warning (MEDIA_BUCKET_UNRESOLVED) does not stop the restore and ends COMPLETED_WITH_WARNINGS', async () => {
+    const t = await setup({ media: { uploaded: 0, present: 0, warnings: [{ code: 'MEDIA_BUCKET_UNRESOLVED', message: 'x', detail: { mediaIds: ['m1'] } }] } });
+    await t.runner.run(RESTORE_ID);
+
+    expect(t.reconciler.reconcile).toHaveBeenCalled();
+    expect(t.row()).toMatchObject({ status: 'COMPLETED_WITH_WARNINGS', warnings: [expect.objectContaining({ code: 'MEDIA_BUCKET_UNRESOLVED' })] });
   });
 
   it('a re-delivered job of a row past PENDING is a no-op', async () => {
