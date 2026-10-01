@@ -78,7 +78,7 @@ describe('platformServingProfileFrom — the registry values as a profile', () =
   it('folds the six `lmStudio.serving.*` keys into one profile', () => {
     expect(shippedPlatformProfile()).toEqual({
       contextLength: 65536,
-      parallel: 4,
+      parallel: 10, // TASK-1031 owner directive 2026-10-01 (was 4)
       // `true`, not `false`: measured 2026-09-21 (ticket §2.7) at identical
       // ctx/parallel, flash attention decoded 4.3x faster (15.5 -> 66 tok/s)
       // AND used 33% less VRAM (7,482 -> 5,034 MiB). `llama-server` itself
