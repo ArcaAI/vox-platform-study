@@ -97,7 +97,9 @@ export class CheckpointRestoreSweeper {
   private async backendAlive(restoreId: string): Promise<boolean> {
     if (!this.db) return false;
     try {
-      const [{ n }] = await this.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1`, [restoreBackendName(restoreId)]);
+      const [{ n }] = await this.db.query<{ n: number }>(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name = $1`, [
+        restoreBackendName(restoreId),
+      ]);
       return n > 0;
     } catch (error) {
       // An unanswerable probe must not fail a live restore; LOCK_TIMEOUT still bounds it.
@@ -112,7 +114,11 @@ export class CheckpointRestoreSweeper {
     try {
       await this.db.query(`SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = $1`, [restoreBackendName(restoreId)]);
     } catch (error) {
-      this.logger.warn({ message: 'Could not cancel the reconcile of an ended restore', restoreId, error: error instanceof Error ? error.name : 'Error' });
+      this.logger.warn({
+        message: 'Could not cancel the reconcile of an ended restore',
+        restoreId,
+        error: error instanceof Error ? error.name : 'Error',
+      });
     }
   }
 
@@ -147,7 +153,8 @@ export class CheckpointRestoreSweeper {
         status = TenantCheckpointRestoreStatus.FAILED;
         wasReconciling = row.status === TenantCheckpointRestoreStatus.RECONCILING;
         row.failureReason = reason;
-        row.failureDetail = reason === 'LOCK_TIMEOUT' ? 'The restore held the tenant lock past the allowed time' : 'The restore worker stopped responding';
+        row.failureDetail =
+          reason === 'LOCK_TIMEOUT' ? 'The restore held the tenant lock past the allowed time' : 'The restore worker stopped responding';
       }
       row.status = status;
       row.lockReleasedAt = at;
@@ -165,7 +172,11 @@ export class CheckpointRestoreSweeper {
       tenantId,
       responsibleEntityId: SWEEPER_ACTOR,
       forceAuditLog: true,
-      data: { action: 'tenant-restore', status, ...(status === TenantCheckpointRestoreStatus.FAILED ? { failureReason: reason } : { warning: reason }) },
+      data: {
+        action: 'tenant-restore',
+        status,
+        ...(status === TenantCheckpointRestoreStatus.FAILED ? { failureReason: reason } : { warning: reason }),
+      },
     });
     return true;
   }

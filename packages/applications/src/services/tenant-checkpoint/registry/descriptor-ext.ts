@@ -17,10 +17,7 @@ export interface CheckpointSlot {
 }
 
 /** Rows (or columns) only a platform administrator may write; a tenant-admin restore leaves them alone. */
-export type PlatformGoverned =
-  | { kind: 'model' }
-  | { kind: 'rows'; where: string }
-  | { kind: 'columns'; columns: readonly string[] };
+export type PlatformGoverned = { kind: 'model' } | { kind: 'rows'; where: string } | { kind: 'columns'; columns: readonly string[] };
 
 declare module '../contracts' {
   interface CheckpointModelDescriptor {
@@ -55,9 +52,7 @@ export function aliased(sql: string, alias: string): string {
 
 /** Occupancy predicate of `slot` over `alias`. */
 export function occupies(slot: CheckpointSlot, alias: string): string {
-  return slot.kind === 'flag'
-    ? `(${alias}."${slot.column}" AND ${alias}."resourceStatus" <> 'DELETED')`
-    : `${alias}."${slot.column}" IS NOT NULL`;
+  return slot.kind === 'flag' ? `(${alias}."${slot.column}" AND ${alias}."resourceStatus" <> 'DELETED')` : `${alias}."${slot.column}" IS NOT NULL`;
 }
 
 /** Same slot: equal key columns (and, for a marker, the same marker value). */

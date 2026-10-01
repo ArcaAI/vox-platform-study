@@ -42,9 +42,10 @@ export class CheckpointMediaRestorer {
     const outcome: MediaRestoreOutcome = { uploaded: 0, present: 0, warnings: [] };
     if (!manifest.media?.length) return outcome;
 
-    const owned = await query<{ id: string; name: string }>(`SELECT "id", "name" FROM core."TenantBucket" WHERE "tenantId" = $1 AND "resourceStatus" <> 'DELETED'`, [
-      tenantId,
-    ]);
+    const owned = await query<{ id: string; name: string }>(
+      `SELECT "id", "name" FROM core."TenantBucket" WHERE "tenantId" = $1 AND "resourceStatus" <> 'DELETED'`,
+      [tenantId],
+    );
     const byId = new Map(owned.map((b) => [b.id, b.name]));
     const ownedNames = new Set(owned.map((b) => b.name));
     /** entry name → ids of this tenant's checkpoint Media rows that reference it */

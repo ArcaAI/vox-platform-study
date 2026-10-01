@@ -18,7 +18,10 @@ WHERE c.contype = 'f' AND c.connamespace = 'core'::regnamespace`;
 
 /** `core."ContextItem"` / `core.rounds` / `"ContextItem"` (core on the search_path) → bare table name. */
 function bareTable(regclass: string): string {
-  return regclass.replace(/^"?core"?\./, '').replace(/^"(.*)"$/, '$1').replace(/""/g, '"');
+  return regclass
+    .replace(/^"?core"?\./, '')
+    .replace(/^"(.*)"$/, '$1')
+    .replace(/""/g, '"');
 }
 
 /** Foreign keys between tables of schema core, as model names. */

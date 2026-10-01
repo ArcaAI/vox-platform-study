@@ -129,7 +129,9 @@ export class CheckpointReconciler {
     let where: { phase: string; model: string } = { phase: 'begin', model: '-' };
 
     const restorable = CHECKPOINT_REGISTRY.filter((d) => selected.includes(d.category) && WRITING_POLICIES.has(d.policy));
-    const derived = CHECKPOINT_REGISTRY.filter((d) => selected.includes(d.category) && d.derivedFrom && restorable.some((r) => r.model === d.derivedFrom));
+    const derived = CHECKPOINT_REGISTRY.filter(
+      (d) => selected.includes(d.category) && d.derivedFrom && restorable.some((r) => r.model === d.derivedFrom),
+    );
     const wanted = new Map([...restorable, ...derived].map((d) => [d.model, d]));
 
     const result: ReconcileResult = {
@@ -176,7 +178,8 @@ export class CheckpointReconciler {
         }
         const [{ n }] = await query<{ n: number }>(scopeViolationsSql(s.d, stagedNames), [tenantId]);
         if (n > 0) throw new CheckpointError('RESTORE_FAILED', `${model}: ${n} staged row(s) lie outside the tenant`, { model, rows: n });
-        if (s.dropped.length) warn('COLUMN_DROPPED', `${model}: checkpoint columns the live table no longer has were not restored`, { model, columns: s.dropped });
+        if (s.dropped.length)
+          warn('COLUMN_DROPPED', `${model}: checkpoint columns the live table no longer has were not restored`, { model, columns: s.dropped });
       }
       for (const d of restorable) {
         if (!staged.has(d.model)) {
@@ -190,7 +193,10 @@ export class CheckpointReconciler {
         edges,
       );
       const counts = new Map(order.map((m) => [m, { model: m, inserted: 0, updated: 0, retired: 0 }]));
-      const uniqueKeys = await nonPartialUniqueKeys(query, order.map((m) => rawTableName(descriptorFor(m))));
+      const uniqueKeys = await nonPartialUniqueKeys(
+        query,
+        order.map((m) => rawTableName(descriptorFor(m))),
+      );
 
       // ---- 3. plan ----------------------------------------------------------------------------
       for (const model of order) {
@@ -204,30 +210,44 @@ export class CheckpointReconciler {
         const exclusion = async (predicate: string, reason: string) => {
           const affected = await ids(affectedMatchingSql(d, predicate, columns));
           const rows = await query<{ side: string; id: string }>(matchingRowsSql(d, predicate), [tenantId]);
-          await keep(rows.filter((r) => r.side === 'live').map((r) => r.id), reason);
-          await skip(rows.filter((r) => r.side === 'staged').map((r) => r.id), reason);
+          await keep(
+            rows.filter((r) => r.side === 'live').map((r) => r.id),
+            reason,
+          );
+          await skip(
+            rows.filter((r) => r.side === 'staged').map((r) => r.id),
+            reason,
+          );
           return affected.sort();
         };
 
         if (d.neverTouch) {
           const affected = await exclusion(d.neverTouch, 'neverTouch');
-          if (affected.length) warn('ELEVATED_ROLE_UNTOUCHED', `${model}: assignments of an elevated platform role are never restored`, { model, ids: affected });
+          if (affected.length)
+            warn('ELEVATED_ROLE_UNTOUCHED', `${model}: assignments of an elevated platform role are never restored`, { model, ids: affected });
         }
         const governedRows = d.platformGoverned?.kind === 'model' ? 'true' : d.platformGoverned?.kind === 'rows' ? d.platformGoverned.where : null;
         if (governedRows && !args.platformAdmin) {
           const affected = await exclusion(governedRows, 'platformGoverned');
           if (affected.length) {
-            warn('PLATFORM_GOVERNED_SKIPPED', `${model}: rows only a platform administrator may write were left as they are`, { model, ids: affected });
+            warn('PLATFORM_GOVERNED_SKIPPED', `${model}: rows only a platform administrator may write were left as they are`, {
+              model,
+              ids: affected,
+            });
           }
         }
 
         const diverged = await ids(divergedSql(d, columns));
         if (diverged.length) {
           await keep(diverged, 'diverged');
-          warn('IMMUTABLE_DIVERGED', `${model}: ${diverged.length} row(s) changed after the checkpoint and are immutable now; they were left as they are`, {
-            model,
-            ids: diverged,
-          });
+          warn(
+            'IMMUTABLE_DIVERGED',
+            `${model}: ${diverged.length} row(s) changed after the checkpoint and are immutable now; they were left as they are`,
+            {
+              model,
+              ids: diverged,
+            },
+          );
         }
 
         const crossEdges = edges.filter((e) => {
@@ -253,10 +273,14 @@ export class CheckpointReconciler {
         const frozen = await ids(frozenInsertSql(d));
         if (frozen.length) {
           await skip(frozen, 'frozen');
-          warn('IMMUTABLE_DIVERGED', `${model}: ${frozen.length} checkpoint row(s) belong to a record that is immutable now; they were not re-created`, {
-            model,
-            ids: frozen.sort(),
-          });
+          warn(
+            'IMMUTABLE_DIVERGED',
+            `${model}: ${frozen.length} checkpoint row(s) belong to a record that is immutable now; they were not re-created`,
+            {
+              model,
+              ids: frozen.sort(),
+            },
+          );
         }
 
         if (d.uniqueSlot === 'skip') {
@@ -265,15 +289,25 @@ export class CheckpointReconciler {
             if (key.includes('id') || !key.every((c) => columns.includes(c))) continue;
             const rows = await query<{ id: string; holder: string }>(uniqueClaimantsSql(d, key), params(uniqueClaimantsSql(d, key)));
             if (!rows.length) continue;
-            await skip(rows.map((r) => r.id), 'uniqueSlot');
-            await keep(rows.map((r) => r.holder), 'uniqueSlot');
+            await skip(
+              rows.map((r) => r.id),
+              'uniqueSlot',
+            );
+            await keep(
+              rows.map((r) => r.holder),
+              'uniqueSlot',
+            );
             rows.forEach((r) => claimants.add(r.id));
           }
           if (claimants.size) {
-            warn('UNIQUE_SLOT_HELD', `${model}: checkpoint row(s) need a unique key a live row holds; the live row was kept and the checkpoint row not restored`, {
-              model,
-              ids: [...claimants].sort(),
-            });
+            warn(
+              'UNIQUE_SLOT_HELD',
+              `${model}: checkpoint row(s) need a unique key a live row holds; the live row was kept and the checkpoint row not restored`,
+              {
+                model,
+                ids: [...claimants].sort(),
+              },
+            );
           }
         }
 
@@ -281,14 +315,21 @@ export class CheckpointReconciler {
           if (!columns.includes(slot.column)) continue;
           const rows = await query<{ id: string; reason: string }>(slotClaimantsSql(d, slot), params(slotClaimantsSql(d, slot)));
           if (!rows.length) continue;
-          await skip(rows.map((r) => r.id), 'slotHeld');
+          await skip(
+            rows.map((r) => r.id),
+            'slotHeld',
+          );
           const byDiverged = rows.filter((r) => r.reason === 'diverged').map((r) => r.id);
           const byOther = rows.filter((r) => r.reason !== 'diverged').map((r) => r.id);
           if (byDiverged.length) {
-            warn('SLOT_HELD_BY_DIVERGED', `${model}: an immutable row changed after the checkpoint holds the ${slot.column} slot; the checkpoint row was not restored`, {
-              model,
-              ids: [...new Set(byDiverged)].sort(),
-            });
+            warn(
+              'SLOT_HELD_BY_DIVERGED',
+              `${model}: an immutable row changed after the checkpoint holds the ${slot.column} slot; the checkpoint row was not restored`,
+              {
+                model,
+                ids: [...new Set(byDiverged)].sort(),
+              },
+            );
           }
           if (byOther.length) {
             warn('SLOT_HELD_BY_KEPT_ROW', `${model}: a row this restore keeps holds the ${slot.column} slot; the checkpoint row was not restored`, {
@@ -304,7 +345,11 @@ export class CheckpointReconciler {
           const blocked = await ids(insertCandidatesSql(d));
           if (blocked.length) {
             await skip(blocked, 'secret');
-            warn('SECRET_REQUIRES_REENTRY', `${model}: row(s) carry a secret that is never restored; re-create them`, { model, ids: blocked.sort(), columns: secretRequired });
+            warn('SECRET_REQUIRES_REENTRY', `${model}: row(s) carry a secret that is never restored; re-create them`, {
+              model,
+              ids: blocked.sort(),
+              columns: secretRequired,
+            });
           }
         }
 
@@ -360,7 +405,10 @@ export class CheckpointReconciler {
         if (orphans) {
           const orphanIds = (await query<{ id: string }>(orphans, params(orphans))).map((r) => r.id);
           if (orphanIds.length) {
-            warn('PARENT_NOT_RESTORED', `${model}: row(s) whose parent record was not restored were not re-created`, { model, ids: orphanIds.sort() });
+            warn('PARENT_NOT_RESTORED', `${model}: row(s) whose parent record was not restored were not re-created`, {
+              model,
+              ids: orphanIds.sort(),
+            });
           }
         }
         const exclude = neverWrittenColumns(d, { platformAdmin: args.platformAdmin });
@@ -377,12 +425,18 @@ export class CheckpointReconciler {
       where = { phase: 'report', model: '-' };
       const insertedUsers = insertedIds.get('User') ?? [];
       if (insertedUsers.length) {
-        warn('USER_REQUIRES_PASSWORD_RESET', 'Re-created user accounts have no usable password; each must reset it', { userIds: [...insertedUsers].sort() });
+        warn('USER_REQUIRES_PASSWORD_RESET', 'Re-created user accounts have no usable password; each must reset it', {
+          userIds: [...insertedUsers].sort(),
+        });
       }
       for (const [model, ids] of insertedIds) {
         const d = descriptorFor(model);
         if (d.secretColumns?.length && ids.length) {
-          warn('SECRET_REQUIRES_REENTRY', `${model}: re-created row(s) have no secret; enter it again`, { model, ids: [...ids].sort(), columns: d.secretColumns });
+          warn('SECRET_REQUIRES_REENTRY', `${model}: re-created row(s) have no secret; enter it again`, {
+            model,
+            ids: [...ids].sort(),
+            columns: d.secretColumns,
+          });
         }
       }
       if (restoredMedia.length) {
@@ -398,9 +452,10 @@ export class CheckpointReconciler {
         }
       }
       if (revivedMembers.size) {
-        const deleted = await query<{ id: string }>(`SELECT "id"::text AS id FROM core."User" WHERE "id" = ANY($1) AND "resourceStatus" = 'DELETED'`, [
-          [...revivedMembers],
-        ]);
+        const deleted = await query<{ id: string }>(
+          `SELECT "id"::text AS id FROM core."User" WHERE "id" = ANY($1) AND "resourceStatus" = 'DELETED'`,
+          [[...revivedMembers]],
+        );
         if (deleted.length) {
           warn('USER_DELETED_MEMBERSHIP_RESTORED', 'Memberships were restored for users whose account is deleted; they cannot sign in', {
             userIds: deleted.map((r) => r.id).sort(),
@@ -443,7 +498,9 @@ export class CheckpointReconciler {
         return;
       }
       if (model === 'Media') {
-        if (phase !== 'retire') for (const r of rows) restoredMedia.push({ id: String(r.id), bucketId: (r.bucketId as string | null) ?? null, uri: (r.uri as string | null) ?? null });
+        if (phase !== 'retire')
+          for (const r of rows)
+            restoredMedia.push({ id: String(r.id), bucketId: (r.bucketId as string | null) ?? null, uri: (r.uri as string | null) ?? null });
         return;
       }
       const ids = rows.map((r) => r.id as string);
@@ -472,7 +529,10 @@ function returning(model: string, phase: ReconcilePhase): string {
 
 async function addIds(client: PoolClient, table: string, ids: readonly string[], reason: string): Promise<void> {
   if (!ids.length) return;
-  await client.query(`INSERT INTO ${table} ("id", "reason") SELECT unnest($1::text[]), $2 ON CONFLICT ("id") DO NOTHING`, [[...new Set(ids)], reason]);
+  await client.query(`INSERT INTO ${table} ("id", "reason") SELECT unnest($1::text[]), $2 ON CONFLICT ("id") DO NOTHING`, [
+    [...new Set(ids)],
+    reason,
+  ]);
 }
 
 async function liveTables(query: SqlQuery, descriptors: readonly CheckpointModelDescriptor[]): Promise<Map<string, LiveTable>> {
@@ -511,7 +571,12 @@ async function nonPartialUniqueKeys(query: SqlQuery, tables: readonly string[]):
   return out;
 }
 
-async function stageEntry(client: PoolClient, d: CheckpointModelDescriptor, body: NodeJS.ReadableStream, liveCols: readonly string[]): Promise<Staged> {
+async function stageEntry(
+  client: PoolClient,
+  d: CheckpointModelDescriptor,
+  body: NodeJS.ReadableStream,
+  liveCols: readonly string[],
+): Promise<Staged> {
   const stg = stagingTable(d);
   const live = new Set(liveCols);
   await client.query(`CREATE TEMP TABLE ${stg} (LIKE ${tableName(d)} INCLUDING DEFAULTS) ON COMMIT DROP`);
@@ -555,4 +620,3 @@ function toRestoreError(error: unknown, where: { phase: string; model: string })
     ...(pg?.code ? { code: pg.code } : {}),
   });
 }
-

@@ -42,6 +42,7 @@ export class CsvColumnFilter extends Transform {
       this.resolveHeader = resolve;
       this.rejectHeader = reject;
     });
+    // swallow-ok: consumers await `kept`; this only stops an unobserved rejection when the stream fails first
     this.kept.catch(() => undefined);
   }
 

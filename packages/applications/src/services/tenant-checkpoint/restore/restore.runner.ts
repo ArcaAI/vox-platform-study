@@ -110,7 +110,10 @@ export class CheckpointRestoreRunner extends BaseService {
     if (!row || row.status !== TenantCheckpointRestoreStatus.PENDING) return; // re-delivered job: idempotent
     const work = async () => {
       this.clsService.set('tenantId', row.tenantId);
-      this.clsService.set('user', createWorkerSession({ tenantId: row.tenantId, userId: row.requestedBy, kind: 'tenant-checkpoint-restore' }) as never);
+      this.clsService.set(
+        'user',
+        createWorkerSession({ tenantId: row.tenantId, userId: row.requestedBy, kind: 'tenant-checkpoint-restore' }) as never,
+      );
       await this.restore(row);
     };
     if (this.clsService.isActive()) await work();
@@ -268,7 +271,11 @@ export class CheckpointRestoreRunner extends BaseService {
    * A full SAFETY checkpoint of the tenant, run inline from the reconcile transaction's exported
    * snapshot (so it holds every row that transaction can retire); its row must end READY.
    */
-  private async safetyCheckpoint(restore: TenantCheckpointRestoreEntity, categories: readonly RestorableCategory[], snapshotId: string): Promise<string> {
+  private async safetyCheckpoint(
+    restore: TenantCheckpointRestoreEntity,
+    categories: readonly RestorableCategory[],
+    snapshotId: string,
+  ): Promise<string> {
     const key = await this.sealing.generateDataKey();
     key.plaintext.fill(0);
     const entity = TenantCheckpointFactory.CreateTenantCheckpoint({
@@ -282,7 +289,12 @@ export class CheckpointRestoreRunner extends BaseService {
     const created = await this.checkpoints.create(entity);
     await (this.exportRunner as SnapshotExportRunner).run(created.id, { snapshotId });
     const done = await this.checkpoints.findById(created.id).catch((error: unknown) => {
-      this.logger.warn({ message: 'Safety checkpoint lookup failed', restoreId: restore.id, safetyCheckpointId: created.id, error: errorName(error) });
+      this.logger.warn({
+        message: 'Safety checkpoint lookup failed',
+        restoreId: restore.id,
+        safetyCheckpointId: created.id,
+        error: errorName(error),
+      });
       return null;
     });
     if (!done || done.status !== TenantCheckpointStatus.READY) {
@@ -311,7 +323,11 @@ export class CheckpointRestoreRunner extends BaseService {
   }
 
   /** Opens the verified object again; the header must be the one the gate vouched for. */
-  private async withReader<T>(verified: VerifiedArchive, objectKey: string, work: (reader: Awaited<ReturnType<typeof openArchive>>) => Promise<T>): Promise<T> {
+  private async withReader<T>(
+    verified: VerifiedArchive,
+    objectKey: string,
+    work: (reader: Awaited<ReturnType<typeof openArchive>>) => Promise<T>,
+  ): Promise<T> {
     const dataKey = await this.sealing.unwrapPlatform(verified.header.keys.platform);
     try {
       const reader = await openArchive(await this.store.openReadStream(objectKey), dataKey);
@@ -350,7 +366,11 @@ export class CheckpointRestoreRunner extends BaseService {
   }
 
   /** Terminal write: status, lock released, finished. Skipped if the sweeper already ended the row. */
-  private async finish(restore: TenantCheckpointRestoreEntity, status: TenantCheckpointRestoreStatus, edit: (row: TenantCheckpointRestoreEntity) => void): Promise<void> {
+  private async finish(
+    restore: TenantCheckpointRestoreEntity,
+    status: TenantCheckpointRestoreStatus,
+    edit: (row: TenantCheckpointRestoreEntity) => void,
+  ): Promise<void> {
     const now = this.date();
     await patchRestore(this.restores, restore.id, (row) => {
       if (TERMINAL.has(row.status)) return false;
@@ -393,7 +413,11 @@ export class CheckpointRestoreRunner extends BaseService {
     return recorded;
   }
 
-  private async setStatus(id: string, status: TenantCheckpointRestoreStatus | null, edit?: (row: TenantCheckpointRestoreEntity) => void): Promise<void> {
+  private async setStatus(
+    id: string,
+    status: TenantCheckpointRestoreStatus | null,
+    edit?: (row: TenantCheckpointRestoreEntity) => void,
+  ): Promise<void> {
     const written = await patchRestore(this.restores, id, (row) => {
       if (TERMINAL.has(row.status)) return false;
       if (status) row.status = status;

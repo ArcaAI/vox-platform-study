@@ -13,13 +13,7 @@ import { pipeline, type Readable } from 'node:stream';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import {
-  ResourceType,
-  SysEventType,
-  TenantCheckpointRepository,
-  TenantCheckpointStatus,
-  type TenantCheckpointEntity,
-} from '@arcaai/domains';
+import { ResourceType, SysEventType, TenantCheckpointRepository, TenantCheckpointStatus, type TenantCheckpointEntity } from '@arcaai/domains';
 
 import { BaseService } from '../../../common/base.service';
 import { parseStorageUri } from '../../../common/storage-uri';
@@ -192,7 +186,10 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
       const fingerprint = await schemaFingerprint(q);
       const [tenant] = await q<{ t: Record<string, unknown> }>('SELECT row_to_json(t) AS t FROM core."Tenant" t WHERE t."id" = $1', [tenantId]);
       if (!tenant?.t) throw new CheckpointError('EXPORT_FAILED', 'The tenant row was not found');
-      const columns = await currentColumns(q, descriptors.map((d) => d.model));
+      const columns = await currentColumns(
+        q,
+        descriptors.map((d) => d.model),
+      );
 
       const header: Omit<CheckpointHeader, 'magic' | 'formatVersion' | 'noncePrefix'> = {
         checkpointId: id,
@@ -239,7 +236,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
       let refs: unknown[] = [];
       if (running.includesMedia) {
         const m = descriptorFor('Media');
-        media = await q<MediaRef>(`SELECT s."id", s."bucketId", s."uri" FROM ${tableName(m)} s WHERE ${scopePredicate(m, 's')} ORDER BY s."id"`, [tenantId]);
+        media = await q<MediaRef>(`SELECT s."id", s."bucketId", s."uri" FROM ${tableName(m)} s WHERE ${scopePredicate(m, 's')} ORDER BY s."id"`, [
+          tenantId,
+        ]);
         refs = await this.claimCheckRefs(q, tenantId);
       }
       await q('COMMIT');
@@ -331,12 +330,15 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     } catch (error) {
       heartbeat.stop();
       if (session) {
+        // swallow-ok: a failed ROLLBACK means the connection is gone; it is released with the error and destroyed
         await session.query('ROLLBACK').catch(() => undefined);
         session.release(error instanceof Error ? error : undefined);
         session = undefined;
       }
-      await writer?.abort(error instanceof Error ? error : new Error('checkpoint export failed')).catch(() => undefined);
-      await upload?.abort().catch(() => undefined);
+      await writer
+        ?.abort(error instanceof Error ? error : new Error('checkpoint export failed'))
+        .catch((e) => this.logger.warn({ message: 'Checkpoint archive writer abort failed', checkpointId: id, error: errorName(e) }));
+      await upload?.abort().catch((e) => this.logger.warn({ message: 'Checkpoint upload abort failed', checkpointId: id, error: errorName(e) }));
       await this.recordFailure(id, error);
     } finally {
       heartbeat.stop();
@@ -376,7 +378,9 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     const cipher = cols.filter((c) => CIPHERTEXT_COLUMN.test(c));
     if (cipher.length === 0) return {};
     const selects = cipher.map((c, i) => `max(substring(s.${quoteIdent(c)}::text from 'vault:v([0-9]+):')::int) AS "v${i}"`);
-    const [row] = await q<Record<string, number | null>>(`SELECT ${selects.join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [tenantId]);
+    const [row] = await q<Record<string, number | null>>(`SELECT ${selects.join(', ')} FROM ${tableName(d)} s WHERE ${scopePredicate(d, 's')}`, [
+      tenantId,
+    ]);
     const out: Record<string, number> = {};
     cipher.forEach((c, i) => {
       const v = row?.[`v${i}`];
@@ -397,7 +401,11 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
   }
 
   /** Opens an object; a missing object resolves `null` (recorded as not captured), any other failure throws. */
-  private async openObject(provider: () => Promise<{ getObjectStream(p: { bucket: string; key: string }): Promise<Readable> }>, bucket: string, key: string): Promise<Readable | null> {
+  private async openObject(
+    provider: () => Promise<{ getObjectStream(p: { bucket: string; key: string }): Promise<Readable> }>,
+    bucket: string,
+    key: string,
+  ): Promise<Readable | null> {
     try {
       return await (await provider()).getObjectStream({ bucket, key });
     } catch (error) {

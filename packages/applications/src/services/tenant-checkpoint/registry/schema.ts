@@ -59,7 +59,9 @@ export async function schemaFingerprint(query: SqlQuery): Promise<string> {
       .sort()
       .map((t) => [t, [...tables[t]].sort()]),
   );
-  return createHash('sha256').update(JSON.stringify({ migrations, tables: sorted })).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify({ migrations, tables: sorted }))
+    .digest('hex');
 }
 
 export interface CompatibilityProblem {

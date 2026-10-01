@@ -67,8 +67,7 @@ const rec = (model: string, category: CheckpointCategory, softDelete: boolean, e
   m(model, category, 'RECONCILE', softDelete, softDelete ? SOFT : HARD, TENANT, { uniqueSlot: 'skip', ...extra });
 const log = (model: string, softDelete: boolean, scope: CheckpointScope = TENANT, extra: Extra = {}) =>
   m(model, 'LOGS', 'CAPTURE_ONLY', softDelete, NEVER, scope, extra);
-const excluded = (model: string, softDelete: boolean, extra: Extra = {}) =>
-  m(model, 'EXCLUDED', 'EXCLUDED', softDelete, NEVER, NONE, extra);
+const excluded = (model: string, softDelete: boolean, extra: Extra = {}) => m(model, 'EXCLUDED', 'EXCLUDED', softDelete, NEVER, NONE, extra);
 
 const PUBLISHED_OR_DEPRECATED = `l."status" IN ('PUBLISHED','DEPRECATED')`;
 
@@ -118,12 +117,24 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
   rec('Agent', 'CONFIG_CONTENT', true, {
     slots: [ACTIVE_SLUG_SLOT],
     immutableColumns: [
-      'compiledConfig', 'compiledConfigChecksum', 'modelId', 'task', 'instruction', 'parameters',
-      'inputSchema', 'outputSchema', 'tools', 'tenantId', 'slug', 'versionNumber', 'parentVersionId', 'publishedAt',
+      'compiledConfig',
+      'compiledConfigChecksum',
+      'modelId',
+      'task',
+      'instruction',
+      'parameters',
+      'inputSchema',
+      'outputSchema',
+      'tools',
+      'tenantId',
+      'slug',
+      'versionNumber',
+      'parentVersionId',
+      'publishedAt',
     ],
     immutableWhen: PUBLISHED_OR_DEPRECATED,
     notes:
-      'agent_immutability_guard blocks hard DELETE and these columns once PUBLISHED/DEPRECATED; resourceStatus/isActive stay writable, so a soft-delete retire is allowed. When a published row\'s immutable content differs from the checkpoint the row is left untouched (IMMUTABLE_DIVERGED). modelId may point at a SYSTEM AiModel (FK Restrict) — never captured, must exist live.',
+      "agent_immutability_guard blocks hard DELETE and these columns once PUBLISHED/DEPRECATED; resourceStatus/isActive stay writable, so a soft-delete retire is allowed. When a published row's immutable content differs from the checkpoint the row is left untouched (IMMUTABLE_DIVERGED). modelId may point at a SYSTEM AiModel (FK Restrict) — never captured, must exist live.",
   }),
   m('AgentModelFallback', 'CONFIG_CONTENT', 'RECONCILE', true, HARD, TENANT, {
     immutableColumns: ['*'],
@@ -142,12 +153,23 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
   rec('WorkflowDefinition', 'CONFIG_CONTENT', true, {
     slots: [ACTIVE_SLUG_SLOT],
     immutableColumns: [
-      'graph', 'graphChecksum', 'compiledConfig', 'compiledConfigChecksum', 'contextSchemaId',
-      'contextSchemaVersionNumber', 'contextSchemaFollowsLatest', 'tenantId', 'slug', 'paletteKey',
-      'versionNumber', 'parentVersionId', 'publishedAt',
+      'graph',
+      'graphChecksum',
+      'compiledConfig',
+      'compiledConfigChecksum',
+      'contextSchemaId',
+      'contextSchemaVersionNumber',
+      'contextSchemaFollowsLatest',
+      'tenantId',
+      'slug',
+      'paletteKey',
+      'versionNumber',
+      'parentVersionId',
+      'publishedAt',
     ],
     immutableWhen: PUBLISHED_OR_DEPRECATED,
-    notes: 'workflow_definition_immutability_guard (latest body: the context-schema binding migration). Soft-delete retire allowed; hard DELETE of a published row is refused.',
+    notes:
+      'workflow_definition_immutability_guard (latest body: the context-schema binding migration). Soft-delete retire allowed; hard DELETE of a published row is refused.',
   }),
   rec('WorkflowAssignment', 'CONFIG_CONTENT', true),
   rec('WorkflowTestFixture', 'CONFIG_CONTENT', true),
@@ -177,7 +199,8 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
   }),
   m('KnowledgeChunk', 'CONFIG_CONTENT', 'CAPTURE_ONLY', true, NEVER, TENANT, {
     derivedFrom: 'KnowledgeDocument',
-    notes: 'Derived: captured (it is the only copy of the document text) but never reconciled — the re-ingest job rewrites chunks and vectors together.',
+    notes:
+      'Derived: captured (it is the only copy of the document text) but never reconciled — the re-ingest job rewrites chunks and vectors together.',
   }),
   rec('TenantNlpTaskInstructions', 'CONFIG_CONTENT', true),
   rec('Tag', 'CONFIG_CONTENT', true),
@@ -196,7 +219,8 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
   rec('GlobalSetting', 'CONFIG_CONTENT', true, {
     secretColumns: ['encryptedValue', 'keyVersion'],
     platformGoverned: { kind: 'rows', where: `{a}."key" IN (${sqlList(GLOBAL_ONLY_SETTING_KEYS)})` },
-    notes: 'Mixed model: tenant rows only; the platform tier is SYSTEM and never matches $1. globalOnly keys (feature gates) are platform-governed even on a tenant row.',
+    notes:
+      'Mixed model: tenant rows only; the platform tier is SYSTEM and never matches $1. globalOnly keys (feature gates) are platform-governed even on a tenant row.',
   }),
   rec('TenantGuardrailPolicy', 'CONFIG_CONTENT', true),
   rec('TenantStorageConfig', 'CONFIG_CONTENT', true, {
@@ -229,13 +253,21 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
 // Credentials are RETIRE_ONLY: never revived, and one created after the checkpoint is revoked.
 // ============================================================================================
 const USERS_ACCESS: CheckpointModelDescriptor[] = [
-  m('User', 'USERS_ACCESS', 'INSERT_ONLY', true, NEVER, { kind: 'tenantMembers' }, {
-    redactColumns: ['password', 'secret1', 'secret2'],
-    redactInsert: { password: `'!checkpoint-restore:password-reset-required'` },
-    uniqueSlot: 'skip',
-    notes:
-      'Global row: members are users with a UserRoleAssignment or UserDepartment in the tenant. Missing ⇒ insert; existing ⇒ untouched. Password hash and service secrets are never exported; a re-inserted user gets an unusable password (USER_REQUIRES_PASSWORD_RESET).',
-  }),
+  m(
+    'User',
+    'USERS_ACCESS',
+    'INSERT_ONLY',
+    true,
+    NEVER,
+    { kind: 'tenantMembers' },
+    {
+      redactColumns: ['password', 'secret1', 'secret2'],
+      redactInsert: { password: `'!checkpoint-restore:password-reset-required'` },
+      uniqueSlot: 'skip',
+      notes:
+        'Global row: members are users with a UserRoleAssignment or UserDepartment in the tenant. Missing ⇒ insert; existing ⇒ untouched. Password hash and service secrets are never exported; a re-inserted user gets an unusable password (USER_REQUIRES_PASSWORD_RESET).',
+    },
+  ),
   m('UserProfile', 'USERS_ACCESS', 'INSERT_ONLY', true, NEVER, parentOf('userId', 'User'), { uniqueSlot: 'skip' }),
   m('UserSettings', 'USERS_ACCESS', 'INSERT_ONLY', true, NEVER, parentOf('userId', 'User'), { uniqueSlot: 'skip' }),
   m('ApiKey', 'USERS_ACCESS', 'RETIRE_ONLY', true, revoke(`"keyStatus" = 'REVOKED'`), TENANT, {
@@ -244,19 +276,17 @@ const USERS_ACCESS: CheckpointModelDescriptor[] = [
     notes:
       'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ApiKeyService.revoke (keyStatus REVOKED); a key rotated/revoked after the checkpoint stays so, one created after it is revoked.',
   }),
-  m('ServiceAccount', 'USERS_ACCESS', 'RETIRE_ONLY', true,
-    revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
-      redactColumns: ['secretVerifier', 'previousSecretVerifier'],
-      uniqueSlot: 'skip',
-      notes:
-        'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ServiceAccountService.revoke (soft delete); its live exchanged tokens must also be purged post-commit.',
-    }),
-  m('StorageAccessKey', 'USERS_ACCESS', 'RETIRE_ONLY', true,
-    revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
-      redactColumns: ['secretAccessKey'],
-      uniqueSlot: 'skip',
-      notes: 'Revocation mirrors StorageAccessKeyService.revokeKey (soft delete).',
-    }),
+  m('ServiceAccount', 'USERS_ACCESS', 'RETIRE_ONLY', true, revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
+    redactColumns: ['secretVerifier', 'previousSecretVerifier'],
+    uniqueSlot: 'skip',
+    notes:
+      'Unscoped in the Prisma extension but carries tenantId. Revocation mirrors ServiceAccountService.revoke (soft delete); its live exchanged tokens must also be purged post-commit.',
+  }),
+  m('StorageAccessKey', 'USERS_ACCESS', 'RETIRE_ONLY', true, revoke(`"resourceStatus" = 'DELETED', "resourceStatusUpdatedAt" = now()`), TENANT, {
+    redactColumns: ['secretAccessKey'],
+    uniqueSlot: 'skip',
+    notes: 'Revocation mirrors StorageAccessKeyService.revokeKey (soft delete).',
+  }),
   m('FederatedIdentity', 'USERS_ACCESS', 'INSERT_ONLY', true, NEVER, TENANT, {
     uniqueSlot: 'skip',
     notes:
@@ -303,11 +333,12 @@ const CLINICAL: CheckpointModelDescriptor[] = [
   }),
   rec('UserVoiceProfile', 'CLINICAL', true, {
     slots: [{ kind: 'flag', column: 'isActive', key: ['userId'] }],
-    notes: 'Partial unique UserVoiceProfile_userId_active_unique: retire clears isActive first.' }),
+    notes: 'Partial unique UserVoiceProfile_userId_active_unique: retire clears isActive first.',
+  }),
   m('ConsentGrant', 'CLINICAL', 'INSERT_ONLY', true, NEVER, TENANT, {
     uniqueSlot: 'skip',
     notes:
-      'A record of the patient\'s will, not tenant configuration: a restore must never un-revoke a consent revoked after the checkpoint (RECONCILE would rewrite revokedAt) nor retire one granted after it. Missing rows are inserted.',
+      "A record of the patient's will, not tenant configuration: a restore must never un-revoke a consent revoked after the checkpoint (RECONCILE would rewrite revokedAt) nor retire one granted after it. Missing rows are inserted.",
   }),
   rec('DnaWritingStyleReport', 'CLINICAL', true),
   rec('DnaWritingStyleVersion', 'CLINICAL', false),

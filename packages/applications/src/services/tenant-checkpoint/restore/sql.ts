@@ -452,4 +452,3 @@ export function affectedMatchingSql(d: CheckpointModelDescriptor, where: string,
   }
   return parts.join(' UNION ');
 }
-

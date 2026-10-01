@@ -78,7 +78,13 @@ export class CheckpointSweeper extends BaseService {
         });
         if (!failed) return;
         // An unfinished upload never became an object; deleting the key is the idempotent cleanup.
-        if (failed.objectKey) await this.store.delete(failed.objectKey).catch(() => undefined);
+        if (failed.objectKey) {
+          await this.store
+            .delete(failed.objectKey)
+            .catch((error) =>
+              this.logger.warn({ message: 'Deleting an abandoned checkpoint object failed', checkpointId: stale.id, error: errorName(error) }),
+            );
+        }
         this.broadcastSysEvent(SysEventType.ResourceUpdated, {
           resourceId: stale.id,
           data: { status: TenantCheckpointStatus.FAILED, failureReason: 'WORKER_LOST' },
@@ -97,7 +103,9 @@ export class CheckpointSweeper extends BaseService {
         if (upload.uploadId && upload.objectKey) {
           await this.store
             .abortUpload(upload.objectKey, upload.uploadId)
-            .catch((error) => this.logger.warn({ message: 'Aborting an idle checkpoint upload failed', checkpointId: upload.id, error: errorName(error) }));
+            .catch((error) =>
+              this.logger.warn({ message: 'Aborting an idle checkpoint upload failed', checkpointId: upload.id, error: errorName(error) }),
+            );
         }
         const cancelled = await patchCheckpoint(this.checkpoints, upload.id, (row) => {
           if (row.status !== TenantCheckpointStatus.UPLOADING || row.updatedAt >= cutoff) return false;
@@ -195,6 +203,7 @@ export class CheckpointSweeper extends BaseService {
 
   private async releaseLock(): Promise<void> {
     if (!this.redis) return;
+    // swallow-ok: the retention lock has a TTL; a failed release only delays the next sweep
     await this.redis.del(RETENTION_LOCK_KEY).catch(() => undefined);
   }
 }
