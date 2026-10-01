@@ -87,6 +87,16 @@ export class FakeCheckpointRepo {
       .map((r) => this.toEntity(r));
   }
 
+  async findIdleUploads(updatedBefore: Date): Promise<TenantCheckpointEntity[]> {
+    return [...this.rows.values()]
+      .filter((r) => r.status === 'UPLOADING' && r.updatedAt && r.updatedAt < updatedBefore && r.resourceStatus !== 'DELETED')
+      .map((r) => this.toEntity(r));
+  }
+
+  async findReadyAnyTenant(): Promise<TenantCheckpointEntity[]> {
+    return [...this.rows.values()].filter((r) => r.status === 'READY' && r.resourceStatus !== 'DELETED').map((r) => this.toEntity(r));
+  }
+
   async softDelete(id: string): Promise<TenantCheckpointEntity> {
     const row = this.rows.get(id)!;
     row.resourceStatus = 'DELETED';
@@ -239,7 +249,7 @@ export function fakeSettings(values: Record<string, number> = {}) {
 export function fakeCls() {
   const store = new Map<string, unknown>();
   return {
-    run: async (fn: () => unknown) => fn(),
+    run: async (a: unknown, b?: unknown) => ((typeof a === 'function' ? a : b) as () => unknown)(),
     isActive: () => false,
     set: (k: string, v: unknown) => store.set(k, v),
     get: (k: string) => store.get(k),

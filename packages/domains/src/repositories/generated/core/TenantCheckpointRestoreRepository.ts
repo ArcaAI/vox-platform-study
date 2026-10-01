@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@arcaai/database';
 
 import { Repository } from '../../../common';
+import { CoreDatabaseService } from '../../../common/databaseServices/core/core.database.service';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { TenantCheckpointRestoreEntity } from '../../../entities';
 import { ResourceStatusType, TenantCheckpointRestoreStatus } from '../../../enums';
@@ -10,12 +11,30 @@ import { TenantCheckpointRestore } from '../../../models';
 
 @Injectable()
 export class TenantCheckpointRestoreRepository extends Repository<TenantCheckpointRestoreEntity, TenantCheckpointRestore> {
-  constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
+  constructor(
+    private readonly unitOfWorkService: CoreUnitOfWorkService,
+    @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
+  ) {
     super(unitOfWorkService, 'tenantCheckpointRestore', TenantCheckpointRestoreEntityMapper.getInstance());
   }
 
   private delegateFor(tx?: Prisma.TransactionClient | any): any {
     return tx ? (tx as Record<string, any>).tenantCheckpointRestore : this.db;
+  }
+
+  /**
+   * The base Prisma client's delegate — NO tenant-scope and NO soft-delete extension.
+   *
+   * Used ONLY by the "ANY tenant" worker scans below (the checkpoint sweepers). Those run from a
+   * cron with no tenant in context by design: their job is to find rows across every tenant and then
+   * handle each one inside THAT row's tenant worker session. Through the scoped client they either
+   * throw `TenantScope: tenant context required` (any CLS context without a tenant) or depend on the
+   * accident of no CLS being active at all. Soft-deleted rows are filtered explicitly here because the
+   * base client carries neither extension. Precedent: `RbacRoleRepository.unscopedDelegate`,
+   * `WorkflowWebhookSecretRepository.findByHookIdUnscoped`.
+   */
+  private get unscoped(): any {
+    return (this.databaseService.baseClient as unknown as Record<string, unknown>).tenantCheckpointRestore;
   }
 
   private toEntities(rows: TenantCheckpointRestore[]): TenantCheckpointRestoreEntity[] {
@@ -59,13 +78,25 @@ export class TenantCheckpointRestoreRepository extends Repository<TenantCheckpoi
 
   /** ANY tenant (worker sweep): non-terminal restores whose heartbeat is older than `heartbeatBefore`. */
   async findStaleActive(heartbeatBefore: Date, tx?: Prisma.TransactionClient | any): Promise<TenantCheckpointRestoreEntity[]> {
-    const rows = await this.delegateFor(tx).findMany({
+    const rows = await (tx ? this.delegateFor(tx) : this.unscoped).findMany({
       where: {
         resourceStatus: { not: ResourceStatusType.DELETED },
         status: { notIn: TenantCheckpointRestoreRepository.TERMINAL },
         heartbeatAt: { lt: heartbeatBefore },
       },
       orderBy: { heartbeatAt: 'asc' },
+    });
+    return this.toEntities(rows as TenantCheckpointRestore[]);
+  }
+
+  /** ANY tenant (restore sweeper, unscoped read): every non-terminal restore. */
+  async findActiveAnyTenant(): Promise<TenantCheckpointRestoreEntity[]> {
+    const rows = await this.unscoped.findMany({
+      where: {
+        resourceStatus: { not: ResourceStatusType.DELETED },
+        status: { notIn: TenantCheckpointRestoreRepository.TERMINAL },
+      },
+      orderBy: { createdAt: 'asc' },
     });
     return this.toEntities(rows as TenantCheckpointRestore[]);
   }

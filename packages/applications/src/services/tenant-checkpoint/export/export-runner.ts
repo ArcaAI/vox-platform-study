@@ -123,20 +123,24 @@ export class CheckpointExportRunner extends BaseService implements ICheckpointEx
     super(eventEmitter, clsService, ResourceType.TenantCheckpoint);
   }
 
+  /** Call inside the tenant's worker session (the processor binds the job tenant; a restore binds its own). */
   async run(checkpointId: string, options: CheckpointExportRunOptions = {}): Promise<void> {
     const row = await findCheckpoint(this.checkpoints, checkpointId);
     if (!row || row.status !== TenantCheckpointStatus.PENDING) return; // re-delivered job: idempotent
     await this.inTenantContext(row.tenantId, () => this.export(row, options));
   }
 
+  /**
+   * The export's own worker session, in a NESTED context (inherit): the caller's session — the
+   * processor's, or a restore's when this is its SAFETY checkpoint — is never overwritten. The row
+   * was read in the caller's tenant session; the job tenant and the row tenant are the same row.
+   */
   private async inTenantContext(tenantId: string, work: () => Promise<void>): Promise<void> {
-    const body = async () => {
+    await this.clsService.run({ ifNested: 'inherit' }, async () => {
       this.clsService.set('tenantId', tenantId);
       this.clsService.set('user', createWorkerSession({ tenantId, kind: 'tenant-checkpoint-export' }) as never);
       await work();
-    };
-    if (this.clsService.isActive()) await body();
-    else await this.clsService.run(body);
+    });
   }
 
   private async export(initial: TenantCheckpointEntity, options: CheckpointExportRunOptions): Promise<void> {

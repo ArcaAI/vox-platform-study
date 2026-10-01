@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createArchiveWriter } from '../../archive';
 import { baseHeader, collect, fakeSealing, manifestFor, TENANT_A, TENANT_B } from '../../archive/__tests__/helpers';
+import { strictCls } from '../../export/__tests__/tenant-scope-fakes';
 import { POST_COMMIT_SETTLE_MS } from '../restore.runner';
 import { CheckpointRestoreRunner } from '../restore.runner';
 import { CheckpointRestoreSweeper, RESTORE_HEARTBEAT_STALE_MS, RESTORE_PENDING_STALE_MS } from '../restore-sweeper';
@@ -48,7 +49,9 @@ function rowRepo<T extends { id: string; version: number; status?: string }>(row
       store.set(row.id, row);
       return row;
     }),
-    findAll: vi.fn(async () => [...store.values()].filter((r) => !['COMPLETED', 'COMPLETED_WITH_WARNINGS', 'FAILED'].includes(r.status ?? '')).map((r) => ({ ...r }))),
+    findActiveAnyTenant: vi.fn(async () =>
+      [...store.values()].filter((r) => !['COMPLETED', 'COMPLETED_WITH_WARNINGS', 'FAILED'].includes(r.status ?? '')).map((r) => ({ ...r })),
+    ),
   };
 }
 
@@ -158,7 +161,12 @@ async function setup(
   const db = { connect: vi.fn(async () => client), query: vi.fn(async () => []) };
   const emitter = { emit: vi.fn() };
   const clsStore = new Map<string, unknown>();
-  const cls = { isActive: () => true, run: (fn: () => unknown) => fn(), set: (k: string, v: unknown) => clsStore.set(k, v), get: (k: string) => clsStore.get(k) };
+  const cls = {
+    isActive: () => true,
+    run: (a: unknown, b?: unknown) => ((typeof a === 'function' ? a : b) as () => unknown)(),
+    set: (k: string, v: unknown) => clsStore.set(k, v),
+    get: (k: string) => clsStore.get(k),
+  };
 
   const runner = new CheckpointRestoreRunner(
     restores as never,
@@ -366,6 +374,7 @@ describe('CheckpointRestoreRunner', () => {
 describe('CheckpointRestoreSweeper', () => {
   function sweeperWith(rows: Record<string, unknown>[], maxLockMinutes = 60, liveBackends: string[] = []) {
     const clock = new FakeClock();
+    const sweeperCls = strictCls();
     const restores = rowRepo(rows.map((r) => ({ version: 1, tenantId: TENANT_A, ...r })) as never);
     const lock = { publishChange: vi.fn(async () => undefined) };
     const settings = { resolve: vi.fn(() => ({ value: maxLockMinutes })) };
@@ -374,7 +383,7 @@ describe('CheckpointRestoreSweeper', () => {
       connect: vi.fn(),
       query: vi.fn(async (sql: string, params: unknown[] = []) => (/count\(\*\)/.test(sql) ? [{ n: liveBackends.includes(params[0] as string) ? 1 : 0 }] : [])),
     };
-    const sweeper = new CheckpointRestoreSweeper(restores as never, lock as never, settings as never, emitter as never, clock, db as never);
+    const sweeper = new CheckpointRestoreSweeper(restores as never, lock as never, settings as never, emitter as never, sweeperCls as never, clock, db as never);
     return { sweeper, restores, lock, emitter, clock, db };
   }
 
