@@ -161,14 +161,20 @@ export function updateSql(d: CheckpointModelDescriptor, columns: readonly string
   );
 }
 
-/** Insert checkpoint rows missing live (RECONCILE and INSERT_ONLY; run parents first). */
-export function insertSql(d: CheckpointModelDescriptor, columns: readonly string[]): string | null {
+/**
+ * Insert checkpoint rows missing live (RECONCILE and INSERT_ONLY; run parents first). The staged
+ * row's tenant scope is re-asserted in the statement itself (`staged` = the staged models).
+ */
+export function insertSql(d: CheckpointModelDescriptor, columns: readonly string[], staged: ReadonlySet<string> = new Set([d.model])): string | null {
   if (d.policy !== 'RECONCILE' && d.policy !== 'INSERT_ONLY') return null;
   if (!columns.includes('id')) throw new Error(`checkpoint restore: ${d.model} staging has no id column`);
   const list = columns.map(q).join(', ');
   const select = columns.map((c) => `s.${q(c)}`).join(', ');
   const table = tableName(d);
-  return `INSERT INTO ${table} (${list}) SELECT ${select} FROM ${stagingTable(d)} s WHERE NOT EXISTS (SELECT 1 FROM ${table} l WHERE l."id" = s."id")`;
+  return (
+    `INSERT INTO ${table} (${list}) SELECT ${select} FROM ${stagingTable(d)} s ` +
+    `WHERE ${stagingScopePredicate(d, 's', staged)} AND NOT EXISTS (SELECT 1 FROM ${table} l WHERE l."id" = s."id")`
+  );
 }
 
 /**

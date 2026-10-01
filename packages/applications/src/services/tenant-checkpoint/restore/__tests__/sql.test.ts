@@ -58,7 +58,7 @@ describe('restore SQL builders', () => {
     it('inserts missing rows with the checkpoint column list', () => {
       expect(insertSql(d, ['id', 'tenantId', 'name'])).toBe(
         `INSERT INTO core."Department" ("id", "tenantId", "name") SELECT s."id", s."tenantId", s."name" ` +
-          `FROM pg_temp."stg_Department" s WHERE NOT EXISTS (SELECT 1 FROM core."Department" l WHERE l."id" = s."id")`,
+          `FROM pg_temp."stg_Department" s WHERE s."tenantId" = $1 AND NOT EXISTS (SELECT 1 FROM core."Department" l WHERE l."id" = s."id")`,
       );
     });
 
@@ -78,9 +78,13 @@ describe('restore SQL builders', () => {
     const d = descriptorFor('User');
     expect(retireSql(d, { columns: ['id', 'username', 'password'] })).toBeNull();
     expect(updateSql(d, ['id', 'username', 'password'])).toBeNull();
-    expect(insertSql(d, ['id', 'username'])).toBe(
+    expect(insertSql(d, ['id', 'username'], new Set(['User', 'UserRoleAssignment']))).toBe(
       `INSERT INTO core."User" ("id", "username") SELECT s."id", s."username" ` +
-        `FROM pg_temp."stg_User" s WHERE NOT EXISTS (SELECT 1 FROM core."User" l WHERE l."id" = s."id")`,
+        `FROM pg_temp."stg_User" s WHERE s."id" IN (` +
+        `SELECT "userId" FROM core."UserRoleAssignment" WHERE "tenantId" = $1 UNION ` +
+        `SELECT "userId" FROM core."UserDepartment" WHERE "tenantId" = $1 UNION ` +
+        `SELECT "userId" FROM pg_temp."stg_UserRoleAssignment") ` +
+        `AND NOT EXISTS (SELECT 1 FROM core."User" l WHERE l."id" = s."id")`,
     );
   });
 
