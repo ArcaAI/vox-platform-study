@@ -24,7 +24,7 @@ import structlog
 from text.core.defaults import apply_generation_defaults
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.guardrail_posture import platform_posture
-from text.core.runtime_defaults import LANE_FLOORS, USER_LANE_FLOOR
+from text.core.runtime_defaults import LM_STUDIO_PROVIDER, USER_LANE_FLOOR, lane_floor
 from text.providers.pool import apply_pool_policy
 from text.services.resizable_semaphore import ResizableSemaphore
 
@@ -42,7 +42,18 @@ def apply_provider_limits(
         # Negative-cached (gateway down) — leave every live value exactly as-is.
         return
 
-    for provider, limits in snapshot.provider_limits().items():
+    provider_limits = snapshot.provider_limits()
+
+    # TASK-1031 D-2/D-3 — the governed LM Studio concurrency sizes the
+    # `lm-studio` user lane only when the SYSTEM runtime profile carries no
+    # `maxConcurrent`: an explicit connection ceiling keeps winning there.
+    parallel = snapshot.lm_studio_parallel()
+    if parallel is not None and "max_concurrent" not in provider_limits.get(LM_STUDIO_PROVIDER, {}):
+        semaphore = semaphores.get(LM_STUDIO_PROVIDER)
+        if semaphore is not None:
+            _resize(LM_STUDIO_PROVIDER, semaphore, parallel)
+
+    for provider, limits in provider_limits.items():
         max_concurrent = limits.get("max_concurrent")
         if max_concurrent is not None:
             semaphore = semaphores.get(provider)
@@ -116,6 +127,13 @@ def apply_lane_budgets(snapshot: EffectiveConfigSnapshot, state: Any) -> None:
     if not snapshot.ok:
         return
     budgets = snapshot.lane_budgets()
+    # TASK-1031 D-2/D-3 — the `lm-studio` judge lane ALWAYS follows the governed
+    # `lmStudio.serving.parallel`; the judge route resizes its live semaphore to
+    # it on the next call (`api/endpoints/judge._ensure_semaphore`).
+    parallel = snapshot.lm_studio_parallel()
+    if parallel is not None:
+        judge_key = (LM_STUDIO_PROVIDER, "judge")
+        budgets[judge_key] = {**budgets.get(judge_key, {}), "max_concurrent": parallel}
     state.lane_budgets = budgets
 
     breakers = getattr(state, "circuit_breakers", None)
@@ -195,7 +213,7 @@ async def refresh_runtime_limits(state: Any) -> None:
 
 def lane_budget(state: Any, provider: str, lane: str) -> Any:
     """The effective budget for one `(provider, lane)`: served over the floor."""
-    floor = LANE_FLOORS.get(lane, USER_LANE_FLOOR)
+    floor = lane_floor(provider, lane)
     budgets = getattr(state, "lane_budgets", None)
     if not isinstance(budgets, dict):
         return floor

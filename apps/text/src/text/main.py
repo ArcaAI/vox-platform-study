@@ -29,6 +29,7 @@ from text.core.runtime_defaults import (
     TASK_STREAM_MAX_LEN,
     TASK_TTL_S,
     USER_LANE_FLOOR,
+    lane_floor,
 )
 
 if TYPE_CHECKING:
@@ -272,8 +273,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # swap in a new one (which would strand in-flight permits and waiters).
         from text.services.resizable_semaphore import ResizableSemaphore
 
+        # Per-provider floor: `lm-studio` starts at its decode-slot count
+        # (TASK-1031), every other provider at the generic floor.
         app.state.provider_semaphores = {
-            name: ResizableSemaphore(USER_LANE_FLOOR.max_concurrent)
+            name: ResizableSemaphore(lane_floor(name, "user").max_concurrent)
             for name in registry.list_providers()
         }
 

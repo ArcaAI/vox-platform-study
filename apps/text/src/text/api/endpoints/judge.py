@@ -63,6 +63,7 @@ from text.core.dependencies import (
     get_judge_circuit_breakers,
     get_judge_semaphores,
     get_provider_registry,
+    get_runtime_limits,
 )
 from text.core.exceptions import (
     CircuitOpenError,
@@ -92,7 +93,7 @@ from text.routing.usage import funding_label
 from text.services.circuit_breaker import CircuitBreaker
 from text.services.judge_guard import judge_scope
 from text.services.resizable_semaphore import ResizableSemaphore
-from text.services.runtime_limits import lane_budget
+from text.services.runtime_limits import _resize, lane_budget
 
 logger = get_logger(__name__)
 
@@ -156,11 +157,18 @@ def _ensure_semaphore(
     Created lazily rather than read with ``.get()``: a missing entry must never
     degrade to "unbounded", and it must NEVER fall back to the user-facing
     semaphore — that would silently re-couple the two budgets.
+
+    Created once, but NOT sized once (TASK-1031 D-3): an existing semaphore is
+    moved to the current budget on every call, so a served change — e.g.
+    `lmStudio.serving.parallel` — applies without a restart. Same object, so
+    in-flight permits stay accounted and a shrink never revokes one.
     """
     semaphore = semaphores.get(provider)
     if semaphore is None:
         semaphore = ResizableSemaphore(budget.max_concurrent)
         semaphores[provider] = semaphore
+    else:
+        _resize(provider, semaphore, budget.max_concurrent)
     return semaphore
 
 
@@ -196,6 +204,10 @@ async def judge(
     # Live control-plane state — the judge lane's budget is one `(provider,
     # lane="judge")` AiRuntimeProfile row now, not the `TEXT_JUDGE_*` block.
     app_state: Any = Depends(get_app_state),
+    # Refreshes the control-plane snapshot (cached; never raises) so the judge
+    # lane's budget tracks a served change even when no `/generate` call has
+    # refreshed it (TASK-1031 D-3). The returned timeouts are user-lane values.
+    _runtime_limits: dict[str, int] = Depends(get_runtime_limits),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> JudgeResponse:
     """Run one safety-plane judgement on the isolated judge pool.

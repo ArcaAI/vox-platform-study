@@ -174,13 +174,33 @@ async def test_non_medical_blocked_when_require_medical() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_medical_allowed_when_platform_does_not_require_medical() -> None:
+async def test_not_required_skips_the_judge_call_entirely() -> None:
+    """TASK-1031 D-5 — with `require_medical` off the verdict would be discarded,
+    so guardrail is not called at all: no judge load, and no fail-closed failure
+    mode for a check nobody asked for."""
     http = _RecordingClient({"is_medical": False})
     client = _client(http, require_medical=False)
 
     result = await client.validate("schedule a meeting")
 
+    assert result == {
+        "allowed": True,
+        "is_medical": True,
+        "confidence": 1.0,
+        "reason": "medical_validation_not_required",
+    }
+    assert http.calls == []
+
+
+@pytest.mark.asyncio
+async def test_not_required_never_fails_closed_on_an_unreachable_guardrail() -> None:
+    http = _RaisingClient()
+    client = _client(http, require_medical=False)
+
+    result = await client.validate("schedule a meeting")
+
     assert result["allowed"] is True
+    assert http.calls == 0
 
 
 # --- the tenant's own policy (PUSH channel) ---------------------------------
@@ -205,6 +225,8 @@ class TestTenantPolicyFoldsOverThePlatformDefault:
         )
 
         assert result["allowed"] is True
+        assert result["reason"] == "medical_validation_not_required"
+        assert http.calls == []
 
     @pytest.mark.asyncio
     async def test_a_tenant_may_opt_in_where_the_platform_does_not_require_it(self) -> None:
@@ -217,6 +239,9 @@ class TestTenantPolicyFoldsOverThePlatformDefault:
         )
 
         assert result["allowed"] is False
+        # TASK-1031 D-5 — a tenant turning it ON still gets the call.
+        assert len(http.calls) == 1
+        assert http.calls[0]["url"].endswith("/api/medical/validate")
 
     @pytest.mark.asyncio
     async def test_no_opinion_is_not_false(self) -> None:

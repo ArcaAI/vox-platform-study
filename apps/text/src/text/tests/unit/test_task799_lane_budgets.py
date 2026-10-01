@@ -8,7 +8,7 @@ families being renamed.
 
 What this suite pins:
 
-  1. the floor is complete and the judge lane's is genuinely SMALLER (the
+  1. the floor is complete and the judge lane genuinely fails FASTER (the
      isolation property those separate vars were bought for);
   2. a served value MERGES over the floor — an absent key keeps the floor rather
      than becoming a zero, which is what would silently take a provider offline;
@@ -40,14 +40,18 @@ def _snapshot(*profiles: dict) -> EffectiveConfigSnapshot:
 
 
 class TestTheFloors:
-    def test_the_judge_lane_is_smaller_than_the_user_lane(self):
+    def test_the_judge_lane_fails_faster_than_the_user_lane(self):
         """The isolation property the three separate families were bought for.
 
         A saturated user pool must not starve a safety-plane judgement, and a
         wedged judge call must not eat the user-facing budget — so the judge lane
-        is deliberately tight and fails fast rather than queueing.
+        fails fast rather than queueing.
+
+        Its CONCURRENCY is no longer smaller (TASK-1031, owner decision
+        2026-10-01): two permits were the whole cause of a week of judge 503s,
+        and the floor now matches LM Studio's 10 decode slots per model.
         """
-        assert JUDGE_LANE_FLOOR.max_concurrent < USER_LANE_FLOOR.max_concurrent
+        assert JUDGE_LANE_FLOOR.max_concurrent == 10
         assert JUDGE_LANE_FLOOR.acquire_timeout_s < USER_LANE_FLOOR.acquire_timeout_s
         assert JUDGE_LANE_FLOOR.timeout_s < USER_LANE_FLOOR.timeout_s
 

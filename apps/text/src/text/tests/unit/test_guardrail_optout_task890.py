@@ -33,6 +33,7 @@ from text.core.guardrail_posture import (
 )
 from text.models.requests import GuardrailPolicyOverride
 from text.services.external_guardrail import (
+    GUARDRAIL_NOT_REQUIRED_REASON,
     GUARDRAIL_TENANT_OPTED_OUT_REASON,
     ExternalGuardrailClient,
 )
@@ -119,6 +120,26 @@ async def test_validate_short_circuits_with_tenant_opted_out_and_calls_nothing()
     )
     assert verdict["allowed"] is True
     assert verdict["reason"] == GUARDRAIL_TENANT_OPTED_OUT_REASON == "tenant_opted_out"
+
+
+@pytest.mark.asyncio
+async def test_an_opt_out_outranks_the_not_required_skip():
+    """TASK-1031 D-5 — the not-required skip must not mask a tenant opt-out on the
+    record: when both apply, the ledger still attributes the skip to the tenant."""
+    verdict = await _client(platform_enabled=True).validate(
+        "a prompt",
+        tenant_policy=GuardrailPolicyOverride(enabled=False, require_medical=False),
+    )
+    assert verdict["reason"] == GUARDRAIL_TENANT_OPTED_OUT_REASON
+
+
+@pytest.mark.asyncio
+async def test_not_required_calls_nothing_and_says_why():
+    verdict = await _client(platform_enabled=True).validate(
+        "a prompt", tenant_policy=GuardrailPolicyOverride(require_medical=False)
+    )
+    assert verdict["allowed"] is True
+    assert verdict["reason"] == GUARDRAIL_NOT_REQUIRED_REASON == "medical_validation_not_required"
 
 
 @pytest.mark.asyncio
