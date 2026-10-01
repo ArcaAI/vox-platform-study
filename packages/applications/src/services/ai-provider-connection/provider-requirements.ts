@@ -178,9 +178,9 @@ export const PROVIDER_REQUIREMENTS: Readonly<Record<string, ProviderRequirement>
   // ── model-registry: the weight-fetch plane ─────────────────────
   'model-registry:huggingface': {
     columns: ['apiKey'],
-    extras: [{ key: 'model', label: 'the model id (org/repo)' }],
+    extras: [],
     platformDefaultWhenBlank: true,
-    why: 'The hub performs no discovery for us: the repo is named explicitly, and a token is what distinguishes an entitled pull of a gated repo from an anonymous one — so a blank row is the anonymous built-in default, and a partly-filled one is neither.',
+    why: 'A token is what distinguishes an entitled pull of a gated or private repo from an anonymous one. The repo is named by each registration (`register-from-hub`), never by this connection — so the token alone is the whole configuration, and a blank row is the anonymous built-in default.',
   },
   'model-registry:s3': {
     columns: ['baseUrl', 'apiKey'],

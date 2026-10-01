@@ -107,16 +107,17 @@ describe('upsertRow — create branch', () => {
     expect(repo.create).toHaveBeenCalledTimes(1);
   });
 
-  it('REFUSES a huggingface model-registry connection with no token', async () => {
-    const { svc } = makeService();
-    await expect(
-      svc.upsertRow(
-        'model-registry',
-        'huggingface',
-        { extraJson: { model: 'openai/whisper-large-v3' }, enabled: true, expectedVersion: 0 } as any,
-        SYSTEM_TENANT_ID,
-      ),
-    ).rejects.toThrow(/apiKey/);
+  // TASK-1023: the model id is not part of the registry connection (each registration names its
+  // repo), so a row without a token is the anonymous built-in default whatever stray extras it has.
+  it('ACCEPTS a huggingface model-registry connection with no token — the anonymous default', async () => {
+    const { svc, repo } = makeService();
+    await svc.upsertRow(
+      'model-registry',
+      'huggingface',
+      { extraJson: { model: 'openai/whisper-large-v3' }, enabled: true, expectedVersion: 0 } as any,
+      SYSTEM_TENANT_ID,
+    );
+    expect(repo.create).toHaveBeenCalledTimes(1);
   });
 
   it('ACCEPTS a huggingface connection carrying both the model id and the token', async () => {

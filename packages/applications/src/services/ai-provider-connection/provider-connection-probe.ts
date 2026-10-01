@@ -185,8 +185,9 @@ export class ProviderConnectionProbe {
       }
     }
 
-    // A body that supplies nothing and finds no stored row has nothing to test.
-    const source: TestProviderConnectionResponse['source'] = bodyApiKey !== null && dto.baseUrl !== undefined ? 'request' : tier;
+    // WHOSE key was checked: a typed key is the request's — even when the endpoint comes from the
+    // stored row — so the console never reports an unsaved, typed token as "the platform row".
+    const source: TestProviderConnectionResponse['source'] = bodyApiKey !== null ? 'request' : tier;
 
     return {
       apiKey,

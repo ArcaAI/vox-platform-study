@@ -224,9 +224,12 @@ describe('model-registry — the built-in weight-fetch plane', () => {
     expect(validateProviderRequirements('model-registry', 'huggingface', bare)).toEqual([]);
   });
 
-  it('huggingface requires a model id once a token is supplied — half a configuration is neither', () => {
-    const errors = validateProviderRequirements('model-registry', 'huggingface', { ...bare, hasApiKey: true });
-    expect(errors.join(' ')).toContain('model');
+  // TASK-1023 (cluster, 2026-10-01): the registry names the repo on EVERY registration
+  // (`register-from-hub`), so the platform token is not tied to one model. Requiring a model id
+  // here made the token unsavable (PUT 400 "'extraJson.model' is required") while the console's
+  // Test connection — which probes the TYPED token — reported it accepted.
+  it('huggingface: a token alone is a complete configuration — no model id is required', () => {
+    expect(validateProviderRequirements('model-registry', 'huggingface', { ...bare, hasApiKey: true })).toEqual([]);
   });
 
   it('huggingface accepts an explicit model id with a token — there is no discovery here', () => {

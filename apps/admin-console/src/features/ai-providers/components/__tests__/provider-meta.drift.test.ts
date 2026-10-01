@@ -100,6 +100,14 @@ describe('the cloud vendor cards mirror the gateway BYO declaration', () => {
     expect(speech!.fields.find((f) => f.name === 'baseUrl')?.label ?? '').not.toMatch(/foundry/i);
   });
 
+  // TASK-1023 (cluster, 2026-10-01): the registry names the repo on every registration, so the
+  // platform HF token is not tied to a model. The required `model` field made the token unsavable.
+  it('the model-registry Hugging Face card asks for the token only — no `model` field', () => {
+    const hf = MODEL_REGISTRY_CARDS.find((p) => p.id === 'huggingface');
+    expect(hf).toBeDefined();
+    expect(hf!.fields.some((f) => f.name === 'model')).toBe(false);
+  });
+
   it('never re-offers the `model` extras pin on an STT card (TASK-952 D-1)', () => {
     // Azure Speech / Azure Foundry never read the key at all; Sarvam / OpenAI
     // read it as an override-wins global pin that silently overrode whatever

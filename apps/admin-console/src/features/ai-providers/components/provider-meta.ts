@@ -311,10 +311,11 @@ const MODEL_REGISTRY_PROVIDERS: readonly ProviderMeta[] = [
     id: 'huggingface',
     label: 'Hugging Face Hub',
     providerClass: 'built-in',
-    hint: 'Blank pulls public repos anonymously. A token is what reaches a gated repo.',
+    hint: 'Blank pulls public repos anonymously. The token is what reaches gated and private repos — every repo registered from Hugging Face uses it.',
     keyLabel: 'Access token',
     keyPlaceholder: 'hf_…',
-    fields: [{ name: 'model', label: 'Model id (org/repo)', placeholder: 'openai/whisper-large-v3', store: 'extra' }],
+    // No model field: each registration names its own repo, so the token is the whole configuration.
+    fields: [],
   },
   {
     id: 's3',

@@ -299,3 +299,33 @@ describe('ProviderConnectionProbe — the vendor of an UNSAVED sibling (TASK-958
     expect((fetchSpy.mock.calls[0] as unknown as [URL, RequestInit])[0].toString()).toBe('https://api.openai.com/v1/models');
   });
 });
+
+// TASK-1023 (cluster, 2026-10-01): an admin typed the platform HF token and pressed Test — the
+// probe checked the TYPED key, but labelled it "the platform row" because no baseUrl was typed,
+// so the console said the token was accepted on the platform row while nothing was stored.
+describe('ProviderConnectionProbe — a typed key is always reported as typed', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a typed apiKey with no baseUrl probes the TYPED key and reports source "request", not the tier', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', fetchSpy);
+    // The platform HF row as seeded on the cluster: enabled, NO stored key.
+    const platformHf = AiProviderConnectionFactory.CreateAiProviderConnection({
+      tenantId: SYSTEM_TENANT_ID,
+      service: 'model-registry',
+      provider: 'huggingface',
+      baseUrl: null,
+      region: null,
+      enabled: true,
+      encryptedApiKey: null,
+      keyVersion: null,
+    });
+    const conns = connections({ [SYSTEM_TENANT_ID]: platformHf });
+    const probe = new ProviderConnectionProbe(conns as any, secrets as any);
+
+    const res = await probe.test('model-registry', 'huggingface', SYSTEM_TENANT_ID, { apiKey: 'hf_typed' });
+
+    expect(res.source).toBe('request');
+    expect(((fetchSpy.mock.calls[0] as unknown as [URL, RequestInit])[1].headers as Record<string, string>).Authorization).toBe('Bearer hf_typed');
+  });
+});
