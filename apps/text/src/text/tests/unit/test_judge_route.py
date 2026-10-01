@@ -367,6 +367,10 @@ class TestPoolIsolation:
         def configure(app):
             app.state.judge_semaphores = {_PROVIDER: judge_sem}
             app.state.provider_semaphores = {_PROVIDER: user_sem}
+            # The judge semaphore follows its lane budget live (TASK-1031), so
+            # the one-permit lane is expressed as a served budget, not only as
+            # a hand-built object the floor would grow.
+            app.state.lane_budgets = {(_PROVIDER, "judge"): {"max_concurrent": 1}}
 
         client, _ = await client_factory(configure=configure)
 

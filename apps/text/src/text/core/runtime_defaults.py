@@ -48,6 +48,16 @@ PROVIDER_TIMEOUT_FLOOR_S = 300
 #: Concurrent in-flight calls per provider before requests queue.
 PROVIDER_MAX_CONCURRENT_FLOOR = 4
 
+#: The engine whose capacity the platform governs directly (TASK-1031 D-1).
+LM_STUDIO_PROVIDER = "lm-studio"
+
+#: LM Studio's decode slots per loaded model when the control plane has not
+#: answered. The governed value is `lmStudio.serving.parallel` (platform admin,
+#: default 10), served as ``lmStudioServing.parallel`` and applied to BOTH lanes
+#: of ``lm-studio`` by `services/runtime_limits.py`; this floor must equal that
+#: default so an unreachable gateway still serves the same capacity.
+LM_STUDIO_PARALLEL_FLOOR = 10
+
 #: Zero means "no client-side rate limiting" — the honest floor, because a
 #: non-zero guess would silently throttle a vendor account whose real quota
 #: nobody told us. Vendor quotas are a property of the account, so they belong on
@@ -138,14 +148,19 @@ USER_LANE_FLOOR = LaneBudget(
 
 #: The internal judge lane (`/generate/internal/judge`).
 #:
-#: Deliberately smaller: judgement calls are short, and an unbounded safety lane
-#: would just relocate the saturation problem. A judge call that cannot get a
-#: permit fails fast with a 503 rather than queueing — guardrail owns the retry
-#: budget for the safety plane, and queueing here would add latency to a call
-#: already on the critical path of a user-facing generation. Its queue size is 0
-#: for the same reason: there is no judge queue, and there must not be one.
+#: Bounded, never unbounded: an unbounded safety lane would just relocate the
+#: saturation problem. A judge call that cannot get a permit fails fast with a
+#: 503 rather than queueing — guardrail owns the retry budget for the safety
+#: plane, and queueing here would add latency to a call already on the critical
+#: path of a user-facing generation. Its queue size is 0 for the same reason:
+#: there is no judge queue, and there must not be one.
+#:
+#: Concurrency 10, not 2 (owner decision 2026-10-01, TASK-1031): two permits
+#: were the cause of every judge-route 503 for a week, and 10 matches LM
+#: Studio's decode slots per model. For ``lm-studio`` the served
+#: `lmStudio.serving.parallel` replaces it live; this is the floor.
 JUDGE_LANE_FLOOR = LaneBudget(
-    max_concurrent=2,
+    max_concurrent=LM_STUDIO_PARALLEL_FLOOR,
     acquire_timeout_s=5.0,
     timeout_s=60,
     failure_threshold=5,
@@ -155,6 +170,17 @@ JUDGE_LANE_FLOOR = LaneBudget(
 )
 
 LANE_FLOORS: dict[str, LaneBudget] = {"user": USER_LANE_FLOOR, "judge": JUDGE_LANE_FLOOR}
+
+#: The user lane of ``lm-studio``: the generic floor at LM Studio's slot count.
+LM_STUDIO_USER_LANE_FLOOR = replace(USER_LANE_FLOOR, max_concurrent=LM_STUDIO_PARALLEL_FLOOR)
+
+
+def lane_floor(provider: str, lane: str) -> LaneBudget:
+    """The floor for one ``(provider, lane)``; an unknown lane is the user lane."""
+    floor = LANE_FLOORS.get(lane, USER_LANE_FLOOR)
+    if floor is USER_LANE_FLOOR and provider == LM_STUDIO_PROVIDER:
+        return LM_STUDIO_USER_LANE_FLOOR
+    return floor
 
 
 #: Guardrail moderation posture floors — see `core/guardrail_posture.py`.

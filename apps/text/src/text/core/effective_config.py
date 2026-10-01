@@ -197,6 +197,18 @@ class EffectiveConfigSnapshot:
                 budgets[(provider, lane)] = entry
         return budgets
 
+    def lm_studio_parallel(self) -> int | None:
+        """The governed LM Studio concurrency, ``lmStudioServing.parallel``.
+
+        `lmStudio.serving.parallel` (platform admin, TASK-1031 D-1): LM Studio's
+        decode slots per model AND this service's per-lane concurrency for
+        ``lm-studio``. Absent / null / invalid is "no opinion" -> None.
+        """
+        group = self.raw.get("lmStudioServing")
+        if not isinstance(group, dict):
+            return None
+        return _positive_int(group.get("parallel"))
+
     def generation_defaults(self) -> dict[str, float | int]:
         """The platform generation profile (`core/defaults.py`).
 
@@ -434,6 +446,7 @@ class EffectiveConfigClient:
             "concurrency",
             "generation",
             "externalGuardrail",
+            "lmStudioServing",
         ):
             value = raw.get(group)
             if isinstance(value, dict) and isinstance(value.get("source"), str):

@@ -104,6 +104,14 @@ def _peer_unhealthy(exc: BaseException) -> bool:
 GUARDRAIL_DISABLED_REASON = "external_guardrail_disabled"
 GUARDRAIL_TENANT_OPTED_OUT_REASON = "tenant_opted_out"
 
+# TASK-1031 D-5 — the gate is ON but the effective posture does not require the
+# prompt to be medical. The medical verdict would be discarded (`allowed` is True
+# whatever it says), so guardrail is not called: the call only added judge-lane
+# load and a fail-CLOSED failure mode for a check nobody asked for. A tenant that
+# turns `require_medical` ON still gets the call. The input gate only — the output
+# screen does not depend on `require_medical`.
+GUARDRAIL_NOT_REQUIRED_REASON = "medical_validation_not_required"
+
 
 def _describe(exc: BaseException) -> str:
     """A NEVER-EMPTY description of a failed attempt: class, plus any message.
@@ -137,12 +145,14 @@ class ExternalGuardrailClient:
     breaker sheds calls while guardrail is slow or unreachable. Every exhausted or
     shed call returns a deterministic NOT-allowed verdict — an errored guardrail can
     NEVER return ``allowed: True`` (there is no fail-open branch). The only
-    allow-without-check paths are the two DECLARED ones, and both
-    say which they are: the platform switch being off
+    allow-without-check paths are the DECLARED ones, and each
+    says which it is: the platform switch being off
     (``external_guardrail_disabled`` — the dev/CI bypass, preserved exactly, and it
     mirrors the empty-token bypass) and a tenant opting this call out
-    (``tenant_opted_out``, TASK-890 OD-R). Neither is an error path, and neither can
-    be reached by a guardrail that answered.
+    (``tenant_opted_out``, TASK-890 OD-R) — plus, on the input gate only, a posture
+    that does not require medical content (``medical_validation_not_required``,
+    TASK-1031 D-5). None is an error path, and none can be reached by a guardrail
+    that answered.
     """
 
     def __init__(
@@ -209,13 +219,21 @@ class ExternalGuardrailClient:
                 "confidence": 1.0,
                 "reason": _skip_reason(posture),
             }
+        if not posture.require_medical:
+            return {
+                "allowed": True,
+                "is_medical": True,
+                "confidence": 1.0,
+                "reason": GUARDRAIL_NOT_REQUIRED_REASON,
+            }
 
         text = prompt if not system_prompt else f"{system_prompt}\n\n{prompt}"
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
             is_medical = bool(payload.get("is_medical", False))
             return {
-                "allowed": is_medical if posture.require_medical else True,
+                # Only reached with `require_medical` on (the skip above).
+                "allowed": is_medical,
                 "is_medical": is_medical,
                 "confidence": float(payload.get("confidence", 0.0)),
                 "reason": payload.get("reasoning")
