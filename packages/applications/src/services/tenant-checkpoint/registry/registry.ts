@@ -213,7 +213,7 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
   }),
   rec('RateLimitRule', 'CONFIG_CONTENT', true, {
     platformGoverned: { kind: 'model' },
-    notes: 'Mixed model: tenant rows only. Written by SUPER_ADMIN only (enabled=false exempts the scope from throttling): platform-governed.',
+    notes: 'Mixed model: tenant rows only. Written by SUPER_ADMIN only (active=false exempts the scope from throttling): platform-governed.',
   }),
   rec('Webhook', 'CONFIG_CONTENT', true, { secretColumns: ['hashedSecret'] }),
   rec('McpServer', 'CONFIG_CONTENT', true, { notes: 'Mixed model: the SYSTEM shared registry never matches $1.' }),

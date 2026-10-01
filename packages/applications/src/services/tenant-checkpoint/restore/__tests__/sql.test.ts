@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
 import { descriptorFor } from '../../registry/registry';
-import { divergedSql, insertSql, retireSql, scopeViolationsSql, stagingTable, updateSql } from '../sql';
+import {
+  crossCategoryReferencedSql,
+  divergedSql,
+  frozenInsertSql,
+  insertSql,
+  neverWrittenColumns,
+  releaseDeletedMarkersSql,
+  retireSql,
+  scopeViolationsSql,
+  stagingTable,
+  uniqueClaimantsSql,
+  updateSql,
+} from '../sql';
 
 const DEPT_COLS = [
   '_metadata', '_version', 'id', 'tenantId', 'name', 'code',
@@ -142,9 +154,9 @@ describe('restore SQL builders', () => {
     it('AgentModelFallback: neither updated nor retired under a published parent; inserts allowed', () => {
       const d = descriptorFor('AgentModelFallback');
       const when = `EXISTS (SELECT 1 FROM core."Agent" a WHERE a."id" = l."agentId" AND a."status" IN ('PUBLISHED','DEPRECATED'))`;
+      // Hard delete (the app's own semantics): a soft-deleted row would keep the (agentId, priority) slot.
       expect(retireSql(d, { columns: ['id', 'tenantId', 'resourceStatus'] })).toBe(
-        `UPDATE core."AgentModelFallback" l SET "resourceStatus" = 'DELETED' ` +
-          `WHERE l."tenantId" = $1 AND l."resourceStatus" <> 'DELETED' AND NOT (${when}) ` +
+        `DELETE FROM core."AgentModelFallback" l WHERE l."tenantId" = $1 AND NOT (${when}) ` +
           `AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_AgentModelFallback" s WHERE s."id" = l."id")`,
       );
       expect(updateSql(d, ['id', 'tenantId', 'priority', 'modelId'])).toBe(
@@ -201,6 +213,101 @@ describe('restore SQL builders', () => {
           `SELECT "userId" FROM core."UserDepartment" WHERE "tenantId" = $1 UNION ` +
           `SELECT "userId" FROM pg_temp."stg_UserRoleAssignment"), false)`,
       );
+    });
+  });
+
+  describe('final fix wave — guards, slots, redaction, secrets', () => {
+    it('the reconciler guard: retire leaves kept rows alone; update skips kept and skipped rows', () => {
+      const d = descriptorFor('Department');
+      expect(retireSql(d, { columns: ['id', 'tenantId', 'resourceStatus'], guard: true })).toContain(
+          `AND NOT EXISTS (SELECT 1 FROM pg_temp."keep_Department" k WHERE k."id" = l."id"::text)`,
+      );
+      const upd = updateSql(d, ['id', 'tenantId', 'name'], { guard: true })!;
+      expect(upd).toContain(`NOT EXISTS (SELECT 1 FROM pg_temp."keep_Department" k WHERE k."id" = l."id"::text)`);
+      expect(upd).toContain(`NOT EXISTS (SELECT 1 FROM pg_temp."skip_Department" k WHERE k."id" = s."id"::text)`);
+    });
+
+    it('R2 I-6 — retiring a consultation frees its encounter key and keeps it in _metadata', () => {
+      const sql = retireSql(descriptorFor('Consultation'), { columns: ['id', 'tenantId', 'resourceStatus', 'externalRef', '_metadata'] })!;
+      expect(sql).toContain(`"externalRef" = NULL`);
+      expect(sql).toContain(`COALESCE(l."_metadata", '{}'::jsonb) || jsonb_build_object('retiredExternalRef', l."externalRef")`);
+    });
+
+    it('R2 I-1 — retire clears the default slots; the release pass frees isDefault and defaultForProvider first', () => {
+      expect(retireSql(descriptorFor('AiRoutingPolicy'), { columns: ['id', 'tenantId', 'resourceStatus', 'isDefault'] })).toContain(`"isDefault" = false`);
+      expect(retireSql(descriptorFor('AiProviderConnection'), { columns: ['id', 'tenantId', 'resourceStatus', 'defaultForProvider'] })).toContain(
+        `"defaultForProvider" = NULL`,
+      );
+      expect(updateSql(descriptorFor('AiRoutingPolicy'), ['id', 'tenantId', 'isDefault', 'resourceStatus'], { release: true })).toContain(
+        `(l."isDefault" AND NOT s."isDefault")`,
+      );
+      expect(updateSql(descriptorFor('AiProviderConnection'), ['id', 'tenantId', 'defaultForProvider'], { release: true })).toContain(
+        `(l."defaultForProvider" IS NOT NULL AND s."defaultForProvider" IS DISTINCT FROM l."defaultForProvider")`,
+      );
+      expect(releaseDeletedMarkersSql(descriptorFor('AiProviderConnection'), { columns: ['id', 'tenantId', 'resourceStatus', 'defaultForProvider'] })).toBe(
+        `UPDATE core."AiProviderConnection" l SET "defaultForProvider" = NULL WHERE l."tenantId" = $1 AND l."resourceStatus" = 'DELETED' ` +
+          `AND (l."defaultForProvider" IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_AiProviderConnection" s WHERE s."id" = l."id")`,
+      );
+    });
+
+    it('R1 I-1 — a re-inserted user never carries a checkpoint password or secret', () => {
+      const sql = insertSql(descriptorFor('User'), ['id', 'username', 'password', 'secret1'], new Set(['User']), { liveColumns: ['id', 'username', 'password', 'secret1', 'secret2'] })!;
+      expect(sql).toMatch(/^INSERT INTO core."User" \("id", "username", "password", "secret1"\) SELECT s."id", s."username", '!checkpoint-restore:password-reset-required', NULL /);
+      expect(sql).not.toContain('s."password"');
+      expect(sql).not.toContain('s."secret1"');
+      // a checkpoint that lacks the column still gets the unusable password (NOT NULL)
+      expect(insertSql(descriptorFor('User'), ['id', 'username'], new Set(['User']), { liveColumns: ['id', 'username', 'password'] })).toContain(
+        `("id", "username", "password") SELECT s."id", s."username", '!checkpoint-restore:password-reset-required'`,
+      );
+    });
+
+    it('R1 M-6 — secret columns are never copied by an update and left out of an insert', () => {
+      const d = descriptorFor('AiProviderConnection');
+      const exclude = neverWrittenColumns(d);
+      const upd = updateSql(d, ['id', 'tenantId', 'name', 'encryptedApiKey', 'keyVersion'], { exclude })!;
+      expect(upd).not.toContain('encryptedApiKey');
+      expect(upd).not.toContain('keyVersion');
+      const ins = insertSql(d, ['id', 'tenantId', 'name', 'encryptedApiKey'], new Set([d.model]), { exclude })!;
+      expect(ins).toContain(`("id", "tenantId", "name")`);
+    });
+
+    it('R1 I-2 — platform-governed columns are kept unless a platform admin requested the restore', () => {
+      const d = descriptorFor('HarnessPolicy');
+      expect(neverWrittenColumns(d).has('safetyEnabled')).toBe(true);
+      expect(neverWrittenColumns(d, { platformAdmin: true }).has('safetyEnabled')).toBe(false);
+    });
+
+    it('R2 C-2 — a fallback is never inserted under a live published agent', () => {
+      expect(frozenInsertSql(descriptorFor('AgentModelFallback'))).toBe(
+        `SELECT s."id"::text AS id FROM pg_temp."stg_AgentModelFallback" s WHERE NOT EXISTS (SELECT 1 FROM core."AgentModelFallback" x WHERE x."id" = s."id") ` +
+          `AND NOT EXISTS (SELECT 1 FROM pg_temp."skip_AgentModelFallback" k WHERE k."id" = s."id"::text) ` +
+          `AND (EXISTS (SELECT 1 FROM core."Agent" a WHERE a."id" = s."agentId" AND a."status" IN ('PUBLISHED','DEPRECATED')))`,
+      );
+      expect(frozenInsertSql(descriptorFor('Department'))).toBeNull();
+    });
+
+    it('inserts skip skipped rows and rows whose staged parent was not restored', () => {
+      const d = descriptorFor('PromptVersion');
+      const sql = insertSql(d, ['id', 'tenantId', 'promptTemplateId'], new Set([d.model]), {
+        guard: true,
+        parents: [{ child: 'PromptVersion', parent: 'PromptTemplate', column: 'promptTemplateId', parentColumn: 'id' }],
+      })!;
+      expect(sql).toContain(`AND NOT EXISTS (SELECT 1 FROM pg_temp."skip_PromptVersion" k WHERE k."id" = s."id"::text)`);
+      expect(sql).toContain(`AND (s."promptTemplateId" IS NULL OR EXISTS (SELECT 1 FROM core."PromptTemplate" lp WHERE lp."id" = s."promptTemplateId"))`);
+    });
+
+    it('R2 I-7 — a retire candidate referenced by a live row of an unselected category is found', () => {
+      expect(
+        crossCategoryReferencedSql(descriptorFor('TenantBucket'), [{ child: 'Media', parent: 'TenantBucket', column: 'bucketId', parentColumn: 'id' }]),
+      ).toContain(`EXISTS (SELECT 1 FROM core."Media" c WHERE c."bucketId" = l."id" AND c."resourceStatus" <> 'DELETED')`);
+    });
+
+    it('R2 I-2 — a unique claimant is only blocked by a holder the restore does not remove', () => {
+      const soft = uniqueClaimantsSql(descriptorFor('PromptTemplate'), ['tenantId', 'name']);
+      expect(soft).toContain(`JOIN core."PromptTemplate" l ON l."tenantId" = s."tenantId" AND l."name" = s."name" AND l."id" <> s."id"`);
+      expect(soft).not.toContain('AND NOT (l."tenantId" = $1');
+      const hard = uniqueClaimantsSql(descriptorFor('AgentModelFallback'), ['agentId', 'priority']);
+      expect(hard).toContain(`AND NOT (l."tenantId" = $1 AND NOT EXISTS (SELECT 1 FROM pg_temp."stg_AgentModelFallback" s WHERE s."id" = l."id")`);
     });
   });
 });
