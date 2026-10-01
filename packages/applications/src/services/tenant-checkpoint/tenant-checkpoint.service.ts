@@ -179,7 +179,8 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
 
   private async enqueueExport(job: CheckpointExportJob): Promise<void> {
     await this.exportQueue.add(JobQueue.TenantCheckpointExport, job, {
-      jobId: job.checkpointId,
+      // BullMQ refuses a custom id containing ':' (unless it has exactly three parts), hence the dash.
+      jobId: job.kind === 'verify-upload' ? `verify-${job.checkpointId}` : job.checkpointId,
       attempts: 1,
       removeOnComplete: true,
       removeOnFail: 100,
@@ -432,9 +433,9 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       }
       throw error;
     }
-    // PENDING = "bytes are in, verification not finished": not UPLOADING (so the idle-upload sweeper
-    // leaves it alone) and not RUNNING (so the stale-export sweeper does not claim it).
-    row.status = TenantCheckpointStatus.PENDING;
+    // The row stays UPLOADING: the verify runner picks up UPLOADING (or PENDING) rows and moves it to
+    // RUNNING itself, with a heartbeat. The multipart upload is finished, so its id is dropped — a
+    // repeated `complete` is then 409 and the idle-upload sweeper has nothing to abort.
     row.sizeBytes = sizeBytes;
     row.uploadId = null;
     const saved = await this.transition(row);

@@ -165,14 +165,20 @@ describe('TenantCheckpointService — uploads', () => {
     expect(f.exportQueue.add).not.toHaveBeenCalled();
   });
 
-  it('completing queues the verification job and leaves the row PENDING', async () => {
+  it('completing queues the verification job (id verify-<id>) and leaves the row UPLOADING for the runner', async () => {
     const f = buildService();
     const row = checkpointEntity({ status: TenantCheckpointStatus.UPLOADING, origin: 'UPLOADED' as never, uploadId: 'S3-UPLOAD-1' });
     f.checkpoints.findByIdOrNull.mockResolvedValue(row);
     const out = await f.service.completeUpload(TENANT_A, row.id, { parts: [{ partNumber: 1, etag: 'e' }] });
 
-    expect(out.status).toBe('PENDING');
-    expect(f.exportQueue.add.mock.calls[0][1]).toEqual({ kind: 'verify-upload', checkpointId: row.id, tenantId: TENANT_A });
+    expect(out.status).toBe('UPLOADING');
+    const [, payload, opts] = f.exportQueue.add.mock.calls[0];
+    expect(payload).toEqual({ kind: 'verify-upload', checkpointId: row.id, tenantId: TENANT_A });
+    expect(opts).toMatchObject({ jobId: `verify-${row.id}` });
+    expect(opts.jobId).not.toContain(':'); // BullMQ rejects custom ids containing ':'
+    const saved = f.checkpoints.updateWithVersion.mock.calls[0][1] as { uploadId: string | null; sizeBytes: number };
+    expect(saved.uploadId).toBeNull();
+    expect(saved.sizeBytes).toBe(123);
   });
 });
 
