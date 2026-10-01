@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { ConsentGrantEntity, ConsentGrantRepository } from '@arcaai/domains';
 import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exceptions';
 import { ConsentAssertInput, ConsentDecision, ConsentDenialReason, IConsultationConsentService } from './IConsultationConsentService';
@@ -34,6 +35,13 @@ export class ConsultationConsentService implements IConsultationConsentService {
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(private readonly consentGrantRepository: ConsentGrantRepository) {}
+
+  /** A restore rewrote this tenant's consent grants from another process; drop its cached decisions. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(payload: { tenantId: string }): void {
+    const prefix = `${payload.tenantId}::`;
+    for (const key of [...this.cache.keys()]) if (key.startsWith(prefix)) this.cache.delete(key);
+  }
 
   private cacheKey(tenantId: string, externalPatientId: string, purpose: string): string {
     // tenantId-leading and mandatory — .claude/rules/09-infrastructure-devops.md §Config caches rule 1.

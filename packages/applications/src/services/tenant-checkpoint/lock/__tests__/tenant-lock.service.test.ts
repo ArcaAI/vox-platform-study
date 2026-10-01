@@ -1,6 +1,7 @@
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TENANT_LOCK_CHANNEL } from '../../contracts';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-restore-events';
 import { TenantLockService } from '../tenant-lock.service';
 
 interface ActiveRestoreReader {
@@ -13,13 +14,15 @@ describe('TenantLockService', () => {
   let subject: Subject<string>;
   let subscriber: { subscribeToChannel: ReturnType<typeof vi.fn> };
   let service: TenantLockService;
+  let emitter: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     repo = { findActiveByTenant: vi.fn() };
     redis = { publish: vi.fn().mockResolvedValue(undefined) };
     subject = new Subject<string>();
     subscriber = { subscribeToChannel: vi.fn().mockResolvedValue(subject.asObservable()) };
-    service = new TenantLockService(repo as never, redis as never, subscriber as never);
+    emitter = { emit: vi.fn() };
+    service = new TenantLockService(repo as never, redis as never, subscriber as never, emitter as never);
     await service.onModuleInit();
   });
 
@@ -47,8 +50,10 @@ describe('TenantLockService', () => {
     await service.state('T');
     await service.state('U');
     subject.next(JSON.stringify({ tenantId: 'T' }));
+    await new Promise((r) => setImmediate(r));
     await service.state('T');
     await service.state('U');
+    // T was re-read eagerly by the message; U stayed cached.
     expect(repo.findActiveByTenant).toHaveBeenCalledTimes(3);
     expect(subscriber.subscribeToChannel).toHaveBeenCalledWith(TENANT_LOCK_CHANNEL);
   });
@@ -67,5 +72,56 @@ describe('TenantLockService', () => {
     await expect(service.state('T')).rejects.toThrow('db down');
     repo.findActiveByTenant.mockResolvedValueOnce(null);
     await expect(service.state('T')).resolves.toEqual({ locked: false });
+  });
+
+  describe('restore-completed event', () => {
+    const flush = () => new Promise((r) => setImmediate(r));
+
+    it('emits once when a channel message finds the tenant unlocked after it was locked', async () => {
+      repo.findActiveByTenant.mockResolvedValueOnce({ id: 'R1', status: 'RECONCILING' });
+      await service.state('T');
+      repo.findActiveByTenant.mockResolvedValue(null);
+      subject.next(JSON.stringify({ tenantId: 'T' }));
+      await flush();
+      expect(emitter.emit).toHaveBeenCalledTimes(1);
+      expect(emitter.emit).toHaveBeenCalledWith(TENANT_RESTORE_COMPLETED_EVENT, { tenantId: 'T' });
+      subject.next(JSON.stringify({ tenantId: 'T' }));
+      await flush();
+      expect(emitter.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not emit on unlocked -> unlocked, nor when a lock begins', async () => {
+      repo.findActiveByTenant.mockResolvedValue(null);
+      await service.state('T');
+      subject.next(JSON.stringify({ tenantId: 'T' }));
+      await flush();
+      repo.findActiveByTenant.mockResolvedValue({ id: 'R1', status: 'LOCKING' });
+      subject.next(JSON.stringify({ tenantId: 'T' }));
+      await flush();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('emits when the cache TTL expiry is what reveals the unlock (missed message)', async () => {
+      vi.useFakeTimers();
+      try {
+        repo.findActiveByTenant.mockResolvedValueOnce({ id: 'R1', status: 'POST_COMMIT' });
+        await service.state('T');
+        vi.advanceTimersByTime(6_000);
+        repo.findActiveByTenant.mockResolvedValue(null);
+        await service.state('T');
+        expect(emitter.emit).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not mistake a failed read for an unlock', async () => {
+      repo.findActiveByTenant.mockResolvedValueOnce({ id: 'R1', status: 'VERIFYING' });
+      await service.state('T');
+      repo.findActiveByTenant.mockRejectedValueOnce(new Error('db down'));
+      subject.next(JSON.stringify({ tenantId: 'T' }));
+      await flush();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
   });
 });

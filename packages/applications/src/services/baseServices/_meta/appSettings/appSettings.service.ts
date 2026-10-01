@@ -1,3 +1,4 @@
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../../../tenant-checkpoint/lock/tenant-restore-events';
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
@@ -493,6 +494,16 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
+    }
+  }
+
+  /** A restore rewrote tenant settings from another process; reload the settings cache. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  async onTenantRestoreCompleted(): Promise<void> {
+    try {
+      await this.refreshCache();
+    } catch (error) {
+      this.logger.error({ message: 'Failed to refresh settings cache after a tenant restore', error: error instanceof Error ? error.message : String(error) });
     }
   }
 

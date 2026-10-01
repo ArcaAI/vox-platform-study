@@ -1,5 +1,6 @@
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
 import { QuotaExceededException } from '@arcaai/exceptions';
@@ -509,6 +510,12 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       });
       return 0;
     }
+  }
+
+  /** A restore rewrote this tenant's entitlements from another process; drop its cached policy. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(payload: { tenantId: string }): void {
+    this.rateLimitPolicyCache.delete(payload.tenantId);
   }
 
   // --- Rate-limit policy for the pre-auth throttler (Q7) -----------------

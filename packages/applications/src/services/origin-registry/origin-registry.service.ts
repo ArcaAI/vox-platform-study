@@ -36,6 +36,7 @@
 // interesting/narrow grants before the broad ones. Nothing about the
 // registry's ANSWER to `tenantsFor`/`has`/`allows` depends on this order.
 
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -273,6 +274,13 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * callback goes on to schedule asynchronously — with the store detached.
    * ═══════════════════════════════════════════════════════════════════════
    */
+  /** A restore rewrote allowed origins from another process; reload the index. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(): Promise<void> {
+    return this.onInvalidationEvent();
+  }
+
+
   @OnEvent('origin-registry.invalidate')
   @OnEvent('app-settings.cache-refreshed')
   onInvalidationEvent(): Promise<void> {

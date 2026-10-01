@@ -1,3 +1,5 @@
+import { OnEvent } from '@nestjs/event-emitter';
+import { TENANT_RESTORE_COMPLETED_EVENT } from '../tenant-checkpoint/lock/tenant-restore-events';
 import { BadRequestException, Injectable, Inject, Optional } from '@nestjs/common';
 import { allowInsecureRequests, discovery, type Configuration } from 'openid-client';
 import { SAML, ValidateInResponseTo } from '@node-saml/node-saml';
@@ -212,6 +214,13 @@ export class IdpResolverService {
     const client = await this.buildSamlClient(config, acsUrl, spPrivateKeyPem);
     this.samlCache.set(provider.id, { client, cachedAt: Date.now() });
     return { client, provider };
+  }
+
+  /** A restore rewrote this tenant's identity providers from another process; drop every cached client. */
+  @OnEvent(TENANT_RESTORE_COMPLETED_EVENT)
+  onTenantRestoreCompleted(): void {
+    this.cache.clear();
+    this.samlCache.clear();
   }
 
   /** Evict a provider's cached client — call after a config update or secret rotation. */
