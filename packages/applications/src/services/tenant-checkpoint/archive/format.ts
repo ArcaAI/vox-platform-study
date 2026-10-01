@@ -90,3 +90,8 @@ export function parseHeaderJson(json: Buffer): CheckpointHeader {
   if (Buffer.from(o.noncePrefix as string, 'base64').length !== NONCE_PREFIX_BYTES) throw unsupported('Checkpoint nonce prefix is malformed');
   return o as unknown as CheckpointHeader;
 }
+
+/** The entry a manifest table row describes: `db/<Model>.csv.gz`. */
+export function tableEntryName(model: string): string {
+  return `db/${model}.csv.gz`;
+}
