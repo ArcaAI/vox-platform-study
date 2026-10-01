@@ -62,6 +62,33 @@ export interface ListObjectsResult {
 export interface PresignGetParams extends BlobObjectLocation {
   /** Lifetime of the signed URL in seconds. */
   expiresInSeconds: number;
+  /** Optional `Content-Disposition` the store returns with the object (e.g. `attachment; filename="…"`). */
+  responseContentDisposition?: string;
+}
+
+/** Streaming upload of unknown length (multipart under the hood). */
+export interface PutObjectStreamParams extends BlobObjectLocation {
+  body: Readable;
+  contentType?: string;
+  /** Part size for the multipart path; defaults to the provider's (≥ 5 MiB). */
+  partSizeBytes?: number;
+  /** Aborting cancels the upload and discards any uploaded parts. */
+  signal?: AbortSignal;
+}
+
+export interface MultipartUploadParams extends BlobObjectLocation {
+  uploadId: string;
+}
+
+export interface PresignUploadPartParams extends MultipartUploadParams {
+  /** 1-based part number. */
+  partNumber: number;
+  expiresInSeconds: number;
+}
+
+export interface CompleteMultipartUploadParams extends MultipartUploadParams {
+  /** Contiguous, ascending from 1. */
+  parts: { partNumber: number; etag: string }[];
 }
 
 export interface PresignPutParams extends BlobObjectLocation {
@@ -175,6 +202,23 @@ export interface IBlobStorageProvider {
 
   /** Cheap connectivity/credentials probe. Returns false on any failure. */
   healthCheck(): Promise<boolean>;
+
+  // ---- streaming + browser multipart (S3/MinIO only; optional) ----------------------------------
+
+  /** Upload a stream of unknown length; resolves with the stored size. */
+  putObjectStream?(params: PutObjectStreamParams): Promise<{ sizeBytes: number }>;
+
+  /** Start a multipart upload whose parts are uploaded by someone else (presigned part URLs). */
+  createMultipartUpload?(params: BlobObjectLocation & { contentType?: string }): Promise<{ uploadId: string }>;
+
+  /** Presigned PUT URL for one part, signed for the public endpoint. */
+  presignUploadPart?(params: PresignUploadPartParams): Promise<string>;
+
+  /** Complete a multipart upload; resolves with the final object size. */
+  completeMultipartUpload?(params: CompleteMultipartUploadParams): Promise<{ sizeBytes: number }>;
+
+  /** Abort a multipart upload, discarding its parts. Idempotent. */
+  abortMultipartUpload?(params: MultipartUploadParams): Promise<void>;
 }
 
 /** DI token for {@link IBlobStorageProvider}. */

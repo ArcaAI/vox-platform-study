@@ -1,14 +1,19 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
   CreateBucketCommand,
+  CreateMultipartUploadCommand,
   DeleteBucketCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
   PutBucketLifecycleConfigurationCommand,
   PutObjectCommand,
   S3Client,
+  UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Logger, NotFoundException } from '@nestjs/common';
@@ -18,16 +23,26 @@ import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
 import {
+  BlobObjectLocation,
+  CompleteMultipartUploadParams,
   DeleteObjectParams,
   GetObjectParams,
   IBlobStorageProvider,
   LifecycleRule,
   ListObjectsParams,
   ListObjectsResult,
+  MultipartUploadParams,
   PresignGetParams,
   PresignPutParams,
+  PresignUploadPartParams,
   PutObjectParams,
+  PutObjectStreamParams,
 } from './IBlobStorageProvider';
+
+/** S3's floor for every part but the last. */
+const MIN_PART_BYTES = 5 * 1024 * 1024;
+const DEFAULT_STREAM_PART_BYTES = 16 * 1024 * 1024;
+const MAX_PARTS = 10_000;
 
 /**
  * Construction config for {@link S3BlobProvider}. Non-secret values come from
@@ -187,7 +202,12 @@ export class S3BlobProvider implements IBlobStorageProvider {
     // outlive the signature (the store sends this header back on the object).
     return getSignedUrl(
       this.presignClient,
-      new GetObjectCommand({ Bucket: params.bucket, Key: params.key, ResponseCacheControl: 'private, no-store' }),
+      new GetObjectCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+        ResponseCacheControl: 'private, no-store',
+        ...(params.responseContentDisposition ? { ResponseContentDisposition: params.responseContentDisposition } : {}),
+      }),
       {
         expiresIn: params.expiresInSeconds,
       },
@@ -250,6 +270,126 @@ export class S3BlobProvider implements IBlobStorageProvider {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
+    }
+  }
+
+  /**
+   * Streams a body of unknown length: one PutObject when it fits in a single part, otherwise a
+   * multipart upload with parts of exactly `partSizeBytes` (the last may be shorter). Memory is
+   * bounded by one part. Any failure — source, S3 or abort — aborts the multipart upload so no
+   * orphaned parts hold storage.
+   */
+  async putObjectStream(params: PutObjectStreamParams): Promise<{ sizeBytes: number }> {
+    const partSize = Math.max(MIN_PART_BYTES, params.partSizeBytes ?? DEFAULT_STREAM_PART_BYTES);
+    const { signal } = params;
+    const sendOpts = signal ? { abortSignal: signal } : undefined;
+    let uploadId: string | undefined;
+    const parts: Array<{ PartNumber: number; ETag: string }> = [];
+    let pending: Buffer[] = [];
+    let pendingBytes = 0;
+    let total = 0;
+
+    const uploadPart = async (body: Buffer) => {
+      if (!uploadId) {
+        const created = await this.forBucket(params.bucket, () =>
+          this.client.send(new CreateMultipartUploadCommand({ Bucket: params.bucket, Key: params.key, ContentType: params.contentType }), sendOpts),
+        );
+        uploadId = String(created?.UploadId ?? '');
+        if (!uploadId) throw new Error(`CreateMultipartUpload returned no UploadId for '${params.key}'`);
+      }
+      const partNumber = parts.length + 1;
+      if (partNumber > MAX_PARTS) throw new Error(`object '${params.key}' exceeds ${MAX_PARTS} parts`);
+      const res = await this.client.send(
+        new UploadPartCommand({ Bucket: params.bucket, Key: params.key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: body.length }),
+        sendOpts,
+      );
+      parts.push({ PartNumber: partNumber, ETag: String(res?.ETag ?? '') });
+    };
+
+    try {
+      for await (const c of params.body) {
+        signal?.throwIfAborted();
+        const chunk = Buffer.isBuffer(c) ? c : Buffer.from(c as Uint8Array);
+        if (chunk.length === 0) continue;
+        pending.push(chunk);
+        pendingBytes += chunk.length;
+        total += chunk.length;
+        while (pendingBytes > partSize) {
+          const all = Buffer.concat(pending, pendingBytes);
+          pending = [all.subarray(partSize)];
+          pendingBytes = all.length - partSize;
+          await uploadPart(all.subarray(0, partSize));
+        }
+      }
+      signal?.throwIfAborted();
+      const rest = Buffer.concat(pending, pendingBytes);
+      pending = [];
+      if (!uploadId) {
+        await this.forBucket(params.bucket, () =>
+          this.client.send(
+            new PutObjectCommand({ Bucket: params.bucket, Key: params.key, Body: rest, ContentLength: rest.length, ContentType: params.contentType }),
+            sendOpts,
+          ),
+        );
+        return { sizeBytes: total };
+      }
+      if (rest.length > 0) await uploadPart(rest);
+      await this.client.send(
+        new CompleteMultipartUploadCommand({ Bucket: params.bucket, Key: params.key, UploadId: uploadId, MultipartUpload: { Parts: parts } }),
+        sendOpts,
+      );
+      return { sizeBytes: total };
+    } catch (error) {
+      if (uploadId) {
+        await this.client
+          .send(new AbortMultipartUploadCommand({ Bucket: params.bucket, Key: params.key, UploadId: uploadId }))
+          .catch(() => undefined);
+      }
+      params.body.destroy();
+      throw error;
+    }
+  }
+
+  async createMultipartUpload(params: BlobObjectLocation & { contentType?: string }): Promise<{ uploadId: string }> {
+    const created = await this.forBucket(params.bucket, () =>
+      this.client.send(new CreateMultipartUploadCommand({ Bucket: params.bucket, Key: params.key, ContentType: params.contentType })),
+    );
+    const uploadId = String(created?.UploadId ?? '');
+    if (!uploadId) throw new Error(`CreateMultipartUpload returned no UploadId for '${params.key}'`);
+    return { uploadId };
+  }
+
+  /** Signed with `presignClient`, so the URL names the public endpoint the browser can reach. */
+  async presignUploadPart(params: PresignUploadPartParams): Promise<string> {
+    return getSignedUrl(
+      this.presignClient,
+      new UploadPartCommand({ Bucket: params.bucket, Key: params.key, UploadId: params.uploadId, PartNumber: params.partNumber }),
+      { expiresIn: params.expiresInSeconds },
+    );
+  }
+
+  async completeMultipartUpload(params: CompleteMultipartUploadParams): Promise<{ sizeBytes: number }> {
+    await this.forBucket(params.bucket, () =>
+      this.client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: params.bucket,
+          Key: params.key,
+          UploadId: params.uploadId,
+          MultipartUpload: { Parts: params.parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })) },
+        }),
+      ),
+    );
+    const head = await this.client.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key }));
+    return { sizeBytes: Number(head?.ContentLength ?? 0) };
+  }
+
+  async abortMultipartUpload(params: MultipartUploadParams): Promise<void> {
+    try {
+      await this.client.send(new AbortMultipartUploadCommand({ Bucket: params.bucket, Key: params.key, UploadId: params.uploadId }));
+    } catch (error) {
+      // Idempotent: an upload that is already gone (aborted, completed, swept) is not an error.
+      if ((error as { name?: string })?.name === 'NoSuchUpload') return;
+      throw error;
     }
   }
 

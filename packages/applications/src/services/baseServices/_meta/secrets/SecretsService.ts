@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { LRUCacheWithDelete } from 'mnemonist';
 import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretFetchOptions, SecretsHealth, SecretsProviderName } from './ISecretsProvider';
+import { CheckpointError } from '../../../tenant-checkpoint/contracts';
 
 export interface SecretsServiceOptions {
   /** Default TTL applied to every cached secret. Default 300s. */
@@ -472,6 +473,52 @@ export class SecretsService implements OnModuleDestroy {
       throw new Error('SecretsService.decrypt() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
     }
     return maybe.decrypt(ciphertext, keyName);
+  }
+
+  /**
+   * Capability predicate for Transit signing (sign / verify / public key) — true iff the provider
+   * is Vault. Same runtime-capability posture as `supportsTransit()`.
+   */
+  supportsSigning(): boolean {
+    const p = this.provider as unknown as { sign?: unknown; verify?: unknown; publicKey?: unknown };
+    return typeof p.sign === 'function' && typeof p.verify === 'function' && typeof p.publicKey === 'function';
+  }
+
+  private signingProvider(): {
+    sign: (k: string, d: Buffer) => Promise<string>;
+    verify: (k: string, d: Buffer, s: string) => Promise<boolean>;
+    publicKey: (k: string, v?: number) => Promise<string | null>;
+  } {
+    if (!this.supportsSigning()) {
+      throw new CheckpointError('SEALING_UNAVAILABLE', 'Transit signing requires the Vault secrets provider (SECRETS_PROVIDER=vault)');
+    }
+    return this.provider as unknown as ReturnType<SecretsService['signingProvider']>;
+  }
+
+  /** Vault `transit/sign/<keyName>` over `data` (sent base64); returns `vault:vN:…`. */
+  async sign(keyName: string, data: Buffer): Promise<string> {
+    return this.signingProvider().sign(keyName, data);
+  }
+
+  /** Vault `transit/verify/<keyName>`. */
+  async verify(keyName: string, data: Buffer, signature: string): Promise<boolean> {
+    return this.signingProvider().verify(keyName, data, signature);
+  }
+
+  /**
+   * Public key of `<keyName>` (`transit/keys/<keyName>`): `keys[version]` when `version` is given,
+   * otherwise the latest. A missing version (trimmed key) is SEALING_UNAVAILABLE.
+   */
+  async publicKey(keyName: string, version?: number): Promise<string> {
+    const pk = await this.signingProvider().publicKey(keyName, version);
+    if (!pk) {
+      throw new CheckpointError(
+        'SEALING_UNAVAILABLE',
+        `Transit key '${keyName}' has no public key for version ${version ?? 'latest'} (was the key trimmed?)`,
+        { keyName, version: version ?? 'latest' },
+      );
+    }
+    return pk;
   }
 
   /**
