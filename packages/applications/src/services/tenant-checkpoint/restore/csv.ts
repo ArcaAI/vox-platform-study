@@ -121,3 +121,41 @@ export class CsvColumnFilter extends Transform {
     this.push(Buffer.concat(out));
   }
 }
+
+/**
+ * Whole-text CSV parse (COPY csv output) into records of fields. An unquoted empty field — COPY's
+ * NULL — is `null`; a quoted empty field is `''`. For small tables only (it buffers).
+ */
+export function parseCsvRecords(text: string): (string | null)[][] {
+  const records: (string | null)[][] = [];
+  let record: (string | null)[] = [];
+  let field = '';
+  let quoted = false;
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') inQuotes = false;
+      else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+      quoted = true;
+    } else if (ch === ',' || ch === '\n') {
+      record.push(field === '' && !quoted ? null : field);
+      field = '';
+      quoted = false;
+      if (ch === '\n') {
+        records.push(record);
+        record = [];
+      }
+    } else if (ch !== '\r') field += ch;
+  }
+  if (field !== '' || quoted || record.length) {
+    record.push(field === '' && !quoted ? null : field);
+    records.push(record);
+  }
+  return records;
+}

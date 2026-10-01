@@ -118,6 +118,7 @@ export class CheckpointRestoreRunner extends BaseService {
     let committedAt: number | null = null;
     let result: ReconcileResult | null = null;
     let safetyCheckpointId: string | null = null;
+    const mediaWarnings: RestoreWarning[] = [];
     try {
       // 1. LOCKING ------------------------------------------------------------------------------
       await this.setStatus(id, TenantCheckpointRestoreStatus.LOCKING, (row) => {
@@ -148,7 +149,8 @@ export class CheckpointRestoreRunner extends BaseService {
 
       // 4. media bytes missing from their buckets ----------------------------------------------
       if (categories.includes('CLINICAL') && verified.header.includesMedia && verified.manifest.media?.length) {
-        await this.withReader(verified, objectKey, (reader) => this.media.reupload(tenantId, verified.manifest, reader, this.db.query));
+        const media = await this.withReader(verified, objectKey, (reader) => this.media.reupload(tenantId, verified.manifest, reader, this.db.query));
+        mediaWarnings.push(...media.warnings);
       }
       this.throwIfAborted(aborted);
 
@@ -188,7 +190,7 @@ export class CheckpointRestoreRunner extends BaseService {
 
     // 6. POST_COMMIT — never undoes the restore ---------------------------------------------------
     const done = result!;
-    const warnings: RestoreWarning[] = [...done.warnings];
+    const warnings: RestoreWarning[] = [...mediaWarnings, ...done.warnings];
     try {
       await this.setStatus(id, TenantCheckpointRestoreStatus.POST_COMMIT);
       warnings.push(
