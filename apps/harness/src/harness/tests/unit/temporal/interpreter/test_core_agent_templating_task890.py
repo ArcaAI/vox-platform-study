@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput, ResolvedAgent, ResolvedPrompt
 from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.nodes._text_fallback import (
@@ -531,7 +532,9 @@ class TestCoreAgentCompositeInstruction:
             )
 
         assert excinfo.value.path == "trigger.absent"
-        assert excinfo.value.template_ref == "agent:discharge-writer#revisit"
+        # TASK-1035 — `compose_messages` checks the whole SELECTED instruction before
+        # rendering and names every missing path against the agent, not one fragment.
+        assert excinfo.value.template_ref == "agent:discharge-writer"
 
     def test_a_join_absent_from_the_artifact_defaults(self) -> None:
         prompt = core._system_prompt(
@@ -623,7 +626,9 @@ class TestCoreAgentCompositeOnTheActivity:
 
         # TASK-1001 (OD-12) — no `output_language_policy` fragment was selected, so the platform
         # default's output-language step is the last paragraph.
-        assert calls[0]["system_prompt"] == "Base.\n\nAdult.\n\n" + _ENGLISH_STEP
+        assert calls[0]["system_prompt"] == (
+            platform_rules() + "\n\nBase.\n\nAdult.\n\n" + _ENGLISH_STEP
+        )
 
     @pytest.mark.asyncio
     async def test_the_selected_keys_ride_the_node_result(self, harness) -> None:
@@ -668,7 +673,7 @@ class TestCoreAgentCompositeOnTheActivity:
 
         assert result.status == "SUCCEEDED"
         assert result.prompt_fragments == ["base"]
-        assert calls[0]["system_prompt"] == "Base.\n\n" + _ENGLISH_STEP
+        assert calls[0]["system_prompt"] == platform_rules() + "\n\nBase.\n\n" + _ENGLISH_STEP
 
     @pytest.mark.asyncio
     async def test_an_empty_composition_degrades_with_the_named_code(self, harness) -> None:

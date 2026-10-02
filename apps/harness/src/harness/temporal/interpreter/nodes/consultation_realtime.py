@@ -67,6 +67,7 @@ from temporalio import activity
 
 from harness.core.config import get_settings
 from harness.core.llm_egress import known_phi_from
+from harness.services import composed_prompt_recorder
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError
@@ -114,6 +115,21 @@ LOOP_EVENT_SUMMARY_INTERIM = "summary.interim"
 _CORRECTION_CATEGORIES = {"spelling", "medicalTerm", "drugName"}
 
 _JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _record_live_call(
+    payload: NodeActivityInput, *, provider: str, result: Any, system: str | None, user: str
+) -> None:
+    """OD-9 — record what one realtime text call SENT, fire-and-forget (never fails the node)."""
+    composed_prompt_recorder.record_composed_prompt(
+        tenant_id=payload.tenant_id,
+        consultation_id=run_identity(payload.run_payload).consultation_id,
+        phase="live",
+        provider=getattr(result, "provider", None) or provider,
+        egress=getattr(result, "egress", None),
+        system=system,
+        user=user,
+    )
 
 
 def _optional_str(value: Any) -> str | None:
@@ -306,6 +322,9 @@ async def interpreter_consultation_realtime_summary(
                 },
             )
 
+        _record_live_call(
+            payload, provider=provider, result=result, system=system_prompt, user=window
+        )
         summaries.append(result.content)
         sections, running_summary = sections_for("\n\n".join(summaries))
 
@@ -469,6 +488,7 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
         )
         return NodeActivityResult(status="DEGRADED", reason=f"suggestion generation failed: {exc}")
 
+    _record_live_call(payload, provider=provider, result=result, system=instruction, user=text)
     parsed = _parse_json_object(result.content)
     raw = parsed.get("suggestions") if isinstance(parsed, dict) else None
     if not isinstance(raw, list):
@@ -681,6 +701,9 @@ async def interpreter_consultation_propose_corrections(
             output=unchanged,
         )
 
+    _record_live_call(
+        payload, provider=provider, result=result, system=instruction, user=user_prompt
+    )
     parsed = _parse_json_object(result.content)
     raw = parsed.get("proposals") if isinstance(parsed, dict) else None
     if not isinstance(raw, list):

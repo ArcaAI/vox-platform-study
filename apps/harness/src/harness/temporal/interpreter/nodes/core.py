@@ -40,6 +40,7 @@ from temporalio import activity
 
 from harness.core.config import get_settings
 from harness.core.llm_egress import egress_counts, known_phi_from, provider_locality
+from harness.services import composed_prompt_recorder
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError, usage_detail_counters
@@ -52,6 +53,11 @@ from harness.temporal.activities import (
     failed_attempt_stats,
 )
 from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
+from harness.temporal.interpreter.compose_messages import (
+    ComposedMessages,
+    compose_messages,
+    platform_rules,
+)
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
@@ -84,16 +90,16 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     wire_provider,
 )
 from harness.temporal.interpreter.output_language import (
-    append_default_output_language_step,
+    OutputLanguage,
     output_language_policy_selected,
     resolve_platform_output_language,
 )
 from harness.temporal.interpreter.prompt_composition import (
     ComposedPrompt,
     PromptCompositionEmpty,
-    compose_prompt,
+    build_prompt_scope,
 )
-from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
+from harness.temporal.interpreter.templating import PromptVariableUnresolved
 
 _LOGGER = structlog.get_logger(__name__)
 
@@ -717,93 +723,10 @@ def _bound_context_payload_schema(resolved: ResolvedAgent) -> Any:
     return schema.get("payloadSchema") if isinstance(schema, dict) else None
 
 
-def _prompt_scope(
-    variables: dict[str, Any],
-    run_context: dict[str, Any],
-    context_payload_schema: Any = None,
-) -> dict[str, Any]:
-    """The render scope of §3.3, built once so both call shapes agree.
-
-    Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, the bare names bound by the agent's
-    ``instruction.variables`` (overlaid by the node's ``overrides.promptVariables``), and
-    ``context`` as an ALIAS of ``trigger`` — unwrapped through ``_unwrap_single_kind_context``
-    when the agent's frozen schema declares a single kind keyed ``context`` (J3-5).
-
-    The alias is what makes ONE prompt portable between a workflow run — where the validated
-    payload arrives as ``trigger`` — and a standalone ``POST /agents/:slug/invocations``, where
-    the caller supplies it as ``context``. It is applied BEFORE the bare names, so an agent that
-    genuinely declares a variable called ``context`` still wins; and it is skipped when the run
-    published no trigger, because binding an empty object would turn "this run has no trigger"
-    into "this field does not exist", which are different findings for the author.
-
-    ``variables`` also stays reachable under its own key: the pre-890 scope exposed it that way
-    and a seeded instruction may reference ``{{variables.x}}``.
-
-    Each ``variables`` entry is a BINDING — ``{"value": …}`` is a literal, ``{"path": …}`` is a
-    reference resolved against the roots — or a plain value (which is what an
-    ``overrides.promptVariables`` entry supplies). Resolution happens BEFORE the bare names are
-    assigned, so ``{{age}}`` and ``{{context.patientAge}}`` are the same value (§3.3) and a
-    binding never sees another bare name. Mirrors ``buildAgentPromptScope``
-    (``packages/applications/src/services/agent/agent-prompt-scope.ts``): the durable lane, the
-    realtime lane, the invocation route and the draft bench must render one agent one way.
-    """
-    scope: dict[str, Any] = dict(run_context)
-    trigger = run_context.get("trigger")
-    if isinstance(trigger, dict):
-        # J3-5 — the alias is the CONTEXT VIEW of the payload, which under the single-kind rule
-        # is the kind itself rather than the envelope wrapping it. ``trigger`` stays the run
-        # payload verbatim: on a workflow lane that root IS what ``core.trigger`` validated, and
-        # the two roots being different views is the honest answer.
-        scope["context"] = _unwrap_single_kind_context(context_payload_schema, trigger)
-    resolved = {
-        name: _resolve_binding(binding, scope, f"instruction.variables.{name}")
-        for name, binding in variables.items()
-    }
-    scope.update(resolved)
-    scope["variables"] = resolved
-    return scope
-
-
-def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:
-    """One ``instruction.variables`` entry, resolved against the roots.
-
-    ``{"value": <str>}`` is a literal and ``{"path": <str>}`` a reference; anything else — a
-    plain string an override supplied, a number, a shape nobody declared — is the value itself.
-    A ``{"path"}`` that resolves to nothing raises ``PromptVariableUnresolved`` NAMING THE PATH,
-    which the activity turns into a DEGRADED step: a binding that silently vanished is how a
-    prompt loses a variable with nobody noticing.
-    """
-    if not isinstance(binding, dict):
-        return binding
-    if isinstance(binding.get("value"), str):
-        return binding["value"]
-    path = binding.get("path")
-    if isinstance(path, str):
-        return render_template("{{" + path + "}}", scope, template_ref=template_ref)
-    return binding
-
-
-def _compose_system_prompt(
-    resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
-) -> ComposedPrompt:
-    """The agent's instruction, rendered through the ONE grammar (§3.2) over the §3.3 scope: the
-    run env's ``trigger`` / ``vars`` / ``nodes`` (plus the ``context`` alias) and the agent's own
-    bound variables, overlaid by the node's ``overrides.promptVariables`` (node wins).
-
-    TASK-947 §4.1 — a COMPOSITE instruction goes through ``compose_prompt``: its fragments are
-    selected against the SAME scope the template renders against, each is rendered on its own,
-    and the results are joined. The two single-body shapes keep the pre-947 path byte for byte.
-    The composite branch is taken BEFORE the candidate chain below, because a composite's
-    ``content`` is the static projection (OD-3) — rendering it would silently drop every
-    conditional fragment.
-
-    Raises ``PromptVariableUnresolved`` when a placeholder resolves to nothing and declares no
-    ``default("…")``, and ``PromptCompositionEmpty`` when no fragment was selected (OD-6). The
-    caller degrades the step on either — a prompt that silently lost a variable, that shipped a
-    literal ``{{…}}`` to the model, or that arrived empty, is the failure this replaces.
-    """
+def _agent_variables(resolved: ResolvedAgent, config: dict[str, Any]) -> dict[str, Any]:
+    """The agent's own ``instruction.variables``, overlaid by the node's
+    ``overrides.promptVariables`` (node wins)."""
     instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
-    compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
     variables: dict[str, Any] = {}
     declared = instruction.get("variables")
     if isinstance(declared, dict):
@@ -811,22 +734,60 @@ def _compose_system_prompt(
     overrides = config.get("overrides")
     if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
         variables.update(overrides["promptVariables"])
-    template_ref = f"agent:{resolved.slug}"
+    return variables
 
+
+def _agent_prompt_scope(
+    resolved: ResolvedAgent, config: dict[str, Any], run_context: dict[str, Any]
+) -> dict[str, Any]:
+    """The render scope of §3.3 — ``build_prompt_scope``, the ONE scope every lane shares.
+
+    Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, plus ``context``. On this lane
+    ``trigger`` is the run payload verbatim and ``context`` its CONTEXT VIEW — unwrapped through
+    ``_unwrap_single_kind_context`` when the agent's frozen schema declares a single kind keyed
+    ``context`` (J3-5) — so both are supplied and ``build_prompt_scope`` keeps them as given. With
+    no trigger published neither root is bound: "this run has no trigger" and "this field does
+    not exist" are different findings for the author.
+
+    The bare names come from :func:`_agent_variables`; each is a ``{"value"}`` literal, a
+    ``{"path"}`` reference resolved against the roots (an unresolved one raises
+    ``PromptVariableUnresolved`` naming the path), or a plain value. They are bound AFTER the
+    roots, so an agent that declares a variable called ``context`` still wins its own name.
+    """
+    trigger = run_context.get("trigger")
+    trigger_view = trigger if isinstance(trigger, dict) else None
+    context_view: dict[str, Any] | None = None
+    if trigger_view is not None:
+        unwrapped = _unwrap_single_kind_context(_bound_context_payload_schema(resolved), trigger)
+        context_view = unwrapped if isinstance(unwrapped, dict) else trigger_view
+    vars_root = run_context.get("vars")
+    nodes_root = run_context.get("nodes")
+    return build_prompt_scope(
+        variables=_agent_variables(resolved, config),
+        trigger=trigger_view,
+        context=context_view,
+        vars=vars_root if isinstance(vars_root, dict) else None,
+        nodes=nodes_root if isinstance(nodes_root, dict) else None,
+    )
+
+
+def _agent_resolved_prompt(resolved: ResolvedAgent) -> Any | None:
+    """The instruction ``compose_messages`` renders, or ``None`` when the agent carries none.
+
+    TASK-947 §4.1 — a COMPOSITE instruction is passed as resolved, because its ``content`` is the
+    static projection (OD-3): reading it would silently drop every conditional fragment.
+    Otherwise the first non-empty body wins, as one inline instruction: the gateway-resolved
+    prompt (TASK-863 resolves a pinned template version, or the inline prompt, once,
+    gateway-side), then the raw instruction fields, then the compiled ones.
+    """
     if resolved.resolved_prompt is not None and resolved.resolved_prompt.source == "composite":
-        return compose_prompt(
-            resolved.resolved_prompt,
-            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
-            template_ref=template_ref,
-        )
-
+        return resolved.resolved_prompt
+    instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
+    compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
     template = next(
         (
             value
             for value in (
-                # TASK-863 resolves the instruction (a pinned template version's content, or
-                # the inline prompt) once, gateway-side — that text wins over re-reading the
-                # raw instruction here.
                 resolved.resolved_prompt.content if resolved.resolved_prompt is not None else None,
                 instruction.get("systemPrompt"),
                 instruction.get("resolvedPrompt"),
@@ -838,14 +799,56 @@ def _compose_system_prompt(
         ),
         None,
     )
-    if template is None:
-        return ComposedPrompt(prompt=None)
+    return None if template is None else {"source": "inline", "content": template}
+
+
+def _compose_agent_messages(
+    resolved: ResolvedAgent,
+    config: dict[str, Any],
+    run_context: dict[str, Any],
+    *,
+    data_blocks: list[dict[str, Any]] | None = None,
+    output_language: OutputLanguage | None = None,
+    rules: str | None = None,
+) -> tuple[ComposedMessages, bool]:
+    """The agent's request, composed by ``compose_messages`` — ``(messages, policy_selected)``.
+
+    SYSTEM = ``platform_rules()`` → the composed instruction → the output-language step. There is
+    no output-contract layer on this lane: the declared ``outputSchema`` travels as
+    ``response_format``. USER = ``data_blocks``, wrapped, in the given order.
+
+    TASK-1001 (OD-12) — the language step is decided per CANDIDATE, because a fallback carries
+    its own instruction: a SELECTED tenant ``output_language_policy`` fragment owns the language
+    (no step); otherwise ``output_language`` — the platform default — is stated by name. Which
+    fragments are selected is known only once the instruction is composed, so the composition
+    runs once to learn it and once more with the step; both passes are pure.
+
+    Raises ``PromptVariableUnresolved`` (EVERY missing path of the selected instruction, or the
+    one path of an unresolved ``{"path"}`` binding) and ``PromptCompositionEmpty`` (OD-6); the
+    caller degrades the step on either.
+    """
+    kwargs: dict[str, Any] = {
+        "platform_rules": platform_rules() if rules is None else rules,
+        "resolved_prompt": _agent_resolved_prompt(resolved),
+        "scope": _agent_prompt_scope(resolved, config, run_context),
+        "data_blocks": data_blocks,
+        "template_ref": f"agent:{resolved.slug}",
+    }
+    composed = compose_messages(**kwargs)
+    policy_selected = output_language_policy_selected(composed.selected)
+    if policy_selected or output_language is None:
+        return composed, policy_selected
+    return compose_messages(**kwargs, output_language={"name": output_language.name}), False
+
+
+def _compose_system_prompt(
+    resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
+) -> ComposedPrompt:
+    """The agent's INSTRUCTION alone — the same composition without the platform rules, the
+    language step or any data — and which fragments composed it. Pure."""
+    composed, _ = _compose_agent_messages(resolved, config, context, rules="")
     return ComposedPrompt(
-        prompt=render_template(
-            template,
-            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
-            template_ref=template_ref,
-        )
+        prompt=composed.system or None, selected=composed.selected, excluded=composed.excluded
     )
 
 
@@ -947,6 +950,22 @@ _CADENCE_ON_END = "onEnd"
 def _execution(config: dict[str, Any]) -> dict[str, Any]:
     execution = config.get("execution")
     return execution if isinstance(execution, dict) else {}
+
+
+#: The live lane's running note is `perTurn`; anything else on this lane is a plain workflow step.
+_CADENCE_PER_TURN = "perTurn"
+
+
+def _record_phase(config: dict[str, Any]) -> str:
+    """OD-9 — the ``phase`` a composed-prompt record carries, from the node's declared cadence:
+    ``onEnd`` is the note (``finalize``), ``perTurn`` the running note (``live``), and any other
+    step is ``workflow``."""
+    cadence = _execution(config).get("cadence")
+    if cadence == _CADENCE_ON_END:
+        return "finalize"
+    if cadence == _CADENCE_PER_TURN:
+        return "live"
+    return "workflow"
 
 
 def _is_consultation_finalizer(payload: NodeActivityInput, config: dict[str, Any]) -> bool:
@@ -1316,27 +1335,34 @@ async def _run_text_generation(
     TASK-1001 (OD-12) — this arm is the durable lane's NOTE writer, so its system prompt states
     the note's OUTPUT language exactly as the realtime lane's ``generateDocument`` does
     (``operatingFrame``): when the candidate's composed instruction SELECTED no
-    ``output_language_policy`` fragment, the platform default's step is appended as the last
-    paragraph. The consultation's declared (SOURCE) language is never consulted. See
-    ``output_language.py``.
+    ``output_language_policy`` fragment, the platform default's step is stated. The
+    consultation's declared (SOURCE) language is never consulted. See ``output_language.py``.
+
+    TASK-1035 — the messages are composed by ``compose_messages``, the one composer every lane
+    shares: SYSTEM = platform rules → instruction → language step; USER = the bound ``in`` and
+    ``context`` as wrapped data blocks (``input`` / ``context``), so transcript text is never
+    read as an instruction.
     """
     config = _config(payload)
     bound = _bound(payload)
     # TASK-1022 — a bound note keeps its headings; see `_render_input_for_generation`.
-    prompt_parts = _render_input_for_generation(bound.get("in"))
+    input_text = "\n\n".join(_render_input_for_generation(bound.get("in")))
     context_values = [value for value in _as_list(bound.get("context")) if value is not None]
-    if context_values:
-        prompt_parts.append(
-            "Context:\n"
-            + json.dumps(
-                context_values if len(context_values) > 1 else context_values[0],
-                ensure_ascii=False,
-                sort_keys=True,
-                indent=2,
-            )
+    context_text = (
+        json.dumps(
+            context_values if len(context_values) > 1 else context_values[0],
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
         )
-    user_prompt = "\n\n".join(prompt_parts)
-    if not user_prompt:
+        if context_values
+        else ""
+    )
+    data_blocks = [
+        {"key": "input", "label": "Input", "content": input_text},
+        {"key": "context", "label": "Context", "content": context_text},
+    ]
+    if not input_text and not context_text:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
@@ -1415,7 +1441,17 @@ async def _run_text_generation(
         # the fallback chain: every candidate renders the SAME template against the SAME scope,
         # so a switch would re-raise identically while billing nothing but latency.
         try:
-            composed = _compose_system_prompt(candidate, config, run_context)
+            # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own
+            # instruction: a selected tenant policy owns the language (nothing added); otherwise
+            # the platform default is stated by name, after the instruction, overriding any
+            # "write in the conversation language" clause it carries.
+            composed, policy_selected = _compose_agent_messages(
+                candidate,
+                config,
+                run_context,
+                data_blocks=data_blocks,
+                output_language=platform_default,
+            )
         except PromptVariableUnresolved as exc:
             await record_and_flush(
                 payload,
@@ -1440,14 +1476,8 @@ async def _run_text_generation(
                 status="DEGRADED",
                 reason=f"core.agent: prompt_composition_empty: {exc}",
             )
-        # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own instruction:
-        # a selected tenant policy owns the language (nothing added); otherwise the platform
-        # default is stated by name, last, overriding any "write in the conversation language"
-        # clause the instruction carries.
-        policy_selected = output_language_policy_selected(composed.selected)
-        system_prompt = append_default_output_language_step(
-            composed.prompt, composed.selected, platform_default
-        )
+        system_prompt = composed.system
+        user_prompt = composed.user
         _LOGGER.info(
             "core.agent.output_language",
             node_id=payload.node_id,
@@ -1543,6 +1573,19 @@ async def _run_text_generation(
                 )
             )
             continue
+
+        # OD-9 — what was SENT, for incident reconstruction. Fire-and-forget: it never fails or
+        # delays this step.
+        composed_prompt_recorder.record_composed_prompt(
+            tenant_id=payload.tenant_id,
+            consultation_id=run_identity(payload.run_payload).consultation_id,
+            agent_slug=candidate.slug,
+            phase=_record_phase(config),
+            provider=result.provider or provider,
+            egress=getattr(result, "egress", None),
+            system=system_prompt,
+            user=user_prompt,
+        )
 
         output: dict[str, Any] = {
             "text": result.content,

@@ -526,6 +526,26 @@ class ApiClient:
                 raise _api_error("/internal/agents/resolve", exc) from exc
             return cast("dict[str, Any]", resp.json())
 
+    async def record_composed_prompt(self, body: dict[str, Any], *, tenant_id: str) -> None:
+        """OD-9 — ``POST /api/v1/internal/composed-prompts``: store one composed LLM request.
+
+        The gateway encrypts it with Vault Transit and answers ``202``. A sibling mount of the
+        harness prefix, so the URL is built off the base url (the ``resolve_agent`` reason), and
+        ``service=harness`` names the token being presented, as every ``InternalServiceTokenGuard``
+        route requires. ONE attempt at the client's own timeout; raises :class:`ApiServiceError`
+        and leaves the never-fail posture to the caller (``composed_prompt_recorder``).
+        """
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        url = f"{self._base_url}/api/v1/internal/composed-prompts"
+        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+            try:
+                resp = await client.post(
+                    url, params={"service": "harness"}, json=body, headers=headers
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error("/internal/composed-prompts", exc) from exc
+
     async def resolve_model(
         self,
         *,

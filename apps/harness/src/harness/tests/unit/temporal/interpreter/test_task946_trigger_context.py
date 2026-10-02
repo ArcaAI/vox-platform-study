@@ -26,7 +26,11 @@ from typing import Any
 import pytest
 
 from harness.temporal.claim_check import ClaimCheckRef
-from harness.temporal.interpreter.models import InterpreterInput, NodeActivityInput
+from harness.temporal.interpreter.models import (
+    InterpreterInput,
+    NodeActivityInput,
+    ResolvedAgent,
+)
 from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.nodes._consultation_shared import run_identity
 from harness.temporal.interpreter.templating import render_template
@@ -222,7 +226,24 @@ class TestThePromptAlias:
         `{{context.dna_style_text | default("")}}` and must keep resolving to the handoff value."""
         run_context = _run_context({"dna_style_text": "Terse. Abbreviates freely."})
 
-        scope = core._prompt_scope({}, run_context)
+        # TASK-1035 — the scope is `build_prompt_scope`, reached through the agent it renders for.
+        agent = ResolvedAgent.model_validate(
+            {
+                "agentId": "agent-1",
+                "agentVersionId": "agent-1",
+                "slug": "casenote-finalization",
+                "versionNumber": 1,
+                "task": "TEXT_GENERATION",
+                "tenantId": "10000000-0000-0000-0000-000000000001",
+                "source": "tenant",
+                "compiledConfig": {
+                    "task": "TEXT_GENERATION",
+                    "model": {"slug": "gpt-x", "provider": "openai"},
+                    "instruction": {},
+                },
+            }
+        )
+        scope = core._agent_prompt_scope(agent, {}, run_context)
 
         assert render_template("{{context.dna_style_text}}", scope) == "Terse. Abbreviates freely."
         assert render_template('{{context.dna_style_text | default("")}}', scope) == (

@@ -85,6 +85,7 @@ from harness.sensors.inferential import (
 from harness.sensors.inferential.base import degraded_result
 from harness.sensors.inferential.groundedness import ClaimVerdictCallback
 from harness.sensors.inferential.minicheck_entailer import load_minicheck_entailer
+from harness.services import composed_prompt_recorder
 from harness.services.api_client import (
     ApiClient,
     ApiServiceError,
@@ -1884,6 +1885,18 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 str(last_exc), type="TextResponseLost", non_retryable=True
             ) from last_exc
         raise last_exc
+
+    # OD-9 — what was SENT for the call that served, recorded fire-and-forget at the gateway; it
+    # never fails or delays this activity. This is the durable draft generation, so `finalize`.
+    composed_prompt_recorder.record_composed_prompt(
+        tenant_id=payload.tenant_id,
+        consultation_id=payload.trajectory.consultation_id if payload.trajectory else None,
+        phase="finalize",
+        provider=result.provider or attempt_provider or "",
+        egress=result.egress,
+        system=system_prompt,
+        user=prompt,
+    )
 
     # Offload the generated note so the (large) content stays OUT of Temporal
     # history; on offload the inline ``content`` is emptied and the workflow threads

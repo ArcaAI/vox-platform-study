@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import _llm_policy as llm_policy_mod
 from harness.temporal.interpreter.nodes import consultation_realtime as realtime_mod
@@ -110,7 +111,8 @@ class TestPaletteLaneBindsTheAssembledSystemPrompt:
             _node({"taskKey": "text.finalize", "systemPrompt": "OVERRIDE"}, {"in": _assembled()})
         )
 
-        assert stubs.calls[0]["system_prompt"] == "OVERRIDE"
+        # P1 — the override is the instruction, composed below the platform rules.
+        assert stubs.calls[0]["system_prompt"] == platform_rules() + "\n\nOVERRIDE"
 
     @pytest.mark.asyncio
     async def test_assemble_metadata_never_reaches_the_prompt(self, stubs) -> None:
@@ -129,7 +131,11 @@ class TestPaletteLaneBindsTheAssembledSystemPrompt:
         )
 
         call = stubs.calls[0]
-        assert call["prompt"] == "Ada Lovelace reports chest pain."
+        # P1 — not rewritten (no Presidio pass): only wrapped as the `input` data block.
+        assert call["prompt"] == (
+            '<<<EXTERNAL_DATA section="input">>>\n--- Input ---\n'
+            "Ada Lovelace reports chest pain.\n<<<END_EXTERNAL_DATA>>>"
+        )
         assert {"label": "patient_id", "value": "MRN-00042"} in call["known_phi"]
         assert call.get("provider_locality") is None
 

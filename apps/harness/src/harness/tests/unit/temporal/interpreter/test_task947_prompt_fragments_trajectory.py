@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import _shared, core
 from harness.temporal.interpreter.output_language import default_output_language_step
@@ -256,8 +257,9 @@ class TestCoreAgentStampsTheSelectedFragments:
         # The prompt that went to TEXT is the composition — the excluded fragment is absent —
         # then (TASK-1001 OD-12) the platform-default output-language step, because no
         # `output_language_policy` fragment was selected.
+        # TASK-1035 — composed by `compose_messages`, so the platform rules lead.
         assert _StubText.calls[0]["system_prompt"] == (
-            "Base.\n\nRevisit.\n\n" + default_output_language_step("English")
+            platform_rules() + "\n\nBase.\n\nRevisit.\n\n" + default_output_language_step("English")
         )
 
     async def test_a_single_body_generation_records_no_node_stats(self, run) -> None:
