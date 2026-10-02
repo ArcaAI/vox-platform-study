@@ -1520,9 +1520,10 @@ Findings are data: the orchestrator verifies each against the code before acting
 ## 7. Implementation Summary
 
 Implemented on `dev-2.2` by the orchestrator plus 11 lane/fix agents (W0–W4 per §4/§6), merged through
-`merge(task-1032): …` commits; feature range `b0ddb7436..HEAD`. **Not pushed.** The deployment-repo
-branch `task-1032/checkpoint-worker` (worktree `../hope-v2-deployment-task-1032`) is **not merged and not
-pushed** — it waits for the owner's rollout go.
+`merge(task-1032): …` commits (commit messages rewritten by the owner on 2026-10-02). The deployment
+repo's `main` carries the cluster side as `34bf1f8` + `732e45e` (rebased onto the TASK-1031 commits already on
+`main`; `kubectl kustomize overlays/dev`, `check-probes.py` and `check-envfrom-coverage.py` green). Neither
+repo is pushed by this ticket — the owner pushes.
 
 ### 7.1 What shipped
 
@@ -1572,7 +1573,7 @@ Pre-existing gap found on the way: `pnpm test:db:reset` seeds nothing unless `RU
 ### 7.4 Rollout (cluster) — owner go required
 
 1. Push `dev-2.2` (CI builds the api image carrying `checkpoint-worker.main.js`; promote-dev pins it).
-2. Rebase `task-1032/checkpoint-worker` onto the deployment repo's current `origin/main` (it was cut from a local `main` carrying an unrelated unpushed TASK-1031 commit), merge, push → Argo syncs `hope-checkpoint-worker`.
+2. Push the deployment repo's `main` (it also carries the unpushed TASK-1031 commits `bd84095`…`9b99463` beneath the two TASK-1032 ones) → Argo syncs `hope-checkpoint-worker`. The worker only starts cleanly once the api image from step 1 is promoted.
 3. Vault (live, manual — provisioning only runs at first init): `vault write -f transit/keys/hope-checkpoint`; `vault write transit/keys/hope-checkpoint-sign type=ed25519` (**never trim version 1** — the deployment id derives from it); `vault policy write hope-app` from the updated `hope-vault-policies` ConfigMap; verify encrypt/sign/read-key with a hope-app AppRole login.
 4. MinIO: apply only the updated `hope-minio-bootstrap` ConfigMap (policy `hope-platform-rw` gains the bucket), run `out-of-band/minio-policy-sync.yaml` under a fresh Job name — **never re-run `minio-bootstrap`**. The worker creates the bucket at boot. Confirm MinIO CORS exposes `ETag` to the console origin (browser multipart needs it).
 5. Verify: rollout status, worker logs, one checkpoint create → READY from the console.
