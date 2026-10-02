@@ -42,6 +42,7 @@ import { ContextItemVersionRepository } from '../../../repositories/generated/co
 import { DepartmentRepository } from '../../../repositories/generated/core/DepartmentRepository';
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
+import { DnaWritingSampleRepository } from '../../../repositories/generated/core/DnaWritingSampleRepository';
 import { DnaWritingStyleVersionRepository } from '../../../repositories/generated/core/DnaWritingStyleVersionRepository';
 import { EvalRunRepository } from '../../../repositories/generated/core/EvalRunRepository';
 import { EvalScoreRepository } from '../../../repositories/generated/core/EvalScoreRepository';
@@ -209,6 +210,7 @@ const repositories = [
   PromptTemplateRepository,
   PromptVersionRepository,
   DnaWritingStyleReportRepository,
+  DnaWritingSampleRepository,
   DnaWritingStyleVersionRepository,
   DnaUsageRecordRepository,
   PromptUsageRecordRepository,

@@ -24,6 +24,7 @@ export * from './ContextItemVersionEntityMapper';
 export * from './DepartmentEntityMapper';
 export * from './DnaUsageRecordEntityMapper';
 export * from './DnaWritingStyleReportEntityMapper';
+export * from './DnaWritingSampleEntityMapper';
 export * from './DnaWritingStyleVersionEntityMapper';
 export * from './EvalRunEntityMapper';
 export * from './EvalScoreEntityMapper';
