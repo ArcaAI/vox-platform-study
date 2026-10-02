@@ -2401,6 +2401,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "ComposedPromptAdminController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/composed-prompts",
+      "routePath": "/admin/composed-prompts",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ComposedPromptAdminController",
+      "handler": "getById",
+      "method": "GET",
+      "path": "/api/v1/admin/composed-prompts/{id}",
+      "routePath": "/admin/composed-prompts/:id",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsentGrantController",
       "handler": "list",
       "method": "GET",
@@ -2685,6 +2731,29 @@
       "requiredPermissions": [
         [
           "manage",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "PromptPreviewController",
+      "handler": "preview",
+      "method": "POST",
+      "path": "/api/v1/admin/consultations/{consultationId}/prompt-preview",
+      "routePath": "/admin/consultations/:consultationId/prompt-preview",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
           "Consultation"
         ]
       ],
@@ -13855,6 +13924,22 @@
       "method": "GET",
       "path": "/api/v1/internal/agents/resolve",
       "routePath": "/internal/agents/resolve",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "ComposedPromptInternalController",
+      "handler": "record",
+      "method": "POST",
+      "path": "/api/v1/internal/composed-prompts",
+      "routePath": "/internal/composed-prompts",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

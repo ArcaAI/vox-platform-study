@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 529 component schemas the generated surface transitively
+ * Only the 540 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -72,6 +72,14 @@ export interface AgentBundleSourceResponse {
   /** The TIER the bundle came from — never a tenant id. */
   tenantKind: 'system' | 'global' | 'tenant';
   version: number;
+}
+
+export interface AgentEffectiveContextSchemaResponse {
+  /** The context schema id. */
+  id: string;
+  inheritedFrom: 'agent' | 'workflow';
+  /** The concrete version the paths are checked against. */
+  versionNumber: number;
 }
 
 export interface AgentFallbackResponse {
@@ -189,6 +197,8 @@ export interface AgentResponse {
   createdBy?: string | null;
   deprecatedAt?: string | null;
   description?: string | null;
+  /** The context schema the prompt paths are checked against — the agent`s own, or inherited from a workflow that runs it. Present on the agent DETAIL (`GET admin/agents/:id`); null when neither applies. */
+  effectiveContextSchema?: AgentEffectiveContextSchemaResponse;
   fallbacks: AgentFallbackResponse[];
   /** Platform-owned agent: never cloned, listed, invoked or assignable on the business plane. */
   hidden: boolean;
@@ -1056,6 +1066,43 @@ export interface CloneWorkflowDefinitionRequest {
   name?: string;
   /** Slug for the NEW lineage. Must be unused by this tenant — a slug already in use is rejected 409, never silently versioned. */
   targetSlug: string;
+}
+
+export interface ComposedPromptDetailResponse {
+  agentSlug: string | null;
+  consultationId: string | null;
+  /** ISO time the call was recorded. */
+  createdAt: string;
+  id: string;
+  locality: 'local' | 'cloud';
+  phase: string;
+  provider: string;
+  /** SHA-256 (hex) of the plaintext `system + "\n\n" + user`. */
+  sha256: string;
+  /** The composed SYSTEM message, as sent. */
+  system: string;
+  /** The composed USER message, as sent. */
+  user: string;
+}
+
+export interface ComposedPromptPageResponse {
+  count: number;
+  data: ComposedPromptSummaryResponse[];
+  limit: number;
+  page: number;
+}
+
+export interface ComposedPromptSummaryResponse {
+  agentSlug: string | null;
+  consultationId: string | null;
+  /** ISO time the call was recorded. */
+  createdAt: string;
+  id: string;
+  locality: 'local' | 'cloud';
+  phase: string;
+  provider: string;
+  /** SHA-256 (hex) of the plaintext `system + "\n\n" + user`. */
+  sha256: string;
 }
 
 export interface ComputeDraftRequest {
@@ -5344,6 +5391,67 @@ export interface PromptFieldDiffDto {
   field: string;
   /** Diff stats for this field */
   stats: PromptDiffStatsDto;
+}
+
+export interface PromptPreviewBlockResponse {
+  /** Characters of the block kept within its budget. */
+  chars: number;
+  key: string;
+  /** Whether the block was cut to its budget. */
+  truncated: boolean;
+}
+
+export interface PromptPreviewEgressResponse {
+  /** Detected identifiers by taxonomy label — counts only, never values. */
+  detected: Record<string, number>;
+  /** Occurrences a CLOUD call would replace with a token; 0 on a local call. */
+  redacted: number;
+}
+
+export interface PromptPreviewExclusionResponse {
+  key: string;
+  reason: 'condition_false' | 'condition_error';
+}
+
+export interface PromptPreviewMessagesResponse {
+  /** The SYSTEM message. */
+  system: string;
+  /** The USER message. */
+  user: string;
+}
+
+export interface PromptPreviewRequest {
+  /** Compose this published TEXT_GENERATION agent`s instruction instead of the one the tenant`s chain resolves. */
+  agentSlug?: string;
+  /** Which generation to compose the prompt of. */
+  phase: 'live' | 'pre-summary' | 'finalize';
+}
+
+export interface PromptPreviewResponse {
+  /** The data sections of the user message, in order. */
+  blocks: PromptPreviewBlockResponse[];
+  egressPreview: PromptPreviewEgressResponse;
+  excluded: PromptPreviewExclusionResponse[];
+  /** The egress locality of the model that would serve the call; unknown is cloud. */
+  locality: 'local' | 'cloud';
+  /** What a CLOUD provider would receive: identifiers pseudonymized as `[<LABEL>_<n>]`. `null` on a local call (sent as is). */
+  providerView?: PromptPreviewMessagesResponse;
+  /** Which tier of the prompt chain supplied the instruction. */
+  resolvedFrom: string;
+  /** Selected fragment keys of a composite instruction, in order. */
+  selected: string[];
+  /** The composed SYSTEM message (platform rules, instruction, guidance). */
+  system: string;
+  tokenEstimate: PromptPreviewTokenEstimateResponse;
+  /** The composed USER message (the delimited data sections). */
+  user: string;
+}
+
+export interface PromptPreviewTokenEstimateResponse {
+  /** Estimated tokens of the system message (characters ÷ 4, rounded up). */
+  system: number;
+  /** Estimated tokens of the user message (characters ÷ 4, rounded up). */
+  user: number;
 }
 
 export interface PromptTemplateResponse {

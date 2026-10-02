@@ -10,8 +10,17 @@
 
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
-import type { AdminRequestOptions } from './admin-resource';
-import type { ConsultationAggregateResponse, ConsultationResponse, ConsultationTelemetryResponse, PaginatedResponse } from './schemas';
+import type { AdminListOptions, AdminListQuery, AdminRequestOptions, PaginatedPage } from './admin-resource';
+import type {
+  ComposedPromptDetailResponse,
+  ComposedPromptSummaryResponse,
+  ConsultationAggregateResponse,
+  ConsultationResponse,
+  ConsultationTelemetryResponse,
+  PaginatedResponse,
+  PromptPreviewRequest,
+  PromptPreviewResponse,
+} from './schemas';
 
 /**
  * `hope.admin.consultationAdmin` — the `svc:admin:consultation-admin:manage` administration area.
@@ -20,8 +29,8 @@ import type { ConsultationAggregateResponse, ConsultationResponse, ConsultationT
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AdminConsultationController, ConsultationTelemetryController
- * (4 routes). Several controllers sharing one scope share one
+ * Backed by controllers AdminConsultationController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
+ * (7 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -29,11 +38,57 @@ export class AdminConsultationAdminResource extends AdminResource {
   readonly svcScope = 'svc:admin:consultation-admin:manage';
 
   /**
+   * List composed-prompt records
+   *
+   * Newest first, optionally for one consultation. METADATA only (phase, provider, locality, agent, digest, time) — the messages themselves are returned only by the single-record read. Audited.
+   *
+   * `GET /api/v1/admin/composed-prompts` — `ComposedPromptAdminController.list`.
+   *
+   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link composedPromptAdminListIterate} to walk every page.
+   */
+  composedPromptAdminList(
+    options: AdminListOptions & { query?: AdminListQuery & { consultationId?: string } } = {},
+  ): Promise<PaginatedPage<ComposedPromptSummaryResponse>> {
+    return this.listPage<ComposedPromptSummaryResponse>('admin/composed-prompts', options);
+  }
+
+  /**
+   * List composed-prompt records
+   *
+   * Newest first, optionally for one consultation. METADATA only (phase, provider, locality, agent, digest, time) — the messages themselves are returned only by the single-record read. Audited.
+   *
+   * `GET /api/v1/admin/composed-prompts` — `ComposedPromptAdminController.list`.
+   *
+   * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
+   */
+  composedPromptAdminListIterate(
+    options: AdminListOptions & { query?: AdminListQuery & { consultationId?: string } } = {},
+  ): AsyncGenerator<ComposedPromptSummaryResponse, void, undefined> {
+    return this.listAll<ComposedPromptSummaryResponse>('admin/composed-prompts', options);
+  }
+
+  /**
+   * Read one composed-prompt record, decrypted
+   *
+   * The exact system and user messages the call was sent, decrypted from Vault-Transit ciphertext. Audited.
+   *
+   * `GET /api/v1/admin/composed-prompts/{id}` — `ComposedPromptAdminController.getById`.
+   */
+  composedPromptAdminGetById(id: string, options: AdminRequestOptions = {}): Promise<ComposedPromptDetailResponse> {
+    return this.request<ComposedPromptDetailResponse>({
+      method: 'GET',
+      path: `admin/composed-prompts/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Retrieving multiple ConsultationResponses
    *
    * `GET /api/v1/admin/consultations` — `AdminConsultationController.list`.
    */
-  list(
+  adminConsultationList(
     options: AdminRequestOptions & {
       query?: {
         departmentId?: string;
@@ -68,11 +123,28 @@ export class AdminConsultationAdminResource extends AdminResource {
   }
 
   /**
+   * Preview the prompt a consultation would send
+   *
+   * Composes the prompt for `phase` (`live`, `pre-summary`, `finalize`) from the consultation`s own data — optionally with a named agent`s instruction — and returns the system and user messages, the egress locality of the model that would serve the call, the provider view (identifiers pseudonymized as `[<LABEL>_<n>]`, cloud only), detected identifier counts, a token estimate and the composition (selected fragments and data sections). Nothing is generated. Audited.
+   *
+   * `POST /api/v1/admin/consultations/{consultationId}/prompt-preview` — `PromptPreviewController.preview`.
+   */
+  preview(consultationId: string, body: PromptPreviewRequest, options: AdminRequestOptions = {}): Promise<PromptPreviewResponse> {
+    return this.request<PromptPreviewResponse>({
+      method: 'POST',
+      path: `admin/consultations/${encodePathSegment(String(consultationId))}/prompt-preview`,
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Retrieving a single ConsultationResponse by id
    *
    * `GET /api/v1/admin/consultations/{id}` — `AdminConsultationController.getById`.
    */
-  getById(id: string, options: AdminRequestOptions = {}): Promise<ConsultationResponse> {
+  adminConsultationGetById(id: string, options: AdminRequestOptions = {}): Promise<ConsultationResponse> {
     return this.request<ConsultationResponse>({
       method: 'GET',
       path: `admin/consultations/${encodePathSegment(String(id))}`,

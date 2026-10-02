@@ -126,7 +126,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
-          | 'DnaWritingSample';
+          | 'DnaWritingSample'
+          | 'ComposedPromptRecord';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -256,7 +257,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
-          | 'DnaWritingSample';
+          | 'DnaWritingSample'
+          | 'ComposedPromptRecord';
         to?: string;
         userId?: string;
       };
@@ -368,7 +370,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
-          | 'DnaWritingSample';
+          | 'DnaWritingSample'
+          | 'ComposedPromptRecord';
         search?: string;
         searchFields?: string;
         sort?: string;
