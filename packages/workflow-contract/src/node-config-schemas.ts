@@ -978,9 +978,9 @@ const DNA_PROPERTY = Object.freeze({
       type: 'boolean',
       summary: "Apply the clinician's redaction rules (default: on when DNA is enabled).",
       description:
-        'TASK-1034 R3 — narrows `enabled`. With `enabled: true`, ABSENT or TRUE keeps the redaction gate (the rules ' +
-        'are rendered into the prompt AND applied deterministically after generation); `false` turns ONLY redaction ' +
-        'off. Without `enabled: true` it declares nothing.',
+        'TASK-1034 R3 — TRUE declares the redaction gate on its own, even without `enabled` (the rules are ' +
+        'rendered into the prompt AND applied deterministically after generation). With `enabled: true`, ABSENT ' +
+        'keeps it on and `false` turns ONLY redaction off. `enabled: false` vetoes it.',
     }),
   }),
 });

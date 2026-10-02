@@ -260,7 +260,9 @@ describe('TASK-1034 R3 — `dna.style` / `dna.redaction` split the one `dna.enab
     [{ enabled: true, style: false }, false, true],
     [{ enabled: true, redaction: false }, true, false],
     [{ enabled: true, style: false, redaction: false }, false, false],
-    [{ style: true, redaction: true }, true, false],
+    [{ style: true, redaction: true }, true, true],
+    [{ redaction: true }, false, true],
+    [{ enabled: false, redaction: true }, false, false],
     [{ style: true }, true, false],
     [{ enabled: false, style: true }, false, false],
   ])('dna %j ⇒ style %s, redaction %s', async (dna, style, redaction) => {
