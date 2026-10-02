@@ -1,6 +1,6 @@
 // `apps/text`'s registry surface.
 //
-// Since TASK-1035 (owner decisions OD-4, OD-5): the platform kill switch
+// Since owner decisions OD-4 and OD-5 (2026-10-02): the platform kill switch
 // `text.externalGuardrail.enabled` and the platform default
 // `text.externalGuardrail.requireMedical` are GONE. Guardrail screening and the medical judge run
 // on every call; break-glass is a redeploy, never a setting. The table below is the history.

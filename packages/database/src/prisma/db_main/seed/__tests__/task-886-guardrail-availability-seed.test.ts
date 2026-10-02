@@ -25,14 +25,11 @@ describe('TASK-886 — the SYSTEM guardrail availability seed', () => {
     expect(Object.keys(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY).sort()).toEqual(CONTRACT.policies.map((p) => p.id).sort());
   });
 
-  // TASK-932 (owner decision, 2026-09-09): the two OUTBOUND judges that false-positive on
-  // clinical notes — `response_toxicity` (the 300M classifier flags chest pain / aspirin as
-  // toxic) and `pii_leak` (a finalized note legitimately re-states the encounter's own
-  // identifiers) — ship OFF at the platform tier until they are retuned for clinical text.
-  // Every other declared check stays ON.
-  const CALIBRATED_OFF = ['response_toxicity', 'pii_leak', 'response_safety', 'response_refusal', 'jailbreak_detection'] as const;
+  // Owner decisions OD-1..OD-5 (2026-10-02): guardrails check the request AND the response, so
+  // every declared check ships ON — including the outbound judges the earlier calibration had off. `response_refusal` alone stays off: a refusal is not unsafe content.
+  const CALIBRATED_OFF = ['response_refusal'] as const;
 
-  it('switches ON every declared check except the five clinical-text judges the owner calibrated OFF', () => {
+  it('switches ON every declared check except response_refusal', () => {
     for (const policy of CONTRACT.policies) {
       const expected = !(CALIBRATED_OFF as readonly string[]).includes(policy.id);
       expect(PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY[policy.id]?.enabled, policy.id).toBe(expected);

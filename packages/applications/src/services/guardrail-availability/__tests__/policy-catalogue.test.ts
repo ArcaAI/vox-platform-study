@@ -40,11 +40,11 @@ describe('guardrail policy catalogue — the cross-language contract', () => {
     }
   });
 
-  // TASK-932 (owner decision, 2026-09-09): `response_toxicity` and `pii_leak` false-positive on
-  // clinical notes and ship OFF at the platform tier until retuned; the seed mirrors this.
-  const CALIBRATED_OFF: readonly string[] = ['response_toxicity', 'pii_leak', 'response_safety', 'response_refusal', 'jailbreak_detection'];
+  // Guardrails check the request AND the response (owner decisions OD-1..OD-5): every declared
+  // check ships ON except `response_refusal` — a refusal is not unsafe content. The seed mirrors this.
+  const CALIBRATED_OFF: readonly string[] = ['response_refusal'];
 
-  it('seeds the platform default with every declared policy switched ON, except the five clinical-text judges calibrated OFF', () => {
+  it('seeds the platform default with every declared policy switched ON, except response_refusal', () => {
     for (const policy of GUARDRAIL_POLICY_CATALOGUE) {
       expect(PLATFORM_DEFAULT_GUARDRAIL_POLICIES[policy.id]?.enabled, policy.id).toBe(!CALIBRATED_OFF.includes(policy.id));
     }

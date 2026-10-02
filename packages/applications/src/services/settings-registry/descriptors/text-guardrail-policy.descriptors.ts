@@ -1,6 +1,6 @@
 // A TENANT's own input-moderation policy for `apps/text`.
 //
-// Since TASK-1035 (owner decisions OD-1, OD-3, OD-4, OD-5) this family holds ONE key,
+// Since owner decisions OD-1, OD-3, OD-4 and OD-5 (2026-10-02) this family holds ONE key,
 // `includeReasoning`. `text.guardrailPolicy.requireMedical` is GONE: the medical-relevance judge
 // runs on every business-plane call and no tenant may turn it off. The guardrail opt-out and the
 // platform kill switch (`text.externalGuardrail.enabled`) are gone with it. The prose below

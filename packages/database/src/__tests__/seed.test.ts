@@ -1613,48 +1613,13 @@ describe('platform settings (PLATFORM_SETTINGS)', () => {
 });
 
 /**
- * TASK-890 D-2 (owner answer, 2026-09-06) — the external-guardrail switch ships ON.
- *
- * `text.externalGuardrail.enabled` is the gate in front of TEXT's input and output moderation.
- * Its descriptor is a KILL SWITCH, and the registry refuses at assembly to register one that
- * defaults ON, so the descriptor default stays `false` and NOTHING seeded a value — which meant
- * the TASK-871 gates were inert on every deployment until a super admin flipped one key by hand.
- * D-2 answers that with one platform row, in exactly the `enable-local-raw-capture`
- * shape: `value` turns it on, `defaultValue` keeps the fail-safe OFF for a reset, `locked`
- * restricts the flip to SUPER_ADMIN, and the seed is CREATE-ONLY so a deliberate flip survives
- * `db:seed`.
- *
- * The namespace is `registry` and that is load-bearing, not cosmetic:
- * `SettingsRegistryWriteService` upserts its backing row by `(key, namespace: 'registry',
- * tenantId)`. A seeded row under any other namespace would be invisible to that lookup, so the
- * first governed write would CREATE A SECOND SYSTEM row for the same key — and two platform rows
- * with one key trip `AppSettingsService`'s boot-time duplicate-key invariant, which refuses to
- * start the gateway.
+ * The guardrail kill switch and the medical-judge opt-out are retired (OD-4, OD-5): screening and the
+ * medical judge run on every call, so the seed carries no row for either at any scope.
  */
-describe('the external-guardrail switch is seeded ON (D-2)', () => {
-  const row = () => PLATFORM_SETTINGS.find((s) => s.key === 'text.externalGuardrail.enabled');
-
-  it('seeds the gate ON while keeping the fail-safe default OFF', () => {
-    expect(row()).toBeDefined();
-    expect(row()?.value).toBe('true');
-    expect(row()?.defaultValue).toBe('false');
-    expect(row()?.dataType).toBe('Boolean');
-  });
-
-  it('is owned by the SYSTEM tenant and locked to SUPER_ADMIN', () => {
-    expect(row()?.tenantId).toBe(SYSTEM_TENANT_ID);
-    expect(row()?.locked).toBe(true);
-  });
-
-  it('lives in the `registry` namespace, so the governed write lane updates THIS row', () => {
-    // Not a style choice: a different namespace would make the registry write create a second
-    // SYSTEM row for the same key, and the flat-by-key platform cache refuses to boot on that.
-    expect(row()?.namespace).toBe('registry');
-  });
-
-  it('is exactly ONE row — never a per-tenant copy of a platform kill switch', () => {
-    expect(PLATFORM_SETTINGS.filter((s) => s.key === 'text.externalGuardrail.enabled')).toHaveLength(1);
-    expect(ALL_SETTINGS.filter((s) => s.key === 'text.externalGuardrail.enabled')).toEqual([]);
+describe('the retired guardrail switches are not seeded', () => {
+  it.each(['text.externalGuardrail.enabled', 'text.externalGuardrail.requireMedical', 'text.guardrailPolicy.requireMedical'])('%s has no row', (key) => {
+    expect(PLATFORM_SETTINGS.filter((s) => s.key === key)).toEqual([]);
+    expect(ALL_SETTINGS.filter((s) => s.key === key)).toEqual([]);
   });
 });
 
