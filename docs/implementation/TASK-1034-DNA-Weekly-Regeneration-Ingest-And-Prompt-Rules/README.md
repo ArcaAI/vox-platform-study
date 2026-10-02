@@ -1,6 +1,6 @@
 # TASK-1034 — DNA writing style: weekly feedback-gated regeneration, tenant-admin ingest, style + rules in the prompt
 
-**Status:** Review — merged on dev-2.2 2026-10-02; cluster rollout + live proof pending the push
+**Status:** Review — deployed to the dev cluster (`0.0.0-dev-2-2.a5ba1451`), live proof passed 2026-10-02; engine fix `e53926c0d` awaits push
 **Type:** feature
 **Branch:** dev-2.2
 **Raised:** 2026-10-02, after the ALaaS ↔ cluster E2E (lifecycle, sign-off and DNA all passed; see §2.4)
@@ -257,15 +257,37 @@ deterministic post-generation redaction is unchanged. Pre-summary gates `dnaStyl
 | e2e `dna-memory-cross-tenant.spec.ts` | 5 passed |
 | e2e `task-776-route-authz-matrix.spec.ts` | 7 passed |
 
+### Cluster rollout + live proof (2026-10-02, gateway `0.0.0-dev-2-2.a5ba1451`, pipeline #1400)
+
+| Step | Result |
+|---|---|
+| `rollout.mjs` (DRY_RUN, then real) | `casenote-finalization` v2 → v3 with the rules block; re-run = `skip` |
+| Schedule read | `enabled: true`, `0 2 * * 1`, `Asia/Kolkata`, next run 2026-10-04T20:30Z |
+| Ingest 20 historical notes for `arcaai_doctor_heme` (`generate:false`) | `stored: 20`; re-post `duplicates: 20`; previews PHI-redacted |
+| Schedule **Run now** | `queued: 1` (heme), `skipped.noFeedback: 7`; last run recorded |
+| Weekly job | new report `01a0fb64-ee76…` in ~7 s (hidden analyst, gemma), corpus = 20 ingested + 3 approved summaries; all 20 samples consumed |
+| Redaction rules PATCHed onto the report (troponin → cardiac troponin I, electrocardiogram → ECG, shortness of breath → SOB) | v2 |
+| ALaaS replay as consultant 1006 | consultation attributed to `arcaai_doctor_heme` (staffId — no `auto_*` user); `note.final.dnaStyleId = 01a0fb64-ee76…`; note says "SOB", "ECG", "cardiac troponin I" |
+| Clinician edit + Copy to EMR | sign-off → `CLOSED_COMPLETE`; memory sample `EDIT` captured for the consultation; the `SIGNOFF` of the identical text deduped (content hash), by design |
+
+**Defect found live and fixed:** the model now follows the rules AND the deterministic pass re-applied them, nesting a
+replacement that contains its own pattern ("cardiac cardiac troponin I I"). `e53926c0d` makes the engine skip a match
+inside an existing occurrence of the rule's replacement (idempotent; 3 new unit tests, RED → GREEN). Needs push + deploy.
+
+**Observations (not defects):** the finalizer omitted the two trailing "Not discussed" sections once (2B-model variance);
+the deployment repo's `promotion-state/dev.state` still names `9015d800c` although the gateway reports `a5ba1451` —
+worth a look at the promote job of pipeline #1400.
+
 ### Open
 
-- Push → deploy → `rollout.mjs` on the cluster (DRY_RUN first) → live proof per §5 Verification.
+- Push `e53926c0d` (+ docs) and redeploy the harness.
 - Each tenant's `consultation_note_context` schema declares `dna_redaction_rules_text` only after a republish (both lanes
   work without it).
-- ALaaS mapping typo `arcaai_doctor_neuro` → `arcaai_doctor_neur` (ALaaS repo).
+- ALaaS mapping typo fixed in ALaaS `f367145` (pushed).
 
 ## 7. Change History
 
+- 2026-10-02 — Cluster rollout + live proof passed; redaction double-rewrite fixed (`e53926c0d`).
 - 2026-10-02 — Lanes merged into dev-2.2, integration fixes, e2e; status Review.
 - 2026-10-02 — Owner: `style:true` / `redaction:true` each enable their gate alone.
 - 2026-10-02 — Plan drafted from the code survey; dev-cluster staffId 1001–1006 set on the seeded ArcaAI clinicians.
