@@ -67,6 +67,7 @@ import {
   IconUserScan,
   IconUserShield,
   IconVersions,
+  IconWand,
   IconWebhook,
   IconWorld,
   type TablerIcon,
@@ -633,6 +634,22 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // generation · TTS) — one task, one registry model, task-typed
   // instruction/parameters/I-O schemas, versioned and published like a
   // workflow definition. Its own resource (`manage:Agent`).
+  // The guided path through the domain: preset or existing context schema → agent
+  // (model + prompt) → workflow → assignment, driving the same admin endpoints the screens below
+  // own. Visible with either ability; a step the caller cannot perform reports the gateway's 403.
+  {
+    route: '/quick-start',
+    domain: 'knowledge-agents',
+    label: 'Quick start',
+    tier: '30-49',
+    icon: IconWand,
+    required: [
+      ['manage', 'Agent'],
+      ['manage', 'WorkflowDefinition'],
+    ],
+    implemented: true,
+    order: 1,
+  },
   {
     route: '/agents',
     domain: 'knowledge-agents',
@@ -641,7 +658,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconRobot,
     required: [['manage', 'Agent']],
     implemented: true,
-    order: 1,
+    order: 2,
   },
   // Prompt instruction templates have their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
@@ -654,7 +671,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconFileText,
     required: [['manage', 'PromptTemplate']],
     implemented: true,
-    order: 2,
+    order: 3,
   },
   {
     // tenant-defined consultation context vocabulary.
@@ -665,7 +682,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconSchema,
     required: [['manage', 'ConsultationContextSchema']],
     implemented: true,
-    order: 3,
+    order: 4,
   },
   {
     // tenant-defined clinical document SHAPES. The deliberate sibling of
@@ -680,7 +697,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconFileDescription,
     required: [['manage', 'DocumentTemplate']],
     implemented: true,
-    order: 4,
+    order: 5,
   },
   // institutional-RAG knowledge documents — the only real clinical "memory"
   // concept the platform has today. `manage` mirrors `KnowledgeController`'s
@@ -693,7 +710,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconBook2,
     required: [['manage', 'KnowledgeDocument']],
     implemented: true,
-    order: 5,
+    order: 6,
   },
   {
     route: '/dna-writing-styles',
@@ -703,7 +720,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconDna,
     required: [['manage', 'DnaWritingStyleReport']],
     implemented: true,
-    order: 6,
+    order: 7,
   },
   // Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
   // (`admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
@@ -717,7 +734,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconBinaryTree2,
     required: [['manage', 'WorkflowDefinition']],
     implemented: true,
-    order: 7,
+    order: 8,
   },
   // The assignment matrix. A sub-route of the Studio (rule 13 "one
   // authoritative editor per backend resource": the Studio owns
@@ -732,7 +749,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconLayoutGrid,
     required: [['manage', 'WorkflowDefinition']],
     implemented: true,
-    order: 8,
+    order: 9,
   },
 
   // ---------------------------------------------------------------------
