@@ -1,0 +1,267 @@
+# TASK-1035 — LLM egress safety, one prompt composer, schema-aware studio
+
+**Status:** In Progress — plan approved 2026-10-02 (all §4 recommendations accepted); P0 lanes running
+**Type:** feature + bugfix (safety) + refactor
+**Branch:** dev-2.2
+**Raised:** 2026-10-02
+
+## 1. Requirement Analysis
+
+Owner asks, 2026-10-02:
+
+| # | Requirement |
+|---|---|
+| R1 | Simplify context schemas, Agent studio and Workflow studio configuration. |
+| R2 | Context-schema fields are offered as **intelligent suggestions** while configuring agents and workflows (prompts, variable bindings, conditions). |
+| R3 | Every LLM request is composed **one correct way**: selected instruction / prompt template + injected context + rules + redaction. |
+| R4 | Guardrails always check the **request and the response** for safety. |
+| R5 | PII/PHI is detected with **GLiNER2**. |
+| R6 | Local / built-in providers (LM Studio, vLLM, …): **detect but do not redact** (owner answer 2). |
+| R7 | Cloud providers: **always** redact PII/PHI and other sensitive information. |
+
+Owner decisions already taken (2026-10-02):
+
+| Id | Decision |
+|---|---|
+| OD-1 | **Remove guardrail opt-outs** — tenant / agent / workflow / node (TASK-890 OD-R is reversed). |
+| OD-2 | Local providers: PII detection still runs (audit + `pii_leak` evidence), no redaction. |
+| OD-3 | **Keep the medical-relevance LLM judge** — the platform is for medical use only. |
+
+## 2. Current State Evaluation (code-verified 2026-10-02)
+
+### 2.1 Guardrails (R4–R7)
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| R4 request check | PARTIAL | `apps/text` input gate = medical-relevance judge only (`generate.py:171-251` → guardrail `/api/medical/validate` → granite-guardian 8B via text `/generate/internal/judge`, p99 ≈ 50 s, `runtime_defaults.py:201-203`). Skipped when `require_medical=false` (`external_guardrail.py`). `/api/v1/guardrail/screen/inbound` has **zero callers** outside `apps/guardrail`. |
+| R4 response check | EFFECTIVELY OFF | Output gate calls `/screen/outbound` (`output_gate.py:173`), but the platform seed disables every outbound check: `response_safety`, `response_toxicity`, `response_refusal`, `pii_leak` (`seed/18-guardrail-availability.ts:53-59`). `containment_echo` is skipped because text sends no nonce (`output_gate.py:197`). Streaming is screened only after the client already has the tokens (`routing/streaming.py:414`). |
+| R4 bypasses | PRESENT | Per-call opt-out (`core/guardrail_posture.py`, `workflow-contract/src/guardrail-optout.ts`, `harness/.../guardrail_optout.py`, agent `parameters-form.tsx`); `/translate` ungated; platform kill switch `text.externalGuardrail.enabled` (code floor `False`, seeded `true`). |
+| R5 GLiNER2 | PARTIAL | GLiNER2 serves guardrail `/redact` + `pii_leak` via `apps/nlp/.../gliner2_guard.py:102`; models `fastino/gliner2-privacy-filter-PII-multi`, `GLiNER2-Guardrails-PII-Multi`, `gliguard-LLMGuardrails-300M` (`seed/ai-models/nlp.ts`). **LLM egress redaction uses Presidio + spaCy instead** (`harness/guards/phi/redactor.py:44,127`). The 42-label taxonomy has no MRN / patient-id / encounter-id / staff-id label. |
+| R6 local | PARTIAL | Locality known only to harness, via env allowlist `HARNESS_PHI_LOCAL_PROVIDERS` (`harness/core/config.py`), against the no-config-in-env rule. Data already exists for a proper decision: `AiModel.deploymentKind` (`SELF_HOSTED / CLOUD / BYOK`, `enums.prisma:622`) and `ENGINE_SERVED_PROVIDERS` (`ai-provider-connection/constants.ts:222`). |
+| R7 cloud | MISSING on most paths | `apps/text` contains **no redaction code** (verified: no `redact`/`pseudonym` in `apps/text/src/text`). Agent invocation, live realtime, summary/finalize assembly and the text proxy all post unredacted to text → provider. Only harness activities call `ensure_egress_safe`, and `phi_fail_closed=false` degrades open. **No re-identification** anywhere — a cloud-written note can persist `<PERSON>` tokens. |
+
+### 2.2 Prompt composition (R3)
+
+Four TS/Python composers plus a palette lane, which disagree with one another:
+
+| Composer | Body placement | Missing variable | Output-language step | Cloud redaction |
+|---|---|---|---|---|
+| A/B agent invoke + bench (`agent-invocation.service.ts:292-348`, `agent.service.ts:706-828`) | system | 400 | no | no |
+| C live realtime (`live-documentation.service.ts:6763-6858`) | system | node degraded | yes (user msg) | no |
+| D durable `core.agent` (`core.py:794-857,1306-1561`) | system | step degraded | yes (system msg) | Presidio |
+| E `PromptAssemblyService.assemble` (`prompt-assembly.service.ts:534-763`) | **user**; system = constant | **renders empty + warn** (`:792-837`) | **no** | harness only |
+| F text proxy `/generate` (`text-proxy.controller.ts:1458`) | system, **raw unrendered `template.content`** | literal `{{x}}` sent | no | no |
+| G palette `text_generate.py` | ignores the assembled `systemPrompt` (`consultation_compose.py:155-170` vs `text_generate.py:119`) | — | — | Presidio |
+
+Further defects:
+
+- E takes only the first unconditional fragment (`prompt-resolution.service.ts:812`), so TASK-947 conditional fragments never apply on finalize.
+- The fallback chain sends the PRIMARY agent's output schema to every candidate (`core.py:1545-1547`).
+- No provider prompt caching (`cache_control` absent); `tokenBudget.perRun = 0` means unbounded; context is re-sent on every live flush.
+- No dry-run of the composed prompt for a real consultation, and no prompt record for incident reconstruction.
+
+### 2.3 Studio UX (R1, R2)
+
+- One agent + workflow bound to a schema takes about 6 screens and 15+ steps. The context schema is picked in 3 places: `Agent.contextSchemaId`, the workflow trigger node, and implicitly by name in template text.
+- The agent wizard step named "Schemas" (`create-agent-wizard.tsx:416-431`) is the input/output JSON schema. The context schema is buried in step 3 (`instruction-binding-form.tsx:209-253`).
+- No inline completion anywhere. Prompt, instruction and CEL editors are plain `<Textarea>`. `@arcaai/ui` `CodeEditor` is a JSON-only textarea overlay.
+- Only schema-aware aid: click-insert chips on `core.agent` prompt variables (`prompt-variables-field.tsx`), fed by a CLIENT mirror `lib/trigger-variable-paths.ts`.
+- Agent context-path binding is free text with a hardcoded `context.patientAge` placeholder (`variable-bindings-fieldset.tsx:83`). The agent form never fetches the schema definition (`useContextSchemaOptions` returns id/label only).
+- `PROMPT_VARIABLE_UNDECLARED` is a WARNING (`publish-findings.ts:97`), shown only in the agent Overview tab, never at the field.
+- `context.*` (agent) vs `trigger.*` (workflow) resolve differently (`agent.service.ts:2060-2070`).
+- Unused asset: schema kinds already carry a **PHI class** (`kind-form.tsx`), which nothing on the egress path reads.
+
+## 3. Target Design
+
+### 3.1 One egress pipeline, enforced at the chokepoint (`apps/text /generate`)
+
+Every LLM call already goes through `apps/text`. That is where the rules become non-bypassable:
+
+```
+gateway/harness ── compose (one composer, §3.3) ── stamps: model locality + schema PHI field map
+   │
+apps/text /generate
+   1. classify locality      SELF_HOSTED / engine-served  → LOCAL ; CLOUD / BYOK / unknown → CLOUD (fail closed)
+   2. detect   (always)      ONE GLiNER2 pass: PII spans + prompt safety + jailbreak   [guardrail /screen/inbound]
+      ∥ medical judge (OD-3) — runs CONCURRENTLY with step 2, still blocking
+   3. [CLOUD] pseudonymize   schema-PHI fields deterministically + GLiNER2 spans in free text
+                             consistent per-request tokens [PATIENT_1] [MRN_1]; vault = request-scoped memory only
+   4. provider call
+   5. output screen          response_safety + response_toxicity (+ pii_leak, see below)
+                             streaming: sliding sentence window screened BEFORE release
+   6. [CLOUD] re-identify    restore tokens (stream-safe: buffer across a split token)
+   7. return / persist       audit: locality, detected label counts, redaction count, verdicts — never values
+```
+
+- **Locality is derived from data, not env.** The gateway stamps `locality` per `provider_overrides` entry, from `AiModel.deploymentKind` + `ENGINE_SERVED_PROVIDERS`. `apps/text` treats an absent or unknown value as CLOUD. Delete `HARNESS_PHI_LOCAL_PROVIDERS`.
+- **`pii_leak` semantics per locality.**
+  - CLOUD: after the provider returns and before re-identification, any real PII in the output was hallucinated or leaked, so the response is blocked.
+  - LOCAL: detect-only and audited (OD-2). A clinical note legitimately names the patient.
+- **Medical judge (OD-3)** stays blocking but runs in parallel with the GLiNER2 detect pass, so it adds max(judge, detect) instead of their sum. On CLOUD the judge must see redacted text or run on a local model — today it is granite-guardian (SELF_HOSTED); enforce that by seed + publish check.
+- **One engine.** Presidio + spaCy are retired from the harness egress path. `ensure_egress_safe` becomes a thin call to the text pipeline (or is deleted where the call already goes through `/generate`).
+- **Labels.** Add MRN, patient id, encounter id, staff id, facility, and dates of birth / service to the PII taxonomy (`AiModel._metadata.labelTaxonomy`, GLiNER2 is zero-shot so labels are config, not training). Clinical entities stay unmasked (existing `redact.py:17-33` rule).
+- **Opt-outs removed (OD-1).** Remove `guardrail_posture` opt-out, `guardrail-optout.ts`, harness `guardrail_optout.py`, the agent/node/workflow fields and the console toggle. The platform kill switch goes too — see OD-4.
+- **`/translate` gated**, like `/generate`.
+
+### 3.2 Performance budget
+
+| Step | Target |
+|---|---|
+| GLiNER2 joint detect (300M, GPU, batched, ≤4k-char chunks in parallel, not sequential) | p95 ≤ 60 ms per 4k chars |
+| Pseudonymize + re-identify | in-process, ≤ 5 ms |
+| Output screen | p95 ≤ 60 ms (one GLiNER2 classify call) |
+| Medical judge | unchanged, concurrent with detect; verdict cache by `sha256(normalized system+user)` per tenant, TTL-bounded — live flushes repeat the same prefix |
+
+### 3.3 One prompt composer (R3)
+
+- **Single contract** in `@arcaai/workflow-contract` (`composeMessages`), with a Python mirror and a cross-language golden fixture of FINAL messages (not just the grammar):
+  - **system** = platform rules → agent instruction (composed fragments) → output-language step → output contract. These layers are stable, so they hit the vLLM prefix cache, and `cache_control` is set on cloud providers that support it.
+  - **user** = wrapped data blocks (spotlighting, EXTERNAL_DATA), in fixed order, each with a char/token budget.
+- **Missing variable fails by name in every lane.** E's render-empty and F's raw `{{x}}` both go.
+- **Lane E** moves onto `composeMessages` and honours conditional fragments; `primaryTemplateId` stops being a composition shortcut.
+- **Lane F** (`text-proxy.controller.ts` raw `template.content`) is deleted. Its callers are routed through the agent/assembly path.
+- **Lane G** consumes the assembled `systemPrompt`.
+- The fallback chain uses each candidate's own output schema.
+- **Prompt Inspector.** A dry-run on a real consultation id returns composed messages, the redaction diff (labels and counts; values only to an authorized viewer), guardrail verdicts and the token estimate. Composed prompts are stored encrypted (Vault Transit) under a retention setting, for incident reconstruction.
+
+### 3.4 Schema-aware, simpler studio (R1, R2)
+
+- **Shared path source.** `schemaVariablePaths(definition, root)` in `@arcaai/workflow-contract` is used by the server publish checks AND the console. It replaces `trigger-variable-paths.ts` and the agent sole-kind special case. Each entry carries `{ path, type, required, phiClass, description }`.
+- **New `TemplateEditor` in `@arcaai/ui`.**
+  - Typing `{{` (and `context.` / `trigger.` inside CEL) opens a completion list showing type, required and PHI badges.
+  - A debounced `templateReferenceProblems` lints inline with squiggles at the field.
+  - It is used for template content, inline instructions, fragments, `when` conditions, node prompts and variable bindings, replacing the free-text inputs.
+- **`PROMPT_VARIABLE_UNDECLARED` → ERROR** (blocks publish) on agents and workflows. Findings render at the offending field, not only in Overview.
+- **One schema choice.** The workflow trigger owns the context schema, and an agent used by that workflow inherits it. A standalone agent picks it once, in the wizard's first step. The wizard step "Schemas" is renamed **"Input / Output contract"**.
+- **One root name.** OD-6 decides whether `trigger` becomes an alias of `context` or the reverse.
+- **Quick start.** One page — schema preset → agent (template + model) → workflow → assignment. The existing screens stay for advanced editing.
+
+## 4. Remaining Owner Decisions
+
+| Id | Question | Recommendation |
+|---|---|---|
+| OD-4 | Platform kill switch `text.externalGuardrail.enabled` — remove with the opt-outs, or keep as super-admin break-glass? | Remove it as a setting; break-glass is a redeploy. "Always check" then holds by construction. |
+| OD-5 | `require_medical` is a per-tenant push today (a tenant may turn the judge off). Under OD-3, force it on for every business-plane call? Internal service calls (nlp topic/intent, the judge itself) declare `exempt: internal` explicitly. | Yes — force on; the internal exemption is named, never a missing flag. |
+| OD-6 | One prompt root: keep `context` (agent) or `trigger` (workflow)? | `context` everywhere, with `trigger` accepted as a deprecated alias for one release. |
+| OD-7 | Streaming output: screen a sliding sentence window before release (adds about one sentence of latency), or hold the whole response for clinical notes? | Sliding window for live/streamed lanes; whole-response for finalize (already non-streamed). |
+| OD-8 | `TemplateEditor` engine: extend the dependency-free overlay approach of `CodeEditor`, or adopt CodeMirror 6 (new dependency, real completion/lint APIs)? | CodeMirror 6 — completion, lint gutters and a11y come built in. |
+| OD-9 | Store composed prompts (encrypted) for audit? Retention? | Yes, Transit-encrypted, 30 days, SUPER_ADMIN + tenant-admin read with audit. |
+
+**All six accepted by the owner, 2026-10-02**: OD-4 kill switch removed · OD-5 `require_medical` forced on (internal exemption named) · OD-6 `context` root, `trigger` alias for one release · OD-7 sliding sentence window for streams, whole response for finalize · OD-8 CodeMirror 6 · OD-9 store composed prompts, Transit-encrypted, 30 days.
+
+## 5. Implementation Plan
+
+### 5.0 P0 wire contract (frozen before the lanes start)
+
+**Gateway / harness → `apps/text` `POST /generate`** — new fields on `GenerateRequest`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `provider_locality` | `dict[str, "local" \| "cloud"] \| None` | Keyed by provider name, covering `provider` AND `fallback_provider`. Stamped by the caller from `AiModel.deploymentKind` (`SELF_HOSTED` ⇒ local; `CLOUD`/`BYOK` ⇒ cloud) and `ENGINE_SERVED_PROVIDERS` (⇒ local). |
+| `known_phi` | `list[{label: str, value: str}]` (value ≥ 2 chars, ≤ 200 items) | Values of schema-PHI-class context fields plus the patient/clinician identity the caller already holds. They are replaced deterministically on cloud, in addition to GLiNER2 spans. Never logged. |
+| `medical_exempt` | `"internal" \| None` | Replaces the tenant-pushable `require_medical=false`. Only internal service callers (nlp topic/intent) set it. The medical judge otherwise ALWAYS runs (OD-3/OD-5). |
+
+**Removed fields:** the guardrail opt-out (`guardrail_policy.enabled=false` / `opted_out` and the posture opt-out push) and the `text.externalGuardrail.enabled` kill switch (OD-1, OD-4). `guardrail_policy.require_medical` is removed. `include_reasoning` stays.
+
+**Locality resolution inside `apps/text`**, per provider actually called, including the fallback:
+
+1. The stamp is `local` AND the provider is not in `KNOWN_CLOUD_PROVIDERS` (`azure`, `azure-openai`, `bedrock`, `openai`, `anthropic`, `vertex`, `google`, `gemini`, `mistral`, `cohere`, `groq`, `together`, `openrouter`) ⇒ **local**.
+2. No stamp AND the provider is in `ENGINE_SERVED_PROVIDERS ∪ {built-in}` ⇒ **local**.
+3. Everything else ⇒ **cloud** (fail closed). A stamp can never downgrade a known cloud provider.
+
+**Cloud + image `content_parts`** ⇒ 422 `PHI_IMAGE_EGRESS_UNSUPPORTED`. Images cannot be pseudonymized, so they fail closed.
+
+**Response** (non-stream body, and the terminal SSE event) — new `egress` object:
+`{ locality: "local"|"cloud", detected: {label: count}, redacted: int, restored: int, pii_leak_blocked: bool }`. It carries counts only, never values.
+
+**Pseudonym token grammar:** `[<LABEL>_<n>]`, where LABEL is the uppercase snake form of the taxonomy label and n is per-request, per-label, stable per distinct value (case-insensitive, whitespace-normalised). The provider-facing system prompt gets one platform sentence appended on cloud: tokens are placeholders and must be copied verbatim.
+
+**Guardrail (internal to the text lane):** `/api/v1/guardrail/screen/inbound` gains `include_pii_spans: bool`. When true, it runs nlp `/guard/pii` (routing `guardrail.pii.spans`) CONCURRENTLY with classification and returns `pii_spans: [{label,start,end,text,score}]`. Text calls `/screen/inbound` and `/api/medical/validate` concurrently on every call. The internal judge lane (`/generate/internal/judge`) refuses a provider resolving to cloud with 503 `JUDGE_PROVIDER_NOT_LOCAL`. It stays outside the guardrail to avoid the call cycle, and so it is only ever allowed on a local model.
+
+**Seed defaults (`18-guardrail-availability.ts`):** `jailbreak_detection`, `prompt_safety`, `prompt_toxicity`, `response_safety`, `response_toxicity`, `pii_leak`, `containment_echo` = enabled. `response_refusal` stays off, because a refusal is not unsafe.
+
+Lanes are partitioned by package, so each worktree has one writer (rule 14). The orchestrator owns `db:*`, `pnpm install` and merges. Per the owner rule, lanes run only their own RED → GREEN tests, and one gate pass follows after the full merge on dev-2.2.
+
+| Lane | Owns | Depends on |
+|---|---|---|
+| L1 contract | `packages/workflow-contract` (+ Python mirrors in `apps/harness/.../interpreter`), `packages/types` | — |
+| L2 egress | `apps/text` (pipeline, locality, pseudonymize/re-identify, stream buffer), `apps/guardrail` (inbound joint call, outbound per locality) | L1 (locality type) |
+| L3 nlp | `apps/nlp` GLiNER2 joint detect + parallel chunking; label taxonomy seed | — |
+| L4 gateway | `packages/applications` (locality stamping, PHI field map, lane E onto composer, lane F removal, opt-out removal, `require_medical`), `apps/api`, seeds `18-guardrail-availability`, `16-ai-routing-policy` | L1 |
+| L5 harness | `apps/harness` (retire Presidio egress, use text pipeline, lane G fix, fallback schema fix, opt-out removal) | L1, L2 |
+| L6 console | `packages/ui` `TemplateEditor`, `apps/admin-console` (agents, workflow-studio, prompt-templates, context-schemas, quick start, inspector) | L1 |
+
+### 5.1 TDD test list (RED first)
+
+**L1**
+- `composeMessages` golden fixture: identical system/user output in TS and Python, for template, inline and composite instructions × language step × data blocks.
+- Missing variable throws `PROMPT_VARIABLE_UNRESOLVED` naming every missing path.
+- `schemaVariablePaths` covers kinds, structured fields, `phiClass`, and sole-kind collapse.
+- `PROMPT_VARIABLE_UNDECLARED` severity is ERROR.
+
+**L2**
+- Unknown locality is treated as CLOUD and redacted.
+- CLOUD: schema-PHI field values never appear in the provider payload (adapter spy).
+- CLOUD: re-identify restores tokens, including a token split across two stream chunks.
+- LOCAL: payload is unmodified, detection is audited with counts and no values.
+- CLOUD `pii_leak`: a real name in the output before re-identification blocks the response.
+- Opt-out field in the request is rejected / ignored, and both gates always run.
+- The medical judge and the detect pass run concurrently (timing test with stubs).
+- `/translate` is gated.
+- Streaming: a blocked window is never emitted.
+
+**L3**
+- Joint detect returns spans and safety labels in one call.
+- New labels (MRN, encounter id, staff id) are detected on fixtures.
+- Chunked inputs are processed in parallel and spans are offset-correct.
+
+**L4**
+- Gateway stamps `locality` from `deploymentKind` / `ENGINE_SERVED_PROVIDERS`.
+- Lane E: conditional fragments apply, the body is in the system message, and a missing variable is a 400.
+- Lane F route removed (404) / redirected.
+- Seed: outbound checks enabled.
+- `require_medical` forced on for the business plane.
+
+**L5**
+- `core.agent` / `generate` / `text_generate` no longer import Presidio, and cloud redaction happens via text.
+- Lane G uses the assembled `systemPrompt`.
+- Fallback candidates use their own output schema.
+- Replay-compat suite green (workflow code changes).
+
+**L6**
+- `TemplateEditor` opens completions on `{{`, shows the PHI badge, and squiggles an undeclared path.
+- Agent wizard: renamed step; schema chosen once.
+- Workflow-inherited schema shown read-only on the agent.
+- axe 0 violations, both themes.
+
+### 5.2 Order
+
+1. **P0 safety:** L3 → L2 → L4 (locality, seeds, opt-outs) → L5. This closes R4–R7.
+2. **P1 composition:** L1 → L4 (lane E/F) → L5 (lane G, fallback) → Prompt Inspector.
+3. **P2 studio:** L6.
+
+### 5.3 Migrations
+
+- Only if OD-9 = yes: a `ComposedPromptRecord` table (tenant-scoped, Transit ciphertext, retention), plus a `ResourceType` addition.
+- The opt-out fields live in JSONB (`parameters` / node config), so a data migration strips them; no column drop.
+
+### 5.4 Verification criteria
+
+- Live proof on the dev stack. The same consultation is finalized once on an LM Studio agent and once on a cloud BYOK agent.
+  - Provider-payload capture shows the raw values on local and only tokens on cloud.
+  - The persisted note contains real values in both cases.
+  - The audit rows show the detected label counts.
+- A seeded unsafe prompt is refused on the inbound check. A seeded unsafe response is refused on the outbound check, with no streamed bytes delivered.
+- Latency is measured before and after for a live flush and a finalize; the §3.2 budget holds.
+- Console: author an agent prompt entirely from completions with no typing of paths; an undeclared path blocks publish at the field.
+
+## 6. Implementation Summary
+
+_Not started._
+
+## 7. Change History
+
+| Date | Change |
+|---|---|
+| 2026-10-02 | Ticket raised; current-state evaluation (§2) and plan (§3–5) written; OD-1..3 taken by owner. |
+| 2026-10-02 | OD-4..9 accepted; P0 wire contract frozen (§5.0). P0 runs as three lanes: TEXT (`apps/text` + `apps/guardrail` + the nlp text client), GATEWAY (`packages/{applications,database,workflow-contract,types}` + `apps/api` + the console opt-out toggle), HARNESS (`apps/harness`). The NLP joint-detect endpoint is deferred: guardrail runs the existing `/guard/pii` and `/guard/classify` concurrently. |
