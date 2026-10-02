@@ -332,7 +332,7 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
     );
   });
 
-  it('warns about an undeclared reference inside a fragment, at that fragment’s path', async () => {
+  it('refuses an undeclared reference inside a fragment as an ERROR, at that fragment’s path', async () => {
     putTemplate('tpl-base', 'Base');
     const findings = await validateFindings({
       fragments: [
@@ -341,7 +341,7 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
       ],
     });
     expect(findings).toContainEqual(
-      expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', path: 'instruction.fragments[1]', severity: 'WARNING' }),
+      expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', path: 'instruction.fragments[1]', severity: 'ERROR' }),
     );
   });
 
@@ -400,13 +400,14 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
 
 describe('the two pre-947 forms are untouched', () => {
   it('form 1 (template) still compiles to the flat `template` shape', async () => {
-    putTemplate('tpl-1', 'SOAP {{context.clinic}}');
+    // A reference nothing declares now blocks publish, so the body declares nothing.
+    putTemplate('tpl-1', 'SOAP for the clinic.');
     const compiled = await publish({ promptTemplateId: 'tpl-1', promptVersionNumber: 1 });
     expect(compiled.resolvedPrompt).toEqual({
       source: 'template',
       promptTemplateId: 'tpl-1',
       promptVersionNumber: 1,
-      content: 'SOAP {{context.clinic}}',
+      content: 'SOAP for the clinic.',
     });
   });
 

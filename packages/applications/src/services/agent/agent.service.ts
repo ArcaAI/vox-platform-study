@@ -38,7 +38,8 @@ import {
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   PROMPT_COMPOSITION_JOIN,
-  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
@@ -2044,7 +2045,7 @@ export class AgentService extends BaseService implements IAgentService {
     };
 
     return templateReferenceProblems(content, declared).map((problem) => ({
-      severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      severity: PROMPT_VARIABLE_UNDECLARED_SEVERITY,
       code: 'PROMPT_VARIABLE_UNDECLARED' as const,
       path,
       message: `${templateRef}: ${problem}`,
@@ -2069,7 +2070,7 @@ export class AgentService extends BaseService implements IAgentService {
       if (typeof fragment.when !== 'string' || fragment.when.length === 0) continue;
       for (const problem of conditionRootProblems(fragment.when, boundNames)) {
         findings.push({
-          severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+          severity: PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
           code: 'PROMPT_FRAGMENT_CONDITION_ROOT',
           path: `instruction.fragments[${index}].when`,
           message: `fragment \`${fragment.key}\`: ${problem}`,
