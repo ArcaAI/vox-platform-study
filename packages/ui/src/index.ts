@@ -90,6 +90,7 @@ export * from './components/custom/dept-prompt-selector';
 export * from './components/custom/dna-style-selector';
 export * from './components/custom/model-selector';
 export * from './components/custom/stt-language-mode-picker';
+export * from './components/custom/template-editor';
 export * from './components/custom/theme-toggle';
 // The deprecated `custom/transcript-viewer` was removed — zero
 // remaining usages (grep-proven); `LiveTranscript` is the canonical transcript (D6).
