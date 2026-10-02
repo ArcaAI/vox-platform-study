@@ -230,7 +230,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
     monkeypatch.setattr(core, "record_generation_and_flush", _record_generation)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_text_client", lambda _settings: _StubText())
 
     async def _go(

@@ -141,7 +141,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
     monkeypatch.setattr(core, "record_generation_and_flush", _record_generation)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_text_client", lambda _settings: _StubText())
 
     async def _go(
@@ -213,15 +212,6 @@ class TestTheGenerationIsBillable:
         screened, _r1 = await run(guardrail={"enabled": True})
         assert screened[0]["guardrail"] == "screened"
 
-    @pytest.mark.asyncio
-    async def test_an_opted_out_generation_is_still_billed_and_says_so(
-        self, monkeypatch: pytest.MonkeyPatch, run
-    ) -> None:
-        recorded, result = await run(guardrail={"enabled": False})
-
-        assert result.status == "SUCCEEDED"
-        assert recorded[0]["guardrail"] == "opted_out"
-
 
 class TestNothingIsBilledForAGenerationThatDidNotHappen:
     @pytest.mark.asyncio
@@ -238,7 +228,6 @@ class TestNothingIsBilledForAGenerationThatDidNotHappen:
 
         monkeypatch.setattr(core, "record_and_flush", _noop)
         monkeypatch.setattr(core, "record_generation_and_flush", _record_generation)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
         monkeypatch.setattr(
             core, "_api_client", lambda _settings: _StubApi(_wire("platform", None))
         )

@@ -490,6 +490,10 @@ class ResolvedAgentModel(BaseModel):
     compute_type: str | None = Field(default=None, alias="computeType")
     local_path: str | None = Field(default=None, alias="localPath")
     checksum: str | None = None
+    #: TASK-1035 §5.0 — ``AiModel.deploymentKind`` (``SELF_HOSTED`` / ``CLOUD`` / ``BYOK``), the
+    #: ONLY source of the ``provider_locality`` stamp sent to ``apps/text``. Absent on a resolve
+    #: answer that does not carry it, in which case no stamp is sent and text decides.
+    deployment_kind: str | None = Field(default=None, alias="deploymentKind")
 
 
 class ResolvedPromptFragment(BaseModel):

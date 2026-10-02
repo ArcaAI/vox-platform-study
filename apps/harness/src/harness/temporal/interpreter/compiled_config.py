@@ -247,8 +247,9 @@ class CompiledPolicyBindings(BaseModel):
     context_schema_refs: list[CompiledContextSchemaRef] = Field(
         default_factory=list, alias="contextSchemaRefs"
     )
-    #: TASK-890 §3.14, additive-optional and genuinely tri-state: ``None`` is "no workflow
-    #: opinion", so it must NOT default to a boolean.
+    #: TASK-890 §3.14. RETIRED by TASK-1035 OD-1 (guardrail opt-outs removed): still PARSED so a
+    #: config compiled before the decision keeps loading under ``extra="forbid"``, and read by
+    #: nothing — every call is screened whatever it says.
     guardrail: CompiledGuardrailDecision | None = None
 
 

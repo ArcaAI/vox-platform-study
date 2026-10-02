@@ -170,7 +170,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
     monkeypatch.setattr(core, "record_generation_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_text_client", lambda _settings: _StubText())
     monkeypatch.setattr(core, "_api_client", lambda _settings: _StubApi())
     # `_persist_finalized_note` imports these lazily (the same circular-import dance

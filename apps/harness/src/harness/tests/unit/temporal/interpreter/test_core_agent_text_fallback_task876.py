@@ -195,7 +195,6 @@ def harness(monkeypatch: pytest.MonkeyPatch):
         return None
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
     def _install(answer: dict[str, Any], failing: set[str]) -> _StubText:
         api = _StubApi(answer)

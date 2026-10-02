@@ -306,7 +306,6 @@ class TestCoreAgentForwardsTheBoundConnection:
             return None
 
         monkeypatch.setattr(core, "record_and_flush", _noop)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
         async def _go(provider_override: dict[str, Any] | None) -> tuple[_StubText, Any]:
             text = _StubText()
@@ -357,7 +356,6 @@ class TestCoreAgentForwardsTheBoundConnection:
             return None
 
         monkeypatch.setattr(core, "record_and_flush", _noop)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
         text = _StubText(fail_first=True)
         monkeypatch.setattr(core, "_api_client", lambda _settings: _StubApi(_wire_with_chain()))
         monkeypatch.setattr(core, "_text_client", lambda _settings: text)
