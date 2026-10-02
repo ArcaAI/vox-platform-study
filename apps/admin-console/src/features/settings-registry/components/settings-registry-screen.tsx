@@ -347,7 +347,7 @@ export function SettingsRegistryScreen() {
         // On a paired row `sourceScope` describes the tenant half's own cascade,
         // which is exactly the reading that misled — `pair.inForce` is the
         // server's statement of which half the runtime applies.
-        const source = known ? (known.pair ? sourceScopeLabel(known.pair.inForce === 'platform' ? 'system' : 'tenant') : sourceScopeLabel(known.sourceScope)) : 'code default';
+        const source = row.original.dedicatedRow ? 'dedicated row' : known ? (known.pair ? sourceScopeLabel(known.pair.inForce === 'platform' ? 'system' : 'tenant') : sourceScopeLabel(known.sourceScope)) : 'code default';
         return <span className="text-muted-foreground text-xs">{source}</span>;
       },
     },

@@ -20,11 +20,13 @@ import {
   listObjects,
   listStorageConfigs,
   provisionTenantBuckets,
+  savePlatformStorageConfig,
   setBucketDefaults,
   setPlatformPublicEndpoint,
   uploadObject,
   upsertStorageConfig,
 } from './client';
+import type { PlatformStorageChanges } from './client';
 import { storageKeys } from './keys';
 import type {
   AdoptBucketRequest,
@@ -151,5 +153,16 @@ export function useSetPlatformPublicEndpoint() {
     mutationFn: ({ platform, publicEndpoint }: { platform: TenantStorageConfig; publicEndpoint: string | null }) =>
       setPlatformPublicEndpoint(platform, publicEndpoint),
     onSuccess: invalidate,
+  });
+}
+
+/** TASK-1033 — one If-Match save for the platform default's editable fields; a 412 refetches. */
+export function useSavePlatformStorageConfig() {
+  const invalidate = useInvalidateStorage();
+  return useMutation({
+    mutationFn: ({ platform, changes }: { platform: TenantStorageConfig; changes: PlatformStorageChanges }) =>
+      savePlatformStorageConfig(platform, changes),
+    onSuccess: invalidate,
+    onError: invalidate,
   });
 }

@@ -18,6 +18,7 @@ import {
   killSwitchWarning,
   pairSummary,
   pairTargetsFor,
+  provenanceFor,
   sourceScopeLabel,
   writableScopes,
   writeBlockFor,
@@ -264,6 +265,58 @@ describe('the twin-key pair — a picker that means what it says', () => {
 
     it('is null without a pair block — it never guesses which half is in force', () => {
       expect(pairSummary(tenantHalf, null, false, 'ArcaAI')).toBeNull();
+    });
+  });
+});
+
+describe('TASK-1033 — dedicated-owner link target (T4)', () => {
+  const STORAGE = item({
+    key: 'storage.platformDefault.publicEndpoint',
+    tier: 'db-config',
+    dataType: 'string',
+    consoleRoute: '/tenants/storage',
+    consoleRouteLabel: 'Tenant storage',
+  });
+
+  it('returns the owner route as a link target for a db-config key', () => {
+    const block = writeBlockFor(STORAGE, true);
+    expect(block?.link).toEqual({ href: '/tenants/storage', label: 'Tenant storage' });
+  });
+
+  it('carries the link for entitlement and redis-flag keys too', () => {
+    expect(writeBlockFor(item({ tier: 'entitlement', consoleRoute: '/entitlements', consoleRouteLabel: 'Entitlements' }), true)?.link?.href).toBe('/entitlements');
+    expect(writeBlockFor(item({ tier: 'redis-flag', consoleRoute: '/features', consoleRouteLabel: 'Feature availability' }), true)?.link?.href).toBe('/features');
+  });
+
+  it('falls back to the sentence with no link when the catalog carries no route', () => {
+    const block = writeBlockFor(item({ tier: 'db-config' }), true);
+    expect(block?.link).toBeUndefined();
+    expect(block?.reason).toMatch(/dedicated screen/i);
+  });
+
+  it('keeps vault-kv, db-secret and env locked with NO link, even if a route were sent', () => {
+    for (const tier of ['vault-kv', 'db-secret', 'env'] as const) {
+      const block = writeBlockFor(item({ tier, locked: true, lockLabel: 'Vault secret', lockReason: 'Change in Vault.', consoleRoute: '/tenants/storage', consoleRouteLabel: 'x' }), true);
+      expect(block?.label).toBe('Vault secret');
+      expect(block?.link).toBeUndefined();
+    }
+  });
+});
+
+describe('TASK-1033 — provenance for a dedicated row', () => {
+  it('describes a dedicated-row value without claiming a code default', () => {
+    expect(provenanceFor({ sourceScope: 'code-default', version: undefined }, { value: 'https://a.example', version: 3 })).toEqual({
+      answeredBy: 'dedicated row',
+      stored: 'v3 — stored on the dedicated row',
+      value: 'https://a.example',
+    });
+  });
+
+  it('keeps the code-default wording when there is no dedicated row', () => {
+    expect(provenanceFor({ sourceScope: 'code-default', version: undefined }, null)).toEqual({
+      answeredBy: 'code default',
+      stored: 'none stored — still the code default',
+      value: undefined,
     });
   });
 });

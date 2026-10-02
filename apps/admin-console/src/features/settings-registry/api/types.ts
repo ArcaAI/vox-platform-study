@@ -113,6 +113,13 @@ export interface SettingCatalogItem {
    * because this field is present. Absent for every other key.
    */
   platformTierKey?: string;
+
+  /** TASK-1033 — route that owns the write for a dedicated-tier key (`/tenants/storage`, …). */
+  consoleRoute?: string | null;
+  /** TASK-1033 — label for the owner-route link. */
+  consoleRouteLabel?: string | null;
+  /** TASK-1033 — the value stored on the key's dedicated table row (db-config tier). */
+  dedicatedRow?: { value: unknown; version: number } | null;
 }
 
 /**

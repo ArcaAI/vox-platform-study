@@ -21,6 +21,8 @@ export interface WriteBlock {
   label: string;
   /** Sentence shown next to the disabled control. */
   reason: string;
+  /** TASK-1033 — where the write actually lives, when the catalog names it. */
+  link?: { href: string; label: string };
 }
 
 /**
@@ -89,7 +91,13 @@ export function writeBlockFor(item: SettingCatalogItem, isElevated: boolean): Wr
   }
 
   if (item.tier !== 'global-kv') {
-    return TIER_BLOCK[item.tier] ?? { label: 'Not writable here', reason: `Tier '${item.tier}' is not writable through the registry lane.` };
+    const block = TIER_BLOCK[item.tier] ?? { label: 'Not writable here', reason: `Tier '${item.tier}' is not writable through the registry lane.` };
+    // TASK-1033 — a dedicated tier is a hop away, not a dead end. Locked tiers
+    // returned above and never reach here, so a Vault secret can never gain a link.
+    if (item.consoleRoute) {
+      return { ...block, link: { href: item.consoleRoute, label: item.consoleRouteLabel ?? item.consoleRoute } };
+    }
+    return block;
   }
 
   return null;
@@ -210,6 +218,32 @@ export function sourceScopeLabel(sourceScope: string | undefined): string {
     default:
       return sourceScope ?? 'unknown';
   }
+}
+
+/** What the drawer says about where the shown value came from. */
+export interface Provenance {
+  answeredBy: string;
+  stored: string;
+  /** The dedicated row's value, when one backs the key. */
+  value: unknown;
+}
+
+/**
+ * TASK-1033 — a db-config key whose value sits on its dedicated row must never
+ * read "code default · none stored": that is the false statement this fixes.
+ */
+export function provenanceFor(
+  effective: { sourceScope: string | undefined; version: number | undefined },
+  dedicatedRow: { value: unknown; version: number } | null | undefined,
+): Provenance {
+  if (dedicatedRow) {
+    return { answeredBy: 'dedicated row', stored: `v${dedicatedRow.version} — stored on the dedicated row`, value: dedicatedRow.value };
+  }
+  return {
+    answeredBy: sourceScopeLabel(effective.sourceScope),
+    stored: effective.version ? `v${effective.version}` : 'none stored — still the code default',
+    value: undefined,
+  };
 }
 
 /**

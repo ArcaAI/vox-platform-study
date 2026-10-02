@@ -293,10 +293,10 @@ describe('TenantStorageScreen', () => {
       renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
 
       expect(await screen.findByRole('heading', { name: 'Platform storage default' })).toBeDefined();
-      expect(await screen.findByText('https://hope-minio:9000')).toBeDefined();
+      await waitFor(() => expect((screen.getByLabelText('Endpoint') as HTMLInputElement).value).toBe('https://hope-minio:9000'));
 
       fireEvent.change(screen.getByLabelText('Public download endpoint'), { target: { value: ' https://admin.example.com/ ' } });
-      fireEvent.click(screen.getByRole('button', { name: /save public endpoint/i }));
+      fireEvent.click(screen.getByRole('button', { name: /save platform storage/i }));
 
       await waitFor(() => {
         const put = calls.find((call) => call.method === 'PUT' && call.url.endsWith('/admin/tenants/storage/config/platform'));
@@ -304,30 +304,101 @@ describe('TenantStorageScreen', () => {
       });
     });
 
-    it('clears the public download endpoint with an empty value', async () => {
+    it('edits endpoint, region and path-style in the same form (T6)', async () => {
       const calls = unscoped((call) => {
         if (!call.url.endsWith('/admin/tenants/storage/config/platform')) return undefined;
-        return Response.json({ ...PLATFORM, publicEndpoint: call.method === 'PUT' ? null : 'https://admin.example.com' });
+        return Response.json(PLATFORM);
       });
       renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
 
-      const input = await screen.findByLabelText('Public download endpoint');
-      await waitFor(() => expect((input as HTMLInputElement).value).toBe('https://admin.example.com'));
-      fireEvent.change(input, { target: { value: '' } });
-      fireEvent.click(screen.getByRole('button', { name: /save public endpoint/i }));
+      const endpoint = await screen.findByLabelText('Endpoint');
+      await waitFor(() => expect((endpoint as HTMLInputElement).value).toBe('https://hope-minio:9000'));
+      fireEvent.change(endpoint, { target: { value: 'https://silo:9000' } });
+      fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-west-1' } });
+      fireEvent.click(screen.getByLabelText('Force path-style addressing'));
+      fireEvent.change(screen.getByLabelText('Container prefix'), { target: { value: 'hope' } });
+      fireEvent.click(screen.getByRole('button', { name: /save platform storage/i }));
 
       await waitFor(() => {
         const put = calls.find((call) => call.method === 'PUT');
-        expect(put?.body).toEqual({ provider: 'MINIO', publicEndpoint: null, expectedVersion: 4 });
+        expect(put?.body).toEqual({
+          provider: 'MINIO',
+          endpoint: 'https://silo:9000',
+          region: 'eu-west-1',
+          forcePathStyle: false,
+          containerPrefix: 'hope',
+          expectedVersion: 4,
+        });
       });
     });
 
-    it('does not offer to create a SYSTEM row that has not been seeded', async () => {
-      unscoped((call) => (call.url.endsWith('/admin/tenants/storage/config/platform') ? Response.json({ ...PLATFORM, id: '', version: 0 }) : undefined));
+    it('keeps credentialsRef read-only', async () => {
+      unscoped((call) => (call.url.endsWith('/admin/tenants/storage/config/platform') ? Response.json(PLATFORM) : undefined));
       renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
 
-      expect(await screen.findByText(/has not been seeded/i)).toBeDefined();
-      expect(screen.queryByRole('button', { name: /save public endpoint/i })).toBeNull();
+      expect(await screen.findByText('platform/storage/minio')).toBeDefined();
+      expect(screen.queryByLabelText(/credentials/i)).toBeNull();
+    });
+
+    it('resets a field to the bootstrap default by sending null, only after the confirm dialog', async () => {
+      const calls = unscoped((call) => {
+        if (!call.url.endsWith('/admin/tenants/storage/config/platform')) return undefined;
+        return Response.json({ ...PLATFORM, region: 'eu-west-1' });
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      await waitFor(() => expect((screen.getByLabelText('Region') as HTMLInputElement).value).toBe('eu-west-1'));
+      fireEvent.click(screen.getByRole('button', { name: /reset region to default/i }));
+
+      const dialog = await screen.findByRole('alertdialog');
+      expect(within(dialog).getByText(/without its own storage config falls back to the bootstrap value on the next file operation/i)).toBeDefined();
+      expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: /reset to default/i }));
+      await waitFor(() => {
+        const put = calls.find((call) => call.method === 'PUT');
+        expect(put?.body).toEqual({ provider: 'MINIO', region: null, expectedVersion: 4 });
+      });
+    });
+
+    it('toasts and refetches on a 412 drift', async () => {
+      const { toast } = await import('sonner');
+      let gets = 0;
+      unscoped((call) => {
+        if (!call.url.endsWith('/admin/tenants/storage/config/platform')) return undefined;
+        if (call.method === 'PUT') return Response.json({ message: 'stale' }, { status: 412 });
+        gets += 1;
+        return Response.json(PLATFORM);
+      });
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      const region = await screen.findByLabelText('Region');
+      fireEvent.change(region, { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('button', { name: /save platform storage/i }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      await waitFor(() => expect(gets).toBeGreaterThan(1));
+    });
+
+    it('requires provider and endpoint before creating a row that does not exist yet', async () => {
+      const calls = unscoped((call) =>
+        call.url.endsWith('/admin/tenants/storage/config/platform')
+          ? call.method === 'PUT'
+            ? Response.json({ ...PLATFORM, version: 1 })
+            : Response.json({ ...PLATFORM, id: '', endpoint: null, version: 0 })
+          : undefined,
+      );
+      renderWithProviders(<TenantStorageScreen />, { searchParams: '?tab=configs' });
+
+      const save = await screen.findByRole('button', { name: /save platform storage/i });
+      fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-west-1' } });
+      expect((save as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText(/provider and endpoint are both required/i)).toBeDefined();
+
+      fireEvent.change(screen.getByLabelText(/^Endpoint/), { target: { value: 'https://silo:9000' } });
+      expect((save as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(save);
+      await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
     });
   });
 
