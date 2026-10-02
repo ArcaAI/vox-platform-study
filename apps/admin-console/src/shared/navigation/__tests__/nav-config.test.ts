@@ -972,7 +972,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
           'Context Schemas',
           'Document Templates',
           'Knowledge Base',
-          'DNA writing styles',
+          'DNA writing style memory',
           'Workflow Studio',
           'Workflow Assignments',
         ],

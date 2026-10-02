@@ -4,11 +4,20 @@
  * mount. List pagination is ONE-based on this controller (see types.ts).
  */
 
-import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, putJson, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   DnaDashboard,
   DnaErasureResult,
+  DnaIngestJobStatus,
+  DnaIngestRequest,
+  DnaIngestResponse,
+  DnaMemorySample,
+  DnaMemorySummaryRow,
+  DnaSchedule,
+  DnaScheduleRunResult,
+  ListDnaMemoryParams,
+  UpdateDnaScheduleRequest,
   DnaJob,
   DnaJobStatus,
   DnaReport,
@@ -67,4 +76,40 @@ export function getDnaJobStatus(jobId: string): Promise<DnaJobStatus> {
 /** Gateway-relative SSE path for a job — pair with scope `dna_job:<jobId>`. */
 export function dnaJobStreamPath(jobId: string): string {
   return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
+}
+
+/* TASK-1034 — memory (samples), ingest, schedule. */
+
+export function listDnaMemorySummary(): Promise<DnaMemorySummaryRow[]> {
+  return getJson(`${BASE}/memory/summary`);
+}
+
+export function listDnaMemory(params: ListDnaMemoryParams): Promise<Paginated<DnaMemorySample>> {
+  return getJson(`${BASE}/memory`, params);
+}
+
+/** Soft delete (204). */
+export function deleteDnaMemorySample(sampleId: string): Promise<void> {
+  return deleteJson(`${BASE}/memory/${encodeURIComponent(sampleId)}`);
+}
+
+/** Business-plane ingest route (not under `admin/`); a tenant admin names the clinician. */
+export function ingestDnaSamples(body: DnaIngestRequest): Promise<DnaIngestResponse> {
+  return postJson('dna-writing-styles/ingest', body);
+}
+
+export function getDnaIngestJobStatus(jobId: string): Promise<DnaIngestJobStatus> {
+  return getJson(`dna-writing-styles/ingest/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function getDnaSchedule(): Promise<DnaSchedule> {
+  return getJson(`${BASE}/schedule`);
+}
+
+export function updateDnaSchedule(body: UpdateDnaScheduleRequest): Promise<DnaSchedule> {
+  return putJson(`${BASE}/schedule`, body);
+}
+
+export function runDnaSchedule(): Promise<DnaScheduleRunResult> {
+  return postJson(`${BASE}/schedule/run`, {});
 }

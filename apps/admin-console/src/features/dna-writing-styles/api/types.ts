@@ -135,3 +135,116 @@ export interface DnaJobStatus {
   /** Present once failed. */
   error?: string;
 }
+
+/* ------------------------------------------------------------------------------------------
+ * TASK-1034 — DNA writing-style MEMORY (samples), ingest and the weekly regeneration schedule.
+ * Shapes pinned in docs/implementation/TASK-1034-…/README.md §4b.
+ * ---------------------------------------------------------------------------------------- */
+
+export type DnaSampleSource = 'EDIT' | 'SIGNOFF' | 'INGEST';
+
+/** One row of `GET admin/dna-writing-styles/memory/summary`. */
+export interface DnaMemorySummaryRow {
+  doctorId: string;
+  username?: string | null;
+  displayName?: string | null;
+  total: number;
+  unconsumed: number;
+  bySource: Record<DnaSampleSource, number>;
+  lastSampleAt: string | null;
+  lastReportAt: string | null;
+  latestReportId: string | null;
+  dnaEnabled: boolean;
+}
+
+/** One sample of `GET admin/dna-writing-styles/memory` — `preview` is ≤200 chars and PHI-redacted server-side. */
+export interface DnaMemorySample {
+  id: string;
+  doctorId: string;
+  source: DnaSampleSource;
+  kind: string | null;
+  writtenAt: string;
+  sourceRef: string | null;
+  consultationId: string | null;
+  consumed: boolean;
+  consumedByReportId: string | null;
+  preview: string;
+  createdAt: string;
+}
+
+/**
+ * List query for the sample list. `page` is sent ONE-based, matching this controller's
+ * existing report list (contract §4b names `page` without a base — see the ticket).
+ */
+export interface ListDnaMemoryParams {
+  doctorId: string;
+  source?: DnaSampleSource;
+  consumed?: boolean;
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
+}
+
+/** One ingest item (`DnaWritingSampleDto`). */
+export interface DnaIngestItem {
+  text: string;
+  writtenAt: string;
+  kind?: string;
+  sourceRef?: string;
+}
+
+/** `POST dna-writing-styles/ingest` body (tenant-admin naming a clinician). */
+export interface DnaIngestRequest {
+  clinicianUserId: string;
+  items: DnaIngestItem[];
+  /** Queue a report generation after storing (server default `true`). */
+  generate?: boolean;
+}
+
+/** 202 body. `jobId` may be absent when `generate: false` (no job is queued). */
+export interface DnaIngestResponse {
+  jobId?: string | null;
+  status?: string;
+  clinicianUserId: string;
+  acceptedItems: number;
+  stored: number;
+  duplicates: number;
+  window?: { from: string; to: string };
+}
+
+/** `GET dna-writing-styles/ingest/jobs/:jobId` (poll only, no SSE). */
+export interface DnaIngestJobStatus {
+  jobId: string;
+  status: DnaJobState;
+  progress?: number;
+  result?: unknown;
+  error?: string;
+}
+
+export interface DnaScheduleSkipped {
+  noFeedback: number;
+  optedOut: number;
+  quota: number;
+  belowFloor: number;
+}
+
+export interface DnaSchedule {
+  enabled: boolean;
+  cron: string;
+  minNewSamples: number;
+  timeZone: string;
+  nextRunAt: string | null;
+  lastRun: { at: string; queued: number; skipped: DnaScheduleSkipped } | null;
+}
+
+export interface UpdateDnaScheduleRequest {
+  enabled?: boolean;
+  cron?: string;
+  minNewSamples?: number;
+}
+
+export interface DnaScheduleRunResult {
+  queued: number;
+  skipped: DnaScheduleSkipped;
+  jobs: Array<{ doctorId: string; jobId: string }>;
+}
