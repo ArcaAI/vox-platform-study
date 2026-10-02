@@ -169,10 +169,10 @@ apps/text /generate
 2. No stamp AND the provider is in `ENGINE_SERVED_PROVIDERS ∪ {built-in}` ⇒ **local**.
 3. Everything else ⇒ **cloud** (fail closed). A stamp can never downgrade a known cloud provider.
 
-**Cloud + image `content_parts`** ⇒ 422 `PHI_IMAGE_EGRESS_UNSUPPORTED`. Images cannot be pseudonymized, so they fail closed.
+**Cloud + image `content_parts`** are ALLOWED (owner, 2026-10-02). Images pass through unchanged, because they cannot be pseudonymized. Every text part is still pseudonymized. The `egress` object carries `images_unredacted: int` for audit.
 
 **Response** (non-stream body, and the terminal SSE event) — new `egress` object:
-`{ locality: "local"|"cloud", detected: {label: count}, redacted: int, restored: int, pii_leak_blocked: bool }`. It carries counts only, never values.
+`{ locality: "local"|"cloud", detected: {label: count}, redacted: int, restored: int, images_unredacted: int, pii_leak_blocked: bool }`. It carries counts only, never values.
 
 **Pseudonym token grammar:** `[<LABEL>_<n>]`, where LABEL is the uppercase snake form of the taxonomy label and n is per-request, per-label, stable per distinct value (case-insensitive, whitespace-normalised). The provider-facing system prompt gets one platform sentence appended on cloud: tokens are placeholders and must be copied verbatim.
 
