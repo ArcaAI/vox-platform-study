@@ -393,9 +393,8 @@ export const summarizationMaxTokens = (sectionCount: number): number =>
     : SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS;
 
 /**
- * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
- * `node > workflow > agent > true` guardrail precedence (§3.14) — stated, not inherited, because
- * "guardrail enabled with GLiNER2 on the summarization agent" is an owner commitment (D-2).
+ * The per-turn summarization hyper-parameters. (No `guards.enabled`: the guardrail opt-out is
+ * retired, so guardrail screening — GLiNER2 included — is not a per-agent setting any more.)
  * Reasoning OFF: the live flush is a 20 s budget and reasoning tokens were measured at 92% of
  * the completion on this model (TASK-891).
  *
@@ -412,7 +411,6 @@ export const summarizationMaxTokens = (sectionCount: number): number =>
 export const SUMMARIZATION_PARAMETERS = {
   generation: { temperature: 0, maxTokens: SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS, reasoning: { enabled: false } },
   responseFormat: 'text',
-  guards: { enabled: true },
 };
 
 /**
@@ -533,7 +531,6 @@ export const PRE_SUMMARY_PARAMETERS = {
   // per-turn floor (3072 : 2048 = 1.5 ⇒ 8192 × 1.5) rather than inventing a new relationship.
   generation: { temperature: 0, maxTokens: 12288, reasoning: { enabled: false } },
   responseFormat: 'text',
-  guards: { enabled: true },
 };
 
 /**
@@ -587,7 +584,6 @@ export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
  */
 export const CASENOTE_FINALIZATION_PARAMETERS = {
   generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } },
-  guards: { enabled: true },
 };
 
 /** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
@@ -1007,16 +1003,7 @@ export function buildCompiledConfig(
     // `contextSchema: null` — no seeded agent pins a context schema: a schema is CONTENT, cloned
     // per tenant; the trigger of the workflow binds it and `{{trigger.context.*}}` reads it.
     contextSchema: null,
-    // ABSENT MEANS ON — the agent level of the guardrail precedence.
-    guardrail: { enabled: guardrailEnabledOf(spec.parameters) },
   };
-}
-
-/** Mirrors `guardrailEnabledOf` in `AgentService` (duplicated: no dependency on the applications layer). */
-function guardrailEnabledOf(parameters: Record<string, unknown> | null | undefined): boolean {
-  const guards = parameters?.guards;
-  if (guards === null || typeof guards !== 'object' || Array.isArray(guards)) return true;
-  return (guards as Record<string, unknown>).enabled === false ? false : true;
 }
 
 export function checksumOf(compiled: Record<string, unknown>): string {
