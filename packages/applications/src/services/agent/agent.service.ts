@@ -62,6 +62,7 @@ import {
   unresolvedPromptVariables,
   templateReferenceProblems,
   templateSyntaxProblems,
+  withPlatformContextVariables,
   type AgentConfigView,
   type BoundTemplateRef,
   type DeclaredNamespaces,
@@ -2113,13 +2114,16 @@ export class AgentService extends BaseService implements IAgentService {
     // that cannot render. `trigger` keeps the envelope: on a workflow lane that root IS the
     // validated run payload, and the two roots being different is the honest answer.
     const contextRootSchema = contextPayloadSchema === null ? null : (soleContextKindSchema(contextPayloadSchema) ?? contextPayloadSchema);
-    const declared: DeclaredNamespaces = {
+    const schemaDeclared: DeclaredNamespaces = {
       roots: {
         ...(contextPayloadSchema === null ? {} : { context: contextRootSchema, trigger: contextPayloadSchema }),
         input: asRecord(entity.inputSchema) ?? null,
       },
       variables: Object.keys(variables),
     };
+    // A TEXT_GENERATION prompt may also read the flat `context.*` names the gateway binds itself
+    // (`PLATFORM_CONTEXT_VARIABLES`), which no schema kind declares.
+    const declared = entity.task === AgentTask.TEXT_GENERATION ? withPlatformContextVariables(schemaDeclared) : schemaDeclared;
 
     return templateReferenceProblems(content, declared).map((problem) => ({
       severity: PROMPT_VARIABLE_UNDECLARED_SEVERITY,

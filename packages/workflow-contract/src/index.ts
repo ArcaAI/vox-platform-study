@@ -125,6 +125,11 @@ export type { ComposeDataBlock, ComposeMessagesInput, ComposedDataBlock, Compose
 export { schemaVariablePaths } from './schema-variable-paths';
 export type { SchemaVariablePath } from './schema-variable-paths';
 
+// The flat `context.*` names the gateway itself binds (no schema kind declares them) — admitted by
+// agent publish and suggested by the console beside the schema's own paths.
+export { PLATFORM_CONTEXT_VARIABLES, withPlatformContextVariables } from './platform-context-variables';
+export type { PlatformContextVariable } from './platform-context-variables';
+
 // TASK-947 — a TEXT_GENERATION instruction's three forms read in ONE place (`agent-instruction`),
 // and prompt COMPOSITION (`prompt-composition`): which fragments of a composite artifact run
 // over the one render scope, rendered per fragment and joined. Mirrored in Python by the

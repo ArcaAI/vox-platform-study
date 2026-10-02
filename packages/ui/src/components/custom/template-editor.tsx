@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
  * - `mode="cel"`: completion opens after `context.` / `trigger.` / `nodes.`
  *   and inserts the bare path.
  *
- * Each option carries type / required / PHI badges and the path's description.
+ * Each option carries type / required / PHI / platform badges and the path's description.
  * `lint` runs debounced (`lintDelay`) over the whole document; its findings
  * render as squiggles in the editor AND as a text summary under it (a polite
  * live region), so they are not conveyed by colour or position alone.
@@ -41,6 +41,8 @@ export interface VariablePath {
   readonly phiClass?: string | null;
   readonly description?: string | null;
   readonly deprecated?: boolean;
+  /** Where the path comes from: a context schema (the default) or the platform's own bound vocabulary. */
+  readonly source?: 'schema' | 'platform';
 }
 
 export type TemplateDiagnosticSeverity = 'error' | 'warning' | 'info';
@@ -161,6 +163,7 @@ export function renderVariablePathBadges(completion: Completion): Node | null {
   if (entry.type) add(entry.type, 'border-border text-muted-foreground font-mono');
   if (entry.required) add('required', 'border-border text-foreground');
   if (entry.phiClass === 'PHI') add('PHI', 'border-destructive text-destructive');
+  if (entry.source === 'platform') add('platform', 'border-border text-muted-foreground');
   return row;
 }
 

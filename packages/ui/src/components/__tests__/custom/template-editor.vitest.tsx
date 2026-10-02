@@ -88,6 +88,16 @@ describe('TemplateEditor', () => {
     expect(node?.textContent).toContain('PHI');
   });
 
+  it('marks a platform-supplied path with a `platform` badge, and a schema path without one', () => {
+    const paths: VariablePath[] = [
+      { path: 'context.safe_age', type: 'string', phiClass: 'PHI', source: 'platform' },
+      { path: 'context.visit.reason', type: 'string', source: 'schema' },
+    ];
+    const [platform, schema] = templateCompletionSource(() => paths)(contextAt('{{'))?.options as Completion[];
+    expect(renderVariablePathBadges(platform as Completion)?.textContent).toContain('platform');
+    expect(renderVariablePathBadges(schema as Completion)?.textContent).not.toContain('platform');
+  });
+
   it('in CEL mode completes after a root and not after `{{`', () => {
     const source = celCompletionSource(() => PATHS);
     const result = source(contextAt('size(context.pa'));

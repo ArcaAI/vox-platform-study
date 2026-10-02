@@ -6,14 +6,10 @@
  *    the trigger schema of a published workflow whose `core.agent` node names it;
  *  - the agent DETAIL reports which one, as `effectiveContextSchema`;
  *  - the seeded `case-notes-pre-summary` agents (SYSTEM / Global / ArcaAI) read nine
- *    `{{context.*}}` names and pin no schema. Inheritance REACHES them (every seeded consultation
- *    graph runs them), but the schema those graphs bind, `consultation_note_context`, declares
- *    SEVERAL kinds — so under the contract's path rules `context` is the ENVELOPE and the nine
- *    names live one level down (`context.context.*` / `trigger.context.*`). The bodies resolve
- *    only where `context` is the flat prompt vocabulary (`PromptAssemblyService`, which is what
- *    actually renders them for the warm start). KNOWN GAP, pinned below and reported to the
- *    contract owner: the agents publish once a `context`-keyed kind collapses for `context.*`
- *    paths (the single-kind rule, widened), which is a `@arcaai/workflow-contract` decision.
+ *    `{{context.*}}` names and pin no schema. Those names are the gateway's own flat vocabulary
+ *    (`PLATFORM_CONTEXT_VARIABLES`, bound by `PromptAssemblyService`), which no schema kind
+ *    declares — so a TEXT_GENERATION agent's publish admits them under `context` beside whatever
+ *    schema applies, and only a name neither declares is refused.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
@@ -173,38 +169,48 @@ describe('the seeded `case-notes-pre-summary` bodies, against an inherited schem
   it.each([
     ['SYSTEM / Global', SYSTEM_BODY],
     ['ArcaAI', ARCAAI_BODY],
-  ])('%s: WITHOUT a workflow running it, the same agent is refused — undeclared `context.*` is an ERROR', async (_label, body) => {
+  ])('%s: WITHOUT a workflow running it, the platform vocabulary still publishes clean', async (_label, body) => {
     putTemplate('tpl-pre', body);
 
     const report = await findingsOf(agent(), false);
 
+    expect(report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED')).toEqual([]);
+    expect(report.blocking).toBe(false);
+  });
+
+  it.each([
+    ['without a schema', false],
+    ['with the inherited note schema', true],
+  ])('a made-up `{{context.foo}}` is still refused as an ERROR (%s)', async (_label, withWorkflows) => {
+    putTemplate('tpl-pre', `${SYSTEM_BODY}\n{{context.foo}}`);
+    resolvesTo(NOTE_CONTEXT_SCHEMA_DEFINITION);
+
+    const report = await findingsOf(agent(), withWorkflows);
+
+    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(report.blocking).toBe(true);
-    expect(report.findings.some((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED' && finding.severity === 'ERROR')).toBe(true);
+    expect(undeclared).toHaveLength(1);
+    expect(undeclared[0]?.severity).toBe('ERROR');
+    expect(undeclared[0]?.message).toContain('context.foo');
   });
 
   it.each([
     ['SYSTEM / Global', SYSTEM_BODY],
     ['ArcaAI', ARCAAI_BODY],
-  ])('KNOWN GAP — %s: the SEEDED multi-kind `consultation_note_context` declares the names one level down, so they are still refused', async (_label, body) => {
+  ])('%s: under the SEEDED multi-kind `consultation_note_context` the platform vocabulary publishes clean', async (_label, body) => {
     putTemplate('tpl-pre', body);
     resolvesTo(NOTE_CONTEXT_SCHEMA_DEFINITION);
 
     const report = await findingsOf(agent());
 
-    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
-    expect(report.blocking).toBe(true);
-    // Every refused name IS a field of the schema's `context` kind — the gap is the path rule, not the vocabulary.
-    const declared = Object.keys((NOTE_CONTEXT_PROMPT_KIND.fields as { properties: Record<string, unknown> }).properties);
-    for (const finding of undeclared) {
-      const name = /`\{\{context\.([a-z_]+)\}\}`/.exec(finding.message)?.[1];
-      expect(declared).toContain(name);
-    }
+    expect(report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED')).toEqual([]);
+    expect(report.blocking).toBe(false);
   });
 });
 
 describe('inheritance rules', () => {
   it('a workflow that does NOT run this agent is no source', async () => {
-    putTemplate('tpl-pre', 'Age {{context.safe_age}}.');
+    putTemplate('tpl-pre', 'Weight {{context.patient_weight}}.');
     mockWorkflowDefinitions.findActivePublishedByTenant.mockResolvedValue([workflowRunning('some-other-agent')]);
 
     const report = await findingsOf(agent({ instruction: { promptTemplateId: 'tpl-pre', promptVersionNumber: 1 } }));

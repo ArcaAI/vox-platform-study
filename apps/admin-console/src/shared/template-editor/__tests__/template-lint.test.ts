@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { schemaVariablePaths } from '@arcaai/workflow-contract';
-import { contextVariablePaths, declaredNamespaces, findingsAt, templateLint, variableNamePaths } from '../template-lint';
+import { contextVariablePaths, declaredNamespaces, findingsAt, templateLint, variableNamePaths, withPlatformPaths } from '../template-lint';
 
 const DEFINITION = {
   schemaVersion: 1,
@@ -63,5 +63,31 @@ describe('template lint helpers', () => {
     expect(findingsAt(findings, 'instruction').map((finding) => finding.message)).toEqual(['a']);
     expect(findingsAt(findings, 'instruction.fragments[1].when').map((finding) => finding.message)).toEqual(['b']);
     expect(findingsAt(findings, 'instruction.fragments[1]', { prefix: true }).map((finding) => finding.message)).toEqual(['b']);
+  });
+
+  it('adds the platform vocabulary to the completion list, badged `platform`, never duplicating a schema path', () => {
+    const single = {
+      schemaVersion: 1,
+      kinds: [
+        { key: 'context', primitive: 'STRUCTURED', phiClass: 'PHI', fields: { type: 'object', properties: { safe_age: { type: 'integer' } } } },
+      ],
+    };
+    const paths = withPlatformPaths(contextVariablePaths(single));
+    const safeAge = paths.filter((entry) => entry.path === 'context.safe_age');
+    expect(safeAge).toHaveLength(1);
+    expect(safeAge[0]?.type).toBe('integer');
+    expect(paths.find((entry) => entry.path === 'context.current_department')).toMatchObject({ source: 'platform', phiClass: 'NON_PHI' });
+  });
+
+  it('with `platform`, lint admits the platform names and still flags a made-up one', () => {
+    const unbound = templateLint(declaredNamespaces({ definition: null, variables: [], platform: true }));
+    expect(unbound('{{context.safe_age}} {{context.language_name}}')).toEqual([]);
+    expect(unbound('{{context.foo}}')).toHaveLength(1);
+
+    const bound = templateLint(declaredNamespaces({ definition: DEFINITION, variables: [], platform: true }));
+    const content = '{{context.current_department}} {{context.patient.age}} {{context.patient.nickname}}';
+    const diagnostics = bound(content);
+    expect(diagnostics).toHaveLength(1);
+    expect(content.slice(diagnostics[0]?.from, diagnostics[0]?.to)).toBe('{{context.patient.nickname}}');
   });
 });

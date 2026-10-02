@@ -41,10 +41,13 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { GatewayError } from '@/shared/api';
-import { TemplateField, templateSyntaxLint } from '@/shared/template-editor';
+import { TemplateField, templateSyntaxLint, withPlatformPaths } from '@/shared/template-editor';
 import { usePromptTemplateVersions, useUpdateNodePrompt } from '../../api';
 import type { NodePromptBinding, NodePromptUpdateResult } from '../../api/types';
 import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
+
+/** A prompt template body may read the platform's own `context.*` names; offered for completion only. */
+const PLATFORM_PATHS = withPlatformPaths([]);
 
 function latestContent(versions: { versionNumber: number; content: string }[]): string {
   if (versions.length === 0) return '';
@@ -162,7 +165,14 @@ export function NodePromptEditor({
               {/* The same `TemplateEditor` the authoritative editor on /prompt-templates uses:
                   a template body is checked for syntax here; which paths resolve is the
                   binding agent's question, checked at publish. */}
-              <TemplateField label="Prompt content" value={content ?? ''} onChange={setContent} lint={templateSyntaxLint} minLines={10} />
+              <TemplateField
+                label="Prompt content"
+                value={content ?? ''}
+                onChange={setContent}
+                paths={PLATFORM_PATHS}
+                lint={templateSyntaxLint}
+                minLines={10}
+              />
             </div>
           )}
 
