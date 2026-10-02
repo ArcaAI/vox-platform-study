@@ -46,3 +46,7 @@ export * from './consultation-context.js';
 
 // API-key scope presets — the console's "Purpose" radio cards and the seed's day-1 scope set.
 export * from './api-key-presets.js';
+
+// The LLM egress wire contract (`apps/text` `/generate`): provider locality, known PHI, the
+// internal medical-judge exemption and the response's `egress` report.
+export * from './llm-egress.js';

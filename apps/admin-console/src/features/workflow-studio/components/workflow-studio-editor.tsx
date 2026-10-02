@@ -299,14 +299,6 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   );
   const selectedActionSchema = selectedNode?.type === ACTION_NODE_TYPE ? ACTION_CATALOGUE[actionKeyOf(selectedNode.config) ?? '']?.configSchema : undefined;
   const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
-  // TASK-890 §3.14 — the workflow's own guardrail default, for `core.agent`'s effective-value
-  // display in the inspector (`GuardrailField`, node scope). `core.trigger` is the graph's one
-  // mandatory entry node, so there is at most one.
-  const triggerGuardrailEnabled = useMemo(() => {
-    const trigger = nodes.find((candidate) => candidate.type === 'core.trigger');
-    const enabled = (trigger?.config?.guardrail as { enabled?: unknown } | undefined)?.enabled;
-    return typeof enabled === 'boolean' ? enabled : null;
-  }, [nodes]);
   /**
    * TASK-890 black-box J4-F5 — what the trigger binds, so a `core.agent`'s prompt-variable chips
    * can offer this workflow's real `{{trigger.<kindKey>.<field>}}` paths. Read with the same
@@ -1318,7 +1310,6 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               references={celReferences}
               actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
               actionSchema={selectedActionSchema}
-              workflowGuardrailEnabled={triggerGuardrailEnabled}
               triggerContextBinding={triggerContextBinding}
               tab={inspectorTab}
               onTabChange={setInspectorTab}

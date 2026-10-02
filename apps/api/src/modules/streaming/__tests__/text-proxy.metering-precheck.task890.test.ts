@@ -77,11 +77,8 @@ describe('TEXT proxy — the LLM allowance is checked before the billable call',
  * TASK-890 L14 (§3.14, OD-R) — the playground proxy's ledger rows carry the screening
  * disposition too.
  *
- * The proxy pushes NO opt-out: it applies the tenant's `require_medical` /
- * `include_reasoning` policy and leaves `enabled` absent, so the platform posture governs the
- * call. Its rows therefore say `screened` — or `platform_off` when the platform kill switch is
- * off — and can never say `opted_out`, because no agent, workflow or node opinion reaches this
- * route.
+ * Every call is screened (the opt-outs and the platform kill switch are retired), so its rows
+ * say `screened`.
  */
 describe('TEXT proxy — the guardrail disposition on the streamed row', () => {
   it('stamps the platform disposition on `generate.stream`', async () => {

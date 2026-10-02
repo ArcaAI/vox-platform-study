@@ -48,24 +48,20 @@ describe('TextRequestEnrichmentService.applyTenantGuardrailPolicy', () => {
   it('pushes the tenant’s own opinion onto the body', async () => {
     const service = makeService(
       settingsStub({
-        'text.guardrailPolicy.requireMedical': { value: false, sourceScope: 'tenant' },
         'text.guardrailPolicy.includeReasoning': { value: true, sourceScope: 'tenant' },
       }),
     );
 
     const body = await service.applyTenantGuardrailPolicy({ provider: 'azure' });
 
-    expect(body).toMatchObject({ guardrail_policy: { require_medical: false, include_reasoning: true } });
+    expect(body).toMatchObject({ guardrail_policy: { include_reasoning: true } });
   });
 
   it('a tenant with NO opinion gets no field at all — the platform default stands', async () => {
-    // Both keys resolve, but from the platform/code tiers. Pushing
-    // `require_medical: true` here would be indistinguishable on the wire from
-    // a tenant that chose it, and would pin the tenant to today's platform
-    // value forever after.
+    // The key resolves, but from the code tier. Pushing it here would be
+    // indistinguishable on the wire from a tenant that chose it.
     const service = makeService(
       settingsStub({
-        'text.guardrailPolicy.requireMedical': { value: true, sourceScope: 'system' },
         'text.guardrailPolicy.includeReasoning': { value: false, sourceScope: 'code-default' },
       }),
     );
@@ -75,7 +71,7 @@ describe('TextRequestEnrichmentService.applyTenantGuardrailPolicy', () => {
     expect(body).not.toHaveProperty('guardrail_policy');
   });
 
-  it('pushes ONLY the fields the tenant actually set', async () => {
+  it('never pushes `require_medical` — the medical judge is not a tenant opinion (OD-5)', async () => {
     const service = makeService(
       settingsStub({
         'text.guardrailPolicy.requireMedical': { value: false, sourceScope: 'tenant' },
@@ -85,11 +81,11 @@ describe('TextRequestEnrichmentService.applyTenantGuardrailPolicy', () => {
 
     const body = (await service.applyTenantGuardrailPolicy({})) as Record<string, unknown>;
 
-    expect(body.guardrail_policy).toEqual({ require_medical: false });
+    expect(body).not.toHaveProperty('guardrail_policy');
   });
 
   it('refuses a row of the wrong type rather than coercing it', async () => {
-    const service = makeService(settingsStub({ 'text.guardrailPolicy.requireMedical': { value: 'no', sourceScope: 'tenant' } }));
+    const service = makeService(settingsStub({ 'text.guardrailPolicy.includeReasoning': { value: 'no', sourceScope: 'tenant' } }));
 
     const body = await service.applyTenantGuardrailPolicy({});
 

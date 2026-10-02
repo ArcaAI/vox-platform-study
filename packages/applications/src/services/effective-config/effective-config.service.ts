@@ -333,29 +333,26 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    * that consumer does not read — the generic `settings` map already carries
    * exactly that, and carrying it is what proved insufficient.
    *
-   * Presence is keyed on the switch: a service whose descriptors declare none
+   * Presence is keyed on the timeout (the platform switch and `requireMedical` were removed —
+   * screening and the medical judge always run): a service whose descriptors declare none
    * of these keys gets NO group, which every client reads as "leave my own
    * values alone".
    */
   private externalGuardrailView(resolved: Map<string, ResolvedKey>): { externalGuardrail?: EffectiveExternalGuardrail } {
-    const enabled = resolved.get('text.externalGuardrail.enabled');
-    if (!enabled) return {};
-
     const timeoutS = resolved.get('text.externalGuardrail.timeoutS');
+    if (!timeoutS) return {};
+
     const maxRetries = resolved.get('text.externalGuardrail.maxRetries');
     const retryBackoffMs = resolved.get('text.externalGuardrail.retryBackoffMs');
-    const requireMedical = resolved.get('text.externalGuardrail.requireMedical');
     const includeReasoning = resolved.get('text.externalGuardrail.includeReasoning');
 
     return {
       externalGuardrail: {
-        enabled: booleanOrNull(enabled),
         timeoutS: numberOrNull(timeoutS),
         maxRetries: numberOrNull(maxRetries),
         retryBackoffMs: numberOrNull(retryBackoffMs),
-        requireMedical: booleanOrNull(requireMedical),
         includeReasoning: booleanOrNull(includeReasoning),
-        source: groupSource([enabled, timeoutS, maxRetries, retryBackoffMs, requireMedical, includeReasoning]),
+        source: groupSource([timeoutS, maxRetries, retryBackoffMs, includeReasoning]),
       },
     };
   }

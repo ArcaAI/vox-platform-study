@@ -253,6 +253,7 @@ export class PreSummaryProcessor extends WorkerHost {
           },
           tenantId,
           jobId,
+          consultationId,
         );
 
         // Step 3: Saving results (70%)
@@ -333,6 +334,8 @@ export class PreSummaryProcessor extends WorkerHost {
     // this call can never silently serve the SYSTEM default model.
     tenantId: string,
     jobId?: string,
+    // The consultation this pre-summary is for: its known PHI rides the egress enrichment.
+    consultationId?: string,
   ): Promise<{
     summary: string;
     llmProvider?: string;
@@ -351,10 +354,12 @@ export class PreSummaryProcessor extends WorkerHost {
       // TASK-891 — the resolved selection's `generation` block, carried alongside
       // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
       let generation: Record<string, unknown> | undefined;
+      let deploymentKind: string | undefined;
       if (this.harnessPolicyService) {
         const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize');
         options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
         generation = selection.generation;
+        deploymentKind = selection.deploymentKind;
       }
       const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
@@ -371,7 +376,10 @@ export class PreSummaryProcessor extends WorkerHost {
       // TASK-891 — `generation` carries the resolved agent's reasoning posture (OD-4) onto the
       // `extra` ride-along; an agent with no opinion injects nothing.
       await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
-      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
+      await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, {
+        deploymentKind: deploymentKind ?? null,
+        consultationId: consultationId ?? null,
+      });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
       // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — `tenantId` is the
       // fail-closed-validated `job.data.tenantId` already threaded in above and used

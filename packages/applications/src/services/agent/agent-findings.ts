@@ -35,10 +35,8 @@ export type AgentFindingCode =
   // author publishes may be up when the graph runs, and the RUN-time 503 is the real gate.
   // `MODEL_UNAVAILABLE` (the `usable` axis) stays the ERROR.
   | 'MODEL_NOT_READY'
-  // TASK-890 §3.14 (OD-R) — the agent's own guardrail opt-out (`parameters.guards.enabled:
-  // false`), recorded as a WARNING so the omission is visible on the row that made it rather
-  // than merely permitted. Shares the name with the graph-side finding `publishFindings` emits
-  // on a `core.agent` node.
+  // No longer emitted for an agent: the agent-level guardrail opt-out is retired (OD-1). Kept so a
+  // validation report stored before the retirement still parses. Remove with the opt-out strip.
   | 'GUARDRAIL_OPTED_OUT'
   // TASK-947 — composite instructions (`instruction.fragments[]`). The first three are raised
   // by the contract's `agentConfigProblems` (which stamps `code` on them, see

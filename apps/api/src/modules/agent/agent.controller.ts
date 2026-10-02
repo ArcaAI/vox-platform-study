@@ -376,11 +376,10 @@ export class AgentController {
     // limit set returns without computing a draft. -> 402 when over.
     await this.billing?.assertSpendLimit(tenantId);
 
-    // TASK-890 §3.14 (OD-R) — how this call was screened, resolved ONCE here and stamped on
-    // whichever row the call ends up producing (the stream path emits from three handlers).
-    // Read before the generation rather than after it so an abort still records the disposition
-    // that was in force when the tokens were spent.
-    const guardrail = await this.invocation.guardrailDisposition(resolved.guardrail);
+    // How this call was screened, stamped on whichever row the call ends up producing (the stream
+    // path emits from three handlers). Every call is screened: the opt-out and the platform kill
+    // switch are retired.
+    const guardrail: GuardrailDisposition = 'screened';
 
     if (mode === 'stream') {
       const { stream, actingUserId } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');

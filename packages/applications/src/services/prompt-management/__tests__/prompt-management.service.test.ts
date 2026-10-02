@@ -2073,12 +2073,6 @@ describe('PromptManagementService', () => {
           b.provider_overrides = { 'lm-studio': { api_key: 'k', funding: 'tenant' } };
           return b;
         }),
-        // TASK-890 §3.14 — a bench run is ALWAYS screened: it has no node and no agent, so there
-        // is no opinion to inherit and the decision is stated explicitly on every post.
-        applyGuardrailDecision: vi.fn((b: Record<string, unknown>, decision: { enabled: boolean }) => {
-          b.guardrail_policy = { ...(b.guardrail_policy as object), enabled: decision.enabled };
-          return b;
-        }),
       };
       const { svc, httpMock } = buildTextService(wordsOfLength(60), { textRequestEnrichment });
 
@@ -2086,8 +2080,8 @@ describe('PromptManagementService', () => {
 
       expect(textRequestEnrichment.applyTextRuntimeProfile).toHaveBeenCalledTimes(1);
       expect(textRequestEnrichment.applyTenantProviderOverrides).toHaveBeenCalledTimes(1);
-      expect(textRequestEnrichment.applyGuardrailDecision).toHaveBeenCalledWith(expect.anything(), { enabled: true });
-      expect((httpMock.axiosRef.post.mock.calls[0][1] as { guardrail_policy?: unknown }).guardrail_policy).toEqual({ enabled: true });
+      // A bench run is always screened: no guardrail opt-out ever rides the body.
+      expect(httpMock.axiosRef.post.mock.calls[0][1] as Record<string, unknown>).not.toHaveProperty('guardrail_policy');
       const [, payload, config] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { temperature?: number }).temperature).toBe(0.3);
       expect((payload as { provider_overrides?: unknown }).provider_overrides).toBeDefined();

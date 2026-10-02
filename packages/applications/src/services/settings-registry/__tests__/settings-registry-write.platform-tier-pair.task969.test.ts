@@ -26,9 +26,9 @@ import { SettingsRegistryWriteService, REGISTRY_SETTING_NAMESPACE } from '../set
 const CUSTOMER_TENANT = '11111111-1111-1111-1111-111111111111';
 
 /** The TENANT half — declares `platformTierKey`; a SYSTEM row for it has no reader. */
-const TENANT_HALF = 'text.guardrailPolicy.requireMedical';
+const TENANT_HALF = 'text.guardrailPolicy.includeReasoning';
 /** Its PLATFORM twin — `maxScope: 'system'`, on the pull route. THIS is the platform row. */
-const PLATFORM_TWIN = 'text.externalGuardrail.requireMedical';
+const PLATFORM_TWIN = 'text.externalGuardrail.includeReasoning';
 
 function makeService(opts: { roles?: string[]; tenantId?: string | undefined } = {}) {
   const appSettings = {

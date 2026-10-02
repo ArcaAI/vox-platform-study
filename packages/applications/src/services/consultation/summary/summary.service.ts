@@ -166,6 +166,8 @@ interface TextCallPayload {
    * call site has the consultation row in hand; `null` when it has no department.
    */
   departmentId?: string | null;
+  /** The consultation this call generates for — its known PHI rides the egress enrichment as `known_phi`. */
+  consultationId?: string | null;
 }
 
 type TextCallResult = LegacyTextSummaryResponse & {
@@ -517,6 +519,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       assembledPrompt,
       options: request.options,
       departmentId: consultation.departmentId,
+      consultationId: consultation.id,
       context: {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
@@ -619,13 +622,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     // this service performs is a clinical consultation; the dimension is what
     // lets a tenant's spend be split from a prompt bench's or a workflow's.
     //
-    // TASK-890 §3.14 (OD-R) — and HOW it was screened. This path pushes no opt-out (it posts
-    // to TEXT with no `guardrail_policy.enabled`), so the answer is the platform's own state:
-    // `screened`, or `platform_off` when the kill switch is off. It can never be `opted_out`
-    // here, and it is recorded rather than assumed so "was this clinical note generated behind
-    // the guard" is a query on the ledger instead of an inference about the code path.
-    // Unresolvable (no enrichment service wired) ⇒ stamped with NOTHING, never a guess.
-    const guardrail = await this.textRequestEnrichment?.guardrailDisposition({ enabled: true });
+    // And HOW it was screened: every call is (the opt-outs and the platform kill switch are
+    // retired), so a call that went through the egress enrichment is `screened`. With no
+    // enrichment wired the row is stamped with NOTHING, never a guess.
+    const guardrail = this.textRequestEnrichment ? ('screened' as const) : undefined;
     // TASK-959 — the `*Batches` siblings, not the single-batch forms: the BUILDER appends the
     // compute and byte rows, and only these hand back the platform CPU leg of a BYOK call. The
     // `device` they need is resolved HERE because the builders are pure modules and the cascade
@@ -1714,16 +1714,18 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-891 — the resolved selection's `generation` block, carried alongside
     // {provider, model} so its reasoning posture can reach `applyTextRuntimeProfile` below.
     let generation: Record<string, unknown> | undefined;
+    let deploymentKind: string | undefined;
     if (this.harnessPolicyService && tenantId) {
       // The assigned `TEXT_GENERATION` agent; the A4 fallback retry below stays
       // TENANT-configured.
       const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', payload.departmentId ?? null);
       options = { ...callerOptions, textProvider: selection.provider, textModel: selection.model };
       generation = selection.generation;
+      deploymentKind = selection.deploymentKind;
     }
 
     try {
-      return await this.executeTextGenerate(payload, options, generation);
+      return await this.executeTextGenerate(payload, options, generation, deploymentKind);
     } catch (primaryError) {
       if (tenantId && this.harnessPolicyService && this.isTextFallbackEligible(primaryError)) {
         const fallback = await this.harnessPolicyService.resolveTextFallbackSelection(tenantId, 'finalize', payload.departmentId ?? null);
@@ -1733,7 +1735,7 @@ export class SummaryService extends BaseService implements ISummaryService {
           try {
             // TASK-891 — the FALLBACK selection's own `generation`, not the primary's: a
             // different agent may serve, and it carries its own reasoning posture.
-            const result = await this.executeTextGenerate(payload, fallbackOptions, fallback.generation);
+            const result = await this.executeTextGenerate(payload, fallbackOptions, fallback.generation, fallback.deploymentKind);
             this.logger.warn({
               message: 'Primary TEXT finalize call failed; served via tenant-configured fallback',
               fallbackProvider: fallback.provider,
@@ -1796,6 +1798,8 @@ export class SummaryService extends BaseService implements ISummaryService {
     // ride-along below. Absent on the no-policy-service path, where there is no resolved agent
     // to have an opinion.
     generation?: Record<string, unknown>,
+    // `AiModel.deploymentKind` of the row serving this attempt, for the egress `provider_locality`.
+    deploymentKind?: string,
   ): Promise<TextCallResult> {
     const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
     // (OD-9 exemption: credential injection ONLY) — this path reached
@@ -1811,7 +1815,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-891 — `generation` carries the resolved agent's reasoning posture (OD-4) onto the
     // `extra` ride-along; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, {
+      deploymentKind: deploymentKind ?? null,
+      consultationId: payload.consultationId ?? null,
+    });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
     // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this
     // path reached Text with no tenant at all, so the tenant's BYOK provider/credential

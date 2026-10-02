@@ -308,7 +308,6 @@ describe('TASK-958 F11 — the bench spends the account the draft is BOUND to', 
       systemPrompt: null,
       provider: 'azure-openai',
       model: 'gpt-5.4-mini',
-      guardrailEnabled: true,
       connectionId: 'conn-openai-2',
       connectionProvider: 'azure',
     });
@@ -325,7 +324,6 @@ describe('TASK-958 F11 — the bench spends the account the draft is BOUND to', 
         systemPrompt: null,
         provider: 'azure-openai',
         model: 'gpt-5.4-mini',
-        guardrailEnabled: true,
         connectionId: 'conn-openai-2',
         connectionProvider: 'azure',
       }),
@@ -339,7 +337,6 @@ describe('TASK-958 F11 — the bench spends the account the draft is BOUND to', 
       systemPrompt: null,
       provider: 'azure-openai',
       model: 'gpt-5.4-mini',
-      guardrailEnabled: true,
     });
     expect(ack).toEqual({ taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
   });
@@ -351,7 +348,6 @@ describe('TASK-958 F11 — the bench spends the account the draft is BOUND to', 
       systemPrompt: null,
       provider: 'azure-openai',
       model: 'gpt-5.4-mini',
-      guardrailEnabled: true,
     });
     const body = post.mock.calls.at(-1)?.[1] as { provider_overrides?: Record<string, { api_key?: string }> };
     expect(body.provider_overrides?.['azure-openai']?.api_key).toBe('DEFAULT-ACCOUNT');

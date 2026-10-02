@@ -366,9 +366,10 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
       expect(node!.config).toMatchObject({
         agentRef: { slug: 'case-notes-pre-summary' },
         execution: { lane: 'realtime', cadence: 'onStart' },
-        guardrail: { enabled: true },
         onError: 'degrade',
       });
+      // The retired guardrail opt-out is never authored into a seed graph.
+      expect(node!.config).not.toHaveProperty('guardrail');
 
       const edgeFrom = (from: string, fromPort: string, to: string) =>
         target.graph.edges.some((edge) => edge.from === from && edge.fromPort === fromPort && edge.to === to);

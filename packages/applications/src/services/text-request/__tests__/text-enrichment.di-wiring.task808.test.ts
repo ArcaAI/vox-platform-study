@@ -6,6 +6,7 @@
 // `gate-edit-mining.di-wiring.test.ts`.
 import '../../../index';
 import { describe, expect, it } from 'vitest';
+import { KnownPhiService } from '../known-phi.service';
 import { TextRequestEnrichmentService } from '../text-request-enrichment.service';
 import { TextRequestServiceModule } from '../text-request.service.module';
 import { LiveDocumentationService } from '../../consultation/live-documentation/live-documentation.service';
@@ -78,4 +79,15 @@ describe('TextRequestEnrichmentService resolves for every repaired TEXT caller',
       ).toContain(TextRequestServiceModule);
     });
   }
+});
+
+describe('the known-PHI egress statement resolves in the real graph', () => {
+  it('TextRequestEnrichmentService injects KnownPhiService', () => {
+    expect(effectiveConstructorTokens(TextRequestEnrichmentService)).toContain(KnownPhiService);
+  });
+
+  it('TextRequestServiceModule provides and exports KnownPhiService', () => {
+    expect(Reflect.getMetadata('providers', TextRequestServiceModule) as unknown[]).toContain(KnownPhiService);
+    expect(Reflect.getMetadata('exports', TextRequestServiceModule) as unknown[]).toContain(KnownPhiService);
+  });
 });

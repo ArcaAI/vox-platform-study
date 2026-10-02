@@ -272,14 +272,16 @@ describe('testDraft — a non-dry run', () => {
     expect(mockDraftTest.submit).not.toHaveBeenCalled();
   });
 
-  it('submits through the transport, carrying the agent`s guardrail decision', async () => {
+  it('submits through the transport, carrying the bound row`s deploymentKind and no guardrail opt-out', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { guards: { enabled: false } } }));
     const ack = await makeService().testDraft('agent-1', { dryRun: false, context: { clinic: 'Ward B' }, input: { text: 'Summarise this.' } });
 
     expect(ack).toMatchObject({ mode: 'stream', taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
     expect(mockDraftTest.submit).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: TENANT, provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', guardrailEnabled: false }),
+      expect.objectContaining({ tenantId: TENANT, provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' }),
     );
+    expect(mockDraftTest.submit.mock.calls[0]?.[0]).not.toHaveProperty('guardrailEnabled');
+    expect(mockDraftTest.submit.mock.calls[0]?.[0]).toHaveProperty('deploymentKind');
   });
 
   /**
@@ -338,7 +340,7 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
   it('prechecks `monthlyLlmTokens` BEFORE it posts to TEXT', async () => {
     entitlements.assertMeterQuota.mockRejectedValue(new Error('quota exceeded'));
     await expect(
-      makeTransport().submit({ tenantId: TENANT, prompt: 'p', systemPrompt: null, provider: 'lm-studio', model: 'gemma', guardrailEnabled: true }),
+      makeTransport().submit({ tenantId: TENANT, prompt: 'p', systemPrompt: null, provider: 'lm-studio', model: 'gemma' }),
     ).rejects.toThrow('quota exceeded');
     expect(post).not.toHaveBeenCalled();
   });
@@ -390,7 +392,7 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
       );
     }
 
-    const base = { tenantId: TENANT, prompt: 'p', systemPrompt: null, provider: 'lm-studio', model: 'gemma', guardrailEnabled: true };
+    const base = { tenantId: TENANT, prompt: 'p', systemPrompt: null, provider: 'lm-studio', model: 'gemma' };
 
     beforeEach(() => {
       // A quota rejection from a sibling case survives `clearAllMocks` (it clears calls, not

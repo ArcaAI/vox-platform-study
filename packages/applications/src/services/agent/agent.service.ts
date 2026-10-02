@@ -64,6 +64,7 @@ import {
   type DeclaredNamespaces,
   type AgentModelView,
   type AgentProviderCapabilities,
+  stripRetiredAgentGuardrailOptOut,
 } from '@arcaai/workflow-contract';
 import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
@@ -218,18 +219,6 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  */
 function hasKeyMaterial(ciphertext: Uint8Array | null | undefined): boolean {
   return ciphertext !== null && ciphertext !== undefined && ciphertext.length > 0;
-}
-
-/**
- * TASK-890 §3.14 — the AGENT level of the `node > workflow > agent > true` guardrail precedence.
- *
- * ABSENT MEANS ON, at every level. Guardrail is platform-managed and screening is the floor a
- * tenant opts OUT of; a missing `parameters.guards.enabled` is "no opinion", which resolves to
- * `true`, never to "off because nobody said on".
- */
-function guardrailEnabledOf(parameters: unknown): boolean {
-  const guards = asRecord(asRecord(parameters)?.guards);
-  return guards?.enabled === false ? false : true;
 }
 
 /**
@@ -406,7 +395,7 @@ export class AgentService extends BaseService implements IAgentService {
         contextSchemaId: dto.contextSchemaId ?? null,
         contextSchemaVersionNumber: dto.contextSchemaVersionNumber ?? null,
         instruction: (dto.instruction ?? null) as JsonValue | null,
-        parameters: (dto.parameters ?? null) as JsonValue | null,
+        parameters: (stripRetiredAgentGuardrailOptOut(dto.parameters) ?? null) as JsonValue | null,
         inputSchema: (dto.inputSchema ?? null) as JsonValue | null,
         outputSchema: (dto.outputSchema ?? null) as JsonValue | null,
         tools: (dto.tools ?? null) as JsonValue | null,
@@ -452,7 +441,7 @@ export class AgentService extends BaseService implements IAgentService {
     if (dto.contextSchemaId !== undefined) entity.contextSchemaId = dto.contextSchemaId;
     if (dto.contextSchemaVersionNumber !== undefined) entity.contextSchemaVersionNumber = dto.contextSchemaVersionNumber;
     if (dto.instruction !== undefined) entity.instruction = dto.instruction as JsonValue;
-    if (dto.parameters !== undefined) entity.parameters = dto.parameters as JsonValue;
+    if (dto.parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(dto.parameters) as JsonValue;
     if (dto.inputSchema !== undefined) entity.inputSchema = dto.inputSchema as JsonValue;
     if (dto.outputSchema !== undefined) entity.outputSchema = dto.outputSchema as JsonValue;
     if (dto.tools !== undefined) entity.tools = dto.tools as JsonValue;
@@ -809,7 +798,8 @@ export class AgentService extends BaseService implements IAgentService {
       systemPrompt: assembledSystemPrompt,
       provider: resolved.provider,
       model: resolved.model,
-      guardrailEnabled: compiled.guardrail?.enabled ?? true,
+      // The bench states the bound row's locality exactly as the published agent's calls will.
+      deploymentKind: resolved.source === 'row' ? ((model as AiModelEntity).deploymentKind ?? null) : null,
       // TASK-958 F11 — the account the draft is BOUND to (D-3: the model row names the
       // connection), so the bench spends the same one the published agent will. Sent only
       // when the target is the row's OWN: a caller-supplied `{provider, model}` override is
@@ -1300,7 +1290,7 @@ export class AgentService extends BaseService implements IAgentService {
         versionNumber: maxVersionNumber + 1,
         modelId: modelId as string,
         instruction: (instruction ?? null) as JsonValue | null,
-        parameters: (payload.parameters ?? null) as JsonValue | null,
+        parameters: (stripRetiredAgentGuardrailOptOut(payload.parameters) ?? null) as JsonValue | null,
         inputSchema: (payload.inputSchema ?? null) as JsonValue | null,
         outputSchema: (payload.outputSchema ?? null) as JsonValue | null,
         tools: (payload.tools ?? null) as JsonValue | null,
@@ -1793,7 +1783,6 @@ export class AgentService extends BaseService implements IAgentService {
     const findings: AgentFinding[] = [];
     const context = await this.resolveContextSchema(entity);
     findings.push(...context.findings);
-    findings.push(...this.guardrailFindings(entity));
     const model = await this.loadModel(entity.modelId, entity.tenantId);
     if (!model) {
       findings.push({
@@ -1923,26 +1912,6 @@ export class AgentService extends BaseService implements IAgentService {
       },
       findings: [],
     };
-  }
-
-  /**
-   * TASK-890 §3.14 (OD-R) — an agent that opts OUT of platform guardrail says so on its own row.
-   *
-   * A WARNING, never a block. The point is attribution: the omission is recorded at authoring
-   * time (here), on every call (`attributesJson.guardrail`) and in TEXT's own response reason, so
-   * "this agent was not screened" is a fact somebody can find rather than a silence.
-   */
-  private guardrailFindings(entity: AgentEntity): AgentFinding[] {
-    if (guardrailEnabledOf(entity.parameters)) return [];
-    return [
-      {
-        severity: 'WARNING',
-        code: 'GUARDRAIL_OPTED_OUT',
-        path: 'parameters.guards.enabled',
-        message:
-          'This agent opts OUT of platform guardrail screening: its input and output are not screened, and every call records `guardrail: opted_out`.',
-      },
-    ];
   }
 
   /**
@@ -2646,12 +2615,11 @@ export class AgentService extends BaseService implements IAgentService {
         }),
       instruction: asRecord(entity.instruction) ?? null,
       resolvedPrompt,
-      parameters: asRecord(entity.parameters) ?? {},
+      parameters: asRecord(stripRetiredAgentGuardrailOptOut(entity.parameters)) ?? {},
       inputSchema: asRecord(entity.inputSchema) ?? (defaults.inputSchema as Record<string, unknown>),
       outputSchema: asRecord(entity.outputSchema) ?? (defaults.outputSchema as Record<string, unknown>),
       tools: (Array.isArray(entity.tools) ? entity.tools : []) as Array<{ mcpServerId: string; toolName: string }>,
       contextSchema,
-      guardrail: { enabled: guardrailEnabledOf(entity.parameters) },
       // TASK-983 R9 — WHAT AN INVOCATION MUST SUPPLY, frozen with everything else it depends on.
       // Computed here rather than on the read for the same reason `resolvedPrompt` is: the list
       // is a property of the composed instruction as published, and a reader that re-derived it
@@ -2691,7 +2659,7 @@ export class AgentService extends BaseService implements IAgentService {
       contextSchemaId: source.contextSchemaId ?? null,
       contextSchemaVersionNumber: source.contextSchemaVersionNumber ?? null,
       instruction: asRecord(source.instruction) ?? null,
-      parameters: asRecord(source.parameters) ?? null,
+      parameters: asRecord(stripRetiredAgentGuardrailOptOut(source.parameters)) ?? null,
       inputSchema: asRecord(source.inputSchema) ?? null,
       outputSchema: asRecord(source.outputSchema) ?? null,
       tools: Array.isArray(source.tools) ? source.tools : null,

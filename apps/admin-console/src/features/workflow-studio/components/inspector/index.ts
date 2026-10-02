@@ -8,5 +8,3 @@ export { ContextSchemaRefField } from './context-schema-ref-field';
 export type { ContextSchemaRefFieldProps } from './context-schema-ref-field';
 export { PromptVariablesField } from './prompt-variables-field';
 export type { PromptVariablesFieldProps } from './prompt-variables-field';
-export { GuardrailField } from './guardrail-field';
-export type { GuardrailFieldProps } from './guardrail-field';

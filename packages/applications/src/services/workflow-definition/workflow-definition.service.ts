@@ -35,6 +35,7 @@ import {
   portableBundleProblems,
   publishFindings,
   registryChecksum,
+  stripRetiredGraphGuardrailOptOuts,
   TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
   validate,
   WORKFLOW_NODE_REGISTRY,
@@ -1667,8 +1668,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // TASK-890 §3.5 — the publish gate. Runs AFTER the shape check (a malformed graph has
     // nothing coherent to check) and BEFORE compile and any entity mutation, so a refusal writes
     // nothing — the same discipline as the capability gate below it. WARNINGs
-    // (`GUARDRAIL_OPTED_OUT`, and `PROMPT_VARIABLE_UNDECLARED` during the OD-C ramp) are recorded
-    // and never block: an opt-out is a decision to record, not a defect to refuse.
+    // (`GUARDRAIL_OPTED_OUT` for a disabled mandatory node, and `PROMPT_VARIABLE_UNDECLARED`
+    // during the OD-C ramp) are recorded and never block.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
     const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
@@ -2167,7 +2168,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // immediately after this — this cast only gives the compiler/validator a typed shape to
     // walk; `workflowGraphProblems` inside `validate()` is what actually rejects malformed
     // input (never trusted here).
-    return raw as unknown as WorkflowGraph;
+    //
+    // The retired guardrail opt-out (`config.guardrail` on a trigger / agent node) is STRIPPED
+    // here rather than refused, for one release: a stored or re-imported graph that still carries
+    // it must stay editable, and the write that passes through here stops persisting it.
+    return stripRetiredGraphGuardrailOptOuts(raw as unknown as WorkflowGraph).graph;
   }
 
   /**

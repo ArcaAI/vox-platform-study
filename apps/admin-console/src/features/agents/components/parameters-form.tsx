@@ -253,26 +253,6 @@ function ScalarField({
   );
 }
 
-/**
- * TASK-890 §3.10/§3.14 (OD-R clause 3) — `parameters.guards.enabled`, the AGENT-level default of
- * the node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements. ABSENT
- * MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts OUT of, per
- * agent — never a switch to remember to turn on. A `false` here is a publish WARNING
- * (`GUARDRAIL_OPTED_OUT`), a per-call usage attribute (`guardrail: 'opted_out'`), and a TEXT
- * response `reason`, so the omission is attributable, not merely permitted.
- */
-function GuardrailScreeningField({ id, value, onChange }: { id: string; value: unknown; onChange: (next: unknown) => void }) {
-  return (
-    <Field orientation="horizontal">
-      <FieldContent>
-        <FieldLabel htmlFor={id}>Guardrail screening</FieldLabel>
-        <FieldDescription>Platform guardrail runs on this agent&apos;s input and output; a node or workflow can override.</FieldDescription>
-      </FieldContent>
-      <Switch id={id} checked={value !== false} onCheckedChange={(checked) => onChange(checked ? undefined : false)} />
-    </Field>
-  );
-}
-
 /** `parameters.generation.reasoning.effort` — the pinned cross-lane contract (TASK-891 C1/C4). */
 const REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high'] as const;
 
@@ -461,13 +441,6 @@ function SchemaFields({
               rows={6}
             />
           );
-        }
-        // TASK-890 §3.10/§3.14 (OD-R) — the agent-level guardrail default gets its own labelled
-        // copy rather than the generic boolean renderer's bare "Enabled": this switch is the
-        // bottom of the node > workflow > agent > `true` precedence, so what it says has to name
-        // that, not just the JSON key.
-        if (childPath.join('.') === 'guards.enabled') {
-          return <GuardrailScreeningField key={name} id={id} value={getPath(value, childPath)} onChange={(next) => onChange(setPath(value, childPath, next))} />;
         }
         // TASK-887 — a property annotated with `modelTaskType` is a registry REFERENCE, so
         // the admin picks from the tenant's catalogue instead of typing a slug.

@@ -6,8 +6,6 @@ import { isCloudByoProvider } from '../ai-provider-connection/constants';
 import { assertProviderAvailable } from '../ai-provider-connection/assert-provider-available';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { TEXT_GUARDRAIL_POLICY_PUSH_FIELDS } from '../settings-registry/descriptors/text-guardrail-policy.descriptors';
-import type { TextGuardrailPostureKey } from '../settings-registry/descriptors/text-provider-connections.descriptors';
-import type { GuardrailDisposition } from '../usageLedger/usage-attributes';
 import { REASONING_EFFORT_EXTRA_KEY, REASONING_WIRE_FIELD, readAgentReasoning, reasoningWire } from '../agent/agent-reasoning';
 import type { AgentReasoning } from '../agent/agent-reasoning';
 import {
@@ -16,6 +14,24 @@ import {
   textReasoningPlatformPosture,
 } from '../settings-registry/descriptors/text-reasoning.descriptors';
 import type { TextReasoningDefaultEffort } from '../settings-registry/descriptors/text-reasoning.descriptors';
+import { KnownPhiService } from './known-phi.service';
+import { stampProviderLocality, type ProviderLocalityHints } from './provider-locality';
+
+/**
+ * What a caller knows about ONE outgoing `/generate` call that the egress statements need: the
+ * model rows behind `provider` / `fallback_provider` (for `provider_locality`) and the consultation
+ * the call is about (for `known_phi`). Everything is optional — an absent hint degrades to the
+ * provider-name rule and to "the detector alone", never to an unscreened call.
+ */
+export interface TextEgressHints extends ProviderLocalityHints {
+  /** The consultation this call generates for; its known PHI rides as `known_phi`. */
+  consultationId?: string | null;
+  /** The caller's own copy of the validated open context (kind key → payload), merged over the persisted one. */
+  context?: Record<string, unknown> | null;
+}
+
+/** `guardrail_policy` keys a caller may no longer state: screening is not the caller's to switch off. */
+const RETIRED_GUARDRAIL_POLICY_KEYS = ['enabled', 'require_medical', 'opted_out'] as const;
 
 /**
  * The ONE implementation of the enrichments every outgoing TEXT
@@ -50,7 +66,57 @@ export class TextRequestEnrichmentService {
     // opinion", the state the receiving service already handles.
     @Optional()
     private readonly effectiveSettings?: EffectiveSettingsService,
+    // Backs `known_phi`. @Optional and trailing for the same reason as the two above; unwired, a
+    // cloud call is pseudonymized by the text service's detector alone.
+    @Optional()
+    @Inject(KnownPhiService)
+    private readonly knownPhi?: KnownPhiService,
   ) {}
+
+  /**
+   * The EGRESS statements on an outgoing `/generate` body. Runs inside
+   * {@link applyTenantProviderOverrides}, so every caller that injects a credential — which the
+   * coverage gate proves is every caller — states them too.
+   *
+   *   - `provider_locality` from the resolved model row (or the engine-served rule), REPLACING any
+   *     client-supplied map: locality decides whether PHI is redacted, so it is never a client's
+   *     to state. Unknown ⇒ omitted ⇒ `apps/text` treats the provider as cloud.
+   *   - No guardrail opt-out survives: `guardrail_policy.enabled` / `require_medical` and
+   *     `medical_exempt` are stripped (only an internal service caller may name itself exempt from
+   *     the medical judge, and it never comes through the gateway). `include_reasoning` stays.
+   *   - `known_phi` for the named consultation, FAIL-OPEN: a resolver failure sends none and the
+   *     detector's span-level pass still runs. A client-supplied list is discarded.
+   */
+  async applyEgressSafety<T extends object>(target: T, hints: TextEgressHints = {}): Promise<T> {
+    const body = target as Record<string, unknown>;
+    stampProviderLocality(body, hints);
+
+    delete body.medical_exempt;
+    if (isPlainObject(body.guardrail_policy)) {
+      const policy = { ...body.guardrail_policy };
+      for (const key of RETIRED_GUARDRAIL_POLICY_KEYS) delete policy[key];
+      if (Object.keys(policy).length > 0) body.guardrail_policy = policy;
+      else delete body.guardrail_policy;
+    } else {
+      delete body.guardrail_policy;
+    }
+
+    delete body.known_phi;
+    if (hints.consultationId && this.knownPhi) {
+      try {
+        const entries = await this.knownPhi.forConsultation(hints.consultationId, hints.context ?? null);
+        if (entries.length > 0) body.known_phi = entries;
+      } catch (error) {
+        // Never the values — only that the deterministic half is missing for this call.
+        this.logger.warn({
+          message: 'Known-PHI resolution failed; this call is pseudonymized by the detector alone (fail-open)',
+          consultationId: hints.consultationId,
+          error: error instanceof Error ? error.name : 'unknown',
+        });
+      }
+    }
+    return target;
+  }
 
   /**
    * Fold the resolved BYO credential for this request's provider into the
@@ -83,7 +149,9 @@ export class TextRequestEnrichmentService {
    * still refuses non-cloud rows, and cloud SYSTEM rows stay entitlement-gated
    * while self-host SYSTEM rows do not.
    */
-  async applyTenantProviderOverrides<T extends { provider?: string; provider_overrides?: unknown }>(target: T): Promise<T> {
+  async applyTenantProviderOverrides<T extends { provider?: string; provider_overrides?: unknown }>(target: T, egress: TextEgressHints = {}): Promise<T> {
+    // The egress statements first, and unconditionally: every early return below must still carry them.
+    await this.applyEgressSafety(target, egress);
     const provider = target.provider;
     // TASK-876 — a caller that already carries `provider_overrides` has resolved the credential
     // FOR THE ROW IT IS ABOUT TO RUN (a `core.agent` candidate: the tenant's own agent, or the
@@ -158,12 +226,11 @@ export class TextRequestEnrichmentService {
    * default stood for every tenant and the per-tenant half of the split was
    * unreachable.
    *
-   * Why these two fields and no others: `require_medical` and
-   * `include_reasoning` are the parts of the posture that legitimately differ
-   * BETWEEN tenants — a non-clinical tenant needs medical enforcement off while
-   * every other tenant keeps it on. The rest (`enabled`, the retry budget) are
-   * platform capacity decisions and travel the PULL channel instead, and the
-   * FAIL POSTURE travels neither: an errored guardrail can never allow.
+   * Why this field and no other: `include_reasoning` is the one part of the posture that
+   * legitimately differs BETWEEN tenants. `require_medical` used to be pushed too; the medical
+   * judge now runs on every business-plane call (owner decisions OD-3 / OD-5), so it is never
+   * sent. The rest (the retry budget) are platform capacity decisions and travel the PULL
+   * channel instead, and the FAIL POSTURE travels neither: an errored guardrail can never allow.
    *
    * Three invariants:
    *   - ABSENCE IS NOT `false`. A field is pushed ONLY when the cascade reports
@@ -215,82 +282,12 @@ export class TextRequestEnrichmentService {
     }
 
     if (Object.keys(policy).length > 0) {
-      // MERGED, never assigned: `applyGuardrailDecision` writes `enabled` into the same
-      // block, and the two enrichments have no fixed order across the five producers. An
-      // assignment here would let a caller's ordering decide whether a tenant's opt-out
-      // survived — a clinical gate must not depend on that.
+      // MERGED, never assigned: a caller may already carry other `guardrail_policy` fields.
       const record = target as Record<string, unknown>;
       const existing = isPlainObject(record.guardrail_policy) ? record.guardrail_policy : {};
       record.guardrail_policy = { ...existing, ...policy };
     }
     return target;
-  }
-
-  /**
-   * TASK-890 §3.14 (OD-R) — write THIS call's guardrail decision onto the outgoing body.
-   *
-   * The decision itself is folded by `resolveGuardrailDecision` (`@arcaai/workflow-contract`:
-   * node > workflow > agent > on) and reaches here already answered. This method is the ONE
-   * place it becomes a wire field, so all five producers state it identically and none of them
-   * hand-rolls the key.
-   *
-   * Three properties worth stating, because each is easy to lose:
-   *
-   *   - EXPLICIT IN BOTH DIRECTIONS. `enabled: true` is written, not omitted. On the wire it is
-   *     a different statement from an absent block: TEXT can then distinguish "screened because
-   *     a decision said so" from "no opinion — the platform posture governs", and the usage
-   *     ledger records `screened` rather than inferring it.
-   *   - IT ONLY EVER SUBTRACTS. A pushed `true` cannot turn a platform kill switch back on;
-   *     `apps/text` keeps `platform.enabled` as the floor (`core/guardrail_posture.py`). So this
-   *     is safe to send unconditionally.
-   *   - IT MERGES. `applyTenantGuardrailPolicy` owns the other two fields of the same block.
-   *
-   * Synchronous and pure: unlike its siblings it resolves nothing, so there is no failure mode
-   * to degrade — which is what lets a producer state the decision without a `try`/`catch` that
-   * could swallow it.
-   */
-  applyGuardrailDecision<T extends object>(target: T, decision: { enabled: boolean }): T {
-    const record = target as Record<string, unknown>;
-    const existing = isPlainObject(record.guardrail_policy) ? record.guardrail_policy : {};
-    record.guardrail_policy = { ...existing, enabled: decision.enabled };
-    return target;
-  }
-
-  /**
-   * The SCREENING DISPOSITION of a call, for the usage ledger's `guardrail` attribute.
-   *
-   * Three values, and the third is why this is a lookup rather than a boolean: `platform_off`
-   * (the `text.externalGuardrail.enabled` kill switch is off, so nobody's opt-out was even
-   * consulted), `opted_out` (a tenant decision on the record) and `screened`. Collapsing the
-   * first two would let a deployment that never turned the platform gate on look like a fleet of
-   * tenants who each chose to run unscreened.
-   *
-   * Read here rather than taken from the TEXT response because the ledger row must be
-   * attributable even when the response carries nothing about screening — and because the
-   * gateway is where the switch already resolves (`global-kv`, SYSTEM-scope).
-   *
-   * FAIL HONEST, not fail-`screened`: if the switch cannot be read the answer falls back to the
-   * DECISION this gateway made, which is the half it knows for certain. Claiming `screened` on
-   * an unreadable control plane would put a false safety record in the billing plane.
-   */
-  async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
-    const fromDecision: GuardrailDisposition = decision.enabled ? 'screened' : 'opted_out';
-    if (!this.effectiveSettings) return fromDecision;
-    const tenantId = this.clsService.get('tenantId');
-    try {
-      const resolved = await this.effectiveSettings.resolveEffective(PLATFORM_GUARDRAIL_SWITCH_KEY, {
-        tenantId: tenantId ?? null,
-        departmentId: null,
-        doctorId: null,
-      });
-      if (resolved.value === false) return 'platform_off';
-    } catch (error) {
-      this.logger.warn({
-        message: 'Platform guardrail switch could not be resolved; recording this call by its own decision',
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return fromDecision;
   }
 
   /**
@@ -377,8 +374,8 @@ export class TextRequestEnrichmentService {
    *  - the admin explicitly chose `engine-default`, which is the one state this ticket
    *    removed as an ACCIDENT and keeps available as a DECISION;
    *  - the resolve threw. A hyper-parameter must never fail a consultation, so the error is
-   *    logged and the call proceeds — the same fail-open the two guardrail enrichments above
-   *    take, and the reason this is not `failMode: 'closed'`.
+   *    logged and the call proceeds — the same fail-open the guardrail-policy enrichment above
+   *    takes, and the reason this is not `failMode: 'closed'`.
    *
    * `resolve` under `resolveEffective` is a synchronous in-memory cache read, so this costs
    * nothing on the live flush path.
@@ -413,15 +410,7 @@ export class TextRequestEnrichmentService {
   }
 }
 
-/**
- * The platform kill switch the disposition above reads. `globalOnly`, `maxScope: 'system'`,
- * `killSwitch: true` — a SYSTEM-tier value, never a tenant's (see
- * `text-provider-connections.descriptors.ts`). Typed against the descriptor key union so a
- * rename cannot leave a string literal pointing at a key that no longer exists.
- */
-const PLATFORM_GUARDRAIL_SWITCH_KEY: TextGuardrailPostureKey = 'text.externalGuardrail.enabled';
-
-/** A plain object, as the two guardrail merges above model one. */
+/** A plain object, as the guardrail-policy merges above model one. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

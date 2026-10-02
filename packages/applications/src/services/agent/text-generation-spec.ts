@@ -35,6 +35,11 @@ export interface ResolvedTextCandidate {
   provider: string;
   /** The provider-native model id (`AiModel.wireModelId`) — what actually goes on the wire. */
   model: string;
+  /**
+   * `AiModel.deploymentKind` of the row serving this candidate — what decides the egress
+   * `provider_locality` stamped on its `/generate` body. Omitted when the row carries none.
+   */
+  deploymentKind?: string;
   resolvedPrompt: AgentCompiledConfig['resolvedPrompt'];
   instruction: Record<string, unknown> | null;
   parameters: Record<string, unknown>;
@@ -50,6 +55,12 @@ export interface ResolvedTextCandidate {
    * ignores unknown fields, so the wire is unchanged for it.
    */
   contextSchema: AgentCompiledConfig['contextSchema'] | null;
+  /**
+   * The candidate agent's OWN declared output schema (`compiledConfig.outputSchema`), `null` when
+   * it declares none. A fallback that serves under a different agent must be held to that agent's
+   * contract; a consumer widens to the primary's schema only when this is `null`.
+   */
+  outputSchema: Record<string, unknown> | null;
 }
 
 export interface ResolvedTextFallback {
@@ -164,6 +175,7 @@ export function toTextCandidate(
     modelSlug: model.slug,
     provider: textWireProvider(model.provider ?? 'local'),
     model: wireModelId,
+    ...(model.deploymentKind ? { deploymentKind: model.deploymentKind } : {}),
     resolvedPrompt: compiled.resolvedPrompt ?? null,
     instruction: compiled.instruction ?? null,
     parameters: compiled.parameters ?? {},
@@ -171,6 +183,7 @@ export function toTextCandidate(
     fundingTier: funding.fundingTier,
     ...(providerOverride ? { providerOverride } : {}),
     contextSchema: compiled.contextSchema ?? null,
+    outputSchema: compiled.outputSchema && typeof compiled.outputSchema === 'object' ? compiled.outputSchema : null,
   };
 }
 

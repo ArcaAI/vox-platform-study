@@ -82,7 +82,6 @@ import { ContextSchemaRefField } from './context-schema-ref-field';
 import { DocumentBindingField } from './document-binding-field';
 import { FieldRenderer, type FieldRenderContext } from './field-renderers';
 import { getAtPath, setAtPath } from './field-path';
-import { GuardrailField } from './guardrail-field';
 import { PromptTemplatePicker } from './prompt-template-picker';
 import { PromptVariablesField } from './prompt-variables-field';
 import { NO_SCHEMA_REASON } from './raw-json-field';
@@ -101,8 +100,6 @@ const DOCUMENT_VERSION_PATH = 'documentVersionNumber';
 const DOCUMENT_BINDING_PATHS = new Set<string>([DOCUMENT_TEMPLATE_PATH, DOCUMENT_VERSION_PATH]);
 /** TASK-890 §3.4 — `core.trigger`'s reference-or-inline schema binding, rendered as one control. */
 const CONTEXT_SCHEMA_PATH = 'contextSchema';
-/** TASK-890 §3.14 — the guardrail opt-out object, top-level on BOTH `core.agent` and `core.trigger`. */
-const GUARDRAIL_PATH = 'guardrail';
 /** TASK-890 §3.10 — `core.agent`'s per-node prompt-variable overrides, nested under `overrides`. */
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
 /**
@@ -144,12 +141,6 @@ export interface InspectorPanelProps {
   actionOptions?: ReadonlyArray<{ key: string; label: string }>;
   /** TASK-864 B1 — for a `core.action` node: the chosen delegate's own config schema (rendered under `action`). */
   actionSchema?: unknown;
-  /**
-   * TASK-890 §3.14 — the workflow's own `core.trigger` guardrail decision
-   * (`config.guardrail.enabled`), for `core.agent`'s effective-value display. `undefined`/`null`
-   * when the graph has no opinion yet — the node then inherits the agent's own default.
-   */
-  workflowGuardrailEnabled?: boolean | null;
   /**
    * TASK-890 black-box J4-F5 — what the workflow's `core.trigger` binds, so a `core.agent`'s
    * prompt-variable chips can offer this workflow's REAL `{{trigger.<kindKey>.<field>}}` paths
@@ -401,7 +392,6 @@ export function InspectorPanel({
   references,
   actionOptions,
   actionSchema,
-  workflowGuardrailEnabled,
   triggerContextBinding,
   tab,
   onTabChange,
@@ -491,10 +481,10 @@ export function InspectorPanel({
     const isCoreTrigger = node.type === 'core.trigger';
     const withheld = new Set<string>([
       ...DOCUMENT_BINDING_PATHS,
-      ...(isCoreAgent ? [AGENT_REF_PATH, GUARDRAIL_PATH] : []),
+      ...(isCoreAgent ? [AGENT_REF_PATH] : []),
       ...(suppressLlmOnlyFields ? LLM_ONLY_TOP_LEVEL_PATHS : []),
       ...(isCoreAction ? [ACTION_KEY_PATH, ACTION_CONFIG_PATH] : []),
-      ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH, GUARDRAIL_PATH] : []),
+      ...(isCoreTrigger ? [CONTEXT_SCHEMA_PATH] : []),
     ]);
     const descriptors = allDescriptors.filter((descriptor) => !withheld.has(descriptor.path));
     const hasDocumentBinding = !suppressLlmOnlyFields && allDescriptors.some((descriptor) => DOCUMENT_BINDING_PATHS.has(descriptor.path));
@@ -503,12 +493,11 @@ export function InspectorPanel({
     const knownPaths = new Set([...flattenPaths(allDescriptors), ...flattenPaths(actionDescriptors), AGENT_SLUG_PATH]);
     const graphLevelErrors = problems.filter((problem) => !knownPaths.has(normalizeFindingPath(problem.path)));
 
-    // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names and
-    // guardrail default, resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
+    // TASK-890 §3.6/§3.10 — the referenced agent's own declared prompt-variable names,
+    // resolved from the SAME `useAgentOptions` read `AgentPickerField` uses
     // (no second route, §2.7 #6: `GET admin/agents` already returns the full `AgentResponse`).
     const referencedAgent = isCoreAgent ? (agentOptions.data ?? []).find((agent) => agent.slug === agentSlugValue) : undefined;
     const declaredVariableNames = referencedAgent?.instruction?.variables ? Object.keys(referencedAgent.instruction.variables) : [];
-    const agentGuardrailEnabled = referencedAgent?.parameters?.guards?.enabled ?? null;
     // TASK-890 J4-F6 — the fallback list, used by the field ONLY when the agent declares none.
     const templateVariableNames = (boundTemplate.data?.declaredVariables ?? []).map((declaration) => declaration.name);
     // TASK-890 J4-F5 — the pinned version when the trigger pins one, else the schema's own latest
@@ -571,18 +560,6 @@ export function InspectorPanel({
             config={node.config}
             onConfigChange={onConfigChange}
             errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
-            disabled={readOnly}
-          />
-        ) : null}
-        {isCoreAgent || isCoreTrigger ? (
-          <GuardrailField
-            idPrefix={node.id}
-            scope={isCoreAgent ? 'node' : 'workflow'}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            workflowGuardrailEnabled={isCoreAgent ? workflowGuardrailEnabled : undefined}
-            agentGuardrailEnabled={isCoreAgent ? agentGuardrailEnabled : undefined}
-            errors={[...errorsForPath(problems, GUARDRAIL_PATH), ...errorsForPath(problems, `${GUARDRAIL_PATH}.enabled`)]}
             disabled={readOnly}
           />
         ) : null}

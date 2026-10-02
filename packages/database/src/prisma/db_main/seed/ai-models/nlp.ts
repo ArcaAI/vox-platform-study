@@ -460,7 +460,8 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       capabilities: ['extract_entities'],
       labelTaxonomy: {
         threshold: 0.5,
-        // All 42 entity types from the model card, in its own grouping order.
+        // All 42 entity types from the model card, in its own grouping order, then six clinical
+        // identifiers the card does not name.
         labels: [
           // person / names
           'person',
@@ -511,11 +512,20 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
           'document_date',
           'expiration_date',
           'transaction_date',
+          // clinical identifiers — not on the model card. GLiNER2 is zero-shot, so these are
+          // configuration: what LLM egress pseudonymizes before a cloud call. (`date_of_birth`
+          // is already declared above.)
+          'medical_record_number',
+          'patient_id',
+          'encounter_id',
+          'staff_id',
+          'healthcare_facility',
+          'date_of_service',
         ],
       },
     },
   },
-  // The JOINT checkpoint. Same 42 PII types as the privacy filter
+  // The JOINT checkpoint. Same PII types as the privacy filter (42 from the card, plus six clinical)
   // its card lists an identical set — PLUS the six GLiGuard moderation tasks.
   // Seeded so a platform admin can select it wherever safety needs SPANS, or
   // where one resident model must cover both jobs.
@@ -553,7 +563,7 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       capabilities: ['extract_entities', 'classify_text'],
       labelTaxonomy: {
         threshold: 0.5,
-        // 42 PII entity types, identical to the privacy-filter row's set.
+        // 48 PII entity types, identical to the privacy-filter row's set.
         labels: [
           // person / names
           'person',
@@ -604,6 +614,15 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
           'document_date',
           'expiration_date',
           'transaction_date',
+          // clinical identifiers — not on the model card. GLiNER2 is zero-shot, so these are
+          // configuration: what LLM egress pseudonymizes before a cloud call. (`date_of_birth`
+          // is already declared above.)
+          'medical_record_number',
+          'patient_id',
+          'encounter_id',
+          'staff_id',
+          'healthcare_facility',
+          'date_of_service',
         ],
         // The six moderation tasks. NOTE (probed 2026-08-20): these are NOT a
         // schema baked into the checkpoint — `gliner2.classify_text` BUILDS a

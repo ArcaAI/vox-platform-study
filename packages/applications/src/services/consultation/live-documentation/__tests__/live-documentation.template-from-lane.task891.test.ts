@@ -173,7 +173,6 @@ describe('TASK-891 D7 — realtimeDocumentTemplateSlug', () => {
       source: 'tenant-graph',
       definitionSlug: WORKFLOW_SLUG,
       definitionVersionNumber: 3,
-      guardrail: null,
       stages: [
         {
           stageIndex: 0,
@@ -201,7 +200,6 @@ describe('TASK-891 D7 — realtimeDocumentTemplateSlug', () => {
       source: 'tenant-graph',
       definitionSlug: WORKFLOW_SLUG,
       definitionVersionNumber: 3,
-      guardrail: null,
       stages: [
         {
           stageIndex: 0,
