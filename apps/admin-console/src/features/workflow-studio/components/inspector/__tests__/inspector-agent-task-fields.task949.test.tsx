@@ -77,12 +77,12 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
 
   it('keeps the task-neutral fields for every task', () => {
     const { container } = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
-    // `execution` (lane/cadence), `guardrail` and `onError` are properties of the INSTANCE,
-    // not of the task, so every agent keeps them.
+    // `execution` (lane/cadence) and `onError` are properties of the INSTANCE, not of the
+    // task, so every agent keeps them. Guardrail screening is unconditional — no field.
     expect(container.textContent).toContain('Lane');
     expect(container.textContent).toContain('Cadence');
     expect(container.textContent).toContain('On Error');
-    expect(container.textContent).toContain('Guardrail');
+    expect(container.textContent).not.toContain('Guardrail');
   });
 
   it('does not hide the whole surface while the agent is still unresolved', () => {
