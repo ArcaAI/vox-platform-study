@@ -69,9 +69,10 @@ _IDENTITY_KEY_LABELS: dict[str, str] = {
 _PERSON_CONTAINERS = frozenset({"patient", "clinician", "doctor", "practitioner"})
 _PERSON_NAME_KEYS = frozenset({"name", "fullname", "displayname"})
 
-#: Transports the judge reaches DIRECTLY that are self-hosted engines. Mirrors
-#: `ENGINE_SERVED_PROVIDERS` (`ai-provider-connection/constants.ts`) plus the judge's own
-#: OpenAI-compatible transport name and the platform `built-in` sentinel.
+#: Transports the judge reaches DIRECTLY that are self-hosted engines: `ENGINE_SERVED_PROVIDERS`
+#: (`ai-provider-connection/constants.ts` — `ollama` included, owner decision 2026-08-20) plus the
+#: judge's own OpenAI-compatible transport name and the platform `built-in` sentinel. This is the
+#: former `HARNESS_PHI_LOCAL_PROVIDERS` default, moved from env into code.
 LOCAL_DIRECT_TRANSPORTS = frozenset(
     {"lm-studio", "lmstudio", "openai_compat", "ollama", "vllm", "llama-cpp", "built-in"}
 )

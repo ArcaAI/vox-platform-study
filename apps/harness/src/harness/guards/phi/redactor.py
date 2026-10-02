@@ -7,15 +7,17 @@
 * :meth:`PhiRedactor.redact` — the low-level primitive: detect PHI and return the
   anonymized text plus the entities found. Exceptions propagate (the caller
   decides the failure policy).
-* :meth:`PhiRedactor.ensure_safe_for_cloud` — the **fail-closed** egress gate.
-  For any provider **not** listed in ``settings.phi.local_providers`` (i.e.
-  every cloud provider, known or not) it redacts and *confirms* removal before
-  returning the cleaned text; if the analyzer raises **or** removal cannot be
-  confirmed, and ``fail_closed`` is set (the default), it RAISES
-  :class:`PhiEgressBlocked` so **no** text egresses. For a *known-local*
-  provider it is a pure pass-through (local calls are not egress) — this is a
-  default-deny allowlist: an unrecognized provider string is treated as cloud,
-  never as local.
+* :meth:`PhiRedactor.ensure_safe_for_cloud` — the **fail-closed** egress gate for the
+  DIRECT (non-``/generate``) hops only — today the inferential judge, which posts to its
+  provider from this process. Every ``apps/text`` ``/generate`` call is redacted by text
+  itself since TASK-1035 and never reaches this gate. For any transport **not** in
+  :data:`harness.core.llm_egress.LOCAL_DIRECT_TRANSPORTS` (i.e. every cloud provider,
+  known or not) it redacts and *confirms* removal before returning the cleaned text; if
+  the analyzer raises **or** removal cannot be confirmed, and ``fail_closed`` is set, it
+  RAISES :class:`PhiEgressBlocked` so **no** text egresses. For a *known-local* transport
+  it is a pure pass-through (local calls are not egress) — a default-deny allowlist held
+  in code (the env allowlist ``HARNESS_PHI_LOCAL_PROVIDERS`` is retired): an unrecognized
+  provider string is treated as cloud, never as local.
 
 Why a custom "confirm removal" check (not a re-analyze): after anonymization the
 placeholders themselves (``<MRN>``) and leftover label words (``DOB``) get
@@ -34,12 +36,11 @@ fails and, on a cloud egress, the fail-closed path refuses (no silent leak).
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from harness.core.config import Settings
+from harness.core.llm_egress import is_local_direct_transport
 
 # Presidio's recommended production NER model. Recorded here as the single source
 # of truth; the integration phase / ops pull it via
@@ -206,33 +207,33 @@ class PhiRedactor:
         ]
         return RedactionResult(text=anonymized.text, entities=entities)
 
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
-        """Clear ``text`` for egress to ``provider`` (fail-closed for cloud).
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, fail_closed: bool) -> str:
+        """Clear ``text`` for DIRECT egress to ``provider`` (fail-closed for cloud).
 
-        * ``provider`` in ``settings.phi.local_providers`` → local call, returned
+        * ``provider`` a known-local transport
+          (:func:`~harness.core.llm_egress.is_local_direct_transport`) → returned
           untouched (no redaction).
         * everything else (a known cloud provider OR an unrecognized provider
           string — default-deny) → redact + confirm removal. On analyzer failure
           or an unconfirmed removal: RAISE :class:`PhiEgressBlocked` when
-          ``settings.phi.fail_closed`` (the default); otherwise degrade open
+          ``fail_closed`` (the run-effective policy value); otherwise degrade open
           (return the best-available text).
         """
-        phi = settings.phi
-        if provider in phi.local_providers:
+        if is_local_direct_transport(provider):
             return text
 
         try:
             result = self.redact(text)
             confirmed = self._removal_confirmed(text, result)
         except Exception as exc:
-            if phi.fail_closed:
+            if fail_closed:
                 raise PhiEgressBlocked(
                     provider=provider, reason=f"redaction failed: {exc}"
                 ) from exc
             return text
 
         if not confirmed:
-            if phi.fail_closed:
+            if fail_closed:
                 raise PhiEgressBlocked(provider=provider, reason="could not confirm PHI removal")
             return result.text
         return result.text

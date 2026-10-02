@@ -112,6 +112,7 @@ class TestDirectTransportLocality:
     stays — but its local list is code, not the retired `HARNESS_PHI_LOCAL_PROVIDERS` env."""
 
     def test_engine_served_transports_are_local(self) -> None:
+        # The former `HARNESS_PHI_LOCAL_PROVIDERS` default (ollama included, owner 2026-08-20).
         for transport in ("lm-studio", "lmstudio", "openai_compat", "ollama", "vllm", "llama-cpp"):
             assert is_local_direct_transport(transport)
 

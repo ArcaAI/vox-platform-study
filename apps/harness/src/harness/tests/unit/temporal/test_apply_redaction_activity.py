@@ -1,12 +1,12 @@
 """Activity-wiring tests for ``apply_redaction``.
 
 Runs the real activity body in a Temporal ``ActivityEnvironment`` with the
-client factories + ``get_settings`` / ``_phi_redactor`` monkeypatched to
-deterministic fakes (no model load, no network). Pins:
+client factories + ``get_settings`` monkeypatched to deterministic fakes (no model
+load, no network). Pins:
 
 * deterministic-only transform (no Text call when there are no semantic rewrites);
-* the OPTIONAL Text semantic-rewrite pass — PHI-egress guarded, idempotency key set,
-  JSON schema preserved;
+* the OPTIONAL Text semantic-rewrite pass — idempotency key set, JSON schema preserved
+  (PHI egress on that call is ``apps/text``'s job since TASK-1035);
 * **fail CLOSED** — a malformed rule OR a failed required Text rewrite sets
   ``failed_closed=True`` (the workflow turns that into a forced FLAG), never a
   silent unredacted delivery;
@@ -21,7 +21,7 @@ from typing import Any
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from harness.core.config import PhiConfig, Settings
+from harness.core.config import Settings
 from harness.redaction.engine import RedactionRule
 from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal import activities
@@ -43,24 +43,8 @@ class _BoomText:
         raise TextServiceError("text_client down", after_send=False)
 
 
-class _ContractRedactor:
-    def __init__(self, *, block: bool = False) -> None:
-        self.calls: list[tuple[str, str]] = []
-        self._block = block
-
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
-        self.calls.append((text, provider))
-        if provider in settings.phi.local_providers:
-            return text
-        if self._block:
-            from harness.guards.phi import PhiEgressBlocked
-
-            raise PhiEgressBlocked(provider=provider, reason="contract block")
-        return text
-
-
 def _settings() -> Settings:
-    return Settings(phi=PhiConfig(enabled=True, fail_closed=True))
+    return Settings()
 
 
 @pytest.fixture
@@ -110,7 +94,6 @@ class TestFailClosed:
     async def test_required_text_rewrite_failure_fails_closed(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_text_client", lambda s: _BoomText())
         monkeypatch.setattr(activities, "get_settings", _settings)
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor())
         # a rewrite rule with NO replacement ⇒ needs the Text semantic pass
         rule = RedactionRule(
             id="sem", type="rewrite", match="category", pattern="email", note="soften"
@@ -123,10 +106,8 @@ class TestTextRewritePass:
     @pytest.mark.asyncio
     async def test_text_called_with_idempotency_key_and_egress_guard(self, env, monkeypatch):
         text_client = _FakeText(content='{"S": "clean"}')
-        redactor = _ContractRedactor()
         monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
         monkeypatch.setattr(activities, "get_settings", _settings)
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
         # a semantic (category) rewrite with no replacement drives the Text pass
         rule = RedactionRule(
             id="sem", type="rewrite", match="category", pattern="email", note="soften"
@@ -141,9 +122,9 @@ class TestTextRewritePass:
             ),
         )
         assert out.failed_closed is False
-        # idempotency key present + egress guard consulted for the cloud provider
+        # idempotency key present; the rewrite prompt goes to Text verbatim (TASK-1035)
         assert text_client.kwargs.get("idempotency_key")
-        assert any(p == "azure" for _, p in redactor.calls)
+        assert "a@b.com" in text_client.kwargs["prompt"]
 
 
 class TestManifestNoPhi:
