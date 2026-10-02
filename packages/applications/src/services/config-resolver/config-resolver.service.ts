@@ -127,8 +127,11 @@ function isActiveNodeOf(node: WorkflowGraphNode, type: string): boolean {
 function declaresDna(node: WorkflowGraphNode, facet: 'style' | 'redaction'): boolean {
   if (!isActiveNodeOf(node, CORE_AGENT_NODE_TYPE)) return false;
   const dna = asRecord(asRecord(node.config).dna);
-  // TASK-1034 R3 — `enabled` stays THE gate; `style` / `redaction` only narrow it. `enabled: true`
-  // with a facet absent means that facet is on (back-compat with the one-flag graphs).
+  // TASK-1034 R3 — `enabled: true` with a facet absent means that facet is on (back-compat with the
+  // one-flag graphs); `style` / `redaction: false` narrows it. Owner 2026-10-02: an explicit
+  // `style: true` enables the style gate on its own. An explicit `enabled: false` still vetoes both.
+  if (dna.enabled === false) return false;
+  if (facet === 'style' && dna.style === true) return true;
   return dna.enabled === true && dna[facet] !== false;
 }
 

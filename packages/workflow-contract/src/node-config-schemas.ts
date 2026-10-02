@@ -971,8 +971,8 @@ const DNA_PROPERTY = Object.freeze({
       type: 'boolean',
       summary: "Apply the clinician's DNA writing style (default: on when DNA is enabled).",
       description:
-        'TASK-1034 R3 — narrows `enabled`. With `enabled: true`, ABSENT or TRUE keeps the writing-style pass; ' +
-        '`false` turns ONLY the style off. Without `enabled: true` it declares nothing.',
+        'TASK-1034 R3 — TRUE declares the writing-style pass on its own, even without `enabled`. With ' +
+        '`enabled: true`, ABSENT keeps it on and `false` turns ONLY the style off. `enabled: false` vetoes it.',
     }),
     redaction: Object.freeze({
       type: 'boolean',
