@@ -16,6 +16,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import type { Department, PromptTemplate, PromptUsageAnalytics, PromptVersion } from '../../api/types';
 import { PromptTemplatesScreen } from '../prompt-templates-screen';
 
@@ -511,7 +512,7 @@ describe('PromptTemplatesScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /Prompt content/ }), { target: { value: 'You are a scribe.' } });
+    setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
 
     await waitFor(() => {
@@ -538,7 +539,7 @@ describe('PromptTemplatesScreen', () => {
 
     const dialog = await screen.findByRole('dialog');
     // Save is offered only on a dirty form (TASK-978) — make a real content edit.
-    fireEvent.change(await within(dialog).findByLabelText('Prompt content'), { target: { value: 'Edited pre-summary prompt' } });
+    setTemplateEditorValue(await within(dialog).findByRole('textbox', { name: 'Prompt content' }), 'Edited pre-summary prompt');
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => {
@@ -663,7 +664,7 @@ describe('PromptTemplatesScreen', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
       const dialog = await screen.findByRole('dialog');
       fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
-      fireEvent.change(within(dialog).getByRole('textbox', { name: /Prompt content/ }), { target: { value: 'You are a scribe.' } });
+      setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
       const tagBox = within(dialog).getByRole('textbox', { name: 'Tags' });
       fireEvent.change(tagBox, { target: { value: 'dept:nephrology' } });
       fireEvent.keyDown(tagBox, { key: 'Enter' });

@@ -11,8 +11,8 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { TemplateField, templateSyntaxLint, variableNamePaths } from '@/shared/template-editor';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useCreateTemplate, useDepartments, useUpdateTemplate } from '../api/hooks';
 import type { PromptTemplate, PromptTemplateCategory, PromptTemplateStatus, PromptVariableDeclaration, PromptVariableType } from '../api/types';
@@ -260,6 +260,34 @@ function RequiredMark() {
   );
 }
 
+/**
+ * The template body: a `TemplateEditor` completing the template's own declared variables and
+ * flagging a placeholder that does not parse. Which `context.*` paths resolve is decided by each
+ * agent that binds the template, so the body is checked for syntax only here; the binding agent's
+ * publish (and its editor) checks the references.
+ */
+function TemplateContentField({
+  value,
+  onChange,
+  variables,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  variables: PromptVariableDeclaration[];
+  placeholder?: string;
+}) {
+  const paths = variableNamePaths(
+    variables.map((variable) => variable.name),
+    'declared',
+  );
+  return (
+    <div className="flex min-h-40 flex-1 flex-col">
+      <TemplateField label="Prompt content" required value={value} onChange={onChange} paths={paths} lint={templateSyntaxLint} minLines={10} placeholder={placeholder} />
+    </div>
+  );
+}
+
 /** Footer row shared by the two forms — the drawer body owns scrolling, this stays inline. */
 function FormActions({ children }: { children: React.ReactNode }) {
   return <div className="flex shrink-0 items-center justify-end gap-2">{children}</div>;
@@ -379,19 +407,12 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
           autoComplete="off"
         />
       </div>
-      <div className="flex min-h-40 flex-1 flex-col gap-2">
-        <Label htmlFor="create-template-content">
-          Prompt content <RequiredMark />
-        </Label>
-        <Textarea
-          id="create-template-content"
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder={'You are a clinical scribe. Summarize {{transcript}} as…'}
-          className="min-h-40 flex-1 resize-none font-mono text-xs"
-          required
-        />
-      </div>
+      <TemplateContentField
+        value={content}
+        onChange={setContent}
+        variables={variables}
+        placeholder={'You are a clinical scribe. Summarize {{transcript}} as…'}
+      />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
       <TagsField idPrefix="create-template" tags={tags} onChange={setTags} />
       <FormActions>
@@ -533,19 +554,7 @@ export function EditTemplateForm({
         <Label htmlFor="edit-template-description">Description</Label>
         <Input id="edit-template-description" value={description} onChange={(event) => setDescription(event.target.value)} autoComplete="off" />
       </div>
-      <div className="flex min-h-40 flex-1 flex-col gap-2">
-        <Label htmlFor="edit-template-content">
-          Prompt content <RequiredMark />
-        </Label>
-        <Textarea
-          id="edit-template-content"
-          aria-label="Prompt content"
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          className="min-h-40 flex-1 resize-none font-mono text-xs"
-          required
-        />
-      </div>
+      <TemplateContentField value={content} onChange={setContent} variables={variables} />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
       <TagsField idPrefix="edit-template" tags={tags} onChange={setTags} />
       <div className="flex flex-col gap-2">

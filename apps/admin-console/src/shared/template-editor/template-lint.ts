@@ -73,16 +73,26 @@ export function declaredNamespaces({ definition, variables, openRoots = ['input'
 
 const OFFSET = /at offset (\d+)/;
 
+function syntaxDiagnostics(content: string): TemplateDiagnostic[] {
+  return templateSyntaxProblems(content).map((message) => {
+    const from = Number(OFFSET.exec(message)?.[1] ?? 0);
+    return { from, to: Math.min(content.length, from + 2), message, severity: 'error' as const };
+  });
+}
+
+/**
+ * Syntax-only lint, for a body whose namespaces are decided later by whatever binds it (a shared
+ * prompt template is bound by agents, each with its own schema and variables).
+ */
+export function templateSyntaxLint(content: string): TemplateDiagnostic[] {
+  return syntaxDiagnostics(content);
+}
+
 /** Whole-document lint for `TemplateEditor`: syntax first (a template that does not parse has no references), then one squiggle per offending placeholder. */
 export function templateLint(declared: DeclaredNamespaces): (content: string) => TemplateDiagnostic[] {
   return (content) => {
-    const syntax = templateSyntaxProblems(content);
-    if (syntax.length > 0) {
-      return syntax.map((message) => {
-        const from = Number(OFFSET.exec(message)?.[1] ?? 0);
-        return { from, to: Math.min(content.length, from + 2), message, severity: 'error' as const };
-      });
-    }
+    const syntax = syntaxDiagnostics(content);
+    if (syntax.length > 0) return syntax;
     const diagnostics: TemplateDiagnostic[] = [];
     for (const reference of templateReferences(content)) {
       if (reference.hasDefault) continue;

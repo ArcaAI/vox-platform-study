@@ -3,6 +3,7 @@ export {
   declaredNamespaces,
   findingsAt,
   templateLint,
+  templateSyntaxLint,
   variableNamePaths,
   type DeclaredNamespacesInput,
   type FieldFinding,

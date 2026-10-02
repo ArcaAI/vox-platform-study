@@ -9,6 +9,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import { CreateTemplateForm, EditTemplateForm } from '../template-form-dialog';
 import type { PromptTemplate } from '../../api/types';
 
@@ -74,7 +75,7 @@ describe('PromptVariablesEditor — create form', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'New Template' } });
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'Summarize {{topic}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Summarize {{topic}}');
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
 
@@ -88,7 +89,7 @@ describe('PromptVariablesEditor — create form', () => {
   it('"Derive from content" adds the ROOT name for a dotted reference, with a hint noting the full path', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'Age: {{trigger.patient.age}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Age: {{trigger.patient.age}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
     expect(screen.getByDisplayValue('trigger')).toBeTruthy();
@@ -98,7 +99,7 @@ describe('PromptVariablesEditor — create form', () => {
   it('"Derive from content" never adds a duplicate for a name already declared', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: '{{topic}} and {{topic}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), '{{topic}} and {{topic}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
     expect(screen.getAllByDisplayValue('topic')).toHaveLength(1);
@@ -107,7 +108,7 @@ describe('PromptVariablesEditor — create form', () => {
   it('a declared-with-default reference derives as NOT required', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: '{{topic | default("general")}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), '{{topic | default("general")}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
     const requiredSwitch = screen.getByLabelText('Req.');
@@ -123,7 +124,7 @@ describe('PromptVariablesEditor — create form', () => {
 
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'x' } });
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'x' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'x');
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
     fireEvent.click(screen.getByRole('button', { name: /remove/i }));
