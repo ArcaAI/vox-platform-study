@@ -18,19 +18,23 @@ call so a response that echoes the fence is caught (T6).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from guardrail.api.endpoints.redact import _resolve_chunk_chars
 from guardrail.core.dependencies import (
     ModelUnavailableError,
     admitted,
+    build_pii_span_client,
     build_screener,
     require_tenant_id,
 )
 from guardrail.core.logging import get_logger
 from guardrail.services.injection_defense import wrap_untrusted
+from guardrail.services.pii_extraction import DocumentSpan, extract_spans
 
 logger = get_logger(__name__)
 
@@ -48,6 +52,12 @@ class InboundScreenRequest(BaseModel):
         default=True,
         description="Return a nonce-fenced containment envelope for the sanitized text",
     )
+    include_pii_spans: bool = Field(
+        default=False,
+        description="Also return the PII spans of `text` (selection `guardrail.pii.spans`), "
+        "extracted concurrently with the safety classification. Used by `apps/text` to "
+        "pseudonymize a cloud-bound prompt (TASK-1035).",
+    )
 
 
 class OutboundScreenRequest(BaseModel):
@@ -61,6 +71,20 @@ class OutboundScreenRequest(BaseModel):
         default=None,
         description="The containment nonce from the inbound screen, for echo detection",
     )
+
+
+class PiiSpanModel(BaseModel):
+    """One PII span; offsets index the SUBMITTED `text`, and `text` is that slice.
+
+    The value travels back to the internal caller ONLY so it can be replaced on the
+    way to a cloud provider. It is never logged here.
+    """
+
+    label: str
+    start: int
+    end: int
+    text: str
+    score: float
 
 
 class ScreenResponse(BaseModel):
@@ -90,6 +114,8 @@ class ScreenResponse(BaseModel):
         default=None, description="Nonce-fenced containment envelope (inbound only)"
     )
     nonce: str | None = None
+    #: Inbound only, and only when `include_pii_spans` was set (TASK-1035).
+    pii_spans: list[PiiSpanModel] | None = None
 
 
 def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
@@ -110,12 +136,28 @@ def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
 
 @router.post("/guardrail/screen/inbound", response_model=ScreenResponse)
 async def screen_inbound(request: InboundScreenRequest, http_request: Request) -> ScreenResponse:
-    """Screen untrusted inbound content and return a containment envelope."""
+    """Screen untrusted inbound content and return a containment envelope.
+
+    With `include_pii_spans`, the PII span extraction runs CONCURRENTLY with the
+    classification, and a failed extraction fails the whole call closed (503): a
+    caller about to pseudonymize must never mistake "could not look" for "nothing
+    found".
+    """
     tenant_id = require_tenant_id(http_request)
+    spans: list[DocumentSpan] | None = None
     try:
         async with admitted(http_request):
-            screener = await build_screener(http_request.app.state, tenant_id)
-            decision = await screener.screen_inbound(request.text, kind=request.kind)
+            app_state = http_request.app.state
+            screener = await build_screener(app_state, tenant_id)
+            if request.include_pii_spans:
+                span_client = await build_pii_span_client(app_state, tenant_id)
+                chunk_chars = await _resolve_chunk_chars(app_state)
+                decision, spans = await asyncio.gather(
+                    screener.screen_inbound(request.text, kind=request.kind),
+                    extract_spans(span_client.extract_pii_entities, request.text, chunk_chars),
+                )
+            else:
+                decision = await screener.screen_inbound(request.text, kind=request.kind)
     except HTTPException:
         raise
     except ModelUnavailableError as exc:
@@ -137,7 +179,21 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
             request.text[:sanitized_length] if decision.sanitization else request.text,
             kind=request.kind,
         )
-    return _to_response(decision, envelope=envelope, nonce=nonce)
+    pii_spans = (
+        [
+            PiiSpanModel(
+                label=span.label,
+                start=span.start,
+                end=span.end,
+                text=request.text[span.start : span.end],
+                score=span.score,
+            )
+            for span in spans
+        ]
+        if spans is not None
+        else None
+    )
+    return _to_response(decision, envelope=envelope, nonce=nonce, pii_spans=pii_spans)
 
 
 @router.post("/guardrail/screen/outbound", response_model=ScreenResponse)

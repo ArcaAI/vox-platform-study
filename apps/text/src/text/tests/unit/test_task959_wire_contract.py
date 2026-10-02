@@ -47,6 +47,10 @@ def _make_app(registry, task_manager, guardrail_client=None):  # type: ignore[no
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
     if guardrail_client is not None:
+        # TASK-1035: the inbound screen runs beside the medical judge on every call.
+        guardrail_client.screen_inbound = AsyncMock(
+            return_value={"allowed": True, "reason": "screened", "pii_spans": []}
+        )
         app.state.guardrail_client = guardrail_client
     return app
 

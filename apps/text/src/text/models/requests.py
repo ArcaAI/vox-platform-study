@@ -145,42 +145,40 @@ def serialize_provider_overrides(
 
 
 class GuardrailPolicyOverride(BaseModel):
-    """The tenant's own input-moderation policy, injected per request.
+    """The tenant's own moderation TUNING, injected per request.
 
-    `require_medical` and `include_reasoning` are the two parts of the guardrail
-    posture that legitimately differ BETWEEN tenants: a non-clinical tenant needs
-    medical enforcement off while every other tenant keeps it on. A process-wide
-    `TEXT_EXTERNAL_GUARDRAIL_REQUIRE_MEDICAL` could express only one of those, so
-    the real choice it offered was "redeploy, or force clinical validation on a
-    tenant it does not fit". Cardinality decides the channel (owner decision D-1
-    rule 3): anything that can differ per tenant is PUSHED.
+    Only ``include_reasoning`` remains. ``enabled`` (the per-call opt-out, TASK-890
+    OD-R) and ``require_medical`` were REMOVED by TASK-1035 (OD-1, OD-5): both
+    gates always run, and the medical judge is skipped only by a request declaring
+    ``medical_exempt: "internal"``. A gateway that still pushes either key is
+    ignored rather than refused — unknown fields are dropped — so a mixed-version
+    rollout degrades to "screened", never to a 422.
 
-    ``None`` on a field means NO OPINION — the platform default stands. It is not
-    the same as ``False`` and must never be flattened into it. Resolution lives in
-    `core/guardrail_posture.resolve_posture`.
-
-    ``enabled`` is the per-call OPT-OUT (TASK-890 OD-R, 2026-09-06), and it is
-    asymmetric on purpose. This field used to be described here as platform-scope
-    and PULL-only; the owner decided a tenant may switch platform screening off
-    for one agent, one workflow or one node, so the decision — folded gateway-side
-    by `resolveGuardrailDecision` (node > workflow > agent > on) — rides on the
-    request. What it can do is SUBTRACT: a pushed ``False`` turns both gates off
-    for this call, while a pushed ``True`` can never revive a platform kill
-    switch, because `resolve_posture` keeps ``platform.enabled`` as the floor.
-    Every ``False`` is on the record three ways — a publish WARNING
-    (`GUARDRAIL_OPTED_OUT`), the per-call ledger attribute
-    ``guardrail: 'opted_out'``, and the ``tenant_opted_out`` skip reason this
-    service reports — so the omission is attributable, never merely permitted.
-
-    The remaining posture fields (the retry budget and the platform switch's own
-    value) stay platform-scope and arrive on the PULL channel; the FAIL POSTURE is
-    not configurable at all — an errored guardrail can never return
-    ``allowed: True``.
+    ``None`` means NO OPINION — the platform default stands.
     """
 
-    enabled: bool | None = None
-    require_medical: bool | None = None
     include_reasoning: bool | None = None
+
+
+class KnownPhi(BaseModel):
+    """A value the CALLER already holds that must never reach a cloud provider.
+
+    Schema-PHI-class context fields plus the patient/clinician identity the
+    gateway or harness resolved. Replaced deterministically on cloud egress, in
+    addition to the GLiNER2 spans. Never logged.
+    """
+
+    label: str = Field(..., min_length=1, max_length=64)
+    value: str = Field(..., min_length=2, max_length=2_000)
+
+    def __repr__(self) -> str:  # the value is PHI
+        return f"KnownPhi(label={self.label!r})"
+
+    __str__ = __repr__
+
+
+#: The provider locality the caller stamps (`core/locality.py` decides).
+ProviderLocalityStamp = Literal["local", "cloud"]
 
 
 class TextContentPart(BaseModel):
@@ -315,6 +313,15 @@ class GenerateRequest(BaseModel):
     # site that pins the raw OpenAI-shaped ride-along is not second-guessed, and
     # `core/reasoning.posture_to_render` is the single place that rule lives.
     reasoning: ReasoningPosture | None = None
+    # TASK-1035 §5.0 — the egress contract. `provider_locality` is keyed by
+    # provider name and covers `provider` AND `fallback_provider`; an absent or
+    # unknown stamp resolves to CLOUD unless the provider is engine-served
+    # (`core/locality.py`). `known_phi` is replaced on cloud egress. `medical_exempt`
+    # is the ONLY way to skip the medical judge, and only internal service callers
+    # set it.
+    provider_locality: dict[str, ProviderLocalityStamp] | None = None
+    known_phi: list[KnownPhi] | None = Field(default=None, max_length=200)
+    medical_exempt: Literal["internal"] | None = None
 
     @field_validator("prompt")
     @classmethod

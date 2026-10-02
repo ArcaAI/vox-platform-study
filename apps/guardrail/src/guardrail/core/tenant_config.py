@@ -129,6 +129,9 @@ TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 # The models themselves run in `apps/nlp` ( Phases 3 & 6).
 TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
 TASK_KEY_GUARDRAIL_PII = "guardrail.pii"
+#: TASK-1035 — the PII span model `apps/text`'s egress pipeline pseudonymizes from,
+#: returned by `/guardrail/screen/inbound` when `include_pii_spans` is set.
+TASK_KEY_GUARDRAIL_PII_SPANS = "guardrail.pii.spans"
 TASK_KEY_GUARDRAIL_GROUNDEDNESS = "guardrail.groundedness"
 
 # AVAILABILITY (TASK-886) — WHICH declared screening policies apply to a tenant.

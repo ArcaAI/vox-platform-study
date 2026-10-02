@@ -15,7 +15,7 @@ structural rather than conventional:
   a different URL, which the gateway does not proxy.
 * **Gate.** This module names neither the guardrail client nor its dependency
   provider, and the handler runs inside ``judge_scope()`` so the shared gate
-  helper (``endpoints/generate._apply_guardrail_gate``) raises
+  helper (``services/egress.run_inbound_gate``) raises
   ``GuardrailRecursionError`` if a future edit ever routes it here.
 * **Resources.** Its own semaphore and circuit breaker per provider
   (``app.state.judge_semaphores`` / ``judge_circuit_breakers``, sized by
@@ -68,6 +68,7 @@ from text.core.dependencies import (
 from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
+    JudgeProviderNotLocalError,
     ProviderCredentialsError,
 )
 from text.core.exceptions import (
@@ -76,9 +77,16 @@ from text.core.exceptions import (
 from text.core.exceptions import (
     ProviderTimeoutError as DomainProviderTimeoutError,
 )
+from text.core.locality import CLOUD, resolve_locality
 from text.core.logging import get_logger
 from text.core.runtime_defaults import LaneBudget
-from text.models.requests import GenerateRequest, ProviderOverride, ResponseFormat, RetryConfig
+from text.models.requests import (
+    GenerateRequest,
+    ProviderLocalityStamp,
+    ProviderOverride,
+    ResponseFormat,
+    RetryConfig,
+)
 from text.models.responses import ErrorResponse
 from text.models.stats import GenerationStats, degraded_stats
 from text.models.usage import (
@@ -127,6 +135,10 @@ class JudgeRequest(BaseModel):
     # (which never decrypts, stores or logs it). Honoured exactly as on the
     # public path — the adapters read it off the request.
     provider_overrides: dict[str, ProviderOverride] | None = None
+    # TASK-1035 — the judge sees UNREDACTED text, so it runs on a local provider
+    # only. Same stamp and same rules as `/generate` (`core/locality.py`); absent ⇒
+    # only an engine-served provider is local.
+    provider_locality: dict[str, ProviderLocalityStamp] | None = None
 
 
 class JudgeResponse(BaseModel):
@@ -239,6 +251,10 @@ async def _run_judge(
 ) -> JudgeResponse:
     provider_name = request_body.provider
     model = request_body.model
+    if resolve_locality(provider_name, request_body.provider_locality) == CLOUD:
+        # Refused BEFORE any budget, breaker or provider is touched.
+        logger.warning("judge.refused_cloud_provider", provider=provider_name)
+        raise JudgeProviderNotLocalError(provider_name)
     ctx = structlog.contextvars.get_contextvars()
     request_id = ctx.get("requestId")
 

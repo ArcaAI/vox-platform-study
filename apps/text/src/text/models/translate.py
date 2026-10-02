@@ -6,9 +6,12 @@ per-request tenant credential keyed by the SAME provider name as ``provider``.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
-from text.models.requests import ProviderOverride
+from text.models.requests import KnownPhi, ProviderLocalityStamp, ProviderOverride
+from text.models.responses import EgressSummary
 
 
 class TranslateRequest(BaseModel):
@@ -21,6 +24,10 @@ class TranslateRequest(BaseModel):
     # tenant configures a BYO connection — override-wins-over-config semantics
     # live in the provider client.
     provider_overrides: dict[str, ProviderOverride] | None = None
+    # TASK-1035 §5.0 — the same egress contract as `/generate`.
+    provider_locality: dict[str, ProviderLocalityStamp] | None = None
+    known_phi: list[KnownPhi] | None = Field(default=None, max_length=200)
+    medical_exempt: Literal["internal"] | None = None
 
 
 class TranslateResponse(BaseModel):
@@ -30,3 +37,5 @@ class TranslateResponse(BaseModel):
     # Courtesy consumption hook (input character count). Metering is owned by a
     # separate ticket — no metrics are emitted here.
     chars: int = 0
+    # TASK-1035 — counts only, never values.
+    egress: EgressSummary | None = None

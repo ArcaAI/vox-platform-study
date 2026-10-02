@@ -486,6 +486,39 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
     )
 
 
+async def build_pii_span_client(app_state: Any, tenant_id: str) -> NlpGuardClientT:
+    """The tenant-bound `apps/nlp` PII span client for `guardrail.pii.spans` (TASK-1035).
+
+    Same selection path and fail-closed posture as `build_safety_analyzer`: an
+    unresolved selection or a row with no `labelTaxonomy.labels` raises, because a
+    span list from an unconfigured model would read as "no PII found".
+    """
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_PII_SPANS
+    from guardrail.services.safety_analyzer import SafetyPolicy
+
+    cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_PII_SPANS)
+    taxonomy = _taxonomy(cfg)
+    labels = taxonomy.get("labels")
+    if not isinstance(labels, list) or not labels:
+        raise SelectionUnavailableError(
+            "the guardrail.pii.spans model row declares no `labelTaxonomy.labels` — the PII "
+            "taxonomy is configuration and has no code default (fail-closed)."
+        )
+    threshold = taxonomy.get("threshold")
+    return _nlp_client(
+        app_state,
+        tenant_id,
+        cfg,
+        labels=[str(label) for label in labels],
+        threshold=(
+            float(threshold)
+            if isinstance(threshold, (int, float)) and not isinstance(threshold, bool)
+            else SafetyPolicy.pii_threshold
+        ),
+        peer_timeout_s=await resolve_judge_timeout_s(app_state),
+    )
+
+
 async def _resolve_availability(app_state: Any, tenant_id: str) -> Any:
     """Resolve WHICH screening policies apply to ``tenant_id`` (TASK-886).
 

@@ -44,6 +44,25 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
 
 
+class EgressSummary(BaseModel):
+    """What the egress pipeline did to this call (TASK-1035 §5.0). Counts only.
+
+    ``detected`` is keyed by taxonomy label and counts identifiers whether or not
+    they were replaced (a LOCAL call detects and replaces nothing). ``redacted`` is
+    how many occurrences were tokenised on the way out, ``restored`` how many
+    tokens were re-identified on the way back. ``images_unredacted`` counts image
+    parts sent to a cloud provider as-is (images cannot be pseudonymized; owner
+    decision 2026-10-02 lets them through and audits the count).
+    """
+
+    locality: str
+    detected: dict[str, int] = Field(default_factory=dict)
+    redacted: int = 0
+    restored: int = 0
+    pii_leak_blocked: bool = False
+    images_unredacted: int = 0
+
+
 class GenerateResponse(BaseModel):
     task_id: str
     status: str
@@ -67,6 +86,8 @@ class GenerateResponse(BaseModel):
     # peer service with no gateway in front of it, so riding back here is the
     # only path its token spend has to the billing plane.
     guardrail_usage: UsageDetail | None = None
+    # TASK-1035 — the egress summary; counts only, never values.
+    egress: EgressSummary | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

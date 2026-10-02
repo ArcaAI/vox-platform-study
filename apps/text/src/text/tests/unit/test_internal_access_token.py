@@ -150,7 +150,7 @@ async def test_outbound_guardrail_call_presents_the_injected_shared_token():
         base_url="http://guardrail.test",
         http_client=http_client,
         service_token=SHARED,
-        app_state=SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True)),
+        app_state=SimpleNamespace(guardrail_posture=GuardrailPosture()),
     )
     await client.validate("chest pain", tenant_id="11111111-1111-1111-1111-111111111111")
     await http_client.aclose()

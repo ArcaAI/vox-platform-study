@@ -185,7 +185,7 @@ class ContentBlockedError(TextError):
     """Content blocked by guardrails.
 
     ``error_code`` defaults to the generic ``CONTENT_BLOCKED`` token. The input
-    gate's medical-relevance check (``api/endpoints/generate._apply_guardrail_gate``)
+    gate's medical-relevance check (``services/egress.run_inbound_gate``)
     raises this with ``error_code="CONTENT_BLOCKED_NOT_MEDICAL"`` when the
     verdict says so explicitly (``is_medical: False``) — TASK-969 WS-3's closed,
     non-PHI vocabulary. ``message`` must always be a FIXED sentence: guardrail's
@@ -207,13 +207,29 @@ class GuardrailUnavailableError(TextError):
 
     Distinct from ``ContentBlockedError``: no verdict was ever reached, so this
     is a retryable platform-availability gap (503), never a content judgement.
-    Both gate halves — the input gate's ``_apply_guardrail_gate`` and the output
+    Both gate halves — the input gate's ``services/egress.run_inbound_gate`` and the output
     gate's ``services/output_gate.OutputRejectedError.as_text_error`` — raise
     this identically; generation never runs while it is in flight.
     """
 
     def __init__(self, message: str = "The safety guardrail is temporarily unavailable."):
         super().__init__(message, error_code="GUARDRAIL_UNAVAILABLE")
+
+
+class JudgeProviderNotLocalError(TextError):
+    """The internal judge lane was asked to run on a CLOUD provider (TASK-1035).
+
+    The medical judge sees the UNREDACTED prompt — it sits outside the egress
+    pipeline to avoid the ``text -> guardrail -> text`` cycle — so it may only run
+    on a local model. A 503: the fix is a routing-policy change, not a retry.
+    """
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(
+            f"The judge lane runs on local providers only; '{provider}' resolves to cloud.",
+            error_code="JUDGE_PROVIDER_NOT_LOCAL",
+        )
+        self.provider = provider
 
 
 class ProviderNotFoundError(TextError):

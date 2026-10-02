@@ -69,8 +69,8 @@ def _client(verdict: dict[str, Any]) -> Any:
     return client
 
 
-def _state(*, enabled: bool = True) -> Any:
-    return SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=enabled))
+def _state() -> Any:
+    return SimpleNamespace(guardrail_posture=GuardrailPosture())
 
 
 async def _gate(client: Any) -> Any:

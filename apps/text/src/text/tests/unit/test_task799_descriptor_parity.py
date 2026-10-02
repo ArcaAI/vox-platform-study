@@ -12,14 +12,14 @@ fail SILENTLY when they drift:
     nobody wrote a row. The registry's own history has the precedent — an
     orphaned stt seed row carried 16384 against running code using 10000, and
     adopting it would have raised a cache ceiling by 64% with no one asking.
-    Here the stakes are `require_medical` (clinical enforcement) and
+    Here the stakes are the guardrail timeout / retry budget and
     `temperature` (how inventive an unprofiled model is allowed to be).
 
 2.  **A field name the view does not emit is a knob nobody can ever set.** The
     response groups are hand-shaped views, and the Python readers look keys up
     BY NAME with a floor fallback (``platform_posture``,
-    ``generation_defaults``). A producer that emitted ``requireMedical`` as
-    ``require_medical`` would not raise anywhere: every value would simply keep
+    ``generation_defaults``). A producer that emitted ``retryBackoffMs`` as
+    ``retry_backoff_ms`` would not raise anywhere: every value would simply keep
     its floor, exactly as it did before the view existed, which is the failure
     this whole ticket is about.
 
@@ -47,10 +47,8 @@ from text.core.defaults import (
 )
 from text.core.effective_config import EffectiveConfigSnapshot
 from text.core.runtime_defaults import (
-    GUARDRAIL_ENABLED_FLOOR,
     GUARDRAIL_INCLUDE_REASONING_FLOOR,
     GUARDRAIL_MAX_RETRIES_FLOOR,
-    GUARDRAIL_REQUIRE_MEDICAL_FLOOR,
     GUARDRAIL_RETRY_BACKOFF_FLOOR_MS,
     GUARDRAIL_TIMEOUT_FLOOR_S,
 )
@@ -67,13 +65,16 @@ _EFFECTIVE_CONFIG_TS = (
 )
 
 #: TS constant name → the Python floor each entry must equal, keyed by registry key.
+#:
+#: TASK-1035 removed `text.externalGuardrail.enabled` (OD-4), and
+#: `text.externalGuardrail.requireMedical` / `text.guardrailPolicy.requireMedical`
+#: (OD-5): this service honours neither, so a descriptor for either would be a
+#: knob that does nothing.
 _PARITY: dict[str, dict[str, object]] = {
     "TEXT_GUARDRAIL_POSTURE_DEFAULTS": {
-        "text.externalGuardrail.enabled": GUARDRAIL_ENABLED_FLOOR,
         "text.externalGuardrail.timeoutS": GUARDRAIL_TIMEOUT_FLOOR_S,
         "text.externalGuardrail.maxRetries": GUARDRAIL_MAX_RETRIES_FLOOR,
         "text.externalGuardrail.retryBackoffMs": GUARDRAIL_RETRY_BACKOFF_FLOOR_MS,
-        "text.externalGuardrail.requireMedical": GUARDRAIL_REQUIRE_MEDICAL_FLOOR,
         "text.externalGuardrail.includeReasoning": GUARDRAIL_INCLUDE_REASONING_FLOOR,
     },
     "TEXT_GENERATION_DEFAULTS": {
@@ -92,7 +93,6 @@ _PARITY: dict[str, dict[str, object]] = {
     # floor the key documents, and it must not disagree with the platform half
     # about what "no opinion anywhere" means.
     "TEXT_GUARDRAIL_POLICY_DEFAULTS": {
-        "text.guardrailPolicy.requireMedical": GUARDRAIL_REQUIRE_MEDICAL_FLOOR,
         "text.guardrailPolicy.includeReasoning": GUARDRAIL_INCLUDE_REASONING_FLOOR,
     },
 }
@@ -195,11 +195,9 @@ class TestTheViewEmitsTheNamesThisServiceReads:
         # Exactly the names `core/guardrail_posture.platform_posture` looks up,
         # plus the `source` label every group carries.
         assert fields == {
-            "enabled",
             "timeoutS",
             "maxRetries",
             "retryBackoffMs",
-            "requireMedical",
             "includeReasoning",
             "source",
         }
@@ -242,11 +240,9 @@ class TestAServedValueChangesBehaviour:
         # Every value below is the OPPOSITE of the floor, so a group that failed
         # to land could not accidentally produce this state.
         served = {
-            "enabled": True,
             "timeoutS": 30,
             "maxRetries": 5,
             "retryBackoffMs": 750,
-            "requireMedical": False,
             "includeReasoning": True,
             "source": "db",
         }
@@ -258,11 +254,9 @@ class TestAServedValueChangesBehaviour:
         )
 
         posture = state.guardrail_posture
-        assert posture.enabled is True and GUARDRAIL_ENABLED_FLOOR is False
         assert posture.timeout_s == 30
         assert posture.max_retries == 5
         assert posture.retry_backoff_ms == 750
-        assert posture.require_medical is False and GUARDRAIL_REQUIRE_MEDICAL_FLOOR is True
         assert posture.include_reasoning is True
 
     def test_a_served_generation_profile_changes_the_request_that_goes_out(
@@ -335,11 +329,9 @@ class TestWithNoRowNothingMoves:
             EffectiveConfigSnapshot(
                 raw={
                     "externalGuardrail": {
-                        "enabled": posture_defaults["text.externalGuardrail.enabled"],
                         "timeoutS": posture_defaults["text.externalGuardrail.timeoutS"],
                         "maxRetries": posture_defaults["text.externalGuardrail.maxRetries"],
                         "retryBackoffMs": posture_defaults["text.externalGuardrail.retryBackoffMs"],
-                        "requireMedical": posture_defaults["text.externalGuardrail.requireMedical"],
                         "includeReasoning": posture_defaults[
                             "text.externalGuardrail.includeReasoning"
                         ],
@@ -375,6 +367,6 @@ class TestWithNoRowNothingMoves:
     def test_an_absent_group_is_still_the_floor(self) -> None:
         state = SimpleNamespace(guardrail_posture=None)
         apply_platform_posture(EffectiveConfigSnapshot(raw={}, ok=True), state)
-        assert state.guardrail_posture.enabled is GUARDRAIL_ENABLED_FLOOR
-        assert state.guardrail_posture.require_medical is GUARDRAIL_REQUIRE_MEDICAL_FLOOR
+        assert state.guardrail_posture.timeout_s == GUARDRAIL_TIMEOUT_FLOOR_S
+        assert state.guardrail_posture.include_reasoning is GUARDRAIL_INCLUDE_REASONING_FLOOR
         assert active_generation_defaults() == {**GENERATION_FLOOR}
