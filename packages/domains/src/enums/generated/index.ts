@@ -32,6 +32,7 @@ export * from './ConsultationContextSchemaStatus';
 export * from './ConsultationStatus';
 export * from './ContextItemSource';
 export * from './ContextItemType';
+export * from './DnaSampleSource';
 export * from './DocumentSectionState';
 export * from './DocumentTemplateStatus';
 export * from './ExemplarCurationStatus';

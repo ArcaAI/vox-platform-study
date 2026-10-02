@@ -101,6 +101,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'DnaWritingStyleReport',
   'DnaWritingStyleVersion',
   'DnaUsageRecord',
+  'DnaWritingSample',
   'PromptUsageRecord',
   // prompt-template.prisma (2)
   'PromptTemplate',
