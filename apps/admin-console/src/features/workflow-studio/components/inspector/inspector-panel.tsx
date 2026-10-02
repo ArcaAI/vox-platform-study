@@ -72,7 +72,7 @@ import { IconLayoutBoard } from '@tabler/icons-react';
 import { useState, type ReactNode } from 'react';
 import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form';
-import { triggerVariablePaths } from '../../lib/trigger-variable-paths';
+import { schemaVariablePaths } from '@arcaai/workflow-contract';
 import { useAgentOptions, useContextSchemaVersions } from '../../api/hooks';
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
@@ -413,11 +413,12 @@ export function InspectorPanel({
   const agentOptions = useAgentOptions(undefined, isCoreAgentNode);
   // TASK-890 J4-F5 — the version rows carry the definition itself, so the trigger's kind paths
   // come from the SAME read `ContextSchemaRefField` already performs (a cache hit, not a second
-  // fetch). Disabled for every node type but `core.agent`, which is the only consumer.
+  // fetch).
   const referencedAgentForNode = isCoreAgentNode
     ? (agentOptions.data ?? []).find((agent) => agent.slug === (typeof getAtPath(node?.config ?? {}, AGENT_SLUG_PATH) === 'string' ? getAtPath(node?.config ?? {}, AGENT_SLUG_PATH) : ''))
     : undefined;
-  const contextSchemaVersions = useContextSchemaVersions(isCoreAgentNode ? (triggerContextBinding?.schemaId ?? null) : null);
+  // Every node's CEL fields complete the trigger's paths too, so the read is no longer agent-only.
+  const contextSchemaVersions = useContextSchemaVersions(triggerContextBinding?.schemaId ?? null);
   // TASK-890 J4-F6 — the agent's bound template, read only when the agent declares no variables
   // of its own. `usePromptTemplateQuickView` is the shared picker's own cached read.
   // TASK-949 L2 — the referenced agent's task decides which of the schema's fields apply.
@@ -506,7 +507,10 @@ export function InspectorPanel({
       triggerContextBinding?.versionNumber != null
         ? (contextSchemaVersions.data ?? []).find((row) => row.versionNumber === triggerContextBinding.versionNumber)
         : (contextSchemaVersions.data ?? [])[0];
-    const triggerPaths = triggerVariablePaths({ definition: boundVersion?.definition, inline: triggerContextBinding?.inline });
+    // The contract's own derivation (the one publish checks against): `trigger.*` keeps the kind
+    // envelope, `context.*` is the same payload under the OD-6 alias.
+    const triggerSource = boundVersion?.definition ?? triggerContextBinding?.inline;
+    const triggerPaths = triggerSource ? [...schemaVariablePaths(triggerSource, 'trigger'), ...schemaVariablePaths(triggerSource, 'context')] : [];
 
     // TASK-890 §3.10 — `overrides.promptVariables` is nested inside `overrides`, so the top-level
     // `withheld` Set cannot reach it; `fieldOverrides` intercepts it wherever `FieldRenderer`
@@ -582,6 +586,7 @@ export function InspectorPanel({
             errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
+            schemaPaths={triggerPaths}
           />
         ))}
         {descriptors.map((descriptor) => (
@@ -593,6 +598,7 @@ export function InspectorPanel({
             errorsFor={(path) => errorsForPath(problems, path)}
             idPrefix={node.id}
             references={references}
+            schemaPaths={triggerPaths}
             fieldOverrides={fieldOverrides}
           />
         ))}

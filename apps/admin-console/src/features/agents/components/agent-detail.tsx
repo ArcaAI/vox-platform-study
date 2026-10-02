@@ -25,6 +25,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError, postJson } from '@/shared/api';
+import { useContextSchemaCatalog } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime } from '@/shared/format';
@@ -115,6 +116,30 @@ function CompositeInstructionSummary({ fragments }: { fragments: PromptFragment[
         ))}
       </ol>
     </section>
+  );
+}
+
+/**
+ * The schema `{{context.*}}` resolves against for this version: the gateway's
+ * `effectiveContextSchema` when it sends one (which covers a schema lent by a workflow), else the
+ * agent's own binding. Read-only — an inherited schema is changed on the workflow's trigger.
+ */
+function EffectiveContextSchemaValue({ agent }: { agent: Agent }) {
+  const catalog = useContextSchemaCatalog();
+  const effective =
+    agent.effectiveContextSchema !== undefined
+      ? agent.effectiveContextSchema
+      : agent.contextSchemaId
+        ? { id: agent.contextSchemaId, versionNumber: agent.contextSchemaVersionNumber, inheritedFrom: 'agent' as const }
+        : null;
+  if (!effective) return <>None</>;
+  const name = (catalog.data ?? []).find((schema) => schema.id === effective.id)?.name;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {name ? <span>{name}</span> : catalog.isLoading ? <Skeleton className="h-4 w-28" /> : <span className="font-mono text-xs">{effective.id}</span>}
+      {effective.versionNumber !== null ? <span className="font-mono text-xs">v{effective.versionNumber}</span> : <span className="text-muted-foreground text-xs">follows latest</span>}
+      {effective.inheritedFrom === 'workflow' ? <Badge variant="secondary">Inherited from workflow</Badge> : null}
+    </span>
   );
 }
 
@@ -742,6 +767,14 @@ export function AgentLineageDrawer({
                     <dd className="font-mono">{agent.fallbacks.length ? agent.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId).join(' → ') : '—'}</dd>
                     <dt className="text-muted-foreground">Description</dt>
                     <dd>{agent.description ?? '—'}</dd>
+                    {agent.task === 'TEXT_GENERATION' ? (
+                      <>
+                        <dt className="text-muted-foreground">Context schema</dt>
+                        <dd>
+                          <EffectiveContextSchemaValue agent={agent} />
+                        </dd>
+                      </>
+                    ) : null}
                     <dt className="text-muted-foreground">Published</dt>
                     <dd>{agent.publishedAt ? formatDateTime(agent.publishedAt) : '—'}</dd>
                     <dt className="text-muted-foreground">Published by</dt>
@@ -866,7 +899,12 @@ export function AgentLineageDrawer({
                       {draftAgent.task === 'TEXT_GENERATION' ? (
                         <fieldset className="flex flex-col gap-3">
                           <legend className="text-sm font-medium">Instruction</legend>
-                          <InstructionBindingForm value={draft.binding} onChange={(binding) => setDraft({ ...draft, binding })} />
+                          <InstructionBindingForm
+                            value={draft.binding}
+                            onChange={(binding) => setDraft({ ...draft, binding })}
+                            findings={draftAgent.validationReport?.findings}
+                            inheritedContextSchema={draftAgent.effectiveContextSchema?.inheritedFrom === 'workflow' ? draftAgent.effectiveContextSchema : null}
+                          />
                         </fieldset>
                       ) : draftAgent.task === 'SPEECH_TO_TEXT' ? (
                         <fieldset className="flex flex-col gap-3">

@@ -5,8 +5,18 @@
  * cross-tenant (the frame 40 aggregate exception).
  */
 
-import { getJson } from '@/shared/api';
-import type { Consultation, ConsultationAggregate, ConsultationAggregateParams, ListConsultationsParams, PaginatedConsultations } from './types';
+import { getJson, postJson } from '@/shared/api';
+import type {
+  ComposedPromptRecord,
+  ComposedPromptRecordSummary,
+  Consultation,
+  ConsultationAggregate,
+  ConsultationAggregateParams,
+  ListConsultationsParams,
+  PaginatedConsultations,
+  PromptPreviewRequest,
+  PromptPreviewResponse,
+} from './types';
 
 const CONSULTATIONS = 'admin/consultations';
 
@@ -23,4 +33,20 @@ export function getConsultationAggregate(params: ConsultationAggregateParams): P
 /** Read-only detail with relations (doctor, department, context items). */
 export function getConsultation(id: string): Promise<Consultation> {
   return getJson(`${CONSULTATIONS}/${encodeURIComponent(id)}`);
+}
+
+/** Dry-run composition of one phase's LLM request for this consultation (audited server-side). */
+export function previewConsultationPrompt(id: string, body: PromptPreviewRequest): Promise<PromptPreviewResponse> {
+  return postJson(`${CONSULTATIONS}/${encodeURIComponent(id)}/prompt-preview`, body);
+}
+
+/** Stored composed-prompt records for a consultation — metadata only. Accepts a bare array or a `{ data }` page. */
+export async function listComposedPrompts(consultationId: string): Promise<ComposedPromptRecordSummary[]> {
+  const body = await getJson<ComposedPromptRecordSummary[] | { data?: ComposedPromptRecordSummary[] }>('admin/composed-prompts', { consultationId });
+  return Array.isArray(body) ? body : (body?.data ?? []);
+}
+
+/** One stored record, decrypted (audited server-side). */
+export function getComposedPrompt(id: string): Promise<ComposedPromptRecord> {
+  return getJson(`admin/composed-prompts/${encodeURIComponent(id)}`);
 }

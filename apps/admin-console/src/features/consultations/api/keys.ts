@@ -5,4 +5,6 @@ export const consultationKeys = {
   list: (params?: ListConsultationsParams) => [...consultationKeys.root, 'list', params ?? {}] as const,
   aggregate: (params: ConsultationAggregateParams) => [...consultationKeys.root, 'aggregate', params] as const,
   detail: (id: string) => [...consultationKeys.root, 'detail', id] as const,
+  composedPrompts: (id: string) => [...consultationKeys.root, 'composed-prompts', id] as const,
+  composedPrompt: (recordId: string) => [...consultationKeys.root, 'composed-prompt', recordId] as const,
 };

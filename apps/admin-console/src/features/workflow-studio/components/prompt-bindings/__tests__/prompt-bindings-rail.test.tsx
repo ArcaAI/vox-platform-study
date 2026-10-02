@@ -13,6 +13,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import { templateEditorValue } from '@/test/template-editor';
 import type { NodePromptBinding } from '../../../api/types';
 import { PromptBindingsRail } from '../prompt-bindings-rail';
 
@@ -140,7 +141,7 @@ describe('PromptBindingsRail (DD-11)', () => {
 
     const dialog = await screen.findByRole('dialog');
     // The admin sees what they would adopt BEFORE adopting it.
-    await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).toBe('Reviewed wording from the library.'));
+    await waitFor(() => expect(templateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }))).toBe('Reviewed wording from the library.'));
 
     // Saving that content UNCHANGED is the ADOPT path since item 1 — the label says so,
     // rather than promising a v6 the server will not mint.
@@ -170,7 +171,7 @@ describe('PromptBindingsRail (DD-11)', () => {
     const rows = await screen.findAllByRole('button', { name: /Review and adopt v5/ });
     fireEvent.click(rows[1]);
     const dialog = await screen.findByRole('dialog');
-    await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).not.toBe(''));
+    await waitFor(() => expect(templateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }))).not.toBe(''));
     fireEvent.click(within(dialog).getByRole('button', { name: /Adopt v5 for this node/ }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));

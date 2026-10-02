@@ -18,9 +18,11 @@
  */
 import { useId, useState } from 'react';
 import { IconArrowDown, IconArrowUp, IconPlus, IconTrash } from '@tabler/icons-react';
-import { Badge, Button, Input, Label, RadioGroup, RadioGroupItem, Textarea } from '@arcaai/ui';
+import { Badge, Button, Input, Label, RadioGroup, RadioGroupItem } from '@arcaai/ui';
+import { TemplateField, findingsAt } from '@/shared/template-editor';
 import { PromptTemplatePicker, type PromptPickerTemplate, type PromptPickerVariableDeclaration } from '@/shared/prompt-picker';
-import { FRAGMENT_KEY_PATTERN, FRAGMENT_WHEN_MAX_LENGTH, MAX_FRAGMENTS, type AgentPromptVariableBinding, type PromptFragment } from '../api';
+import { FRAGMENT_KEY_PATTERN, FRAGMENT_WHEN_MAX_LENGTH, MAX_FRAGMENTS, type AgentFinding, type AgentPromptVariableBinding, type PromptFragment } from '../api';
+import type { VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import { VariableBindingsFieldset } from './variable-bindings-fieldset';
 import { VersionPinControl } from './version-pin-control';
 
@@ -144,7 +146,15 @@ function unionDeclaredVariables(templates: Array<{ name: string; declaredVariabl
   return { declared: [...firstByName.values()], conflicts };
 }
 
-const WHEN_HELP_ID_SUFFIX = '-when-help';
+const WHEN_HELP =
+  "A CEL expression over context, trigger, input, vars, nodes, or a bound variable name. Leave empty to always include this fragment — guard a possibly-missing field with has(...), e.g. has(context.visit_type) && context.visit_type == 'revisit'.";
+
+/** What the fragment editors complete, lint and annotate with (see `InstructionBindingForm`). */
+export interface FragmentAssist {
+  paths: readonly VariablePath[];
+  lint: (content: string) => readonly { from: number; to: number; message: string; severity: 'error' | 'warning' | 'info' }[];
+  findings: readonly AgentFinding[];
+}
 
 function FragmentRowEditor({
   row,
@@ -155,6 +165,7 @@ function FragmentRowEditor({
   onRemove,
   onTemplateResolved,
   disabled,
+  assist,
 }: {
   row: FragmentRow;
   index: number;
@@ -164,7 +175,10 @@ function FragmentRowEditor({
   onRemove: () => void;
   onTemplateResolved: (template: PromptPickerTemplate | null) => void;
   disabled?: boolean;
+  assist?: FragmentAssist;
 }) {
+  const fragmentPath = `instruction.fragments[${index}]`;
+  const findings = assist?.findings ?? [];
   const idPrefix = useId();
   const [template, setTemplate] = useState<PromptPickerTemplate | null>(null);
   const label = row.key || `Fragment ${index + 1}`;
@@ -269,39 +283,31 @@ function FragmentRowEditor({
           ) : null}
         </>
       ) : (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${idPrefix}-inline`}>
-            Inline prompt <span aria-hidden className="text-destructive">*</span>
-          </Label>
-          <Textarea
-            id={`${idPrefix}-inline`}
-            rows={5}
-            maxLength={50000}
-            value={row.systemPrompt}
-            disabled={disabled}
-            onChange={(event) => patch({ systemPrompt: event.target.value })}
-          />
-        </div>
+        <TemplateField
+          label="Inline prompt"
+          required
+          value={row.systemPrompt}
+          onChange={(systemPrompt) => patch({ systemPrompt })}
+          paths={assist?.paths}
+          lint={assist?.lint}
+          findings={[...findingsAt(findings, fragmentPath), ...findingsAt(findings, `${fragmentPath}.systemPrompt`)]}
+          minLines={5}
+          disabled={disabled}
+        />
       )}
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${idPrefix}-when`}>Condition (optional)</Label>
-        <Input
-          id={`${idPrefix}-when`}
-          className="font-mono"
-          value={row.when}
-          disabled={disabled}
-          placeholder="has(context.visit_type) && context.visit_type == 'revisit'"
-          aria-describedby={`${idPrefix}${WHEN_HELP_ID_SUFFIX}`}
-          onChange={(event) => patch({ when: event.target.value })}
-        />
-        <p id={`${idPrefix}${WHEN_HELP_ID_SUFFIX}`} className="text-muted-foreground text-xs">
-          A CEL expression over <code className="font-mono">context</code>, <code className="font-mono">trigger</code>,{' '}
-          <code className="font-mono">input</code>, <code className="font-mono">vars</code>, <code className="font-mono">nodes</code>, or a bound
-          variable name. Leave empty to always include this fragment — guard a possibly-missing field with{' '}
-          <code className="font-mono">has(...)</code>, e.g. <code className="font-mono">has(context.visit_type) &amp;&amp; context.visit_type == &apos;revisit&apos;</code>.
-        </p>
-      </div>
+      <TemplateField
+        label="Condition (optional)"
+        mode="cel"
+        value={row.when}
+        onChange={(when) => patch({ when })}
+        paths={assist?.paths}
+        findings={findingsAt(findings, `${fragmentPath}.when`)}
+        minLines={1}
+        disabled={disabled}
+        placeholder="has(context.visit_type) && context.visit_type == 'revisit'"
+        description={WHEN_HELP}
+      />
     </li>
   );
 }
@@ -312,9 +318,10 @@ export interface FragmentListEditorProps {
   variables: Record<string, AgentPromptVariableBinding>;
   onVariablesChange: (variables: Record<string, AgentPromptVariableBinding>) => void;
   disabled?: boolean;
+  assist?: FragmentAssist;
 }
 
-export function FragmentListEditor({ fragments, onFragmentsChange, variables, onVariablesChange, disabled }: FragmentListEditorProps) {
+export function FragmentListEditor({ fragments, onFragmentsChange, variables, onVariablesChange, disabled, assist }: FragmentListEditorProps) {
   const listIdPrefix = useId();
   // Keyed by index — a fragment's POSITION, not its (user-editable, possibly duplicate) key.
   // Reordering re-renders the same row instances with new props, which re-resolves correctly
@@ -381,6 +388,7 @@ export function FragmentListEditor({ fragments, onFragmentsChange, variables, on
               onMove={(delta) => moveRow(index, delta)}
               onRemove={() => removeRow(index)}
               onTemplateResolved={(template) => setTemplatesByIndex((current) => ({ ...current, [index]: template }))}
+              assist={assist}
             />
           ))}
         </ol>
@@ -396,7 +404,15 @@ export function FragmentListEditor({ fragments, onFragmentsChange, variables, on
         </ul>
       ) : null}
 
-      <VariableBindingsFieldset idPrefix={listIdPrefix} declared={declared} variables={variables} onChange={onVariablesChange} conflicts={conflicts} disabled={disabled} />
+      <VariableBindingsFieldset
+        idPrefix={listIdPrefix}
+        declared={declared}
+        variables={variables}
+        onChange={onVariablesChange}
+        conflicts={conflicts}
+        disabled={disabled}
+        paths={assist?.paths}
+      />
     </div>
   );
 }

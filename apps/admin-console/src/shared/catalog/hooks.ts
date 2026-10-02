@@ -265,6 +265,39 @@ export function useContextSchemaOptions(): { options: CatalogOption[]; isLoading
   return { options, isLoading, isError };
 }
 
+/** `GET admin/consultation-context-schemas/:id/versions` row — only what an editor needs (newest first on the wire). */
+export interface CatalogContextSchemaVersion {
+  id: string;
+  schemaId: string;
+  versionNumber: number;
+  definition: unknown;
+}
+
+/**
+ * The definition of the version an agent or trigger actually binds: the named version, else the
+ * schema's pin, else the newest. Feeds `schemaVariablePaths` for completion and lint; `null` while
+ * loading, without a schema, or when the read is not permitted (the editor then offers nothing
+ * rather than inventing paths).
+ */
+export function useContextSchemaDefinition(
+  schemaId: string | null,
+  versionNumber: number | null,
+): { definition: unknown; versionNumber: number | null; isLoading: boolean } {
+  const catalog = useContextSchemaCatalog();
+  const versions = useQuery({
+    queryKey: ['catalog', 'context-schema-versions', schemaId],
+    queryFn: () => getJson<CatalogContextSchemaVersion[]>(`admin/consultation-context-schemas/${encodeURIComponent(schemaId ?? '')}/versions`),
+    enabled: schemaId !== null,
+    staleTime: CATALOG_STALE_MS,
+    retry: false,
+  });
+  if (schemaId === null) return { definition: null, versionNumber: null, isLoading: false };
+  const rows = Array.isArray(versions.data) ? versions.data : [];
+  const target = versionNumber ?? (catalog.data ?? []).find((schema) => schema.id === schemaId)?.pinnedVersionNumber ?? null;
+  const row = target !== null ? rows.find((candidate) => candidate.versionNumber === target) : rows[0];
+  return { definition: row?.definition ?? null, versionNumber: row?.versionNumber ?? null, isLoading: versions.isLoading };
+}
+
 export function useDepartmentCatalog() {
   return useQuery({
     queryKey: ['catalog', 'departments'],

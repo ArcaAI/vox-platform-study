@@ -24,12 +24,12 @@ import {
   type AgentTask,
   type CreateAgentRequest,
 } from '../api';
-import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
+import { ContextSchemaField, InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
 import { ModelPicker, fallbackModelOptionLabel, useTaskModelCatalogue } from './model-picker';
 import { ParametersForm } from './parameters-form';
 
-const STEPS = ['Task', 'Model', 'Instruction', 'Parameters', 'Schemas', 'Review'] as const;
+const STEPS = ['Task', 'Model', 'Instruction', 'Parameters', 'Input / Output contract', 'Review'] as const;
 type Step = (typeof STEPS)[number];
 
 /** No instruction authored yet — defaults to template mode with nothing chosen. */
@@ -125,7 +125,11 @@ function problemToast(error: unknown, fallback: string): void {
   toast.error(fallback);
 }
 
-/** The create wizard: Task → Model → Instruction → Parameters → Schemas → Review & publish. */
+/**
+ * The create wizard: Task (+ context schema) → Model → Instruction → Parameters → Input / Output
+ * contract → Review & publish. The context schema is chosen ONCE, on the first step, because it
+ * decides what every later prompt editor completes and lints against.
+ */
 export function CreateAgentWizard({
   open,
   onOpenChange,
@@ -146,7 +150,7 @@ export function CreateAgentWizard({
   const boundTemplate = usePromptTemplateQuickView(state.binding.mode === 'template' ? state.binding.promptTemplateId : null);
   // Same reasoning for the context schema: the Review step is the last thing an author reads
   // before publishing, and a UUID there says nothing about what they are agreeing to. The
-  // catalogue is already loaded for the Instruction step's picker, so this costs no extra read.
+  // catalogue is already loaded for the Task step's schema picker, so this costs no extra read.
   const contextSchemas = useContextSchemaOptions();
 
   const stepIndex = STEPS.indexOf(step);
@@ -168,7 +172,7 @@ export function CreateAgentWizard({
           ? state.binding.systemPrompt.trim().length > 0
           : state.binding.fragments.length > 0),
     Parameters: true,
-    Schemas: true,
+    'Input / Output contract': true,
     Review: true,
   };
 
@@ -305,6 +309,15 @@ export function CreateAgentWizard({
             <Label htmlFor="agent-description">Description</Label>
             <Textarea id="agent-description" rows={3} value={state.description} onChange={(event) => patch({ description: event.target.value })} />
           </div>
+          {state.task === 'TEXT_GENERATION' ? (
+            <ContextSchemaField
+              idPrefix="agent"
+              value={state.binding}
+              onChange={(next) => patch({ binding: { ...state.binding, ...next } })}
+              options={contextSchemas.options}
+              isLoading={contextSchemas.isLoading}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -370,7 +383,7 @@ export function CreateAgentWizard({
       {step === 'Instruction' ? (
         <div className="flex flex-col gap-4">
           {state.task === 'TEXT_GENERATION' ? (
-            <InstructionBindingForm value={state.binding} onChange={(binding) => patch({ binding })} />
+            <InstructionBindingForm value={state.binding} onChange={(binding) => patch({ binding })} hideContextSchema />
           ) : state.task === 'SPEECH_TO_TEXT' ? (
             <>
               <div className="flex flex-col gap-1.5">
@@ -413,9 +426,11 @@ export function CreateAgentWizard({
         <ParametersForm task={state.task} value={state.parameters} onChange={(parameters) => patch({ parameters })} modelId={state.modelId} />
       ) : null}
 
-      {step === 'Schemas' ? (
+      {step === 'Input / Output contract' ? (
         <div className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">Leave a schema empty to use the task default shown as placeholder.</p>
+          <p className="text-muted-foreground text-sm">
+            The JSON shape this agent accepts and returns. Leave either empty to use the task default shown as placeholder.
+          </p>
           <JsonField
             label="Input schema"
             value={state.inputSchema}
@@ -469,7 +484,7 @@ export function CreateAgentWizard({
           </dd>
           <dt className="text-muted-foreground">Parameters</dt>
           <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
-          <dt className="text-muted-foreground">Schemas</dt>
+          <dt className="text-muted-foreground">Input / Output contract</dt>
           <dd>{state.inputSchema || state.outputSchema ? 'custom' : 'task defaults'}</dd>
         </dl>
       ) : null}

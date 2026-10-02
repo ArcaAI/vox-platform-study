@@ -21,9 +21,11 @@
  * its own remove control, matching the disclosure discipline `DocumentBindingField` uses for an
  * unknown template id.
  */
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Button, Field, FieldDescription, FieldLabel, FieldLegend, FieldSet, Input } from '@arcaai/ui';
+import { TemplateEditor, type TemplateDiagnostic, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import { IconTrash } from '@tabler/icons-react';
+import { declaredNamespacesFromPaths, templateLint, variableNamePaths } from '@/shared/template-editor';
 import { getAtPath, setAtPath } from './field-path';
 
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
@@ -61,9 +63,9 @@ export interface PromptVariablesFieldProps {
   /** TASK-890 J4-F6 — the bound prompt template's `declaredVariables[].name`, used ONLY when the
    *  agent itself declares none (the seeded platform agents' state). */
   templateVariableNames?: readonly string[];
-  /** TASK-890 J4-F5 — the concrete `trigger.<kindKey>[.<field>]` paths this workflow's trigger
-   *  offers (`lib/trigger-variable-paths.ts`). Empty ⇒ the root chip plus the hint. */
-  triggerPaths?: readonly string[];
+  /** The `trigger.*` (and `context.*`) paths this workflow's trigger schema offers, from the
+   *  contract's `schemaVariablePaths`. Empty ⇒ the root chip plus the hint, and no path lint. */
+  triggerPaths?: readonly VariablePath[];
   /** Run-context references the graph offers (`trigger`, `vars.<key>`, `nodes.<id>`) — the same list the CEL editor uses. */
   references?: readonly string[];
   errors?: string[];
@@ -78,6 +80,8 @@ function VariableRow({
   onRemove,
   chips,
   disabled,
+  paths,
+  lint,
 }: {
   id: string;
   name: string;
@@ -86,16 +90,30 @@ function VariableRow({
   onRemove?: () => void;
   chips: readonly { label: string; token: string }[];
   disabled?: boolean;
+  paths: readonly VariablePath[];
+  lint: (content: string) => TemplateDiagnostic[];
 }) {
+  const labelId = `${id}-label`;
   function insert(token: string) {
     onChange(value.length === 0 || /\s$/.test(value) ? `${value}${token}` : `${value} ${token}`);
   }
 
   return (
     <Field>
-      <FieldLabel htmlFor={id}>{name}</FieldLabel>
-      <div className="flex items-center gap-2">
-        <Input id={id} value={value} placeholder="Uses the agent's own value" disabled={disabled} className="font-mono text-xs" onChange={(event) => onChange(event.target.value)} />
+      <FieldLabel id={labelId}>{name}</FieldLabel>
+      <div className="flex items-start gap-2">
+        <TemplateEditor
+          id={id}
+          className="flex-1"
+          aria-labelledby={labelId}
+          value={value}
+          onChange={onChange}
+          paths={paths}
+          lint={lint}
+          minLines={1}
+          readOnly={disabled}
+          placeholder="Uses the agent's own value — type {{ for paths"
+        />
         {onRemove ? (
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${name}`} onClick={onRemove} disabled={disabled}>
             <IconTrash aria-hidden="true" />
@@ -134,12 +152,27 @@ export function PromptVariablesField({
   const declared = new Set(effectiveNames);
   const otherNames = Object.keys(variables).filter((name) => !declared.has(name));
 
+  const triggerChipPaths = triggerPaths.filter((entry) => entry.path.startsWith('trigger.')).map((entry) => entry.path);
   const chips = [
     // With the workflow's real trigger paths known, the bare `trigger.` skeleton is noise.
-    ...NAMESPACE_ROOT_CHIPS.filter((root) => root !== 'trigger' || triggerPaths.length === 0).map((root) => ({ label: root, token: `{{${root}.}}` })),
-    ...triggerPaths.map((path) => ({ label: path, token: `{{${path}}}` })),
+    ...NAMESPACE_ROOT_CHIPS.filter((root) => root !== 'trigger' || triggerChipPaths.length === 0).map((root) => ({ label: root, token: `{{${root}.}}` })),
+    ...triggerChipPaths.map((path) => ({ label: path, token: `{{${path}}}` })),
     ...references.map((reference) => ({ label: reference, token: `{{${reference}}}` })),
   ];
+  // Completion: the schema's paths plus the graph's references (`vars.*`, `nodes.<id>`).
+  const completionPaths = useMemo(() => [...triggerPaths, ...variableNamePaths(references, 'reference')], [triggerPaths, references]);
+  // Lint only what the schema can answer: `trigger` / `context` against its paths when it has any;
+  // `vars`, `nodes` and `input` are the graph's to supply and are admitted.
+  const lint = useMemo(
+    () =>
+      templateLint(
+        declaredNamespacesFromPaths(triggerPaths, {
+          roots: triggerPaths.length > 0 ? ['trigger', 'context'] : [],
+          openRoots: ['vars', 'nodes', 'input', ...(triggerPaths.length > 0 ? [] : ['trigger', 'context'])],
+        }),
+      ),
+    [triggerPaths],
+  );
 
   function setVariable(name: string, value: string) {
     const next = { ...variables };
@@ -180,6 +213,8 @@ export function PromptVariablesField({
           onChange={(next) => setVariable(name, next)}
           chips={chips}
           disabled={disabled}
+          paths={completionPaths}
+          lint={lint}
         />
       ))}
 
@@ -197,6 +232,8 @@ export function PromptVariablesField({
               onRemove={() => removeVariable(name)}
               chips={chips}
               disabled={disabled}
+              paths={completionPaths}
+              lint={lint}
             />
           ))}
         </div>

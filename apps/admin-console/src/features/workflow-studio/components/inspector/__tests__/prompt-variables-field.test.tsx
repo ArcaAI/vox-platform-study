@@ -10,6 +10,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setTemplateEditorValue, templateEditorValue } from '@/test/template-editor';
 import { PromptVariablesField } from '../prompt-variables-field';
 
 afterEach(() => cleanup());
@@ -19,8 +20,8 @@ describe('PromptVariablesField', () => {
     render(
       <PromptVariablesField idPrefix="n1" config={{}} onConfigChange={vi.fn()} declaredVariableNames={['topic', 'depth']} />,
     );
-    expect((screen.getByLabelText('topic') as HTMLInputElement).value).toBe('');
-    expect((screen.getByLabelText('depth') as HTMLInputElement).value).toBe('');
+    expect(templateEditorValue(screen.getByRole('textbox', { name: 'topic' }))).toBe('');
+    expect(templateEditorValue(screen.getByRole('textbox', { name: 'depth' }))).toBe('');
   });
 
   it('prefills a declared row from an existing override', () => {
@@ -32,7 +33,7 @@ describe('PromptVariablesField', () => {
         declaredVariableNames={['topic']}
       />,
     );
-    expect((screen.getByLabelText('topic') as HTMLInputElement).value).toBe('{{context.chiefComplaint}}');
+    expect(templateEditorValue(screen.getByRole('textbox', { name: 'topic' }))).toBe('{{context.chiefComplaint}}');
   });
 
   it('typing into a declared row writes overrides.promptVariables, keeping other config keys', () => {
@@ -40,7 +41,7 @@ describe('PromptVariablesField', () => {
     render(
       <PromptVariablesField idPrefix="n1" config={{ agentRef: { slug: 'x' } }} onConfigChange={onConfigChange} declaredVariableNames={['topic']} />,
     );
-    fireEvent.change(screen.getByLabelText('topic'), { target: { value: 'discharge' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: 'topic' }), 'discharge');
     expect(onConfigChange).toHaveBeenCalledWith({ agentRef: { slug: 'x' }, overrides: { promptVariables: { topic: 'discharge' } } });
   });
 
@@ -54,7 +55,7 @@ describe('PromptVariablesField', () => {
         declaredVariableNames={['topic']}
       />,
     );
-    fireEvent.change(screen.getByLabelText('topic'), { target: { value: '' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: 'topic' }), '');
     expect(onConfigChange).toHaveBeenCalledWith({ overrides: { promptVariables: {} } });
   });
 
@@ -86,7 +87,7 @@ describe('PromptVariablesField', () => {
       />,
     );
     expect(screen.getByText(/other overrides/i)).toBeTruthy();
-    expect((screen.getByLabelText('legacyKey') as HTMLInputElement).value).toBe('x');
+    expect(templateEditorValue(screen.getByRole('textbox', { name: 'legacyKey' }))).toBe('x');
   });
 
   it('removing an "other" override deletes just that key', () => {
@@ -151,7 +152,10 @@ describe('PromptVariablesField', () => {
         config={{}}
         onConfigChange={onConfigChange}
         declaredVariableNames={['topic']}
-        triggerPaths={['trigger.intake_form', 'trigger.intake_form.chiefComplaint']}
+        triggerPaths={[
+          { path: 'trigger.intake_form', type: 'STRUCTURED', required: false, phiClass: null, description: null, deprecated: false },
+          { path: 'trigger.intake_form.chiefComplaint', type: 'string', required: false, phiClass: null, description: null, deprecated: false },
+        ]}
       />,
     );
     const row = screen.getByLabelText('topic').closest('[data-slot="field"]') as HTMLElement;
