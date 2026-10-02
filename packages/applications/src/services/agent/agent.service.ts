@@ -25,6 +25,7 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  WorkflowDefinitionRepository,
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
@@ -128,6 +129,7 @@ import {
 } from './agent-bundle';
 import {
   AgentBundleResponse,
+  AgentEffectiveContextSchemaResponse,
   AgentLineageAssignmentResponse,
   AgentResponse,
   AgentSummaryResponse,
@@ -160,6 +162,16 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 ]);
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
+
+/** Does this graph run the agent `slug` in one of its `core.agent` nodes? */
+function graphRunsAgent(graph: unknown, slug: string): boolean {
+  const nodes = (graph as { nodes?: unknown } | null | undefined)?.nodes;
+  if (!Array.isArray(nodes)) return false;
+  return nodes.some((node) => {
+    const candidate = node as { type?: unknown; config?: { agentRef?: { slug?: unknown } } } | null;
+    return candidate?.type === 'core.agent' && candidate.config?.agentRef?.slug === slug;
+  });
+}
 
 /**
  * TASK-947 (OD-8) — what ONE resolved template fragment declares, carried from `resolvePrompt`
@@ -265,6 +277,10 @@ export class AgentService extends BaseService implements IAgentService {
     // dependency above; absent ⇒ the summary reports no assignment, which the console renders as
     // the same "Unassigned" warning an unassigned slug gets.
     @Optional() private readonly assignmentRepository?: AgentAssignmentRepository,
+    // OD-6 — the published workflows a schema-less agent inherits its context schema from.
+    // TRAILING and @Optional() for the same reason as every dependency above; absent ⇒ no
+    // inheritance, so a schema-less agent is checked against no `context.*` vocabulary.
+    @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -331,7 +347,53 @@ export class AgentService extends BaseService implements IAgentService {
   async getById(id: string): Promise<AgentResponse> {
     const entity = await this.loadVisible(id);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id });
-    return this.respond(entity);
+    const response = await this.respond(entity);
+    response.effectiveContextSchema = await this.effectiveContextSchemaOf(entity);
+    return response;
+  }
+
+  /**
+   * OD-6 / R1 — WHICH context schema this agent's prompt paths are checked against, and where it
+   * came from: its own pin (`agent`), or — for an agent that pins none — the trigger schema of a
+   * published workflow whose `core.agent` node runs it (`workflow`). `null` when neither applies.
+   */
+  private async effectiveContextSchemaOf(entity: AgentEntity): Promise<AgentEffectiveContextSchemaResponse | null> {
+    if (entity.contextSchemaId) {
+      const own = await this.resolveContextSchema(entity);
+      return own.resolved ? { id: own.resolved.schemaId, versionNumber: own.resolved.versionNumber, inheritedFrom: 'agent' } : null;
+    }
+    const inherited = await this.workflowContextSchema(entity);
+    return inherited ? { id: inherited.schemaId, versionNumber: inherited.versionNumber, inheritedFrom: 'workflow' } : null;
+  }
+
+  /**
+   * OD-6 — the trigger context schema an agent with NO pin of its own inherits: the one a
+   * published, active workflow of this tenant binds, when one of its `core.agent` nodes names this
+   * agent. Workflows are read in slug order, so the answer is deterministic when several bind it.
+   *
+   * VALIDATION only — it is never frozen into the agent's compiled artifact, which keeps an agent
+   * that pins nothing exactly the runtime artifact it was. TOTAL: any failure answers `null`
+   * (no inheritance), because a publish must not fail on this method's own dependency.
+   */
+  private async workflowContextSchema(entity: AgentEntity): Promise<AgentCompiledContextSchema | null> {
+    if (!this.workflowDefinitionRepository || !this.contextSchemas) return null;
+    let definitions: Awaited<ReturnType<WorkflowDefinitionRepository['findActivePublishedByTenant']>>;
+    try {
+      definitions = await this.workflowDefinitionRepository.findActivePublishedByTenant(entity.tenantId);
+    } catch {
+      return null;
+    }
+    for (const definition of definitions) {
+      if (!definition.contextSchemaId || !graphRunsAgent(definition.graph, entity.slug)) continue;
+      try {
+        const outcome = await this.contextSchemas.resolveReference(definition.contextSchemaId, definition.contextSchemaVersionNumber ?? null);
+        if (outcome.outcome === 'failed') continue;
+        return { schemaId: outcome.schemaId, versionNumber: outcome.versionNumber, versionId: outcome.versionId, payloadSchema: outcome.payloadSchema };
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   async listVersions(id: string): Promise<AgentResponse[]> {
@@ -1843,7 +1905,10 @@ export class AgentService extends BaseService implements IAgentService {
       const outcome = await this.resolvePrompt(asRecord(entity.instruction));
       findings.push(...outcome.findings);
       resolvedPrompt = outcome.resolvedPrompt;
-      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, context.resolved, outcome.templateVariables));
+      // OD-6 — the paths are checked against the agent's own schema, or, when it pins none, the
+      // schema a workflow running it binds (inheritance; never frozen into the artifact).
+      const pathSchema = context.resolved ?? (entity.contextSchemaId ? null : await this.workflowContextSchema(entity));
+      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, pathSchema, outcome.templateVariables));
     }
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
