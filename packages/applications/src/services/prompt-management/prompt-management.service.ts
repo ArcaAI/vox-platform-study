@@ -1661,7 +1661,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // caller-pinned `provider`/`model`/`modelId` names a raw registry row with no agent behind
       // it, so there is no authored posture to apply and none is invented here.
       await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
-      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { phase: 'test' });
     }
 
     let taskId: string;

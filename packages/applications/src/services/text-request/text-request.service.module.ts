@@ -4,6 +4,7 @@ import { ConsultationContextSchemaServiceModule } from '../consultation-context-
 import { CommonServiceModule } from '../baseServices/common.service.module';
 import { AiProviderConnectionServiceModule } from '../ai-provider-connection/ai-provider-connection.service.module';
 import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
+import { ComposedPromptRecorderModule } from '../composed-prompt/composed-prompt-recorder.module';
 import { KnownPhiService } from './known-phi.service';
 import { TextRequestEnrichmentService } from './text-request-enrichment.service';
 
@@ -20,7 +21,14 @@ import { TextRequestEnrichmentService } from './text-request-enrichment.service'
  * schema) backs the `known_phi` egress statement; every one of its reads is optional.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, AiProviderConnectionServiceModule, EffectiveSettingsModule, ConsultationContextSchemaServiceModule],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    AiProviderConnectionServiceModule,
+    EffectiveSettingsModule,
+    ConsultationContextSchemaServiceModule,
+    ComposedPromptRecorderModule,
+  ],
   providers: [KnownPhiService, TextRequestEnrichmentService],
   exports: [KnownPhiService, TextRequestEnrichmentService],
 })

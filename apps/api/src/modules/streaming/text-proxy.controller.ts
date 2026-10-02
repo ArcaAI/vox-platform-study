@@ -462,7 +462,7 @@ export class TextProxyController {
     await this.textRequestEnrichment.applyTextRuntimeProfile(target);
     // Then fold in the caller tenant's BYO cloud credential, if any — and the egress statements
     // (`provider_locality`, no client-supplied opt-out or medical exemption survives).
-    return this.textRequestEnrichment.applyTenantProviderOverrides(target, { deploymentKind: deploymentKind ?? null });
+    return this.textRequestEnrichment.applyTenantProviderOverrides(target, { deploymentKind: deploymentKind ?? null, phase: 'proxy' });
   }
 
   // The TEXT base URL resolves through the

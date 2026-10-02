@@ -395,6 +395,8 @@ export class AgentInvocationService {
     // The primary row's `deploymentKind` decides the egress locality stamped on the body.
     await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, {
       deploymentKind: resolved.models.find((entry) => entry.role === 'primary')?.deploymentKind ?? null,
+      phase: 'invoke',
+      agentSlug: resolved.slug,
     });
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),

@@ -16,6 +16,7 @@ import {
 import type { TextReasoningDefaultEffort } from '../settings-registry/descriptors/text-reasoning.descriptors';
 import { KnownPhiService } from './known-phi.service';
 import { stampProviderLocality, type ProviderLocalityHints } from './provider-locality';
+import { ComposedPromptRecorder } from '../composed-prompt/composed-prompt.recorder';
 
 /**
  * What a caller knows about ONE outgoing `/generate` call that the egress statements need: the
@@ -28,6 +29,10 @@ export interface TextEgressHints extends ProviderLocalityHints {
   consultationId?: string | null;
   /** The caller's own copy of the validated open context (kind key → payload), merged over the persisted one. */
   context?: Record<string, unknown> | null;
+  /** Which generation this call is, for its composed-prompt record (`live`, `finalize`, `invoke`, …). */
+  phase?: string;
+  /** The agent whose instruction was composed, for its composed-prompt record. */
+  agentSlug?: string | null;
 }
 
 /** `guardrail_policy` keys a caller may no longer state: screening is not the caller's to switch off. */
@@ -71,6 +76,11 @@ export class TextRequestEnrichmentService {
     @Optional()
     @Inject(KnownPhiService)
     private readonly knownPhi?: KnownPhiService,
+    // The OD-9 composed-prompt record. @Optional and trailing for the same reason as the three
+    // above; unwired, no record is kept and the call is otherwise unchanged.
+    @Optional()
+    @Inject(ComposedPromptRecorder)
+    private readonly composedPrompts?: ComposedPromptRecorder,
   ) {}
 
   /**
@@ -115,7 +125,37 @@ export class TextRequestEnrichmentService {
         });
       }
     }
+    this.recordComposedPrompt(body, hints);
     return target;
+  }
+
+  /**
+   * The OD-9 incident record of THIS call's composed messages — fire-and-forget, so it can never
+   * fail or slow the call. Every gateway → TEXT call passes here, which is what makes this the one
+   * writer for the gateway's call sites. A body with no prompt at all (a credential probe) is not
+   * a generation and is not recorded; nor is a call with no tenant to own the record.
+   */
+  private recordComposedPrompt(body: Record<string, unknown>, hints: TextEgressHints): void {
+    if (!this.composedPrompts) return;
+    const system = typeof body.system_prompt === 'string' ? body.system_prompt : '';
+    const user = typeof body.prompt === 'string' ? body.prompt : '';
+    if (system.length === 0 && user.length === 0) return;
+    const tenantId = this.clsService.get('tenantId');
+    if (!tenantId) return;
+    const provider = typeof body.provider === 'string' ? body.provider : '';
+    const localities = isPlainObject(body.provider_locality) ? body.provider_locality : {};
+    const context = isPlainObject(body.context) ? body.context : {};
+    this.composedPrompts.record({
+      tenantId,
+      consultationId: hints.consultationId ?? null,
+      agentSlug: hints.agentSlug ?? (typeof context.agentSlug === 'string' ? context.agentSlug : null),
+      phase: hints.phase ?? (hints.consultationId ? 'consultation' : 'generate'),
+      provider,
+      // An unstamped provider is CLOUD to `apps/text` (fail closed), so it is recorded as such.
+      locality: localities[provider] === 'local' ? 'local' : 'cloud',
+      system,
+      user,
+    });
   }
 
   /**

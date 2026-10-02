@@ -138,7 +138,7 @@ describe('the egress locality of the invocation', () => {
     await service().invokeText(resolved({ models: [{ ...primary('gemma-4-e2b-it-qat'), deploymentKind: 'SELF_HOSTED' }] }), TENANT, { text: 'hi' }, 'blocking');
 
     const calls = (enrichment as unknown as { applyTenantProviderOverrides: { mock: { calls: unknown[][] } } }).applyTenantProviderOverrides.mock.calls;
-    expect(calls.at(-1)?.[1]).toEqual({ deploymentKind: 'SELF_HOSTED' });
+    expect(calls.at(-1)?.[1]).toMatchObject({ deploymentKind: 'SELF_HOSTED', phase: 'invoke' });
     expect(sentBody()).not.toHaveProperty('guardrail_policy');
   });
 });

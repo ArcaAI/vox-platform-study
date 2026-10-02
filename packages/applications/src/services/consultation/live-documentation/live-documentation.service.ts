@@ -6994,6 +6994,7 @@ return 0`;
       deploymentKind: egress?.deploymentKind ?? null,
       consultationId: consultationId ?? null,
       context: egress?.context ?? null,
+      phase: 'live',
     });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
@@ -7073,7 +7074,7 @@ return 0`;
       stream: false as const,
     };
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
@@ -7145,7 +7146,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
@@ -7251,7 +7252,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
     // (this method is not given one), so the row is attributed to the tenant alone; threading

@@ -1818,6 +1818,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, {
       deploymentKind: deploymentKind ?? null,
       consultationId: payload.consultationId ?? null,
+      phase: 'finalize',
     });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
     // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this
