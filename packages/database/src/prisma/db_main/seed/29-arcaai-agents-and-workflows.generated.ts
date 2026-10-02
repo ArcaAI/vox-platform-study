@@ -321,6 +321,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
                           },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
+                          },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
                             "description": "The doctor's DNA writing style, substituted into the surgery slot when the template declares it."
@@ -852,7 +856,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4ae6c5dabd59066175b5677e55e0f538df8c18eac698c94157f36e04369a3995"
+      "checksum": "0fd0fb63280039da0b306fe9e07c400374119d17b1528174032e981cc3b8a1c2"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
@@ -1162,6 +1166,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -1694,7 +1702,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "cec9242f49da92012b5b2a5aaa4d732a90c24c7f7351dd70aa7f4d3fa52cf512"
+      "checksum": "20fd26112854f5dea5af40cfe583836e261754d6e7c0d82a6c0cded464b49f1f"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
@@ -2004,6 +2012,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -2536,7 +2548,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a29d26a9f67d15ab23ec49b6bd007dcfbea1242c16590170cbffd744cde829ba"
+      "checksum": "7e779a918064185f8850b5956f7f49854ec2ff3d6ea57f32210e28827ab50f2c"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
@@ -2846,6 +2858,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -3378,7 +3394,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "3cc1d9b7d9a74824c5a9200f0586e059cf576c56b41b00d2e22159a410cd93aa"
+      "checksum": "d83f971d909a0d860bc85b272c2392cd598b9a84860608b410edd26411f3f1db"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
@@ -3688,6 +3704,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -4220,7 +4240,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "322bd14ffea508e07c5d0d85d1536409b8232bccf53ca530c551f2a908ef38d2"
+      "checksum": "336ddb37726ef1ff7a9782e7e1220d9957489b7d1356fe15331a49527cd21d4d"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
@@ -4530,6 +4550,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -5062,7 +5086,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "17524c6d7da9078d9b312b7680214942fcb6ed2e87a19d65033248dc55fb52cf"
+      "checksum": "e96aea7a1e512b9d78fb72482e170755844c3f53f59cf257cb1a2fd6d74184db"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
@@ -5372,6 +5396,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -5904,7 +5932,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "325740a3a47f0444919bbfd1fca73fb045743c0530d5749ce1e46681c9177607"
+      "checksum": "80fdd2c8006602c9f65d2ad07e61da3d6c70974fdd55057ac80272a196ce38d8"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
@@ -6214,6 +6242,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -6746,7 +6778,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a78f0d024b08fc1de957277776ef00ecb4139f498323c70ca5f0566808c6b2c6"
+      "checksum": "a6949f034bf58d3c54b69a7b75bb63ffc54bf44ed62673f79f3cf11146f86e06"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
@@ -7056,6 +7088,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -7588,7 +7624,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "7a8f2de43fb3411948e2299b5885353db4e584da42b0cca0022a00d8e757738d"
+      "checksum": "86af40d63e0c1142829ccf74988bc9684a6eae4bf2adbd0f77a1278617488bb2"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
@@ -7898,6 +7934,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -8430,7 +8470,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "a20eb27c996ace0985d1213481209541a1e3c46677c7034f0b1e48bf9961dc01"
+      "checksum": "e9c54a7c69fe72225959411179d18b77e113607f5320acb415d29fc72eae4d50"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
@@ -8740,6 +8780,10 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -9272,7 +9316,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "3770eb66d25bc37d773d24cb7e4b3fb893c6ffa3373af4cbfbfb52d8cb4a0cec"
+      "checksum": "590843ff20b88207a70c5f9c4da6fcc5ee378d9b69f861b43c226b41b5ba54dd"
     }
   }
 };

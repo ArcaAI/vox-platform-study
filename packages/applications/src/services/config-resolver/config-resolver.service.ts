@@ -124,8 +124,12 @@ function isActiveNodeOf(node: WorkflowGraphNode, type: string): boolean {
  * The `core` vocabulary has no `agent.dna_style` / `agent.dna_redaction` node type; the workflow
  * names its DNA agent (TASK-891 OD-5) by flagging the finalizing agent instead.
  */
-function declaresDna(node: WorkflowGraphNode): boolean {
-  return isActiveNodeOf(node, CORE_AGENT_NODE_TYPE) && asRecord(asRecord(node.config).dna).enabled === true;
+function declaresDna(node: WorkflowGraphNode, facet: 'style' | 'redaction'): boolean {
+  if (!isActiveNodeOf(node, CORE_AGENT_NODE_TYPE)) return false;
+  const dna = asRecord(asRecord(node.config).dna);
+  // TASK-1034 R3 — `enabled` stays THE gate; `style` / `redaction` only narrow it. `enabled: true`
+  // with a facet absent means that facet is on (back-compat with the one-flag graphs).
+  return dna.enabled === true && dna[facet] !== false;
 }
 
 /**
@@ -231,7 +235,7 @@ export class ConfigResolver {
    */
   async resolveEffectiveDnaStyleEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
     const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-style'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
-    const tenantEnabled = graph !== null && graph.nodes.some((node) => isActiveNodeOf(node, DNA_STYLE_NODE_TYPE) || declaresDna(node));
+    const tenantEnabled = graph !== null && graph.nodes.some((node) => isActiveNodeOf(node, DNA_STYLE_NODE_TYPE) || declaresDna(node, 'style'));
     return {
       effective: tenantEnabled && (preference.enabled ?? true),
       tenantEnabled,
@@ -261,7 +265,7 @@ export class ConfigResolver {
    */
   async resolveEffectiveDnaRedactionEnabled(ctx: ConfigResolutionContext): Promise<ResolvedDnaStyle> {
     const [graph, preference] = await Promise.all([this.resolveGoverningGraph(ctx, 'DNA-redaction'), this.resolveDoctorDnaPreference(ctx.doctorId)]);
-    const node = graph?.nodes.find((candidate) => isActiveNodeOf(candidate, DNA_REDACTION_NODE_TYPE) || declaresDna(candidate)) ?? null;
+    const node = graph?.nodes.find((candidate) => isActiveNodeOf(candidate, DNA_REDACTION_NODE_TYPE) || declaresDna(candidate, 'redaction')) ?? null;
     const tenantEnabled = node !== null;
     const honoursDoctorOptIn = node === null || effectiveConfigOf(node).requireDoctorOptIn !== false;
     return {

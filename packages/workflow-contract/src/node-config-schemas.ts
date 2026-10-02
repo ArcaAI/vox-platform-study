@@ -967,6 +967,21 @@ const DNA_PROPERTY = Object.freeze({
         "to it, rewriting or removing matched spans. The clinician's own opt-out still vetoes both; ABSENT means " +
         'the graph declares neither pass.',
     }),
+    style: Object.freeze({
+      type: 'boolean',
+      summary: "Apply the clinician's DNA writing style (default: on when DNA is enabled).",
+      description:
+        'TASK-1034 R3 — narrows `enabled`. With `enabled: true`, ABSENT or TRUE keeps the writing-style pass; ' +
+        '`false` turns ONLY the style off. Without `enabled: true` it declares nothing.',
+    }),
+    redaction: Object.freeze({
+      type: 'boolean',
+      summary: "Apply the clinician's redaction rules (default: on when DNA is enabled).",
+      description:
+        'TASK-1034 R3 — narrows `enabled`. With `enabled: true`, ABSENT or TRUE keeps the redaction gate (the rules ' +
+        'are rendered into the prompt AND applied deterministically after generation); `false` turns ONLY redaction ' +
+        'off. Without `enabled: true` it declares nothing.',
+    }),
   }),
 });
 

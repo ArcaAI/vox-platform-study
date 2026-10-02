@@ -27,4 +27,13 @@ describe('TASK-932 — `core.agent` config declares `dna.enabled`', () => {
     const action = NODE_CONFIG_SCHEMAS['core.action'] as Record<string, unknown>;
     expect((action.properties as Record<string, unknown>).dna).toBeUndefined();
   });
+
+  it('TASK-1034 R3 — declares the optional `style` and `redaction` facets as booleans', () => {
+    const schema = NODE_CONFIG_SCHEMAS['core.agent'] as Record<string, unknown>;
+    const dna = (schema.properties as Record<string, Record<string, unknown>>).dna;
+    const props = dna.properties as Record<string, Record<string, unknown>>;
+    expect(props.style.type).toBe('boolean');
+    expect(props.redaction.type).toBe('boolean');
+    expect(dna.required ?? []).toEqual([]);
+  });
 });

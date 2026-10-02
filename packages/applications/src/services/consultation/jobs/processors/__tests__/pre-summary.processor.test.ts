@@ -20,7 +20,7 @@ const CONSULTATION = {
   doctorId: 'doctor-1',
 };
 
-function createProcessor(consultation: Record<string, unknown>, visitTypes?: VisitTypeService) {
+function createProcessor(consultation: Record<string, unknown>, visitTypes?: VisitTypeService, configResolver?: Record<string, unknown>) {
   const promptResolutionService = {
     resolve: vi.fn().mockResolvedValue({ resolvedFrom: 'tenant', template: 'Pre-Summary', promptId: 'p1' }),
   };
@@ -70,7 +70,7 @@ function createProcessor(consultation: Record<string, unknown>, visitTypes?: Vis
     // noteGenerationService, textRequestEnrichment — all @Optional().
     undefined,
     undefined,
-    undefined,
+    configResolver as any,
     undefined,
     undefined,
     // 14: the tenant's visit-type catalogue. Omitted ⇒ the two shipped types.
@@ -127,5 +127,34 @@ describe('PreSummaryProcessor', () => {
     await processor.process(job());
 
     expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ visitType: 'New visit' }));
+  });
+
+  describe('TASK-1034 R3 — the DNA style id is gated by the effective STYLE decision', () => {
+    const styledJob = () => {
+      const j = job();
+      j.data.request.dnaStyleId = 'dna-report-1';
+      return j;
+    };
+    const resolver = (style: boolean | 'throw') => ({
+      resolvePreferredPromptTemplateId: vi.fn(async () => null),
+      resolveEffectiveDnaStyleEnabled: vi.fn(async () => {
+        if (style === 'throw') throw new Error('graph lookup down');
+        return { effective: style, tenantEnabled: true, doctorToggle: null, doctorPreferenceVersion: 0 };
+      }),
+    });
+
+    it('passes the id through when the style gate is effective', async () => {
+      const r = resolver(true);
+      const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION }, undefined, r);
+      await processor.process(styledJob());
+      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ dnaStyleId: 'dna-report-1' }));
+      expect(r.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledWith({ tenantId: 'tenant-1', departmentId: null, doctorId: 'doctor-1' });
+    });
+
+    it.each([[false], ['throw' as const]])('drops it when the gate is %s — fail closed', async (style) => {
+      const { processor, promptAssemblyService } = createProcessor({ ...CONSULTATION }, undefined, resolver(style));
+      await processor.process(styledJob());
+      expect(promptAssemblyService.assemble.mock.calls[0][0].dnaStyleId).toBeUndefined();
+    });
   });
 });

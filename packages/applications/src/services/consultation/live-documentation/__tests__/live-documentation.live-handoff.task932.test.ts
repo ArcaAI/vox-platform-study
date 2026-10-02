@@ -359,6 +359,8 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
         { id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' },
         { id: 'r2', type: 'rewrite', match: 'regex', pattern: '\\bpt\\b', replacement: 'patient', note: 'expand' },
       ],
+      // TASK-1034 R3 — the same rules as prompt-readable instructions, behind the same gate.
+      dna_redaction_rules_text: '- Never write "Ms. Ada Byron".\n- Write text matching the pattern /\\bpt\\b/ as "patient". (expand)',
     });
     // One report, one decrypt — the rules are a second field of the answer, not a second lookup.
     expect(dnaReportRepository!.findLatestForDoctor).toHaveBeenCalledTimes(1);
@@ -372,6 +374,7 @@ describe('TASK-932 L-3 — the DNA redaction rules on the handoff', () => {
 
     expect(answer.context).toEqual({ ...CLINICAL, dna_style_text: 'Terse. Abbreviates freely.', dna_style_id: 'dna-report-1' });
     expect('dna_redaction_rules' in answer.context).toBe(false);
+    expect('dna_redaction_rules_text' in answer.context).toBe(false);
   });
 
   it('omits the key for an EMPTY rule set — nothing to apply is the same as nothing authored', async () => {
@@ -457,7 +460,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // The clinically dangerous half: gating redaction on the STYLE switch means a doctor who
     // turned the writing style off — or a tenant that never declared one — loses redaction too.
-    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }], dna_redaction_rules_text: '- Never write "Ms. Ada Byron".' });
     expect('dna_style_text' in answer.context).toBe(false);
     // The style ID names the report that SHAPED the note; nothing shaped it, so it must not travel.
     expect('dna_style_id' in answer.context).toBe(false);
@@ -474,7 +477,7 @@ describe('TASK-932 L2 F-2 — the style and redaction halves are gated independe
 
     // `if (!text) return {}` returned before the rules were ever read: a doctor who authored
     // redaction rules but never had a style generated got no redaction at all.
-    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }] });
+    expect(answer.context).toEqual({ ...CLINICAL, dna_redaction_rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'Ms. Ada Byron' }], dna_redaction_rules_text: '- Never write "Ms. Ada Byron".' });
   });
 
   it('both gates OFF → nothing at all, and the report is never even read', async () => {

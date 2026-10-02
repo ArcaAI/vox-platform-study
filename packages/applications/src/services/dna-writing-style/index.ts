@@ -6,3 +6,4 @@ export * from './dna-writing-style.dto.mapper';
 export * from './dna-writing-style.processor';
 export * from './dna-regeneration.scheduler';
 export * from './redaction-rules';
+export * from './redaction-rules-text';

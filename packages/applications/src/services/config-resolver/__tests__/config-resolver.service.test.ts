@@ -252,6 +252,32 @@ describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled — the agent.dna_r
   });
 });
 
+describe('TASK-1034 R3 — `dna.style` / `dna.redaction` split the one `dna.enabled` flag', () => {
+  const finalize = (dna: Record<string, unknown>) => publishGraph([{ id: 'n_finalize', type: 'core.agent', config: { agentRef: { slug: 'casenote-finalization' }, dna } }]);
+  it.each([
+    [{ enabled: true }, true, true],
+    [{ enabled: true, style: true, redaction: true }, true, true],
+    [{ enabled: true, style: false }, false, true],
+    [{ enabled: true, redaction: false }, true, false],
+    [{ enabled: true, style: false, redaction: false }, false, false],
+    [{ style: true, redaction: true }, false, false],
+    [{ enabled: false, style: true }, false, false],
+  ])('dna %j ⇒ style %s, redaction %s', async (dna, style, redaction) => {
+    finalize(dna);
+    const resolver = makeResolver();
+    expect((await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR })).effective).toBe(style);
+    expect((await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR })).effective).toBe(redaction);
+  });
+
+  it('the doctor`s opt-out still vetoes both facets', async () => {
+    finalize({ enabled: true, style: true, redaction: true });
+    preference('false');
+    const resolver = makeResolver();
+    expect((await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR })).effective).toBe(false);
+    expect((await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR })).effective).toBe(false);
+  });
+});
+
 describe('ConfigResolver.resolvePreferredPromptTemplateId', () => {
   it('returns the doctor profile preferredPromptTemplateId, queried by userId', async () => {
     userProfileRepository.findAll.mockResolvedValue([{ preferredPromptTemplateId: 'tpl-9' }]);

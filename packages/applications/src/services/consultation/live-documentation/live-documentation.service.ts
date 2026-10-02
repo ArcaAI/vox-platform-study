@@ -50,6 +50,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
+import { renderDnaRedactionRulesText } from '../../dna-writing-style/redaction-rules-text';
 import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 //  — the ONE reader of a node's `llmBinding`, shared with the durable
@@ -7765,7 +7766,9 @@ return 0`;
         ...(text ? { dna_style_text: text, dna_style_id: report.id } : {}),
         // ABSENT, never `[]`: the interpreter's finalize runs `apply_redaction` only when the
         // context carries rules, and an empty array would ask it to do nothing at some cost.
-        ...(rules.length > 0 ? { dna_redaction_rules: rules } : {}),
+        // TASK-1034 R3 — the same rules as a prompt-readable list, so the finalizer is TOLD what
+        // `apply_redaction` will enforce anyway (the deterministic pass stays the guarantee).
+        ...(rules.length > 0 ? { dna_redaction_rules: rules, dna_redaction_rules_text: renderDnaRedactionRulesText(rules) } : {}),
       };
     } catch (error) {
       this.logger.warn({

@@ -128,6 +128,10 @@ export const LEGACY_CONTEXT_FIELDS: Record<string, Record<string, unknown>> = {
   pre_summary_text: { type: 'string', description: 'The pre-summary this generation builds on.' },
   prior_visit_summary: { type: 'string', description: "The carried summary of the patient's previous visit, bounded." },
   dna_style_text: { type: 'string', description: "The doctor's resolved DNA writing style." },
+  dna_redaction_rules_text: {
+    type: 'string',
+    description: "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored.",
+  },
   ...Object.fromEntries(
     [
       'surgery',
