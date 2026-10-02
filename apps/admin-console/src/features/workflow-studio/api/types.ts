@@ -390,12 +390,8 @@ export interface AgentOption {
      *  when `variables` is empty, which is every seeded platform agent's state. */
     promptTemplateId?: string | null;
   } | null;
-  /**
-   * TASK-890 §3.14 — the agent-tier guardrail default (`Agent.parameters.guards.enabled`).
-   * Absent/undefined means the platform default (ON) — the same `parameters.guards.enabled`
-   * the agents form (L5) reads for its own switch.
-   */
-  parameters?: ({ guards?: { enabled?: boolean } } & Record<string, unknown>) | null;
+  /** The agent's authored `parameters`. (The retired `guards.enabled` opt-out is no longer read.) */
+  parameters?: Record<string, unknown> | null;
   /**
    * TASK-949 L1 — the rest of the payload `GET admin/agents` has always returned.
    *

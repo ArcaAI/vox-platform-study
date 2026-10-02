@@ -356,23 +356,11 @@ describe('ParametersForm', () => {
     expect(screen.getByLabelText('Response Schema')).toBeTruthy();
   });
 
-  /** TASK-890 §3.10/§3.14 (OD-R) — the agent-level guardrail opt-out, ABSENT MEANS ON. */
-  describe('TEXT_GENERATION guardrail screening (TASK-890)', () => {
-    it('renders as a labelled switch, on by default, with the override copy', () => {
-      render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
-      const toggle = screen.getByLabelText('Guardrail screening');
-      expect(toggle.getAttribute('aria-checked')).toBe('true');
-      expect(screen.getByText(/a node or workflow can override/)).toBeTruthy();
-    });
-
-    it('turning it off writes guards.enabled: false; turning it back on removes the key (absent = on)', () => {
-      const onChange = vi.fn();
-      render(<Host task="TEXT_GENERATION" onChange={onChange} />);
-      fireEvent.click(screen.getByLabelText('Guardrail screening'));
-      expect(onChange).toHaveBeenLastCalledWith({ guards: { enabled: false } });
-      fireEvent.click(screen.getByLabelText('Guardrail screening'));
-      expect(onChange).toHaveBeenLastCalledWith({});
-    });
+  /** The agent-level guardrail opt-out is retired (OD-1): screening is not a per-agent setting. */
+  it('TEXT_GENERATION offers no guardrail screening switch', () => {
+    render(<ParametersForm task="TEXT_GENERATION" value={{}} onChange={() => undefined} />);
+    expect(screen.queryByLabelText('Guardrail screening')).toBeNull();
+    expect(screen.queryByText(/a node or workflow can override/)).toBeNull();
   });
 
   /**

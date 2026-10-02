@@ -361,21 +361,22 @@ test.describe('workflow studio editor — reflow and editing affordances (2026-0
 
 /**
  * TASK-890 §3.10 — the `core.trigger` / `core.agent` inspector additions: the context-schema
- * reference picker, the prompt-variables key/value editor, and the guardrail opt-out tri-state.
+ * reference picker and the prompt-variables key/value editor. (The guardrail opt-out tri-state that
+ * sat beside them is retired — owner decision OD-1 — and must not render.)
  * The `core` palette (not `summarization`) is what actually carries these two node types
  * (`node-registry.ts`'s `core.trigger`/`core.agent` entries are `paletteKey: 'core'`).
  *
  * As with the publish-confirm dialog (module doc above), the FULL wiring for these controls
  * (declared prompt variables from a bound agent, the resolved context-schema catalogue) is
  * already covered by the unit suite (`inspector-panel.test.tsx`,
- * `context-schema-ref-field.test.tsx`, `guardrail-field.test.tsx`,
+ * `context-schema-ref-field.test.tsx`,
  * `prompt-variables-field.test.tsx`) with the network mocked; this leg only proves the controls
  * are actually REACHABLE from the running Studio — that the withholding + `fieldOverrides`
  * wiring in `inspector-panel.tsx` is live against the real delivered registry, not just the
  * schema fixture the unit tests construct by hand.
  */
 test.describe('workflow studio editor — TASK-890 core.trigger / core.agent inspectors', () => {
-  test('core.trigger: the context-schema reference picker and the workflow-default guardrail control render', async ({ page }) => {
+  test('core.trigger: the context-schema reference picker renders, and no guardrail opt-out does', async ({ page }) => {
     const definitionId = await createDraft(page, `e2e_trigger_ctx_${Date.now()}`, 'core');
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
 
@@ -392,12 +393,11 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
     await expect(page.getByRole('radio', { name: /reference a tenant schema/i })).toBeVisible();
     await expect(page.getByRole('radio', { name: /author inline/i })).toBeVisible();
 
-    // The workflow-level guardrail default — absent means every core.agent node inherits ON.
-    await expect(page.getByLabel('Workflow default')).toBeVisible();
-    await expect(page.getByText(/effective: on — default/i)).toBeVisible();
+    // The retired workflow-level guardrail opt-out is gone.
+    await expect(page.getByLabel('Workflow default')).toHaveCount(0);
   });
 
-  test('core.agent: the node-scope guardrail control renders, and switching it to Off reports the effective decision', async ({ page }) => {
+  test('core.agent: no node-scope guardrail opt-out renders', async ({ page }) => {
     const definitionId = await createDraft(page, `e2e_agent_guard_${Date.now()}`, 'core');
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
 
@@ -408,15 +408,7 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
     await page.getByRole('radio', { name: 'List view' }).click();
     await page.getByRole('button', { name: /^Configure Core\.agent/ }).click();
 
-    const guardrailSelect = page.getByLabel('This node');
-    await expect(guardrailSelect).toBeVisible();
-    await expect(page.getByText(/effective: on — default/i)).toBeVisible();
-
-    await guardrailSelect.click();
-    await page.getByRole('option', { name: 'Off' }).click();
-    await expect(page.getByText(/effective: off — node override/i)).toBeVisible();
-    // The opt-out is advisory client-side; the real gate is the publish WARNING
-    // (`GUARDRAIL_OPTED_OUT`), asserted by `task-890-guardrail-optout.spec.ts` (API e2e, L14).
+    await expect(page.getByLabel('This node')).toHaveCount(0);
   });
 
   test('has no WCAG 2.2 AA violations with the core.trigger inspector open (light)', async ({ page }) => {

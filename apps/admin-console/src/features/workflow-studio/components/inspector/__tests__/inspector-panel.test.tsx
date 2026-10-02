@@ -153,10 +153,11 @@ describe('InspectorPanel — TASK-890 core.trigger', () => {
     expect(screen.queryByLabelText(/context schema id/i)).toBeNull();
   });
 
-  it('renders the workflow-scope GuardrailField, labelled "Workflow default"', async () => {
+  it('offers no workflow-level guardrail opt-out (retired, OD-1)', async () => {
     stubContextSchemasFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={triggerNode()} configSchema={NODE_CONFIG_SCHEMAS['core.trigger']} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByLabelText('Workflow default')).toBeTruthy();
+    expect(await screen.findByText('Context schema')).toBeTruthy();
+    expect(screen.queryByLabelText('Workflow default')).toBeNull();
   });
 
   it('still renders the schema`s other generic fields (kinds) untouched', async () => {
@@ -181,18 +182,18 @@ describe('InspectorPanel — TASK-890 core.agent', () => {
             name: 'Discharge summary',
             task: 'TEXT_GENERATION',
             instruction: { variables: { topic: { value: '' } } },
-            parameters: { guards: { enabled: false } },
           },
         ]),
       ),
     );
   }
 
-  it('renders the node-scope GuardrailField, labelled "This node", reflecting the agent`s own default', async () => {
+  it('offers no node-level guardrail opt-out (retired, OD-1)', async () => {
     stubAgentsFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByLabelText('This node')).toBeTruthy();
-    expect(await screen.findByText(/effective: off — agent/i)).toBeTruthy();
+    expect(await screen.findByLabelText('topic')).toBeTruthy();
+    expect(screen.queryByLabelText('This node')).toBeNull();
+    expect(screen.queryByText(/effective: off/i)).toBeNull();
   });
 
   it('renders PromptVariablesField with one row per the agent`s declared variable, instead of a raw-json box', async () => {
