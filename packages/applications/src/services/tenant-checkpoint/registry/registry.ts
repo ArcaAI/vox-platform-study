@@ -402,6 +402,9 @@ const LOGS: CheckpointModelDescriptor[] = [
 const EXCLUDED: CheckpointModelDescriptor[] = [
   excluded('Tenant', true, { notes: 'Captured to tenant.json for identity only; never a table entry, never restored.' }),
   excluded('PasswordResetToken', true, { notes: 'Short-lived secret; reviving one would re-open a reset window.' }),
+  excluded('ComposedPromptRecord', true, {
+    notes: 'Encrypted PHI audit copy of a composed LLM prompt under a retention purge; restoring one would revive PHI past its retention.',
+  }),
   excluded('TenantEntitlement', true, { notes: 'Plan ceilings are platform-governed; carries tenantId but is never restored.' }),
   excluded('PlanEntitlement', true),
   excluded('AiPriceBook', true),

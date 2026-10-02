@@ -1,11 +1,6 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import {
-  ComposedPromptDetailResponse,
-  ComposedPromptPageResponse,
-  IComposedPromptService,
-  ListComposedPromptsQuery,
-} from '@arcaai/applications';
+import { ComposedPromptDetailResponse, ComposedPromptPageResponse, IComposedPromptService, ListComposedPromptsQuery } from '@arcaai/applications';
 import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 
 /**

@@ -27,7 +27,10 @@ export class ComposedPromptInternalController {
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  record(@Body() body: RecordComposedPromptRequest, @Headers('x-tenant-id') tenantIdHeader: string | undefined): RecordComposedPromptAcceptedResponse {
+  record(
+    @Body() body: RecordComposedPromptRequest,
+    @Headers('x-tenant-id') tenantIdHeader: string | undefined,
+  ): RecordComposedPromptAcceptedResponse {
     const tenantId = tenantIdHeader?.trim();
     if (!tenantId || tenantId.startsWith(TENANTLESS_PREFIX)) {
       throw new ArgumentInvalidException('A tenant `X-Tenant-Id` is required — a composed-prompt record always belongs to a tenant.');
