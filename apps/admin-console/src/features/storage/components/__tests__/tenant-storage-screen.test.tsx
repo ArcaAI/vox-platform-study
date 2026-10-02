@@ -108,6 +108,7 @@ interface RecordedCall {
   url: string;
   method: string;
   body: unknown;
+  ifMatch: string | null;
 }
 
 type FetchHandler = (call: RecordedCall) => Response | undefined;
@@ -121,6 +122,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
         url: String(input),
         method: init?.method ?? 'GET',
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        ifMatch: new Headers(init?.headers).get('If-Match'),
       };
       calls.push(call);
       const response = handler(call);
@@ -398,7 +400,8 @@ describe('TenantStorageScreen', () => {
       fireEvent.change(screen.getByLabelText(/^Endpoint/), { target: { value: 'https://silo:9000' } });
       expect((save as HTMLButtonElement).disabled).toBe(false);
       fireEvent.click(save);
-      await waitFor(() => expect(calls.some((call) => call.method === 'PUT')).toBe(true));
+      // `"0"` creates the row; the gateway answers 428 to a PUT without If-Match.
+      await waitFor(() => expect(calls.find((call) => call.method === 'PUT')?.ifMatch).toBe('"0"'));
     });
   });
 
