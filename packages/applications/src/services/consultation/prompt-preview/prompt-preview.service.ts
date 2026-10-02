@@ -16,7 +16,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { AgentRepository, AgentTask, ConsultationRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import { AgentRepository, AgentTask, ConsultationRepository, ResourceType, SysEventType, UserRoleAssignmentRepository } from '@arcaai/domains';
 import type { ComposableResolvedPrompt } from '@arcaai/workflow-contract';
 import { BaseService } from '../../../common/base.service';
 import { assertParentInScope } from '../../../common/tenant-guards';
@@ -25,6 +25,7 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { KnownPhiService } from '../../text-request/known-phi.service';
 import { providerLocality } from '../../text-request/provider-locality';
+import { assertPromptInspectorAccess } from '../../composed-prompt/prompt-inspector-access';
 import { HarnessInternalService } from '../harness/harness-internal.service';
 import { resolvePlatformOutputLanguage } from '../summary/platform-output-language';
 import { PromptPreviewRequest, PromptPreviewResponse } from './dto/prompt-preview.dto';
@@ -60,6 +61,7 @@ export class PromptPreviewService extends BaseService {
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicy?: HarnessPolicyService,
     @Optional() @Inject(KnownPhiService) private readonly knownPhi?: KnownPhiService,
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    @Optional() private readonly roleAssignments?: UserRoleAssignmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -67,6 +69,15 @@ export class PromptPreviewService extends BaseService {
   async preview(consultationId: string, request: PromptPreviewRequest): Promise<PromptPreviewResponse> {
     const tenantId = this.tenantId;
     if (!tenantId) throw new BadRequestException('A working tenant is required to preview a consultation prompt.');
+    // OD-9: SUPER_ADMIN or TENANT_ADMIN of this tenant (403). Row-independent, so it runs before
+    // the consultation is resolved and cannot reveal whether the id exists.
+    await assertPromptInspectorAccess({
+      user: this.requestUser,
+      serviceAccount: (this.clsService as unknown as { get(key: string): unknown }).get('serviceAccount'),
+      tenantId,
+      roleAssignments: this.roleAssignments,
+      logger: this.logger,
+    });
     // Cross-tenant ⇒ 404, never 403 (no existence leak).
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 

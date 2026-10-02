@@ -20,6 +20,10 @@ import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 export class PromptPreviewController {
   constructor(private readonly previews: PromptPreviewService) {}
 
+  // AUTH-NOTE: the class decorator UNDERSTATES this route's gate — PromptPreviewService.preview
+  // admits only a SUPER_ADMIN or a TENANT_ADMIN of the working tenant (assertPromptInspectorAccess,
+  // 403; a doctor holding read:Consultation is refused). Row-independent, so it runs before the
+  // consultation is resolved; another tenant's consultation is still 404 for an admin.
   @Post(':consultationId/prompt-preview')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -33,6 +37,7 @@ export class PromptPreviewController {
   @ApiParam({ name: 'consultationId', description: 'Consultation id', type: String })
   @ApiResponse({ status: 200, type: PromptPreviewResponse })
   @ApiResponse({ status: 400, description: 'Invalid body, no working tenant, or a prompt variable nothing supplies (`PROMPT_VARIABLE_UNRESOLVED`).' })
+  @ApiResponse({ status: 403, description: 'Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`).' })
   @ApiResponse({ status: 404, description: 'No such consultation in this tenant, or no such published TEXT_GENERATION agent.' })
   @ApiResponse({ status: 503, description: 'PII detection is unavailable (`GUARDRAIL_UNAVAILABLE`).' })
   async preview(@Param('consultationId') consultationId: string, @Body() body: PromptPreviewRequest): Promise<PromptPreviewResponse> {

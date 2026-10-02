@@ -9,7 +9,7 @@ import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { ClsService } from 'nestjs-cls';
-import { ComposedPromptRecordRepository, ResourceType, SysEventType, type ComposedPromptRecordEntity } from '@arcaai/domains';
+import { ComposedPromptRecordRepository, ResourceType, SysEventType, UserRoleAssignmentRepository, type ComposedPromptRecordEntity } from '@arcaai/domains';
 import { BaseService } from '../../common/base.service';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
@@ -25,6 +25,7 @@ import {
   RecordComposedPromptRequest,
 } from './dto/composed-prompt.dto';
 import type { IComposedPromptService } from './IComposedPromptService';
+import { assertPromptInspectorAccess } from './prompt-inspector-access';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -45,6 +46,7 @@ export class ComposedPromptService extends BaseService implements IComposedPromp
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     @Optional() private readonly settings?: TenantSettingsService,
     @Optional() @Inject(IRedisCacheService) private readonly redis?: IRedisCacheService,
+    @Optional() private readonly roleAssignments?: UserRoleAssignmentRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ComposedPromptRecord);
   }
@@ -68,6 +70,7 @@ export class ComposedPromptService extends BaseService implements IComposedPromp
 
   async list(query: ListComposedPromptsQuery): Promise<ComposedPromptPageResponse> {
     const tenantId = this.requireTenant();
+    await this.assertMayRead(tenantId);
     const page = query.page && query.page >= 1 ? query.page : 1;
     const limit = query.limit && query.limit >= 1 ? Math.min(query.limit, MAX_LIMIT) : DEFAULT_LIMIT;
     const { data, count } = await this.repository.findPage(tenantId, { consultationId: query.consultationId }, page, limit);
@@ -80,6 +83,8 @@ export class ComposedPromptService extends BaseService implements IComposedPromp
 
   async getDecrypted(id: string): Promise<ComposedPromptDetailResponse> {
     const tenantId = this.requireTenant();
+    // Privilege before existence: the gate does not vary by row, so it cannot leak one.
+    await this.assertMayRead(tenantId);
     const entity = await this.repository.findById(id).catch(() => null);
     if (!entity || entity.tenantId !== tenantId) throw new NotFoundException(`Composed prompt ${id} not found`);
     if (!this.secretsService) {
@@ -141,6 +146,17 @@ export class ComposedPromptService extends BaseService implements IComposedPromp
     } catch {
       return COMPOSED_PROMPTS_DEFAULTS.retentionDays;
     }
+  }
+
+  /** OD-9: SUPER_ADMIN or TENANT_ADMIN of this tenant (403 otherwise) — see `assertPromptInspectorAccess`. */
+  private assertMayRead(tenantId: string): Promise<void> {
+    return assertPromptInspectorAccess({
+      user: this.requestUser,
+      serviceAccount: (this.clsService as unknown as { get(key: string): unknown }).get('serviceAccount'),
+      tenantId,
+      roleAssignments: this.roleAssignments,
+      logger: this.logger,
+    });
   }
 
   private requireTenant(): string {

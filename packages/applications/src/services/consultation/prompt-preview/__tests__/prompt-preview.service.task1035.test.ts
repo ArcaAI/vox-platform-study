@@ -19,7 +19,7 @@ const CID = 'c-1';
 const SYSTEM = 'Rules. Patient Ada Lovelace.';
 const USER = '<<<EXTERNAL_DATA section="transcript">>>\n--- TRANSCRIPT ---\nAda Lovelace reports MRN-77.\n<<<END_EXTERNAL_DATA>>>';
 
-const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'admin-1' } : undefined)), set: vi.fn() };
+const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'admin-1', roles: ['SUPER_ADMIN'] } : undefined)), set: vi.fn() };
 const events = { emit: vi.fn() };
 const consultations = { findById: vi.fn() };
 const agents = { findPublishedActiveBySlug: vi.fn() };

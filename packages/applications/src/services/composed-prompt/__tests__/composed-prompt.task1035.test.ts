@@ -57,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const key of Object.keys(clsStore)) delete clsStore[key];
   clsStore.tenantId = TENANT;
+  clsStore.user = { id: 'admin-1', roles: ['SUPER_ADMIN'] };
 });
 
 describe('ComposedPromptRecorder', () => {

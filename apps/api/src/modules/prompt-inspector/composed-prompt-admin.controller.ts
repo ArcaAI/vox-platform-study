@@ -24,6 +24,9 @@ import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
 export class ComposedPromptAdminController {
   constructor(@Inject(IComposedPromptService) private readonly composedPrompts: IComposedPromptService) {}
 
+  // AUTH-NOTE: the class decorator UNDERSTATES this route's gate — ComposedPromptService.list
+  // admits only a SUPER_ADMIN or a TENANT_ADMIN of the working tenant (assertPromptInspectorAccess,
+  // 403; a doctor holding read:Consultation is refused). Row-independent, so it runs first.
   @Get()
   @ApiOperation({
     summary: 'List composed-prompt records',
@@ -33,11 +36,16 @@ export class ComposedPromptAdminController {
   })
   @ApiResponse({ status: 200, type: ComposedPromptPageResponse })
   @ApiResponse({ status: 400, description: 'Invalid query.' })
+  @ApiResponse({ status: 403, description: 'Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`).' })
   @ApiResponse({ status: 404, description: 'No tenant in context.' })
   async list(@Query() query: ListComposedPromptsQuery): Promise<ComposedPromptPageResponse> {
     return this.composedPrompts.list(query);
   }
 
+  // AUTH-NOTE: the class decorator UNDERSTATES this route's gate — ComposedPromptService.getDecrypted
+  // admits only a SUPER_ADMIN or a TENANT_ADMIN of the working tenant (assertPromptInspectorAccess,
+  // 403; a doctor holding read:Consultation is refused). Row-independent, so it runs first;
+  // another tenant's record is still 404 for an admin.
   @Get(':id')
   @ApiOperation({
     summary: 'Read one composed-prompt record, decrypted',
@@ -45,6 +53,7 @@ export class ComposedPromptAdminController {
   })
   @ApiParam({ name: 'id', description: 'Composed-prompt record id', type: String })
   @ApiResponse({ status: 200, type: ComposedPromptDetailResponse })
+  @ApiResponse({ status: 403, description: 'Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`).' })
   @ApiResponse({ status: 404, description: 'No such record in this tenant.' })
   async getById(@Param('id') id: string): Promise<ComposedPromptDetailResponse> {
     return this.composedPrompts.getDecrypted(id);
