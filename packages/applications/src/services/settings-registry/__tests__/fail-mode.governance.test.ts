@@ -20,6 +20,8 @@ function desc(over: Partial<SettingDescriptor> = {}): SettingDescriptor {
   return {
     key: 'test.flag',
     tier: 'db-config',
+    consoleRoute: '/test',
+    consoleRouteLabel: 'Test',
     dataType: 'boolean',
     sensitivity: 'internal',
     maxScope: 'tenant',

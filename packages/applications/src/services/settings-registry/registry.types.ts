@@ -293,6 +293,16 @@ export interface SettingDescriptor {
    * Absent ⇒ no invariant beyond the type check.
    */
   validate?: (value: unknown) => string | void;
+  /**
+   * TASK-1033 — the admin-console route that OWNS this key's write, for a key whose value lives on
+   * a dedicated surface rather than in the registry write lane (`db-config`, `entitlement`,
+   * `redis-flag`). REQUIRED for those tiers: `SettingsRegistry.register` refuses a descriptor
+   * without it, so a dedicated key can never render as "not editable here" with nowhere to go.
+   * Absent for every other tier (the registry lane edits it, or it is locked).
+   */
+  consoleRoute?: string;
+  /** Human label for {@link consoleRoute}, e.g. `Tenant storage`. */
+  consoleRouteLabel?: string;
   label?: string;
   description?: string;
   /** The code default — the last fallback in the cascade. */

@@ -14,14 +14,14 @@ function controllerFor(user: unknown, effective: Partial<EffectiveSettingsServic
 }
 
 describe('SettingsCatalogController.getCatalog', () => {
-  it('a super-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', () => {
-    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
+  it('a super-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', async () => {
+    const res = await controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(true);
     expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
   });
 
-  it('a tenant admin does NOT see global-only entries but keeps tenant-editable ones', () => {
-    const res = controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
+  it('a tenant admin does NOT see global-only entries but keeps tenant-editable ones', async () => {
+    const res = await controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(false);
     expect(res.items.every((i) => !i.globalOnly)).toBe(true);
     expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
@@ -33,14 +33,14 @@ describe('SettingsCatalogController.getCatalog', () => {
     expect(res.items.some((i) => i.key === 'rateLimit.maxRequests')).toBe(true);
   });
 
-  it('categories are distinct and sorted', () => {
-    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
+  it('categories are distinct and sorted', async () => {
+    const res = await controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.categories).toEqual([...new Set(res.categories)].sort());
     expect(res.categories.length).toBeGreaterThan(0);
   });
 
-  it('returns metadata only — never a value field', () => {
-    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
+  it('returns metadata only — never a value field', async () => {
+    const res = await controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     for (const item of res.items) {
       expect('value' in item).toBe(false);
       expect(item.key).toBeTruthy();
@@ -145,8 +145,8 @@ describe('SettingsCatalogController.getEffective', () => {
 
 // ── TASK-932 R-6 / D-6 — the derived lock reaches the wire ──────────────────
 describe('SettingsCatalogController.getCatalog — locked keys', () => {
-  it('marks bootstrap/credential keys locked with a reason, and leaves a writable key unmarked', () => {
-    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
+  it('marks bootstrap/credential keys locked with a reason, and leaves a writable key unmarked', async () => {
+    const res = await controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
 
     const bootstrap = res.items.find((i) => i.tier === 'env');
     expect(bootstrap, 'the catalog must still carry the bootstrap floor for a platform admin').toBeDefined();
@@ -168,8 +168,8 @@ describe('SettingsCatalogController.getCatalog — locked keys', () => {
     expect(writable!.lockReason).toBeUndefined();
   });
 
-  it('a locked key is locked for a SUPER ADMIN too — the lock is not a privilege gate', () => {
-    const asSuper = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
+  it('a locked key is locked for a SUPER ADMIN too — the lock is not a privilege gate', async () => {
+    const asSuper = await controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(asSuper.items.filter((i) => i.locked).length).toBeGreaterThan(0);
     expect(asSuper.items.filter((i) => i.tier === 'env').every((i) => i.locked === true)).toBe(true);
   });
@@ -177,8 +177,8 @@ describe('SettingsCatalogController.getCatalog — locked keys', () => {
 
 // ── TASK-932 R-1 / D-5 — the catalog filter itself ─────────────────────────
 describe('SettingsCatalogController.getCatalog — tenant visibility', () => {
-  it('hides every platform-only descriptor from a tenant admin (system scope OR globalOnly)', () => {
-    const res = controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
+  it('hides every platform-only descriptor from a tenant admin (system scope OR globalOnly)', async () => {
+    const res = await controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
     expect(res.items.length).toBeGreaterThan(0);
     for (const item of res.items) {
       expect(item.globalOnly, `${item.key} is globalOnly and must not be listed`).toBeFalsy();
@@ -193,8 +193,8 @@ describe('SettingsCatalogController.getCatalog — tenant visibility', () => {
     }
   });
 
-  it('a tenant admin sees no Bootstrap, Credentials, Platform Operations-only or Service Runtime keys', () => {
-    const res = controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
+  it('a tenant admin sees no Bootstrap, Credentials, Platform Operations-only or Service Runtime keys', async () => {
+    const res = await controllerFor({ roles: ['TENANT_ADMIN'], tenantId: 't1' }).getCatalog();
     expect(res.categories).not.toContain('Bootstrap');
     expect(res.categories).not.toContain('Credentials');
     expect(res.categories).not.toContain('Service Runtime');

@@ -58,6 +58,8 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
   {
     key: 'entitlements.featurePlatformDefaultCredential',
     tier: 'entitlement',
+    consoleRoute: '/entitlements',
+    consoleRouteLabel: 'Entitlements',
     dataType: 'boolean',
     sensitivity: 'internal',
     maxScope: 'tenant',

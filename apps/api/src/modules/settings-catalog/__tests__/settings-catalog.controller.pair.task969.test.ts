@@ -21,21 +21,21 @@ const TENANT_HALF_2 = 'text.guardrailPolicy.includeReasoning';
 const PLATFORM_TWIN = 'text.externalGuardrail.requireMedical';
 const PLATFORM_TWIN_2 = 'text.externalGuardrail.includeReasoning';
 
-function superAdminCatalog() {
+async function superAdminCatalog() {
   const cls = { get: (k: string) => (k === 'user' ? { roles: ['SUPER_ADMIN'] } : undefined) } as never;
-  return new SettingsCatalogController(cls, {} as EffectiveSettingsService).getCatalog();
+  return await new SettingsCatalogController(cls, {} as EffectiveSettingsService).getCatalog();
 }
 
 describe('GET admin/settings/catalog — platformTierKey', () => {
-  it('carries the twin for both tenant-half keys', () => {
-    const items = superAdminCatalog().items;
+  it('carries the twin for both tenant-half keys', async () => {
+    const items = (await superAdminCatalog()).items;
 
     expect(items.find((i) => i.key === TENANT_HALF)?.platformTierKey).toBe(PLATFORM_TWIN);
     expect(items.find((i) => i.key === TENANT_HALF_2)?.platformTierKey).toBe(PLATFORM_TWIN_2);
   });
 
-  it('OMITS the field — not null, not undefined-valued — on every key that declares no twin', () => {
-    const items = superAdminCatalog().items;
+  it('OMITS the field — not null, not undefined-valued — on every key that declares no twin', async () => {
+    const items = (await superAdminCatalog()).items;
     const unpaired = items.filter((i) => ![TENANT_HALF, TENANT_HALF_2].includes(i.key));
 
     expect(unpaired.length).toBeGreaterThan(200);
@@ -45,17 +45,17 @@ describe('GET admin/settings/catalog — platformTierKey', () => {
     expect('platformTierKey' in items.find((i) => i.key === PLATFORM_TWIN)!).toBe(false);
   });
 
-  it('projects it from the descriptor for EVERY key, so the two surfaces cannot disagree', () => {
-    for (const item of superAdminCatalog().items) {
+  it('projects it from the descriptor for EVERY key, so the two surfaces cannot disagree', async () => {
+    for (const item of (await superAdminCatalog()).items) {
       expect(item.platformTierKey).toBe(HOPE_SETTINGS_REGISTRY.getOrThrow(item.key).platformTierKey);
     }
   });
 });
 
 describe('tenant visibility is unchanged by the pairing', () => {
-  it('neither half reaches a tenant admin — both are globalOnly (OD-2)', () => {
+  it('neither half reaches a tenant admin — both are globalOnly (OD-2)', async () => {
     const cls = { get: (k: string) => (k === 'user' ? { roles: ['TENANT_ADMIN'], tenantId: 't1' } : k === 'tenantId' ? 't1' : undefined) } as never;
-    const items = new SettingsCatalogController(cls, {} as EffectiveSettingsService).getCatalog().items;
+    const items = (await new SettingsCatalogController(cls, {} as EffectiveSettingsService).getCatalog()).items;
 
     for (const key of [TENANT_HALF, TENANT_HALF_2, PLATFORM_TWIN, PLATFORM_TWIN_2]) {
       expect(items.some((i) => i.key === key)).toBe(false);

@@ -4,11 +4,12 @@ import {
   IActiveUserContext,
   isSuperAdmin,
   isTenantVisibleSetting,
+  PlatformStorageSettingsResolver,
   settingLockFor,
   visibleSettings,
   type SettingScope,
 } from '@arcaai/applications';
-import { BadRequestException, Controller, Get, NotFoundException, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, NotFoundException, Optional, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -44,15 +45,23 @@ export class SettingsCatalogController {
   constructor(
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly effective: EffectiveSettingsService,
+    // TASK-1033 — the same reader the runtime uses for `storage.platformDefault.*`; supplies the
+    // value the dedicated SYSTEM row actually stores. Optional so a graph without it degrades to
+    // `dedicatedRow: null` rather than failing to construct.
+    @Optional() private readonly platformStorage?: PlatformStorageSettingsResolver,
   ) {}
 
   @Get('catalog')
   @CanRead('GlobalSetting')
   @ApiOperation({ summary: 'List the capability/settings catalog (RBAC-filtered metadata).' })
   @ApiResponse({ status: 200, type: SettingCatalogResponse })
-  getCatalog(): SettingCatalogResponse {
+  async getCatalog(): Promise<SettingCatalogResponse> {
     const elevated = isSuperAdmin(this.cls.get('user'));
-    const items: SettingCatalogItemResponse[] = visibleSettings(HOPE_SETTINGS_REGISTRY.list(), elevated).map((d) => {
+    const visible = visibleSettings(HOPE_SETTINGS_REGISTRY.list(), elevated);
+    // ONE row read for the whole catalog, and only when a db-config key it owns is visible.
+    const dedicated: Record<string, { value: unknown; version: number } | undefined> =
+      this.platformStorage && visible.some((d) => d.tier === 'db-config') ? await this.platformStorage.dedicatedRowValues() : {};
+    const items: SettingCatalogItemResponse[] = visible.map((d) => {
       const lock = settingLockFor(d);
       return {
         key: d.key,
@@ -89,6 +98,11 @@ export class SettingsCatalogController {
         // key IS locked, so `locked === undefined` and `locked === false` cannot
         // drift apart in a client's truthiness check.
         ...(lock ? { locked: true, lockLabel: lock.label, lockReason: lock.reason } : {}),
+        // TASK-1033 — where a dedicated-surface key is edited, and what its dedicated row stores.
+        // Always present (null when not applicable) so the console has one shape to read.
+        consoleRoute: d.consoleRoute ?? null,
+        consoleRouteLabel: d.consoleRouteLabel ?? null,
+        dedicatedRow: d.tier === 'db-config' ? (dedicated[d.key] ?? null) : null,
       };
     });
     const categories = [...new Set(items.map((i) => i.category))].sort();
