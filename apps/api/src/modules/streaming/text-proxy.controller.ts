@@ -24,6 +24,7 @@ import {
   TENANT_ID_HEADER,
   buildGuardrailUsageBatches,
   buildLlmUsageBatches,
+  composeAssembledPrompt,
   parseTextUsageDetail,
   resolveDeployment,
   tenantHeaderValue,
@@ -31,6 +32,7 @@ import {
   DEFAULT_VISIT_TYPE_SERVICE,
   VisitTypeService,
   withUsageAttributes,
+  type AssembledPromptBlock,
   type ComputeAugmentedBatch,
   type ComputeDevice,
   type UsageAttributes,
@@ -1333,22 +1335,23 @@ export class TextProxyController {
       dnaStyleId?: string;
     };
   }> {
-    const TYPE_LABEL_MAP: Record<string, string> = {
-      TRANSCRIPT: 'Transcript',
-      CASE_NOTE: 'Case Note',
-      WORKNOTE: 'Work Note',
-      RAW_SUMMARY: 'Summary',
-      MODIFIED_SUMMARY: 'Edited Summary',
-      PRE_SUMMARY: 'Pre-Summary',
-      ATTACHMENT: 'Attachment',
+    // Each context item becomes ONE delimited data block: a stable key (`^[a-z0-9_]+$`) and the
+    // label the model reads.
+    const TYPE_BLOCK_MAP: Record<string, { key: string; label: string }> = {
+      TRANSCRIPT: { key: 'transcript', label: 'Transcript' },
+      CASE_NOTE: { key: 'case_note', label: 'Case Note' },
+      WORKNOTE: { key: 'work_note', label: 'Work Note' },
+      RAW_SUMMARY: { key: 'summary', label: 'Summary' },
+      MODIFIED_SUMMARY: { key: 'edited_summary', label: 'Edited Summary' },
+      PRE_SUMMARY: { key: 'pre_summary', label: 'Pre-Summary' },
+      ATTACHMENT: { key: 'attachment', label: 'Attachment' },
       // AUDIO_RECORDING: 'Audio',
     };
 
     const callerTenantId = this.clsService.get('tenantId');
 
-    let context: string;
+    const contentBlocks: AssembledPromptBlock[] = [];
     if (body.context_item_ids) {
-      const contentBlocks: string[] = [];
       for (const id of body.context_item_ids) {
         const contextItem = await this.contextItemRepository.findById(id);
         if (!contextItem) {
@@ -1371,9 +1374,9 @@ export class TextProxyController {
           });
           throw new NotFoundException(`Context item ${id} not found`);
         }
-        const label = TYPE_LABEL_MAP[contextItem.type] ?? 'Context';
+        const block = TYPE_BLOCK_MAP[contextItem.type] ?? { key: 'context', label: 'Context' };
         if (contextItem.content) {
-          contentBlocks.push(`${label}:\n${contextItem.content}`);
+          contentBlocks.push({ ...block, content: contextItem.content });
         }
         // ATTACHMENT items reference an uploaded file (mediaId) rather than
         // inline text — fetch it from object storage and extract its text so
@@ -1381,19 +1384,19 @@ export class TextProxyController {
         if (contextItem.type === ContextItemType.ATTACHMENT && contextItem.mediaId) {
           const attachment = await this.extractAttachmentText(contextItem.mediaId);
           if (attachment) {
-            contentBlocks.push(`${label} (${attachment.name}):\n${attachment.text}`);
+            contentBlocks.push({ ...block, label: `${block.label} (${attachment.name})`, content: attachment.text });
           }
         }
       }
       if (contentBlocks.length === 0) {
         throw new BadRequestException('None of the provided context items have content');
       }
-      context = contentBlocks.join('\n\n');
     } else {
-      context = body.message!;
+      contentBlocks.push({ key: 'message', label: 'Message', content: body.message! });
     }
 
-    let systemPrompt = '';
+    let templateContent: string | null = null;
+    let styleText: string | null = null;
     let promptTemplateId: string | undefined;
     let promptTemplateName: string | undefined;
 
@@ -1439,14 +1442,9 @@ export class TextProxyController {
         throw new ForbiddenException('You do not have access to this prompt template');
       }
 
-      systemPrompt = template.content ?? '';
+      templateContent = template.content ?? '';
       promptTemplateId = template.id;
       promptTemplateName = template.name;
-    } else {
-      systemPrompt =
-        body.type === 'pre-summary'
-          ? 'You are a medical documentation assistant. Generate a concise pre-summary from the provided clinical context. Focus on key findings, diagnoses, medications, and treatment plans.'
-          : 'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.';
     }
 
     if (body.dna_writing_style_id) {
@@ -1487,32 +1485,33 @@ export class TextProxyController {
       // and — more importantly — a doctor who opted out after generating this
       // report would still have had it injected).
       const effectiveStyleText = await this.dnaWritingStyleService?.getEffectiveStyleText(callerId, tenantId ?? undefined);
-      if (effectiveStyleText) {
-        systemPrompt += `\n\nApply the following writing style:\n${effectiveStyleText}`;
-      }
+      if (effectiveStyleText) styleText = effectiveStyleText;
     }
 
+    let visitLabel: string | null = null;
     if (body.visit_type) {
       // The tenant's own LABEL for the visit type, not a two-branch literal.
       // `validateAssembledRequest` has already refused anything the catalogue
       // does not name, so the raw value is only a defensive last resort.
-      const visitLabel = this.resolveVisitType(body.visit_type)?.label ?? body.visit_type;
-      // Stated as a LABELLED FIELD, not as a sentence the label has to fit
-      // grammatically. It used to read `This is a ${visitLabel} visit.`, which
-      // only worked while the labels were platform literals chosen to fit it:
-      // the owner's 2026-08-29 label "New visit" renders that as "This is a New
-      // visit visit.", and a tenant is free to define a label worse still. This
-      // form is the one every seeded prompt body already uses for the same fact
-      // (`- **Visit Type:** {visit_type}`), and no label can break it.
-      systemPrompt += `\n\nVisit type: ${visitLabel}.`;
+      // Stated as a LABELLED FIELD (`Visit type: <label>.`) by the composer, never as a sentence
+      // the label has to fit grammatically — a tenant is free to define any label.
+      visitLabel = this.resolveVisitType(body.visit_type)?.label ?? body.visit_type;
     }
 
-    const typeLabel = body.type === 'pre-summary' ? 'pre-summary' : 'clinical summary';
-    const prompt = `Generate a ${typeLabel} from the following:\n\n${context}`;
+    // The ONE composer: the template is RENDERED (an unsuppliable reference is a 400 naming it,
+    // never a raw `{{…}}` sent to the model), and every context item is a delimited data block.
+    const composed = composeAssembledPrompt({
+      templateContent,
+      templateRef: promptTemplateId ? `prompt-template:${promptTemplateId}` : undefined,
+      type: body.type === 'pre-summary' ? 'pre-summary' : 'summary',
+      visitLabel,
+      styleText,
+      blocks: contentBlocks,
+    });
 
     return {
-      prompt,
-      systemPrompt,
+      prompt: composed.user,
+      systemPrompt: composed.system,
       resolvedMeta: {
         promptTemplateId,
         promptTemplateName,
