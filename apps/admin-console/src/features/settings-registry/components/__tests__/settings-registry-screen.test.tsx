@@ -756,4 +756,34 @@ describe('SettingRegistryDrawer — the twin-key pair (TASK-969 F-1)', () => {
 
     expect(await axe(sheetContent())).toHaveNoViolations();
   });
+  it('TASK-1033 — a dedicated-row key shows its stored value and links to its owner screen', async () => {
+    const key = 'storage.platformDefault.endpoint';
+    stubFetch({
+      catalog: {
+        items: [
+          {
+            key,
+            tier: 'db-config',
+            dataType: 'string',
+            sensitivity: 'internal',
+            maxScope: 'system',
+            editableBy: 'all',
+            category: 'Storage',
+            globalOnly: true,
+            consoleRoute: '/tenants/storage?tab=configs',
+            consoleRouteLabel: 'Tenant storage',
+            dedicatedRow: { value: 'http://localhost:9000', version: 3 },
+          },
+        ],
+        categories: ['Storage'],
+      },
+    });
+    renderWithProviders(<SettingsRegistryScreen />, { searchParams: `?key=${key}` });
+
+    const dialog = await screen.findByRole('dialog');
+    const link = within(dialog).getByRole('link', { name: /edit in tenant storage/i });
+    expect(link.getAttribute('href')).toBe('/tenants/storage?tab=configs');
+    expect(await within(dialog).findByText(/http:\/\/localhost:9000/)).toBeDefined();
+    expect(within(dialog).queryByText(/no row stored at this scope/i)).toBeNull();
+  });
 });

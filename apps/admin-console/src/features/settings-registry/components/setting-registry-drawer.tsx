@@ -35,7 +35,7 @@ import {
 } from './governance';
 import type { PairTarget } from './governance';
 import { RegistryValueEditor } from './registry-value-editor';
-import { fromDraft, toDraft } from './registry-value';
+import { formatValue, fromDraft, toDraft } from './registry-value';
 
 const SCOPE_LABEL: Record<SettingScope, string> = {
   system: 'Platform default (SYSTEM)',
@@ -590,7 +590,9 @@ export function SettingRegistryDrawer({
                   <p id={`${uid}-source`} className="text-muted-foreground text-xs">
                     {item.dedicatedRow ? (
                       <>
-                        Stored on the dedicated row · <span className="font-medium">v{item.dedicatedRow.version}</span>
+                        Stored on the dedicated row:{' '}
+                        <span className="font-mono">{formatValue(item.dataType, item.dedicatedRow.value)}</span> ·{' '}
+                        <span className="font-medium">v{item.dedicatedRow.version}</span>
                       </>
                     ) : (
                       <>
