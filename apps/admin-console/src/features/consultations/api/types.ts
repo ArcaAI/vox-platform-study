@@ -189,3 +189,58 @@ export function visitTypeOf(consultation: Pick<Consultation, 'parentConsultation
   if (stated === 'new-visit') return 'new';
   return consultation.parentConsultationId ? 'revisit' : 'new';
 }
+
+// ---------------------------------------------------------------------------
+// Prompt Inspector — `POST admin/consultations/:id/prompt-preview` and the stored, Transit-encrypted
+// composed-prompt records. The preview's egress side carries COUNTS only; message text is returned
+// only in the two views an authorized reader asked for.
+// ---------------------------------------------------------------------------
+
+export const PROMPT_PREVIEW_PHASES = ['live', 'pre-summary', 'finalize'] as const;
+export type PromptPreviewPhase = (typeof PROMPT_PREVIEW_PHASES)[number];
+
+export interface PromptPreviewRequest {
+  phase: PromptPreviewPhase;
+  agentSlug?: string;
+}
+
+export type PromptLocality = 'local' | 'cloud';
+
+export interface PromptMessages {
+  system: string;
+  user: string;
+}
+
+export interface PromptFragmentExclusion {
+  key: string;
+  reason: string;
+  detail?: string;
+}
+
+export interface PromptPreviewResponse extends PromptMessages {
+  locality: PromptLocality;
+  /** The pseudonymized text a cloud provider would receive; `null` on a local provider. */
+  providerView: PromptMessages | null;
+  egressPreview: { detected: Record<string, number>; redacted: number };
+  tokenEstimate: { system: number; user: number };
+  /** Where the instruction came from (agent / template / version) — rendered as given. */
+  resolvedFrom: unknown;
+  selected: string[];
+  excluded: PromptFragmentExclusion[];
+  blocks: { key: string; chars: number; truncated: boolean }[];
+}
+
+/** `GET admin/composed-prompts?consultationId=` row — metadata only. */
+export interface ComposedPromptRecordSummary {
+  id: string;
+  consultationId: string | null;
+  agentSlug: string | null;
+  phase: string;
+  provider: string;
+  locality: PromptLocality;
+  sha256?: string;
+  createdAt: string;
+}
+
+/** `GET admin/composed-prompts/:id` — the decrypted messages (an audited read server-side). */
+export interface ComposedPromptRecord extends ComposedPromptRecordSummary, PromptMessages {}

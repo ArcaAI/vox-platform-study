@@ -1,8 +1,9 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { CopyButton } from '@/shared/copy-button';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime } from '@/shared/format';
@@ -11,6 +12,7 @@ import { useConsultation, visitTypeOf } from '../api';
 import type { Consultation } from '../api';
 import { ConsultationStatusBadge } from './consultation-status-badge';
 import { ConsultationWorkflowMeta } from './consultation-workflow-meta';
+import { PromptInspector } from './prompt-inspector';
 import { ConsultationTelemetrySection } from './telemetry/consultation-telemetry-section';
 
 const EM_DASH = '\u2014';
@@ -152,23 +154,46 @@ function DetailBody({ id }: { id: string }) {
 /**
  * Frame 40 (c) — row-click read-only detail (GET /admin/consultations/:id):
  * masked patient, doctor, department, status, type, timestamps and a compact
- * relations summary of the consultation's context items. No mutations exist
- * on this surface.
+ * relations summary of the consultation's context items; plus the Prompt
+ * Inspector tab (a dry run of a phase's composed LLM request, and the stored
+ * records of what was sent). No mutations exist on this surface.
  */
 export function ConsultationDetailPanel({ consultationId, onOpenChange }: { consultationId: string | null; onOpenChange: (open: boolean) => void }) {
+  const [tab, setTab] = useState('overview');
   return (
-    <DetailDrawer
-      open={consultationId !== null}
-      onOpenChange={onOpenChange}
-      title={<span className="font-mono text-sm break-all">{consultationId}</span>}
-      badges={consultationId ? <CopyButton value={consultationId} label="Copy consultation id" /> : null}
-      meta={
-        <span>
-          Read-only detail {'\u00b7'} <span className="font-mono">GET /admin/consultations/:id</span>
-        </span>
-      }
-    >
-      {consultationId ? <DetailBody id={consultationId} /> : null}
-    </DetailDrawer>
+    <Tabs value={tab} onValueChange={setTab}>
+      <DetailDrawer
+        open={consultationId !== null}
+        onOpenChange={(open) => {
+          if (!open) setTab('overview');
+          onOpenChange(open);
+        }}
+        size="xl"
+        title={<span className="font-mono text-sm break-all">{consultationId}</span>}
+        badges={consultationId ? <CopyButton value={consultationId} label="Copy consultation id" /> : null}
+        meta={
+          <span>
+            Read-only detail {'\u00b7'} <span className="font-mono">GET /admin/consultations/:id</span>
+          </span>
+        }
+        tabs={
+          <TabsList variant="line">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="prompt-inspector">Prompt inspector</TabsTrigger>
+          </TabsList>
+        }
+      >
+        {consultationId ? (
+          <>
+            <TabsContent value="overview">
+              <DetailBody id={consultationId} />
+            </TabsContent>
+            <TabsContent value="prompt-inspector">
+              <PromptInspector consultationId={consultationId} />
+            </TabsContent>
+          </>
+        ) : null}
+      </DetailDrawer>
+    </Tabs>
   );
 }
