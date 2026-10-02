@@ -8522,14 +8522,29 @@
             "format": "uuid",
             "type": "string"
           },
+          "duplicates": {
+            "description": "TASK-1034 — samples already in memory (same normalised text) and skipped.",
+            "example": 2,
+            "type": "number"
+          },
           "jobId": {
-            "description": "The queued job — poll `GET dna-writing-styles/ingest/jobs/{jobId}` with it.",
+            "description": "The queued job — poll `GET dna-writing-styles/ingest/jobs/{jobId}` with it. `null` when `generate: false` queued nothing.",
+            "nullable": true,
             "type": "string"
           },
           "status": {
-            "description": "Always `PENDING` on acceptance; the job has been enqueued, not run.",
+            "description": "`PENDING` when an analysis was enqueued (not run); `STORED` when `generate: false` only stored the samples as memory.",
+            "enum": [
+              "PENDING",
+              "STORED"
+            ],
             "example": "PENDING",
             "type": "string"
+          },
+          "stored": {
+            "description": "TASK-1034 — samples newly persisted as the clinician`s DNA memory (source INGEST).",
+            "example": 40,
+            "type": "number"
           },
           "window": {
             "allOf": [
@@ -8620,6 +8635,310 @@
           "jobId",
           "status",
           "progress"
+        ],
+        "type": "object"
+      },
+      "DnaMemoryDoctorSummaryResponse": {
+        "properties": {
+          "bySource": {
+            "$ref": "#/components/schemas/DnaMemorySourceCounts"
+          },
+          "displayName": {
+            "description": "First and last name from the user profile, when set.",
+            "nullable": true,
+            "type": "string"
+          },
+          "dnaEnabled": {
+            "description": "The effective DNA decision (tenant graph AND the clinician`s own opt-in).",
+            "type": "boolean"
+          },
+          "doctorId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastReportAt": {
+            "description": "ISO time of the latest DNA report.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastSampleAt": {
+            "description": "ISO time of the newest sample.",
+            "nullable": true,
+            "type": "string"
+          },
+          "latestReportId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "total": {
+            "description": "Live memory samples (soft-deleted ones excluded).",
+            "example": 26,
+            "type": "number"
+          },
+          "unconsumed": {
+            "description": "Samples no report has consumed yet.",
+            "example": 5,
+            "type": "number"
+          },
+          "username": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "doctorId",
+          "username",
+          "displayName",
+          "total",
+          "unconsumed",
+          "bySource",
+          "lastSampleAt",
+          "lastReportAt",
+          "latestReportId",
+          "dnaEnabled"
+        ],
+        "type": "object"
+      },
+      "DnaMemorySamplePageResponse": {
+        "properties": {
+          "count": {
+            "example": 42,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/DnaMemorySampleResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "example": 20,
+            "type": "number"
+          },
+          "page": {
+            "example": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "count",
+          "page",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "DnaMemorySampleResponse": {
+        "properties": {
+          "consultationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "consumed": {
+            "type": "boolean"
+          },
+          "consumedByReportId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "doctorId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "nullable": true,
+            "type": "string"
+          },
+          "preview": {
+            "description": "At most 200 characters, PHI-redacted. Empty when redaction is unavailable.",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "EDIT",
+              "SIGNOFF",
+              "INGEST"
+            ],
+            "type": "string"
+          },
+          "sourceRef": {
+            "description": "The ingesting caller`s own record locator, when given.",
+            "nullable": true,
+            "type": "string"
+          },
+          "writtenAt": {
+            "description": "ISO time the clinician wrote it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "doctorId",
+          "source",
+          "kind",
+          "writtenAt",
+          "sourceRef",
+          "consultationId",
+          "consumed",
+          "consumedByReportId",
+          "preview",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "DnaMemorySourceCounts": {
+        "properties": {
+          "EDIT": {
+            "example": 4,
+            "type": "number"
+          },
+          "INGEST": {
+            "example": 20,
+            "type": "number"
+          },
+          "SIGNOFF": {
+            "example": 2,
+            "type": "number"
+          }
+        },
+        "required": [
+          "EDIT",
+          "SIGNOFF",
+          "INGEST"
+        ],
+        "type": "object"
+      },
+      "DnaRegenLastRunResponse": {
+        "properties": {
+          "at": {
+            "description": "ISO time of the run.",
+            "type": "string"
+          },
+          "queued": {
+            "type": "number"
+          },
+          "skipped": {
+            "$ref": "#/components/schemas/DnaRegenSkipCountsResponse"
+          }
+        },
+        "required": [
+          "at",
+          "queued",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "DnaRegenRunJobResponse": {
+        "properties": {
+          "doctorId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "doctorId",
+          "jobId"
+        ],
+        "type": "object"
+      },
+      "DnaRegenRunResponse": {
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/DnaRegenRunJobResponse"
+            },
+            "type": "array"
+          },
+          "queued": {
+            "type": "number"
+          },
+          "skipped": {
+            "$ref": "#/components/schemas/DnaRegenSkipCountsResponse"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "DnaRegenScheduleResponse": {
+        "properties": {
+          "cron": {
+            "example": "0 2 * * 1",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "lastRun": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DnaRegenLastRunResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "minNewSamples": {
+            "example": 3,
+            "type": "number"
+          },
+          "nextRunAt": {
+            "description": "ISO time of the next run; null when disabled.",
+            "nullable": true,
+            "type": "string"
+          },
+          "timeZone": {
+            "description": "The tenant`s consultation time zone the cron is read in.",
+            "example": "Asia/Kolkata",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "cron",
+          "minNewSamples",
+          "timeZone",
+          "nextRunAt",
+          "lastRun"
+        ],
+        "type": "object"
+      },
+      "DnaRegenSkipCountsResponse": {
+        "properties": {
+          "belowFloor": {
+            "type": "number"
+          },
+          "noFeedback": {
+            "type": "number"
+          },
+          "optedOut": {
+            "type": "number"
+          },
+          "quota": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "noFeedback",
+          "optedOut",
+          "quota",
+          "belowFloor"
         ],
         "type": "object"
       },
@@ -11766,6 +12085,11 @@
             "description": "The clinician these samples belong to. REQUIRED for an API-key or service-account caller — a machine is never itself the clinician. A human caller omits it to ingest their OWN samples; a tenant or super admin may name another clinician of their tenant.",
             "format": "uuid",
             "type": "string"
+          },
+          "generate": {
+            "default": true,
+            "description": "TASK-1034 — queue an analysis now (default `true`, today`s behaviour). `false` only stores the samples as the clinician`s DNA memory; the weekly regeneration picks them up.",
+            "type": "boolean"
           },
           "items": {
             "description": "The writing samples, in any order — the server sorts them by `writtenAt`. At most 200 items and 400000 characters in total.",
@@ -25816,6 +26140,26 @@
         ],
         "type": "object"
       },
+      "UpdateDnaRegenScheduleRequest": {
+        "properties": {
+          "cron": {
+            "description": "Cron expression, read in the tenant time zone.",
+            "example": "0 2 * * 1",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Turn this tenant`s weekly regeneration on or off.",
+            "type": "boolean"
+          },
+          "minNewSamples": {
+            "description": "Minimum new memory samples before a clinician is regenerated.",
+            "example": 3,
+            "minimum": 1,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
       "UpdateDnaReportRequest": {
         "properties": {
           "changeReason": {
@@ -35353,7 +35697,8 @@
                 "TenantGuardrailPolicy",
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
-                "TenantCheckpointRestore"
+                "TenantCheckpointRestore",
+                "DnaWritingSample"
               ],
               "type": "string"
             }
@@ -35591,7 +35936,8 @@
                 "TenantGuardrailPolicy",
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
-                "TenantCheckpointRestore"
+                "TenantCheckpointRestore",
+                "DnaWritingSample"
               ],
               "type": "string"
             }
@@ -35830,7 +36176,8 @@
                 "TenantGuardrailPolicy",
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
-                "TenantCheckpointRestore"
+                "TenantCheckpointRestore",
+                "DnaWritingSample"
               ],
               "type": "string"
             }
@@ -38794,6 +39141,289 @@
           }
         ],
         "summary": "Stream DNA generation job status via SSE",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/admin/dna-writing-styles/memory": {
+      "get": {
+        "description": "Newest first, filterable by clinician, source and consumed state. Never returns sample text: each row carries a PHI-redacted preview of at most 200 characters (empty when redaction is unavailable).",
+        "operationId": "DnaWritingStyleMemoryAdminController_listMemory",
+        "parameters": [
+          {
+            "description": "Only this clinician`s samples.",
+            "in": "query",
+            "name": "doctorId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "enum": [
+                "EDIT",
+                "SIGNOFF",
+                "INGEST"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "`true` = consumed by a report, `false` = not yet.",
+            "in": "query",
+            "name": "consumed",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Page number (starting from 1).",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Page size.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaMemorySamplePageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid query, or no tenant in context."
+          },
+          "404": {
+            "description": "The clinician is not a member of this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List DNA writing-style memory samples",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/admin/dna-writing-styles/memory/summary": {
+      "get": {
+        "description": "One row per clinician of this tenant who has DNA memory or a DNA report: sample counts (total, not yet consumed, by source EDIT / SIGNOFF / INGEST), the newest sample, the latest report, and whether DNA is effectively on for them.",
+        "operationId": "DnaWritingStyleMemoryAdminController_getMemorySummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DnaMemoryDoctorSummaryResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "No tenant in context (a super admin must select a working tenant)."
+          },
+          "403": {
+            "description": "The caller may not read DNA writing-style reports."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "DNA writing-style memory per clinician",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/admin/dna-writing-styles/memory/{id}": {
+      "delete": {
+        "description": "Soft delete: the sample stops counting as feedback and is never read into a future profile.",
+        "operationId": "DnaWritingStyleMemoryAdminController_deleteMemory",
+        "parameters": [
+          {
+            "description": "Memory sample id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "description": "No such sample in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Delete a DNA writing-style memory sample",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/admin/dna-writing-styles/schedule": {
+      "get": {
+        "description": "The effective schedule for this tenant (its own settings, else the platform default), the time zone the cron is read in, the next run, and the result of the last run.",
+        "operationId": "DnaWritingStyleMemoryAdminController_getSchedule",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaRegenScheduleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "No tenant in context."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Weekly DNA regeneration schedule",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      },
+      "put": {
+        "description": "Writes the supplied fields as this tenant`s own `dna-regen.*` settings (omitted fields are left as they are). The values are validated by the settings registry.",
+        "operationId": "DnaWritingStyleMemoryAdminController_updateSchedule",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDnaRegenScheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaRegenScheduleResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid value (for example a cron expression that does not parse), or no tenant in context."
+          },
+          "412": {
+            "description": "The setting changed concurrently; read and retry."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Update the weekly DNA regeneration schedule",
+        "tags": [
+          "admin-dna-writing-styles"
+        ]
+      }
+    },
+    "/api/v1/admin/dna-writing-styles/schedule/run": {
+      "post": {
+        "description": "Evaluates every clinician of this tenant exactly as the weekly run does and queues those with enough new memory. Idempotent per ISO week: a clinician already queued this week is not queued again.",
+        "operationId": "DnaWritingStyleMemoryAdminController_runSchedule",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnaRegenRunResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "No tenant in context."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Run the DNA regeneration now (this tenant)",
         "tags": [
           "admin-dna-writing-styles"
         ]
@@ -63205,7 +63835,7 @@
     },
     "/api/v1/dna-writing-styles/ingest": {
       "post": {
-        "description": "Submits writing the platform has not seen — case notes, work notes, any prose the clinician authored — as a TIME SERIES, and queues the platform analyst over it. Each sample carries a `writtenAt`, which is what orders the corpus and what decides which samples survive when a batch exceeds the analysis budget (the oldest are dropped, whole). The response is a job handle, not a profile: poll `GET ingest/jobs/{jobId}`, then read the profile from the clinician's own DNA surfaces.\n\nA machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary — the submitted text itself is never persisted.",
+        "description": "Submits writing the platform has not seen — case notes, work notes, any prose the clinician authored — as a TIME SERIES, and queues the platform analyst over it. Each sample carries a `writtenAt`, which is what orders the corpus and what decides which samples survive when a batch exceeds the analysis budget (the oldest are dropped, whole). The response is a job handle, not a profile: poll `GET ingest/jobs/{jobId}`, then read the profile from the clinician's own DNA surfaces.\n\nA machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary.\n\nEvery sample is also kept as the clinician`s DNA writing-style MEMORY (Vault-Transit encrypted, deduplicated on its normalised text; the response counts `stored` and `duplicates`), so the weekly regeneration can learn from it again. Send `generate: false` to load history without queuing an analysis now (`jobId: null`, `status: STORED`).",
         "operationId": "DnaWritingStyleIngestController_ingest",
         "parameters": [
           {

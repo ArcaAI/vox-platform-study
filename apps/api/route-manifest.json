@@ -3200,6 +3200,144 @@
       "apiExcluded": false
     },
     {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "listMemory",
+      "method": "GET",
+      "path": "/api/v1/admin/dna-writing-styles/memory",
+      "routePath": "/admin/dna-writing-styles/memory",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "deleteMemory",
+      "method": "DELETE",
+      "path": "/api/v1/admin/dna-writing-styles/memory/{id}",
+      "routePath": "/admin/dna-writing-styles/memory/:id",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "getMemorySummary",
+      "method": "GET",
+      "path": "/api/v1/admin/dna-writing-styles/memory/summary",
+      "routePath": "/admin/dna-writing-styles/memory/summary",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "getSchedule",
+      "method": "GET",
+      "path": "/api/v1/admin/dna-writing-styles/schedule",
+      "routePath": "/admin/dna-writing-styles/schedule",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "updateSchedule",
+      "method": "PUT",
+      "path": "/api/v1/admin/dna-writing-styles/schedule",
+      "routePath": "/admin/dna-writing-styles/schedule",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "DnaWritingStyleMemoryAdminController",
+      "handler": "runSchedule",
+      "method": "POST",
+      "path": "/api/v1/admin/dna-writing-styles/schedule/run",
+      "routePath": "/admin/dna-writing-styles/schedule/run",
+      "svcScopes": [
+        "svc:admin:dna-writing-style:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "DnaWritingStyleReport"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "DocumentTemplateAdminController",
       "handler": "list",
       "method": "GET",

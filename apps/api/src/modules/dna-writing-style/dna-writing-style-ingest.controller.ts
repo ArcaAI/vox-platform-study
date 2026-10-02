@@ -145,8 +145,10 @@ export class DnaWritingStyleIngestController {
       "profile from the clinician's own DNA surfaces.\n\n" +
       'A machine caller (API key or service account) MUST name `clinicianUserId`. A clinician omits it to ingest ' +
       'their own samples; a tenant or super administrator may name any clinician of their tenant. Samples are ' +
-      'PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary — ' +
-      'the submitted text itself is never persisted.',
+      'PHI-redacted before they reach any model, and the profile that is stored is a closed-vocabulary summary.\n\n' +
+      'Every sample is also kept as the clinician`s DNA writing-style MEMORY (Vault-Transit encrypted, deduplicated on its ' +
+      'normalised text; the response counts `stored` and `duplicates`), so the weekly regeneration can learn from it ' +
+      'again. Send `generate: false` to load history without queuing an analysis now (`jobId: null`, `status: STORED`).',
   })
   @ApiHeader({
     name: 'Idempotency-Key',

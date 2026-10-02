@@ -3,6 +3,7 @@ import { DnaWritingStyleServiceModule } from '@arcaai/applications';
 import { DnaWritingStyleController } from './dna-writing-style.controller';
 import { DnaWritingStyleAdminController } from './dna-writing-style-admin.controller';
 import { DnaWritingStyleIngestController } from './dna-writing-style-ingest.controller';
+import { DnaWritingStyleMemoryAdminController } from './dna-writing-style-memory-admin.controller';
 
 @Module({
   imports: [DnaWritingStyleServiceModule],
@@ -10,6 +11,7 @@ import { DnaWritingStyleIngestController } from './dna-writing-style-ingest.cont
   // their `@ForbidApiKey()` exemption. Order matters to NOTHING here (Nest matches on path), but
   // the more specific prefix `dna-writing-styles/ingest` is declared before the catch-all
   // `dna-writing-styles/:reportId` routes so a reader sees the specificity.
-  controllers: [DnaWritingStyleIngestController, DnaWritingStyleController, DnaWritingStyleAdminController],
+  // TASK-1034 — the memory/schedule admin routes (literal `memory` / `schedule` segments).
+  controllers: [DnaWritingStyleIngestController, DnaWritingStyleController, DnaWritingStyleMemoryAdminController, DnaWritingStyleAdminController],
 })
 export class DnaWritingStyleModule {}
