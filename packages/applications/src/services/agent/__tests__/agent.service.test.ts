@@ -841,27 +841,28 @@ describe('publish — the bound context schema (§3.4)', () => {
 });
 
 /**
- * TASK-890 §3.14 (OD-R) — the agent-level guardrail opt-out. ABSENT MEANS ON at every level, and
- * an opt-out is RECORDED (a publish WARNING) rather than merely permitted.
+ * The agent-level guardrail opt-out is RETIRED (OD-1). A stored `parameters.guards.enabled` is
+ * stripped for one release: it neither blocks publish nor reaches the compiled artifact.
  */
-describe('publish — the guardrail compile stamp (§3.14)', () => {
-  it('stamps guardrail.enabled = true when the agent says nothing', async () => {
+describe('publish — the retired guardrail opt-out', () => {
+  it('compiles no guardrail stamp and records no opt-out for an agent that says nothing', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
     const published = await makeService().publish('agent-1', {});
-    expect(published.compiledConfig).toMatchObject({ guardrail: { enabled: true } });
+    expect(published.compiledConfig).not.toHaveProperty('guardrail');
     const report = published.validationReport as unknown as { findings: Array<{ code: string }> };
     expect(report.findings.filter((finding) => finding.code === 'GUARDRAIL_OPTED_OUT')).toEqual([]);
   });
 
-  it('stamps guardrail.enabled = false and WARNS, without blocking, when the agent opts out', async () => {
+  it('strips a stored `guards.enabled`: no schema refusal, no opt-out, nothing compiled', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ parameters: { guards: { enabled: false } } }));
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
     const published = await makeService().publish('agent-1', {});
-    expect(published.compiledConfig).toMatchObject({ guardrail: { enabled: false } });
-    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
+    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; message?: string }> };
     expect(report.blocking).toBe(false);
-    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'GUARDRAIL_OPTED_OUT', severity: 'WARNING' }));
+    expect(report.findings.map((finding) => finding.code)).not.toContain('GUARDRAIL_OPTED_OUT');
+    expect(published.compiledConfig).not.toHaveProperty('guardrail');
+    expect((published.compiledConfig as { parameters: Record<string, unknown> }).parameters).not.toHaveProperty('guards');
   });
 });
 

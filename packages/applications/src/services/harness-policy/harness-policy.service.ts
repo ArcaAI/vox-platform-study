@@ -82,6 +82,8 @@ export type TextRoutingTask = 'live' | 'finalize' | 'test';
 export interface TextSelection {
   provider: string;
   model: string;
+  /** `AiModel.deploymentKind` of the serving row, for the egress `provider_locality` stamp. */
+  deploymentKind?: string;
   /** `parameters.generation` of the agent that served, when it authored one. */
   generation?: Record<string, unknown>;
 }
@@ -663,7 +665,12 @@ export class HarnessPolicyService {
         selectorTags: textPhaseSelectorTags(task),
       });
       const generation = generationOf(spec.primary);
-      return { provider: spec.primary.provider, model: spec.primary.model, ...(generation ? { generation } : {}) };
+      return {
+        provider: spec.primary.provider,
+        model: spec.primary.model,
+        ...(spec.primary.deploymentKind ? { deploymentKind: spec.primary.deploymentKind } : {}),
+        ...(generation ? { generation } : {}),
+      };
     } catch (error) {
       if (error instanceof NotFoundException && !agentSlug) {
         throw new BadRequestException(
@@ -737,7 +744,12 @@ export class HarnessPolicyService {
       const next = spec.fallback.chain[0];
       if (!next) return null;
       const generation = generationOf(next);
-      return { provider: next.provider, model: next.model, ...(generation ? { generation } : {}) };
+      return {
+        provider: next.provider,
+        model: next.model,
+        ...(next.deploymentKind ? { deploymentKind: next.deploymentKind } : {}),
+        ...(generation ? { generation } : {}),
+      };
     } catch (error) {
       this.logger.warn({
         message: `Text fallback resolution failed for the '${task}' task — no fallback runs`,

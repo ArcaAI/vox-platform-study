@@ -107,7 +107,8 @@ export interface EffectiveRedaction {
  * keeps its in-code floor, which IS the retired env default. A control plane
  * with no opinion must never be read as an opinion of "off".
  *
- * `requireMedical` / `includeReasoning` appear here as the platform DEFAULT a
+ * `enabled` and `requireMedical` are GONE (OD-4 / OD-5): screening and the medical judge always
+ * run. `includeReasoning` appears here as the platform DEFAULT a
  * tenant inherits when it has expressed none of its own. A tenant that HAS an
  * opinion sends it per request as `guardrail_policy` (the PUSH channel) and
  * wins — cardinality decides the channel (D-1), so the tenant's value never
@@ -117,11 +118,9 @@ export interface EffectiveRedaction {
  * return `allowed: true`, which is a safety invariant rather than a tunable.
  */
 export interface EffectiveExternalGuardrail {
-  enabled: boolean | null;
   timeoutS: number | null;
   maxRetries: number | null;
   retryBackoffMs: number | null;
-  requireMedical: boolean | null;
   includeReasoning: boolean | null;
   source: EffectiveConfigSource;
 }

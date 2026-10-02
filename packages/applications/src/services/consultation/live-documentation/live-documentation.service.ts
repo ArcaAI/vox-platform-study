@@ -63,11 +63,9 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 import {
   composePrompt,
   CORE_PALETTE_KEY,
-  guardrailOptOutOf,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  resolveGuardrailDecision,
   selectPromptFragments,
   type ComposableResolvedPrompt,
   type ComposedPrompt,
@@ -4163,7 +4161,7 @@ return 0`;
         // slug — the throw degrades the node with a named reason and nothing is generated on
         // the tenant default in its place. A legacy summary node carries no ref and keeps the
         // assigned-agent path inside `callText`.
-        const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId, effectiveLane);
+        const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId);
         // A3 — the primary plus every fallback the call may switch to, in the order `callText`
         // walks them. WHICH of them served is read back off the stats below, because that is the
         // one field that already knows.
@@ -6519,23 +6517,16 @@ return 0`;
   }
 
   /**
-   * TASK-890 §3.14 — resolve a realtime `core.agent` node's agent AND fold its guardrail decision.
-   *
-   * The fold happens HERE, once per call, because this is the only place all three opinions are
-   * in scope: the node's own `config.guardrail` (authored on the graph), the WORKFLOW default the
-   * compiler froze onto `policyBindings.guardrail` (carried by the lane), and the agent's own
-   * `compiledConfig.guardrail` the resolver normalised. Precedence is the shared
-   * `resolveGuardrailDecision` — node > workflow > agent > ON — so this lane and the durable lane
-   * (`guardrail_optout.resolve_guardrail_decision`) answer identically for the same node.
+   * Resolve a realtime `core.agent` node's agent and its per-node overrides. (The node / workflow /
+   * agent guardrail opt-out this used to fold is retired — every call is screened.)
    *
    * A legacy summary node carries no `agentRef` and keeps the assigned-agent path inside
-   * `callText`, which expresses no opinion and lets TEXT's platform posture govern — unchanged.
+   * `callText`.
    */
   private async resolveRealtimeTextAgent(
     input: { agentRef?: RealtimeAgentRef; config?: Readonly<Record<string, unknown>> },
     tenantId: string,
-    lane: RealtimeLane,
-  ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail: { enabled: boolean } } | undefined> {
+  ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides } | undefined> {
     // TASK-893 — a `core.agent` names its agent by SLUG or by TASK. Only the slug form pins an
     // agent; the task form is the code-built platform lane saying "the tenant's assigned
     // TEXT_GENERATION agent", which is exactly the `undefined` path `callText` already takes
@@ -6544,16 +6535,7 @@ return 0`;
     const { slug, versionNumber } = (input.agentRef ?? {}) as { slug?: string; versionNumber?: number };
     if (slug === undefined) return undefined;
     const spec = await this.resolveRealtimeAgent({ slug, ...(versionNumber !== undefined ? { versionNumber } : {}) }, tenantId);
-    const guardrail = resolveGuardrailDecision({
-      node: guardrailOptOutOf(input.config),
-      workflow: lane.guardrail,
-      // Optional-chained on purpose: `ResolvedAgent.guardrail` is non-optional by type, but a
-      // resolver answer built before this ticket (or a fixture) can carry none, and a MISSING
-      // opinion must read as INHERIT (`null`) — which the fold then resolves to ON. On a safety
-      // gate, "unreadable" must never resolve to an opt-out.
-      agent: spec.agent?.guardrail?.enabled ?? null,
-    });
-    return { spec, overrides: nodeOverrides(input.config), guardrail: { enabled: guardrail.enabled } };
+    return { spec, overrides: nodeOverrides(input.config) };
   }
 
   /**
@@ -6634,7 +6616,7 @@ return 0`;
     // TASK-876 — a `core.agent` node's RESOLVED agent (primary + ordered fallback chain) and the
     // node's own `overrides`. Trailing and optional, so every legacy-flush caller keeps its
     // arity and generates on the tenant's ASSIGNED agent instead.
-    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail?: { enabled: boolean } },
+    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides },
     // TASK-890 §3.13 — attribution for the usage row this call now records. Trailing and
     // optional so every positional fixture keeps its arity.
     consultationId?: string | null,
@@ -6665,7 +6647,6 @@ return 0`;
             signal,
             corrective,
             consultationId,
-            textAgent.guardrail,
             trigger,
             isRepairAttempt,
           );
@@ -6710,8 +6691,9 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
+    let deploymentKind: string | undefined;
     if (this.harnessPolicyService) {
-      ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -6737,7 +6719,7 @@ return 0`;
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, undefined, generation);
+    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, { deploymentKind: deploymentKind ?? null }, generation);
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
     // method is the live tier exclusively). TEXT itself has no notion of this key; it only
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
@@ -6769,10 +6751,6 @@ return 0`;
     signal?: AbortSignal,
     corrective?: string,
     consultationId?: string | null,
-    // TASK-890 §3.14 — the FOLDED guardrail decision for this node (node > workflow > agent > on),
-    // computed once by `resolveRealtimeTextAgent`. Every candidate of one node carries the same
-    // decision: switching engines on an outage must never change whether the call is screened.
-    guardrail?: { enabled: boolean },
     // TASK-943 — the run's `trigger` root, so an agent's `{ path: 'trigger.context.*' }` bindings
     // resolve. Trailing + optional so every positional fixture keeps its arity; ABSENT ⇒ the
     // pre-943 behaviour (no trigger root), which is correct for a caller that genuinely has none.
@@ -6834,13 +6812,19 @@ return 0`;
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
     };
-    // The decision goes on the wire EXPLICITLY in both directions, so TEXT can tell "screened by
-    // this tenant's opinion" from "no opinion, platform posture governs".
-    if (guardrail) this.textRequestEnrichment?.applyGuardrailDecision(payload, guardrail);
     // TASK-891 C2 — `generation` already carries the node's `overrides.generation` layered
     // over the agent's own, so the reasoning posture follows the same precedence every other
     // hyper-parameter on this call does.
-    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId, guardrail, generation);
+    // Each candidate states ITS OWN row's locality, and the run's open context feeds `known_phi`.
+    const triggerContext = trigger && typeof trigger.context === 'object' && trigger.context !== null && !Array.isArray(trigger.context) ? (trigger.context as Record<string, unknown>) : null;
+    const result = await this.postTextGenerate(
+      payload,
+      tenantId,
+      signal,
+      consultationId,
+      { deploymentKind: candidate.deploymentKind ?? null, context: triggerContext, agentNode: true },
+      generation,
+    );
     return {
       text: result.text,
       stats: result.stats
@@ -6892,17 +6876,15 @@ return 0`;
    * It is the session's `trajectorySessionId` — the SAME id every `AgentTrajectoryStep` of
    * this session carries — so a ledger row and a trajectory step for one flush join on it.
    */
-  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, guardrail?: { enabled: boolean }): void {
+  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, agentNode?: boolean): void {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
     const ledger = this.usageLedger;
     const sessionId = consultationId ? (this.sessions.get(consultationId)?.trajectorySessionId ?? null) : null;
-    // TASK-890 §3.14 record (a) — a `core.agent` node stamps the DISPOSITION beside the trigger,
-    // so "this consultation ran without its guard" is a query, not an inference from graph JSON.
-    // The disposition read is async (it consults the PLATFORM kill switch, which outranks the
-    // node's opinion), so it is folded inside the same fire-and-forget chain the row already
-    // used. A legacy flush passes no decision and stamps no key, exactly as before.
+    // A `core.agent` node stamps the screening DISPOSITION beside the trigger. Since the opt-out and
+    // the platform kill switch were retired every call is screened, so it is always `screened`.
+    // A legacy flush stamps no key, exactly as before.
     // TASK-959 — the device resolution and the batch build BOTH moved inside this chain. The
     // device decides the compute UNIT, is resolved from configuration keyed by the provider that
     // actually served, and that read is asynchronous — while `recordLlmUsage` is fire-and-forget
@@ -6916,8 +6898,7 @@ return 0`;
         consultationId: consultationId ?? null,
         device: await this.llmDevice(tenantId, usage),
       });
-      const disposition = guardrail && this.textRequestEnrichment ? await this.textRequestEnrichment.guardrailDisposition(guardrail) : undefined;
-      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(disposition ? { guardrail: disposition } : {}) }, sessionId)) {
+      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(agentNode ? { guardrail: 'screened' as const } : {}) }, sessionId)) {
         await ledger.recordUsage(input);
       }
     };
@@ -6964,7 +6945,9 @@ return 0`;
     tenantId: string,
     signal?: AbortSignal,
     consultationId?: string | null,
-    guardrail?: { enabled: boolean },
+    // The egress hints for this hop: the serving row's `deploymentKind`, the run's open context
+    // (for `known_phi`), and whether a `core.agent` node made it (stamps the usage disposition).
+    egress?: { deploymentKind?: string | null; context?: Record<string, unknown> | null; agentNode?: boolean },
     // TASK-891 C2 — the RESOLVED agent's `parameters.generation`, when this hop is made on
     // behalf of one. Its `reasoning` block becomes the `extra` ride-along. Absent on the
     // non-agent paths, where there is no agent to have an opinion.
@@ -6983,7 +6966,11 @@ return 0`;
     // TEXT as `extra_body`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload);
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload, {
+      deploymentKind: egress?.deploymentKind ?? null,
+      consultationId: consultationId ?? null,
+      context: egress?.context ?? null,
+    });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
     // every environment where the internal token is non-empty — the live loop
@@ -7007,7 +6994,7 @@ return 0`;
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
-    this.recordLlmUsage(tenantId, response.data, consultationId, guardrail);
+    this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
 
@@ -7051,7 +7038,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     const payload = {
       prompt: text,
       system_prompt: translateOnlyInstruction(languageName),
@@ -7061,7 +7049,7 @@ return 0`;
       stream: false as const,
     };
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
@@ -7116,7 +7104,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
@@ -7132,7 +7121,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
@@ -7217,7 +7206,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The context the owner's sentence names, handed over as authored. Entity spans ride along
@@ -7237,7 +7227,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
     // (this method is not given one), so the row is attributed to the tenant alone; threading

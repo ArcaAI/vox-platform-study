@@ -16,8 +16,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EffectiveSettingsService, SettingsRegistryWriteService } from '@arcaai/applications';
 import { SettingsRegistryWriteController } from '../settings-registry-write.controller';
 
-const TENANT_HALF = 'text.guardrailPolicy.requireMedical';
-const PLATFORM_TWIN = 'text.externalGuardrail.requireMedical';
+const TENANT_HALF = 'text.guardrailPolicy.includeReasoning';
+const PLATFORM_TWIN = 'text.externalGuardrail.includeReasoning';
 /** No `platformTierKey` — must carry no `pair` block at all. */
 const UNPAIRED_KEY = 'rateLimit.maxRequests';
 

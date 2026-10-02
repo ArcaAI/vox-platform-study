@@ -1,5 +1,10 @@
 // `apps/text`'s registry surface.
 //
+// Since TASK-1035 (owner decisions OD-4, OD-5): the platform kill switch
+// `text.externalGuardrail.enabled` and the platform default
+// `text.externalGuardrail.requireMedical` are GONE. Guardrail screening and the medical judge run
+// on every call; break-glass is a redeploy, never a setting. The table below is the history.
+//
 // This file used to declare TEXT's cloud-provider CONNECTION config as
 // `tier: 'env'` — `TEXT_OPENAI_BASE_URL`, `TEXT_OPENAI_ORGANIZATION`,
 // `TEXT_OPENAI_DEFAULT_MODEL`, `TEXT_ANTHROPIC_BASE_URL`,
@@ -75,11 +80,9 @@ import { SettingDescriptor } from '../registry.types';
  * Transcribed from `apps/text/src/text/core/runtime_defaults.py`.
  */
 export const TEXT_GUARDRAIL_POSTURE_DEFAULTS = {
-  'text.externalGuardrail.enabled': false,
   'text.externalGuardrail.timeoutS': 120,
   'text.externalGuardrail.maxRetries': 2,
   'text.externalGuardrail.retryBackoffMs': 100,
-  'text.externalGuardrail.requireMedical': true,
   'text.externalGuardrail.includeReasoning': false,
 } as const;
 
@@ -88,15 +91,6 @@ export type TextGuardrailPostureKey = keyof typeof TEXT_GUARDRAIL_POSTURE_DEFAUL
 type KeyMeta = { label: string; description: string; dataType: 'boolean' | 'number' };
 
 const META: Record<TextGuardrailPostureKey, KeyMeta> = {
-  'text.externalGuardrail.enabled': {
-    label: 'TEXT input moderation',
-    dataType: 'boolean',
-    description:
-      'Gates input moderation on TEXT `/generate`. OFF is the dev/CI bypass so local runs need no guardrail ' +
-      'service; a clinical deployment turns it ON here rather than by redeploying. When ON the posture is ' +
-      'fail-CLOSED by construction: a transient error is absorbed by the bounded retry below, a sustained outage ' +
-      'rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option.',
-  },
   'text.externalGuardrail.timeoutS': {
     label: 'Guardrail call timeout (s)',
     dataType: 'number',
@@ -123,22 +117,13 @@ const META: Record<TextGuardrailPostureKey, KeyMeta> = {
       'Linear backoff between moderation retries: attempt N waits `N x retryBackoffMs`. Counts toward the latency ' +
       'ceiling described under the timeout.',
   },
-  'text.externalGuardrail.requireMedical': {
-    label: 'Require medical content (platform default)',
-    dataType: 'boolean',
-    description:
-      'The platform default for clinical enforcement: a reachable guardrail must classify the prompt as medical for ' +
-      'it to be allowed. This is what a tenant INHERITS when it has expressed no opinion — a tenant with one sends ' +
-      'it per request and wins. Setting this false is an explicit, documented non-clinical posture for tenants ' +
-      'without an opinion of their own, never a silent default.',
-  },
   'text.externalGuardrail.includeReasoning': {
     label: 'Include guardrail reasoning (platform default)',
     dataType: 'boolean',
     description:
       'Whether the moderation call asks guardrail to return its reasoning. Off by default: the reasoning quotes the ' +
       'prompt, so it widens what a verdict carries back across a service boundary. Same tenant-inherits-on-absence ' +
-      'semantics as requireMedical.',
+      'semantics as the tenant half.',
   },
 };
 
@@ -167,9 +152,6 @@ export const TEXT_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = (
   // behaviour, not to an outage. `apps/text` mirrors this — an absent group
   // keeps the in-code floor.
   failMode: 'open-to-default',
-  // Only the switch is an ENFORCEMENT gate; the rest are tuning. The registry
-  // asserts a kill-switch defaults OFF, which this one does.
-  ...(key === 'text.externalGuardrail.enabled' ? { killSwitch: true } : {}),
   category: 'Guardrail Policy',
   label: META[key].label,
   description: META[key].description,

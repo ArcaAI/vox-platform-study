@@ -134,14 +134,6 @@ export interface RealtimeLane {
    */
   readonly onStart: readonly RealtimeNode[];
   /**
-   * TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, from the compiled graph's
-   * `policyBindings.guardrail` (authored on `core.trigger`). `null` = the workflow says
-   * nothing, which is INHERIT, not "off": `resolveGuardrailDecision` then falls through to the
-   * agent's own decision and finally to ON. The durable lane reads the same compiled fact, so
-   * one node cannot be screened on one lane and skipped on the other.
-   */
-  readonly guardrail: boolean | null;
-  /**
    * TASK-932 — the `core.condition` nodes this lane's {@link RealtimeNode.branchGuards} name.
    *
    * Only the referenced ones: a condition that gates nothing on this lane is the durable lane's
@@ -183,8 +175,6 @@ export const PLATFORM_REALTIME_LANE: RealtimeLane = Object.freeze({
   source: 'platform-default',
   definitionSlug: null,
   definitionVersionNumber: null,
-  // The platform lane has no author, so it expresses no workflow-level guardrail opinion.
-  guardrail: null,
   // ...and no author means no branch: the code-built lane runs every one of its three nodes on
   // every flush, exactly as it did before guards existed.
   conditions: Object.freeze([]),
@@ -333,7 +323,6 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
     definitionVersionNumber: compiled.versionNumber ?? null,
     stages,
     onStart,
-    guardrail: compiled.policyBindings?.guardrail?.enabled ?? null,
     conditions: conditionsFor(compiled, guardedBy),
   };
 }

@@ -40,15 +40,13 @@ function serviceWith(settings: EffectiveSettingsService): EffectiveConfigService
 describe('effective-config: the TEXT externalGuardrail view', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('serves the six posture fields under the exact names apps/text reads', async () => {
+  it('serves the four posture fields under the exact names apps/text reads — no switch, no requireMedical', async () => {
     const response = await serviceWith(settingsStub()).resolveForService('text');
 
     expect(response.externalGuardrail).toEqual({
-      enabled: false,
       timeoutS: 120,
       maxRetries: 2,
       retryBackoffMs: 100,
-      requireMedical: true,
       includeReasoning: false,
       source: 'env-fallback',
     });
@@ -57,30 +55,27 @@ describe('effective-config: the TEXT externalGuardrail view', () => {
   it('a stored platform row reaches the wire and reads as `db`', async () => {
     const response = await serviceWith(
       settingsStub({
-        'text.externalGuardrail.enabled': true,
         'text.externalGuardrail.timeoutS': 25,
-        'text.externalGuardrail.requireMedical': false,
+        'text.externalGuardrail.includeReasoning': true,
       }),
     ).resolveForService('text');
 
     expect(response.externalGuardrail).toEqual({
-      enabled: true,
       timeoutS: 25,
       maxRetries: 2,
       retryBackoffMs: 100,
-      requireMedical: false,
-      includeReasoning: false,
+      includeReasoning: true,
       source: 'db',
     });
   });
 
   it('refuses a value of the wrong declared type — null, never a substituted default', async () => {
-    // `enabled` is declared boolean. A string must NOT become `true`, and must
+    // `includeReasoning` is declared boolean. A string must NOT become `true`, and must
     // NOT quietly become the descriptor default either: null is what tells
     // apps/text to keep its own floor.
-    const response = await serviceWith(settingsStub({ 'text.externalGuardrail.enabled': 'yes' })).resolveForService('text');
+    const response = await serviceWith(settingsStub({ 'text.externalGuardrail.includeReasoning': 'yes' })).resolveForService('text');
 
-    expect(response.externalGuardrail?.enabled).toBeNull();
+    expect(response.externalGuardrail?.includeReasoning).toBeNull();
   });
 
   it('is omitted entirely for a service that declares none of the keys', async () => {

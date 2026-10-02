@@ -17,7 +17,7 @@ import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '
 import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
-import { COMPUTE_DEVICES, type ComputeDevice, type GuardrailDisposition } from '../usageLedger/usage-attributes';
+import { COMPUTE_DEVICES, type ComputeDevice } from '../usageLedger/usage-attributes';
 import {
   CONTEXT_NAMESPACE_ROOT,
   soleContextKindSchema,
@@ -381,20 +381,10 @@ export class AgentInvocationService {
       const { provider: overrideProvider, ...entry } = resolvedOverride;
       (body as { provider_overrides?: Record<string, unknown> }).provider_overrides = { [overrideProvider]: entry };
     }
-    await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
-    // TASK-890 §3.14 (OD-R) — the guardrail decision for THIS call. A standalone invocation has
-    // no workflow and no node, so the AGENT tier is the whole precedence: `ResolvedAgent.guardrail`
-    // is what `resolveGuardrailDecision` would answer with `node`/`workflow` absent, already
-    // normalised by the resolver (absent or malformed ⇒ screening ON).
-    //
-    // Stated EXPLICITLY in both directions so TEXT can tell "screened because a decision said so"
-    // from "no opinion", and safe to send unconditionally because it can only ever subtract —
-    // `apps/text` keeps the platform switch as the floor.
-    // `?? { enabled: true }` is the fail-SAFE read, not a default with an opinion: `guardrail` is
-    // non-optional on `ResolvedAgent` and the resolver normalises it, but an answer built before
-    // this ticket carries none — and on a safety gate an absent value must read as SCREENED.
-    this.textRequestEnrichment.applyGuardrailDecision(body, resolved.guardrail ?? { enabled: true });
-
+    // The primary row's `deploymentKind` decides the egress locality stamped on the body.
+    await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, {
+      deploymentKind: resolved.models.find((entry) => entry.role === 'primary')?.deploymentKind ?? null,
+    });
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
       tenantId,
@@ -623,18 +613,6 @@ export class AgentInvocationService {
         'Set `wireModelId` on the catalogue row, then re-resolve.',
       code: 'AGENT_MODEL_WIRE_ID_MISSING',
     });
-  }
-
-  /**
-   * TASK-890 §3.14 — the SCREENING DISPOSITION this call's ledger row records.
-   *
-   * Delegated to the enrichment service (which owns the platform-switch read) rather than
-   * duplicated at the controller: the same service writes the wire field above, so "what we
-   * asked TEXT to do" and "what we recorded having done" are derived in ONE place and cannot
-   * drift into disagreeing about the same call.
-   */
-  async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
-    return this.textRequestEnrichment.guardrailDisposition(decision);
   }
 
   /**

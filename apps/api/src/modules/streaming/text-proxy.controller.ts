@@ -423,12 +423,16 @@ export class TextProxyController {
     // A SELECTOR for this gateway, never forwarded: TEXT receives the resolved pair.
     const agentSlug = target.agentSlug;
     delete target.agentSlug;
+    // The serving row's `deploymentKind`, known only when this gateway resolved the pair; a
+    // caller-pinned pair falls back to the provider-name rule (unknown => cloud in `apps/text`).
+    let deploymentKind: string | undefined;
     if (!target.model && this.harnessPolicyService) {
       const tenantId = this.clsService.get('tenantId');
       // TASK-1012 L-3 — an explicit TEXT_GENERATION agent, else the assignment cascade.
-      const { provider, model } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', null, agentSlug);
-      target.provider = provider;
-      target.model = model;
+      const selection = await this.harnessPolicyService.resolveTextSelection(tenantId, 'finalize', null, agentSlug);
+      target.provider = selection.provider;
+      target.model = selection.model;
+      deploymentKind = selection.deploymentKind;
     } else if (!target.provider && this.harnessPolicyService) {
       // Selection is `failMode: closed`, so an unresolvable tenant surfaces an
       // error here rather than inheriting TEXT's literal further downstream.
@@ -454,23 +458,9 @@ export class TextProxyController {
     // caller-pinned provider/model, so the cascade is exactly "caller posture, else
     // platform tier" — and a caller that sent `reasoning` short-circuits it.
     await this.textRequestEnrichment.applyTextRuntimeProfile(target);
-    // Then fold in the caller tenant's BYO cloud credential, if any.
-    return this.applyTenantProviderOverrides(target);
-  }
-
-  /**
-   * Fold the caller tenant's BYO cloud credential into the forwarded body as
-   * `provider_overrides`.
-   *
-   * BUG-018 — the implementation MOVED VERBATIM to the applications-layer
-   * `TextRequestEnrichmentService` so the prompt-template test bench (which used
-   * to POST to TEXT directly, on platform credentials) shares exactly one
-   * implementation with this proxy. Semantics are unchanged: cloud-only,
-   * minimal exposure, fail-open on a resolver error, and the policy-refusal
-   * `assertProviderAvailable` check outside that catch.
-   */
-  private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
-    return this.textRequestEnrichment.applyTenantProviderOverrides(target);
+    // Then fold in the caller tenant's BYO cloud credential, if any — and the egress statements
+    // (`provider_locality`, no client-supplied opt-out or medical exemption survives).
+    return this.textRequestEnrichment.applyTenantProviderOverrides(target, { deploymentKind: deploymentKind ?? null });
   }
 
   // The TEXT base URL resolves through the
@@ -884,10 +874,9 @@ export class TextProxyController {
     if (!generation && !screening) return;
 
     const emit = async (): Promise<void> => {
-      // How this call was SCREENED, for the generation row. The proxy pushes no opt-out
-      // (`applyTextModelSelection` leaves `enabled` absent and the PLATFORM posture governs), so
-      // the answer here can only ever be `screened` or `platform_off` — never `opted_out`.
-      const guardrail = await this.textRequestEnrichment.guardrailDisposition({ enabled: true });
+      // How this call was SCREENED, for the generation row: always, since the opt-outs and the
+      // platform kill switch are retired.
+      const guardrail = 'screened' as const;
 
       const inputs: UsageEventBatchInput[] = [];
       if (generation) {
@@ -1065,14 +1054,9 @@ export class TextProxyController {
     // fire more than once. Emission is idempotent at the ledger anyway — the
     // key is derived from the task id — but emitting once keeps the outbox from
     // absorbing three copies of every stream.
-    // TASK-890 §3.14 (OD-R) — how this call was screened, for the ledger row.
-    //
-    // The proxy pushes NO opt-out: `postTextGenerate` applies the tenant's `require_medical` /
-    // `include_reasoning` policy and leaves `enabled` absent, so the PLATFORM posture governs
-    // the generation. Its rows can therefore only ever say `screened` or `platform_off` — never
-    // `opted_out`, because no agent / workflow / node opinion reaches this route. Resolved once,
-    // before any frame arrives, so all three teardown paths stamp the same answer.
-    const guardrail = await this.textRequestEnrichment.guardrailDisposition({ enabled: true });
+    // How this call was screened, for the ledger row: always (the opt-outs and the platform kill
+    // switch are retired), so all three teardown paths stamp the same answer.
+    const guardrail = 'screened' as const;
 
     // TASK-959 — PEEK, RESOLVE, THEN TAKE. The device decides the compute UNIT and is resolved
     // from configuration keyed by the provider that ACTUALLY served, which is only known once the

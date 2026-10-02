@@ -274,10 +274,6 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
       textRequestEnrichment: {
         applyTextRuntimeProfile: vi.fn(async (t: unknown) => t),
         applyTenantProviderOverrides,
-        // TASK-890 §3.14 — the realtime producer states the folded guardrail decision on every
-        // `core.agent` post, so a partial enrichment fixture has to answer this call too.
-        applyGuardrailDecision: vi.fn((t: unknown) => t),
-        guardrailDisposition: vi.fn(async () => 'screened'),
       },
     });
     const { payload, calls } = await runOneFlush(service, post);
@@ -288,6 +284,22 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     // The FALLBACK's own platform credential survives untouched — key and funding label both.
     expect(calls[1].provider_overrides).toEqual({ 'lm-studio': { api_key: 'platform-key', funding: 'platform' } });
     expect(payload?.metadata?.stats).toMatchObject({ funding_tier: 'platform' });
+  });
+
+  it('states each candidate`s OWN row locality and the consultation to the egress enrichment, and no guardrail opt-out', async () => {
+    const primary = { ...candidate(), deploymentKind: 'CLOUD' };
+    textAgents.resolve.mockResolvedValue({ ...spec({ chain: [{ ...platformCandidate(), deploymentKind: 'SELF_HOSTED' }] }), primary });
+    const applyTenantProviderOverrides = vi.fn(async (target: Record<string, unknown>) => target);
+    const { service, post } = buildService({
+      generate: (n) => (n === 0 ? new Error('primary provider down') : NOTE),
+      textRequestEnrichment: { applyTextRuntimeProfile: vi.fn(async (t: unknown) => t), applyTenantProviderOverrides },
+    });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(calls).toHaveLength(2);
+    expect(applyTenantProviderOverrides.mock.calls[0]?.[1]).toMatchObject({ deploymentKind: 'CLOUD', consultationId: CID });
+    expect(applyTenantProviderOverrides.mock.calls[1]?.[1]).toMatchObject({ deploymentKind: 'SELF_HOSTED', consultationId: CID });
+    for (const call of calls) expect(call).not.toHaveProperty('guardrail_policy');
   });
 
   it('honours autoSwitch:false — the tenant turned HA fallback off for this agent, so the node degrades instead of switching', async () => {

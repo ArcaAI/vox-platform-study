@@ -1,5 +1,11 @@
 // A TENANT's own input-moderation policy for `apps/text`.
 //
+// Since TASK-1035 (owner decisions OD-1, OD-3, OD-4, OD-5) this family holds ONE key,
+// `includeReasoning`. `text.guardrailPolicy.requireMedical` is GONE: the medical-relevance judge
+// runs on every business-plane call and no tenant may turn it off. The guardrail opt-out and the
+// platform kill switch (`text.externalGuardrail.enabled`) are gone with it. The prose below
+// describes the push contract as it stands for the surviving key.
+//
 // This is the storage half of the PUSH contract whose receiving half already
 // exists: `GenerateRequest.guardrail_policy`
 // (`apps/text/src/text/models/requests.py`) folded over the platform posture by
@@ -53,16 +59,9 @@
 // key that could be set to make an errored guardrail allow a prompt is not a
 // configuration surface, it is a way to ship unmoderated PHI.
 //
-// `enabled` needs one clarification since TASK-890 OD-R (2026-09-06), because
-// "platform-only" is now true of the SETTING and not of the decision. A tenant
-// may opt OUT of platform guardrail screening per agent, per workflow and per
-// node — but it does so on the AGENT / WORKFLOW artifact, not through a setting
-// row, and the gateway folds that opinion (`resolveGuardrailDecision`: node >
-// workflow > agent > on) onto each request as `guardrail_policy.enabled`. So
-// there is deliberately no `text.guardrailPolicy.enabled` key here: a
-// tenant-wide "guardrail off" row would be a fourth tier of the same fact, and
-// the platform switch below stays the FLOOR either way — a pushed `true` can
-// never revive it (`apps/text/core/guardrail_posture.resolve_posture`).
+// There is deliberately no `text.guardrailPolicy.enabled` key: screening is not
+// switchable at any scope (owner decision OD-1 retired the per-agent / workflow /
+// node opt-out, OD-4 the platform kill switch).
 
 import { SettingDescriptor } from '../registry.types';
 import type { TextGuardrailPostureKey } from './text-provider-connections.descriptors';
@@ -75,7 +74,6 @@ import type { TextGuardrailPostureKey } from './text-provider-connections.descri
  * pushes nothing, and the platform posture governs.
  */
 export const TEXT_GUARDRAIL_POLICY_DEFAULTS = {
-  'text.guardrailPolicy.requireMedical': true,
   'text.guardrailPolicy.includeReasoning': false,
 } as const;
 
@@ -89,7 +87,6 @@ export type TextGuardrailPolicyKey = keyof typeof TEXT_GUARDRAIL_POLICY_DEFAULTS
  * producer from the field the service reads.
  */
 export const TEXT_GUARDRAIL_POLICY_PUSH_FIELDS: ReadonlyArray<readonly [TextGuardrailPolicyKey, string]> = [
-  ['text.guardrailPolicy.requireMedical', 'require_medical'],
   ['text.guardrailPolicy.includeReasoning', 'include_reasoning'],
 ];
 
@@ -109,7 +106,6 @@ export const TEXT_GUARDRAIL_POLICY_PUSH_FIELDS: ReadonlyArray<readonly [TextGuar
  * between two keys is what let a write succeed with no reader.
  */
 export const TEXT_GUARDRAIL_POLICY_PLATFORM_TIER: Record<TextGuardrailPolicyKey, TextGuardrailPostureKey> = {
-  'text.guardrailPolicy.requireMedical': 'text.externalGuardrail.requireMedical',
   'text.guardrailPolicy.includeReasoning': 'text.externalGuardrail.includeReasoning',
 };
 
@@ -134,14 +130,6 @@ export const TEXT_GUARDRAIL_POLICY_PLATFORM_TIER: Record<TextGuardrailPolicyKey,
  * semantics, which is the part an admin actually needs at the point of editing.
  */
 const META: Record<TextGuardrailPolicyKey, { label: string; description: string }> = {
-  'text.guardrailPolicy.requireMedical': {
-    label: 'Require medical content',
-    description:
-      'This tenant’s own clinical-enforcement stance: whether a reachable guardrail must classify the prompt as ' +
-      'medical for it to be allowed. Set it only if this tenant differs from the platform default — leaving it ' +
-      'unset is not "off", it inherits whatever the platform currently enforces. A non-clinical tenant turns it ' +
-      'off here rather than by weakening the platform floor for everyone else.',
-  },
   'text.guardrailPolicy.includeReasoning': {
     label: 'Include guardrail reasoning',
     description:
