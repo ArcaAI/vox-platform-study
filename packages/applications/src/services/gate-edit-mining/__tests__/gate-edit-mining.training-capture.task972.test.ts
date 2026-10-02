@@ -45,6 +45,8 @@ describe('GateEditMiningQueue.enqueue — the opt-out at the enqueue', () => {
     const sut = new GateEditMiningQueue(queue as never, resolver(true) as never);
     await sut.enqueue(job());
     expect(queue.add).toHaveBeenCalledTimes(1);
+    // Finished mining jobs stay visible on the admin queue board (bounded).
+    expect(queue.add.mock.calls[0][2]).toMatchObject({ removeOnComplete: 100 });
   });
 
   it('queues NOTHING for an opted-out clinician', async () => {

@@ -133,7 +133,8 @@ describe('TenantCheckpointService.restore — the ordered checks', () => {
     expect(out).toMatchObject({ status: 'PENDING', checkpointId: row.id, categories: ['CONFIG_CONTENT'], requestedBy: 'user-1', warnings: [] });
     const [, payload, opts] = f.restoreQueue.add.mock.calls[0];
     expect(payload).toEqual({ restoreId: out.id, tenantId: TENANT_A });
-    expect(opts).toMatchObject({ jobId: out.id });
+    // A finished restore must stay visible on the queue board, not vanish on completion.
+    expect(opts).toMatchObject({ jobId: out.id, removeOnComplete: 100 });
     expect(JSON.stringify(f.restoreQueue.add.mock.calls[0])).not.toContain('right-password');
     const event = f.eventEmitter.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceCreated)?.[1];
     expect(event).toMatchObject({ forceAuditLog: true, resourceId: out.id, resourceType: 'TenantCheckpointRestore' });

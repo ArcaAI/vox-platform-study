@@ -65,7 +65,7 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       jobId: `${job.tenantId}__${job.consultationId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5_000 },
-      removeOnComplete: true,
+      removeOnComplete: 100, // keep recent runs visible on the admin queue board
       removeOnFail: 100,
     });
   }

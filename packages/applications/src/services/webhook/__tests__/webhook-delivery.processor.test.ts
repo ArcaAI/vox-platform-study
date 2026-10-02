@@ -100,6 +100,8 @@ describe('WebhookDeliveryProcessor (matcher — @Processor(JobQueue.SysEvent))',
       resourceId: 'consultation-123',
     });
     expect(opts).toMatchObject({ ...WEBHOOK_DELIVERY_JOB_OPTIONS, jobId: 'hook:webhook-1:event-1' });
+    // Finished deliveries stay visible on the admin queue board (bounded).
+    expect(opts).toMatchObject({ removeOnComplete: 100 });
   });
 
   // Every other case in this describe hands the processor a real `Date`, which
