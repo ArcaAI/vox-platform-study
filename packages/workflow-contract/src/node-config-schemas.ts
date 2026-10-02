@@ -932,18 +932,6 @@ const CEL_EXPRESSION_PROPERTY = Object.freeze({
 });
 
 /**
- * TASK-890 §3.14 (OD-R clause 3) — the guardrail OVERRIDE, on the two nodes that can carry an
- * opinion about a whole call: a `core.agent` node (this instance) and `core.trigger` (this
- * workflow's default).
- *
- * TRI-STATE BY ABSENCE, the `mcpToolsEnabled` shape: the object absent — or present with no
- * `enabled` — means INHERIT, which is why there is no `default: true` here and why
- * `additionalProperties: false` matters. `resolveGuardrailDecision` (`guardrail-optout.ts`)
- * folds node > workflow > agent > `true` and names WHICH level decided, so the answer is
- * attributable rather than merely computed. A pushed `true` never turns a platform kill-switch
- * back on: `apps/text` keeps `platform.enabled` as the floor.
- */
-/**
  * TASK-932 R-16a — the DNA writing-style declaration on a `core.agent` instance.
  *
  * TASK-891 OD-5: the workflow NAMES the DNA-redaction agent. In the `core` vocabulary that agent
@@ -985,21 +973,6 @@ const DNA_PROPERTY = Object.freeze({
   }),
 });
 
-const GUARDRAIL_OVERRIDE_PROPERTY = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    enabled: Object.freeze({
-      type: 'boolean',
-      summary: 'On, off, or inherit the default safety setting.',
-      description:
-        'Whether platform guardrail screens this call. ABSENT = inherit (workflow, then agent, then on). A publish WARNING (`GUARDRAIL_OPTED_OUT`) and a per-call usage attribute record every `false`.',
-    }),
-  }),
-  summary: 'Turn safety screening on or off for this workflow.',
-  description: 'Guardrail opt-out for this scope. Absent means inherit — never "unset".',
-});
-
 const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/workflow-nodes/core.trigger.schema.json',
@@ -1034,7 +1007,6 @@ const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
       description:
         'The consultation-context object schema available to the whole session, authored inline or referenced by row. The run payload is validated against it before any node runs.',
     }),
-    guardrail: GUARDRAIL_OVERRIDE_PROPERTY,
     sampleInput: Object.freeze({
       type: 'object',
       summary: 'An example input, shown in the Studio and docs only.',
@@ -1122,7 +1094,6 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
       }),
     }),
     ...DOCUMENT_BINDING_PROPERTIES,
-    guardrail: GUARDRAIL_OVERRIDE_PROPERTY,
     dna: DNA_PROPERTY,
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
   }),
@@ -1623,9 +1594,9 @@ const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set<string>();
  * This set used to gate the `enabled` fold below, so the seven clinical guard types offered no
  * disable toggle at all, and the argument recorded here was that a switchable
  * `consultation.consentGate` is a compliance defect rather than a feature. The owner decided
- * otherwise: guardrail screening is platform-managed and a tenant may opt OUT of it per agent,
- * per workflow and per node (OD-R), and that opt-out extends to the mandatory clinical guards
- * (D-1). The safety property is not the absence of a switch — it is that using the switch is
+ * otherwise: a mandatory clinical guard node may be switched off (D-1). (The per-agent /
+ * per-workflow / per-node LLM guardrail opt-out that D-1 was decided beside is RETIRED — see
+ * `retired-guardrail-optout.ts`; D-1 itself is unchanged.) The safety property is not the absence of a switch — it is that using the switch is
  * IMPOSSIBLE TO DO QUIETLY. Three compensating controls carry it:
  *
  *   1. publish emits `GUARDRAIL_OPTED_OUT` (a WARNING, never blocking) naming every disabled

@@ -142,13 +142,9 @@ export type {
   TemplateResolvedPrompt,
 } from './prompt-composition';
 
-// TASK-890 §3.14 (OD-R clause 3) — the guardrail opt-out's ONE precedence function
-// (node > workflow > agent > `true`), mirrored in Python by the harness's `guardrail_optout.py`
-// and held to `tests/contracts/guardrail-optout.fixture.json`. Guardrail POLICY is untouched:
-// this answers only "does the platform's guardrail run for THIS call", and a tenant may only
-// opt OUT.
-export { GUARDRAIL_DECISION_SOURCES, guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
-export type { GuardrailDecision, GuardrailDecisionSource, GuardrailOptOutInputs } from './guardrail-optout';
+// The RETIRED guardrail opt-out (owner decision OD-1): no scope may switch platform screening off.
+// Stored rows may still carry the old field, so for one release every parser strips it on the way in.
+export { stripRetiredAgentGuardrailOptOut, stripRetiredGraphGuardrailOptOuts, stripRetiredNodeGuardrailOptOut } from './retired-guardrail-optout';
 
 export {
   CORE_NODE_TYPES,

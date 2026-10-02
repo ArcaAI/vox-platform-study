@@ -29,8 +29,8 @@
  */
 import { createHash } from 'node:crypto';
 import { canonicalJson } from './canonical-json';
-import { guardrailOptOutOf } from './guardrail-optout';
 import { topologicalLevels } from './graph-algorithms';
+import { stripRetiredGraphGuardrailOptOuts } from './retired-guardrail-optout';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from './graph-model';
 import { internalErrorFinding } from './report';
 import type { WorkflowFinding } from './report';
@@ -120,15 +120,6 @@ export interface CompiledPolicyBindings {
    * a schema by reference", never "unknown".
    */
   contextSchemaRefs?: CompiledContextSchemaRef[];
-  /**
-   * TASK-890 §3.14 — the WORKFLOW-level guardrail opinion, authored on `core.trigger`
-   * (the graph's one mandatory entry node) and folded with the per-node and per-agent
-   * opinions by `resolveGuardrailDecision` at run time, node > workflow > agent > on.
-   *
-   * Tri-state BY ABSENCE: omitted = this workflow expresses no opinion. `{ enabled: true }`
-   * is therefore not the same fact as absence — it is a recorded decision to screen.
-   */
-  guardrail?: { enabled: boolean };
 }
 
 /** TASK-890 §3.4 — one node's frozen context-schema binding. */
@@ -321,11 +312,11 @@ const NON_BRANCH_OUTPUTS: ReadonlySet<string> = new Set(['out', 'next']);
 /** The loop's body-entry handle. */
 const LOOP_EACH_PORT = 'each';
 /**
- * The graph's one mandatory entry node. Matched by TYPE rather than by class because both
- * facts this module freezes onto it — the resolved context schema and the workflow's
- * guardrail opinion — are properties of the TRIGGER specifically, not of the `entry` or
- * `boundary` class. Matching a string keeps the compiler registry-free (it imports no
- * descriptor); `publish-findings.ts` reads the same two configs the same way.
+ * The graph's one mandatory entry node. Matched by TYPE rather than by class because the
+ * fact this module freezes onto it — the resolved context schema — is a property of the
+ * TRIGGER specifically, not of the `entry` or `boundary` class. Matching a string keeps the
+ * compiler registry-free (it imports no descriptor); `publish-findings.ts` reads the same
+ * config the same way.
  */
 const TRIGGER_NODE_TYPE = 'core.trigger';
 
@@ -537,7 +528,9 @@ function compileScope(
  * the graph is not shape-safe for compilation (e.g. contains a cycle, so no topological stage
  * assignment exists) or references a node type the context cannot resolve.
  */
-export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResult {
+export function compile(authored: WorkflowGraph, ctx: CompilerContext): CompileResult {
+  // A stored row may still carry the retired guardrail opt-out; it is never compiled into an artifact.
+  const graph = stripRetiredGraphGuardrailOptOuts(authored).graph;
   try {
     const unresolvable = graph.nodes.filter((node) => ctx.nodeInfo(node.type) === undefined);
     if (unresolvable.length > 0) {
@@ -582,9 +575,9 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
 
     const loops = compiled.loops.slice().sort((a, b) => a.nodeId.localeCompare(b.nodeId));
 
-    // TASK-890 — the two additive `policyBindings` facts, derived from the trigger. Both are
-    // OMITTED when there is nothing to say, so an artifact that binds neither compiles to the
-    // same bytes (and the same checksum) it did before either field existed.
+    // TASK-890 — the additive `policyBindings` fact derived from the trigger. OMITTED when there
+    // is nothing to say, so an artifact that binds none compiles to the same bytes (and the same
+    // checksum) it did before the field existed.
     const trigger = topLevel.find((node) => node.type === TRIGGER_NODE_TYPE);
     const contextSchemaRefs: CompiledContextSchemaRef[] =
       trigger !== undefined && ctx.triggerContextSchema !== undefined && ctx.triggerContextSchema !== null
@@ -597,12 +590,10 @@ export function compile(graph: WorkflowGraph, ctx: CompilerContext): CompileResu
             },
           ]
         : [];
-    const workflowGuardrail = trigger === undefined ? null : guardrailOptOutOf(trigger.config);
 
     const policyBindings: CompiledPolicyBindings = {
       ...ctx.policyBindings,
       ...(contextSchemaRefs.length > 0 ? { contextSchemaRefs } : {}),
-      ...(workflowGuardrail === null ? {} : { guardrail: { enabled: workflowGuardrail } }),
     };
 
     const withoutChecksum = {

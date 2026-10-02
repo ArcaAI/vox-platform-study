@@ -156,19 +156,6 @@ const GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    // TASK-890 §3.14 (OD-R clause 3) — the AGENT-level guardrail default, the bottom of the
-    // node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements.
-    // ABSENT MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts
-    // OUT of, per agent, never a switch it has to remember to turn on. A `false` here is
-    // recorded three ways — a publish WARNING (`GUARDRAIL_OPTED_OUT`), the per-call usage
-    // attribute `guardrail: 'opted_out'`, and the TEXT response's own `reason` — so the
-    // omission is attributable rather than merely permitted.
-    enabled: Object.freeze({
-      type: 'boolean',
-      default: true,
-      description:
-        'Whether platform guardrail screens this agent`s input and output. Absent = on. A `core.agent` node or the workflow`s trigger may override it; nothing can turn a platform kill-switch back on.',
-    }),
     input: GUARD_POLICY_LIST,
     output: GUARD_POLICY_LIST,
   }),

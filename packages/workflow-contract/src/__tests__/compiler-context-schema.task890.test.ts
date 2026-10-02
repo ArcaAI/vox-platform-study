@@ -133,23 +133,13 @@ describe('compile — the frozen trigger context schema', () => {
   });
 });
 
-describe('compile — the workflow guardrail default (§3.14)', () => {
-  it('compiles an explicit opt-out from the trigger into policyBindings', () => {
-    const config = compiledOrThrow(graph({ guardrail: { enabled: false } }), baseCtx());
-
-    expect(config.policyBindings.guardrail).toEqual({ enabled: false });
-  });
-
-  it('compiles an explicit opt-IN too — a decision recorded is not the same as no decision', () => {
-    const config = compiledOrThrow(graph({ guardrail: { enabled: true } }), baseCtx());
-
-    expect(config.policyBindings.guardrail).toEqual({ enabled: true });
-  });
-
-  it('says nothing when the workflow expresses no opinion (absence is the tri-state)', () => {
-    const config = compiledOrThrow(graph({ guardrail: {} }), baseCtx());
-
-    expect(config.policyBindings).not.toHaveProperty('guardrail');
+describe('compile — the retired workflow guardrail opt-out', () => {
+  it('never compiles a stored trigger opt-out into policyBindings', () => {
+    expect(compiledOrThrow(graph({ guardrail: { enabled: false } }), baseCtx()).policyBindings).not.toHaveProperty('guardrail');
     expect(compiledOrThrow(graph(), baseCtx()).policyBindings).not.toHaveProperty('guardrail');
+  });
+
+  it('compiles a graph with a stored opt-out to the same bytes as one without it', () => {
+    expect(compiledOrThrow(graph({ guardrail: { enabled: false } }), baseCtx()).checksum).toBe(compiledOrThrow(graph(), baseCtx()).checksum);
   });
 });

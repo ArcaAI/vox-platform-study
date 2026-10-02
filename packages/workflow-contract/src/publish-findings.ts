@@ -39,7 +39,7 @@ import { agenticNodeConfigProblems } from './agentic-contract';
 import type { AgenticGraphContext } from './agentic-contract';
 import { coreNodeConfigProblems, loopBodyProblems } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
-import { guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
+import { stripRetiredGraphGuardrailOptOuts } from './retired-guardrail-optout';
 import { NODE_CONFIG_SCHEMAS } from './node-config-schemas';
 import type { WorkflowNodeDescriptor } from './node-registry';
 import { WORKFLOW_NODE_REGISTRY, classesOf } from './node-registry';
@@ -217,7 +217,10 @@ function schemaOfKeys(keys: readonly string[]): SchemaLike {
 // The gate
 // =============================================================================================
 
-export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+  // A stored row may still carry the retired guardrail opt-out: accepted and stripped, never a
+  // schema refusal and never an opt-out (`retired-guardrail-optout.ts`).
+  const graph = stripRetiredGraphGuardrailOptOuts(authored).graph;
   const registry = ctx.registry === undefined ? WORKFLOW_NODE_REGISTRY : { ...WORKFLOW_NODE_REGISTRY, ...ctx.registry };
   const findings: WorkflowFinding[] = [];
   const nodes = (graph.nodes ?? []).filter((node): node is WorkflowGraphNode => typeof node?.id === 'string' && typeof node?.type === 'string');
@@ -296,7 +299,7 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
   }
 
   // ---------------------------------------------------------------------------------------
-  // The per-node schema, context-schema, guardrail and template checks. Release 1 scoped them to
+  // The per-node schema, context-schema and template checks. Release 1 scoped them to
   // `core.*` nodes so the legacy palettes' seeded graphs stayed publishable; TASK-893 retired
   // those palettes, so every check now runs on every node of every graph.
   // ---------------------------------------------------------------------------------------
@@ -332,28 +335,6 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
         ),
       );
     }
-  }
-
-  // The workflow's guardrail default, folded per `core.agent` node with the node's own opinion.
-  const workflowGuardrail = (() => {
-    for (const node of coreNodes) {
-      if (node.type !== 'core.trigger') continue;
-      const opinion = guardrailOptOutOf(node.config);
-      if (opinion !== null) return { opinion, nodeId: node.id };
-    }
-    return null;
-  })();
-  if (workflowGuardrail !== null && !workflowGuardrail.opinion) {
-    findings.push(
-      finding(
-        'GUARDRAIL_OPTED_OUT',
-        'invariant',
-        'WARNING',
-        workflowGuardrail.nodeId,
-        `This workflow turns platform guardrail screening OFF by default (source: workflow). Every \`core.agent\` node that does not override it runs unscreened, and each run records \`guardrail: "opted_out"\`.`,
-        '/guardrail/enabled',
-      ),
-    );
   }
 
   // The MANDATORY nodes this graph DISABLES (TASK-890 D-1, §3.14a #6).
@@ -393,7 +374,7 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
         node.id,
         `node \`${node.id}\` (\`${label}\`) is DISABLED, and it is a mandatory node${
           classes.length > 0 ? ` (classes: ${classes.join(', ')})` : ''
-        }. It stays in the graph — publish still refuses a graph that removed it — but it will not execute: each run records a SKIPPED(disabled_by_config) step for it and \`guardrail: "opted_out"\` on the usage row.`,
+        }. It stays in the graph — publish still refuses a graph that removed it — but it will not execute: each run records a SKIPPED(disabled_by_config) step for it.`,
         '/enabled',
       ),
     );
@@ -408,22 +389,6 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
     const slug = typeof agentRef?.slug === 'string' ? agentRef.slug : null;
     const agent = slug === null ? undefined : ctx.agents?.[slug];
     const overrides = isPlainObject(config.overrides) ? config.overrides : undefined;
-
-    // Guardrail: the FOLD, not the literal — a node inheriting an off workflow default is opted
-    // out just as surely as one that says so itself, and the record has to show both.
-    const decision = resolveGuardrailDecision({ node: guardrailOptOutOf(config), workflow: workflowGuardrail?.opinion ?? null });
-    if (!decision.enabled) {
-      findings.push(
-        finding(
-          'GUARDRAIL_OPTED_OUT',
-          'invariant',
-          'WARNING',
-          node.id,
-          `node \`${node.id}\`: platform guardrail screening is OFF for this agent node (source: ${decision.source}). The call runs unscreened and records \`guardrail: "opted_out"\`.`,
-          '/guardrail/enabled',
-        ),
-      );
-    }
 
     // 4c — the per-node override must sit inside the agent's declared range. The node schema
     // already bounds each hyper-parameter globally; this is the AGENT's narrower promise.

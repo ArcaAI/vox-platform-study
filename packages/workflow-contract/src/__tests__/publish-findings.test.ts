@@ -229,52 +229,7 @@ describe('publishFindings — the context-schema reference', () => {
   });
 });
 
-describe('publishFindings — GUARDRAIL_OPTED_OUT (§3.14)', () => {
-  it('WARNS, never blocks, on a `core.agent` node that opts out', () => {
-    const graph = coreGraph([{ id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' }, guardrail: { enabled: false } } }]);
-    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.severity).toBe('WARNING');
-    expect(findings[0]?.nodeId).toBe('a1');
-    expect(findings[0]?.message).toContain('node');
-  });
-
-  it('WARNS on the trigger when the WORKFLOW default is off', () => {
-    const graph = {
-      nodes: [{ id: 't1', type: 'core.trigger', config: { kinds: ['api'], guardrail: { enabled: false } }, position: { x: 0, y: 0 } }],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.nodeId).toBe('t1');
-  });
-
-  it('WARNS on an agent node that INHERITS an off workflow default — the fold, not the literal', () => {
-    const graph = {
-      nodes: [
-        { id: 't1', type: 'core.trigger', config: { kinds: ['api'], guardrail: { enabled: false } }, position: { x: 0, y: 0 } },
-        { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' } }, position: { x: 1, y: 0 } },
-      ],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    const nodeIds = publishFindings(graph, ctx())
-      .filter((f) => f.code === 'GUARDRAIL_OPTED_OUT')
-      .map((f) => f.nodeId)
-      .sort();
-    expect(nodeIds).toEqual(['a1', 't1']);
-  });
-
-  it('is silent when a node re-enables screening the workflow turned off', () => {
-    const graph = {
-      nodes: [
-        { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
-        { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' }, guardrail: { enabled: true } }, position: { x: 1, y: 0 } },
-      ],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
-  });
-
+describe('publishFindings — GUARDRAIL_OPTED_OUT on a disabled mandatory node (D-1)', () => {
   it('WARNS on a DISABLED mandatory guard node, naming its type and the classes that made it mandatory (D-1)', () => {
     // TASK-893: the mandatory clinical guards are ACTIONS behind `core.action`, so the class
     // that earns this warning is resolved PER INSTANCE from `actionKey` — a type-set lookup

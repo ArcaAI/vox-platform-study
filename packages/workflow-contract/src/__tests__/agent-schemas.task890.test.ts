@@ -7,9 +7,8 @@
  *    `{{age}}` and `{{context.patientAge}}` can be the same value (§3.3). The retired flat form
  *    (`{ age: "67" }`) is REFUSED rather than quietly accepted, because a flat string cannot
  *    express the path half and silently binding it as a literal is how a prompt loses a variable.
- * 2. `parameters.guards.enabled` — the AGENT-level guardrail default (§3.14, OD-R clause 3).
- * 3. `core.agent.guardrail` / `core.trigger.guardrail` — the node and workflow overrides, ABSENT
- *    meaning "inherit" (the tri-state-by-absence shape `mcpToolsEnabled` already uses).
+ * 2./3. The agent / node / workflow guardrail opt-out this wave added is RETIRED (OD-1); its
+ *    retirement is pinned by `retired-guardrail-optout.test.ts`.
  *
  * The agent's bound context schema (`contextSchemaId` + `contextSchemaVersionNumber`) also lands
  * on the config VIEW here: L8 resolves the row and freezes the derived payload schema, but the
@@ -18,7 +17,6 @@
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
 import { AGENT_INSTRUCTION_SCHEMAS, AGENT_PARAMETER_SCHEMAS, agentConfigProblems, type AgentConfigView } from '../agent-schemas';
-import { coreNodeConfigProblems } from '../core-contract';
 import { NODE_CONFIG_SCHEMAS } from '../node-config-schemas';
 
 const textAgent = (instruction: Record<string, unknown>, parameters: Record<string, unknown> = {}): AgentConfigView => ({
@@ -62,50 +60,20 @@ describe('instruction.variables — the binding form (OD-K)', () => {
   });
 });
 
-describe('parameters.guards.enabled — the agent-level guardrail default (§3.14)', () => {
-  it('accepts `false` beside the existing policy-key lists', () => {
-    const parameters = { guards: { enabled: false, input: ['pii'], output: ['groundedness'] } };
-    expect(jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS.TEXT_GENERATION, parameters, 'parameters')).toEqual([]);
-    expect(agentConfigProblems(textAgent({}, parameters))).toEqual([]);
+describe('parameters.guards — policy-key lists only, no opt-out switch', () => {
+  it('accepts the policy-key lists', () => {
+    expect(jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS.TEXT_GENERATION, { guards: { input: ['pii'], output: ['groundedness'] } }, 'parameters')).toEqual([]);
   });
 
-  it('accepts an ABSENT `enabled` — absence means ON, never "unset"', () => {
-    expect(jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS.TEXT_GENERATION, { guards: { input: ['pii'] } }, 'parameters')).toEqual([]);
-  });
-
-  it('REFUSES a non-boolean', () => {
-    expect(jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS.TEXT_GENERATION, { guards: { enabled: 'no' } }, 'parameters').length).toBeGreaterThan(0);
+  it('REFUSES a fresh `guards.enabled` — the opt-out is retired; only a STORED one is stripped', () => {
+    expect(jsonSchemaValueProblems(AGENT_PARAMETER_SCHEMAS.TEXT_GENERATION, { guards: { enabled: false } }, 'parameters').length).toBeGreaterThan(0);
   });
 });
 
-describe('core.agent / core.trigger `guardrail` — the node and workflow overrides (§3.14)', () => {
-  const schemaOf = (type: 'core.agent' | 'core.trigger') => NODE_CONFIG_SCHEMAS[type];
-
-  it('core.agent accepts `guardrail: { enabled: false }`', () => {
-    const config = { agentRef: { slug: 'summarizer' }, guardrail: { enabled: false } };
-    expect(jsonSchemaValueProblems(schemaOf('core.agent'), config, '/nodes/0/config')).toEqual([]);
-    expect(coreNodeConfigProblems({ id: 'n1', type: 'core.agent', config })).toEqual([]);
-  });
-
-  it('core.trigger accepts `guardrail: { enabled: false }` — the WORKFLOW default', () => {
-    const config = { kinds: ['api'], guardrail: { enabled: false } };
-    expect(jsonSchemaValueProblems(schemaOf('core.trigger'), config, '/nodes/0/config')).toEqual([]);
-    expect(coreNodeConfigProblems({ id: 't1', type: 'core.trigger', config })).toEqual([]);
-  });
-
-  it('an ABSENT `guardrail` object is INHERIT, not a problem', () => {
-    expect(jsonSchemaValueProblems(schemaOf('core.agent'), { agentRef: { slug: 'summarizer' } }, '/c')).toEqual([]);
-    expect(jsonSchemaValueProblems(schemaOf('core.trigger'), { kinds: ['api'] }, '/c')).toEqual([]);
-  });
-
-  it('REFUSES an undeclared key or a non-boolean inside `guardrail`', () => {
-    expect(jsonSchemaValueProblems(schemaOf('core.agent'), { agentRef: { slug: 'summarizer' }, guardrail: { foo: 1 } }, '/c').length).toBeGreaterThan(
-      0,
-    );
-    expect(
-      jsonSchemaValueProblems(schemaOf('core.agent'), { agentRef: { slug: 'summarizer' }, guardrail: { enabled: 'no' } }, '/c').length,
-    ).toBeGreaterThan(0);
-    expect(jsonSchemaValueProblems(schemaOf('core.trigger'), { kinds: ['api'], guardrail: { foo: 1 } }, '/c').length).toBeGreaterThan(0);
+describe('core.agent / core.trigger declare no `guardrail` override', () => {
+  it('REFUSES a fresh `guardrail` key on either node', () => {
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.agent'], { agentRef: { slug: 'summarizer' }, guardrail: { enabled: false } }, '/c').length).toBeGreaterThan(0);
+    expect(jsonSchemaValueProblems(NODE_CONFIG_SCHEMAS['core.trigger'], { kinds: ['api'], guardrail: { enabled: false } }, '/c').length).toBeGreaterThan(0);
   });
 });
 

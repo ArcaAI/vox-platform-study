@@ -413,7 +413,7 @@
           "required": [
             "enabled"
           ],
-          "description": "TASK-890 \u00a73.14 \u2014 the WORKFLOW-level guardrail opinion, authored on core.trigger and folded with the per-node and per-agent opinions at run time (node > workflow > agent > on). Tri-state BY ABSENCE: omitted means this workflow expresses no opinion, so { enabled: true } is a recorded decision to screen rather than a synonym for absence.",
+          "description": "RETIRED (OD-1): the former WORKFLOW-level guardrail opt-out. The compiler no longer emits it and no runtime honours it; it stays declared for ONE release only so an artifact compiled before the retirement still validates. Remove with the retired-guardrail-optout helpers.",
           "properties": {
             "enabled": {
               "type": "boolean"
