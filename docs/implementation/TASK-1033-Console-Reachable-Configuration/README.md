@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — merged on `dev-2.2`, verified locally; not pushed, cluster value not yet set |
+| Status | **Completed** — pushed (`b2de077f`), deployed to `hope-v2-dev`, cluster download verified |
 | Type | feature (console) + bugfix (misleading registry provenance) |
 | Branch | `dev-2.2` |
 | Rules | 00, 01, 04, 05, 07, 10, 11, 13 |
@@ -121,7 +121,12 @@ What changed:
 - Runtime (local `api:dev` + `next dev`, super admin, no working tenant): registry drawer shows `Edit in Tenant storage →` (`href=/tenants/storage?tab=configs`); saving `publicEndpoint` → PUT 200, catalog `dedicatedRow {value, version: 2}`; Reset → confirm dialog → PUT 200, `publicEndpoint: null`, other fields untouched (v3); `minio.secretKey` / `storage.platformDefault.credentials` still `locked`, no link. Light + dark rendered; axe on the registry page with the drawer open: 0 violations.
 - Pre-existing, out of scope: 2 `no-silent-catch` warnings in `tenant-storage-config.service.ts` (lines 142, 293; file not touched).
 
-### Rollout (dev cluster)
+### Rollout (dev cluster) — done 2026-10-02
+- Pushed `dev-2.2` → `b2de077f`; pipeline #1398 green (one transient registry `blob unknown` on `build-gpu-process-exporter`, retried); API reported `0.0.0-dev-2-2.b2de077f` ~9 min after push.
+- SYSTEM `TenantStorageConfig` row `00000000-0000-0000-0005-000000000001`: `publicEndpoint` set to `https://admin.taphuynh.dev` by a direct SQL update (`_version` 1 → 2, `updatedBy` = system user) — no AuditLog entry; re-save from the console if one is wanted.
+- Verified: `POST admin/tenants/50000000-…-0001/checkpoints/01a0fabb…/download-url` → 200, URL origin `https://admin.taphuynh.dev`; ranged GET → 206 `bytes 0-15/27785177`, `Content-Disposition: attachment; filename="ARCAAI-20261002-0349-01a0fabb.hcp"`, magic `HOPECKPT`.
+
+Original runbook note:
 After push + promotion, a platform admin sets **Tenant storage → Configs → Public download endpoint = `https://admin.taphuynh.dev`** (no working tenant). The `hope-minio-presigned` IngressRoute already routes signed requests on that host.
 
 ## Change History
@@ -129,3 +134,4 @@ After push + promotion, a platform admin sets **Tenant storage → Configs → P
 |---|---|
 | 2026-10-02 | Ticket opened; OD-A (Vault locked), OD-B (env read-only), OD-C (everything else console-reachable). Plan written. |
 | 2026-10-02 | Both lanes merged; three orchestrator fixes; gates + runtime verified locally. Status → Review. |
+| 2026-10-02 | Pushed, deployed, cluster `publicEndpoint` set, checkpoint download verified on the cluster. Status → Completed. |
