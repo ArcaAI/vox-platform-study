@@ -53,7 +53,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from harness.temporal.interpreter.expressions import evaluate_condition
-from harness.temporal.interpreter.templating import render_template
+from harness.temporal.interpreter.templating import (
+    render_template,
+    resolve_template_path,
+    template_references,
+)
 
 __all__ = [
     "AGENT_CONDITION_ROOTS",
@@ -61,9 +65,11 @@ __all__ = [
     "ComposedPrompt",
     "FragmentExclusion",
     "PromptCompositionEmpty",
+    "build_prompt_scope",
     "compose_prompt",
     "select_prompt_fragments",
     "static_projection",
+    "unresolved_prompt_variables",
 ]
 
 #: The roots a ``when`` may read — the render scope's own (``_prompt_scope``), by name.
@@ -232,3 +238,101 @@ def static_projection(
     """The unconditional fragments' RAW content joined — what publish stamps as ``content``
     (OD-3), so a reader that predates fragments renders the base prompt rather than none."""
     return join.join(_content(fragment) for fragment in fragments if fragment.get("when") is None)
+
+
+def unresolved_prompt_variables(resolved_prompt: Any, scope: Mapping[str, Any]) -> list[str]:
+    """The placeholders THIS call would fail on, all of them, before rendering — sorted,
+    de-duplicated, defaulted ones excluded. Mirrors ``unresolvedPromptVariables``.
+
+    Selection runs first, over the same scope ``compose_prompt`` uses, so a fragment this call
+    excludes never asks for anything. An empty selection returns ``[]``: that case is
+    ``PromptCompositionEmpty``, a different failure with its own name.
+    """
+    data = _as_mapping(resolved_prompt)
+    if data is None:
+        return []
+    if data.get("source") == "composite":
+        selected, _ = select_prompt_fragments(_fragments(data), scope)
+        templates = [_content(fragment) for fragment in selected]
+    else:
+        templates = [_content(data)]
+
+    # A path is REQUIRED when any one of its occurrences carries no default.
+    required: dict[str, bool] = {}
+    for template in templates:
+        if not template:
+            continue
+        for reference in template_references(template):
+            required[reference.path] = required.get(reference.path, False) or (
+                not reference.has_default
+            )
+    lookup = dict(scope)
+    return sorted(
+        path
+        for path, is_required in required.items()
+        if is_required and resolve_template_path(lookup, path) is None
+    )
+
+
+def build_prompt_scope(
+    *,
+    variables: Mapping[str, Any] | None = None,
+    trigger: Mapping[str, Any] | None = None,
+    context: Mapping[str, Any] | None = None,
+    input: Mapping[str, Any] | None = None,  # noqa: A002 - the scope root is named `input`
+    vars: Mapping[str, Any] | None = None,  # noqa: A002 - the scope root is named `vars`
+    nodes: Mapping[str, Any] | None = None,
+    template_ref: str | None = None,
+) -> dict[str, Any]:
+    """The ONE render scope. Mirrors ``buildPromptScope`` in ``@arcaai/workflow-contract``.
+
+    ``context`` is the canonical root and ``trigger`` its alias: whichever ONE of the two a
+    caller supplies, both resolve to the same object, so a prompt written against either spelling
+    renders on every lane. When BOTH are supplied (a workflow run whose trigger is the envelope and
+    whose context is its single-kind unwrap) they are kept as given.
+
+    Roots are bound only when present (an absent root is not ``{}``), and BEFORE the bare names, so
+    an agent that declares a variable called ``context`` still wins its own name. Each
+    ``variables`` entry is a binding — ``{"value": str}`` a literal, ``{"path": str}`` resolved
+    against the roots — or a plain value; the resolved map is also exposed as ``variables``.
+    """
+    scope: dict[str, Any] = {}
+    trigger_view = dict(trigger) if isinstance(trigger, Mapping) else None
+    context_view = dict(context) if isinstance(context, Mapping) else None
+    if trigger_view is not None:
+        scope["trigger"] = trigger_view
+        scope["context"] = trigger_view
+    if context_view is not None:
+        scope["context"] = context_view
+        if trigger_view is None:
+            scope["trigger"] = context_view
+    for name, root in (("input", input), ("vars", vars), ("nodes", nodes)):
+        if isinstance(root, Mapping):
+            scope[name] = dict(root)
+
+    declared = variables if isinstance(variables, Mapping) else {}
+    resolved = {
+        name: _resolve_binding(
+            binding,
+            scope,
+            template_ref if template_ref is not None else f"instruction.variables.{name}",
+        )
+        for name, binding in declared.items()
+    }
+    scope.update(resolved)
+    scope["variables"] = resolved
+    return scope
+
+
+def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:
+    """``{"value": str}`` is a literal, ``{"path": str}`` a reference resolved through the grammar
+    (an unresolved one raises ``PromptVariableUnresolved`` naming the path); anything else is the
+    value itself."""
+    if not isinstance(binding, Mapping):
+        return binding
+    if isinstance(binding.get("value"), str):
+        return binding["value"]
+    path = binding.get("path")
+    if isinstance(path, str):
+        return render_template("{{" + path + "}}", scope, template_ref=template_ref)
+    return binding
