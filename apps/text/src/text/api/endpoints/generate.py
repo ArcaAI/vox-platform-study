@@ -37,8 +37,6 @@ from text.core.dependencies import (
 from text.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
-    ContentBlockedError,
-    GuardrailUnavailableError,
     ProviderCredentialsError,
     QueueTimeoutError,
     RateLimitError,
@@ -53,7 +51,6 @@ from text.core.exceptions import (
 from text.core.exceptions import (
     QueueFullError as DomainQueueFullError,
 )
-from text.core.guardrail_posture import platform_moderation_enabled, tenant_opted_out
 from text.core.logging import get_logger
 from text.core.metrics import (
     ACTIVE_GENERATIONS,
@@ -73,7 +70,7 @@ from text.core.metrics import (
 )
 from text.core.runtime_defaults import PROVIDER_TIMEOUT_FLOOR_S
 from text.core.telemetry import set_generation_span_attributes
-from text.models.requests import GenerateRequest, serialize_provider_overrides
+from text.models.requests import GenerateRequest
 from text.models.responses import (
     ErrorResponse,
     GenerateResponse,
@@ -88,22 +85,17 @@ from text.models.usage import (
     UsageDetail,
     build_usage_detail,
     engine_ms_from_stats,
-    guardrail_usage_from_verdict,
     raw_usage_from_stats,
 )
 from text.providers.base import ProviderNotFoundError, ProviderRegistry
 from text.services.circuit_breaker import CircuitBreaker
-from text.services.external_guardrail import (
-    GUARDRAIL_UNAVAILABLE_REASON,
-    ExternalGuardrailClient,
-)
+from text.services.egress import prepare_egress, request_segments, run_inbound_gate
+from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
-from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.output_gate import (
     OutputRejectedError,
     assemble_completion,
     gate_completion,
-    source_context_of,
 )
 from text.services.pool_health import PoolHealthTracker
 from text.services.pool_router import resolve_pool_route
@@ -167,91 +159,6 @@ from text.routing.usage import (  # noqa: E402, F401
     funding_label,
 )
 
-
-async def _apply_guardrail_gate(
-    guardrail_client: ExternalGuardrailClient | None,
-    *,
-    request_body: GenerateRequest,
-    tenant_id: str | None,
-    app_state: Any,
-) -> UsageDetail | None:
-    """Run the INPUT half of the moderation gate; return guardrail's own usage.
-
-    Extracted verbatim from the ``/generate`` body so there is exactly one
-    input gate in this service and one place to assert it is not being
-    reached from the internal judge lane. The OUTPUT half — the post-receive
-    check on the completion (TASK-871) — is `services/output_gate.gate_completion`,
-    which mirrors these branches and this tripwire. Behaviour is unchanged: a genuine
-    content rejection is a 422, a sustained outage is a retryable 503, a
-    malformed verdict fails closed, and the enforce-posture-with-unwired-client
-    case fails closed too. The dev/CI bypass (client absent or disabled) is
-    preserved.
-
-    The assert_not_in_judge_scope call is the cycle tripwire
-    apps/guardrail delegates its LLM judgement to this service, so
-    gating a JUDGE call on guardrail would close an unbounded
-    ``text -> guardrail -> text`` cycle and deadlock the safety plane behind the
-    pool it protects. If a future edit routes this helper onto the judge path it
-    raises here rather than shipping the cycle.
-    """
-    if guardrail_client is not None:
-        assert_not_in_judge_scope("generate._apply_guardrail_gate")
-        verdict = await guardrail_client.validate(
-            prompt=request_body.prompt,
-            system_prompt=request_body.system_prompt,
-            tenant_id=tenant_id,
-            # The tenant's own moderation policy, PUSHED with the request. Folds
-            # over the platform default tenant-first; absent ⇒ the platform
-            # posture stands (`core/guardrail_posture.py`).
-            tenant_policy=request_body.guardrail_policy,
-            # The connection the gateway injected for THIS generation, forwarded
-            # so guardrail's judge has one (TASK-890). Guardrail delegates its
-            # judgement back to this service, which holds no credential of its
-            # own, so a blob that stops here becomes a 503 two hops away and a
-            # 502 at the gateway. Serialized rather than dumped: `SecretStr`
-            # masks itself on `model_dump()`.
-            provider_overrides=serialize_provider_overrides(request_body.provider_overrides),
-        )
-        # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
-        # guardrail tokens, and metering the safety plane is exactly how its cost
-        # lands in per-encounter margin (it is never invoiced to the tenant).
-        guardrail_usage = guardrail_usage_from_verdict(verdict)
-        if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
-            reason = verdict.get("reason", "not_allowed")
-            # A sustained guardrail outage is retryable (503); a genuine content
-            # rejection is a 422. Both fail CLOSED — generation never runs.
-            # `error_code` is a FIXED, non-PHI token from the closed vocabulary
-            # (TASK-969 WS-3): `reason` — which mirrors guardrail's free-text
-            # `reasoning` and can quote the prompt — only PICKS the branch below
-            # and is NEVER interpolated into the response.
-            if reason == GUARDRAIL_UNAVAILABLE_REASON:
-                raise GuardrailUnavailableError()
-            if verdict.get("is_medical") is False:
-                raise ContentBlockedError(
-                    "The prompt was not classified as clinical content by the "
-                    "medical-relevance guardrail.",
-                    error_code="CONTENT_BLOCKED_NOT_MEDICAL",
-                )
-            raise ContentBlockedError("Content was blocked by the safety guardrail.")
-        return guardrail_usage
-    if _platform_moderation_enabled(app_state) and not tenant_opted_out(
-        request_body.guardrail_policy
-    ):
-        # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
-        # than silently skip moderation (a misconfiguration must not ship unmoderated
-        # PHI). Retryable (503) once the client is provisioned.
-        #
-        # A call the tenant OPTED OUT of (TASK-890 OD-R) is the one exception, and it is
-        # not a weakening: there is no screening to be misconfigured for a call that
-        # asked for none, and 503-ing it would make the opt-out depend on whether a
-        # client this request never needed happened to be wired. The wired path reaches
-        # the same answer through `validate`'s own short-circuit; this branch keeps the
-        # two consistent. The decision is still recorded — `guardrail: 'opted_out'` on
-        # the usage row, gateway-side.
-        raise GuardrailUnavailableError()
-    return None
-
-
 #: Streaming idempotency records live under their own prefix. The non-streaming
 #: path caches a whole ``GenerateResponse`` under ``text:idem:``; a streaming
 #: retry needs a generation id and a payload fingerprint instead, and two
@@ -278,6 +185,7 @@ async def _resolve_stream_idempotency(
     idempotency_key: str | None,
     request_body: GenerateRequest,
     generation_id: str,
+    tenant_id: str | None = None,
 ) -> str | None:
     """Map an Idempotency-Key to a generation id.
 
@@ -293,7 +201,9 @@ async def _resolve_stream_idempotency(
     if not idempotency_key or redis_client is None:
         return None
 
-    key = f"{_STREAM_IDEM_PREFIX}{idempotency_key}"
+    # TASK-1035: tenant-scoped, so one tenant's key can never replay another's
+    # (re-identified) generation.
+    key = f"{_STREAM_IDEM_PREFIX}{tenant_id or '-'}:{idempotency_key}"
     fingerprint = _payload_fingerprint(request_body)
     record = json.dumps({"generation_id": generation_id, "fingerprint": fingerprint})
 
@@ -333,12 +243,6 @@ async def _resolve_stream_idempotency(
             },
         )
     return str(prior.get("generation_id") or generation_id)
-
-
-# Shared with the output gate (`core/guardrail_posture.py`) so both halves fail
-# closed identically when the posture enforces and no client is wired. Kept
-# under its private name here for the call site above.
-_platform_moderation_enabled = platform_moderation_enabled
 
 
 def _get_provider_timeout(runtime_timeouts: dict[str, int], provider_name: str) -> float:
@@ -469,7 +373,9 @@ async def generate(
     # returning. The lookup is strictly BEST-EFFORT: no key, no Redis wired, OR a Redis read
     # error all fall through to normal generation — a dedup-store outage must degrade to
     # "generate" (the documented residual), never fail an otherwise-serviceable request.
-    cache_key = f"text:idem:{idempotency_key}" if idempotency_key else None
+    # TASK-1035: the cache holds RE-IDENTIFIED output, so it is keyed by tenant —
+    # a key reused by another tenant is a miss, never another tenant's note.
+    cache_key = f"text:idem:{x_tenant_id or '-'}:{idempotency_key}" if idempotency_key else None
     if cache_key is not None and redis_client is not None:
         try:
             cached = await redis_client.get(cache_key)
@@ -482,18 +388,25 @@ async def generate(
             logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
             return GenerateResponse.model_validate_json(cached)
 
-    # Guardrail's own LLM spend rides back on THIS response — guardrail is a peer
-    # service with no gateway in front of it, so the verdict is the only path its
+    # TASK-1035 egress pipeline (`services/egress.py`). The inbound screen (with
+    # PII spans) and the medical judge run CONCURRENTLY and both block. Guardrail's
+    # own LLM spend rides back on THIS response — the verdict is the only path its
     # tokens have to the billing plane.
-    guardrail_usage: UsageDetail | None = None
-
-    # Guardrail medical-content validation (see ``_apply_guardrail_gate``).
-    guardrail_usage = await _apply_guardrail_gate(
+    inbound = await run_inbound_gate(
         guardrail_client,
-        request_body=request_body,
+        segments=request_segments(request_body),
+        prompt=request_body.prompt,
+        system_prompt=request_body.system_prompt,
         tenant_id=x_tenant_id,
-        app_state=app_state,
+        tenant_policy=request_body.guardrail_policy,
+        provider_overrides=request_body.provider_overrides,
+        medical_exempt=request_body.medical_exempt,
     )
+    guardrail_usage: UsageDetail | None = inbound.guardrail_usage
+    # Locality is resolved on the provider ACTUALLY called (after degrade-routing
+    # rewrote `request_body.provider`). On cloud the provider receives tokens.
+    egress = prepare_egress(request_body, spans_by_segment=inbound.spans_by_segment)
+    provider_request = egress.provider_request
 
     ctx = structlog.contextvars.get_contextvars()
 
@@ -587,7 +500,7 @@ async def generate(
         generation_id = task.task_id
 
         replayed = await _resolve_stream_idempotency(
-            redis_client, idempotency_key, request_body, generation_id
+            redis_client, idempotency_key, request_body, generation_id, x_tenant_id
         )
         if replayed is not None:
             # A retry of a delivered request. Same id, no second provider call —
@@ -607,7 +520,7 @@ async def generate(
                     producer,
                     task_manager,
                     provider,
-                    request_body,
+                    provider_request,
                     provider_name=request_body.provider,
                     model=model,
                     shutdown_manager=shutdown_manager,
@@ -633,6 +546,9 @@ async def generate(
                         else None
                     ),
                     app_state=app_state,
+                    # TASK-1035 — sentence-window release, pii_leak per locality
+                    # and re-identification happen inside the producer (OD-7).
+                    egress=egress,
                 ),
                 provider=request_body.provider,
             )
@@ -714,7 +630,7 @@ async def generate(
             for attempt in range(max_retries + 1):
                 try:
                     content, reasoning, gen_result = await asyncio.wait_for(
-                        provider.generate(request_body),
+                        provider.generate(provider_request),
                         timeout=timeout_s,
                     )
                     if cb:
@@ -804,15 +720,25 @@ async def generate(
         # output check; the response carries one `guardrail_usage` slot, which
         # stays the input verdict's — guardrail's outbound screen reports no
         # usage yet, so there is nothing to fold in until it does.
+        #
+        # TASK-1035: on CLOUD the screen sees the PSEUDONYMIZED completion and
+        # source, BEFORE re-identification — a real identifier in it was leaked or
+        # hallucinated and blocks the response; on LOCAL `pii_leak` is detect-only.
         await gate_completion(
             guardrail_client,
             completion=assemble_completion(content, reasoning),
-            source_context=source_context_of(request_body),
+            source_context=egress.source_context,
             tenant_id=x_tenant_id,
             tenant_policy=request_body.guardrail_policy,
             app_state=app_state,
             where="generate.post_receive_gate",
+            locality=egress.locality,
         )
+        # Re-identify BEFORE the task is completed, returned or cached: nothing
+        # downstream of this line ever sees a token.
+        content = egress.restore(content)
+        reasoning = egress.restore(reasoning) if reasoning else reasoning
+        egress.log("generate")
 
         # assemble normalized GenerationStats and thread it onto
         # the response. STRICTLY best-effort — a stats-mapping failure must never
@@ -950,6 +876,7 @@ async def generate(
             stats=stats,
             usage_detail=usage_detail,
             guardrail_usage=guardrail_usage,
+            egress=egress.summary,
         )
         # Cache the completed generation so a replayed request carrying the
         # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
@@ -1014,6 +941,8 @@ async def generate(
         # (billed) token totals under `status="rejected"`, and nothing is cached.
         # Same status split as the input gate: 422 content, 503 outage.
         latency_ms = int((time.monotonic() - start) * 1000)
+        egress.pii_leak_blocked = rejected.pii_leak
+        egress.log("generate")
         logger.warning(
             "generation.rejected_by_guardrail",
             task_id=task.task_id,

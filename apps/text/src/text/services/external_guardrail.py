@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import time
+from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
@@ -92,27 +96,6 @@ def _peer_unhealthy(exc: BaseException) -> bool:
     return False
 
 
-# The two ways a gate can be skipped, kept as DISTINCT strings on purpose
-# (TASK-890 OD-R). `external_guardrail_disabled` is the PLATFORM kill switch
-# (`text.externalGuardrail.enabled`) — a platform state in which no tenant's
-# opt-out was even consulted. `tenant_opted_out` is a TENANT decision for this
-# call, folded gateway-side (node > workflow > agent) and pushed as
-# `guardrail_policy.enabled: false`. The usage ledger records them as
-# `platform_off` and `opted_out` respectively, and collapsing them here would
-# make "this tenant chose to run unscreened" indistinguishable from "nobody has
-# turned the platform gate on yet".
-GUARDRAIL_DISABLED_REASON = "external_guardrail_disabled"
-GUARDRAIL_TENANT_OPTED_OUT_REASON = "tenant_opted_out"
-
-# TASK-1031 D-5 — the gate is ON but the effective posture does not require the
-# prompt to be medical. The medical verdict would be discarded (`allowed` is True
-# whatever it says), so guardrail is not called: the call only added judge-lane
-# load and a fail-CLOSED failure mode for a check nobody asked for. A tenant that
-# turns `require_medical` ON still gets the call. The input gate only — the output
-# screen does not depend on `require_medical`.
-GUARDRAIL_NOT_REQUIRED_REASON = "medical_validation_not_required"
-
-
 def _describe(exc: BaseException) -> str:
     """A NEVER-EMPTY description of a failed attempt: class, plus any message.
 
@@ -131,28 +114,58 @@ def _describe(exc: BaseException) -> str:
     return f"{name}: {detail}" if detail else name
 
 
-def _skip_reason(posture: GuardrailPosture) -> str:
-    """Which of the two skip reasons this resolved posture represents."""
-    return GUARDRAIL_TENANT_OPTED_OUT_REASON if posture.opted_out else GUARDRAIL_DISABLED_REASON
+#: Medical-judge verdict cache (TASK-1035 §3.2). Live flushes repeat the same
+#: prefix, and one judgement costs up to the judge's full budget. Bounded TTL; the
+#: TENANT is part of the key so one tenant's verdict is never served to another.
+MEDICAL_VERDICT_TTL_S = 300
+MEDICAL_VERDICT_LRU_MAX = 1024
+_MEDICAL_VERDICT_PREFIX = "text:medjudge:"
+
+
+def _medical_cache_key(tenant_id: str | None, text: str) -> str:
+    normalised = " ".join(text.split())
+    digest = hashlib.sha256(f"{tenant_id or ''}\x00{normalised}".encode()).hexdigest()
+    return f"{_MEDICAL_VERDICT_PREFIX}{digest}"
+
+
+class _VerdictLru:
+    """In-process fallback when no Redis is wired. TTL-bounded, size-bounded."""
+
+    def __init__(self, *, ttl_s: float, max_entries: int) -> None:
+        self._ttl_s = ttl_s
+        self._max = max_entries
+        self._entries: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+
+    def get(self, key: str) -> dict[str, Any] | None:
+        entry = self._entries.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if expires_at < time.monotonic():
+            self._entries.pop(key, None)
+            return None
+        self._entries.move_to_end(key)
+        return value
+
+    def set(self, key: str, value: dict[str, Any]) -> None:
+        self._entries[key] = (time.monotonic() + self._ttl_s, value)
+        self._entries.move_to_end(key)
+        while len(self._entries) > self._max:
+            self._entries.popitem(last=False)
 
 
 class ExternalGuardrailClient:
-    """Calls the Guardrail service for medical-content validation.
+    """Calls the Guardrail service: the inbound screen, the medical judge, the outbound screen.
 
     Fail posture (degrade-safe → fail-CLOSED): a failure that started no work in
     guardrail (connect failure, 502/503/504) is absorbed by a bounded retry
     (``max_retries`` / ``retry_backoff_ms``); a timeout is not retried; a circuit
     breaker sheds calls while guardrail is slow or unreachable. Every exhausted or
     shed call returns a deterministic NOT-allowed verdict — an errored guardrail can
-    NEVER return ``allowed: True`` (there is no fail-open branch). The only
-    allow-without-check paths are the DECLARED ones, and each
-    says which it is: the platform switch being off
-    (``external_guardrail_disabled`` — the dev/CI bypass, preserved exactly, and it
-    mirrors the empty-token bypass) and a tenant opting this call out
-    (``tenant_opted_out``, TASK-890 OD-R) — plus, on the input gate only, a posture
-    that does not require medical content (``medical_validation_not_required``,
-    TASK-1031 D-5). None is an error path, and none can be reached by a guardrail
-    that answered.
+    NEVER return ``allowed: True``. There is no allow-without-check path any more
+    (TASK-1035): the platform switch, the tenant opt-out and the `require_medical`
+    skip are gone, and the medical judge is skipped only by the CALLER for a
+    request that declared ``medical_exempt: "internal"``.
     """
 
     def __init__(
@@ -167,8 +180,8 @@ class ExternalGuardrailClient:
 
         ``app_state`` carries the platform posture the control plane last served
         (`services/runtime_limits.apply_platform_posture`). It is read at call
-        time rather than snapshotted here, so a platform admin turning moderation
-        on takes effect on the next request rather than the next restart.
+        time rather than snapshotted here, so a served tuning change takes effect on
+        the next request rather than the next restart.
         """
         self.http_client = http_client
         self.base_url = base_url.rstrip("/")
@@ -182,6 +195,9 @@ class ExternalGuardrailClient:
             failure_threshold=GUARDRAIL_BREAKER_FAILURE_THRESHOLD,
             recovery_timeout=GUARDRAIL_BREAKER_RECOVERY_S,
             half_open_max_calls=1,
+        )
+        self._verdict_lru = _VerdictLru(
+            ttl_s=MEDICAL_VERDICT_TTL_S, max_entries=MEDICAL_VERDICT_LRU_MAX
         )
 
     def _platform_posture(self) -> GuardrailPosture:
@@ -212,27 +228,12 @@ class ExternalGuardrailClient:
         engine connection itself.
         """
         posture = resolve_posture(self._platform_posture(), tenant_policy)
-        if not posture.enabled:
-            return {
-                "allowed": True,
-                "is_medical": True,
-                "confidence": 1.0,
-                "reason": _skip_reason(posture),
-            }
-        if not posture.require_medical:
-            return {
-                "allowed": True,
-                "is_medical": True,
-                "confidence": 1.0,
-                "reason": GUARDRAIL_NOT_REQUIRED_REASON,
-            }
 
         text = prompt if not system_prompt else f"{system_prompt}\n\n{prompt}"
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
             is_medical = bool(payload.get("is_medical", False))
             return {
-                # Only reached with `require_medical` on (the skip above).
                 "allowed": is_medical,
                 "is_medical": is_medical,
                 "confidence": float(payload.get("confidence", 0.0)),
@@ -241,6 +242,11 @@ class ExternalGuardrailClient:
                 or "medical_validation_completed",
                 "raw": payload,
             }
+
+        cache_key = _medical_cache_key(tenant_id, text)
+        cached = await self._cached_verdict(cache_key)
+        if cached is not None:
+            return cached
 
         body: dict[str, Any] = {"text": text, "include_reasoning": posture.include_reasoning}
         if provider_overrides:
@@ -254,6 +260,7 @@ class ExternalGuardrailClient:
             parse=_parse,
         )
         if verdict is not None:
+            await self._remember_verdict(cache_key, verdict)
             return verdict
         return {
             "allowed": False,
@@ -289,14 +296,10 @@ class ExternalGuardrailClient:
         ``allowed: False, reason: "malformed_verdict"`` — guardrail answered, so
         this is a rejection rather than an outage. Transport and HTTP failures ride
         the same retry rules and breaker as the input gate and exhaust to the same
-        ``GUARDRAIL_UNAVAILABLE_REASON``. ``tenant_policy`` folds over the
-        platform posture exactly as on the input side; only its transport fields
-        (switch, timeout, retry budget) apply here — ``require_medical`` is an
-        input-direction question.
+        ``GUARDRAIL_UNAVAILABLE_REASON``. ``tenant_policy`` is accepted for symmetry
+        with the input side; only the platform transport tuning applies here.
         """
         posture = resolve_posture(self._platform_posture(), tenant_policy)
-        if not posture.enabled:
-            return {"allowed": True, "reason": _skip_reason(posture)}
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
             decision = payload.get("decision")
@@ -327,6 +330,93 @@ class ExternalGuardrailClient:
             "reason": GUARDRAIL_UNAVAILABLE_REASON,
             "error": last_error,
         }
+
+    async def screen_inbound(self, text: str, *, tenant_id: str | None = None) -> dict[str, Any]:
+        """Screen an inbound prompt AND return its PII spans (TASK-1035 §5.0).
+
+        One call to guardrail's ``/screen/inbound`` with ``include_pii_spans``: the
+        prompt-safety / toxicity / jailbreak classification and the GLiNER2 span
+        extraction run concurrently guardrail-side. The verdict shape mirrors
+        :meth:`screen_output` — ``allowed``, ``reason`` (a check NAME, never text),
+        ``raw`` — plus ``pii_spans`` (``[{label, start, end, text, score}]`` in the
+        coordinates of ``text``). The span values are PHI: they exist only so the
+        caller can replace them, and are never logged here. No containment envelope
+        is requested (``wrap: false``): the caller sends its own prompt.
+        """
+        posture = self._platform_posture()
+
+        def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            decision = payload.get("decision")
+            spans = payload.get("pii_spans")
+            if decision not in ("allow", "block") or not isinstance(spans, list):
+                return {"allowed": False, "reason": "malformed_verdict", "pii_spans": []}
+            reasons = payload.get("reasons")
+            first = reasons[0] if isinstance(reasons, list) and reasons else None
+            allowed = decision == "allow"
+            return {
+                "allowed": allowed,
+                "reason": (
+                    str(first) if first else ("input_screened" if allowed else "input_blocked")
+                ),
+                "pii_spans": spans,
+                "raw": {k: v for k, v in payload.items() if k != "pii_spans"},
+            }
+
+        verdict, last_error = await self._post_verdict(
+            "/api/v1/guardrail/screen/inbound",
+            {"text": text, "kind": "prompt", "wrap": False, "include_pii_spans": True},
+            headers=self._headers(tenant_id),
+            posture=posture,
+            parse=_parse,
+        )
+        if verdict is not None:
+            return verdict
+        return {
+            "allowed": False,
+            "reason": GUARDRAIL_UNAVAILABLE_REASON,
+            "pii_spans": [],
+            "error": last_error,
+        }
+
+    async def _cached_verdict(self, key: str) -> dict[str, Any] | None:
+        """A cached medical verdict, or ``None``. A cache error is a miss, never a verdict."""
+        redis = getattr(self._app_state, "redis", None)
+        if redis is None:
+            return self._verdict_lru.get(key)
+        try:
+            raw = await redis.get(key)
+        except Exception as exc:  # noqa: BLE001 — a cache blip degrades to "ask guardrail"
+            logger.warning("external_guardrail.verdict_cache_read_failed", error=_describe(exc))
+            return None
+        if raw is None:
+            return None
+        try:
+            stored = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        return stored if isinstance(stored, dict) else None
+
+    async def _remember_verdict(self, key: str, verdict: dict[str, Any]) -> None:
+        """Cache the PHI-free half of a medical verdict.
+
+        Only ``allowed`` / ``is_medical`` / ``confidence`` are kept: guardrail's
+        free-text ``reasoning`` can quote the prompt, so it never reaches the cache,
+        and neither does the usage block (a cache hit spent nothing).
+        """
+        stored = {
+            "allowed": bool(verdict.get("allowed")),
+            "is_medical": bool(verdict.get("is_medical")),
+            "confidence": float(verdict.get("confidence") or 0.0),
+            "reason": "medical_verdict_cached",
+        }
+        redis = getattr(self._app_state, "redis", None)
+        if redis is None:
+            self._verdict_lru.set(key, stored)
+            return
+        try:
+            await redis.set(key, json.dumps(stored), ex=MEDICAL_VERDICT_TTL_S)
+        except Exception as exc:  # noqa: BLE001 — caching is best-effort
+            logger.warning("external_guardrail.verdict_cache_write_failed", error=_describe(exc))
 
     def _headers(self, tenant_id: str | None) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}

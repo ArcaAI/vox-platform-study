@@ -22,6 +22,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from text.core.locality import resolve_locality
 from text.core.logging import get_logger
 from text.core.metrics import (
     ACTIVE_GENERATIONS,
@@ -47,14 +48,16 @@ from text.providers.pool import ProviderByteCounts, count_provider_bytes
 from text.routing.hub import BatchFlusher, GenerationEvent, GenerationPolicy, Producer
 from text.routing.usage import _extract_stream_usage, funding_label
 from text.services.circuit_breaker import CircuitBreaker, CircuitState
+from text.services.egress import EgressContext
+from text.services.egress_stream import StreamGate
 from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from text.services.output_gate import (
     OutputRejectedError,
-    assemble_completion,
     gate_completion,
     source_context_of,
 )
+from text.services.pseudonymizer import Pseudonymizer
 from text.services.retry_handler import (
     INVALID_REQUEST_ERROR_TYPE,
     RATE_LIMITED_CODE,
@@ -112,8 +115,17 @@ async def run_generation_producer(
     guardrail_client: ExternalGuardrailClient | None = None,
     guardrail_usage: dict[str, Any] | None = None,
     app_state: Any = None,
+    egress: EgressContext | None = None,
 ) -> None:
     """Drive one generation to its terminal frame. Never raises to the hub.
+
+    ``egress`` (TASK-1035) is the request's egress state: ``request_body`` is
+    already what the PROVIDER receives (tokens on cloud). Whenever a window must be
+    screened (a guardrail client is wired) or re-identified (cloud), deltas are
+    released a SENTENCE WINDOW at a time, after the window passed the outbound
+    screen (OD-7, `services/egress_stream.py`); a blocked window is never emitted.
+    With neither — the unwired unit harness on a local provider — deltas pass
+    through live exactly as before.
 
     ``guardrail_usage`` (TASK-959) is the INPUT gate's own spend, already
     measured by the route before this producer started, carried through onto the
@@ -134,6 +146,35 @@ async def run_generation_producer(
     resolved_model = model or request_body.model
     resolved_provider = provider_name or request_body.provider
     effective_policy = policy or GenerationPolicy()
+    if egress is None:
+        # A caller that built no egress state (direct producer callers): nothing
+        # was pseudonymized, so there is nothing to restore — only to screen.
+        egress = EgressContext(
+            locality=resolve_locality(resolved_provider, request_body.provider_locality),
+            pseudonymizer=Pseudonymizer([]),
+            provider_request=request_body,
+            source_context=source_context_of(request_body),
+        )
+    active_egress = egress
+
+    async def _screen_window(window: str) -> None:
+        await gate_completion(
+            guardrail_client,
+            completion=window,
+            source_context=active_egress.source_context,
+            tenant_id=tenant_id,
+            tenant_policy=request_body.guardrail_policy,
+            app_state=app_state,
+            where="streaming.run_generation_producer",
+            locality=active_egress.locality,
+        )
+
+    gate: StreamGate | None = (
+        StreamGate(screen=_screen_window, restore=active_egress.restore)
+        if guardrail_client is not None or active_egress.is_cloud
+        else None
+    )
+    rejection: OutputRejectedError | None = None
 
     flusher = BatchFlusher(
         generation_id=generation_id,
@@ -254,15 +295,24 @@ async def run_generation_producer(
         ).model_dump(mode="json")
 
     def _terminal_data(data: dict[str, Any]) -> dict[str, Any]:
-        """`data` plus the safety plane's own spend, when there was any.
+        """`data` plus the safety plane's own spend and the egress summary.
 
-        Omitted when absent rather than sent as an empty object: a zero row is
-        indistinguishable from a free call, and a generation whose tenant opted
-        out of moderation legitimately has no guardrail spend at all.
+        Guardrail usage is omitted when absent rather than sent as an empty object:
+        a zero row is indistinguishable from a free call. The egress summary
+        (TASK-1035) is counts only.
         """
         if guardrail_usage is not None:
             data["guardrail_usage"] = guardrail_usage
+        data["egress"] = active_egress.summary.model_dump(mode="json")
         return data
+
+    def _record(chunk: StreamChunk) -> None:
+        """What the consumer has SEEN — re-identified — for the task record."""
+        if chunk.content:
+            if chunk.type == "chunk":
+                content_parts.append(chunk.content)
+            elif chunk.type == "reasoning":
+                reasoning_parts.append(chunk.content)
 
     def _log_audit(*, status: str, latency_ms: int, finish_reason: str, error: str | None) -> None:
         """Log the generation's REAL totals, once, when the stream has ended."""
@@ -358,12 +408,18 @@ async def run_generation_producer(
                     # Hold it back; it is re-emitted below carrying the usage block.
                     pending_done = chunk
                     continue
-                if chunk.content:
-                    if chunk.type == "chunk":
-                        content_parts.append(chunk.content)
-                    elif chunk.type == "reasoning":
-                        reasoning_parts.append(chunk.content)
-                emit(chunk)
+                if gate is not None and chunk.content and chunk.type in ("chunk", "reasoning"):
+                    try:
+                        released = await gate.feed(chunk.type, chunk.content)
+                    except OutputRejectedError as exc:
+                        rejection = exc
+                        break
+                    for piece in released:
+                        _record(piece)
+                        emit(piece)
+                else:
+                    _record(chunk)
+                    emit(chunk)
 
                 stopped_reason = await _should_stop()
                 if stopped_reason:
@@ -404,23 +460,22 @@ async def run_generation_producer(
                 error=str(exc),
             )
 
-        # Post-receive guardrail gate (TASK-871). Screens what was delivered —
-        # content and reasoning, assembled — before the terminal frame decides
-        # whether this generation is a result. On rejection the terminal frame
-        # is ``error`` (every consumer discards on it), the task record is
+        # Post-receive guardrail gate (TASK-871), now per sentence window
+        # (TASK-1035 OD-7): every window was screened BEFORE release, and what is
+        # still buffered is screened and released here. On rejection the terminal
+        # frame is ``error`` (every consumer discards on it), the task record is
         # FAILED with a ``guardrail_rejected:`` error, and the breaker is NOT
         # tripped: a refused completion is not provider unhealth.
         try:
-            await gate_completion(
-                guardrail_client,
-                completion=assemble_completion("".join(content_parts), "".join(reasoning_parts)),
-                source_context=source_context_of(request_body),
-                tenant_id=tenant_id,
-                tenant_policy=request_body.guardrail_policy,
-                app_state=app_state,
-                where="streaming.run_generation_producer",
-            )
+            if rejection is not None:
+                raise rejection
+            if gate is not None:
+                for piece in await gate.flush():
+                    _record(piece)
+                    emit(piece)
         except OutputRejectedError as rejected:
+            active_egress.pii_leak_blocked = rejected.pii_leak
+            active_egress.log("stream")
             logger.warning(
                 "streaming_generation.rejected_by_guardrail",
                 generation_id=generation_id,
@@ -469,6 +524,7 @@ async def run_generation_producer(
             done_data["stopped_reason"] = stopped_reason
         terminal_usage_detail = _usage_detail(interrupted=bool(stopped_reason), total_ms=latency_ms)
         done_data["usage"] = terminal_usage_detail
+        active_egress.log("stream")
         await emit_terminal(StreamChunk(type="done", data=_terminal_data(done_data)))
 
         terminal_status = TaskStatus.CANCELLED if stopped_reason else TaskStatus.COMPLETED

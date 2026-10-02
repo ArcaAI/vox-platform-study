@@ -183,15 +183,12 @@ def lane_floor(provider: str, lane: str) -> LaneBudget:
     return floor
 
 
-#: Guardrail moderation posture floors — see `core/guardrail_posture.py`.
+#: Guardrail transport-tuning floors — see `core/guardrail_posture.py`.
 #:
-#: ``enabled`` is False so a checkout with no control plane and no guardrail peer
-#: still runs (local dev, hermetic CI), exactly as the retired
-#: ``TEXT_EXTERNAL_GUARDRAIL_ENABLED`` default did. Turning moderation ON for a
-#: clinical deployment is now a platform-admin action in the console rather than
-#: an env edit — which is the point: it can be done, and audited, without a
-#: redeploy.
-GUARDRAIL_ENABLED_FLOOR = False
+#: There is no ``enabled`` floor and no ``require_medical`` floor any more
+#: (TASK-1035 OD-1/OD-4/OD-5): both gates always run, and the medical judge is
+#: skipped only by a request that declares ``medical_exempt: "internal"``.
+#:
 #: How long TEXT waits for guardrail's ANSWER. It must outlast one guardrail
 #: validation: admission wait (5 s) + one judge attempt at
 #: `guardrail.judge.timeoutSeconds` (60 s; measured judge p99 50.6 s) + slack;
@@ -204,10 +201,6 @@ GUARDRAIL_TIMEOUT_FLOOR_S = 120
 #: `services/external_guardrail.py`.
 GUARDRAIL_MAX_RETRIES_FLOOR = 2
 GUARDRAIL_RETRY_BACKOFF_FLOOR_MS = 100
-#: Clinical enforce: a reachable guardrail must classify the prompt as medical.
-#: A non-clinical tenant turns this off through its own pushed policy, never by
-#: changing the platform floor.
-GUARDRAIL_REQUIRE_MEDICAL_FLOOR = True
 GUARDRAIL_INCLUDE_REASONING_FLOOR = False
 
 #: Connect-phase bound on the moderation call, independent of the answer wait.
