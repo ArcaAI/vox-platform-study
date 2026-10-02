@@ -263,11 +263,15 @@ def prepare_egress(
         for text, segment_spans in zip(segments, spans, strict=False):
             pseudonymizer.count(text, segment_spans)
         provider_request = request
+        source_context = _source_context(request.system_prompt, request.prompt)
     else:
         rewritten = [
             pseudonymizer.pseudonymize(text, segment_spans) if text else text
             for text, segment_spans in zip(segments, spans, strict=False)
         ]
+        # The output screen's source is what the provider was given, minus the
+        # platform sentence (it names a token shape, not anything the model read).
+        source_context = _source_context(rewritten[0] or None, rewritten[1])
         system_prompt = rewritten[0]
         system_prompt = (
             f"{system_prompt}{_SEGMENT_SEPARATOR}{PLATFORM_TOKEN_SENTENCE}"
@@ -278,9 +282,11 @@ def prepare_egress(
         if request.content_parts:
             texts = iter(rewritten[2:])
             parts = [
-                part.model_copy(update={"text": next(texts)})
-                if isinstance(part, TextContentPart)
-                else part
+                (
+                    part.model_copy(update={"text": next(texts)})
+                    if isinstance(part, TextContentPart)
+                    else part
+                )
                 for part in request.content_parts
             ]
         provider_request = request.model_copy(
@@ -297,14 +303,13 @@ def prepare_egress(
         locality=locality,
         pseudonymizer=pseudonymizer,
         provider_request=provider_request,
-        source_context=_source_context(provider_request),
+        source_context=source_context,
         images_unredacted=images,
     )
 
 
-def _source_context(request: Any) -> str:
-    prompt = str(getattr(request, "prompt", "") or "")
-    system_prompt = getattr(request, "system_prompt", None)
+def _source_context(system_prompt: str | None, prompt: str) -> str:
+    """Joined the way the post-receive gate has always joined them."""
     return f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
 

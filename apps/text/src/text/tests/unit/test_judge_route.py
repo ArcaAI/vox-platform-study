@@ -117,8 +117,8 @@ def _hermetic_settings(**overrides) -> Settings:
 
 
 def _enforcing_state() -> SimpleNamespace:
-    """App state whose served posture has moderation ON."""
-    return SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True), lane_budgets={})
+    """App state with a served guardrail posture (there is no switch any more)."""
+    return SimpleNamespace(guardrail_posture=GuardrailPosture(), lane_budgets={})
 
 
 def _make_app(registry, task_manager, *, guardrail_client=None, settings=None):
@@ -128,6 +128,12 @@ def _make_app(registry, task_manager, *, guardrail_client=None, settings=None):
     app.state.settings = settings if settings is not None else _hermetic_settings()
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
+    if guardrail_client is not None:
+        # TASK-1035: the public path runs the inbound screen beside the judge.
+        guardrail_client.screen_inbound = AsyncMock(
+            return_value={"allowed": True, "reason": "screened", "pii_spans": []}
+        )
+        guardrail_client.screen_output = AsyncMock(return_value={"allowed": True})
     app.state.guardrail_client = guardrail_client
     return app
 
@@ -258,8 +264,7 @@ class TestCycleGuard:
 
     @pytest.mark.asyncio
     async def test_judge_runs_even_under_the_enforce_posture(self, client_factory):
-        """`external_guardrail.enabled` fails the PUBLIC path closed when the
-        client is unwired. The judge path is outside that gate by construction —
+        """The judge path is outside the moderation gate by construction —
         otherwise a guardrail outage could never be judged its way out of."""
         settings = _hermetic_settings(external_guardrail=ExternalGuardrailConfig())
         client, _ = await client_factory(settings=settings, guardrail_client=None)
@@ -290,41 +295,36 @@ class TestCycleGuard:
     async def test_gate_helper_trips_inside_a_judge_scope(self):
         """Runtime layer: if a future edit routes the SHARED gate helper onto the
         judge path, it raises instead of closing the cycle."""
-        from text.api.endpoints.generate import _apply_guardrail_gate
+        from text.services.egress import run_inbound_gate
         from text.services.judge_guard import GuardrailRecursionError, judge_scope
 
         guardrail = AsyncMock()
         guardrail.validate = AsyncMock(return_value={"allowed": True})
-        request_body = GenerateRequest(prompt="hi", provider=_PROVIDER, model="m")
 
         with judge_scope():
             with pytest.raises(GuardrailRecursionError):
-                await _apply_guardrail_gate(
-                    guardrail,
-                    request_body=request_body,
-                    tenant_id=None,
-                    app_state=_enforcing_state(),
+                await run_inbound_gate(
+                    guardrail, segments=["hi"], prompt="hi", system_prompt=None, tenant_id=None
                 )
 
         guardrail.validate.assert_not_awaited()
+        guardrail.screen_inbound.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_gate_helper_is_unchanged_outside_a_judge_scope(self):
-        from text.api.endpoints.generate import _apply_guardrail_gate
+        from text.services.egress import run_inbound_gate
 
         guardrail = AsyncMock()
         guardrail.validate = AsyncMock(return_value={"allowed": True})
-        request_body = GenerateRequest(prompt="hi", provider=_PROVIDER, model="m")
+        guardrail.screen_inbound = AsyncMock(return_value={"allowed": True, "pii_spans": []})
 
-        usage = await _apply_guardrail_gate(
-            guardrail,
-            request_body=request_body,
-            tenant_id="t-1",
-            app_state=_enforcing_state(),
+        result = await run_inbound_gate(
+            guardrail, segments=["hi"], prompt="hi", system_prompt=None, tenant_id="t-1"
         )
 
-        assert usage is None  # verdict carried no stats
+        assert result.guardrail_usage is None  # verdict carried no stats
         guardrail.validate.assert_awaited_once()
+        guardrail.screen_inbound.assert_awaited_once()
 
     def test_judge_scope_does_not_leak_out_of_its_block(self):
         from text.services.judge_guard import in_judge_scope, judge_scope
@@ -649,23 +649,6 @@ class TestPublicGeneratePathUnchanged:
         )
 
         assert resp.status_code == 422
-        mock_provider.generate.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_enforce_posture_with_unwired_client_is_503(self, client_factory, mock_provider):
-        """Moderation ON but no client wired ⇒ fail CLOSED, never silently skip.
-
-        The posture is read from LIVE state now, not from settings — that is what
-        lets a platform admin turn moderation on without a redeploy.
-        """
-        client, app = await client_factory(guardrail_client=None)
-        app.state.guardrail_posture = GuardrailPosture(enabled=True)
-
-        resp = await client.post(
-            "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
-        )
-
-        assert resp.status_code == 503
         mock_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio

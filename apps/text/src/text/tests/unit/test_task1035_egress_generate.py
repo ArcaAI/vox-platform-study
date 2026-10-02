@@ -160,7 +160,9 @@ def _body(provider: str, **extra: Any) -> dict[str, Any]:
 
 def _guardrail_with_smith(**kwargs: Any) -> _Guardrail:
     combined = f"{_SYSTEM}\n\n{_PROMPT}"
-    return _Guardrail(spans=[_span(combined, "Dr Smith"), _span(combined, "MRN-0042", "mrn")], **kwargs)
+    return _Guardrail(
+        spans=[_span(combined, "Dr Smith"), _span(combined, "MRN-0042", "mrn")], **kwargs
+    )
 
 
 # ── locality decides the payload ─────────────────────────────────────────────
@@ -306,9 +308,7 @@ async def test_an_opt_out_in_the_request_is_ignored(make_client) -> None:
 
     resp = await client.post(
         "/api/v1/generate",
-        json=_body(
-            "lm-studio", guardrail_policy={"enabled": False, "require_medical": False}
-        ),
+        json=_body("lm-studio", guardrail_policy={"enabled": False, "require_medical": False}),
     )
 
     assert resp.status_code == 200, resp.text
@@ -331,9 +331,7 @@ async def test_medical_exempt_internal_skips_only_the_judge(make_client) -> None
     guardrail = _guardrail_with_smith(medical_allowed=False)
     client = await make_client(_SpyProvider(), guardrail)
 
-    resp = await client.post(
-        "/api/v1/generate", json=_body("lm-studio", medical_exempt="internal")
-    )
+    resp = await client.post("/api/v1/generate", json=_body("lm-studio", medical_exempt="internal"))
 
     assert resp.status_code == 200, resp.text
     assert guardrail.validate_calls == 0

@@ -5,11 +5,11 @@ mapping, and the degrade-safe → fail-CLOSED posture when the guardrail is
 unreachable: a transient blip is absorbed by a bounded retry, a sustained outage
 fails closed, and an errored guardrail can NEVER return ``allowed: True``.
 
-lane B moved the POSTURE off env, split by cardinality (owner decision
-D-1): the platform switch and retry budget arrive on the PULL channel, and
-`require_medical` / `include_reasoning` are PUSHED per request because they
-legitimately differ between tenants. The client's construction takes only the
-guardrail's ADDRESS, so these tests set the posture the way production does.
+lane B moved the POSTURE off env (owner decision D-1): the retry budget arrives
+on the PULL channel and `include_reasoning` is PUSHED per request. TASK-1035
+removed the platform switch, the tenant opt-out and `require_medical`: the client
+always calls guardrail. The client's construction takes only the guardrail's
+ADDRESS, so these tests set the posture the way production does.
 
 What is NOT configurable, here or anywhere: the fail posture. There is no
 `fail_open`, and the tests below prove there is no way to construct one.
@@ -85,13 +85,7 @@ def _client(
     service_token: str = "svc-token",
     **posture: Any,
 ) -> ExternalGuardrailClient:
-    """A client whose PLATFORM posture is whatever the control plane last served.
-
-    `enabled=True` by default because every test below except the bypass one is
-    about what happens when moderation runs; the floor is False so a checkout
-    with no control plane and no guardrail peer still boots.
-    """
-    posture.setdefault("enabled", True)
+    """A client whose PLATFORM posture is whatever the control plane last served."""
     state = SimpleNamespace(guardrail_posture=GuardrailPosture(**posture))
     return ExternalGuardrailClient(
         base_url=_BASE_URL,
@@ -99,52 +93,6 @@ def _client(
         service_token=service_token,
         app_state=state,
     )
-
-
-# --- the platform switch (PULL channel) -------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_disabled_short_circuits_without_http_call() -> None:
-    http = _RecordingClient({"is_medical": True})
-    client = _client(http, enabled=False)
-
-    result = await client.validate("some prompt")
-
-    assert result["allowed"] is True
-    assert result["reason"] == "external_guardrail_disabled"
-    assert http.calls == []
-
-
-@pytest.mark.asyncio
-async def test_the_switch_is_read_per_call_not_snapshotted_at_construction() -> None:
-    """A platform admin turning moderation on must take effect on the NEXT
-    request, not the next restart — that is the whole point of moving it off env."""
-    http = _RecordingClient({"is_medical": True})
-    state = SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=False))
-    client = ExternalGuardrailClient(
-        base_url=_BASE_URL, http_client=http, service_token="svc-token", app_state=state
-    )
-
-    assert (await client.validate("note"))["reason"] == "external_guardrail_disabled"
-    assert http.calls == []
-
-    state.guardrail_posture = GuardrailPosture(enabled=True)
-    await client.validate("note")
-    assert len(http.calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_an_unanswering_control_plane_keeps_the_floor() -> None:
-    """No served posture ⇒ the in-code floor, which is `enabled=False`. The same
-    dev/CI bypass `TEXT_EXTERNAL_GUARDRAIL_ENABLED=false` used to give."""
-    http = _RecordingClient({"is_medical": True})
-    client = ExternalGuardrailClient(
-        base_url=_BASE_URL, http_client=http, service_token="", app_state=None
-    )
-
-    assert (await client.validate("note"))["reason"] == "external_guardrail_disabled"
-    assert http.calls == []
 
 
 # --- verdict mapping --------------------------------------------------------
@@ -163,9 +111,9 @@ async def test_medical_content_is_allowed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_medical_blocked_when_require_medical() -> None:
+async def test_non_medical_is_blocked() -> None:
     http = _RecordingClient({"is_medical": False, "confidence": 0.1})
-    client = _client(http, require_medical=True)
+    client = _client(http)
 
     result = await client.validate("schedule a meeting")
 
@@ -173,89 +121,11 @@ async def test_non_medical_blocked_when_require_medical() -> None:
     assert result["is_medical"] is False
 
 
-@pytest.mark.asyncio
-async def test_not_required_skips_the_judge_call_entirely() -> None:
-    """TASK-1031 D-5 — with `require_medical` off the verdict would be discarded,
-    so guardrail is not called at all: no judge load, and no fail-closed failure
-    mode for a check nobody asked for."""
-    http = _RecordingClient({"is_medical": False})
-    client = _client(http, require_medical=False)
-
-    result = await client.validate("schedule a meeting")
-
-    assert result == {
-        "allowed": True,
-        "is_medical": True,
-        "confidence": 1.0,
-        "reason": "medical_validation_not_required",
-    }
-    assert http.calls == []
-
-
-@pytest.mark.asyncio
-async def test_not_required_never_fails_closed_on_an_unreachable_guardrail() -> None:
-    http = _RaisingClient()
-    client = _client(http, require_medical=False)
-
-    result = await client.validate("schedule a meeting")
-
-    assert result["allowed"] is True
-    assert http.calls == 0
-
-
 # --- the tenant's own policy (PUSH channel) ---------------------------------
 
 
 class TestTenantPolicyFoldsOverThePlatformDefault:
-    """`require_medical` is the field that could never be an env var.
-
-    A non-clinical tenant needs it off while every other tenant keeps it on; a
-    process-wide boolean can express only one of those. Resolution is the
-    platform-wide order — tenant → platform default — widening only on ABSENCE.
-    """
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_may_opt_out_of_clinical_enforcement(self) -> None:
-        http = _RecordingClient({"is_medical": False})
-        client = _client(http, require_medical=True)
-
-        result = await client.validate(
-            "schedule a meeting",
-            tenant_policy=GuardrailPolicyOverride(require_medical=False),
-        )
-
-        assert result["allowed"] is True
-        assert result["reason"] == "medical_validation_not_required"
-        assert http.calls == []
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_may_opt_in_where_the_platform_does_not_require_it(self) -> None:
-        http = _RecordingClient({"is_medical": False})
-        client = _client(http, require_medical=False)
-
-        result = await client.validate(
-            "schedule a meeting",
-            tenant_policy=GuardrailPolicyOverride(require_medical=True),
-        )
-
-        assert result["allowed"] is False
-        # TASK-1031 D-5 — a tenant turning it ON still gets the call.
-        assert len(http.calls) == 1
-        assert http.calls[0]["url"].endswith("/api/medical/validate")
-
-    @pytest.mark.asyncio
-    async def test_no_opinion_is_not_false(self) -> None:
-        """`None` means "the tenant said nothing", which must inherit — not be
-        flattened into `False` and silently disable clinical enforcement."""
-        http = _RecordingClient({"is_medical": False})
-        client = _client(http, require_medical=True)
-
-        result = await client.validate(
-            "schedule a meeting",
-            tenant_policy=GuardrailPolicyOverride(include_reasoning=True),
-        )
-
-        assert result["allowed"] is False
+    """`include_reasoning` is the one tenant field left (TASK-1035)."""
 
     @pytest.mark.asyncio
     async def test_include_reasoning_reaches_the_wire(self) -> None:
@@ -267,28 +137,6 @@ class TestTenantPolicyFoldsOverThePlatformDefault:
         )
 
         assert http.calls[0]["json"]["include_reasoning"] is True
-
-    @pytest.mark.asyncio
-    async def test_a_tenant_may_switch_ITS_OWN_moderation_off_but_never_on(self) -> None:
-        """TASK-890 OD-R reversed the statement that used to stand here.
-
-        `enabled` was PLATFORM-scope and the tenant block carried no such field, so no
-        request shape could turn moderation off. The owner decided a tenant may opt OUT
-        per agent / workflow / node, so the field exists — and it is ASYMMETRIC: it can
-        only ever subtract. The platform switch stays the floor, which is what makes
-        "the platform runs guardrail" still true wherever the platform says so.
-        Precedence, recording and the distinct `tenant_opted_out` reason are pinned by
-        `test_guardrail_optout_task890.py`.
-        """
-        assert "enabled" in GuardrailPolicyOverride.model_fields
-
-        platform_off = _client(_RecordingClient({"is_medical": True}), enabled=False)
-        verdict = await platform_off.validate(
-            "patient note", tenant_policy=GuardrailPolicyOverride(enabled=True)
-        )
-        # A pushed `True` cannot revive the platform kill switch — and the reason names
-        # the platform, never the tenant.
-        assert verdict["reason"] == "external_guardrail_disabled"
 
 
 # --- headers and body -------------------------------------------------------

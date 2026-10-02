@@ -138,9 +138,7 @@ async def test_spans_are_not_extracted_unless_asked(wire) -> None:
 
 
 async def test_span_extraction_runs_concurrently_with_classification(wire) -> None:
-    request = _FakeRequest(
-        _state(_SlowAnalyzer(delay=0.3), _NeedleSpanClient("John", delay=0.3))
-    )
+    request = _FakeRequest(_state(_SlowAnalyzer(delay=0.3), _NeedleSpanClient("John", delay=0.3)))
 
     started = time.monotonic()
     await screen_inbound(

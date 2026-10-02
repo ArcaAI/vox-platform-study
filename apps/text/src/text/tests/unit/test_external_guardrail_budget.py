@@ -114,7 +114,6 @@ class Guardrail:
 
 
 def _client(guardrail: Guardrail, **posture: Any) -> ExternalGuardrailClient:
-    posture.setdefault("enabled", True)
     posture.setdefault("retry_backoff_ms", 0)
     state = SimpleNamespace(guardrail_posture=GuardrailPosture(**posture))
     return ExternalGuardrailClient(
@@ -500,8 +499,9 @@ class TestTheBreakerShedsFailClosed:
             ok(),
         )
         client = _client(guardrail, max_retries=0)
-        for _ in range(2 * self.THRESHOLD - 1):
-            await client.validate("note")
+        # Distinct texts: an allowed verdict is cached per text (TASK-1035).
+        for i in range(2 * self.THRESHOLD - 1):
+            await client.validate(f"note {i}")
 
         assert (await client.validate("patient note"))["allowed"] is True
 
@@ -518,8 +518,9 @@ class TestTheBreakerShedsFailClosed:
         assert len(guardrail.requests) == self.THRESHOLD
 
         clock.t += 0.2
-        assert (await client.validate("patient note"))["allowed"] is True
-        assert (await client.validate("patient note"))["allowed"] is True
+        # Distinct texts: an allowed verdict is cached per text (TASK-1035).
+        assert (await client.validate("patient note 1"))["allowed"] is True
+        assert (await client.validate("patient note 2"))["allowed"] is True
         assert len(guardrail.requests) == self.THRESHOLD + 2
 
     @pytest.mark.asyncio
