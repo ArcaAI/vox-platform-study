@@ -8,6 +8,7 @@ import {
   SEED_DNA_REPORT_IDS,
   SEED_TEMPLATE_IDS,
   SYSTEM_USER_ID,
+  SYSTEM_TENANT_ID,
 } from './00-constants';
 // The plaintext `reportData`/`styleText` columns were dropped;
 // seed rows must persist Vault-Transit ciphertext into the `encrypted*` columns.
@@ -517,32 +518,35 @@ export const CUSTOMER_DNA_USAGE_RECORDS = CUSTOMER_DNA_CLINICIANS.flatMap((c) =>
 // here would repopulate it and surface the duplicate-username collision.
 export const CUSTOMER_DNA_SEED_USERNAMES: string[] = [];
 
+// TASK-1034 — PLATFORM-tier rows (SYSTEM tenant): AppSettings admits SYSTEM rows only, so the
+// former Global-tenant rows were never the platform default. Tenants override per key through the
+// settings registry (`dna-regen.*` descriptors, `maxScope: 'tenant'`).
 export const DNA_REGEN_SETTINGS = [
   {
     id: '77000000-0000-0000-0000-000000000001',
-    tenantId: SEED_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'DNA Regeneration Enabled',
-    description: 'Master on/off switch for the scheduled DNA regeneration job',
+    description: 'Master on/off switch for the weekly, feedback-gated DNA regeneration job (TASK-1034: default on)',
     key: 'dna-regen.enabled',
-    value: 'false',
-    defaultValue: 'false',
+    value: 'true',
+    defaultValue: 'true',
     dataType: 'Boolean' as const,
     namespace: 'dna-regeneration',
   },
   {
     id: '77000000-0000-0000-0000-000000000002',
-    tenantId: SEED_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'DNA Regeneration Cron',
-    description: 'Cron expression for the DNA regeneration schedule (default: midnight on 1st of every month)',
+    description: 'Cron expression for the DNA regeneration schedule, read in the tenant time zone (default: Monday 02:00)',
     key: 'dna-regen.cron',
-    value: '0 0 1 * *',
-    defaultValue: '0 0 1 * *',
+    value: '0 2 * * 1',
+    defaultValue: '0 2 * * 1',
     dataType: 'String' as const,
     namespace: 'dna-regeneration',
   },
   {
     id: '77000000-0000-0000-0000-000000000003',
-    tenantId: SEED_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'DNA Regeneration Max Samples',
     description: 'Maximum number of context items fetched per doctor for DNA analysis',
     key: 'dna-regen.max-samples',
@@ -553,7 +557,7 @@ export const DNA_REGEN_SETTINGS = [
   },
   {
     id: '77000000-0000-0000-0000-000000000004',
-    tenantId: SEED_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'DNA Regeneration Max Context Chars',
     description: 'Maximum total characters sent to TEXT v2 for DNA analysis',
     key: 'dna-regen.max-context-chars',
@@ -564,12 +568,23 @@ export const DNA_REGEN_SETTINGS = [
   },
   {
     id: '77000000-0000-0000-0000-000000000005',
-    tenantId: SEED_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
     name: 'DNA Regeneration Job Delay',
     description: 'Delay in milliseconds between queued regeneration jobs for staggering',
     key: 'dna-regen.job-delay-ms',
     value: '5000',
     defaultValue: '5000',
+    dataType: 'Integer' as const,
+    namespace: 'dna-regeneration',
+  },
+  {
+    id: '77000000-0000-0000-0000-000000000006',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'DNA Regeneration Min New Samples',
+    description: 'Minimum unconsumed memory samples since the latest report before a clinician is regenerated',
+    key: 'dna-regen.min-new-samples',
+    value: '3',
+    defaultValue: '3',
     dataType: 'Integer' as const,
     namespace: 'dna-regeneration',
   },
