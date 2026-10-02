@@ -448,6 +448,12 @@ export interface PromptAssemblyParams {
    * spans reach the authoritative SOAP. A SEPARATE concern from NER entities.
    */
   highlights?: string[];
+  /**
+   * The Prompt Inspector's override: compose THIS instruction (a named agent's frozen one) instead
+   * of the resolved one. The resolver still runs, for the template's metadata (hyperparameters,
+   * output schema). Never set on a generation path.
+   */
+  instructionOverride?: { resolvedPrompt: ComposableResolvedPrompt; variables?: Record<string, unknown> };
 }
 
 export interface AssembledPrompt {
@@ -665,9 +671,11 @@ export class PromptAssemblyService {
     // every fragment is selected over the render scope, so a conditional fragment applies here
     // exactly as it does on the agent lanes. The primary template is only its governance pointer.
     const bodyTemplate = resolved.content ?? template?.content ?? null;
-    const instruction: ComposableResolvedPrompt =
-      resolved.resolvedPrompt ?? (bodyTemplate ? { source: 'inline', content: bodyTemplate } : null);
-    const agentVariables = resolved.resolvedPrompt ? (resolved.promptVariables ?? {}) : {};
+    const override = params.instructionOverride;
+    const instruction: ComposableResolvedPrompt = override
+      ? override.resolvedPrompt
+      : (resolved.resolvedPrompt ?? (bodyTemplate ? { source: 'inline', content: bodyTemplate } : null));
+    const agentVariables = override ? (override.variables ?? {}) : resolved.resolvedPrompt ? (resolved.promptVariables ?? {}) : {};
 
     const referenced = referencedNames([...instructionContents(instruction), ...bindingPaths(agentVariables)]);
     // Warm-start refinement, gated behind the kill-switch (default OFF): the live session's
