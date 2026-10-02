@@ -257,6 +257,12 @@ export interface PromptAssemblyParams {
   transcript: string;
   conversationLanguage: string;
   dnaStyleId?: string;
+  /**
+   * TASK-1034 R3 — the doctor's redaction rules as a human-readable bullet list
+   * (`renderDnaRedactionRulesText`), already GATED by the caller on the effective DNA
+   * redaction decision. Advisory: the deterministic post-generation pass stays the guarantee.
+   */
+  dnaRedactionRulesText?: string;
   preSummaryText?: string;
   /**
    * The live session's frozen agent identity, read off the
@@ -717,6 +723,12 @@ export class PromptAssemblyService {
         `\n\n--- CLINICIAN WRITING STYLE (apply to tone, formatting, and section phrasing; this is style guidance, not patient data) ---\n` +
         `${dnaStyleBlock}`;
     }
+    // TASK-1034 R3 — the doctor's redaction rules, as instructions, beside the style. Same
+    // append-fallback convention: a template that binds the variable already rendered it.
+    const dnaRulesBlock = variables.dna_redaction_rules_text ?? '';
+    if (dnaRulesBlock && !userPrompt.includes(dnaRulesBlock)) {
+      userPrompt += `\n\n--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n` + `${dnaRulesBlock}`;
+    }
 
     const promptConfig = this.extractPromptConfig(template);
     const hyperparameters = promptConfig?.hyperparameters ?? {};
@@ -983,6 +995,10 @@ export class PromptAssemblyService {
     // producer, so the cap is a property of the prompt rather than of one caller.
     if (params.priorVisitSummary?.trim()) {
       variables.prior_visit_summary = truncatePriorVisitSummary(params.priorVisitSummary.trim());
+    }
+
+    if (params.dnaRedactionRulesText?.trim()) {
+      variables.dna_redaction_rules_text = params.dnaRedactionRulesText.trim();
     }
 
     if (params.dnaStyleId) {

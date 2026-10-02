@@ -157,6 +157,10 @@ export class PreSummaryProcessor extends WorkerHost {
           ? await this.configResolver.resolvePreferredPromptTemplateId(consultation.doctorId ?? null)
           : undefined;
 
+        // TASK-1034 R3 — the requested DNA style id applies only when the style is EFFECTIVE (the
+        // governing graph's style declaration AND the doctor's opt-in). It used to pass ungated.
+        const dnaStyleId = await this.resolveEffectiveDnaStyleId(consultation, request.dnaStyleId);
+
         // Resolve prompt config for pre-summary
         // DNA style is per-doctor and resolved separately — not part of prompt resolution.
         const resolved = await this.promptResolutionService.resolve({
@@ -228,7 +232,7 @@ export class PreSummaryProcessor extends WorkerHost {
           caseNotes: promptCaseNotes,
           // TASK-1001 (OD-12) — the platform-default OUTPUT language; never a per-request option.
           conversationLanguage: (await resolvePlatformOutputLanguage(this.effectiveSettings, tenantId, this.logger)).tag,
-          dnaStyleId: request.dnaStyleId,
+          dnaStyleId,
           // Thread the doctor-preferred prompt id into assembly.
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
@@ -240,6 +244,7 @@ export class PreSummaryProcessor extends WorkerHost {
           assembledPrompt,
           {
             ...request,
+            dnaStyleId,
             options: {
               ...request.options,
               promptResolvedFrom: assembledPrompt.resolvedFrom,
@@ -253,7 +258,7 @@ export class PreSummaryProcessor extends WorkerHost {
         // Step 3: Saving results (70%)
         await this.jobService.notifyProgress(jobId, 70, 'Saving results');
 
-        const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, request.dnaStyleId, userId);
+        const contextItem = ContextItemFactory.CreatePreSummary(tenantId, consultationId, textResponse.summary, dnaStyleId, userId);
 
         // Encrypt the generated pre-summary text into `encryptedContent`
         // before persistence — the plaintext `content` column was dropped by the
@@ -402,6 +407,32 @@ export class PreSummaryProcessor extends WorkerHost {
    * `selectVisitType` has always done with a recorded value; until this ticket nothing on this
    * path ever supplied one. A consultation with no stated visit type derives exactly as before.
    */
+  /**
+   * TASK-1034 R3 — the requested DNA style id when the style is EFFECTIVE, else `undefined`.
+   * Pass-through when nothing was requested or the resolver is unwired (positional fixtures);
+   * FAIL-CLOSED (no style) when the gate read throws.
+   */
+  private async resolveEffectiveDnaStyleId(
+    consultation: { tenantId: string; departmentId?: string | null; doctorId?: string | null },
+    dnaStyleId: string | undefined,
+  ): Promise<string | undefined> {
+    if (!dnaStyleId || !this.configResolver) return dnaStyleId;
+    try {
+      const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({
+        tenantId: consultation.tenantId,
+        departmentId: consultation.departmentId ?? null,
+        doctorId: consultation.doctorId ?? null,
+      });
+      return effective ? dnaStyleId : undefined;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Effective DNA style could not be resolved for the pre-summary — generating without it',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
   private visitType(consultation: { tenantId?: string | null; parentConsultationId?: string | null; metadata?: unknown }): VisitTypeDefinition {
     return (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(consultation.tenantId ?? null, {
       recorded: readRecordedVisitType(consultation.metadata),

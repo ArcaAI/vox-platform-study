@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
+  DnaWritingStyleReportRepository,
   ConsultationEntity,
   ContextItemRepository,
   ContextItemFactory,
@@ -42,6 +43,8 @@ import { IAiRoutingPolicyService } from '../../ai-routing-policy/IAiRoutingPolic
 import type { AiTaskKey } from '../../ai-routing-policy/constants';
 import { NLP_NER_TASK_KEY, readClinicalTaxonomy, resolveSystemTaskModel } from '../shared/resolveNerModelSelection';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
+import { renderDnaRedactionRulesText } from '../../dna-writing-style/redaction-rules-text';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { HarnessProgressService } from './harness-progress.service';
@@ -373,6 +376,10 @@ export class HarnessInternalService extends BaseService {
     // states its times in. Optional + trailing so every positional fixture keeps its arity; absent
     // ⇒ the times read in UTC, exactly as before.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // TASK-1034 R3 — the doctor's DNA report, read for its redaction RULES so the gateway lane can
+    // render them as instructions. Optional + trailing so every positional fixture keeps its arity;
+    // absent ⇒ no rules text (the deterministic post-generation pass is unaffected).
+    @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -1378,6 +1385,13 @@ export class HarnessInternalService extends BaseService {
       // has opted out or the tenant flag is off. No-op (passes the requested id
       // through) when ConfigResolver is unwired (legacy fixtures).
       const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
+      // TASK-1034 R3 — the redaction rules as INSTRUCTIONS, behind the REDACTION gate (not the style gate).
+      const dnaRedactionRulesText = await this.resolveDnaRedactionRulesText(
+        tenantId,
+        consultation?.departmentId,
+        consultation?.doctorId,
+        consultationId,
+      );
 
       // Re-visit carry-forward (F-18). Both conditions are load-bearing: a first
       // visit has nothing to carry, and a deployment that has not opted in must
@@ -1426,6 +1440,7 @@ export class HarnessInternalService extends BaseService {
         transcript,
         conversationLanguage: dto.conversationLanguage?.trim() || 'en',
         dnaStyleId: effectiveDnaStyleId,
+        ...(dnaRedactionRulesText ? { dnaRedactionRulesText } : {}),
         explicitTemplate: dto.template,
         preferredPromptTemplateId,
         nerEntities,
@@ -2612,6 +2627,37 @@ export class HarnessInternalService extends BaseService {
       doctorId: doctorId ?? null,
     });
     return effective ? dnaStyleId : undefined;
+  }
+
+  /**
+   * TASK-1034 R3 — the doctor's redaction rules rendered as a bullet list for the prompt, or
+   * `undefined`. Gated by `resolveEffectiveDnaRedactionEnabled` (tenant declaration + doctor
+   * opt-in). FAIL-SAFE: an unwired dependency, a thrown gate, a missing report or a malformed rule
+   * set all yield no text — the rules stay enforced by the deterministic post-generation pass.
+   */
+  private async resolveDnaRedactionRulesText(
+    tenantId: string,
+    departmentId: string | null | undefined,
+    doctorId: string | null | undefined,
+    consultationId: string,
+  ): Promise<string | undefined> {
+    if (!doctorId || !this.configResolver || !this.dnaReportRepository) return undefined;
+    try {
+      const { effective } = await this.configResolver.resolveEffectiveDnaRedactionEnabled({ tenantId, departmentId: departmentId ?? null, doctorId });
+      if (!effective) return undefined;
+      const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+      if (!report) return undefined;
+      const { redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService as SecretsService);
+      if (!redactionRules) return undefined;
+      return renderDnaRedactionRulesText(validateRedactionRuleSet(redactionRules).rules) || undefined;
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA redaction rules could not be rendered for the harness prompt — generating without them (fail-safe)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   /**

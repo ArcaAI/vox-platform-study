@@ -10,3 +10,4 @@ export * from './dna-memory.events';
 export * from './dna-memory.store';
 export * from './dna-memory-capture.service';
 export * from './dna-memory-admin.service';
+export * from './redaction-rules-text';

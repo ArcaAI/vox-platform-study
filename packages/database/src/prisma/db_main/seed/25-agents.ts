@@ -551,6 +551,12 @@ export const PRE_SUMMARY_PARAMETERS = {
  * it may never change, add or remove one. That boundary is the whole reason DNA is applied at
  * finalize rather than live (TASK-891 F-1 / D-10): the clinician reads the note before signing it.
  *
+ * TASK-1034 R3 — the CLINICIAN REDACTION RULES block. `{{context.dna_redaction_rules_text}}` is the
+ * doctor's redaction/rewrite rules rendered as a bullet list (`renderDnaRedactionRulesText`), emitted
+ * by the live handoff behind the redaction gate. It TELLS the model what the deterministic
+ * post-generation pass (`apply_redaction`) enforces anyway — that pass stays the guarantee. It sits
+ * BEFORE the style block, so "the redaction rules above outrank the style" covers it too.
+ *
  * TASK-1022 — the HEADINGS block. The prompt used to ask for "the document template headings
  * exactly as they appear in the partial summaries" while the user turn carried the section bodies
  * with no titles, so the model invented a layout. The input now arrives headed (`## <title>`,
@@ -565,6 +571,9 @@ export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
   '=== DOCUMENT HEADINGS ===\n' +
   'The document template headings, in order, are:\n{{trigger.context.document_headings | default("")}}\n' +
   'Write the note under EXACTLY these headings, in exactly this order, each as a `## ` Markdown heading worded exactly as listed (without its number). When the list above is empty, use the `## ` headings of the input instead, in the order they appear there. Every heading appears exactly once, and no other heading is added. Put each fact under the heading it belongs to, even when a partial recorded it under a different one, and state it only once. A heading with nothing recorded for it gets exactly the line `Not discussed`: never a paraphrase of it, and never content of your own. Under the assessment or diagnosis heading, record the diagnosis the conversation states, including every update the conversation makes to it (for example once results are discussed), so the note carries the latest diagnosis stated; this is recording, not inferring, and a diagnosis the conversation does not state is never written.\n\n' +
+  '=== CLINICIAN REDACTION RULES ===\n' +
+  'Never include / always rewrite:\n{{context.dna_redaction_rules_text | default("")}}\n' +
+  'These are the clinician`s own rules. Never write anything a rule says never to write, and always write what a rule says to rewrite in exactly the form it gives. A rule changes only the wording it names: it never removes, adds or alters a clinical fact, drug name, dose, value, date or heading beyond that wording. When the list above is empty, ignore this block.\n\n' +
   '=== WRITING STYLE ===\n' +
   'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
   'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +

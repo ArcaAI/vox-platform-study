@@ -159,6 +159,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
                           },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
+                          },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
                             "description": "The doctor's DNA writing style, substituted into the surgery slot when the template declares it."
@@ -590,7 +594,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "dc23f5f969fbabf08ddd07e6aad2117b1bdcaa5e0ec6c78284bab31fdec06686"
+      "checksum": "2af31bcdda4f01c813e73460b64c18bf46b69e269a687ba652b0f543e91b4b91"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -733,6 +737,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -906,7 +914,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4be1d1604aa69d3b73295f9b50b806516e4ea5e53488955acdbe712a22fe4cd3"
+      "checksum": "c9098b6a12b951f486b590b8e6c17c272206442a6984a84145840bd6110b0678"
     }
   },
   "SYSTEM:general-medicine-consultation": {
@@ -1051,6 +1059,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
                           },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
+                          },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
                             "description": "The doctor's DNA writing style, substituted into the surgery slot when the template declares it."
@@ -1482,7 +1494,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "0c3d9ad22abb65202e6a26949fbf3aca312de6e57ad6c4e10ea96a24c984c39b"
+      "checksum": "65d2a334cabc065c6e9bbe2ac5a404b3d5c32c5d81acb3c94e3c62bc81b5ae98"
     }
   },
   "SYSTEM:platform-default-summarization": {
@@ -1625,6 +1637,10 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                           "dna_style_text": {
                             "type": "string",
                             "description": "The doctor's resolved DNA writing style."
+                          },
+                          "dna_redaction_rules_text": {
+                            "type": "string",
+                            "description": "The doctor's DNA redaction/rewrite rules as a bullet list (`Never write …`, `Always write … as …`); empty when the redaction gate is off or none are authored."
                           },
                           "style_DNA_doctor_department_surgery": {
                             "type": "string",
@@ -1798,7 +1814,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "415ea0a32761df715ea3de5696c8968e994e4783fe3464db68d90ac6828555c7"
+      "checksum": "945f22a8eeb54ea6997bd7affd52ce6ba37b331df21b6fd44d1604111e8b94ad"
     }
   }
 };
