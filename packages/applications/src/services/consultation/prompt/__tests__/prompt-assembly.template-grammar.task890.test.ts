@@ -26,7 +26,7 @@
  * degrades, because that is a different fault and a clinician must not be told it is a
  * governance defect.
  */
-import { ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** The legacy body as the seeds carry it TODAY (single brace) — the BEFORE side of the golden pair. */
@@ -135,41 +135,46 @@ function resolvesTo(content: string): void {
 describe('PromptAssemblyService renders `context.*` through the shared grammar', () => {
   it('resolves every legacy name under `context.*`', async () => {
     resolvesTo(CONVERTED_BODY);
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt } = await (await getService()).assemble(params());
 
-    expect(userPrompt).toContain('- **Department:** Cardiology');
-    expect(userPrompt).toContain('- **Visit Type:** revisit');
-    expect(userPrompt).toContain('- **Demographics:** Age Unknown, DOB Unknown, Gender Unknown');
-    expect(userPrompt).toContain('- Language: English');
-    expect(userPrompt).not.toContain('{{');
+    expect(systemPrompt).toContain('- **Department:** Cardiology');
+    expect(systemPrompt).toContain('- **Visit Type:** revisit');
+    expect(systemPrompt).toContain('- **Demographics:** Age Unknown, DOB Unknown, Gender Unknown');
+    expect(systemPrompt).toContain('- Language: English');
+    expect(systemPrompt).not.toContain('{{');
   });
 
   it('leaves a single brace VERBATIM — the deleted grammar has no fallback pass', async () => {
     resolvesTo('Language: {language_name}');
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt } = await (await getService()).assemble(params());
 
-    expect(userPrompt.startsWith('Language: {language_name}')).toBe(true);
+    expect(systemPrompt).toContain('\n\nLanguage: {language_name}');
   });
 
-  it('binds a DECLARED name this call did not populate to the empty string, never a literal', async () => {
+  it('binds a name this assembly OWNS but this call did not populate to the empty string, never a literal', async () => {
     resolvesTo('Prior: [{{context.prior_visit_summary}}]');
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt } = await (await getService()).assemble(params());
 
-    expect(userPrompt.startsWith('Prior: []')).toBe(true);
+    expect(systemPrompt).toContain('Prior: []');
   });
 
   it('honours `default("…")` over the empty binding', async () => {
     resolvesTo('Prior: {{context.prior_visit_summary | default("none recorded")}}');
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt } = await (await getService()).assemble(params());
 
-    expect(userPrompt.startsWith('Prior: none recorded')).toBe(true);
+    expect(systemPrompt).toContain('Prior: none recorded');
   });
 
-  it('never fails a consultation on an UNDECLARED reference — it renders empty and is logged', async () => {
-    resolvesTo('Unknown: [{{context.not_a_declared_name}}]');
-    const { userPrompt } = await (await getService()).assemble(params());
+  it('REFUSES a reference nothing populates: 400 PROMPT_VARIABLE_UNRESOLVED naming every path, never a hole', async () => {
+    resolvesTo('Unknown: [{{context.not_a_declared_name}}] and [{{context.another_unknown}}]');
+    const error = await (await getService()).assemble(params()).catch((e: unknown) => e);
 
-    expect(userPrompt.startsWith('Unknown: []')).toBe(true);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toMatchObject({
+      code: 'PROMPT_VARIABLE_UNRESOLVED',
+      missingVariables: ['context.another_unknown', 'context.not_a_declared_name'],
+      undeclaredByTheTenantSchema: ['context.another_unknown', 'context.not_a_declared_name'],
+    });
   });
 
   // TASK-890 L13 — the transition above is over.
@@ -188,18 +193,19 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
     });
   });
 
-  it('an infrastructure failure on the schema lookup still DEGRADES — a database blip is not a governance defect', async () => {
+  it('an infrastructure failure on the schema lookup is still the 400, never a 503 — a database blip is not a governance defect', async () => {
     resolvesTo('Notes: [{{context.not_populated_by_the_builders}}]');
     const service = await getService(false);
     // AFTER the harness, which sets its own resolved value for the no-clone case.
     mockSchemaRepository.findByTenantAndSlug.mockRejectedValue(new Error('db down'));
-    const { userPrompt } = await service.assemble(params());
-    expect(userPrompt).toContain('Notes: []');
+    const error = await service.assemble(params()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'PROMPT_VARIABLE_UNRESOLVED' });
   });
 
   it('reads the TENANT’s clone — never the SYSTEM row — when it has to classify a missing name', async () => {
-    resolvesTo('Prior: [{{context.prior_visit_summary}}]');
-    await (await getService()).assemble(params());
+    resolvesTo('Prior: [{{context.not_populated_by_the_builders}}]');
+    await (await getService()).assemble(params()).catch(() => undefined);
 
     expect(mockSchemaRepository.findByTenantAndSlug).toHaveBeenCalledWith('tenant-1', 'consultation_note_context');
     expect(mockSchemaRepository.findByTenantAndSlug).not.toHaveBeenCalledWith('00000000-0000-0000-0000-000000000000', expect.anything());
@@ -223,11 +229,13 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
  * always worked the other way: bound, and the append SUPPRESSED when the template consumed them.
  */
 describe('the transcript is a bound variable, and consuming it suppresses the duplicate append', () => {
-  it('renders the transcript where the author put it', async () => {
+  it('points the author’s placement at the transcript data section — the transcript itself never enters the system message', async () => {
     resolvesTo('Notes.\n\nTranscript:\n{{transcript}}');
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt, userPrompt } = await (await getService()).assemble(params());
 
-    expect(userPrompt.startsWith('Notes.\n\nTranscript:\ncase notes')).toBe(true);
+    expect(systemPrompt).toContain('Notes.\n\nTranscript:\n[see the TRANSCRIPT data section below]');
+    expect(systemPrompt).not.toContain('case notes');
+    expect(userPrompt).toContain('<<<EXTERNAL_DATA section="transcript">>>\n--- TRANSCRIPT ---\ncase notes\n<<<END_EXTERNAL_DATA>>>');
   });
 
   it('appends the transcript exactly ONCE — the include-guard sees the rendered copy', async () => {
@@ -256,7 +264,7 @@ describe('the golden pair: converted content assembles byte-identically to the l
 
   it('produces the same string as the deleted single-brace substituter did', async () => {
     resolvesTo(CONVERTED_BODY);
-    const { userPrompt } = await (await getService()).assemble(params());
+    const { systemPrompt } = await (await getService()).assemble(params());
 
     const before = legacySubstitute(LEGACY_BODY, {
       current_department: 'Cardiology',
@@ -269,6 +277,6 @@ describe('the golden pair: converted content assembles byte-identically to the l
       ner_entities: '',
     });
 
-    expect(userPrompt.startsWith(before)).toBe(true);
+    expect(systemPrompt).toContain(before);
   });
 });

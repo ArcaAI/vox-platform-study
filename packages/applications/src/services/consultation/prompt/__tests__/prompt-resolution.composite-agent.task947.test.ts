@@ -114,6 +114,32 @@ describe('OD-9 — the tag-selected agent tier reads a COMPOSITE instruction as 
     expect(result.resolvedAgentId).toBe('agent-rheum');
   });
 
+  it('hands over the agent’s FROZEN composite and its bindings, so assembly composes every fragment', async () => {
+    const frozen = { source: 'composite', content: 'BASE', join: '\n\n', fragments: [{ key: 'base', source: 'inline', content: 'BASE' }] };
+    mockAgentAssignments.resolve.mockResolvedValue({ agentSlug: 'rheum-notes', source: 'tenant', selector: ['specialty:rheumatology'] });
+    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue({
+      id: 'agent-rheum',
+      versionNumber: 4,
+      instruction: { ...compositeInstruction([{ key: 'base', promptTemplateId: BASE_TEMPLATE, promptVersionNumber: FRAGMENT_PIN }]), variables: { tone: { value: 'terse' } } },
+      compiledConfig: { resolvedPrompt: frozen },
+    });
+
+    const result = await buildService().resolve({
+      tenantId: TENANT,
+      departmentId: DEPT,
+      promptType: 'new-patient',
+      agentSelectorTags: ['specialty:rheumatology'],
+    });
+
+    expect(result.resolvedPrompt).toEqual(frozen);
+    expect(result.promptVariables).toEqual({ tone: { value: 'terse' } });
+  });
+
+  it('carries NO composite for a single-body agent', async () => {
+    const result = await selectTagged({ promptTemplateId: BASE_TEMPLATE, promptVersionNumber: FRAGMENT_PIN });
+    expect(result.resolvedPrompt).toBeUndefined();
+  });
+
   it('skips an unconditional INLINE fragment — the tier wants a template ROW to govern, not text', async () => {
     const result = await selectTagged(
       compositeInstruction([

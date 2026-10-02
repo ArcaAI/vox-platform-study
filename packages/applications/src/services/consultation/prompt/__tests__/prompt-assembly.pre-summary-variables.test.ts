@@ -61,9 +61,9 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', name: 'Cardiology' });
   });
 
-  it('leaves NO literal v1 placeholder in the assembled user prompt', async () => {
+  it('leaves NO literal v1 placeholder in the assembled prompt (the body is the system message)', async () => {
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'pre-summary',
@@ -83,13 +83,13 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       'formatted_previous_visits',
       'language_name',
     ]) {
-      expect(userPrompt).not.toContain(`{${name}}`);
+      expect(systemPrompt).not.toContain(`{${name}}`);
     }
   });
 
   it("renders the department NAME resolved from departmentId, and the caller's visit type", async () => {
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'pre-summary',
@@ -99,9 +99,9 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     });
 
     expect(mockDepartmentRepository.findById).toHaveBeenCalledWith('dept-1');
-    expect(userPrompt).toContain('- **Department:** Cardiology');
-    expect(userPrompt).toContain('- Notes from Cardiology');
-    expect(userPrompt).toContain('- **Visit Type:** revisit');
+    expect(systemPrompt).toContain('- **Department:** Cardiology');
+    expect(systemPrompt).toContain('- Notes from Cardiology');
+    expect(systemPrompt).toContain('- **Visit Type:** revisit');
   });
 
   it("resolves {{context.language_name}} from the conversation language via v1's LANGUAGE_MAP", async () => {
@@ -113,7 +113,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       transcript: 'case notes',
       conversationLanguage: 'ml-IN',
     });
-    expect(ml.userPrompt).toContain('- Language: Malayalam');
+    expect(ml.systemPrompt).toContain('- Language: Malayalam');
 
     const en = await service.assemble({
       tenantId: 'tenant-1',
@@ -122,7 +122,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
-    expect(en.userPrompt).toContain('- Language: English');
+    expect(en.systemPrompt).toContain('- Language: English');
   });
 
   // TASK-1001 — callers pass the NOTE OUTPUT language here (the platform default), not the
@@ -136,7 +136,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       transcript: 'case notes',
       conversationLanguage: 'hi',
     });
-    expect(hi.userPrompt).toContain('- Language: Hindi');
+    expect(hi.systemPrompt).toContain('- Language: Hindi');
 
     const codeSwitch = await service.assemble({
       tenantId: 'tenant-1',
@@ -145,12 +145,12 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
       transcript: 'case notes',
       conversationLanguage: 'ml-en',
     });
-    expect(codeSwitch.userPrompt).toContain('- Language: English');
+    expect(codeSwitch.systemPrompt).toContain('- Language: English');
   });
 
   it("applies v1's defaults for the fields the native context has no equivalent for", async () => {
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'pre-summary',
@@ -160,17 +160,17 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
 
     // No patient demographics / vitals / results exist in the v2 data model —
     // v1's own defaults apply, never an invented one.
-    expect(userPrompt).toContain('- **Demographics:** Age Unknown, DOB Unknown, Gender Unknown');
-    expect(userPrompt).toContain('- **Recent Vitals:** Not available (two most recent encounters)');
-    expect(userPrompt).toContain('- **Test Results:** \n');
-    expect(userPrompt).toContain('- **Previous Visits:** \n');
+    expect(systemPrompt).toContain('- **Demographics:** Age Unknown, DOB Unknown, Gender Unknown');
+    expect(systemPrompt).toContain('- **Recent Vitals:** Not available (two most recent encounters)');
+    expect(systemPrompt).toContain('- **Test Results:** \n');
+    expect(systemPrompt).toContain('- **Previous Visits:** \n');
     // No visitType supplied ⇒ v1's default.
-    expect(userPrompt).toContain('- **Visit Type:** Medical examination');
+    expect(systemPrompt).toContain('- **Visit Type:** Medical examination');
   });
 
   it("falls back to v1's 'General' when the consultation carries no department", async () => {
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -178,20 +178,20 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     });
 
     expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
-    expect(userPrompt).toContain('- **Department:** General');
+    expect(systemPrompt).toContain('- **Department:** General');
   });
 
   it("falls back to 'General' when the department row cannot be read (never fails the generation)", async () => {
     mockDepartmentRepository.findById.mockRejectedValue(new Error('db down'));
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
-    expect(userPrompt).toContain('- **Department:** General');
+    expect(systemPrompt).toContain('- **Department:** General');
   });
 
   it('does not touch the department repository for a body with no v1 placeholders', async () => {
@@ -204,7 +204,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     });
 
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'new-patient',
@@ -213,7 +213,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
     });
 
     expect(mockDepartmentRepository.findById).not.toHaveBeenCalled();
-    expect(userPrompt).toContain('Summarize for en.');
+    expect(systemPrompt).toContain('Summarize for en.');
   });
 
   /**
@@ -251,14 +251,14 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
   it('substitutes in ONE pass — a brace inside a substituted value is never re-interpreted', async () => {
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', name: '{{context.safe_vitals}}' });
     const service = await getService();
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       departmentId: 'dept-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
-    expect(userPrompt).toContain('- **Department:** {{context.safe_vitals}}');
-    expect(userPrompt).toContain('- **Recent Vitals:** Not available');
+    expect(systemPrompt).toContain('- **Department:** {{context.safe_vitals}}');
+    expect(systemPrompt).toContain('- **Recent Vitals:** Not available');
   });
 });
