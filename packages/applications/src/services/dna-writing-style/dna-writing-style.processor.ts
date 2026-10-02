@@ -12,6 +12,7 @@ import {
   DnaWritingStyleReportRepository,
   DnaWritingStyleVersionRepository,
   DnaUsageRecordRepository,
+  DnaWritingSampleRepository,
   PromptUsageRecordRepository,
   DnaWritingStyleReportFactory,
   DnaWritingStyleVersionFactory,
@@ -43,6 +44,7 @@ import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSetti
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { GenerateDnaReportJobPayload, DnaReportJobResult } from './dna-writing-style.service';
+import { DnaMemoryStore } from './dna-memory.store';
 import { JobMetricsService } from '../baseServices/observability/job-metrics.service';
 import { IMetricsService } from '../baseServices/metrics/IMetricsService';
 import { USAGE_EMISSION_FAILED_METRIC } from '../agent-trajectory/agent-trajectory.service';
@@ -188,6 +190,9 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Optional() @Inject(IMetricsService) metrics?: IMetricsService,
     // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
     @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
+    // TASK-1034 — DNA memory samples (edits, sign-offs, ingested history) join the corpus.
+    // Optional + trailing for fixture arity; absent ⇒ the summaries-only corpus of before.
+    @Optional() @Inject(DnaWritingSampleRepository) private readonly sampleRepository?: DnaWritingSampleRepository,
   ) {
     super();
     this.emissionFailedCounter = DnaWritingStyleProcessor.registerEmissionFailedCounter(metrics, this.logger);
@@ -211,7 +216,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   }
 
   private async processWithContext(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
-    const { doctorId, tenantId, userId, textSamples, sourceIds, samples: ingestedSamples } = job.data;
+    const { doctorId, tenantId, userId, textSamples, sourceIds, samples: ingestedSamples, sampleIds: carriedSampleIds } = job.data;
 
     this.clsService.set('tenantId', tenantId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,6 +236,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       let sourceContextItemIds: string[] = [];
       // TASK-974 §4.3 — the ingest window, when the batch came in through the ingest API.
       let ingestSummary: DnaIngestSummary | null = null;
+      // TASK-1034 — the memory samples this report is built from; stamped consumed once it is saved.
+      let consumedSampleIds: string[] = carriedSampleIds ?? [];
 
       // Gate BOTH paths on the effective DNA flag (tenant AND doctor). A
       // doctor who has opted out (or whose tenant disabled DNA) must never be
@@ -269,9 +276,11 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         // slice of everything the doctor ever produced is transcripts and audio, so
         // filtering to summaries afterwards would leave an empty corpus. Both bounds are
         // the repository's (`findFinalSummariesByDoctor`); this call is now type-checked.
-        const contextItems = await this.contextItemRepository.findFinalSummariesByDoctor(doctorId, maxSamples);
+        const contextItems = (await this.contextItemRepository.findFinalSummariesByDoctor(doctorId, maxSamples)) ?? [];
+        // TASK-1034 — the clinician's DNA memory (captured edits / sign-offs, ingested history).
+        const memory = await this.loadMemorySamples(tenantId, doctorId, maxSamples);
 
-        if (!contextItems || contextItems.length === 0) {
+        if (contextItems.length === 0 && memory.length === 0) {
           this.jobService.notifyFailed(job.data.jobId, 'No text samples available');
           throw new Error('No text samples available for DNA analysis');
         }
@@ -295,7 +304,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         // learns the doctor's EDIT behaviour (draft → approved), not just the final
         // prose. Back-compat: a legacy summary with no v1 snapshot
         // falls back to final-only.
-        const pairs: Array<{ id: string; draft: string | null; approved: string }> = [];
+        const pairs: Array<{ id: string; draft: string | null; approved: string; at: number; memory: boolean }> = [];
         for (const item of finalSummaries) {
           if (!item?.id) continue;
           const approvedVersions = await this.contextItemVersionRepository.getVersionsByChangeReason(item.id, 'approved');
@@ -303,8 +312,21 @@ export class DnaWritingStyleProcessor extends WorkerHost {
             const approvedContent: string = item.content ?? item.text ?? '';
             const draftVersions = await this.contextItemVersionRepository.getVersionsByChangeReason(item.id, 'ai_draft_v1');
             const draftContent: string | null = draftVersions?.[0]?.content ?? null;
-            pairs.push({ id: item.id, draft: draftContent, approved: approvedContent });
+            const at = new Date(item.updatedAt ?? item.createdAt ?? 0).getTime();
+            pairs.push({ id: item.id, draft: draftContent, approved: approvedContent, at, memory: false });
           }
+        }
+
+        // A memory sample whose text IS an approved summary already in the corpus (the SIGNOFF
+        // capture of that very note) is not read twice — it is still consumed by this report.
+        const summaryHashes = new Set(pairs.map((p) => DnaMemoryStore.contentHash(p.approved)));
+        const duplicateMemoryIds: string[] = [];
+        for (const sample of memory) {
+          if (summaryHashes.has(DnaMemoryStore.contentHash(sample.text))) {
+            duplicateMemoryIds.push(sample.id);
+            continue;
+          }
+          pairs.push({ id: sample.id, draft: sample.draft, approved: sample.text, at: sample.at, memory: true });
         }
 
         if (pairs.length === 0) {
@@ -312,8 +334,11 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           throw new Error('No approved text samples available for DNA analysis');
         }
 
-        sourceContextItemIds = pairs.map((p) => p.id);
-        samples = DnaWritingStyleProcessor.buildCorpus(pairs);
+        // ONE corpus, newest first, capped by `max-samples` across both sources.
+        const kept = pairs.sort((a, b) => b.at - a.at).slice(0, maxSamples);
+        sourceContextItemIds = kept.filter((p) => !p.memory).map((p) => p.id);
+        consumedSampleIds = [...kept.filter((p) => p.memory).map((p) => p.id), ...duplicateMemoryIds];
+        samples = DnaWritingStyleProcessor.buildCorpus(kept);
       }
 
       if (samples.length > maxContextChars) {
@@ -524,6 +549,16 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         jobId: job.data.jobId,
         origin: job.data.origin,
       });
+
+      // TASK-1034 — stamp the memory samples this report consumed. Best-effort: a failure here
+      // leaves them eligible for the next run, never fails a delivered profile.
+      if (consumedSampleIds.length > 0 && this.sampleRepository) {
+        try {
+          await this.sampleRepository.markConsumed(tenantId, consumedSampleIds, saved.id);
+        } catch (error) {
+          this.logger.warn(`Failed to mark DNA memory samples consumed for report ${saved.id}: ${error}`);
+        }
+      }
 
       const duration = endTimer();
       this.jobMetrics.recordJobComplete(JobQueue.GenerateDnaReport, 'DnaWritingStyleProcessor', duration);
@@ -756,6 +791,32 @@ export class DnaWritingStyleProcessor extends WorkerHost {
    * draft fall back to the raw approved text only — byte-identical to the
    * pre-Phase-6 final-only corpus (so empty approvals still contribute nothing).
    */
+  /**
+   * TASK-1034 — the clinician's DNA memory, decrypted, newest first. Empty when the repository or
+   * the secrets backend is not composed (the text exists only as ciphertext). A sample that fails to
+   * decrypt is skipped with a warn (ids only).
+   */
+  private async loadMemorySamples(
+    tenantId: string,
+    doctorId: string,
+    limit: number,
+  ): Promise<Array<{ id: string; text: string; draft: string | null; at: number }>> {
+    if (!this.sampleRepository || !this.secretsService) return [];
+    const rows = await this.sampleRepository.findForCorpus(tenantId, doctorId, limit);
+    const out: Array<{ id: string; text: string; draft: string | null; at: number }> = [];
+    for (const row of rows ?? []) {
+      try {
+        const text = await this.sampleRepository.decryptText(this.secretsService, row.textCiphertext);
+        if (!text || text.trim().length === 0) continue;
+        const draft = row.aiDraftCiphertext ? await this.sampleRepository.decryptText(this.secretsService, row.aiDraftCiphertext) : null;
+        out.push({ id: row.id, text, draft, at: new Date(row.writtenAt ?? 0).getTime() });
+      } catch (error) {
+        this.logger.warn(`Skipping undecryptable DNA memory sample ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return out;
+  }
+
   private static buildCorpus(pairs: Array<{ draft: string | null; approved: string }>): string {
     return pairs
       .map(({ draft, approved }) => {
