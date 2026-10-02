@@ -77,7 +77,7 @@ describe('JobAdminService', () => {
     it('should return paginated job summaries', async () => {
       const mockJob = createMockJob({ id: 'job-1', name: 'SendEmail' });
       const mockQueue = createMockQueue();
-      mockQueue.getJobs.mockResolvedValue([mockJob]);
+      mockQueue.getJobs.mockResolvedValueOnce([mockJob]);
       mockQueue.getJobCountByTypes.mockResolvedValue(1);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
@@ -109,7 +109,7 @@ describe('JobAdminService', () => {
         status: 'failed',
       });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(['failed'], 0, 19, true);
+      expect(mockQueue.getJobs).toHaveBeenCalledWith(['failed'], 0, 19, false);
     });
 
     // `jobName` was declared on `ListJobsOptions` and accepted by the controller
@@ -117,7 +117,7 @@ describe('JobAdminService', () => {
     // in the admin console sent a name and the service returned every job.
     it('filters by jobName (case-insensitive substring) and reports the filtered total', async () => {
       const mockQueue = createMockQueue();
-      mockQueue.getJobs.mockResolvedValue([
+      mockQueue.getJobs.mockResolvedValueOnce([
         createMockJob({ id: 'job-1', name: 'SendEmail' }),
         createMockJob({ id: 'job-2', name: 'PurgeAuditLog' }),
         createMockJob({ id: 'job-3', name: 'SendEmailDigest' }),
@@ -134,7 +134,7 @@ describe('JobAdminService', () => {
 
     it('paginates within the filtered set rather than the raw queue', async () => {
       const mockQueue = createMockQueue();
-      mockQueue.getJobs.mockResolvedValue([
+      mockQueue.getJobs.mockResolvedValueOnce([
         createMockJob({ id: 'job-1', name: 'SendEmail' }),
         createMockJob({ id: 'job-2', name: 'PurgeAuditLog' }),
         createMockJob({ id: 'job-3', name: 'SendEmailDigest' }),
@@ -168,7 +168,9 @@ describe('JobAdminService', () => {
 
       await service.listJobs(JobQueue.SendEmail, { page: 0, limit: 20, jobName: '   ' });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith([...['waiting', 'active', 'completed', 'failed', 'delayed']], 0, 19, true);
+      for (const status of ['waiting', 'active', 'completed', 'failed', 'delayed']) {
+        expect(mockQueue.getJobs).toHaveBeenCalledWith([status], 0, 19, false);
+      }
     });
 
     it('should get all statuses when status is not specified', async () => {
@@ -179,7 +181,50 @@ describe('JobAdminService', () => {
 
       await service.listJobs(JobQueue.AuditLog, { page: 0, limit: 20 });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(['waiting', 'active', 'completed', 'failed', 'delayed'], 0, 19, true);
+      // One range per state: BullMQ applies start/end to EACH state and
+      // concatenates, so a single multi-state call pages wrongly.
+      expect(mockQueue.getJobs).toHaveBeenCalledTimes(5);
+      for (const status of ['waiting', 'active', 'completed', 'failed', 'delayed']) {
+        expect(mockQueue.getJobs).toHaveBeenCalledWith([status], 0, 19, false);
+      }
+    });
+
+    // Completed jobs were invisible on the unfiltered board: the multi-state
+    // range filled the page with waiting/active jobs first, and every row came
+    // back with `status: ''`.
+    it('merges all states newest-first, pages the merged set, and labels each row with its state', async () => {
+      const mockQueue = createMockQueue();
+      const byStatus: Record<string, ReturnType<typeof createMockJob>[]> = {
+        waiting: [createMockJob({ id: 'w1', timestamp: 100 }), createMockJob({ id: 'w2', timestamp: 90 })],
+        completed: [createMockJob({ id: 'c1', timestamp: 50, finishedOn: 200 }), createMockJob({ id: 'c2', timestamp: 40, finishedOn: 95 })],
+      };
+      mockQueue.getJobs.mockImplementation(async ([status]: string[]) => byStatus[status] ?? []);
+      mockQueue.getJobCountByTypes.mockResolvedValue(4);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const first = await service.listJobs(JobQueue.AuditLog, { page: 0, limit: 2 });
+      expect(first.items.map((job) => [job.id, job.status])).toEqual([
+        ['c1', 'completed'],
+        ['w1', 'waiting'],
+      ]);
+      expect(first.total).toBe(4);
+
+      const second = await service.listJobs(JobQueue.AuditLog, { page: 1, limit: 2 });
+      expect(second.items.map((job) => [job.id, job.status])).toEqual([
+        ['c2', 'completed'],
+        ['w2', 'waiting'],
+      ]);
+    });
+
+    it('labels rows with the requested state when filtered by status', async () => {
+      const mockQueue = createMockQueue();
+      mockQueue.getJobs.mockResolvedValue([createMockJob({ id: 'c1' })]);
+      mockQueue.getJobCountByTypes.mockResolvedValue(1);
+      mockModuleRef.get.mockReturnValue(mockQueue);
+
+      const result = await service.listJobs(JobQueue.AuditLog, { page: 0, limit: 20, status: 'completed' });
+
+      expect(result.items[0].status).toBe('completed');
     });
 
     it('should calculate correct pagination offsets', async () => {
@@ -190,7 +235,9 @@ describe('JobAdminService', () => {
 
       await service.listJobs(JobQueue.AuditLog, { page: 2, limit: 10 });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(expect.any(Array), 20, 29, true);
+      // The merged view must read every state from its head through the end of
+      // the requested page before slicing.
+      expect(mockQueue.getJobs).toHaveBeenCalledWith(['completed'], 0, 29, false);
     });
 
     it('should not include job data in list view', async () => {

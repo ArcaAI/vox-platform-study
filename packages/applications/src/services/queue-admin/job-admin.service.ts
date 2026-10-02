@@ -58,20 +58,38 @@ export class JobAdminService {
     // search box sent a name and got every job back.
     const needle = options.jobName?.trim().toLowerCase();
     if (needle) {
-      const scanned = await queue.getJobs(statuses, 0, JOB_NAME_SCAN_LIMIT - 1, true);
-      const matched = scanned.filter((job) => job?.name?.toLowerCase().includes(needle));
-      const items: JobSummary[] = matched.slice(start, start + limit).map((job) => this.toJobSummary(job, queueName));
+      const scanned = await this.collectJobs(queue, statuses, JOB_NAME_SCAN_LIMIT);
+      const matched = scanned.filter(({ job }) => job?.name?.toLowerCase().includes(needle));
+      const items: JobSummary[] = matched.slice(start, start + limit).map(({ job, status }) => this.toJobSummary(job, queueName, status));
       // The total describes the FILTERED set — reporting the queue-wide count
       // here would offer the pager pages that hold nothing.
       return { items, total: matched.length, page, limit };
     }
 
-    const end = start + limit - 1;
-    const [jobs, total] = await Promise.all([queue.getJobs(statuses, start, end, true), queue.getJobCountByTypes(...statuses)]);
+    if (statuses.length === 1) {
+      const [status] = statuses;
+      const [jobs, total] = await Promise.all([queue.getJobs([status], start, start + limit - 1, false), queue.getJobCountByTypes(status)]);
+      return { items: jobs.map((job) => this.toJobSummary(job, queueName, status)), total, page, limit };
+    }
 
-    const items: JobSummary[] = jobs.map((job) => this.toJobSummary(job, queueName));
+    // BullMQ applies start/end to EACH state of a multi-state range and
+    // concatenates them in state order, so one multi-state call fills page 0
+    // with waiting/active jobs and pages past the rest — completed jobs never
+    // showed on the unfiltered board. Read every state's head through the end
+    // of this page, merge newest-first, then slice.
+    const [merged, total] = await Promise.all([this.collectJobs(queue, statuses, start + limit), queue.getJobCountByTypes(...statuses)]);
+    const items: JobSummary[] = merged.slice(start, start + limit).map(({ job, status }) => this.toJobSummary(job, queueName, status));
 
     return { items, total, page, limit };
+  }
+
+  /** The first `count` jobs of each state, tagged with that state, newest-first across states. */
+  private async collectJobs(queue: Queue, statuses: JobType[], count: number): Promise<{ job: Job; status: JobType }[]> {
+    const perStatus = await Promise.all(
+      statuses.map(async (status) => (await queue.getJobs([status], 0, count - 1, false)).map((job) => ({ job, status }))),
+    );
+    const recency = (job: Job) => job.finishedOn ?? job.processedOn ?? job.timestamp ?? 0;
+    return perStatus.flat().sort((a, b) => recency(b.job) - recency(a.job));
   }
 
   async getJobDetail(queueName: string, jobId: string): Promise<JobDetail> {
@@ -145,12 +163,12 @@ export class JobAdminService {
     return { succeeded, failed };
   }
 
-  private toJobSummary(job: Job, queueName: string): JobSummary {
+  private toJobSummary(job: Job, queueName: string, status = ''): JobSummary {
     return {
       id: job.id!,
       name: job.name,
       queueName,
-      status: '',
+      status,
       progress: typeof job.progress === 'number' ? job.progress : null,
       attempts: job.attemptsMade,
       maxAttempts: job.opts.attempts ?? 1,
