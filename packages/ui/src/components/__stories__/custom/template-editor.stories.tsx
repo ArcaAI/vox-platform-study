@@ -7,6 +7,14 @@ const PATHS: VariablePath[] = [
   { path: 'context.patient.name', type: 'string', required: true, phiClass: 'PHI', description: 'Full name' },
   { path: 'context.visit.reason', type: 'string', required: false, phiClass: 'NON_PHI', description: 'Chief complaint' },
   { path: 'context.transcript', type: 'TEXT', required: true, phiClass: 'PHI', description: 'The consultation transcript' },
+  {
+    path: 'context.current_department',
+    type: 'string',
+    required: false,
+    phiClass: 'NON_PHI',
+    description: 'Bound by the platform, not a schema',
+    source: 'platform',
+  },
 ];
 
 const declared = new Set(PATHS.map((entry) => entry.path));

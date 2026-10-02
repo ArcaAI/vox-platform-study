@@ -10,10 +10,12 @@
  * below it is admitted), which is exactly as strict as the path list is deep.
  */
 import {
+  PLATFORM_CONTEXT_VARIABLES,
   schemaVariablePaths,
   templateReferenceProblems,
   templateReferences,
   templateSyntaxProblems,
+  withPlatformContextVariables,
   type DeclaredNamespaces,
 } from '@arcaai/workflow-contract';
 import type { TemplateDiagnostic, VariablePath } from '@arcaai/ui/components/custom/template-editor';
@@ -22,6 +24,16 @@ import type { TemplateDiagnostic, VariablePath } from '@arcaai/ui/components/cus
 export function contextVariablePaths(definition: unknown): VariablePath[] {
   if (definition === null || definition === undefined) return [];
   return [...schemaVariablePaths(definition, 'context'), ...schemaVariablePaths(definition, 'trigger')];
+}
+
+/**
+ * `paths` plus the flat `context.*` names the gateway binds itself (`PLATFORM_CONTEXT_VARIABLES`),
+ * badged `platform` — for a TEXT_GENERATION prompt. A path the schema already offers keeps the
+ * schema's entry.
+ */
+export function withPlatformPaths(paths: readonly VariablePath[]): VariablePath[] {
+  const offered = new Set(paths.map((entry) => entry.path));
+  return [...paths, ...PLATFORM_CONTEXT_VARIABLES.filter((entry) => !offered.has(entry.path))];
 }
 
 /** Bare variable names (an agent's `instruction.variables`, a template's declarations) as completion entries. */
@@ -59,6 +71,8 @@ export interface DeclaredNamespacesInput {
   variables: readonly string[];
   /** Extra roots whose shape this editor cannot know (`input`, `vars`, `nodes`, …) — admitted as open. */
   openRoots?: readonly string[];
+  /** A TEXT_GENERATION prompt: also admit the platform's own `context.*` names, as publish does. */
+  platform?: boolean;
 }
 
 /**
@@ -75,13 +89,16 @@ export function declaredNamespacesFromPaths(
 }
 
 /** The same `DeclaredNamespaces` shape publish builds: `context` + `trigger` from the schema, plus open roots. */
-export function declaredNamespaces({ definition, variables, openRoots = ['input'] }: DeclaredNamespacesInput): DeclaredNamespaces {
+export function declaredNamespaces({ definition, variables, openRoots = ['input'], platform = false }: DeclaredNamespacesInput): DeclaredNamespaces {
   const roots: Record<string, unknown> = Object.fromEntries(openRoots.map((root) => [root, null]));
   if (definition !== null && definition !== undefined) {
     const paths = contextVariablePaths(definition);
     for (const root of ['context', 'trigger']) roots[root] = rootSchema(paths, root);
   }
-  return { roots, variables };
+  // A schema with no `context.*` path leaves the root unknown-shaped (`null`); for the platform
+  // names to be the only admitted ones it must be absent, as it is on the server.
+  if (platform && roots.context === null && !openRoots.includes('context')) delete roots.context;
+  return platform ? withPlatformContextVariables({ roots, variables }) : { roots, variables };
 }
 
 const OFFSET = /at offset (\d+)/;

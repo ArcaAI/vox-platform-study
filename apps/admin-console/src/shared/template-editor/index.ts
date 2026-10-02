@@ -6,6 +6,7 @@ export {
   templateLint,
   templateSyntaxLint,
   variableNamePaths,
+  withPlatformPaths,
   type DeclaredNamespacesInput,
   type FieldFinding,
 } from './template-lint';

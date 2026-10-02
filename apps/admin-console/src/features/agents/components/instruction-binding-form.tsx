@@ -34,7 +34,15 @@ import {
   SelectValue,
 } from '@arcaai/ui';
 import { useContextSchemaDefinition, useContextSchemaOptions } from '@/shared/catalog';
-import { TemplateField, contextVariablePaths, declaredNamespaces, findingsAt, templateLint, variableNamePaths } from '@/shared/template-editor';
+import {
+  TemplateField,
+  contextVariablePaths,
+  declaredNamespaces,
+  findingsAt,
+  templateLint,
+  variableNamePaths,
+  withPlatformPaths,
+} from '@/shared/template-editor';
 import { PromptTemplatePicker, type PromptPickerTemplate } from '@/shared/prompt-picker';
 import {
   instructionForm,
@@ -85,7 +93,8 @@ export interface InstructionBindingFormProps {
 
 /**
  * What the editors below complete and lint against: the effective schema's `context.*` /
- * `trigger.*` paths plus every bare variable name the instruction binds.
+ * `trigger.*` paths, the platform's own `context.*` names, and every bare variable name the
+ * instruction binds.
  */
 function useSchemaAssist(
   value: InstructionBindingValue,
@@ -98,10 +107,16 @@ function useSchemaAssist(
   const { definition } = useContextSchemaDefinition(schemaId, versionNumber);
   const names = useMemo(() => [...Object.keys(value.variables), ...extraNames], [value.variables, extraNames]);
   return useMemo(() => {
-    const paths = [...contextVariablePaths(definition), ...variableNamePaths(names)];
+    // Plus the platform's own `context.*` names, which publish admits for every TEXT_GENERATION prompt.
+    const paths = [...withPlatformPaths(contextVariablePaths(definition)), ...variableNamePaths(names)];
     // A bound schema whose definition has not arrived yet admits its roots rather than flagging them.
     const pending = schemaId !== null && definition === null;
-    const declared = declaredNamespaces({ definition, variables: names, openRoots: pending ? ['input', 'context', 'trigger'] : ['input'] });
+    const declared = declaredNamespaces({
+      definition,
+      variables: names,
+      openRoots: pending ? ['input', 'context', 'trigger'] : ['input'],
+      platform: true,
+    });
     return { paths, lint: templateLint(declared), findings };
   }, [definition, names, schemaId, findings]);
 }

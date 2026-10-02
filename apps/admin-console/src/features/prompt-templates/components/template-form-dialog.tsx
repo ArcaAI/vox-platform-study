@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
-import { TemplateField, templateSyntaxLint, variableNamePaths } from '@/shared/template-editor';
+import { TemplateField, templateSyntaxLint, variableNamePaths, withPlatformPaths } from '@/shared/template-editor';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { useCreateTemplate, useDepartments, useUpdateTemplate } from '../api/hooks';
 import type { PromptTemplate, PromptTemplateCategory, PromptTemplateStatus, PromptVariableDeclaration, PromptVariableType } from '../api/types';
@@ -277,9 +277,12 @@ function TemplateContentField({
   variables: PromptVariableDeclaration[];
   placeholder?: string;
 }) {
-  const paths = variableNamePaths(
-    variables.map((variable) => variable.name),
-    'declared',
+  // The template's own declarations, then the platform's `context.*` names a binding agent resolves.
+  const paths = withPlatformPaths(
+    variableNamePaths(
+      variables.map((variable) => variable.name),
+      'declared',
+    ),
   );
   return (
     <div className="flex min-h-40 flex-1 flex-col">
