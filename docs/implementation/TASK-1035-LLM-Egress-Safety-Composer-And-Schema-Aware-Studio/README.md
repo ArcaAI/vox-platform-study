@@ -257,7 +257,40 @@ Lanes are partitioned by package, so each worktree has one writer (rule 14). The
 
 ## 6. Implementation Summary
 
-_Not started._
+### 6.1 P0 — egress safety (merged on dev-2.2 2026-10-02, `72026cbc3` + `c193c60ef` + `31307efa8`)
+
+| Lane | Merge | What landed |
+|---|---|---|
+| GATEWAY | `1e618b6b5` | <ul><li>One helper (`text-request/provider-locality.ts`) stamps `provider_locality` from `deploymentKind` on every gateway → text call, via `applyTenantProviderOverrides` → `applyEgressSafety`.</li><li>`known_phi` from the effective context schema's PHI fields plus identity (`known-phi.service.ts`, 60 s per-tenant cache).</li><li>Opt-outs, the kill switch and `requireMedical` descriptors removed. Stored rows are stripped on read and write for one release.</li><li>Back-fill `packages/database/scripts/strip-retired-guardrail-optout.ts` (not run).</li><li>`deploymentKind` + per-candidate `outputSchema` on the resolve wire.</li><li>Seeds: §5.0 guardrail defaults; six clinical PII labels (48 total; snake_case: `medical_record_number`, `patient_id`, `encounter_id`, `staff_id`, `healthcare_facility`, `date_of_service`).</li><li>Console opt-out controls removed.</li></ul> |
+| TEXT | `411ca8a9d` | <ul><li>`core/locality.py` (§5.0 rules).</li><li>`services/pseudonymizer.py`, `services/egress.py` (inbound screen ∥ medical judge, pseudonymize, re-identify, `egress` summary).</li><li>`services/egress_stream.py` (sentence windows, 2000-char forced cut, split-token hold-back).</li><li>`pii_leak` judged per locality (`PII_LEAK_BLOCKED` 422 / terminal frame); judge lane `JUDGE_PROVIDER_NOT_LOCAL` 503.</li><li>Medical-verdict cache `text:medjudge:<sha256>` 300 s; idempotency keys now tenant-scoped.</li><li>`/translate` gated.</li><li>Guardrail `/screen/inbound` `include_pii_spans` + parallel chunked PII extraction.</li><li>nlp sends `medical_exempt: "internal"`.</li></ul> |
+| HARNESS | `72026cbc3` | <ul><li>`core/llm_egress.py` stamps locality / `known_phi` on every TextClient call.</li><li>Presidio LLM-egress path retired (`ensure_egress_safe` deleted). Presidio remains only for the inferential judge's direct hop and MCP tool args.</li><li>`HARNESS_PHI_*` env removed.</li><li>Opt-out removed.</li><li>Fallback candidates use their own output schema.</li><li>Palette `generate.text` binds the assembled `systemPrompt`.</li><li>Replay-compat 23 passed (workflow code unchanged).</li></ul> |
+
+Post-merge integration (orchestrator):
+- Regenerated `openapi.json` + portal docs, the Python env surface and `env-surface.generated.md`.
+- Removed a seed test asserting the retired `guards` field.
+- Stamped the mock provider local in the resume-stream tests (an unstamped unknown provider is cloud by design).
+- Inverted the inspector "Guardrail" field assertion.
+- `vox-node gen:admin` and `regen:registry-snapshot` produced no diff.
+
+**Gate pass on dev-2.2 (one pass, after all merges):**
+
+| Gate | Result |
+|---|---|
+| test / typecheck: types, workflow-contract, database, applications, admin-console | green (admin-console 3868/3868 after fix) |
+| lint: workflow-contract, applications, admin-console, api | green (types/database have no lint script) |
+| api unit, `tests/contracts`, `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check`, `env:sync --check` | green |
+| pytest guardrail, harness | green |
+| pytest text (excl. live e2e) | 2043 passed, 4 skipped → the 4 resume-stream failures fixed (22/22) |
+| pytest nlp | 766 passed, 2 failed — `test_metrics_endpoint_task636.py` **pre-existing**, file and nlp app untouched by this ticket |
+| ruff | 1 finding, F841 in `apps/harness/scripts/task_330_phase3_retrieval_check.py` — **pre-existing**, untouched |
+
+**Not done yet / follow-ups:**
+- **Already-seeded databases keep the old guardrail availability row.** The seed creates it only if missing. Dev DB and cluster need the SYSTEM row updated to §5.0 defaults, plus deletion of the orphaned `text.externalGuardrail.{enabled,requireMedical}` / `text.guardrailPolicy.requireMedical` `GlobalSetting` rows.
+- **Back-fill** `strip-retired-guardrail-optout.ts` is not run. PUBLISHED agent/workflow rows keep the field until republished, which is why strip-on-read must stay a release.
+- **Deployment repo:** `scripts/env-consumer-inventory.generated.json` still lists `HARNESS_PHI_*`. No manifest sets them.
+- **Live proof (§5.4)** pending a stack restart on the merged code.
+- **Open question for the owner:** tenants can still DISABLE a mandatory workflow node (e.g. `consentGate`, publish warning `GUARDRAIL_OPTED_OUT`) and per-check rows in `TenantGuardrailPolicy`. The lanes read OD-1 as the LLM screening opt-out only.
+- Naming leftover: `settings-registry-screen.tsx:144` uses `requireMedical` as an example pair (data-driven, no broken control).
 
 ## 7. Change History
 
@@ -265,3 +298,5 @@ _Not started._
 |---|---|
 | 2026-10-02 | Ticket raised; current-state evaluation (§2) and plan (§3–5) written; OD-1..3 taken by owner. |
 | 2026-10-02 | OD-4..9 accepted; P0 wire contract frozen (§5.0). P0 runs as three lanes: TEXT (`apps/text` + `apps/guardrail` + the nlp text client), GATEWAY (`packages/{applications,database,workflow-contract,types}` + `apps/api` + the console opt-out toggle), HARNESS (`apps/harness`). The NLP joint-detect endpoint is deferred: guardrail runs the existing `/guard/pii` and `/guard/classify` concurrently. |
+| 2026-10-02 | Owner: images may go to cloud providers unredacted (text still pseudonymized, `egress.images_unredacted`). |
+| 2026-10-02 | P0 merged on dev-2.2 (three lanes rebased onto the owner's filter-branch rewrite first), integration fixes, one gate pass — §6.1. |
