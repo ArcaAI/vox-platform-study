@@ -4,6 +4,18 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * One entry in the capability/settings catalog. Pure
  * metadata about a controllable setting (never a value); safe to expose.
  */
+/** TASK-1033 — the value a `db-config` key's dedicated row stores, and that row's OCC version. */
+export class SettingDedicatedRowResponse {
+  @ApiProperty({
+    description: "The stored value (provider in the descriptor's wire vocabulary, e.g. `minio`).",
+    example: 'https://admin.example.com',
+  })
+  value!: unknown;
+
+  @ApiProperty({ description: "The dedicated row's `_version` (use as If-Match on its own write route).", example: 3 })
+  version!: number;
+}
+
 export class SettingCatalogItemResponse {
   @ApiProperty({ description: 'Canonical dotted key, e.g. rateLimit.maxRequests.' })
   key!: string;
@@ -105,6 +117,32 @@ export class SettingCatalogItemResponse {
     example: 'Bootstrap',
   })
   lockLabel?: string;
+
+  // TASK-1033 — a dedicated-surface key (`db-config` / `entitlement` / `redis-flag`) names the
+  // console screen that owns its write, so the registry screen links there instead of dead-ending.
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "Admin-console route that owns this key's write (db-config / entitlement / redis-flag tiers). Null for every other tier.",
+    example: '/tenants/storage',
+  })
+  consoleRoute!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Human label for `consoleRoute`. Null iff `consoleRoute` is null.',
+    example: 'Tenant storage',
+  })
+  consoleRouteLabel!: string | null;
+
+  @ApiProperty({
+    type: SettingDedicatedRowResponse,
+    nullable: true,
+    description:
+      "For a `db-config` key: the value its dedicated row (e.g. the SYSTEM TenantStorageConfig row) actually stores, with that row's version. Null when the row or field is absent, or the key is not db-config.",
+  })
+  dedicatedRow!: SettingDedicatedRowResponse | null;
 }
 
 export class SettingCatalogResponse {

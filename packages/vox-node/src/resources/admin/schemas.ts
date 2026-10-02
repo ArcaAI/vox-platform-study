@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 518 component schemas the generated surface transitively
+ * Only the 519 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -6495,9 +6495,15 @@ export interface SetUserDepartmentsRequest {
 export interface SettingCatalogItemResponse {
   /** Server-side taxonomy bucket. */
   category: string;
+  /** Admin-console route that owns this key's write (db-config / entitlement / redis-flag tiers). Null for every other tier. */
+  consoleRoute: string | null;
+  /** Human label for `consoleRoute`. Null iff `consoleRoute` is null. */
+  consoleRouteLabel: string | null;
   /** Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped). */
   consumedBy?: string[];
   dataType: string;
+  /** For a `db-config` key: the value its dedicated row (e.g. the SYSTEM TenantStorageConfig row) actually stores, with that row's version. Null when the row or field is absent, or the key is not db-config. */
+  dedicatedRow: SettingDedicatedRowResponse;
   /** The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material. */
   default?: Record<string, unknown>;
   description?: string;
@@ -6535,6 +6541,13 @@ export interface SettingCatalogResponse {
   /** Distinct categories present in items, sorted. */
   categories: string[];
   items: SettingCatalogItemResponse[];
+}
+
+export interface SettingDedicatedRowResponse {
+  /** The stored value (provider in the descriptor's wire vocabulary, e.g. `minio`). */
+  value: Record<string, unknown>;
+  /** The dedicated row's `_version` (use as If-Match on its own write route). */
+  version: number;
 }
 
 export interface SettingPlatformTierPairResponse {

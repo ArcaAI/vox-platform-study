@@ -22643,6 +22643,18 @@
             "example": "Pipeline",
             "type": "string"
           },
+          "consoleRoute": {
+            "description": "Admin-console route that owns this key's write (db-config / entitlement / redis-flag tiers). Null for every other tier.",
+            "example": "/tenants/storage",
+            "nullable": true,
+            "type": "string"
+          },
+          "consoleRouteLabel": {
+            "description": "Human label for `consoleRoute`. Null iff `consoleRoute` is null.",
+            "example": "Tenant storage",
+            "nullable": true,
+            "type": "string"
+          },
           "consumedBy": {
             "description": "Deployables served this key on the effective-config pull route. Absent = the key travels per-request instead (tenant-scoped).",
             "items": {
@@ -22653,6 +22665,16 @@
           "dataType": {
             "example": "boolean",
             "type": "string"
+          },
+          "dedicatedRow": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SettingDedicatedRowResponse"
+              }
+            ],
+            "description": "For a `db-config` key: the value its dedicated row (e.g. the SYSTEM TenantStorageConfig row) actually stores, with that row's version. Null when the row or field is absent, or the key is not db-config.",
+            "nullable": true,
+            "type": "object"
           },
           "default": {
             "description": "The descriptor default. OMITTED for secret-sensitivity keys — the read surface never carries secret material.",
@@ -22742,7 +22764,10 @@
           "sensitivity",
           "maxScope",
           "editableBy",
-          "category"
+          "category",
+          "consoleRoute",
+          "consoleRouteLabel",
+          "dedicatedRow"
         ],
         "type": "object"
       },
@@ -22765,6 +22790,25 @@
         "required": [
           "items",
           "categories"
+        ],
+        "type": "object"
+      },
+      "SettingDedicatedRowResponse": {
+        "properties": {
+          "value": {
+            "description": "The stored value (provider in the descriptor's wire vocabulary, e.g. `minio`).",
+            "example": "https://admin.example.com",
+            "type": "object"
+          },
+          "version": {
+            "description": "The dedicated row's `_version` (use as If-Match on its own write route).",
+            "example": 3,
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "version"
         ],
         "type": "object"
       },

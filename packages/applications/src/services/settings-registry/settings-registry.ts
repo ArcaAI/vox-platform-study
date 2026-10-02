@@ -6,7 +6,10 @@
 // exception used to signal a clamp violation as a 400.
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { SCOPE_DEPTH, SettingDescriptor, SettingScope } from './registry.types';
+import { SCOPE_DEPTH, SettingDescriptor, SettingScope, StorageTier } from './registry.types';
+
+/** Tiers whose write is NOT the registry lane — each must name its console route (TASK-1033). */
+const DEDICATED_SURFACE_TIERS: ReadonlySet<StorageTier> = new Set<StorageTier>(['db-config', 'entitlement', 'redis-flag']);
 
 export class SettingsRegistry {
   private readonly byKey = new Map<string, SettingDescriptor>();
@@ -37,6 +40,12 @@ export class SettingsRegistry {
         `SettingsRegistry: secret setting '${descriptor.key}' must not declare 'sampleValue' — ` +
           'that field exists to put a real-looking value into a COMMITTED template file, which is ' +
           'exactly what a secret must never carry.',
+      );
+    }
+    if (DEDICATED_SURFACE_TIERS.has(descriptor.tier) && (!descriptor.consoleRoute || !descriptor.consoleRouteLabel)) {
+      throw new Error(
+        `SettingsRegistry: '${descriptor.key}' is tier '${descriptor.tier}', whose write lives on a dedicated surface — ` +
+          'it must declare consoleRoute + consoleRouteLabel naming the admin-console screen that owns the write (TASK-1033).',
       );
     }
     this.byKey.set(descriptor.key, descriptor);

@@ -117,6 +117,25 @@ export class PlatformStorageSettingsResolver {
     return { value, sourceScope: SOURCE_SCOPE[config.source] };
   }
 
+  /**
+   * TASK-1033 — what the dedicated SYSTEM row itself STORES, per registry key, with the row
+   * version. Only the row: the app-settings / env tiers below it are not "stored on the dedicated
+   * row", and reporting them here would recreate the false provenance this exists to fix.
+   * A field the row leaves null/empty is omitted. Backend errors propagate (property 1).
+   */
+  async dedicatedRowValues(): Promise<Partial<Record<ResolvableKey, { value: unknown; version: number }>>> {
+    const rows: TenantStorageConfigEntity[] = await this.configRepository.findAllTenantDefaults(SYSTEM_TENANT_ID);
+    const row = rows[0];
+    if (!row) return {};
+    const out: Partial<Record<ResolvableKey, { value: unknown; version: number }>> = {};
+    for (const [key, field] of Object.entries(KEY_TO_FIELD) as [ResolvableKey, keyof PlatformStorageConfig][]) {
+      const raw = (row as unknown as Record<string, unknown>)[field];
+      if (raw === null || raw === undefined || raw === '') continue;
+      out[key] = { value: field === 'provider' ? String(raw).toLowerCase() : raw, version: row.version };
+    }
+    return out;
+  }
+
   private async resolvePlatformConfig(): Promise<PlatformStorageConfig> {
     const rows: TenantStorageConfigEntity[] = await this.configRepository.findAllTenantDefaults(SYSTEM_TENANT_ID);
 
