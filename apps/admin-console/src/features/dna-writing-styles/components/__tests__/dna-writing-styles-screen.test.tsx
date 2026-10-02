@@ -191,7 +191,7 @@ describe('DnaWritingStylesScreen', () => {
     renderWithProviders(<DnaWritingStylesScreen />);
 
     expect(await screen.findByText('Select a working tenant')).toBeDefined();
-    expect(screen.getByRole('heading', { level: 1, name: 'DNA Writing Styles' })).toBeDefined();
+    expect(screen.getByRole('heading', { level: 1, name: 'DNA Writing Style Memory' })).toBeDefined();
     expect(calls.every((call) => !call.url.includes('/dna-writing-styles'))).toBe(true);
   });
 

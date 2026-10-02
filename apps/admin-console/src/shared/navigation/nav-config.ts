@@ -698,7 +698,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   {
     route: '/dna-writing-styles',
     domain: 'knowledge-agents',
-    label: 'DNA writing styles',
+    label: 'DNA writing style memory',
     tier: '30-49',
     icon: IconDna,
     required: [['manage', 'DnaWritingStyleReport']],

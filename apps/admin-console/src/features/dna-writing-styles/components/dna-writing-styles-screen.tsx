@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { IconDna, IconFilterOff } from '@tabler/icons-react';
-import { parseAsString, useQueryState } from 'nuqs';
+import { parseAsString, parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
 import { VirtualizedDataGrid, type ColumnDef, type DataQueryState } from '@arcaai/ui';
 import { StatCard } from '@arcaai/ui/components/metrics/stat-card';
@@ -13,6 +13,7 @@ import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardAction, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { Progress } from '@arcaai/ui/components/shadcn/progress';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { useAdminGridParams } from '@/shared/data/admin-data-grid';
 import { normalizeList } from '@/shared/data/envelopes';
 import type { FilterOption } from '@/shared/data/filter-bar';
@@ -31,6 +32,19 @@ import { useDnaDashboard, useDnaJobProgress, useDnaReports } from '../api';
 import type { DnaJobStatus, DnaReport, ListDnaReportsParams, UseDnaJobProgressResult } from '../api';
 import { DoctorDetailDrawer } from './doctor-detail';
 import { GenerateReportDialog } from './generate-report-dialog';
+import { IngestTab } from './ingest-tab';
+import { MemoryTab } from './memory-tab';
+import { ScheduleTab } from './schedule-tab';
+
+const SCREEN_TITLE = 'DNA Writing Style Memory';
+const TABS = ['reports', 'memory', 'ingest', 'schedule'] as const;
+type DnaTab = (typeof TABS)[number];
+const TAB_ENDPOINTS: Record<DnaTab, string> = {
+  reports: 'GET /admin/dna-writing-styles',
+  memory: 'GET /admin/dna-writing-styles/memory/summary',
+  ingest: 'POST /dna-writing-styles/ingest',
+  schedule: 'GET /admin/dna-writing-styles/schedule',
+};
 
 /**
  * Frame 33 freshness note: the list endpoint has no freshness/staleness param
@@ -165,6 +179,8 @@ function DnaWritingStylesBody() {
   // param. Filters map to the endpoint's discrete doctorId/includeDisabled.
   const query = useAdminGridParams();
   const [selected, setSelected] = useQueryState('selected', parseAsString.withDefault(''));
+  // TASK-1034 — the four management tabs; the active one lives in the URL (shareable).
+  const [tab, setTab] = useQueryState('tab', parseAsStringLiteral(TABS).withDefault('reports'));
 
   const doctor = scalarFilterValue(query.queryState, 'doctorId');
   const includeDisabled = scalarFilterValue(query.queryState, 'resourceStatus') === 'true';
@@ -282,80 +298,105 @@ function DnaWritingStylesBody() {
 
   return (
     <>
-      <ScreenTemplate
-        contentMode="fill"
-        header={
-          <PageHeader
-            title="DNA Writing Styles"
-            meta={
-              <>
-                {reports.data ? (
-                  <span>
-                    {formatNumber(totalCount)} reports
-                    {dashboard.data ? ` \u00b7 ${formatNumber(dashboard.data.usersWithStyle)} doctors covered` : ''}
-                  </span>
-                ) : (
-                  <Skeleton className="h-4 w-40" />
-                )}
-              </>
-            }
-            actions={
-              <Button onClick={() => setGenerateOpen(true)}>
-                <IconDna aria-hidden />
-                Generate report
-              </Button>
-            }
-          />
-        }
-        stats={<DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />}
-        footer={
-          <StatusFooter
-            start={<span>{reports.isFetching && !reports.isLoading ? 'Refreshing' : 'Up to date'}</span>}
-            end={
-              <span aria-hidden className="font-mono">
-                GET /admin/dna-writing-styles
-              </span>
-            }
-          />
-        }
-      >
-        <VirtualizedDataGrid<DnaReport>
-          aria-label="DNA reports"
-          columns={columns}
-          data={rows}
-          getRowId={(row) => row.id}
-          manual={{ filtering: true, pagination: true }}
-          rowCount={totalCount}
-          queryState={query.queryState}
-          onQueryStateChange={query.setQueryState}
-          persistence={gridPersistence('dna-writing-styles')}
-          features={{
-            columnReorder: true,
-            columnResize: true,
-            columnPinning: true,
-            columnVisibility: true,
-            rowSelection: false,
-            globalSearch: false,
-            facetedFilters: true,
-            sorting: false,
-          }}
-          onRowClick={(row) => {
-            // TASK-965 WS-1 (HV-9) — the drawer reads the doctor's LATEST report, so opening it from a
-            // superseded row would silently show a different record than the one clicked.
-            if (!row.isLatest) {
-              toast.info(`Report ${row.id} was superseded by this doctor's latest report — open the row marked Latest.`);
-              return;
-            }
-            void setSelected(row.doctorId);
-          }}
-          isLoading={reports.isLoading}
-          isBusy={reports.isFetching && !reports.isLoading}
-          error={rows.length > 0 ? null : (reports.error ?? null)}
-          errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
-          onRetry={() => void reports.refetch()}
-          emptyState={empty}
-        />
-      </ScreenTemplate>
+      <Tabs value={tab} onValueChange={(next) => void setTab(next as DnaTab)} className="flex min-h-0 flex-1 flex-col gap-0">
+        <ScreenTemplate
+          contentMode={tab === 'reports' || tab === 'memory' ? 'fill' : 'scroll'}
+          header={
+            <PageHeader
+              title={SCREEN_TITLE}
+              meta={
+                <>
+                  {reports.data ? (
+                    <span>
+                      {formatNumber(totalCount)} reports
+                      {dashboard.data ? ` \u00b7 ${formatNumber(dashboard.data.usersWithStyle)} doctors covered` : ''}
+                    </span>
+                  ) : (
+                    <Skeleton className="h-4 w-40" />
+                  )}
+                </>
+              }
+              actions={
+                <Button onClick={() => setGenerateOpen(true)}>
+                  <IconDna aria-hidden />
+                  Generate report
+                </Button>
+              }
+            />
+          }
+          stats={
+            tab === 'reports' ? (
+              <DashboardCard dashboard={dashboard} reportsTotal={reports.data?.count} activeJobId={activeJobId} progress={progress} />
+            ) : undefined
+          }
+          tabs={
+            <TabsList variant="line">
+              <TabsTrigger value="reports">Reports</TabsTrigger>
+              <TabsTrigger value="memory">Memory</TabsTrigger>
+              <TabsTrigger value="ingest">Ingest</TabsTrigger>
+              <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            </TabsList>
+          }
+          footer={
+            <StatusFooter
+              start={<span>{reports.isFetching && !reports.isLoading ? 'Refreshing' : 'Up to date'}</span>}
+              end={
+                <span aria-hidden className="font-mono">
+                  {TAB_ENDPOINTS[tab]}
+                </span>
+              }
+            />
+          }
+        >
+          <TabsContent value="reports" className="mt-0 flex min-h-0 flex-1 flex-col">
+            <VirtualizedDataGrid<DnaReport>
+              aria-label="DNA reports"
+              columns={columns}
+              data={rows}
+              getRowId={(row) => row.id}
+              manual={{ filtering: true, pagination: true }}
+              rowCount={totalCount}
+              queryState={query.queryState}
+              onQueryStateChange={query.setQueryState}
+              persistence={gridPersistence('dna-writing-styles')}
+              features={{
+                columnReorder: true,
+                columnResize: true,
+                columnPinning: true,
+                columnVisibility: true,
+                rowSelection: false,
+                globalSearch: false,
+                facetedFilters: true,
+                sorting: false,
+              }}
+              onRowClick={(row) => {
+                // TASK-965 WS-1 (HV-9) — the drawer reads the doctor's LATEST report, so opening it from a
+                // superseded row would silently show a different record than the one clicked.
+                if (!row.isLatest) {
+                  toast.info(`Report ${row.id} was superseded by this doctor's latest report — open the row marked Latest.`);
+                  return;
+                }
+                void setSelected(row.doctorId);
+              }}
+              isLoading={reports.isLoading}
+              isBusy={reports.isFetching && !reports.isLoading}
+              error={rows.length > 0 ? null : (reports.error ?? null)}
+              errorState={(error) => <ErrorState error={error} onRetry={() => void reports.refetch()} />}
+              onRetry={() => void reports.refetch()}
+              emptyState={empty}
+            />
+          </TabsContent>
+          <TabsContent value="memory" className="mt-0 flex min-h-0 flex-1 flex-col">
+            <MemoryTab />
+          </TabsContent>
+          <TabsContent value="ingest" className="mt-0">
+            <IngestTab />
+          </TabsContent>
+          <TabsContent value="schedule" className="mt-0">
+            <ScheduleTab />
+          </TabsContent>
+        </ScreenTemplate>
+      </Tabs>
 
       {/* Keyed by doctor so drawer-local state (edit mode) resets on selection change. */}
       <DoctorDetailDrawer
@@ -390,13 +431,13 @@ function DnaWritingStylesBody() {
 export function DnaWritingStylesScreen() {
   return (
     <WorkingTenantGate
-      title="DNA Writing Styles"
+      title={SCREEN_TITLE}
       meta={
         <span aria-hidden className="text-muted-foreground font-mono text-xs">
           GET /admin/dna-writing-styles
         </span>
       }
-      description="DNA writing styles are tenant-scoped. Pick a working tenant from the switcher in the top bar to load its reports and dashboard."
+      description="DNA writing styles are tenant-scoped. Pick a working tenant from the switcher in the top bar to load its reports, memory and regeneration schedule."
     >
       <DnaWritingStylesBody />
     </WorkingTenantGate>

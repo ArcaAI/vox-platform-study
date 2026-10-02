@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEventStream, type StreamStatus } from '@/shared/streams';
 import {
+  deleteDnaMemorySample,
+  getDnaIngestJobStatus,
+  getDnaSchedule,
+  ingestDnaSamples,
+  listDnaMemory,
+  listDnaMemorySummary,
+  runDnaSchedule,
+  updateDnaSchedule,
   dnaJobStreamPath,
   generateDnaReport,
   getDnaDashboard,
@@ -15,7 +23,16 @@ import {
   updateDnaReport,
 } from './client';
 import { dnaKeys } from './keys';
-import type { DnaJobStatus, GenerateDnaReportRequest, ListDnaReportsParams, UpdateDnaReportRequest } from './types';
+import type {
+  DnaIngestJobStatus,
+  DnaIngestRequest,
+  DnaJobStatus,
+  GenerateDnaReportRequest,
+  ListDnaMemoryParams,
+  ListDnaReportsParams,
+  UpdateDnaReportRequest,
+  UpdateDnaScheduleRequest,
+} from './types';
 
 export function useDnaReports(params?: ListDnaReportsParams) {
   return useQuery({ queryKey: dnaKeys.list(params), queryFn: () => listDnaReports(params), placeholderData: keepPreviousData });
@@ -230,4 +247,100 @@ export function useDnaJobProgress(jobId: string | null, { onTerminal }: UseDnaJo
   }, [jobId, job, closeStream, queryClient]);
 
   return { job, isTerminal, streamStatus: jobId ? streamStatus : 'idle' };
+}
+
+/* ------------------------------------------------------------------------------------------
+ * TASK-1034 — memory, ingest, schedule.
+ * ---------------------------------------------------------------------------------------- */
+
+export function useDnaMemorySummary() {
+  return useQuery({ queryKey: dnaKeys.memorySummary(), queryFn: listDnaMemorySummary });
+}
+
+export function useDnaMemory(params: ListDnaMemoryParams | null) {
+  return useQuery({
+    queryKey: dnaKeys.memory(params ?? {}),
+    queryFn: () => listDnaMemory(params as ListDnaMemoryParams),
+    enabled: !!params?.doctorId,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Soft delete; refreshes the summary counts AND every open sample list. */
+export function useDeleteDnaMemorySample() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sampleId: string) => deleteDnaMemorySample(sampleId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dnaKeys.memoryRoot() }),
+  });
+}
+
+export function useIngestDnaSamples() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DnaIngestRequest) => ingestDnaSamples(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dnaKeys.memoryRoot() }),
+  });
+}
+
+export function useDnaSchedule() {
+  return useQuery({ queryKey: dnaKeys.schedule(), queryFn: getDnaSchedule });
+}
+
+export function useUpdateDnaSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateDnaScheduleRequest) => updateDnaSchedule(body),
+    onSuccess: (schedule) => queryClient.setQueryData(dnaKeys.schedule(), schedule),
+  });
+}
+
+/** "Run now": queued jobs change reports, memory consumption and the schedule's last run. */
+export function useRunDnaSchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runDnaSchedule(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: dnaKeys.root }),
+  });
+}
+
+export interface UseDnaIngestJobProgressOptions {
+  onTerminal?: (job: DnaIngestJobStatus) => void;
+  /** Poll cadence (tests shorten it). */
+  pollMs?: number;
+}
+
+/**
+ * Ingest job tracker. The ingest route has no SSE twin, so a poll is the ONLY transport
+ * (the generate job's SSE-first `useDnaJobProgress` does not apply). Terminal: refresh the
+ * feature root once and hand off to `onTerminal`.
+ */
+export function useDnaIngestJobProgress(jobId: string | null, { onTerminal, pollMs = JOB_POLL_MS }: UseDnaIngestJobProgressOptions = {}) {
+  const queryClient = useQueryClient();
+  const onTerminalRef = useRef(onTerminal);
+  useEffect(() => {
+    onTerminalRef.current = onTerminal;
+  }, [onTerminal]);
+
+  const poll = useQuery({
+    queryKey: dnaKeys.ingestJob(jobId ?? 'idle'),
+    queryFn: () => getDnaIngestJobStatus(jobId as string),
+    enabled: !!jobId,
+    staleTime: 0,
+    refetchInterval: (query) => (isTerminalDnaJobState(query.state.data?.status) ? false : pollMs),
+  });
+
+  const job = jobId ? (poll.data ?? null) : null;
+  const isTerminal = isTerminalDnaJobState(job?.status);
+
+  const notifiedJobRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!jobId || !job || !isTerminal) return;
+    if (notifiedJobRef.current === jobId) return;
+    notifiedJobRef.current = jobId;
+    if (job.status === 'completed') void queryClient.invalidateQueries({ queryKey: dnaKeys.root });
+    onTerminalRef.current?.(job);
+  }, [jobId, job, isTerminal, queryClient]);
+
+  return { job, isTerminal };
 }

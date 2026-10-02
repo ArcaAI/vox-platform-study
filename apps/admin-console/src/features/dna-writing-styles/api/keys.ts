@@ -1,4 +1,4 @@
-import type { ListDnaReportsParams } from './types';
+import type { ListDnaMemoryParams, ListDnaReportsParams } from './types';
 
 export const dnaKeys = {
   root: ['dna-writing-styles'] as const,
@@ -7,4 +7,9 @@ export const dnaKeys = {
   doctor: (doctorId: string) => [...dnaKeys.root, 'doctor', doctorId] as const,
   versions: (reportId: string) => [...dnaKeys.root, 'versions', reportId] as const,
   job: (jobId: string) => [...dnaKeys.root, 'job', jobId] as const,
+  memoryRoot: () => [...dnaKeys.root, 'memory'] as const,
+  memorySummary: () => [...dnaKeys.memoryRoot(), 'summary'] as const,
+  memory: (params: Partial<ListDnaMemoryParams>) => [...dnaKeys.memoryRoot(), 'list', params] as const,
+  ingestJob: (jobId: string) => [...dnaKeys.root, 'ingest-job', jobId] as const,
+  schedule: () => [...dnaKeys.root, 'schedule'] as const,
 };
