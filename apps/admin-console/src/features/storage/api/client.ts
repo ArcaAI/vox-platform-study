@@ -135,15 +135,15 @@ export interface PlatformStorageChanges {
  * TASK-1033 — saves any subset of the platform default's non-secret fields in
  * one If-Match PUT. A field set to `null` is CLEARED (absent → the bootstrap
  * tier answers); an omitted field is untouched. `provider` is always resent
- * (the DTO requires it). A not-yet-created row (version 0) has no row to match,
- * so no If-Match is sent for it.
+ * (the DTO requires it). If-Match is always sent: `"0"` creates the row, and a
+ * missing header is a 428 from the gateway.
  */
 export function savePlatformStorageConfig(platform: TenantStorageConfig, changes: PlatformStorageChanges): Promise<TenantStorageConfig> {
   const version = platform.version ?? 0;
   return request<TenantStorageConfig>(`${CONFIG}/platform`, {
     method: 'PUT',
     body: { provider: platform.provider, ...changes, expectedVersion: version },
-    ...(version > 0 ? { etag: `"${version}"` } : {}),
+    etag: `"${version}"`,
   }).then((response) => response.data);
 }
 
