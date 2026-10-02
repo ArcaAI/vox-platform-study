@@ -140,6 +140,23 @@ def _output_language_control_plane_absent(monkeypatch):
     monkeypatch.setattr(core, "_output_language_snapshot", _absent)
 
 
+@pytest.fixture(autouse=True)
+def _composed_prompt_gateway_absent(monkeypatch):
+    """OD-9 — the hermetic suite has no gateway to record composed prompts at.
+
+    Every text call site schedules a fire-and-forget post to ``internal/composed-prompts``.
+    Without this, each would open a real HTTP connection to the gateway address. The sender is a
+    no-op here; tests that assert the recording replace it with their own capture, which runs
+    after this fixture and wins.
+    """
+    from harness.services import composed_prompt_recorder
+
+    async def _absent(_body, _tenant_id):
+        return None
+
+    monkeypatch.setattr(composed_prompt_recorder, "_send", _absent)
+
+
 @pytest.fixture
 def settings() -> Settings:
     """Default test settings (process-local, no external dependencies)."""
