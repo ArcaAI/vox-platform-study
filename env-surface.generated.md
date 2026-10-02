@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 312 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
-| `turbo.json#globalEnv` entries | 520 |
+| Python declared fields | 309 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 361 |
+| `turbo.json#globalEnv` entries | 517 |
 
 ## Variables — the TypeScript platform surface
 
@@ -293,9 +293,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_OTEL_INSECURE` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_OTEL_SERVICE_NAME` | `apps/harness` | no | no | `harness` | commented | — |
 | `HARNESS_OTEL_SERVICE_NAMESPACE` | `apps/harness` | no | no | `hope` | commented | — |
-| `HARNESS_PHI_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_PHI_FAIL_CLOSED` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_PHI_LOCAL_PROVIDERS` | `apps/harness` | no | no | `["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]` | commented | — |
 | `HARNESS_PORT` | `apps/harness` | no | no | `8866` | commented | — |
 | `HARNESS_PROMPT_SIZE_WARN_CHARS` | `apps/harness` | no | no | `400000` | commented | — |
 | `HARNESS_REDIS_URL` | `apps/harness` | no | no | `redis://localhost:6379/0` | commented | — |

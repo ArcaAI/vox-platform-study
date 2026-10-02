@@ -135,9 +135,10 @@ describe('TASK-932 D-9 — the `case-notes-pre-summary` warm-start agent', () =>
    * a test about the warm start, and tuning either one on its own evidence was blocked by the
    * other. Each now carries its own floor.
    */
-  it('the warm start keeps reasoning OFF and guards ON, and carries its own absolute completion floor', () => {
+  it('the warm start keeps reasoning OFF, authors no guardrail opt-out, and carries its own absolute completion floor', () => {
     expect(PRE_SUMMARY_PARAMETERS.generation.reasoning).toEqual({ enabled: false });
-    expect(PRE_SUMMARY_PARAMETERS.guards).toEqual({ enabled: true });
+    // Guardrail screening is unconditional; the retired `guards` switch is never authored.
+    expect(PRE_SUMMARY_PARAMETERS).not.toHaveProperty('guards');
     // A whole prior record under five headings. Independent of the per-turn budget by design.
     expect(PRE_SUMMARY_PARAMETERS.generation.maxTokens).toBeGreaterThanOrEqual(12288);
   });

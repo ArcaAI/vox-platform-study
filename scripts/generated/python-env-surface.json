@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 364,
+  "distinctNames": 361,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -776,42 +776,6 @@
           "secret": false,
           "dataType": "string",
           "default": null,
-          "description": ""
-        },
-        {
-          "name": "HARNESS_PHI_ENABLED",
-          "aliases": [],
-          "class": "PhiConfig",
-          "field": "enabled",
-          "prefix": "HARNESS_PHI_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "true",
-          "description": ""
-        },
-        {
-          "name": "HARNESS_PHI_FAIL_CLOSED",
-          "aliases": [],
-          "class": "PhiConfig",
-          "field": "fail_closed",
-          "prefix": "HARNESS_PHI_",
-          "required": false,
-          "secret": false,
-          "dataType": "boolean",
-          "default": "true",
-          "description": ""
-        },
-        {
-          "name": "HARNESS_PHI_LOCAL_PROVIDERS",
-          "aliases": [],
-          "class": "PhiConfig",
-          "field": "local_providers",
-          "prefix": "HARNESS_PHI_",
-          "required": false,
-          "secret": false,
-          "dataType": "list",
-          "default": "[\"lm-studio\", \"openai_compat\", \"ollama\", \"vllm\", \"llama-cpp\"]",
           "description": ""
         },
         {
