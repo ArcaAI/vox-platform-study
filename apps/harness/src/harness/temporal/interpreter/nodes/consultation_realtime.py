@@ -66,14 +66,12 @@ from typing import Any
 from temporalio import activity
 
 from harness.core.config import get_settings
-from harness.guards.phi.egress import ensure_egress_safe
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import known_phi_from
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError
 from harness.temporal.activities import (
     _api_client,  # noqa: SLF001 — the sanctioned accessor, same as nodes/text_generate.py
-    _phi_redactor,  # noqa: SLF001
     _text_client,  # noqa: SLF001
     extract_entities,
 )
@@ -172,20 +170,6 @@ async def _resolve_selection(
     return policy, policy.text_provider, policy.text_model, None
 
 
-def _screen(
-    text: str, *, provider: str, policy: HarnessPolicy, settings: Any, redactor: Any
-) -> str:
-    """The same fail-closed PHI egress chokepoint ``nodes/text_generate.py`` uses."""
-    return ensure_egress_safe(
-        text,
-        provider=provider,
-        settings=settings,
-        phi_enabled=policy.phi_enabled,
-        phi_fail_closed=policy.phi_fail_closed,
-        redactor=redactor,
-    )
-
-
 def _windows(text: str, size: int) -> list[str]:
     """Split ``text`` into at most ``_MAX_WINDOWS`` contiguous windows of ``size`` characters.
 
@@ -272,10 +256,10 @@ async def interpreter_consultation_realtime_summary(
     windows = _windows(text, window_chars)
 
     settings = get_settings()
-    redactor = _phi_redactor()
     text_client = _text_client(settings)
     api_client = _api_client(settings)
     identity = run_identity(payload.run_payload)
+    known_phi = known_phi_from(payload.run_payload)
     # The default asks for a SOAP-shaped running note, because R3's requirement is to autofill
     # "summaries and gist into customized SOAP forms" — a flat blob cannot populate a form. The
     # instruction is the DEFAULT ENGINE's own (``_soap.SOAP_OUTPUT_INSTRUCTION``), so a
@@ -295,33 +279,18 @@ async def interpreter_consultation_realtime_summary(
     announced = 0
     published = 0
     for ordinal, window in enumerate(windows, start=1):
-        try:
-            safe_window = _screen(
-                window, provider=provider, policy=policy, settings=settings, redactor=redactor
-            )
-            safe_system = _screen(
-                system_prompt,
-                provider=provider,
-                policy=policy,
-                settings=settings,
-                redactor=redactor,
-            )
-        except PhiEgressBlocked as exc:
-            await record_and_flush(
-                payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-            )
-            return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
-
+        # TASK-1035 — sent verbatim: `apps/text` owns PHI egress and fails closed.
         try:
             result = await text_client.generate(
                 tenant_id=payload.tenant_id,
-                prompt=safe_window,
-                system_prompt=safe_system,
+                prompt=window,
+                system_prompt=system_prompt,
                 provider=provider,
                 model=model,
                 temperature=config.get("temperature"),
                 max_tokens=config.get("maxTokens"),
                 response_format=response_format,
+                known_phi=known_phi,
             )
         except TextServiceError as exc:
             await record_and_flush(
@@ -481,34 +450,18 @@ async def interpreter_consultation_suggestions(payload: NodeActivityInput) -> No
         return NodeActivityResult(status="DEGRADED", reason=reason)
 
     settings = get_settings()
-    redactor = _phi_redactor()
-    try:
-        safe_text = _screen(
-            text, provider=provider, policy=policy, settings=settings, redactor=redactor
-        )
-        safe_system = _screen(
-            instruction,
-            provider=provider,
-            policy=policy,
-            settings=settings,
-            redactor=redactor,
-        )
-    except PhiEgressBlocked as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-        )
-        return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
-
+    # TASK-1035 — sent verbatim: `apps/text` owns PHI egress and fails closed.
     try:
         result = await _text_client(settings).generate(
             tenant_id=payload.tenant_id,
-            prompt=safe_text,
-            system_prompt=safe_system,
+            prompt=text,
+            system_prompt=instruction,
             provider=provider,
             model=model,
             temperature=config.get("temperature"),
             max_tokens=config.get("maxTokens"),
             response_format=config.get("responseFormat"),
+            known_phi=known_phi_from(payload.run_payload),
         )
     except TextServiceError as exc:
         await record_and_flush(
@@ -705,34 +658,18 @@ async def interpreter_consultation_propose_corrections(
     user_prompt = json.dumps({"text": text, "entities": spans}, ensure_ascii=False)
 
     settings = get_settings()
-    redactor = _phi_redactor()
-    try:
-        safe_prompt = _screen(
-            user_prompt, provider=provider, policy=policy, settings=settings, redactor=redactor
-        )
-        safe_system = _screen(
-            instruction,
-            provider=provider,
-            policy=policy,
-            settings=settings,
-            redactor=redactor,
-        )
-    except PhiEgressBlocked as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-        )
-        return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
-
+    # TASK-1035 — sent verbatim: `apps/text` owns PHI egress and fails closed.
     try:
         result = await _text_client(settings).generate(
             tenant_id=payload.tenant_id,
-            prompt=safe_prompt,
-            system_prompt=safe_system,
+            prompt=user_prompt,
+            system_prompt=instruction,
             provider=provider,
             model=model,
             temperature=config.get("temperature"),
             max_tokens=config.get("maxTokens"),
             response_format=config.get("responseFormat"),
+            known_phi=known_phi_from(payload.run_payload),
         )
     except TextServiceError as exc:
         await record_and_flush(

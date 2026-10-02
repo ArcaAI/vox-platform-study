@@ -100,6 +100,10 @@ class TextGenerationResult(BaseModel):
     # text model. Additive-optional default None ⇒ replay-safe, since the `generate` activity
     # returns this model and an older activity result deserializes it to None.
     usage_detail: dict[str, Any] | None = None
+    # TASK-1035 §5.0 — Text's egress report for THIS call: `{locality, detected: {label: count},
+    # redacted, restored, images_unredacted, pii_leak_blocked}`. Counts only, never values.
+    # Additive-optional default None ⇒ replay-safe, exactly like `stats` / `usage_detail`.
+    egress: dict[str, Any] | None = None
 
 
 def _int_or_none(source: Any, name: str) -> int | None:
@@ -211,8 +215,9 @@ class TextClient:
         response_format: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
-        guardrail_policy: dict[str, Any] | None = None,
         provider_override: dict[str, Any] | None = None,
+        provider_locality: dict[str, str] | None = None,
+        known_phi: list[dict[str, str]] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -231,6 +236,13 @@ class TextClient:
         (``ResolvedAgent.providerOverride``) for the row the caller is bound to. When
         present it is authoritative and the by-name credential resolver is skipped
         entirely — see the fold below.
+
+        TASK-1035 §5.0 — ``apps/text`` owns LLM egress safety and fails CLOSED (no stamp ⇒
+        cloud). ``provider_locality`` is sent only when the caller KNOWS the deployment kind
+        (``harness.core.llm_egress.provider_locality``); ``known_phi`` carries the identity
+        values the caller holds, for deterministic replacement on cloud, and is never logged.
+        The retired guardrail opt-out (``guardrail_policy``) and ``require_medical=false`` are
+        never sent (OD-1, OD-5): every call is screened.
         """
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
@@ -256,15 +268,10 @@ class TextClient:
             body["response_format"] = response_format
         if context is not None:
             body["context"] = context
-        # TASK-890 §3.14 (OD-R) — the tenant's guardrail decision for THIS call, already
-        # folded by the caller (`guardrail_optout.resolve_guardrail_decision`: node > workflow
-        # > agent > on). Passed through verbatim and only when the caller supplies it: an
-        # absent key means "no opinion", under which TEXT's platform posture governs. This
-        # client neither folds the precedence nor invents an opinion — and a pushed `True`
-        # cannot revive a platform kill switch, because TEXT keeps `platform.enabled` as the
-        # floor (`core/guardrail_posture.resolve_posture`).
-        if guardrail_policy is not None:
-            body["guardrail_policy"] = guardrail_policy
+        if provider_locality:
+            body["provider_locality"] = provider_locality
+        if known_phi:
+            body["known_phi"] = known_phi
 
         # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and

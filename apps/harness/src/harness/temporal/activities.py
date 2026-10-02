@@ -33,6 +33,7 @@ from temporalio.exceptions import ApplicationError
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
 from harness.core.consent_client import ConsentClient, ConsentDecision, build_consent_client
 from harness.core.effective_config import get_effective_config_client
+from harness.core.llm_egress import egress_counts, provider_locality
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.core.provider_credentials import (
@@ -53,7 +54,6 @@ from harness.eval.reasoning import JudgeReasoning, resolve_judge_reasoning
 from harness.guards.phi import (
     PhiEgressBlocked,
     PhiRedactor,
-    ensure_egress_safe,
     ensure_inferential_egress_safe,
     ensure_mcp_args_safe,
 )
@@ -845,9 +845,13 @@ def _atomic_fact_entailer(settings: Settings, model_path: str | None = None) -> 
 def _phi_redactor() -> PhiRedactor:
     """Build the fail-closed PHI egress redactor (Presidio engines are lazy).
 
-    Factored out like the other client factories so each cloud-bound activity builds
-    it once per invocation (the spaCy model loads only on an actual cloud redaction)
-    and the tests can monkeypatch it with a stub.
+    TASK-1035 — used ONLY by the two DIRECT egress hops left in the harness: the inferential
+    judge (posts to its provider itself) and outbound MCP tool args. Every ``apps/text``
+    ``/generate`` call is redacted by text and never builds one.
+
+    Factored out like the other client factories so each activity builds it once per
+    invocation (the spaCy model loads only on an actual cloud redaction) and the tests can
+    monkeypatch it with a stub.
     """
     return PhiRedactor()
 
@@ -1699,8 +1703,9 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
 
     # Resolve the (possibly offloaded) prompts inline-or-ref, then fold in the
     # RAG StrictCitations block (moved here from the workflow so the workflow can thread
-    # the small prompt REF instead of the concatenated blob). The PHI-egress guard below
-    # then screens the FULLY-assembled prompt, exactly as before.
+    # the small prompt REF instead of the concatenated blob). TASK-1035: the FULLY-assembled
+    # prompt goes to `apps/text` verbatim — text pseudonymizes for a cloud provider and fails
+    # closed, so the harness Presidio pass that used to screen it here is retired.
     user_prompt = await _resolve_ref(settings, payload.prompt, payload.prompt_ref)
     # assemble in a stable prefix ordering (invariant
     # template+transcript prefix, then the RAG StrictCitations block) so the
@@ -1733,11 +1738,21 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # TASK-959 §6.2 — the tier rides along so a FAILED candidate's step can name who funded the
     # attempt. DERIVED by the gateway per candidate; the snapshotted primary carries none on
     # this lane, and an underived tier stays absent rather than being guessed.
-    attempts: list[tuple[str | None, str | None, str | None]] = [
-        (payload.provider, payload.model, None)
+    #
+    # TASK-1035 §5.0 — the fourth element is the candidate's `deploymentKind`, the ONLY source of
+    # its `provider_locality` stamp. The snapshotted primary is resolved by provider NAME (the
+    # policy overlay) and carries none, so it sends no stamp and `apps/text` decides (fail-closed
+    # cloud, engine-served ⇒ local).
+    attempts: list[tuple[str | None, str | None, str | None, str | None]] = [
+        (payload.provider, payload.model, None, None)
     ]
     attempts.extend(
-        (wire_provider(candidate.provider), candidate.model, candidate.funding_tier)
+        (
+            wire_provider(candidate.provider),
+            candidate.model,
+            candidate.funding_tier,
+            candidate.deployment_kind,
+        )
         for candidate in chain_candidates(fallback_block)
     )
     # The whole walk shares ONE activity budget: a candidate started too late times the activity
@@ -1745,12 +1760,18 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # completed. Never start one whose per-call timeout cannot fit in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
 
-    redactor = _phi_redactor()
+    prompt = user_prompt
+    system_prompt = system_prompt_in
     result = None
     last_exc: TextServiceError | None = None
     exhausted = False
     failed_attempts: list[FailedAttempt] = []
-    for index, (attempt_provider, attempt_model, attempt_funding_tier) in enumerate(attempts):
+    for index, (
+        attempt_provider,
+        attempt_model,
+        attempt_funding_tier,
+        attempt_deployment_kind,
+    ) in enumerate(attempts):
         if index > 0 and not budget.allows_another():
             activity.logger.warning(
                 "harness.text_fallback.budget_exhausted",
@@ -1758,45 +1779,6 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
             )
             exhausted = True
             break
-
-        # Enforce the fail-closed PHI egress guard before any cloud Text call.
-        # Local providers (the default) are a pure pass-through. A fail-closed block
-        # raises PhiEgressBlocked, which propagates and fails the workflow — no draft is
-        # ever persisted (the Text failure-propagation invariant), never a silent leak.
-        # Re-screened PER CANDIDATE: the chain can lead from a local primary to a cloud
-        # fallback, so one screening of the primary's provider would be no screening at all.
-        try:
-            prompt = ensure_egress_safe(
-                user_prompt,
-                provider=attempt_provider,
-                settings=settings,
-                phi_enabled=payload.phi_enabled,
-                phi_fail_closed=payload.phi_fail_closed,
-                redactor=redactor,
-            )
-            system_prompt = (
-                ensure_egress_safe(
-                    system_prompt_in,
-                    provider=attempt_provider,
-                    settings=settings,
-                    phi_enabled=payload.phi_enabled,
-                    phi_fail_closed=payload.phi_fail_closed,
-                    redactor=redactor,
-                )
-                if system_prompt_in is not None
-                else None
-            )
-        except PhiEgressBlocked as exc:
-            activity.logger.warning(
-                "harness.phi_egress.blocked",
-                extra={"provider": exc.provider, "reason": exc.reason, "stage": "generate"},
-            )
-            # The PRIMARY keeps the pre-876 contract: a blocked prompt fails the run. A FALLBACK
-            # that may not legally receive the prompt is simply not a usable candidate — it is
-            # dropped, exactly as the gateway drops a fallback with no credential.
-            if index == 0:
-                raise
-            continue
 
         # F-19 — measure the prompt ACTUALLY dispatched (assembled user prompt incl.
         # the RAG / segment-citation / regen-feedback blocks, plus the system
@@ -1831,6 +1813,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
                 max_tokens=hp.get("max_tokens"),
                 top_p=hp.get("top_p"),
                 response_format=payload.response_format,
+                provider_locality=provider_locality(attempt_provider, attempt_deployment_kind),
                 # A deterministic key (workflow_run:activity_id, stable across
                 # worker-crash re-delivery) so Text dedups a replayed generate — the durable half
                 # of the fix on top of the in-process retry narrowing. A FALLBACK attempt is a
@@ -1941,6 +1924,11 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # block Text returns on the SAME response. The mapper zeroed all three because nothing ever
     # put them on the step; copied only when present, so an absent count stays absent.
     llm_stats.update(usage_detail_counters(result.usage_detail))
+    # TASK-1035 §5.0 — Text's egress report (locality, detected-label counts, redacted /
+    # restored counts), COUNTS only; absent when Text sent none.
+    egress = egress_counts(result.egress)
+    if egress is not None:
+        llm_stats["egress"] = egress
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
@@ -2676,9 +2664,10 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
                 # If any of those fail, THIS argument is what must change.
                 #
                 # The `judge_*` gating below is unchanged, because the judge client does
-                # post to its selected provider directly from this process.
+                # post to its selected provider directly from this process — which is also
+                # why TASK-1035 keeps this Presidio screen: the judge never goes through the
+                # `apps/text` `/generate` pipeline that now redacts every other LLM call.
                 safety_provider=None,
-                settings=settings,
                 phi_enabled=payload.phi_enabled,
                 phi_fail_closed=payload.phi_fail_closed,
                 redactor=_phi_redactor(),
@@ -2910,26 +2899,20 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
 
     # 2) Optional Text semantic-rewrite pass — fail closed on ANY failure.
     if semantic:
-        redactor = _phi_redactor()
         prompt = _build_rewrite_prompt(working, semantic)
+        # TASK-1035 — sent verbatim: `apps/text` owns PHI egress (pseudonymize on cloud, fail
+        # closed). `payload.phi_enabled` / `phi_fail_closed` stay on the input for replay
+        # compatibility and are no longer read here.
         try:
-            safe_prompt = ensure_egress_safe(
-                prompt,
-                provider=payload.provider,
-                settings=settings,
-                phi_enabled=payload.phi_enabled,
-                phi_fail_closed=payload.phi_fail_closed,
-                redactor=redactor,
-            )
             result = await _text_client(settings).generate(
                 tenant_id=_required_tenant(payload.tenant_id, "apply_redaction"),
-                prompt=safe_prompt,
+                prompt=prompt,
                 provider=payload.provider,
                 model=payload.model,
                 response_format=payload.response_format,
                 idempotency_key=_idempotency_key("redaction"),
             )
-        except (PhiEgressBlocked, TextServiceError) as exc:
+        except TextServiceError as exc:
             activity.logger.warning(
                 "harness.redaction.failed_closed",
                 extra={"stage": "text_rewrite", "reason": str(exc)},
@@ -3531,7 +3514,7 @@ class _LoopTextSelection(NamedTuple):
     provider: str
     model: str
     provider_override: dict[str, Any] | None
-    policy: HarnessPolicy
+    deployment_kind: str | None
 
 
 async def _resolve_loop_text_selection(
@@ -3542,8 +3525,9 @@ async def _resolve_loop_text_selection(
     TASK-1016 — ``apps/text`` has no default provider or model, so a loop activity that names
     neither is refused (422). Its model is the one its AGENT names: ``textPrimary`` of
     ``GET /internal/agents/resolve`` (provider, provider-native model, one-hop credential),
-    exactly as ``core.agent`` reads it — plus the tenant's effective policy, whose PHI flags
-    guard the egress. Raises :class:`_LoopSelectionUnresolved` rather than substituting.
+    exactly as ``core.agent`` reads it — plus its ``deploymentKind``, the only source of the
+    ``provider_locality`` stamp (TASK-1035). Raises :class:`_LoopSelectionUnresolved` rather
+    than substituting. PHI egress is ``apps/text``'s job, so no policy is fetched for it here.
     """
     slug = (agent_slug or "").strip()
     if not slug:
@@ -3557,24 +3541,8 @@ async def _resolve_loop_text_selection(
     provider = wire_provider(primary.provider) if primary is not None else None
     if primary is None or not provider or not primary.model:
         raise _LoopSelectionUnresolved(f"agent {slug!r} names no text provider/model")
-    try:
-        policy = HarnessPolicy.from_api(await api.get_policy(tenant_id))
-    except ApiServiceError as exc:
-        raise _LoopSelectionUnresolved(f"effective policy fetch unreachable: {exc}") from exc
-    return _LoopTextSelection(provider, primary.model, primary.provider_override, policy)
-
-
-def _loop_egress_safe(
-    text: str, selection: _LoopTextSelection, settings: Settings, redactor: PhiRedactor
-) -> str:
-    """The same fail-closed PHI egress guard ``generate`` and ``core.agent`` apply."""
-    return ensure_egress_safe(
-        text,
-        provider=selection.provider,
-        settings=settings,
-        phi_enabled=selection.policy.phi_enabled,
-        phi_fail_closed=selection.policy.phi_fail_closed,
-        redactor=redactor,
+    return _LoopTextSelection(
+        provider, primary.model, primary.provider_override, primary.deployment_kind
     )
 
 
@@ -3635,26 +3603,16 @@ async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
             degraded=True,
             rationale=f"{_PLANNER_AGENT_UNRESOLVED}: {exc}",
         )
-    redactor = _phi_redactor()
-    try:
-        safe_prompt = _loop_egress_safe(prompt, selection, settings, redactor)
-        safe_system = _loop_egress_safe(_PLANNER_SYSTEM_PROMPT, selection, settings, redactor)
-    except PhiEgressBlocked as exc:
-        activity.logger.warning(
-            "harness.phi_egress.blocked",
-            extra={"provider": exc.provider, "reason": exc.reason, "stage": "plan_reasoning"},
-        )
-        return PlanDecision(
-            plan_id=plan_id, dispatch=[], degraded=True, rationale=f"phi_egress_blocked: {exc}"
-        )
+    # TASK-1035 — sent verbatim: `apps/text` owns PHI egress (pseudonymize on cloud, fail closed).
     try:
         result = await _text_client(settings).generate(
             tenant_id=tenant_id,
-            prompt=safe_prompt,
-            system_prompt=safe_system,
+            prompt=prompt,
+            system_prompt=_PLANNER_SYSTEM_PROMPT,
             provider=selection.provider,
             model=selection.model,
             provider_override=selection.provider_override,
+            provider_locality=provider_locality(selection.provider, selection.deployment_kind),
             temperature=0.0,
             idempotency_key=f"plan:{plan_id}",
             context={"reasoning": payload.reasoning, "task": "harness.loop.plan"},
@@ -3748,20 +3706,17 @@ async def run_specialist(payload: SpecialistAnalysisInput) -> SpecialistResult:
             type=_SPECIALIST_AGENT_UNRESOLVED,
             non_retryable=True,
         ) from exc
-    # A blocked prompt propagates, exactly as it does from `generate`: the specialist fails
-    # alone and the parent degrades.
-    redactor = _phi_redactor()
-    safe_prompt = _loop_egress_safe(prompt, selection, settings, redactor)
-    safe_system = _loop_egress_safe(_SPECIALIST_SYSTEM_PROMPT, selection, settings, redactor)
-
+    # TASK-1035 — sent verbatim: `apps/text` owns PHI egress; a refusal there surfaces as a
+    # `TextServiceError` and the specialist fails alone, exactly as before.
     try:
         result = await _text_client(settings).generate(
             tenant_id=tenant_id,
-            prompt=safe_prompt,
-            system_prompt=safe_system,
+            prompt=prompt,
+            system_prompt=_SPECIALIST_SYSTEM_PROMPT,
             provider=selection.provider,
             model=selection.model,
             provider_override=selection.provider_override,
+            provider_locality=provider_locality(selection.provider, selection.deployment_kind),
             temperature=0.0,
             idempotency_key=f"spec:{payload.plan_id}:{payload.agent_id}:{payload.kind_key}",
             context={"reasoning": payload.reasoning, "task": "harness.loop.specialist"},

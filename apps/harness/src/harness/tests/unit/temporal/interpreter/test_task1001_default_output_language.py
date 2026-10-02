@@ -412,7 +412,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
     monkeypatch.setattr(core, "record_generation_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
     async def _go(
         wire: dict[str, Any],

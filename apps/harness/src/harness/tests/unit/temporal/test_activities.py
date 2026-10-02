@@ -210,7 +210,7 @@ class _PassThroughRedactor:
     ``test_activities_phi_egress.py`` with its own contract fakes.
     """
 
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Any) -> str:
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, fail_closed: bool) -> str:
         return text
 
 

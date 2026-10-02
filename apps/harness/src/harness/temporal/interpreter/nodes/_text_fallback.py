@@ -85,6 +85,12 @@ class TextFallbackCandidate(BaseModel):
     #: tenant's DEFAULT connection for that provider: the wrong key and the wrong invoice.
     #: Never persisted — it lives in an activity local, like every other credential here.
     provider_override: dict[str, Any] | None = Field(default=None, alias="providerOverride")
+    #: TASK-1035 §5.0 — THIS candidate's ``AiModel.deploymentKind``; the only source of its
+    #: ``provider_locality`` stamp. Absent ⇒ no stamp (``apps/text`` fails closed to cloud).
+    deployment_kind: str | None = Field(default=None, alias="deploymentKind")
+    #: TASK-1035 — THIS candidate's own declared output schema. A fallback agent constrains to
+    #: its own contract; the primary's applies only when the candidate declares none.
+    output_schema: dict[str, Any] | None = Field(default=None, alias="outputSchema")
 
 
 class TextFallbackBlock(BaseModel):
@@ -170,10 +176,12 @@ def candidate_as_resolved_agent(candidate: TextFallbackCandidate) -> ResolvedAge
                 else None
             ),
             "parameters": candidate.parameters,
+            "outputSchema": candidate.output_schema,
             "model": {
                 "slug": candidate.model_slug,
                 "provider": candidate.provider,
                 "sourceUri": candidate.model,
+                "deploymentKind": candidate.deployment_kind,
             },
             "fundingTier": candidate.funding_tier,
             # TASK-958 G3 — carried onto the projection so the ONE generation path spends the

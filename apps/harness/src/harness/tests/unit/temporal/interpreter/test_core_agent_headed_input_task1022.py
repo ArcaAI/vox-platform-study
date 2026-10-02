@@ -200,7 +200,6 @@ async def test_the_finalizer_user_turn_carries_the_headings(
 
     text = _Text()
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
     monkeypatch.setattr(core, "_text_client", lambda _settings: text)
 
@@ -320,7 +319,6 @@ async def test_the_finalizer_user_turn_starts_with_a_heading_through_the_socket_
 
     text = _Text()
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
     monkeypatch.setattr(core, "_text_client", lambda _settings: text)
 

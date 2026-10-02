@@ -33,11 +33,14 @@ upstream (N-2) contributes its resolved, already-interpolated ``content``; an
 Deliberately GENERIC (not keyed off a fixed port name) because port names are graph-author-chosen,
 not fixed by this node's own config — see ``_assemble_prompt``'s docstring.
 
-**PHI egress**: the assembled prompt is screened through the SAME fail-closed guard the existing
-``generate`` activity uses (`harness.guards.phi.egress.ensure_egress_safe`) before any call —
-local (non-cloud) providers pass through untouched; a cloud provider gets a fail-closed
-redact+confirm, exactly matching the ``AiProviderConnection`` posture this palette's own
-provider/model selection already routes through.
+**PHI egress** (TASK-1035): ``apps/text`` owns it — it pseudonymizes for a cloud provider,
+re-identifies the answer and fails CLOSED. The prompt is sent verbatim with the identity this run
+holds as ``known_phi``. No ``provider_locality`` is stamped: this lane knows the provider only by
+NAME (the policy overlay), and text classifies a name itself.
+
+**System prompt** (TASK-1035 lane G): when an upstream ``consultation.assemblePrompt`` is bound,
+its ``systemPrompt`` IS this call's system prompt; ``config.systemPrompt`` is an explicit
+override of it.
 """
 
 from __future__ import annotations
@@ -47,11 +50,10 @@ from typing import Any
 from temporalio import activity
 
 from harness.core.config import get_settings
-from harness.guards.phi.egress import ensure_egress_safe
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import known_phi_from
 from harness.services.api_client import ApiServiceError
 from harness.services.text_client import TextServiceError
-from harness.temporal.activities import _api_client, _phi_redactor, _text_client
+from harness.temporal.activities import _api_client, _text_client
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._shared import (
     STATUS_DEGRADED,
@@ -64,17 +66,28 @@ from harness.temporal.models import HarnessPolicy
 _ALLOWED_TASK_KEYS = {"text.finalize", "text.live", "text.test"}
 
 
-def _assemble_prompt(bound_inputs: dict[str, Any]) -> str | None:
-    """Fold every bound upstream value into one user prompt.
+def _is_assembled_prompt(value: Any) -> bool:
+    """``consultation.assemblePrompt``'s output: ``{text, systemPrompt, promptTemplateId, …}``."""
+    return (
+        isinstance(value, dict) and "systemPrompt" in value and isinstance(value.get("text"), str)
+    )
+
+
+def _assemble_prompt(bound_inputs: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Fold every bound upstream value into ``(user_prompt, assembled_system_prompt)``.
 
     Deliberately generic rather than assuming a fixed port name (e.g. ``'in'``): a
     ``prompt.template_ref`` node's output carries a well-known ``content`` key (its already-
-    interpolated template text); anything else contributes its own string-valued fields (an
-    ``input.context_binding`` node's output is ``{kindKey: value, ...}``). Concatenation order
-    follows ``bound_inputs``' own iteration order, which is itself the compiled ``inputs`` list's
-    order (`toPort`-sorted at compile time — deterministic, not re-sorted here).
+    interpolated template text); a ``consultation.assemblePrompt`` output contributes its
+    ``text`` to the user prompt and its ``systemPrompt`` as the system prompt — never its
+    metadata (template id, version, resolution source); anything else contributes its own
+    string-valued fields (an ``input.context_binding`` node's output is ``{kindKey: value, ...}``).
+    Concatenation order follows ``bound_inputs``' own iteration order, which is itself the
+    compiled ``inputs`` list's order (`toPort`-sorted at compile time — deterministic, not
+    re-sorted here).
     """
     template_text: str | None = None
+    assembled_system: str | None = None
     context_parts: list[str] = []
     for value in bound_inputs.values():
         if (
@@ -84,13 +97,20 @@ def _assemble_prompt(bound_inputs: dict[str, Any]) -> str | None:
         ):
             template_text = value["content"]
             continue
+        if _is_assembled_prompt(value):
+            if value["text"]:
+                context_parts.append(value["text"])
+            system = value.get("systemPrompt")
+            if isinstance(system, str) and system:
+                assembled_system = system
+            continue
         if isinstance(value, dict):
             context_parts.extend(v for v in value.values() if isinstance(v, str) and v)
         elif isinstance(value, str) and value:
             context_parts.append(value)
 
     parts = [p for p in (template_text, "\n\n".join(context_parts)) if p]
-    return "\n\n".join(parts) if parts else None
+    return ("\n\n".join(parts) if parts else None), assembled_system
 
 
 @activity.defn(name="interpreter.text_generate")
@@ -107,7 +127,7 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
             reason=f"config.taskKey {task_key!r} is not a recognized text task key",
         )
 
-    user_prompt = _assemble_prompt(payload.bound_inputs)
+    user_prompt, assembled_system = _assemble_prompt(payload.bound_inputs)
     if not user_prompt:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
@@ -141,34 +161,11 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
             status="DEGRADED", reason="no text provider/model resolved for this tenant"
         )
 
-    redactor = _phi_redactor()
-    system_prompt = config.get("systemPrompt")
-    try:
-        safe_prompt = ensure_egress_safe(
-            user_prompt,
-            provider=provider,
-            settings=settings,
-            phi_enabled=policy.phi_enabled,
-            phi_fail_closed=policy.phi_fail_closed,
-            redactor=redactor,
-        )
-        safe_system_prompt = (
-            ensure_egress_safe(
-                system_prompt,
-                provider=provider,
-                settings=settings,
-                phi_enabled=policy.phi_enabled,
-                phi_fail_closed=policy.phi_fail_closed,
-                redactor=redactor,
-            )
-            if system_prompt
-            else None
-        )
-    except PhiEgressBlocked as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-        )
-        return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
+    # Lane G — the assembled system prompt is bound; `config.systemPrompt` explicitly overrides it.
+    config_system = config.get("systemPrompt")
+    system_prompt = (
+        config_system if isinstance(config_system, str) and config_system else assembled_system
+    )
 
     text_client = _text_client(settings)
     try:
@@ -177,14 +174,15 @@ async def interpreter_text_generate(payload: NodeActivityInput) -> NodeActivityR
             # own input model, so it is always available here; forwarding it is the
             # whole fix. The client raises on a blank value.
             tenant_id=payload.tenant_id,
-            prompt=safe_prompt,
-            system_prompt=safe_system_prompt,
+            prompt=user_prompt,
+            system_prompt=system_prompt or None,
             provider=provider,
             model=model,
             temperature=config.get("temperature"),
             max_tokens=config.get("maxTokens"),
             top_p=config.get("topP"),
             response_format=config.get("responseFormat"),
+            known_phi=known_phi_from(payload.run_payload),
         )
     except TextServiceError as exc:
         await record_and_flush(

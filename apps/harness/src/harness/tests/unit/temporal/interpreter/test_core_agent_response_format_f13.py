@@ -116,7 +116,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
         return None
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
     async def _go(parameters: dict[str, Any]) -> tuple[_StubText, Any]:
         text = _StubText()

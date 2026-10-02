@@ -39,8 +39,7 @@ import structlog
 from temporalio import activity
 
 from harness.core.config import get_settings
-from harness.guards.phi.egress import ensure_egress_safe
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import egress_counts, known_phi_from, provider_locality
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError, usage_detail_counters
@@ -49,17 +48,11 @@ from harness.temporal.activities import (
     _api_client,
     _config_snapshot,
     _nlp_client,
-    _phi_redactor,
     _text_client,
     failed_attempt_stats,
 )
 from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
-from harness.temporal.interpreter.guardrail_optout import (
-    GuardrailDecision,
-    guardrail_opt_out_of,
-    resolve_guardrail_decision,
-)
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
     EvaluateExpressionInput,
@@ -101,7 +94,6 @@ from harness.temporal.interpreter.prompt_composition import (
     compose_prompt,
 )
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
-from harness.temporal.models import HarnessPolicy
 
 _LOGGER = structlog.get_logger(__name__)
 
@@ -886,11 +878,9 @@ async def _output_language_snapshot() -> Any | None:
 #: have to stay in step; every generation on this lane is caused by one product activity.
 USAGE_TRIGGER_WORKFLOW_RUN = "WORKFLOW_RUN"
 
-#: The screening dispositions the same file declares (`GUARDRAIL_DISPOSITIONS`). Only the two
-#: this lane can honestly decide: `platform_off` is Text's own kill-switch state and is not
-#: observable from here.
+#: The screening disposition the same file declares (`GUARDRAIL_DISPOSITIONS`). TASK-1035 OD-1
+#: removed every guardrail opt-out, so a generation on this lane is always `screened`.
 GUARDRAIL_DISPOSITION_SCREENED = "screened"
-GUARDRAIL_DISPOSITION_OPTED_OUT = "opted_out"
 
 
 def _generation_stats(
@@ -899,7 +889,6 @@ def _generation_stats(
     provider: str,
     model: str,
     funding_tier: str | None,
-    guardrail: GuardrailDecision,
 ) -> dict[str, Any]:
     """The AD-1 ``GenerationStats`` block, plus the three dimensions this lane owns (pure).
 
@@ -918,9 +907,11 @@ def _generation_stats(
       (``textPrimary.fundingTier`` / the fallback candidate's own). It is DERIVED, never stamped:
       absent stays absent, because a guessed tier converts tenant-funded spend into platform
       COGS with one wrong literal.
-    * ``guardrail`` — the disposition the node folded ONCE for the whole fallback walk. Only the
-      two levels this lane decides are expressible; ``platform_off`` is Text's own kill-switch
-      state and is not observable from here, so it is never claimed.
+    * ``guardrail`` — always ``screened``: TASK-1035 OD-1 removed the tenant / agent / workflow /
+      node opt-outs, and the platform kill switch went with them (OD-4).
+
+    TASK-1035 §5.0 — ``egress`` is Text's egress report for the call that served, copied as
+    COUNTS only (``harness.core.llm_egress.egress_counts``) and only when Text sent one.
     """
     stats: dict[str, Any] = dict(getattr(result, "stats", None) or {})
     if not stats.get("provider"):
@@ -930,9 +921,10 @@ def _generation_stats(
     stats["trigger"] = USAGE_TRIGGER_WORKFLOW_RUN
     if funding_tier:
         stats["funding_tier"] = funding_tier
-    stats["guardrail"] = (
-        GUARDRAIL_DISPOSITION_SCREENED if guardrail.enabled else GUARDRAIL_DISPOSITION_OPTED_OUT
-    )
+    stats["guardrail"] = GUARDRAIL_DISPOSITION_SCREENED
+    egress = egress_counts(getattr(result, "egress", None))
+    if egress is not None:
+        stats["egress"] = egress
     # TASK-957 F-6 / TASK-959 §10.2 — the counts AD-1 `GenerationStats` cannot express. Text
     # returns them on the SAME response, in `usage_detail`; the mapper zeroed cache-read,
     # cache-write and reasoning because nothing ever put them on the step, so reasoning-model
@@ -1084,7 +1076,6 @@ async def _deterministic_redaction(
     content: str,
     rules: list[Any],
     *,
-    policy: HarnessPolicy | None,
     provider: str | None,
     model: str | None,
 ) -> tuple[str, bool | None, dict[str, Any], str | None]:
@@ -1128,8 +1119,6 @@ async def _deterministic_redaction(
                 response_format=None,
                 provider=provider,
                 model=model,
-                phi_enabled=policy.phi_enabled if policy else True,
-                phi_fail_closed=policy.phi_fail_closed if policy else True,
                 trajectory=payload.trajectory,
             )
         )
@@ -1192,7 +1181,6 @@ async def _persist_finalized_note(
     candidate: ResolvedAgent,
     output: dict[str, Any],
     *,
-    policy: HarnessPolicy | None = None,
     provider: str | None = None,
     model: str | None = None,
 ) -> str | None:
@@ -1247,7 +1235,6 @@ async def _persist_finalized_note(
                 payload,
                 content,
                 rules,
-                policy=policy,
                 provider=provider,
                 model=model,
             )
@@ -1368,47 +1355,33 @@ async def _run_text_generation(
             status="DEGRADED", reason="core.agent: the resolved agent names no provider/model"
         )
 
-    # PHI egress — the SAME fail-closed guard `generate.text` uses, with the tenant's own flags.
-    try:
-        raw_policy = await _api_client(settings).get_policy(payload.tenant_id)
-        policy = HarnessPolicy.from_api(raw_policy)
-    except ApiServiceError as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
-        )
-        return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: effective policy fetch unreachable: {exc}"
-        )
+    # TASK-1035 — PHI egress is `apps/text`'s job now: it pseudonymizes for a cloud provider,
+    # re-identifies the answer and fails CLOSED (no locality stamp ⇒ cloud). The harness Presidio
+    # pass and the policy fetch that only fed it are gone from this lane. What the harness still
+    # owes text is what it KNOWS: each candidate's deployment-kind locality (stamped per call
+    # below) and the identity values this run holds.
+    #
+    # OD-1 — the guardrail opt-out is gone too. A stored node `config.guardrail` or an agent's
+    # `compiledConfig.guardrail` from before the decision is accepted and IGNORED: every call is
+    # screened, and nothing here reads either field.
 
-    # The PRIMARY carries the gateway-derived funding tier when the answer shipped one; the
-    # agent row is otherwise unchanged (same model, prompt, parameters).
-    primary_agent = (
-        resolved
-        if primary is None
-        else resolved.model_copy(update={"funding_tier": primary.funding_tier})
-    )
+    # The PRIMARY carries the gateway-derived funding tier (and, when the answer shipped one, its
+    # deployment kind) from `textPrimary`; the agent row is otherwise unchanged.
+    primary_agent = resolved
+    if primary is not None:
+        primary_agent = resolved.model_copy(update={"funding_tier": primary.funding_tier})
+        if primary_agent.model.deployment_kind is None and primary.deployment_kind:
+            primary_agent = primary_agent.model_copy(
+                update={
+                    "model": primary_agent.model.model_copy(
+                        update={"deployment_kind": primary.deployment_kind}
+                    )
+                }
+            )
     candidates: list[tuple[str, ResolvedAgent]] = [("agent", primary_agent)]
     candidates.extend(
         ("agent-fallback", candidate_as_resolved_agent(candidate))
         for candidate in chain_candidates(fallback)
-    )
-
-    # TASK-890 §3.14 (OD-R) — fold the guardrail opt-out ONCE, before the walk: every candidate
-    # of one node carries the same decision, because switching engines on a provider outage must
-    # never change whether the call is screened.
-    #
-    # Two of the three levels are in scope here. The NODE's own `config.guardrail` is authored on
-    # the graph and travels with the activity input; the AGENT's is the gateway-resolved
-    # `compiledConfig.guardrail` (absent on any artifact published before this ticket, which
-    # `resolve_guardrail_decision` reads as silence and therefore as ON). The WORKFLOW default
-    # (`policyBindings.guardrail`) is NOT yet threaded into `NodeActivityInput` by `workflow.py`,
-    # so a workflow-level opt-out is honoured on the realtime lane and inherited-as-ON here — a
-    # lane divergence recorded as a follow-up rather than papered over with a second read.
-    compiled_config = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
-    agent_guardrail = compiled_config.get("guardrail")
-    guardrail_decision = resolve_guardrail_decision(
-        node=guardrail_opt_out_of(config),
-        agent=agent_guardrail.get("enabled") if isinstance(agent_guardrail, dict) else None,
     )
 
     # The whole walk runs inside ONE activity budget: a switch started too late times the
@@ -1416,7 +1389,7 @@ async def _run_text_generation(
     # that already completed. Never start a candidate whose call cannot finish in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
     run_context = _run_context(payload)
-    redactor = _phi_redactor()
+    known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
     # TASK-1001 (OD-12) — the platform-default note OUTPUT language, read ONCE for the whole walk
     # (every candidate that selects no tenant policy states the same default). Read HERE, inside
     # the activity: it is I/O, and workflow code never sees it — the replayer feeds this
@@ -1470,8 +1443,7 @@ async def _run_text_generation(
         # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own instruction:
         # a selected tenant policy owns the language (nothing added); otherwise the platform
         # default is stated by name, last, overriding any "write in the conversation language"
-        # clause the instruction carries. Appended BEFORE the PHI egress guard below, so what is
-        # screened is exactly what is sent.
+        # clause the instruction carries.
         policy_selected = output_language_policy_selected(composed.selected)
         system_prompt = append_default_output_language_step(
             composed.prompt, composed.selected, platform_default
@@ -1494,35 +1466,6 @@ async def _run_text_generation(
                 fragment=exclusion.key,
                 reason=exclusion.reason,
             )
-        try:
-            safe_prompt = ensure_egress_safe(
-                user_prompt,
-                provider=provider,
-                settings=settings,
-                phi_enabled=policy.phi_enabled,
-                phi_fail_closed=policy.phi_fail_closed,
-                redactor=redactor,
-            )
-            safe_system = (
-                ensure_egress_safe(
-                    system_prompt,
-                    provider=provider,
-                    settings=settings,
-                    phi_enabled=policy.phi_enabled,
-                    phi_fail_closed=policy.phi_fail_closed,
-                    redactor=redactor,
-                )
-                if system_prompt
-                else None
-            )
-        except PhiEgressBlocked as exc:
-            await record_and_flush(
-                payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-            )
-            return NodeActivityResult(
-                status="DEGRADED", reason=f"core.agent: phi egress blocked: {exc}"
-            )
-
         generation = _generation_params(candidate, config)
         parameters = candidate.parameters if isinstance(candidate.parameters, dict) else {}
         response_format = parameters.get("responseFormat")
@@ -1542,8 +1485,18 @@ async def _run_text_generation(
             # `outputSchema` was documentation on this lane: an agent could publish
             # `{ case_note, redactions }` and be handed prose, and its `core.output` node then
             # failed the very schema check the agent could have satisfied.
+            #
+            # TASK-1035 — per CANDIDATE: a fallback agent constrains to its OWN declared schema;
+            # the primary's applies only when the candidate declares none. Sending the primary's
+            # schema to every candidate forced a fallback agent into a contract it never wrote.
             wire_format = output_schema_response_format(
-                resolved.slug, resolved.output_schema, parameters
+                candidate.slug,
+                (
+                    candidate.output_schema
+                    if candidate.output_schema is not None
+                    else resolved.output_schema
+                ),
+                parameters,
             )
 
         attempt_started_at = now()
@@ -1551,15 +1504,18 @@ async def _run_text_generation(
         try:
             result = await _text_client(settings).generate(
                 tenant_id=payload.tenant_id,
-                prompt=safe_prompt,
-                system_prompt=safe_system,
+                prompt=user_prompt,
+                system_prompt=system_prompt or None,
                 provider=provider,
                 model=model,
                 temperature=generation.get("temperature"),
                 max_tokens=generation.get("maxTokens"),
                 top_p=generation.get("topP"),
                 response_format=wire_format,
-                guardrail_policy={"enabled": guardrail_decision.enabled},
+                # TASK-1035 §5.0 — per CANDIDATE, from ITS deployment kind only; absent ⇒ no
+                # stamp and text fails closed to cloud.
+                provider_locality=provider_locality(provider, candidate.model.deployment_kind),
+                known_phi=known_phi,
                 # TASK-958 G3 — THIS candidate's own connection. The gateway resolved it from
                 # the model row's `sourceConnectionId`, so a sibling-bound agent authenticates
                 # as the account it names; without it the client fell back to a lookup by
@@ -1596,12 +1552,9 @@ async def _run_text_generation(
             "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
             "selectionSource": selection_source,
             "fundingTier": candidate.funding_tier,
-            # §3.14 record (c): the step result says whether this generation was screened and
-            # WHICH level decided, so a trajectory answers the question without re-deriving it.
-            "guardrail": {
-                "enabled": guardrail_decision.enabled,
-                "source": guardrail_decision.source,
-            },
+            # §3.14 record (c), kept in shape for its readers. TASK-1035 OD-1: there is no
+            # opt-out left to decide, so every generation is screened by platform default.
+            "guardrail": {"enabled": True, "source": "default"},
         }
         if wire_format is not None:
             try:
@@ -1631,7 +1584,6 @@ async def _run_text_generation(
                 provider=provider,
                 model=model,
                 funding_tier=candidate.funding_tier,
-                guardrail=guardrail_decision,
             ),
         )
 
@@ -1649,16 +1601,15 @@ async def _run_text_generation(
         # already completed. The note still reaches the review gate and the output node, and the
         # reason names what did not happen.
         if _is_consultation_finalizer(payload, config):
-            # The provider/model/PHI policy are the ones THIS generation already resolved —
-            # threaded rather than re-resolved, so the optional semantic-rewrite half of the
-            # redaction runs against the same engine that wrote the note. `wire_format` is
-            # deliberately NOT threaded: it describes the finalizer's DOCUMENT, and what the
-            # redaction transforms is the bare `case_note` string inside it.
+            # The provider/model are the ones THIS generation already resolved — threaded rather
+            # than re-resolved, so the optional semantic-rewrite half of the redaction runs
+            # against the same engine that wrote the note. `wire_format` is deliberately NOT
+            # threaded: it describes the finalizer's DOCUMENT, and what the redaction transforms
+            # is the bare `case_note` string inside it.
             failure = await _persist_finalized_note(
                 payload,
                 candidate,
                 output,
-                policy=policy,
                 provider=provider,
                 model=model,
             )

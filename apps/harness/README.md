@@ -301,23 +301,26 @@ current pointers.
 
 ### PHI egress guard (`guards/phi/`)
 
-Every cloud-bound LLM call (the `generate` activity's prompt/system-prompt to a cloud TEXT
-provider; the inferential pass's note/transcript/citations/knowledge-chunks to a cloud judge or
-safety provider) passes through `ensure_egress_safe` / `ensure_inferential_egress_safe`
-immediately before the call. Fail-closed by contract: if `PhiRedactor` (Presidio analyzer +
-anonymizer + a clinical-NER recognizer, the optional `guardrails` extra) cannot confirm PHI was
-removed, the guard raises `PhiEgressBlocked` — the activity blocks the call and degrades rather
-than ever risking a silent unredacted leak. A local provider (the default deployment — LM Studio)
-is a pure pass-through, so the guard costs nothing when nothing egresses; only providers listed
-in `HARNESS_PHI_CLOUD_EGRESS_PROVIDERS` (default `["azure", "bedrock"]`) trigger redaction. The
-effective policy (`phi_enabled` / `phi_fail_closed`) is snapshotted once at workflow start (from
-`HarnessPolicy` or the code default) so enforcement is deterministic across replay.
+**Every `apps/text` `/generate` call is redacted by `apps/text` itself (TASK-1035):** text
+pseudonymizes for a cloud provider, re-identifies the answer and fails CLOSED (no locality stamp ⇒
+cloud). The harness sends prompts verbatim plus what it knows — `provider_locality` (only from a
+candidate's `deploymentKind`) and `known_phi` (the identity the run holds) — and records the
+response's `egress` counts on the LLM_CALL step. See `core/llm_egress.py`.
+
+`guards/phi/` (Presidio + spaCy) now covers only the two hops that do NOT go through `/generate`:
+the inferential judge, which posts to its provider directly (`ensure_inferential_egress_safe`),
+and outbound MCP tool args to an external server (`ensure_mcp_args_safe`, blocked-if-PHI).
+Fail-closed by contract: if `PhiRedactor` cannot confirm PHI was removed it raises
+`PhiEgressBlocked` and the activity degrades. The local set is code
+(`LOCAL_DIRECT_TRANSPORTS`), and the effective policy (`phi_enabled` / `phi_fail_closed`) comes
+from `HarnessPolicy`, snapshotted at workflow start so enforcement is deterministic across replay.
 
 ### Configuration
 
 Every setting is env-driven (`pydantic-settings`, prefix `HARNESS_`; the Temporal substrate
 shares `TEMPORAL_*` with the rest of the platform). Sub-configs carry their own prefixes:
-`HARNESS_PHI_`, `HARNESS_RETRIEVAL_`, `HARNESS_CLAIM_CHECK_`, `HARNESS_MCP_`. See
+`HARNESS_RETRIEVAL_`, `HARNESS_CLAIM_CHECK_`, `HARNESS_MCP_` (`HARNESS_PHI_*` was removed by
+TASK-1035). See
 [`core/config.py`](./src/harness/core/config.py) and [`.env.sample`](./.env.sample) for the full,
 authoritative list. Selected knobs:
 
@@ -330,7 +333,6 @@ authoritative list. Selected knobs:
 | `HARNESS_OPTIMISTIC_DELIVERY_ENABLED` | `false` | Two-phase optimistic delivery kill-switch |
 | `HARNESS_RETRIEVAL_ENABLED` | `false` | Institutional RAG retrieval |
 | `HARNESS_SAFETY_PROVIDER` / `HARNESS_SAFETY_MODEL` | `lm-studio` / `granite-guardian-4.1-8b` | Safety-screen engine + model |
-| `HARNESS_PHI_ENABLED` / `HARNESS_PHI_FAIL_CLOSED` | `true` / `true` | PHI egress guard toggle + fail-closed posture |
 | `HARNESS_CLAIM_CHECK_ENABLED` / `HARNESS_CLAIM_CHECK_STORE` | `true` / `memory` | Claim-check toggle + backend (`memory` \| `s3`) |
 | `HARNESS_JUDGE_*` | see `eval/README.md` | The runtime judge (groundedness/citation-verify) reuses the eval harness's judge config verbatim |
 | `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` / `TEMPORAL_TASK_QUEUE` | `localhost:7233` / `default` / `harness-task-queue` | Temporal frontend |

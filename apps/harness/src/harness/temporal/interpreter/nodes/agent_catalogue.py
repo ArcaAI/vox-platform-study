@@ -36,7 +36,7 @@ from typing import Any
 
 from temporalio import activity
 
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import known_phi_from
 from harness.services.text_client import TextServiceError
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import bound_text, bound_value
@@ -344,12 +344,8 @@ async def interpreter_agent_important_findings(payload: NodeActivityInput) -> No
             system_prompt=instruction,
             user_payload=user_payload,
             max_tokens=config.get("maxTokens"),
+            known_phi=known_phi_from(payload.run_payload),
         )
-    except PhiEgressBlocked as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-        )
-        return NodeActivityResult(status="DEGRADED", reason=f"phi egress blocked: {exc}")
     except TextServiceError as exc:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="text_generate_failed"

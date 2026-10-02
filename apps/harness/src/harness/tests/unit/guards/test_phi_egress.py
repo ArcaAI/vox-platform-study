@@ -1,58 +1,33 @@
-"""Tests for the PHI egress chokepoint.
+"""Tests for the inferential PHI egress screen (the judge's DIRECT provider hop).
 
-The chokepoint
-wraps the existing fail-closed :class:`PhiRedactor` with the run-effective policy
-flags (``phi_enabled`` / ``phi_fail_closed`` snapshotted at workflow start) and a
-fan-out helper that redacts every cloud-bound field of the inferential pass once.
+TASK-1035 retired the per-call ``ensure_egress_safe`` chokepoint: every ``apps/text``
+``/generate`` call is redacted by text itself. What remains here is the screen for the hop that
+does NOT go through text — the inferential judge posts to its provider directly — honouring the
+run-effective policy flags (``phi_enabled`` / ``phi_fail_closed`` snapshotted at workflow start).
+The local set is CODE (``LOCAL_DIRECT_TRANSPORTS``), not the retired env allowlist.
 
-Covers:
+Covers :func:`ensure_inferential_egress_safe`:
 
-* :func:`ensure_egress_safe` — the per-string gate:
-  - ``phi_enabled=False`` → pure bypass (never even builds the redactor);
-  - ``provider is None`` → bypass (no egress target);
-  - local provider → pass-through (delegates; the redactor no-ops);
-  - cloud + clean → cleaned text returned;
-  - cloud + fail-closed + unconfirmed/raised redaction → :class:`PhiEgressBlocked`;
-  - the **policy** ``phi_fail_closed`` governs over ``settings.phi.fail_closed``.
-* :func:`ensure_inferential_egress_safe` — the inferential fan-out:
-  - all-local / disabled → identity no-op (same objects ⇒ byte-identical replay);
-  - cloud → note + transcript + every claim text/evidence quote + knowledge chunk
-    redacted, with ids/sections preserved;
-  - per-consumer routing (only the cloud consumer's payload is redacted);
-  - a cloud block propagates :class:`PhiEgressBlocked` (the activity degrades).
+* all-local / disabled → identity no-op (same objects ⇒ byte-identical replay);
+* cloud → note + transcript + every claim text/evidence quote + knowledge chunk redacted, with
+  ids/sections preserved;
+* per-consumer routing (only the cloud consumer's payload is redacted);
+* a cloud block propagates :class:`PhiEgressBlocked` (the activity degrades).
 
-The fakes inject analyzers/anonymizers so nothing loads a spaCy model.
+The fakes inject analyzers so nothing loads a spaCy model.
 """
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from harness.core.config import PhiConfig, Settings
+from harness.core.llm_egress import is_local_direct_transport
 from harness.guards.phi import PhiEgressBlocked, PhiRedactor
-from harness.guards.phi.egress import ensure_egress_safe, ensure_inferential_egress_safe
+from harness.guards.phi.egress import ensure_inferential_egress_safe
 
 _PHI_TEXT = "Patient John Smith (MRN: 884512) called about chest pain."
-
-
-def _settings(
-    *,
-    enabled: bool = True,
-    fail_closed: bool = True,
-    local: tuple[str, ...] = ("lm-studio", "openai_compat", "vllm", "llama-cpp"),
-) -> Settings:
-    """A real ``Settings`` carrying an explicit :class:`PhiConfig`.
-
-    Real (not a SimpleNamespace) so the ``model_copy`` policy-override path in the
-    chokepoint is exercised; phi values are explicit so the test is deterministic
-    regardless of any ``HARNESS_PHI_*`` in the environment.
-    """
-    return Settings(
-        phi=PhiConfig(enabled=enabled, fail_closed=fail_closed, local_providers=list(local))
-    )
 
 
 class _RaisingAnalyzer:
@@ -65,35 +40,6 @@ class _ForbiddenAnalyzer:
         raise AssertionError("redaction must not run on the bypass/local path")
 
 
-class _Match:
-    def __init__(self, entity_type: str, start: int, end: int, score: float) -> None:
-        self.entity_type = entity_type
-        self.start = start
-        self.end = end
-        self.score = score
-
-
-class _DetectingAnalyzer:
-    def __init__(self, matches: list[_Match]) -> None:
-        self._matches = matches
-
-    def analyze(self, *, text: str, language: str) -> list[_Match]:
-        return self._matches
-
-
-class _NoOpAnonymizer:
-    """Simulates a silent anonymizer failure: returns the text unchanged."""
-
-    def anonymize(self, *, text: str, analyzer_results: list[_Match]) -> SimpleNamespace:
-        return SimpleNamespace(text=text)
-
-
-def _detected_person_redactor() -> PhiRedactor:
-    start = _PHI_TEXT.index("John Smith")
-    match = _Match("PERSON", start, start + len("John Smith"), 0.99)
-    return PhiRedactor(analyzer=_DetectingAnalyzer([match]), anonymizer=_NoOpAnonymizer())
-
-
 class _ContractRedactor:
     """Mirrors ``PhiRedactor.ensure_safe_for_cloud`` (local pass-through; cloud
     transform/block) without loading a model — records every call."""
@@ -103,149 +49,13 @@ class _ContractRedactor:
         self._transform = transform
         self._block = block
 
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, fail_closed: bool) -> str:
         self.calls.append((text, provider))
-        if provider in settings.phi.local_providers:
+        if is_local_direct_transport(provider):
             return text
         if self._block:
             raise PhiEgressBlocked(provider=provider, reason="contract block")
         return self._transform(text) if self._transform is not None else text
-
-
-class TestEnsureEgressSafe:
-    def test_disabled_bypasses_guard_even_for_cloud(self) -> None:
-        # phi_enabled=False ⇒ egress allowed unredacted; redactor never built/called.
-        guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="azure",
-            settings=_settings(),
-            phi_enabled=False,
-            phi_fail_closed=True,
-            redactor=guard,
-        )
-        assert out == _PHI_TEXT
-
-    def test_none_provider_is_passthrough(self) -> None:
-        guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider=None,
-            settings=_settings(),
-            phi_enabled=True,
-            phi_fail_closed=True,
-            redactor=guard,
-        )
-        assert out == _PHI_TEXT
-
-    def test_local_provider_passthrough_without_redacting(self) -> None:
-        # A non-cloud provider returns text untouched (no redaction).
-        guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="lm-studio",
-            settings=_settings(),
-            phi_enabled=True,
-            phi_fail_closed=True,
-            redactor=guard,
-        )
-        assert out == _PHI_TEXT
-
-    def test_cloud_returns_cleaned_text(self) -> None:
-        # Cloud egress receives the cleaned text.
-        redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="azure",
-            settings=_settings(),
-            phi_enabled=True,
-            phi_fail_closed=True,
-            redactor=redactor,
-        )
-        assert "John Smith" not in out
-        assert out == _PHI_TEXT.replace("John Smith", "<PERSON>")
-
-    def test_cloud_fail_closed_blocks_when_analyzer_raises(self) -> None:
-        # Fail-closed + redaction failure ⇒ block (degrade-closed).
-        guard = PhiRedactor(analyzer=_RaisingAnalyzer())
-        with pytest.raises(PhiEgressBlocked):
-            ensure_egress_safe(
-                _PHI_TEXT,
-                provider="azure",
-                settings=_settings(fail_closed=True),
-                phi_enabled=True,
-                phi_fail_closed=True,
-                redactor=guard,
-            )
-
-    def test_cloud_fail_closed_blocks_when_removal_unconfirmed(self) -> None:
-        # Detection succeeded but PHI survived ⇒ block.
-        with pytest.raises(PhiEgressBlocked):
-            ensure_egress_safe(
-                _PHI_TEXT,
-                provider="azure",
-                settings=_settings(fail_closed=True),
-                phi_enabled=True,
-                phi_fail_closed=True,
-                redactor=_detected_person_redactor(),
-            )
-
-    def test_policy_fail_closed_false_overrides_settings_true(self) -> None:
-        # The run-effective policy flag governs — phi_fail_closed=False degrades
-        # OPEN even though settings.phi.fail_closed is True.
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="azure",
-            settings=_settings(fail_closed=True),
-            phi_enabled=True,
-            phi_fail_closed=False,
-            redactor=_detected_person_redactor(),
-        )
-        assert out == _PHI_TEXT  # best-effort (no-op anonymizer) returned, not raised
-
-    def test_policy_fail_closed_true_overrides_settings_false(self) -> None:
-        # Inverse: policy phi_fail_closed=True blocks even when settings says fail-open.
-        with pytest.raises(PhiEgressBlocked):
-            ensure_egress_safe(
-                _PHI_TEXT,
-                provider="azure",
-                settings=_settings(fail_closed=False),
-                phi_enabled=True,
-                phi_fail_closed=True,
-                redactor=_detected_person_redactor(),
-            )
-
-    def test_unknown_provider_is_redacted_not_passed_through(self) -> None:
-        # an unlisted provider string must default to redact-and-confirm
-        # (the chokepoint's own delegation to PhiRedactor.ensure_safe_for_cloud),
-        # never to the local pass-through branch.
-        redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="some-new-cloud-provider",
-            settings=_settings(),
-            phi_enabled=True,
-            phi_fail_closed=True,
-            redactor=redactor,
-        )
-        assert "John Smith" not in out
-        assert redactor.calls == [(_PHI_TEXT, "some-new-cloud-provider")]
-
-    def test_ollama_provider_is_redacted_not_passed_through(self) -> None:
-        # Ollama is removed entirely, so it is no longer a known-local
-        # provider — an ollama-routed call must default-deny into redact-and-confirm,
-        # never the local pass-through branch (asserts the fail-closed direction).
-        redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
-        out = ensure_egress_safe(
-            _PHI_TEXT,
-            provider="ollama",
-            settings=_settings(),
-            phi_enabled=True,
-            phi_fail_closed=True,
-            redactor=redactor,
-        )
-        assert "John Smith" not in out
-        assert redactor.calls == [(_PHI_TEXT, "ollama")]
 
 
 def _citations() -> dict[str, Any]:
@@ -280,7 +90,6 @@ class TestEnsureInferentialEgressSafe:
             knowledge_chunks=chunks,
             judge_provider="openai_compat",
             safety_provider="lm-studio",
-            settings=_settings(),
             phi_enabled=True,
             phi_fail_closed=True,
             redactor=guard,
@@ -300,7 +109,6 @@ class TestEnsureInferentialEgressSafe:
             knowledge_chunks={"kc1": "John Smith"},
             judge_provider="azure",
             safety_provider="azure",
-            settings=_settings(),
             phi_enabled=False,
             phi_fail_closed=True,
             redactor=guard,
@@ -324,7 +132,6 @@ class TestEnsureInferentialEgressSafe:
             knowledge_chunks=chunks,
             judge_provider="azure",
             safety_provider="azure",
-            settings=_settings(),
             phi_enabled=True,
             phi_fail_closed=True,
             redactor=redactor,
@@ -351,7 +158,6 @@ class TestEnsureInferentialEgressSafe:
             knowledge_chunks={"kc1": "John Smith chunk"},
             judge_provider="openai_compat",
             safety_provider="azure",
-            settings=_settings(),
             phi_enabled=True,
             phi_fail_closed=True,
             redactor=redactor,
@@ -371,7 +177,6 @@ class TestEnsureInferentialEgressSafe:
                 knowledge_chunks={},
                 judge_provider="openai_compat",
                 safety_provider="azure",
-                settings=_settings(fail_closed=True),
                 phi_enabled=True,
                 phi_fail_closed=True,
                 redactor=PhiRedactor(analyzer=_RaisingAnalyzer()),

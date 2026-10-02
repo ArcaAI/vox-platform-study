@@ -46,56 +46,6 @@ class TemporalConfig(BaseSettings):
     graceful_shutdown_timeout_s: float = 30.0
 
 
-class PhiConfig(BaseSettings):
-    """Pre-cloud-egress PHI redaction guard (Presidio + clinical NER), fail-closed.
-
-    ``fail_closed`` is the load-bearing default: if the redactor cannot *confirm*
-    PHI was removed (analyzer failure, missing model, etc.), egress to a cloud
-    provider must be **blocked**, never silently allowed. ``local_providers`` is
-    the allowlist of provider identifiers treated as **local, non-egress** calls —
-    i.e. the ONLY providers the guard's ``ensure_safe_for_cloud(...)`` skips.
-    Every other provider string, including one not yet in this list (an
-    omission, drift, or a provider Text adds tomorrow), is treated as cloud
-    egress and must clear redact-and-confirm before it leaves the box. This is
-    a deliberate default-deny inversion: the list enumerates what is *known
-    safe*, not what is *known unsafe*, so an unrecognized provider fails
-    closed (redacts) rather than failing open (passes through unredacted).
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="HARNESS_PHI_")
-
-    enabled: bool = True
-    fail_closed: bool = True
-    local_providers: list[str] = Field(
-        default_factory=lambda: ["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]
-    )
-
-    @model_validator(mode="after")
-    def _assert_local_providers_safe(self) -> PhiConfig:
-        if self.enabled and not self.local_providers:
-            raise ValueError(
-                "Refusing to boot: HARNESS_PHI_ENABLED is true but "
-                "HARNESS_PHI_LOCAL_PROVIDERS is empty. Under the default-deny egress "
-                "policy an empty local-provider list redacts EVERY call, including "
-                "genuinely local ones — almost certainly a misconfiguration "
-                "(operator wiped the list) rather than an intended lockdown. Set at "
-                "least the local providers actually in use, e.g. "
-                "['lm-studio', 'vllm']."
-            )
-        if len(self.local_providers) != len({p.strip() for p in self.local_providers}):
-            raise ValueError(
-                "Refusing to boot: HARNESS_PHI_LOCAL_PROVIDERS contains duplicate entries."
-            )
-        if any(not p.strip() for p in self.local_providers):
-            raise ValueError(
-                "Refusing to boot: HARNESS_PHI_LOCAL_PROVIDERS contains a blank entry."
-            )
-        return self
-
-
 class RetrievalConfig(BaseSettings):
     """Institutional-RAG hybrid retriever.
 
@@ -773,12 +723,16 @@ class Settings(BaseSettings):
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
-    # Fail-closed PHI redaction. There is deliberately NO `safety` sub-config: the
-    # content-safety screen is DELEGATED to `apps/guardrail` over `guardrail_base_url`
-    # ( A.1 / F-02), so harness holds no guardian provider, endpoint, model id
-    # or harm-criteria taxonomy of its own. Do not reintroduce one — rule 06,
-    # "Do not grow a second inference stack".
-    phi: PhiConfig = Field(default_factory=PhiConfig)
+    # There is deliberately NO `safety` sub-config: the content-safety screen is DELEGATED to
+    # `apps/guardrail` over `guardrail_base_url` ( A.1 / F-02), so harness holds no guardian
+    # provider, endpoint, model id or harm-criteria taxonomy of its own. Do not reintroduce
+    # one — rule 06, "Do not grow a second inference stack".
+    #
+    # TASK-1035 — and NO `phi` sub-config either: LLM egress redaction is `apps/text`'s job,
+    # the run-effective PHI flags come from `HarnessPolicy` (DB tier), and the direct-judge
+    # local set is code (`harness.core.llm_egress.LOCAL_DIRECT_TRANSPORTS`). The retired
+    # `HARNESS_PHI_ENABLED` / `HARNESS_PHI_FAIL_CLOSED` / `HARNESS_PHI_LOCAL_PROVIDERS` env vars
+    # are read by nothing.
     # Institutional RAG: hybrid JIT retriever (flag-gated off).
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     # Claim-check: out-of-band blob store for the Temporal history budget.

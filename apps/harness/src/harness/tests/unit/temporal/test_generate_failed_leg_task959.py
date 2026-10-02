@@ -94,7 +94,7 @@ class _PassThroughRedactor:
     the real redactor needs the spaCy model at build time, which the hermetic CI suite
     does not install — so every cloud candidate here would be blocked before it ran."""
 
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Any) -> str:
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, fail_closed: bool) -> str:
         return text
 
 
