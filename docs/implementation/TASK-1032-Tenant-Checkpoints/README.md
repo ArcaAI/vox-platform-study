@@ -1572,6 +1572,23 @@ Pre-existing gap found on the way: `pnpm test:db:reset` seeds nothing unless `RU
 
 ### 7.4 Rollout (cluster) — owner go required
 
+**Done 2026-10-02 (cluster `c-nfhxq`, namespace `hope-v2-dev`):** both repos pushed by the owner; Argo synced
+`hope-checkpoint-worker` and the updated `hope-vault-policies` / `hope-vault` StatefulSet (Vault restarted once
+and auto-unsealed). Vault — one-off Job `task-1032-vault-checkpoint-keys-3` (root token read from Secret
+`hope-vault-init` inside the pod, never handled outside it; pod labelled `app.kubernetes.io/part-of=project-hope`
++ `environment=dev`, which `allow-intra-platform` requires): created `hope-checkpoint` and
+`hope-checkpoint-sign` (ed25519, latest 1, min_available 0), rewrote `hope-app` from the ConfigMap after
+proving it only ADDS the five checkpoint paths, canary with a revoked `hope-app`-scoped token (encrypt, sign,
+read public key) OK. MinIO — the out-of-band `hope-minio-bootstrap` ConfigMap no longer exists live, so a
+narrow Job `task-1032-minio-platform-policy` (+ ConfigMap `task-1032-minio-policy`) applied ONLY
+`hope-platform-rw` from Git; its before/after output shows the same six statements plus
+`TenantCheckpointsBucket` / `TenantCheckpointsObjects`; no credential minted or rotated. Open: the worker pod
+crash-loops with `Cannot find module …/checkpoint-worker.main.js` until `promote-dev` pins the new api image;
+MinIO runs the default CORS (no `MINIO_API_CORS_ALLOW_ORIGIN`) — confirm `ETag` is exposed with a real console
+upload once the worker is up. ConfigMap `task-1032-minio-policy` can be deleted (`kubectl -n hope-v2-dev delete
+configmap task-1032-minio-policy`); the Jobs delete themselves (TTL 600 s).
+
+
 1. Push `dev-2.2` (CI builds the api image carrying `checkpoint-worker.main.js`; promote-dev pins it).
 2. Push the deployment repo's `main` (it also carries the unpushed TASK-1031 commits `bd84095`…`9b99463` beneath the two TASK-1032 ones) → Argo syncs `hope-checkpoint-worker`. The worker only starts cleanly once the api image from step 1 is promoted.
 3. Vault (live, manual — provisioning only runs at first init): `vault write -f transit/keys/hope-checkpoint`; `vault write transit/keys/hope-checkpoint-sign type=ed25519` (**never trim version 1** — the deployment id derives from it); `vault policy write hope-app` from the updated `hope-vault-policies` ConfigMap; verify encrypt/sign/read-key with a hope-app AppRole login.
