@@ -125,7 +125,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantGuardrailPolicy'
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
-          | 'TenantCheckpointRestore';
+          | 'TenantCheckpointRestore'
+          | 'DnaWritingSample';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -254,7 +255,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantGuardrailPolicy'
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
-          | 'TenantCheckpointRestore';
+          | 'TenantCheckpointRestore'
+          | 'DnaWritingSample';
         to?: string;
         userId?: string;
       };
@@ -365,7 +367,8 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantGuardrailPolicy'
           | 'ModelResidencyPolicy'
           | 'TenantCheckpoint'
-          | 'TenantCheckpointRestore';
+          | 'TenantCheckpointRestore'
+          | 'DnaWritingSample';
         search?: string;
         searchFields?: string;
         sort?: string;

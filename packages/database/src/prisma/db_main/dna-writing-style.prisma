@@ -22,8 +22,8 @@ model DnaWritingStyleReport {
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // writing-style report (reportData JSONB / styleText) plus the shared Transit
   // key version. These ciphertext columns are now the system of record.
-  encryptedReportData Bytes?
-  encryptedStyleText  Bytes?
+  encryptedReportData     Bytes?
+  encryptedStyleText      Bytes?
   // Vault-Transit (hope-phi) ciphertext of the doctor's structured
   // DNA redaction/rewrite rules (JSON: { rules: [{ id, type, match, pattern,
   // replacement?, note? }] }). Personal + PHI-adjacent, so encrypted-on-write via the
@@ -74,8 +74,8 @@ model DnaWritingStyleVersion {
   // Data Encryption Initiative — Vault-Transit (hope-phi) ciphertext of the
   // snapshot (reportData JSONB / styleText) plus the shared Transit key version.
   // These ciphertext columns are now the system of record.
-  encryptedReportData Bytes?
-  encryptedStyleText  Bytes?
+  encryptedReportData     Bytes?
+  encryptedStyleText      Bytes?
   // Snapshot of the report's encrypted redaction/rewrite rules
   // (see DnaWritingStyleReport.encryptedRedactionRules).
   encryptedRedactionRules Bytes?
@@ -150,5 +150,55 @@ model PromptUsageRecord {
   @@index([tenantId], name: "PromptUsageRecord_tenantId_idx")
   @@index([promptTemplateId], name: "PromptUsageRecord_promptTemplateId_idx")
   @@index([consultationId], name: "PromptUsageRecord_consultationId_idx")
+  @@schema("core")
+}
+
+// ============================================================================
+// TASK-1034 — DNA writing-style MEMORY: one sample of a clinician's writing,
+// captured when they edit / sign off a generated summary (EDIT / SIGNOFF) or
+// ingested by a tenant admin (INGEST). Text is Vault-Transit (hope-phi)
+// ciphertext only — never a plaintext column. Consumed by the weekly
+// regeneration job (consumedByReportId).
+// ============================================================================
+
+model DnaWritingSample {
+  // Meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // Multi-tenant
+  tenantId String
+
+  // Core fields (plain ids, no FK)
+  doctorId           String
+  source             DnaSampleSource
+  textCiphertext     Bytes
+  aiDraftCiphertext  Bytes?
+  keyVersion         Int?
+  writtenAt          DateTime
+  kind               String?
+  sourceRef          String?
+  contentHash        String
+  ingestBatchId      String?
+  consultationId     String?
+  contextItemId      String?
+  consumedByReportId String?
+  consumedAt         DateTime?
+
+  // Resource status
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // Audit
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "DnaWritingSample_tenantId_idx")
+  @@index([tenantId, doctorId, createdAt], name: "DnaWritingSample_tenant_doctor_createdAt_idx")
+  @@index([tenantId, doctorId, contentHash], name: "DnaWritingSample_tenant_doctor_hash_idx")
   @@schema("core")
 }

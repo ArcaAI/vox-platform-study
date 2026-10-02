@@ -429,6 +429,8 @@ enum ResourceType {
   // rewrites a tenant's configuration, access or clinical rows in one move.
   TenantCheckpoint
   TenantCheckpointRestore
+  // TASK-1034 — DNA writing-style memory sample (captured edit/sign-off or ingested history).
+  DnaWritingSample
 
   @@schema("core")
 }

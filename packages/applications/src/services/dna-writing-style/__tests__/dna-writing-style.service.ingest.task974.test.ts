@@ -191,6 +191,9 @@ describe('the batch itself', () => {
       clinicianUserId: CALLER,
       acceptedItems: 2,
       window: { from: '2026-09-01T09:00:00.000Z', to: '2026-09-02T09:00:00.000Z' },
+      // TASK-1034 — the response now also reports memory persistence (no store composed here).
+      stored: 0,
+      duplicates: 0,
     });
   });
 
@@ -344,7 +347,15 @@ describe('every `writtenAt` must be a moment in time, not merely ISO-8601-shaped
 
   it('names the offending item so a caller can fix the right one', async () => {
     try {
-      await make().ingestWritingSamples({ items: [{ text: 'a', writtenAt: '2026-09-01T09:00:00.000Z' }, { text: 'b', writtenAt: '2026-W01' }] }, jwt());
+      await make().ingestWritingSamples(
+        {
+          items: [
+            { text: 'a', writtenAt: '2026-09-01T09:00:00.000Z' },
+            { text: 'b', writtenAt: '2026-W01' },
+          ],
+        },
+        jwt(),
+      );
       throw new Error('expected a refusal');
     } catch (error) {
       const response = (error as { getResponse?: () => unknown }).getResponse?.() as { message?: string };

@@ -1,3 +1,4 @@
+import { DNA_MEMORY_CAPTURE_EVENT, type DnaMemoryCaptureRequest } from '../../dna-writing-style/dna-memory.events';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { BusinessException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
@@ -856,6 +857,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       previousData: previousData as object,
     });
 
+    // TASK-1034 — capture the clinician's edited note as DNA writing-style memory (EDIT).
+    // After the commit, through an async event, so it can never fail or delay the edit.
+    if (request.content !== undefined) {
+      this.requestDnaMemoryCapture({ tenantId, consultationId: contextItem.consultationId, contextItemId, source: 'EDIT' });
+    }
+
     // If this edit lands while the draft is still
     // under optimistic assurance (DRAFT_PENDING_SENSORS), forward it to the
     // harness so the running workflow re-binds + re-runs assurance on the edited
@@ -1222,12 +1229,29 @@ export class SummaryService extends BaseService implements ISummaryService {
       });
     }
 
+    // 6. TASK-1034 — capture the signed note as DNA writing-style memory (SIGNOFF). Last, after
+    //    the commit, through an async event: it can never fail or delay a signature.
+    this.requestDnaMemoryCapture({ tenantId, consultationId: contextItem.consultationId, contextItemId, source: 'SIGNOFF' });
+
     return {
       contextItemId,
       approvalStatus: 'APPROVED',
       approvedBy,
       approvedAt: version.createdAt.toISOString(),
     };
+  }
+
+  /** TASK-1034 — fire-and-forget DNA memory capture; a throwing emitter is logged, never raised. */
+  private requestDnaMemoryCapture(request: DnaMemoryCaptureRequest): void {
+    try {
+      this.eventEmitter.emit(DNA_MEMORY_CAPTURE_EVENT, request);
+    } catch (error) {
+      this.logger.warn({
+        message: 'DNA memory capture request failed (best-effort, clinical action unaffected)',
+        consultationId: request.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

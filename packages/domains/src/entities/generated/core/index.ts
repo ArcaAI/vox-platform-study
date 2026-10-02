@@ -13,6 +13,7 @@ export * from './ContextItemVersionEntity';
 export * from './DepartmentEntity';
 export * from './DnaUsageRecordEntity';
 export * from './DnaWritingStyleReportEntity';
+export * from './DnaWritingSampleEntity';
 export * from './DnaWritingStyleVersionEntity';
 export * from './EvalRunEntity';
 export * from './EvalScoreEntity';

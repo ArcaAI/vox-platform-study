@@ -174,4 +174,5 @@ export enum ResourceType {
   ModelResidencyPolicy = 'ModelResidencyPolicy',
   TenantCheckpoint = 'TenantCheckpoint',
   TenantCheckpointRestore = 'TenantCheckpointRestore',
+  DnaWritingSample = 'DnaWritingSample',
 }

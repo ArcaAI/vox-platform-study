@@ -20,6 +20,11 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { BillingServiceModule } from '../billing/billing.service.module';
 import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
 import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
+import { RedisCacheModule } from '../baseServices/redis/redis-cache.module';
+import { DnaMemoryStore } from './dna-memory.store';
+import { DnaMemoryCaptureService } from './dna-memory-capture.service';
+import { DnaMemoryAdminService } from './dna-memory-admin.service';
 
 @Module({
   imports: [
@@ -64,6 +69,10 @@ import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
     // counter exists to answer.
     MetricsServiceModule,
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
+    // TASK-1034 — the tenant → SYSTEM cascade for `dna-regen.*` (+ the registry write lane the
+    // schedule route uses), and Redis for the scheduler's per-tenant last-run record.
+    EffectiveSettingsModule,
+    RedisCacheModule.register(),
   ],
   providers: [
     DnaWritingStyleService,
@@ -78,7 +87,12 @@ import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
     },
     DnaWritingStyleProcessor,
     DnaRegenerationScheduler,
+    // TASK-1034 — DNA writing-style memory: the encrypted store, the edit/sign-off capture
+    // listener (`dna.memory.capture-requested`), and the admin memory/schedule surface.
+    DnaMemoryStore,
+    DnaMemoryCaptureService,
+    DnaMemoryAdminService,
   ],
-  exports: [IDnaWritingStyleService, DnaWritingStyleService, DnaRegenerationScheduler, BullModule],
+  exports: [IDnaWritingStyleService, DnaWritingStyleService, DnaRegenerationScheduler, DnaMemoryAdminService, DnaMemoryCaptureService, BullModule],
 })
 export class DnaWritingStyleServiceModule {}

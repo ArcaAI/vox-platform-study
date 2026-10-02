@@ -10,16 +10,21 @@
 
 import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
-import type { AdminRequestOptions, IfMatchPrecondition } from './admin-resource';
+import type { AdminListOptions, AdminListQuery, AdminRequestOptions, IfMatchPrecondition, PaginatedPage } from './admin-resource';
 import type {
   DnaDashboardResponse,
   DnaErasureResponse,
   DnaJobResponseDto,
   DnaJobStatusResponseDto,
+  DnaMemoryDoctorSummaryResponse,
+  DnaMemorySampleResponse,
+  DnaRegenRunResponse,
+  DnaRegenScheduleResponse,
   DnaReportResponse,
   DnaVersionResponse,
   GenerateDnaReportRequest,
   PaginatedResponse,
+  UpdateDnaRegenScheduleRequest,
   UpdateDnaReportRequest,
 } from './schemas';
 
@@ -30,8 +35,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controller DnaWritingStyleAdminController
- * (9 routes). Several controllers sharing one scope share one
+ * Backed by controllers DnaWritingStyleAdminController, DnaWritingStyleMemoryAdminController
+ * (15 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -180,6 +185,117 @@ export class AdminDnaWritingStyleResource extends AdminResource {
     return this.request<unknown>({
       method: 'GET',
       path: `admin/dna-writing-styles/jobs/${encodePathSegment(String(jobId))}/stream`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List DNA writing-style memory samples
+   *
+   * Newest first, filterable by clinician, source and consumed state. Never returns sample text: each row carries a PHI-redacted preview of at most 200 characters (empty when redaction is unavailable).
+   *
+   * `GET /api/v1/admin/dna-writing-styles/memory` — `DnaWritingStyleMemoryAdminController.listMemory`.
+   *
+   * Returns ONE page. `page` is 0-based and both `page` and `limit` are always sent explicitly — the gateway echoes RAW query values back, so the response's own `page`/`limit` are not usable as loop state. Use {@link listMemoryIterate} to walk every page.
+   */
+  listMemory(
+    options: AdminListOptions & { query?: AdminListQuery & { consumed?: boolean; doctorId?: string; source?: 'EDIT' | 'SIGNOFF' | 'INGEST' } } = {},
+  ): Promise<PaginatedPage<DnaMemorySampleResponse>> {
+    return this.listPage<DnaMemorySampleResponse>('admin/dna-writing-styles/memory', options);
+  }
+
+  /**
+   * List DNA writing-style memory samples
+   *
+   * Newest first, filterable by clinician, source and consumed state. Never returns sample text: each row carries a PHI-redacted preview of at most 200 characters (empty when redaction is unavailable).
+   *
+   * `GET /api/v1/admin/dna-writing-styles/memory` — `DnaWritingStyleMemoryAdminController.listMemory`.
+   *
+   * Walks every page, yielding rows: `for await (const row of …)`. Pagination is driven from the REQUEST side; a failure on page N propagates after page N-1's rows, so "the list ended" and "the list broke" never look alike.
+   */
+  listMemoryIterate(
+    options: AdminListOptions & { query?: AdminListQuery & { consumed?: boolean; doctorId?: string; source?: 'EDIT' | 'SIGNOFF' | 'INGEST' } } = {},
+  ): AsyncGenerator<DnaMemorySampleResponse, void, undefined> {
+    return this.listAll<DnaMemorySampleResponse>('admin/dna-writing-styles/memory', options);
+  }
+
+  /**
+   * Delete a DNA writing-style memory sample
+   *
+   * Soft delete: the sample stops counting as feedback and is never read into a future profile.
+   *
+   * `DELETE /api/v1/admin/dna-writing-styles/memory/{id}` — `DnaWritingStyleMemoryAdminController.deleteMemory`.
+   */
+  deleteMemory(id: string, options: AdminRequestOptions = {}): Promise<unknown> {
+    return this.request<unknown>({
+      method: 'DELETE',
+      path: `admin/dna-writing-styles/memory/${encodePathSegment(String(id))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * DNA writing-style memory per clinician
+   *
+   * One row per clinician of this tenant who has DNA memory or a DNA report: sample counts (total, not yet consumed, by source EDIT / SIGNOFF / INGEST), the newest sample, the latest report, and whether DNA is effectively on for them.
+   *
+   * `GET /api/v1/admin/dna-writing-styles/memory/summary` — `DnaWritingStyleMemoryAdminController.getMemorySummary`.
+   */
+  getMemorySummary(options: AdminRequestOptions = {}): Promise<DnaMemoryDoctorSummaryResponse[]> {
+    return this.request<DnaMemoryDoctorSummaryResponse[]>({
+      method: 'GET',
+      path: 'admin/dna-writing-styles/memory/summary',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Weekly DNA regeneration schedule
+   *
+   * The effective schedule for this tenant (its own settings, else the platform default), the time zone the cron is read in, the next run, and the result of the last run.
+   *
+   * `GET /api/v1/admin/dna-writing-styles/schedule` — `DnaWritingStyleMemoryAdminController.getSchedule`.
+   */
+  getSchedule(options: AdminRequestOptions = {}): Promise<DnaRegenScheduleResponse> {
+    return this.request<DnaRegenScheduleResponse>({
+      method: 'GET',
+      path: 'admin/dna-writing-styles/schedule',
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Update the weekly DNA regeneration schedule
+   *
+   * Writes the supplied fields as this tenant`s own `dna-regen.*` settings (omitted fields are left as they are). The values are validated by the settings registry.
+   *
+   * `PUT /api/v1/admin/dna-writing-styles/schedule` — `DnaWritingStyleMemoryAdminController.updateSchedule`.
+   */
+  updateSchedule(body: UpdateDnaRegenScheduleRequest, options: AdminRequestOptions = {}): Promise<DnaRegenScheduleResponse> {
+    return this.request<DnaRegenScheduleResponse>({
+      method: 'PUT',
+      path: 'admin/dna-writing-styles/schedule',
+      body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Run the DNA regeneration now (this tenant)
+   *
+   * Evaluates every clinician of this tenant exactly as the weekly run does and queues those with enough new memory. Idempotent per ISO week: a clinician already queued this week is not queued again.
+   *
+   * `POST /api/v1/admin/dna-writing-styles/schedule/run` — `DnaWritingStyleMemoryAdminController.runSchedule`.
+   */
+  runSchedule(options: AdminRequestOptions = {}): Promise<DnaRegenRunResponse> {
+    return this.request<DnaRegenRunResponse>({
+      method: 'POST',
+      path: 'admin/dna-writing-styles/schedule/run',
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

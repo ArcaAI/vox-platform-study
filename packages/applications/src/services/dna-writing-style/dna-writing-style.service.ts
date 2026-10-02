@@ -10,6 +10,7 @@ import {
   AiCostBasis,
   AiDeploymentKind,
   AiUsageUnit,
+  DnaSampleSource,
   DnaWritingStyleReportRepository,
   DnaWritingStyleVersionRepository,
   DnaUsageRecordRepository,
@@ -42,6 +43,7 @@ import {
   IngestDnaWritingSamplesRequest,
 } from './dto';
 import { DnaWritingStyleDtoMapper } from './dna-writing-style.dto.mapper';
+import { DnaMemoryStore } from './dna-memory.store';
 import { RedactionRuleSet, validateRedactionRuleSet } from './redaction-rules';
 // The per-doctor DNA toggle is stored on the Phase-5
 // TASK-882: the doctor's DNA on/off preference is a `UserSettings` row (`dna` /
@@ -118,6 +120,10 @@ export interface GenerateDnaReportJobPayload {
   /** Which surface asked. Stamped on the audit event so a profile's provenance is readable. */
   origin?: 'generate' | 'ingest' | 'scheduler';
   requestedBy?: DnaJobRequestedBy;
+  /** TASK-1034 — the DnaWritingSample ids this job's corpus carries; marked consumed by its report. */
+  sampleIds?: string[];
+  /** TASK-1034 — the scheduler's logical idempotency key, `dna-regen:<tenant>:<doctor>:<isoWeek>`. */
+  idempotencyKey?: string;
 }
 
 export interface DnaReportJobResult {
@@ -182,6 +188,9 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-1034 — DNA memory (`DnaWritingSample`): every ingested item is persisted, encrypted and
+    // deduped. Optional + trailing for fixture arity; absent ⇒ nothing is persisted (stored 0).
+    @Optional() @Inject(DnaMemoryStore) private readonly memoryStore?: DnaMemoryStore,
   ) {
     super(eventEmitter, clsService, ResourceType.DnaWritingStyleReport);
   }
@@ -315,6 +324,37 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       }
     }
 
+    // TASK-1034 — persist every item as DNA memory (source INGEST, encrypted, deduped on the
+    // normalised text), AFTER the DNA gate so an opted-out clinician's writing is never stored.
+    const memory = await this.persistIngestedMemory(dto, tenantId, doctorId);
+
+    // TASK-1034 — `generate: false` loads history for the weekly regeneration and queues nothing.
+    if (dto.generate === false) {
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: doctorId,
+        data: {
+          doctorId,
+          kind: 'dna-ingest-stored',
+          origin: 'ingest',
+          itemCount: dto.items.length,
+          stored: memory.stored,
+          duplicates: memory.duplicates,
+          credentialClass: caller.credentialClass,
+          principalId: caller.principalId,
+        },
+      });
+      const writtenAtMs = dto.items.map((item) => Date.parse(item.writtenAt));
+      return {
+        jobId: null,
+        status: 'STORED',
+        clinicianUserId: doctorId,
+        acceptedItems: dto.items.length,
+        window: { from: new Date(Math.min(...writtenAtMs)).toISOString(), to: new Date(Math.max(...writtenAtMs)).toISOString() },
+        stored: memory.stored,
+        duplicates: memory.duplicates,
+      };
+    }
+
     // TASK-974 §9.2 — the allowance and the ceiling, BEFORE anything is queued. Placed AFTER
     // the DNA-enabled gate on purpose: a tenant with DNA switched off is told that, not billed
     // at. Placed BEFORE the idempotency JOIN below for the opposite reason — a retry that joins
@@ -342,7 +382,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       // starts a new analysis.
       const existing = await this.dnaQueue.getJob(jobId);
       const joined = DnaWritingStyleService.ingestResponseOf(jobId, existing?.data as GenerateDnaReportJobPayload | undefined);
-      if (joined) return joined;
+      if (joined) return { ...joined, stored: memory.stored, duplicates: memory.duplicates };
     }
 
     const payload: GenerateDnaReportJobPayload = {
@@ -359,6 +399,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       samples,
       origin: 'ingest',
       requestedBy: { credentialClass: caller.credentialClass, principalId: caller.principalId },
+      ...(memory.ids.length > 0 ? { sampleIds: memory.ids } : {}),
     };
 
     await this.dnaQueue.add(JobQueue.GenerateDnaReport, payload, { jobId });
@@ -382,7 +423,45 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       },
     });
 
-    return DnaWritingStyleService.ingestResponseOf(jobId, payload)!;
+    return { ...DnaWritingStyleService.ingestResponseOf(jobId, payload)!, stored: memory.stored, duplicates: memory.duplicates };
+  }
+
+  /**
+   * TASK-1034 — store each ingested item as a `DnaWritingSample` (source INGEST). One batch id per
+   * request. Returns the ids of the samples this batch maps to (new or the pre-existing duplicate),
+   * so the immediate job can mark exactly those consumed.
+   */
+  private async persistIngestedMemory(
+    dto: IngestDnaWritingSamplesRequest,
+    tenantId: string,
+    doctorId: string,
+  ): Promise<{ stored: number; duplicates: number; ids: string[] }> {
+    if (!this.memoryStore) return { stored: 0, duplicates: 0, ids: [] };
+    const ingestBatchId = uuidv7();
+    let stored = 0;
+    let duplicates = 0;
+    const ids: string[] = [];
+    for (const item of dto.items) {
+      const outcome = await this.memoryStore.store({
+        tenantId,
+        doctorId,
+        source: DnaSampleSource.INGEST,
+        text: item.text,
+        writtenAt: new Date(item.writtenAt),
+        kind: item.kind ?? 'OTHER',
+        sourceRef: item.sourceRef ?? null,
+        ingestBatchId,
+        createdBy: this.requestUserId ?? doctorId,
+      });
+      if ('duplicateOf' in outcome) {
+        duplicates += 1;
+        ids.push(outcome.duplicateOf);
+      } else {
+        stored += 1;
+        ids.push(outcome.id);
+      }
+    }
+    return { stored, duplicates, ids };
   }
 
   /**

@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 519 component schemas the generated surface transitively
+ * Only the 529 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -2329,6 +2329,91 @@ export interface DnaJobStatusResponseDto {
   result?: Record<string, unknown>;
   /** Current job status */
   status: 'queued' | 'processing' | 'completed' | 'failed';
+}
+
+export interface DnaMemoryDoctorSummaryResponse {
+  bySource: DnaMemorySourceCounts;
+  /** First and last name from the user profile, when set. */
+  displayName: string | null;
+  /** The effective DNA decision (tenant graph AND the clinician`s own opt-in). */
+  dnaEnabled: boolean;
+  doctorId: string;
+  /** ISO time of the latest DNA report. */
+  lastReportAt: string | null;
+  /** ISO time of the newest sample. */
+  lastSampleAt: string | null;
+  latestReportId: string | null;
+  /** Live memory samples (soft-deleted ones excluded). */
+  total: number;
+  /** Samples no report has consumed yet. */
+  unconsumed: number;
+  username: string | null;
+}
+
+export interface DnaMemorySamplePageResponse {
+  count: number;
+  data: DnaMemorySampleResponse[];
+  limit: number;
+  page: number;
+}
+
+export interface DnaMemorySampleResponse {
+  consultationId: string | null;
+  consumed: boolean;
+  consumedByReportId: string | null;
+  createdAt: string;
+  doctorId: string;
+  id: string;
+  kind: string | null;
+  /** At most 200 characters, PHI-redacted. Empty when redaction is unavailable. */
+  preview: string;
+  source: 'EDIT' | 'SIGNOFF' | 'INGEST';
+  /** The ingesting caller`s own record locator, when given. */
+  sourceRef: string | null;
+  /** ISO time the clinician wrote it. */
+  writtenAt: string;
+}
+
+export interface DnaMemorySourceCounts {
+  EDIT: number;
+  INGEST: number;
+  SIGNOFF: number;
+}
+
+export interface DnaRegenLastRunResponse {
+  /** ISO time of the run. */
+  at: string;
+  queued: number;
+  skipped: DnaRegenSkipCountsResponse;
+}
+
+export interface DnaRegenRunJobResponse {
+  doctorId: string;
+  jobId: string;
+}
+
+export interface DnaRegenRunResponse {
+  jobs: DnaRegenRunJobResponse[];
+  queued: number;
+  skipped: DnaRegenSkipCountsResponse;
+}
+
+export interface DnaRegenScheduleResponse {
+  cron: string;
+  enabled: boolean;
+  lastRun: DnaRegenLastRunResponse;
+  minNewSamples: number;
+  /** ISO time of the next run; null when disabled. */
+  nextRunAt: string | null;
+  /** The tenant`s consultation time zone the cron is read in. */
+  timeZone: string;
+}
+
+export interface DnaRegenSkipCountsResponse {
+  belowFloor: number;
+  noFeedback: number;
+  optedOut: number;
+  quota: number;
 }
 
 export interface DnaReportResponse {
@@ -7305,6 +7390,15 @@ export interface UpdateDepartmentRequest {
   resourceStatus?: 'ENABLED' | 'DISABLED';
   /** Prompt template ID for revisit patients */
   revisitPromptId?: string;
+}
+
+export interface UpdateDnaRegenScheduleRequest {
+  /** Cron expression, read in the tenant time zone. */
+  cron?: string;
+  /** Turn this tenant`s weekly regeneration on or off. */
+  enabled?: boolean;
+  /** Minimum new memory samples before a clinician is regenerated. */
+  minNewSamples?: number;
 }
 
 export interface UpdateDnaReportRequest {

@@ -27,6 +27,7 @@ export * from './ContextItemModel';
 export * from './ContextItemVersionModel';
 export * from './DepartmentModel';
 export * from './DnaUsageRecordModel';
+export * from './DnaWritingSampleModel';
 export * from './DnaWritingStyleReportModel';
 export * from './DnaWritingStyleVersionModel';
 export * from './DocumentSectionModel';

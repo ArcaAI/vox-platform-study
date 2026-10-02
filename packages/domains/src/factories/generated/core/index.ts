@@ -13,6 +13,7 @@ export * from './ContextItemVersionFactory';
 export * from './DepartmentFactory';
 export * from './DnaUsageRecordFactory';
 export * from './DnaWritingStyleReportFactory';
+export * from './DnaWritingSampleFactory';
 export * from './DnaWritingStyleVersionFactory';
 export * from './EvalRunFactory';
 export * from './EvalScoreFactory';

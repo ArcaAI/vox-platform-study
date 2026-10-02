@@ -51,3 +51,4 @@ export * from './catalog-visibility';
 export * from './feature-availability.service';
 export * from './tenant-clamp';
 export * from './tenant-settings.service';
+export * from './descriptors/dna-regeneration.descriptors';

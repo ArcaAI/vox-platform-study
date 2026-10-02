@@ -1090,3 +1090,12 @@ enum TenantCheckpointRestoreStatus {
 
   @@schema("core")
 }
+
+// TASK-1034 — where a DNA writing-style memory sample came from.
+enum DnaSampleSource {
+  EDIT
+  SIGNOFF
+  INGEST
+
+  @@schema("core")
+}
