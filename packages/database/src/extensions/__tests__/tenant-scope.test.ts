@@ -175,7 +175,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // ASR Agent is the only selector.
     // +2 (88): TASK-1032 adds `TenantCheckpoint` and `TenantCheckpointRestore` — both tenantId-bearing,
     // tenant-owned rows (a checkpoint is never SYSTEM-shared).
-    expect(TENANT_SCOPED_MODELS.size).toBe(88);
+    // +1 (89): TASK-1034 adds `DnaWritingSample` — a clinician's DNA memory sample, tenant-owned.
+    expect(TENANT_SCOPED_MODELS.size).toBe(89);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -92,6 +92,7 @@ describe('checkpoint registry', () => {
       Department: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       DnaUsageRecord: 'LOGS CAPTURE_ONLY never tenantColumn',
       DnaWritingStyleReport: 'CLINICAL RECONCILE softDelete tenantColumn',
+      DnaWritingSample: 'CLINICAL RECONCILE softDelete tenantColumn',
       DnaWritingStyleVersion: 'CLINICAL RECONCILE hardDelete tenantColumn',
       DocumentSection: 'CLINICAL RECONCILE hardDelete tenantColumn',
       DocumentTemplate: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',

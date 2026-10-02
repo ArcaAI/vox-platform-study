@@ -358,6 +358,7 @@ const CLINICAL: CheckpointModelDescriptor[] = [
   }),
   rec('DnaWritingStyleReport', 'CLINICAL', true),
   rec('DnaWritingStyleVersion', 'CLINICAL', false),
+  rec('DnaWritingSample', 'CLINICAL', true, { notes: 'TASK-1034 DNA memory: encrypted per-clinician writing samples (edit, sign-off, ingest).' }),
   rec('EvalRun', 'CLINICAL', true),
   rec('EvalScore', 'CLINICAL', true),
   rec('GateEditExemplar', 'CLINICAL', false, { notes: 'Derived gate-edit mining store; hard-deleted when absent.' }),
