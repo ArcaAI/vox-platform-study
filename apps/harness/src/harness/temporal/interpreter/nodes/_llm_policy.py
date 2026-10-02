@@ -8,7 +8,8 @@ Both capabilities the owner specified are the same shape and neither is a heuris
   findings against *"a set of policies defined/declared/overwriten by tenant admin"*.
 
 So both need exactly this: resolve a tenant-authored instruction, resolve a model tenant ->
-SYSTEM, screen the payload for PHI egress, call ``apps/text``, and parse a JSON reply strictly.
+SYSTEM, call ``apps/text`` (which owns PHI egress since TASK-1035 and fails closed), and parse a
+JSON reply strictly.
 That is one shape, and it lives here rather than being written twice.
 
 ## Why a new module rather than importing ``consultation_realtime``'s private helpers
@@ -45,11 +46,9 @@ import re
 from typing import Any
 
 from harness.core.config import get_settings
-from harness.guards.phi.egress import ensure_egress_safe
 from harness.services.api_client import ApiServiceError
 from harness.temporal.activities import (
     _api_client,  # noqa: SLF001 — the sanctioned accessor, same as nodes/text_generate.py
-    _phi_redactor,  # noqa: SLF001
     _text_client,  # noqa: SLF001
 )
 from harness.temporal.models import HarnessPolicy
@@ -61,7 +60,6 @@ __all__ = [
     "parse_json_object",
     "resolve_instruction",
     "resolve_text_selection",
-    "screen",
 ]
 
 #: Task keys these nodes may run under. Mirrors ``nodes/consultation_realtime.py``'s own set. The
@@ -189,18 +187,6 @@ async def resolve_instruction(
     return content
 
 
-def screen(text: str, *, judgement: LlmJudgement, settings: Any, redactor: Any) -> str:
-    """The same fail-closed PHI egress chokepoint ``nodes/text_generate.py`` uses."""
-    return ensure_egress_safe(
-        text,
-        provider=judgement.provider,
-        settings=settings,
-        phi_enabled=judgement.policy.phi_enabled,
-        phi_fail_closed=judgement.policy.phi_fail_closed,
-        redactor=redactor,
-    )
-
-
 async def generate_json(
     *,
     tenant_id: str,
@@ -208,26 +194,19 @@ async def generate_json(
     system_prompt: str,
     user_payload: dict[str, Any],
     max_tokens: Any = None,
+    known_phi: list[dict[str, str]] | None = None,
 ) -> dict[str, Any] | None:
-    """Screen, call ``apps/text``, parse. ``None`` means the reply did not parse.
+    """Call ``apps/text``, parse. ``None`` means the reply did not parse.
 
-    Both halves of the request are screened, not just the data: an instruction a tenant authored
-    is tenant text and can carry PHI exactly as a transcript can.
+    TASK-1035 — both halves go verbatim: ``apps/text`` owns PHI egress (pseudonymize on cloud,
+    fail closed), and ``known_phi`` is the identity the caller's run holds.
     """
     settings = get_settings()
-    redactor = _phi_redactor()
-    safe_prompt = screen(
-        json.dumps(user_payload, ensure_ascii=False),
-        judgement=judgement,
-        settings=settings,
-        redactor=redactor,
-    )
-    safe_system = screen(system_prompt, judgement=judgement, settings=settings, redactor=redactor)
-
     result = await _text_client(settings).generate(
         tenant_id=tenant_id,
-        prompt=safe_prompt,
-        system_prompt=safe_system,
+        prompt=json.dumps(user_payload, ensure_ascii=False),
+        system_prompt=system_prompt,
+        known_phi=known_phi,
         provider=judgement.provider,
         model=judgement.model,
         max_tokens=max_tokens,

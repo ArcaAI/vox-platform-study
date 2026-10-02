@@ -28,7 +28,7 @@ from typing import Any
 
 from temporalio import activity
 
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import known_phi_from
 from harness.services.text_client import TextServiceError
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes._consultation_shared import bound_value
@@ -68,7 +68,7 @@ async def interpreter_guard_phi(payload: NodeActivityInput) -> NodeActivityResul
     the verdict is a view of the redactor's own report.
 
     The fail-CLOSED property of PHI handling does NOT live here and must not be re-implemented
-    here: ``ensure_egress_safe`` raises before any cloud call, and the redactor hop DEGRADES rather
+    here: ``apps/text`` pseudonymizes before any cloud call (TASK-1035), and the redactor hop DEGRADES rather
     than passing unredacted text through (``consultation.py``'s own rule: "fail loudly, never pass
     through while claiming the hop ran").
     """
@@ -137,14 +137,8 @@ async def _evaluate_policy(
             judgement=judgement,
             system_prompt=instruction,
             user_payload={"appliesTo": policy.get("appliesTo"), "subject": subject},
+            known_phi=known_phi_from(payload.run_payload),
         )
-    except PhiEgressBlocked as exc:
-        return {
-            **row,
-            "status": "UNEVALUATED",
-            "reason": f"phi egress blocked: {exc}",
-            "errorCode": "phi_egress_blocked",
-        }
     except TextServiceError as exc:
         return {
             **row,
