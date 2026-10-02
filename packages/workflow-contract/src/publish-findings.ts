@@ -85,16 +85,26 @@ export const PUBLISH_FINDING_RULE_ID = 'WF-PUB';
 const MANDATORY_CLASS = 'mandatory';
 
 /**
- * The OD-C ramp (P-4), as ONE constant. `PROMPT_VARIABLE_UNDECLARED` is a WARNING in the first
- * release and an ERROR in the next, and the promotion is meant to be a one-line, reviewable diff
- * rather than a hunt through call sites — so every caller in this monorepo passes THIS, and the
- * release that decides to enforce it changes this value alone.
- *
- * It is a WARNING today because the check is new and the corpus is not: an agent whose prompt
- * references a context schema no tenant has bound yet (gap 4e) would otherwise become
- * unpublishable the moment this shipped, which is a migration disguised as a gate.
+ * `PROMPT_VARIABLE_UNDECLARED` is an ERROR: it blocks publish, for workflows (here) and agents
+ * (the gateway's agent findings). A prompt that names a variable nothing declares fails at run
+ * time — the renderer refuses an unresolved placeholder by name — so publishing it only moves the
+ * failure from the author to a clinician mid-consultation. Fixed here, not by the caller.
  */
-export const TEMPLATE_REFERENCE_SEVERITY_RELEASE_1: WorkflowFindingSeverity = 'WARNING';
+export const PROMPT_VARIABLE_UNDECLARED_SEVERITY: WorkflowFindingSeverity = 'ERROR';
+
+/**
+ * `PROMPT_FRAGMENT_CONDITION_ROOT` stays a WARNING: a `when` that reads an unknown root EXCLUDES
+ * its fragment at run time rather than failing the call, and the root might be supplied by a
+ * caller publish cannot see.
+ */
+export const PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY: WorkflowFindingSeverity = 'WARNING';
+
+/**
+ * @deprecated The release-1 ramp is over; read `PROMPT_VARIABLE_UNDECLARED_SEVERITY`. Kept for
+ * one release so existing callers compile, and promoted to `'ERROR'` so every caller that still
+ * passes it reports undeclared prompt variables as publish-blocking.
+ */
+export const TEMPLATE_REFERENCE_SEVERITY_RELEASE_1: WorkflowFindingSeverity = PROMPT_VARIABLE_UNDECLARED_SEVERITY;
 
 // =============================================================================================
 // Context
@@ -134,12 +144,11 @@ export interface PublishContext {
   /** Which failure `triggerContextSchema: null` was. Defaults to `CONTEXT_SCHEMA_NOT_FOUND`. */
   readonly triggerContextSchemaFailure?: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND';
   /**
-   * The OD-C ramp: `'WARNING'` in the first release, `'ERROR'` in the next (P-4). The CALLER
-   * owns it because the same undeclared variable is authoring feedback in a draft and a publish
-   * refusal a release later — a severity that changes with the rollout is not a property of a
-   * pure function.
+   * @deprecated Ignored. `PROMPT_VARIABLE_UNDECLARED` is always reported at
+   * `PROMPT_VARIABLE_UNDECLARED_SEVERITY` (ERROR); the field stays optional for one release so
+   * existing callers compile.
    */
-  readonly templateReferenceSeverity: WorkflowFindingSeverity;
+  readonly templateReferenceSeverity?: WorkflowFindingSeverity;
   /**
    * `jsonSchemaValueProblems` from `@arcaai/json-schema-subset`. Injected, not imported: this
    * package has zero runtime dependencies. REQUIRED so the gate cannot be silently skipped.
@@ -425,9 +434,8 @@ export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): W
         trigger: ctx.triggerContextSchema ?? null,
         context: ctx.triggerContextSchema ?? agent?.contextPayloadSchema ?? null,
         vars: varsSchema,
-        // Upstream node output ports are not resolved in release 1: a wildcard admits them rather
-        // than warning on every legitimate `{{nodes.x.y}}`. Narrowing it is a later ramp, like
-        // `templateReferenceSeverity` itself.
+        // Upstream node output ports are not resolved yet: a wildcard admits them rather than
+        // reporting every legitimate `{{nodes.x.y}}`. Narrowing it is a later ramp.
         nodes: null,
         input: null,
       },
@@ -447,7 +455,7 @@ export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): W
       }
       for (const problem of templateReferenceProblems(value, declared)) {
         findings.push(
-          finding('PROMPT_VARIABLE_UNDECLARED', 'schema', ctx.templateReferenceSeverity, node.id, `node \`${node.id}\`: ${problem}`, path),
+          finding('PROMPT_VARIABLE_UNDECLARED', 'schema', PROMPT_VARIABLE_UNDECLARED_SEVERITY, node.id, `node \`${node.id}\`: ${problem}`, path),
         );
       }
     }

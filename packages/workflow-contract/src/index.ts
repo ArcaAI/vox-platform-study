@@ -100,6 +100,23 @@ export {
 } from './template';
 export type { DeclaredNamespaces, PlaceholderReference, RenderTemplateOptions, TemplateReference } from './template';
 
+// The ONE render scope (`context` canonical, `trigger` its alias) and the ONE message composer:
+// platform rules → instruction → output-language step → output contract in the system message,
+// wrapped data blocks in the user message. Mirrored in Python by the harness's
+// `prompt_composition.py` (`build_prompt_scope`) and `compose_messages.py`, held to
+// `tests/contracts/compose-messages.fixture.json`.
+export { buildPromptScope } from './prompt-scope';
+export type { PromptScopeParts } from './prompt-scope';
+export { PLATFORM_RULES_VERSION, platformRules } from './platform-rules';
+export { EXTERNAL_DATA_TRUNCATION_MARKER, MESSAGE_LAYER_JOIN, composeMessages, outputLanguageStep } from './compose-messages';
+export type { ComposeDataBlock, ComposeMessagesInput, ComposedDataBlock, ComposedMessages } from './compose-messages';
+
+// The prompt paths a context schema offers — shared by the publish gate and the console's
+// completion list. Mirrored by the harness's `schema_variable_paths.py`, held to
+// `tests/contracts/schema-variable-paths.fixture.json`.
+export { schemaVariablePaths } from './schema-variable-paths';
+export type { SchemaVariablePath } from './schema-variable-paths';
+
 // TASK-947 — a TEXT_GENERATION instruction's three forms read in ONE place (`agent-instruction`),
 // and prompt COMPOSITION (`prompt-composition`): which fragments of a composite artifact run
 // over the one render scope, rendered per fragment and joined. Mirrored in Python by the
@@ -218,7 +235,14 @@ export type { PortValidationOptions } from './port-validation';
 // TASK-890 §3.5 (F-10) — the ONE publish gate, as machine-readable findings. It REPLACES
 // `workflowPublishProblems`, which was a real gate nothing ever called (BLOCKER 1c), re-emits
 // every one of its checks with a `code`, and adds the per-node config-schema check nobody ran.
-export { PUBLISH_FINDING_RULE_ID, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, WORKFLOW_PUBLISH_FINDING_CODES, publishFindings } from './publish-findings';
+export {
+  PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
+  PUBLISH_FINDING_RULE_ID,
+  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  WORKFLOW_PUBLISH_FINDING_CODES,
+  publishFindings,
+} from './publish-findings';
 export type { GenerationRange, GenerationRanges, PublishAgentView, PublishContext, WorkflowPublishFindingCode } from './publish-findings';
 // step 7 TIER 2 — shallow schema compatibility, WARNING-severity only. Tier 1 (the
 // port lattice, above) blocks; tier 3 is runtime validation at the node boundary. Never promote

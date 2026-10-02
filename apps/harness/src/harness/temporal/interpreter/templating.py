@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,6 +51,7 @@ __all__ = [
     "PromptVariableUnresolved",
     "TemplateReference",
     "render_template",
+    "resolve_template_path",
     "template_references",
     "template_syntax_problems",
 ]
@@ -72,18 +74,29 @@ class PromptTemplateSyntaxError(Exception):
 
 
 class PromptVariableUnresolved(Exception):
-    """A placeholder resolved to nothing and carried no ``default(...)``. Named, never silent."""
+    """A placeholder resolved to nothing and carried no ``default(...)``. Named, never silent.
 
-    def __init__(self, path: str, template_ref: str | None) -> None:
+    ``render_template`` stops at the FIRST such placeholder, so it names one path. A caller that
+    checks a whole prompt before rendering (``compose_messages``) names EVERY missing path through
+    ``paths``; ``path`` is then the first of them. Mirrors ``PromptVariableUnresolvedError``.
+    """
+
+    code = "PROMPT_VARIABLE_UNRESOLVED"
+
+    def __init__(self, path: str | Sequence[str], template_ref: str | None) -> None:
+        paths = [path] if isinstance(path, str) else list(path)
+        named = ", ".join(f"`{one}`" for one in paths)
+        subject = (
+            f"Prompt variable {named} did" if len(paths) == 1 else f"Prompt variables {named} did"
+        )
+        declares = "declares" if len(paths) == 1 else "declare"
         if template_ref is None:
-            message = f"Prompt variable `{path}` did not resolve and declares no `default(...)`."
+            message = f"{subject} not resolve and {declares} no `default(...)`."
         else:
-            message = (
-                f"Prompt variable `{path}` did not resolve in `{template_ref}` "
-                "and declares no `default(...)`."
-            )
+            message = f"{subject} not resolve in `{template_ref}` and {declares} no `default(...)`."
         super().__init__(message)
-        self.path = path
+        self.path = paths[0] if paths else ""
+        self.paths = paths
         self.template_ref = template_ref
 
 
@@ -290,6 +303,14 @@ def render_template(content: str, scope: dict[str, Any], *, template_ref: str | 
             continue
         out.append(value if isinstance(value, str) else _canonical_json(value))
     return "".join(out)
+
+
+def resolve_template_path(scope: Any, path: str) -> Any:
+    """The renderer's OWN traversal: the value ``path`` resolves to, or ``None`` when it does not
+    resolve — which is exactly when ``render_template`` raises ``PromptVariableUnresolved``.
+    Mirrors ``resolveTemplatePath``."""
+    value = _resolve_path(scope, path)
+    return None if value is _MISSING else value
 
 
 def template_references(content: str) -> list[TemplateReference]:
