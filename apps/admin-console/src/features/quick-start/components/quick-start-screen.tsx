@@ -7,6 +7,7 @@
  * endpoints in order (`lib/quick-start-plan.ts`), with a progress line per step that links out to
  * the full editor for the row it made. The full editors stay the place for anything advanced.
  */
+import Link from 'next/link';
 import { useMemo, useState, type FormEvent } from 'react';
 import { IconCheck, IconCircleDashed, IconExternalLink, IconHourglass, IconX } from '@tabler/icons-react';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -334,10 +335,10 @@ export function QuickStartBody() {
                 </span>
                 <StepStatus state={steps[step]} />
                 {steps[step]?.href ? (
-                  <a href={steps[step]?.href} className="text-primary ml-auto inline-flex items-center gap-1 underline-offset-4 hover:underline">
+                  <Link href={steps[step]?.href ?? '#'} className="text-foreground ml-auto inline-flex items-center gap-1 underline underline-offset-4">
                     {STEP_LINK[step]}
                     <IconExternalLink aria-hidden className="size-3.5" />
-                  </a>
+                  </Link>
                 ) : null}
               </li>
             ))}

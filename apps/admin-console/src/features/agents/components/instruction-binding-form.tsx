@@ -162,7 +162,7 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
   const [template, setTemplate] = useState<PromptPickerTemplate | null>(null);
   const schemas = useContextSchemaOptions();
   const declared = template?.declaredVariables ?? [];
-  const declaredNames = useMemo(() => declared.map((declaration) => declaration.name), [declared]);
+  const declaredNames = useMemo(() => (template?.declaredVariables ?? []).map((declaration) => declaration.name), [template]);
   const assist = useSchemaAssist(value, declaredNames, findings, inheritedContextSchema);
 
   function patch(next: Partial<InstructionBindingValue>) {

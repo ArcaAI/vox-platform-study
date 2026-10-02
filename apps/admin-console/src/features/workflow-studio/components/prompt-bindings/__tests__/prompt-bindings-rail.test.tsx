@@ -13,7 +13,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
-import { setTemplateEditorValue, templateEditorValue } from '@/test/template-editor';
+import { templateEditorValue } from '@/test/template-editor';
 import type { NodePromptBinding } from '../../../api/types';
 import { PromptBindingsRail } from '../prompt-bindings-rail';
 

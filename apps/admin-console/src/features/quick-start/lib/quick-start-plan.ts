@@ -182,9 +182,6 @@ export async function runQuickStart(
   api: QuickStartApi,
   onStep: (step: QuickStartStep, state: QuickStartStepState) => void,
 ): Promise<{ ok: boolean }> {
-  let schemaId: string;
-  let workflowSlug: string;
-
   async function step<T>(name: QuickStartStep, work: () => Promise<{ value: T; href: string }>): Promise<T | undefined> {
     onStep(name, { status: 'running' });
     try {
@@ -206,7 +203,7 @@ export async function runQuickStart(
     return { value: created.id, href: `/context-schemas/${encodeURIComponent(created.id)}` };
   });
   if (schema === undefined) return { ok: false };
-  schemaId = schema;
+  const schemaId = schema;
 
   const agent = await step('agent', async () => {
     const created = await api.createAgent({
@@ -234,7 +231,7 @@ export async function runQuickStart(
     return { value: created.slug, href: `/workflow-studio/${encodeURIComponent(created.id)}` };
   });
   if (workflow === undefined) return { ok: false };
-  workflowSlug = workflow;
+  const workflowSlug = workflow;
 
   const assigned = await step('assignment', async () => {
     await api.createWorkflowAssignment({
