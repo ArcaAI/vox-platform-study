@@ -166,6 +166,16 @@ def apply_deterministic_redaction(text: str, rules: list[RedactionRule]) -> Reda
         if compiled is None:
             continue
 
+        # TASK-1034: the rules are also rendered into the prompt, so the model often writes the
+        # replacement itself. A match lying inside an existing occurrence of this rule's own
+        # replacement is already compliant — rewriting it again would nest the replacement
+        # ("cardiac cardiac troponin I I"). Skipping it keeps the pass idempotent.
+        protected: list[tuple[int, int]] = []
+        if rule.type == "rewrite" and rule.replacement:
+            protected = [
+                (p.start(), p.end()) for p in re.finditer(re.escape(rule.replacement), working)
+            ]
+
         pieces: list[str] = []
         cursor = 0
         count = 0
@@ -173,6 +183,8 @@ def apply_deterministic_redaction(text: str, rules: list[RedactionRule]) -> Reda
             start, end = m.start(), m.end()
             if end == start:
                 # zero-width match — never consume, never "add"; skip to avoid loops
+                continue
+            if any(p_start <= start and end <= p_end for p_start, p_end in protected):
                 continue
             pieces.append(working[cursor:start])
             removed_len = end - start

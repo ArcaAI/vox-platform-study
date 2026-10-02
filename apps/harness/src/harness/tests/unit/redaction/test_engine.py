@@ -152,3 +152,59 @@ class TestRuleValidation:
         rule = _rule(id="bad", match="regex", pattern="(")
         with pytest.raises(RedactionEngineError):
             apply_deterministic_redaction("some text", [rule])
+
+
+# ── TASK-1034: the rules are now ALSO prompt instructions, so the model often writes the
+# replacement itself. A rewrite whose replacement contains its own pattern must not re-apply
+# inside an existing replacement ("cardiac troponin I" → "cardiac cardiac troponin I I",
+# observed live 2026-10-02). The pass must be idempotent.
+
+
+def test_rewrite_skips_matches_already_inside_its_replacement() -> None:
+    rule = _rule(
+        id="r-trop",
+        type="rewrite",
+        match="literal",
+        pattern="troponin",
+        replacement="cardiac troponin I",
+    )
+    out = apply_deterministic_redaction("Ordering a cardiac troponin I level.", [rule])
+    assert out.text == "Ordering a cardiac troponin I level."
+    assert out.changed is False
+    assert out.manifest.total_hits == 0
+
+
+def test_rewrite_still_rewrites_bare_matches_next_to_an_existing_replacement() -> None:
+    rule = _rule(
+        id="r-trop",
+        type="rewrite",
+        match="literal",
+        pattern="troponin",
+        replacement="cardiac troponin I",
+    )
+    out = apply_deterministic_redaction("troponin now; cardiac troponin I earlier.", [rule])
+    assert out.text == "cardiac troponin I now; cardiac troponin I earlier."
+    assert out.manifest.hits_by_rule == {"r-trop": 1}
+
+
+def test_rewrite_is_idempotent() -> None:
+    rules = [
+        _rule(
+            id="r-trop",
+            type="rewrite",
+            match="literal",
+            pattern="troponin",
+            replacement="cardiac troponin I",
+        ),
+        _rule(
+            id="r-sob",
+            type="rewrite",
+            match="literal",
+            pattern="SOB",
+            replacement="SOB on exertion",
+        ),
+    ]
+    once = apply_deterministic_redaction("SOB; troponin sent.", rules).text
+    twice = apply_deterministic_redaction(once, rules).text
+    assert once == "SOB on exertion; cardiac troponin I sent."
+    assert twice == once
