@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { IconAlertTriangle, IconInfoCircle, IconLock, IconWorld } from '@tabler/icons-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -27,6 +28,7 @@ import {
   killSwitchWarning,
   pairSummary,
   pairTargetsFor,
+  provenanceFor,
   sourceScopeLabel,
   writableScopes,
   writeBlockFor,
@@ -98,6 +100,7 @@ function GovernanceTab({
   /** The key the Value tab is currently editing — the twin, on the platform half. */
   activeKey: string;
 }) {
+  const provenance = provenanceFor({ sourceScope, version }, item.dedicatedRow);
   const rows: GovernanceRow[] = [
     { label: 'Key', value: item.key, mono: true },
     { label: 'Category', value: item.category },
@@ -106,9 +109,10 @@ function GovernanceTab({
     { label: 'Sensitivity', value: item.sensitivity },
     { label: 'Deepest settable scope', value: SCOPE_LABEL[item.maxScope] },
     { label: 'Edit gated by', value: item.editableBy, mono: true },
-    { label: 'Answered by', value: sourceScopeLabel(sourceScope) },
-    { label: 'Stored row version', value: version ? `v${version}` : 'none stored — still the code default' },
+    { label: 'Answered by', value: provenance.answeredBy },
+    { label: 'Stored row version', value: provenance.stored },
   ];
+  if (item.dedicatedRow) rows.push({ label: 'Dedicated row value', value: JSON.stringify(item.dedicatedRow.value), mono: true });
 
   if (item.failMode) {
     rows.push({
@@ -387,7 +391,17 @@ export function SettingRegistryDrawer({
               <Alert>
                 <IconLock aria-hidden />
                 <AlertTitle>{block.label} — not editable here</AlertTitle>
-                <AlertDescription>{block.reason}</AlertDescription>
+                <AlertDescription>
+                  {block.reason}
+                  {block.link ? (
+                    <>
+                      {' '}
+                      <Link href={block.link.href} className="font-medium underline underline-offset-2">
+                        Edit in {block.link.label} →
+                      </Link>
+                    </>
+                  ) : null}
+                </AlertDescription>
               </Alert>
             ) : null}
 
@@ -574,8 +588,16 @@ export function SettingRegistryDrawer({
                     invalid={!parsed.ok}
                   />
                   <p id={`${uid}-source`} className="text-muted-foreground text-xs">
-                    Currently answered by <span className="font-medium">{sourceScopeLabel(stored?.sourceScope)}</span>
-                    {stored?.version ? <> · stored row v{stored.version}</> : <> · no row stored at this scope</>}
+                    {item.dedicatedRow ? (
+                      <>
+                        Stored on the dedicated row · <span className="font-medium">v{item.dedicatedRow.version}</span>
+                      </>
+                    ) : (
+                      <>
+                        Currently answered by <span className="font-medium">{sourceScopeLabel(stored?.sourceScope)}</span>
+                        {stored?.version ? <> · stored row v{stored.version}</> : <> · no row stored at this scope</>}
+                      </>
+                    )}
                   </p>
                   {!parsed.ok && parsed.error ? <p className="text-destructive text-sm">{parsed.error}</p> : null}
                 </div>
