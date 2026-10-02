@@ -8,3 +8,5 @@ export * from './update-dna-settings.request';
 export * from './dna-erasure.response';
 export * from './ingest-dna-writing-samples.request';
 export * from './dna-ingest-job.response';
+export * from './dna-memory.constants';
+export * from './dna-memory.dto';

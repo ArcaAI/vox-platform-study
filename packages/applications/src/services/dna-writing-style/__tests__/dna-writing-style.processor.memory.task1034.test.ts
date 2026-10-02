@@ -211,7 +211,13 @@ describe('DnaWritingStyleProcessor — merged memory corpus (TASK-1034)', () => 
       reason === 'approved' ? [{ id: 'v', contextItemId: id }] : [],
     );
     contextItemRepo.findFinalSummariesByDoctor.mockResolvedValue([
-      { id: 'ci-old', type: 'RAW_SUMMARY', content: 'APPROVED OLD', createdAt: new Date('2026-09-01T00:00:00Z'), updatedAt: new Date('2026-09-01T00:00:00Z') },
+      {
+        id: 'ci-old',
+        type: 'RAW_SUMMARY',
+        content: 'APPROVED OLD',
+        createdAt: new Date('2026-09-01T00:00:00Z'),
+        updatedAt: new Date('2026-09-01T00:00:00Z'),
+      },
     ]);
     sampleRepo.findForCorpus.mockResolvedValue([
       { id: 's-new', source: 'EDIT', textCiphertext: ct('MEMORY NEW'), aiDraftCiphertext: null, writtenAt: new Date('2026-09-20T00:00:00Z') },
@@ -239,7 +245,16 @@ describe('DnaWritingStyleProcessor — merged memory corpus (TASK-1034)', () => 
       undefined,
       undefined,
       createPassThroughPhiRedactor() as never,
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
       sampleRepo as never,
     );
   });
@@ -277,7 +292,11 @@ describe('DnaWritingStyleProcessor — merged memory corpus (TASK-1034)', () => 
 
   it('an ingest job marks the samples it carried consumed', async () => {
     await processor.process(
-      createMockJob({ samples: [{ text: 'x', writtenAt: '2026-09-01T00:00:00.000Z', kind: 'OTHER' }], sampleIds: ['s-a'], origin: 'ingest' }) as never,
+      createMockJob({
+        samples: [{ text: 'x', writtenAt: '2026-09-01T00:00:00.000Z', kind: 'OTHER' }],
+        sampleIds: ['s-a'],
+        origin: 'ingest',
+      }) as never,
     );
     expect(sampleRepo.findForCorpus).not.toHaveBeenCalled();
     expect(sampleRepo.markConsumed).toHaveBeenCalledWith('tenant-1', ['s-a'], 'report-9');

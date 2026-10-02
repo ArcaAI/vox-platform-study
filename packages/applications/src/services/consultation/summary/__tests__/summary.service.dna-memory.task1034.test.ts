@@ -155,7 +155,9 @@ describe('SummaryService — TASK-1034 DNA memory capture hook', () => {
   it('a content edit requests an EDIT capture after the commit', async () => {
     m.contextItemRepository.findById.mockResolvedValue(item());
     await service.updateSummary('ctx-1', { content: 'DOCTOR EDITED BODY' } as any);
-    expect(captureCalls()).toEqual([[DNA_MEMORY_CAPTURE_EVENT, { tenantId: 'tenant-1', consultationId: 'c-1', contextItemId: 'ctx-1', source: 'EDIT' }]]);
+    expect(captureCalls()).toEqual([
+      [DNA_MEMORY_CAPTURE_EVENT, { tenantId: 'tenant-1', consultationId: 'c-1', contextItemId: 'ctx-1', source: 'EDIT' }],
+    ]);
   });
 
   it('a metadata-only edit requests no capture', async () => {
@@ -167,7 +169,9 @@ describe('SummaryService — TASK-1034 DNA memory capture hook', () => {
   it('a sign-off requests a SIGNOFF capture', async () => {
     m.contextItemRepository.findById.mockResolvedValue(item());
     await service.approveSummary('ctx-1');
-    expect(captureCalls()).toEqual([[DNA_MEMORY_CAPTURE_EVENT, { tenantId: 'tenant-1', consultationId: 'c-1', contextItemId: 'ctx-1', source: 'SIGNOFF' }]]);
+    expect(captureCalls()).toEqual([
+      [DNA_MEMORY_CAPTURE_EVENT, { tenantId: 'tenant-1', consultationId: 'c-1', contextItemId: 'ctx-1', source: 'SIGNOFF' }],
+    ]);
   });
 
   it('a throwing capture request never fails the sign-off', async () => {

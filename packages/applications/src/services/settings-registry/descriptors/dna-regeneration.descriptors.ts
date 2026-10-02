@@ -79,7 +79,8 @@ export const DNA_REGEN_SETTINGS: SettingDescriptor[] = [
     key: DNA_REGEN_KEYS.minNewSamples,
     dataType: 'number',
     label: 'Minimum new memory samples',
-    description: 'A clinician is regenerated only when at least this many new, unconsumed memory samples arrived since their latest profile. Default 3.',
+    description:
+      'A clinician is regenerated only when at least this many new, unconsumed memory samples arrived since their latest profile. Default 3.',
     default: DNA_REGEN_DEFAULTS.minNewSamples,
     validate: positiveInteger(1),
   },

@@ -45,6 +45,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { GenerateDnaReportJobPayload, DnaReportJobResult } from './dna-writing-style.service';
 import { DnaMemoryStore } from './dna-memory.store';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { JobMetricsService } from '../baseServices/observability/job-metrics.service';
 import { IMetricsService } from '../baseServices/metrics/IMetricsService';
 import { USAGE_EMISSION_FAILED_METRIC } from '../agent-trajectory/agent-trajectory.service';
@@ -193,6 +194,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // TASK-1034 — DNA memory samples (edits, sign-offs, ingested history) join the corpus.
     // Optional + trailing for fixture arity; absent ⇒ the summaries-only corpus of before.
     @Optional() @Inject(DnaWritingSampleRepository) private readonly sampleRepository?: DnaWritingSampleRepository,
+    // TASK-1034 — `dna-regen.max-samples` / `max-context-chars` are tenant-overridable.
+    @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
   ) {
     super();
     this.emissionFailedCounter = DnaWritingStyleProcessor.registerEmissionFailedCounter(metrics, this.logger);
@@ -222,8 +225,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.clsService.set('user', { id: userId } as any);
 
-    const maxSamples = this.appSettingsService.getValueWithDefault<number>('dna-regen.max-samples', CONTEXT_DEFAULTS.maxSamples);
-    const maxContextChars = this.appSettingsService.getValueWithDefault<number>('dna-regen.max-context-chars', CONTEXT_DEFAULTS.maxContextChars);
+    const maxSamples = this.readSetting(tenantId, 'dna-regen.max-samples', CONTEXT_DEFAULTS.maxSamples);
+    const maxContextChars = this.readSetting(tenantId, 'dna-regen.max-context-chars', CONTEXT_DEFAULTS.maxContextChars);
     const endTimer = this.jobMetrics.recordJobStart(JobQueue.GenerateDnaReport);
     const waitMs = Date.now() - job.timestamp;
     this.jobMetrics.recordWaitingDuration(JobQueue.GenerateDnaReport, waitMs / 1000);
@@ -791,6 +794,15 @@ export class DnaWritingStyleProcessor extends WorkerHost {
    * draft fall back to the raw approved text only — byte-identical to the
    * pre-Phase-6 final-only corpus (so empty approvals still contribute nothing).
    */
+  /** TASK-1034 — tenant → SYSTEM → default when the cascade is composed; the platform value otherwise. */
+  private readSetting(tenantId: string, key: string, fallback: number): number {
+    if (this.tenantSettings) {
+      const value = Number(this.tenantSettings.resolve<number>(key, tenantId).value);
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    }
+    return this.appSettingsService.getValueWithDefault<number>(key, fallback);
+  }
+
   /**
    * TASK-1034 — the clinician's DNA memory, decrypted, newest first. Empty when the repository or
    * the secrets backend is not composed (the text exists only as ciphertext). A sample that fails to

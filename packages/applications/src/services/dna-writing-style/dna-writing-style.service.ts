@@ -332,7 +332,16 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (dto.generate === false) {
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: doctorId,
-        data: { doctorId, kind: 'dna-ingest-stored', origin: 'ingest', itemCount: dto.items.length, stored: memory.stored, duplicates: memory.duplicates, credentialClass: caller.credentialClass, principalId: caller.principalId },
+        data: {
+          doctorId,
+          kind: 'dna-ingest-stored',
+          origin: 'ingest',
+          itemCount: dto.items.length,
+          stored: memory.stored,
+          duplicates: memory.duplicates,
+          credentialClass: caller.credentialClass,
+          principalId: caller.principalId,
+        },
       });
       const writtenAtMs = dto.items.map((item) => Date.parse(item.writtenAt));
       return {
@@ -444,12 +453,12 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
         ingestBatchId,
         createdBy: this.requestUserId ?? doctorId,
       });
-      if (outcome.stored) {
-        stored += 1;
-        ids.push(outcome.id);
-      } else {
+      if ('duplicateOf' in outcome) {
         duplicates += 1;
         ids.push(outcome.duplicateOf);
+      } else {
+        stored += 1;
+        ids.push(outcome.id);
       }
     }
     return { stored, duplicates, ids };

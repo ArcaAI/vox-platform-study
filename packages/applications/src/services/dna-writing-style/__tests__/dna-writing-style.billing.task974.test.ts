@@ -250,61 +250,59 @@ describe('an accepted ingest is recorded as `dna.ingest`', () => {
   });
 });
 
-describe('the monthly sweep skips a tenant that cannot pay for it', () => {
-  const REPORTS = [
-    { doctorId: 'doctor-a', tenantId: 'tenant-a', isLatest: true, resourceStatus: ResourceStatusType.ENABLED },
-    { doctorId: 'doctor-b', tenantId: 'tenant-b', isLatest: true, resourceStatus: ResourceStatusType.ENABLED },
-  ];
-
-  function scheduler() {
+// TASK-1034 — the monthly all-doctors sweep became the weekly, feedback-gated per-tenant run
+// (`runForTenant`). The §9.2 property is unchanged: a tenant over its allowance queues nothing,
+// and that never stops another tenant.
+describe('the weekly run skips a tenant that cannot pay for it', () => {
+  function scheduler(withGates = true) {
     const dnaReportRepository = {
-      $: vi.fn(() => ({ Where: vi.fn(), ToList: vi.fn().mockResolvedValue(REPORTS) })),
+      findAll: vi.fn(async ({ filters }: { filters: { tenantId: string } }) => [
+        { doctorId: `doctor-${filters.tenantId}`, tenantId: filters.tenantId, createdAt: new Date('2026-09-01T00:00:00Z') },
+      ]),
     };
+    const sampleRepository = {
+      findDoctorIdsWithUnconsumedSince: vi.fn().mockResolvedValue([]),
+      countUnconsumedSince: vi.fn().mockResolvedValue(5),
+    };
+    const configResolver = { resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true }) };
     return new DnaRegenerationScheduler(
       { getValueWithDefault: vi.fn(<T>(_key: string, fallback: T): T => fallback) } as never,
       { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() } as never,
       dnaReportRepository as never,
-      queue as never,
-      entitlements as never,
-      billing as never,
+      { ...queue, getJob: vi.fn().mockResolvedValue(null) } as never,
+      (withGates ? entitlements : undefined) as never,
+      (withGates ? billing : undefined) as never,
+      sampleRepository as never,
+      configResolver as never,
     );
   }
 
-  it('checks each tenant ONCE and queues every doctor when both gates pass', async () => {
-    const result = await scheduler().regenerateAllDoctors();
+  it('checks the tenant and queues its qualifying doctor when both gates pass', async () => {
+    const result = await scheduler().runForTenant('tenant-a');
 
-    expect(result.jobsQueued).toBe(2);
-    expect(entitlements.assertMeterQuota).toHaveBeenCalledTimes(2);
+    expect(result.queued).toBe(1);
     expect(entitlements.assertMeterQuota).toHaveBeenCalledWith('tenant-a', 'monthlyLlmTokens');
-    expect(billing.assertSpendLimit).toHaveBeenCalledWith('tenant-b');
+    expect(billing.assertSpendLimit).toHaveBeenCalledWith('tenant-a');
   });
 
-  it('SKIPS the tenant that is over and finishes the sweep for everybody else', async () => {
-    // A monthly rebuild nobody asked for must not spend an allowance a tenant needs for
-    // clinical work — and one tenant's ceiling must not stop the sweep.
+  it('SKIPS the tenant that is over, and the next tenant still runs', async () => {
     entitlements.assertMeterQuota.mockImplementation(async (tenantId: string) => {
       if (tenantId === 'tenant-a') throw Object.assign(new Error('quota'), { status: 429 });
     });
+    const s = scheduler();
 
-    const result = await scheduler().regenerateAllDoctors();
+    const over = await s.runForTenant('tenant-a');
+    const fine = await s.runForTenant('tenant-b');
 
-    expect(result.jobsQueued).toBe(1);
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toContain('tenant-a');
+    expect(over).toMatchObject({ queued: 0, skipped: { quota: 1 } });
+    expect(over.errors[0]).toContain('tenant-a');
+    expect(fine.queued).toBe(1);
     expect(queue.add).toHaveBeenCalledTimes(1);
     expect((queue.add.mock.calls[0]![1] as { tenantId: string }).tenantId).toBe('tenant-b');
   });
 
-  it('sweeps unchanged when neither service is composed', async () => {
-    const dnaReportRepository = { $: vi.fn(() => ({ Where: vi.fn(), ToList: vi.fn().mockResolvedValue(REPORTS) })) };
-    const bare = new DnaRegenerationScheduler(
-      { getValueWithDefault: vi.fn(<T>(_key: string, fallback: T): T => fallback) } as never,
-      { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() } as never,
-      dnaReportRepository as never,
-      queue as never,
-    );
-
-    await expect(bare.regenerateAllDoctors()).resolves.toMatchObject({ jobsQueued: 2, errors: [] });
+  it('runs unchanged when neither service is composed', async () => {
+    await expect(scheduler(false).runForTenant('tenant-a')).resolves.toMatchObject({ queued: 1, errors: [] });
   });
 });
 

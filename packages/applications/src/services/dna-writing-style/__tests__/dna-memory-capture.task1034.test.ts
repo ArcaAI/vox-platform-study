@@ -15,7 +15,10 @@ const PLAINTEXT = 'Patient reports chest pain, ECG normal.';
 const sampleRepo = {
   findByContentHash: vi.fn(),
   create: vi.fn(async (e: unknown) => e),
-  encryptText: vi.fn(async (_s: unknown, text: string) => ({ ciphertext: Buffer.from(`vault:v1:${Buffer.from(text).toString('base64')}`), keyVersion: 1 })),
+  encryptText: vi.fn(async (_s: unknown, text: string) => ({
+    ciphertext: Buffer.from(`vault:v1:${Buffer.from(text).toString('base64')}`),
+    keyVersion: 1,
+  })),
 };
 const consultationRepo = { findById: vi.fn() };
 const contextItemRepo = { findById: vi.fn() };
@@ -73,13 +76,19 @@ describe('DnaMemoryCaptureService.capture', () => {
 
   it('swallows its own errors — capture can never fail the clinical action', async () => {
     sampleRepo.create.mockRejectedValueOnce(new Error('db down'));
-    await expect(make().capture({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT })).resolves.toBe('failed');
+    await expect(make().capture({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT })).resolves.toBe(
+      'failed',
+    );
     configResolver.resolveEffectiveDnaStyleEnabled.mockRejectedValueOnce(new Error('resolver down'));
-    await expect(make().capture({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT })).resolves.toBe('failed');
+    await expect(make().capture({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT })).resolves.toBe(
+      'failed',
+    );
   });
 
   it('the event handler never throws', async () => {
     consultationRepo.findById.mockRejectedValue(new Error('boom'));
-    await expect(make().onCaptureRequested({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT })).resolves.toBeUndefined();
+    await expect(
+      make().onCaptureRequested({ tenantId: TENANT, consultationId: 'c-1', contextItemId: 'ci-1', source: DnaSampleSource.EDIT }),
+    ).resolves.toBeUndefined();
   });
 });

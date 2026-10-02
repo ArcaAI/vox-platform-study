@@ -347,7 +347,15 @@ describe('every `writtenAt` must be a moment in time, not merely ISO-8601-shaped
 
   it('names the offending item so a caller can fix the right one', async () => {
     try {
-      await make().ingestWritingSamples({ items: [{ text: 'a', writtenAt: '2026-09-01T09:00:00.000Z' }, { text: 'b', writtenAt: '2026-W01' }] }, jwt());
+      await make().ingestWritingSamples(
+        {
+          items: [
+            { text: 'a', writtenAt: '2026-09-01T09:00:00.000Z' },
+            { text: 'b', writtenAt: '2026-W01' },
+          ],
+        },
+        jwt(),
+      );
       throw new Error('expected a refusal');
     } catch (error) {
       const response = (error as { getResponse?: () => unknown }).getResponse?.() as { message?: string };

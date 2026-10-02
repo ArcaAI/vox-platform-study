@@ -80,7 +80,6 @@ beforeEach(() => {
   });
 });
 
-
 /**
  * TASK-1034 §4b — ingest now PERSISTS every item as DNA memory (source INGEST, encrypted,
  * deduped), and `generate: false` loads history without queuing an analysis.
@@ -113,7 +112,9 @@ describe('ingest persists memory (TASK-1034)', () => {
     userDepartmentRepo.findFirst.mockResolvedValue(null);
     userRepo.findFirst.mockResolvedValue(null);
 
-    await expect(make().ingestWritingSamples({ clinicianUserId: CLINICIAN, items, generate: false }, jwt())).rejects.toBeInstanceOf(NotFoundException);
+    await expect(make().ingestWritingSamples({ clinicianUserId: CLINICIAN, items, generate: false }, jwt())).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
     expect(memoryStore.store).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });
