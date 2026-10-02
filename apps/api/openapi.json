@@ -37713,6 +37713,9 @@
           "400": {
             "description": "Invalid query."
           },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
+          },
           "404": {
             "description": "No tenant in context."
           }
@@ -37756,6 +37759,9 @@
               }
             },
             "description": ""
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
           },
           "404": {
             "description": "No such record in this tenant."
@@ -38667,6 +38673,9 @@
           },
           "400": {
             "description": "Invalid body, no working tenant, or a prompt variable nothing supplies (`PROMPT_VARIABLE_UNRESOLVED`)."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
           },
           "404": {
             "description": "No such consultation in this tenant, or no such published TEXT_GENERATION agent."
