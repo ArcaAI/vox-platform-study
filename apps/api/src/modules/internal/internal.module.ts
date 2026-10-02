@@ -2,6 +2,7 @@ import {
   AgentServiceModule,
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
+  ComposedPromptServiceModule,
   EffectiveConfigServiceModule,
   EntitlementsServiceModule,
   ModelServingSpecServiceModule,
@@ -11,6 +12,7 @@ import {
 import { TenantLockModule } from '@arcaai/applications';
 import { Module } from '@nestjs/common';
 import { AgentInternalController } from './agent-internal.controller';
+import { ComposedPromptInternalController } from './composed-prompt-internal.controller';
 import { EffectiveConfigController } from './effective-config.controller';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { ModelRegistryInternalController } from './model-registry-internal.controller';
@@ -41,6 +43,8 @@ import { SttInternalController } from './stt-internal.controller';
     EntitlementsServiceModule,
     // TASK-1021 — `ModelServingInternalController` (`/internal/models/:slug/serving-spec`), apps/vllm's engine-build contract.
     ModelServingSpecServiceModule,
+    // `ComposedPromptInternalController` (`/internal/composed-prompts`) — the harness's composed-prompt records (OD-9).
+    ComposedPromptServiceModule,
   ],
   controllers: [
     SttInternalController,
@@ -48,6 +52,7 @@ import { SttInternalController } from './stt-internal.controller';
     ModelRegistryInternalController,
     AgentInternalController,
     ModelServingInternalController,
+    ComposedPromptInternalController,
   ],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.

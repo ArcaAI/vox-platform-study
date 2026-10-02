@@ -86,6 +86,7 @@ import { DocumentTemplateModule } from './modules/document-template/document-tem
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
+import { PromptInspectorModule } from './modules/prompt-inspector/prompt-inspector.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // billing: SELL rate card + invoice lifecycle + tenant self-service reads.
 import { BillingApiModule } from './modules/billing/billing.module';
@@ -487,6 +488,8 @@ const featureModules: any[] = [
   // immutable resource, not another verb on a workflow definition.
   AgentPromotionModule,
   DnaWritingStyleModule,
+  // The Prompt Inspector (`admin/consultations/:id/prompt-preview`) + composed-prompt records (`admin/composed-prompts`).
+  PromptInspectorModule,
   // /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
   // + /tenants/me/entitlements (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
