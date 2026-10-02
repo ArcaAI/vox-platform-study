@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — plan awaiting owner approval |
+| Status | **Review** — merged on `dev-2.2`, verified locally; not pushed, cluster value not yet set |
 | Type | feature (console) + bugfix (misleading registry provenance) |
 | Branch | `dev-2.2` |
 | Rules | 00, 01, 04, 05, 07, 10, 11, 13 |
@@ -96,9 +96,36 @@ Relevant code:
 - Runtime: `next-dev-loop` — registry key `storage.platformDefault.publicEndpoint` shows the stored value and an "Edit in Tenant storage →" link; set it to the admin origin; a checkpoint download URL then starts with that origin. Both themes, axe 0.
 
 ## Implementation Summary
-_Pending._
+
+Delivered in two parallel lanes (worktrees), merged into `dev-2.2`:
+
+| Lane | Model tier (rule 14 §1) | Branch → merge |
+|---|---|---|
+| Backend (registry, descriptors, catalog, storage resolver) | opus — multi-file, the contract the console depends on | `task-1033/be` (`c3ed4b7f5`) → `14a01558f` |
+| Console (governance links, provenance, storage panel) | sonnet — standard UI against a fixed contract | `task-1033/ui` (`e7aedf7c0`, `5fec80ca3`) → `a77911350` |
+
+Orchestrator follow-ups on `dev-2.2`: `06a995480` (pin `If-Match: "0"` on create — the lane omitted the header, which the gateway answers with 428), `6cbea2447` (owner link opens `?tab=configs`), `325bae9eb` (drawer shows the dedicated-row value).
+
+What changed:
+- `SettingDescriptor.consoleRoute` / `consoleRouteLabel`; `SettingsRegistry.register` refuses a `db-config` / `entitlement` / `redis-flag` descriptor without one. Storage keys → `/tenants/storage?tab=configs`, entitlement → `/entitlements`. No `redis-flag` keys are registered today.
+- Catalog item carries `consoleRoute`, `consoleRouteLabel`, `dedicatedRow: { value, version } | null` (SYSTEM `TenantStorageConfig` row via `PlatformStorageSettingsResolver.dedicatedRowValues()`; credentials pointer never included). `getCatalog()` is now async.
+- Console: "Edit in <screen> →" link instead of the dead-end sentence; provenance "Stored on the dedicated row: <value> · v<n>"; the platform storage panel edits provider/endpoint/publicEndpoint/region/forcePathStyle/containerPrefix in one If-Match form with per-field confirmed Reset to default (`null` clears; verified already supported by the PUT — T5 passed first run, no production change).
+- Unchanged by design (OD-A/OD-B): `vault-kv`, `db-secret`, `secret`, `env` remain locked for SUPER_ADMIN (`setting-lock.ts` untouched; `settings-registry-write.lock-and-reset.test.ts` already pins it).
+
+### Evidence (2026-10-02, merged tree)
+- `pnpm --filter @arcaai/applications build` OK · `pnpm api:build` OK · `pnpm --filter @arcaai/admin-console build` OK
+- applications `settings-registry` + `tenant-storage-config`: `Test Files 62 passed (62) · Tests 626 passed (626)`
+- api `settings-catalog` + `tenant-storage-config`: `Tests 46 passed (46)` (catalog) / `57 passed` (both)
+- console `settings-registry` + `storage`: `Tests 189 passed (189)`; `lint` clean (`--max-warnings 0`), `typecheck` clean
+- `api:openapi:check` OK · `api:portal:check` no drift · `vox-node gen:admin:check` no drift
+- Runtime (local `api:dev` + `next dev`, super admin, no working tenant): registry drawer shows `Edit in Tenant storage →` (`href=/tenants/storage?tab=configs`); saving `publicEndpoint` → PUT 200, catalog `dedicatedRow {value, version: 2}`; Reset → confirm dialog → PUT 200, `publicEndpoint: null`, other fields untouched (v3); `minio.secretKey` / `storage.platformDefault.credentials` still `locked`, no link. Light + dark rendered; axe on the registry page with the drawer open: 0 violations.
+- Pre-existing, out of scope: 2 `no-silent-catch` warnings in `tenant-storage-config.service.ts` (lines 142, 293; file not touched).
+
+### Rollout (dev cluster)
+After push + promotion, a platform admin sets **Tenant storage → Configs → Public download endpoint = `https://admin.taphuynh.dev`** (no working tenant). The `hope-minio-presigned` IngressRoute already routes signed requests on that host.
 
 ## Change History
 | Date | Change |
 |---|---|
 | 2026-10-02 | Ticket opened; OD-A (Vault locked), OD-B (env read-only), OD-C (everything else console-reachable). Plan written. |
+| 2026-10-02 | Both lanes merged; three orchestrator fixes; gates + runtime verified locally. Status → Review. |
