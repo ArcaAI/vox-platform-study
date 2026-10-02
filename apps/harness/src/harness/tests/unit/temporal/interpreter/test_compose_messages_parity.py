@@ -20,8 +20,10 @@ from typing import Any
 import pytest
 
 from harness.temporal.interpreter.compose_messages import (
+    EXTERNAL_DATA_MARKER_REPLACEMENT,
     EXTERNAL_DATA_TRUNCATION_MARKER,
     PLATFORM_RULES_VERSION,
+    ComposeDataBlockKeyError,
     compose_messages,
     output_language_step,
     platform_rules,
@@ -49,6 +51,7 @@ _SCOPE_CASES: list[dict[str, Any]] = _FIXTURE["scopeCases"]
 _ERRORS: dict[str, type[Exception]] = {
     "PromptVariableUnresolved": PromptVariableUnresolved,
     "PromptCompositionEmpty": PromptCompositionEmpty,
+    "ComposeDataBlockKeyError": ComposeDataBlockKeyError,
 }
 
 
@@ -75,6 +78,15 @@ def test_fixture_is_not_vacuous() -> None:
         for block in case.get("expected", {}).get("blocks", [])
     )
     assert any(len(case.get("error", {}).get("paths", [])) > 1 for case in _CASES)
+    assert {
+        "data-block-injected-markers-neutralised",
+        "data-block-invalid-key-raises",
+        "data-block-label-sanitised",
+    } <= set(names)
+    assert any(
+        EXTERNAL_DATA_MARKER_REPLACEMENT in case.get("expected", {}).get("user", "")
+        for case in _CASES
+    )
     scope_names = {case["name"] for case in _SCOPE_CASES}
     assert {
         "trigger-only-aliases-context",
@@ -138,3 +150,5 @@ def test_compose_messages_matches_the_fixture(case: dict[str, Any]) -> None:
         run()
     if "paths" in error:
         assert list(excinfo.value.paths) == error["paths"]
+    if "key" in error:
+        assert excinfo.value.key == error["key"]

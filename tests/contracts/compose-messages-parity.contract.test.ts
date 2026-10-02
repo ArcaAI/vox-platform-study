@@ -31,7 +31,7 @@ interface ComposeCase {
     templateRef?: string;
   };
   expected?: { system: string; user: string; selected: string[]; excluded: Array<{ key: string; reason: string }>; blocks: unknown[] };
-  error?: { name: string; paths?: string[] };
+  error?: { name: string; paths?: string[]; key?: string };
 }
 
 interface ScopeCase {
@@ -60,6 +60,10 @@ describe('compose-messages fixture — not vacuous', () => {
     expect(fixture.cases.some((entry) => entry.input.outputLanguage?.name)).toBe(true);
     expect(fixture.cases.some((entry) => entry.expected?.blocks.some((block: any) => block.truncated))).toBe(true);
     expect(fixture.cases.some((entry) => entry.error?.name === 'PromptVariableUnresolved' && (entry.error.paths?.length ?? 0) > 1)).toBe(true);
+    expect(names).toEqual(
+      expect.arrayContaining(['data-block-injected-markers-neutralised', 'data-block-invalid-key-raises', 'data-block-label-sanitised']),
+    );
+    expect(fixture.cases.some((entry) => entry.expected?.user.includes('[external-data marker removed]'))).toBe(true);
     expect(fixture.scopeCases.map((entry) => entry.name)).toEqual(
       expect.arrayContaining(['trigger-only-aliases-context', 'context-only-aliases-trigger', 'both-kept-as-given']),
     );
@@ -121,5 +125,6 @@ describe('composeMessages over the shared fixture', () => {
     }
     expect(caught?.name).toBe(entry.error?.name);
     if (entry.error?.paths) expect([...caught.paths]).toEqual(entry.error.paths);
+    if (entry.error?.key !== undefined) expect(caught.key).toBe(entry.error.key);
   });
 });

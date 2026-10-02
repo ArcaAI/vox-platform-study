@@ -108,7 +108,15 @@ export type { DeclaredNamespaces, PlaceholderReference, RenderTemplateOptions, T
 export { buildPromptScope } from './prompt-scope';
 export type { PromptScopeParts } from './prompt-scope';
 export { PLATFORM_RULES_VERSION, platformRules } from './platform-rules';
-export { EXTERNAL_DATA_TRUNCATION_MARKER, MESSAGE_LAYER_JOIN, composeMessages, outputLanguageStep } from './compose-messages';
+export {
+  COMPOSE_DATA_BLOCK_KEY_PATTERN,
+  ComposeDataBlockKeyError,
+  EXTERNAL_DATA_MARKER_REPLACEMENT,
+  EXTERNAL_DATA_TRUNCATION_MARKER,
+  MESSAGE_LAYER_JOIN,
+  composeMessages,
+  outputLanguageStep,
+} from './compose-messages';
 export type { ComposeDataBlock, ComposeMessagesInput, ComposedDataBlock, ComposedMessages } from './compose-messages';
 
 // The prompt paths a context schema offers — shared by the publish gate and the console's

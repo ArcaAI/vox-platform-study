@@ -13,9 +13,17 @@ Hand-written mirror of ``packages/workflow-contract/src/compose-messages.ts`` (a
                 output_contract,                         # the answer shape
               ])
     user   := "\\n\\n".join(for block in data_blocks (given order), skipping None / "":
-                <<EXTERNAL_DATA key="…" label="…">>
-                <content, cut to max_chars at the last newline + "\\n[…truncated]">
-                <<END_EXTERNAL_DATA>>)
+                <<<EXTERNAL_DATA section="<key>">>>
+                --- <label> ---
+                <content, cut to max_chars at the last newline + "\\n[…truncated]", markers
+                 neutralised>
+                <<<END_EXTERNAL_DATA>>>)
+
+The wrapper is the one ``platform_rules()`` describes, so it must not be forgeable from inside a
+block: a ``key`` must match ``^[a-z0-9_]+$`` (``ComposeDataBlockKeyError`` otherwise), a ``label``
+is flattened to one line with ``"`` and ``<``/``>`` removed, and any start or end marker in the
+body — case-insensitive, whitespace tolerated inside it — becomes
+``[external-data marker removed]`` after truncation.
 
 Before rendering, every placeholder of the SELECTED instruction is resolved; any that fails (and
 has no ``default("…")``) raises ``PromptVariableUnresolved`` naming EVERY missing path. Lengths
@@ -28,6 +36,7 @@ code only, so it carries no replay-determinism obligation of its own.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -41,7 +50,10 @@ from harness.temporal.interpreter.prompt_composition import (
 from harness.temporal.interpreter.templating import PromptVariableUnresolved
 
 __all__ = [
+    "COMPOSE_DATA_BLOCK_KEY_PATTERN",
+    "EXTERNAL_DATA_MARKER_REPLACEMENT",
     "EXTERNAL_DATA_TRUNCATION_MARKER",
+    "ComposeDataBlockKeyError",
     "MESSAGE_LAYER_JOIN",
     "PLATFORM_RULES_VERSION",
     "ComposedDataBlock",
@@ -56,6 +68,30 @@ MESSAGE_LAYER_JOIN = "\n\n"
 
 #: Appended to a data block cut to its ``maxChars`` budget.
 EXTERNAL_DATA_TRUNCATION_MARKER = "\n[…truncated]"
+
+#: What an injected ``<<<EXTERNAL_DATA`` / ``<<<END_EXTERNAL_DATA>>>`` marker in a body becomes.
+EXTERNAL_DATA_MARKER_REPLACEMENT = "[external-data marker removed]"
+
+#: The grammar of a data block ``key`` — it is placed verbatim inside the start marker.
+COMPOSE_DATA_BLOCK_KEY_PATTERN = re.compile(r"^[a-z0-9_]+\Z")
+
+_WS = r"[ \t\r\n]*"
+#: Start or end marker (closing ``>>>`` optional), case-insensitive, with spaces / tabs / newlines
+#: tolerated between its characters. ASCII-only matching and an explicit whitespace class keep it
+#: identical to the TypeScript regex.
+_EXTERNAL_DATA_MARKER = re.compile(
+    f"<{_WS}<{_WS}<{_WS}(?:END{_WS}_{_WS})?EXTERNAL{_WS}_{_WS}DATA(?:{_WS}>{_WS}>{_WS}>)?",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+class ComposeDataBlockKeyError(ValueError):
+    """A data block's ``key`` is not ``^[a-z0-9_]+$``. Mirrors ``ComposeDataBlockKeyError``."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(f"Data block key {key!r} must match ^[a-z0-9_]+$.")
+        self.key = key
+
 
 #: Bump with ANY change to the platform text. Mirrors ``PLATFORM_RULES_VERSION``.
 PLATFORM_RULES_VERSION = "1"
@@ -99,8 +135,8 @@ def output_language_step(language_name: str) -> str:
 
 @dataclass(frozen=True)
 class ComposedDataBlock:
-    """One EMITTED data block: its key, the code points of the body placed inside the wrapper
-    (truncation marker excluded), and whether it was cut."""
+    """One EMITTED data block: its key, the code points of the content kept within the budget
+    (before marker neutralisation and the truncation marker), and whether it was cut."""
 
     key: str
     chars: int
@@ -127,11 +163,20 @@ def _fit_to_budget(content: str, max_chars: Any) -> tuple[str, int, bool]:
     head = content[: max(0, max_chars)]
     last_newline = head.rfind("\n")
     kept = head[:last_newline] if last_newline > 0 else head
-    return kept + EXTERNAL_DATA_TRUNCATION_MARKER, len(kept), True
+    return kept, len(kept), True
+
+
+def _neutralise_markers(text: str) -> str:
+    return _EXTERNAL_DATA_MARKER.sub(EXTERNAL_DATA_MARKER_REPLACEMENT, text)
+
+
+def _sanitise_label(label: str) -> str:
+    flattened = re.sub(r"\r\n|\r|\n", " ", label)
+    return re.sub(r'["<>]', "", flattened)
 
 
 def _wrap_external_data(key: str, label: str, body: str) -> str:
-    return f'<<EXTERNAL_DATA key="{key}" label="{label}">>\n{body}\n<<END_EXTERNAL_DATA>>'
+    return f'<<<EXTERNAL_DATA section="{key}">>>\n--- {label} ---\n{body}\n<<<END_EXTERNAL_DATA>>>'
 
 
 def _block_field(block: Any, *names: str) -> Any:
@@ -157,7 +202,8 @@ def compose_messages(
     data_blocks: Sequence[Any] | None = None,
     template_ref: str | None = None,
 ) -> ComposedMessages:
-    """Compose the system and user messages. Raises ``PromptVariableUnresolved`` (every missing
+    """Compose the system and user messages. Raises ``ComposeDataBlockKeyError``,
+    ``PromptVariableUnresolved`` (every missing
     path), ``PromptTemplateSyntaxError`` and ``PromptCompositionEmpty`` — never a partial
     prompt. Mirrors ``composeMessages``."""
     missing = unresolved_prompt_variables(resolved_prompt, scope)
@@ -177,14 +223,17 @@ def compose_messages(
     wrapped: list[str] = []
     blocks: list[ComposedDataBlock] = []
     for block in data_blocks or []:
+        key = str(_block_field(block, "key"))
+        if not COMPOSE_DATA_BLOCK_KEY_PATTERN.match(key):
+            raise ComposeDataBlockKeyError(key)
         content = _block_field(block, "content")
         if not _non_empty(content):
             continue
-        key = str(_block_field(block, "key"))
-        label = str(_block_field(block, "label"))
-        body, chars, truncated = _fit_to_budget(
+        kept, chars, truncated = _fit_to_budget(
             content, _block_field(block, "maxChars", "max_chars")
         )
+        body = _neutralise_markers(kept) + (EXTERNAL_DATA_TRUNCATION_MARKER if truncated else "")
+        label = _sanitise_label(str(_block_field(block, "label")))
         wrapped.append(_wrap_external_data(key, label, body))
         blocks.append(ComposedDataBlock(key=key, chars=chars, truncated=truncated))
 
