@@ -1,6 +1,6 @@
 # TASK-1035 — LLM egress safety, one prompt composer, schema-aware studio
 
-**Status:** In Progress — plan approved 2026-10-02 (all §4 recommendations accepted); P0 lanes running
+**Status:** Review — P0, P1 and P2 merged on dev-2.2 2026-10-02; one gate pass green (two pre-existing failures); live preview verified; cluster rollout + live CLOUD proof pending
 **Type:** feature + bugfix (safety) + refactor
 **Branch:** dev-2.2
 **Raised:** 2026-10-02
@@ -341,6 +341,41 @@ Post-merge integration (orchestrator):
 - **Open question for the owner:** tenants can still DISABLE a mandatory workflow node (e.g. `consentGate`, publish warning `GUARDRAIL_OPTED_OUT`) and per-check rows in `TenantGuardrailPolicy`. The lanes read OD-1 as the LLM screening opt-out only.
 - Naming leftover: `settings-registry-screen.tsx:144` uses `requireMedical` as an example pair (data-driven, no broken control).
 
+### 6.2 P1 + P2 — one composer, inspector, schema-aware studio (merged on dev-2.2 2026-10-02)
+
+| Wave / lane | Merge | What landed |
+|---|---|---|
+| A CONTRACT | `6e83492f9` | <ul><li>`composeMessages` (system = platform rules → instruction → language step → output contract; user = `<<<EXTERNAL_DATA section="…">>>` blocks with marker/key escaping and newline-aware truncation; every missing variable named).</li><li>`platformRules()` v1, `buildPromptScope` (OD-6 `trigger`↔`context` alias), `schemaVariablePaths`.</li><li>`PROMPT_VARIABLE_UNDECLARED` = ERROR.</li><li>Python mirror with byte-identical golden fixtures (21 compose + 7 scope + 10 path cases).</li></ul> |
+| B GATEWAY | `d63e6213a` | <ul><li>Agent invoke/bench, live (C), `PromptAssemblyService` (E: body → system, conditional fragments honoured, missing variable = 400) and text-proxy (F: rendered, never raw `{{…}}`) all compose through `composeMessages`.</li><li>Schema inheritance from the governing workflow; `effectiveContextSchema` on agent detail.</li><li>Prompt Inspector `POST admin/consultations/:id/prompt-preview`.</li><li>`ComposedPromptRecord` (Transit-encrypted, migration `20261002090000_task_1035_composed_prompt_record`, `composedPrompts.retentionDays` = 30 + daily purge); admin reads + `POST internal/composed-prompts`.</li><li>Inspector and records are SUPER_ADMIN / TENANT_ADMIN only (`assertPromptInspectorAccess`, rule 05 row added); service accounts are admitted as the admin-plane machine identity.</li></ul> |
+| B HARNESS | `82f6186cf` | `core.agent` and the palette lane compose through `compose_messages`; composed prompts recorded fire-and-forget (2 s cap, 32 in flight) at six call sites; replay-compat 23 passed. |
+| B CONSOLE | `9ec191e51` | <ul><li>CodeMirror 6 `TemplateEditor` (`@arcaai/ui`) with `{{` completion (type / required / PHI badges) and inline lint, on 9 fields (agent inline prompt, fragments, `when`, bindings, template content, workflow CEL, node prompt variables, node prompt editor, quick start).</li><li>Findings shown at the field.</li><li>Wizard: context schema in step 1; "Input / Output contract" rename; inherited schema badge.</li><li>Quick-start page (`/quick-start`).</li><li>Prompt Inspector tab on the consultation drawer.</li></ul> |
+| Follow-up | `d9347505e` | `PLATFORM_CONTEXT_VARIABLES` (11 gateway-derived `context.*` names with PHI class and file:line provenance) admitted at TEXT_GENERATION publish and offered as `platform` completions; the 3 `case-notes-pre-summary` agents publish clean again. No seeded variable is unsupplied. |
+
+Orchestrator integration:
+- Migration verified on a throwaway shadow DB (replay + `migrate diff` = empty) and the dev DB synced.
+- `ComposedPromptRecord` is EXCLUDED from tenant checkpoints, so restoring an expired PHI audit copy is impossible (`b3457b71a`).
+- Prettier fixed on the new controllers.
+- The agent completion now offers only the canonical `context` root (85 → 48 suggestions; the `trigger` alias still lints valid) (`f61e2ad0d`).
+
+**Gate pass (one, after all merges):**
+- Green: test + typecheck for types, workflow-contract, database, domains, applications (16 538 tests after the checkpoint fix), admin-console; lint for workflow-contract, applications, admin-console, domains, api (0 errors); api unit and `tsc`; the ui template-editor file; `tests/contracts`; openapi / portal / vox-node `gen:admin` / env-sync checks; `gen:model`/`entity`/`factory` drift checks; pytest text, guardrail, harness.
+- Still failing, and pre-existing: nlp `test_metrics_endpoint_task636.py` ×2 and ruff F841 in `apps/harness/scripts/task_330_phase3_retrieval_check.py`. Both are untouched by this ticket.
+
+**Live verification on the dev stack (2026-10-02):** api + guardrail + nlp + admin-console.
+- `prompt-preview` on Global consultation `…0001`, finalize: user = transcript / NER / clinician-notes `EXTERNAL_DATA` blocks; GLiNER2 detected `person` + `first_name` ("Alice"); locality `local` ⇒ `redacted: 0`, no provider view (OD-2).
+- Console:
+  - The wizard shows the schema in step 1.
+  - `{{` opens schema + platform completions with PHI badges.
+  - The Prompt Inspector tab (Live) shows the Local provider badge, `first_name 1` "detected and audited only", the selected fragments `clinical_note` + `output_language_policy`, and block budgets.
+  - No console errors.
+- NOT proven live: a CLOUD call. The dev DB holds no cloud provider key and LM Studio was down, so pseudonymize → provider → restore is proven by unit tests only (text adapter spy + split-token stream tests). Do this live once a BYOK key is configured.
+
+**Open follow-ups:**
+- **Cluster rollout:** push; the cluster needs the guardrail-availability SYSTEM row update and the two retired `GlobalSetting` rows soft-deleted (as on dev); the deployment repo `env-consumer-inventory.generated.json` still lists `HARNESS_PHI_*`.
+- **Live CLOUD proof** with a BYOK key.
+- **PHI class is per KIND**, so every field of the multi-kind `context` kind shows PHI. Finer field-level PHI would need a schema change.
+- **Prompt shape changed for every `core.agent`, palette and assembler call:** platform rules first, data in blocks. Watch note quality on the first live consultations.
+
 ## 7. Change History
 
 | Date | Change |
@@ -350,3 +385,4 @@ Post-merge integration (orchestrator):
 | 2026-10-02 | Owner: images may go to cloud providers unredacted (text still pseudonymized, `egress.images_unredacted`). |
 | 2026-10-02 | OD-1 clarified by owner: it removes the per-call LLM screening opt-out ONLY. Tenants KEEP (a) switching off a mandatory workflow node such as `consentGate` (publish warning `GUARDRAIL_OPTED_OUT`) and (b) turning individual checks off in their own `TenantGuardrailPolicy`. Dev DB: SYSTEM `TenantGuardrailPolicy` updated to §5.0 defaults (v1 → v2), retired `text.externalGuardrail.{enabled,requireMedical}` rows soft-deleted; back-fill dry-run found 0 writable rows (31 agents + 17 workflows PUBLISHED, kept). CodeMirror 6 (`@codemirror/{state,view,autocomplete,lint,commands,language}`) added to `@arcaai/ui` for OD-8. |
 | 2026-10-02 | P0 merged on dev-2.2 (three lanes rebased onto the owner's filter-branch rewrite first), integration fixes, one gate pass — §6.1. |
+| 2026-10-02 | P1 + P2 merged (wave A contract, wave B gateway / harness / console, platform-variables follow-up); migration applied to dev; gate pass + live verification — §6.2. Status → Review. |
