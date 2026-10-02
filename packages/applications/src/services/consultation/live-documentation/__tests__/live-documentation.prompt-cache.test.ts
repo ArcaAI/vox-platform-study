@@ -11,19 +11,26 @@
  * so the two flush kinds shared no prefix at all).
  */
 import { describe, it, expect, vi } from 'vitest';
-import { LiveDocumentationService, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX } from '../live-documentation.service';
+import { LiveDocumentationService, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation.service';
+import { liveSystemHead } from './live-compose-expectations';
 
 const CID = 'consultation-cache-001';
 const TENANT = 'tenant-cache';
 
 /** Records every TEXT `/generate` prompt; returns a note so a prior note exists on flush 2. */
-function recordingHttpMock(prompts: string[]) {
+/** One recorded TEXT call: the system message (instructions) and the user message (data). */
+interface Sent {
+  system: string;
+  user: string;
+}
+
+function recordingHttpMock(prompts: Sent[]) {
   return {
     axiosRef: {
-      post: vi.fn().mockImplementation((url: string, body: { prompt?: string }) => {
+      post: vi.fn().mockImplementation((url: string, body: { prompt?: string; system_prompt?: string }) => {
         if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
         if (url.includes('/generate')) {
-          prompts.push(String(body?.prompt ?? ''));
+          prompts.push({ system: String(body?.system_prompt ?? ''), user: String(body?.prompt ?? '') });
           return Promise.resolve({ data: { summary: 'Subjective: cough\nObjective:\nAssessment:\nPlan:' } });
         }
         return Promise.resolve({ data: {} });
@@ -71,7 +78,7 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
   });
 
   it('leads every flush with a byte-identical stable prefix (first flush AND update flush)', async () => {
-    const prompts: string[] = [];
+    const prompts: Sent[] = [];
     const service = buildService(recordingHttpMock(prompts));
     service.start({ consultationId: CID, tenantId: TENANT });
 
@@ -82,13 +89,15 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
 
     expect(prompts.length).toBe(2);
     const [first, second] = prompts;
-    // Both flush kinds share the identical stable prefix → prefix-cache reuse.
-    expect(first.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(second.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    // Both flush kinds share the identical stable head — platform rules, the agent's instruction,
+    // the stable lead-in — so the engine reuses its cached KV.
+    const head = liveSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX);
+    expect(first.system.startsWith(head)).toBe(true);
+    expect(second.system.startsWith(head)).toBe(true);
   });
 
-  it('orders the delta instruction AFTER the transcript and current note on the update path', async () => {
-    const prompts: string[] = [];
+  it('keeps the variable directive after the stable lead-in, and the transcript and note as DATA after every instruction', async () => {
+    const prompts: Sent[] = [];
     const service = buildService(recordingHttpMock(prompts));
     service.start({ consultationId: CID, tenantId: TENANT });
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
@@ -97,28 +106,21 @@ describe('4D.1 — prefix-cache-friendly live prompt ordering', () => {
     await service.flush(CID);
 
     const update = prompts[1];
-    // the prose blocks now name the RESOLVED template's title
-    // instead of asserting "SOAP note" while the response schema described
-    // whatever the tenant actually published. With no template service wired
-    // this fixture resolves the platform shape, whose title is "SOAP Note".
-    const noteIdx = update.indexOf('Current SOAP Note so far');
-    const transcriptIdx = update.indexOf('mild fever');
-    // TASK-939 OD-2(a) — the update instruction is now about the CONTRIBUTION, not the document:
-    // "update the existing note" invited the model to hand the note back, which is exactly what it
-    // did. The ORDERING this test exists to pin is unchanged.
-    const instructionIdx = update.indexOf('Report what the new transcript adds to the SOAP Note');
-    expect(noteIdx).toBeGreaterThanOrEqual(0);
-    expect(transcriptIdx).toBeGreaterThanOrEqual(0);
-    expect(instructionIdx).toBeGreaterThanOrEqual(0);
-    // [transcript] + [current note] both precede the [delta instruction].
-    expect(instructionIdx).toBeGreaterThan(noteIdx);
-    expect(instructionIdx).toBeGreaterThan(transcriptIdx);
+    // the prose names the RESOLVED template's title instead of asserting "SOAP note" while the
+    // response schema described whatever the tenant actually published. With no template service
+    // wired this fixture resolves the platform shape, whose title is "SOAP Note".
+    // TASK-939 OD-2(a) — the update instruction is about the CONTRIBUTION, not the document.
+    const instructionIdx = update.system.indexOf('Report what the new transcript adds to the SOAP Note');
+    expect(instructionIdx).toBeGreaterThan(update.system.indexOf(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX));
+    // The note so far and the new transcript are DATA — delimited blocks in the user message.
+    expect(update.user).toContain('<<<EXTERNAL_DATA section="current_note">>>\n--- Current SOAP Note so far ---');
+    expect(update.user).toContain('mild fever');
+    expect(update.system).not.toContain('mild fever');
     // Old transcript is not re-sent verbatim (incremental design preserved).
-    expect(update).not.toContain('Patient reports cough');
-    // TASK-939 — the output contract is the LAST thing the model reads before generating, so it
-    // comes after the instruction and after the operating frame.
-    const turnIdx = update.indexOf('WHAT TO EMIT THIS TURN:');
+    expect(update.user).not.toContain('Patient reports cough');
+    // TASK-939 — the output contract is the last instruction: after the directive and the frame.
+    const turnIdx = update.system.indexOf('WHAT TO EMIT THIS TURN:');
     expect(turnIdx).toBeGreaterThan(instructionIdx);
-    expect(update.indexOf('HOW TO PRODUCE THIS TURN:')).toBeLessThan(turnIdx);
+    expect(update.system.indexOf('HOW TO PRODUCE THIS TURN:')).toBeLessThan(turnIdx);
   });
 });

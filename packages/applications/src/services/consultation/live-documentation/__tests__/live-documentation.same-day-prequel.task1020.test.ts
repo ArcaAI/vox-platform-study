@@ -7,7 +7,7 @@
  *     fragment's `when` is evaluated against. It publishes `same_day_prequel` (boolean — the flag an
  *     `arcaai-same-day-return` fragment conditions on), `same_day_prequel_summary`, and
  *     `formatted_test_results`.
- *  2. `buildTextUserPrompt` — the legacy per-turn prompt appends a `SAME-DAY EARLIER VISIT(S):`
+ *  2. `buildLivePromptParts` — the per-turn prompt carries a `SAME-DAY EARLIER VISIT(S)`
  *     block (and a `TEST RESULTS:` block) exactly the way `PREVIOUS CASE NOTES SUMMARY:` is appended.
  *  3. the live HANDOFF — what the durable interpreter builds its `trigger.context` from, so a
  *     fragment condition reads the same flag on the durable finalize.
@@ -20,6 +20,7 @@ import { ContextItemType } from '@arcaai/domains';
 import { renderTemplate } from '@arcaai/workflow-contract';
 
 import { LiveDocumentationService } from '../live-documentation.service';
+import { dataBlock, liveUserOf, type LiveParts } from './live-compose-expectations';
 
 const TENANT = 'tenant-1020';
 const CID = 'consultation-afternoon';
@@ -121,7 +122,7 @@ function buildService(wiring: Wiring = {}) {
 type Internals = {
   ensureSubstrateResolved(session: Record<string, unknown>): Promise<boolean>;
   realtimeRunContext(session: Record<string, unknown>): Promise<{ trigger: { context: Record<string, unknown> } }>;
-  buildTextUserPrompt(
+  buildLivePromptParts(
     priorNote: string,
     delta: string,
     notes: string,
@@ -133,7 +134,7 @@ type Internals = {
     clientVitals?: string,
     clientPreviousVisits?: string,
     carry?: { sameDayPrequel?: string; testResults?: string },
-  ): string;
+  ): LiveParts;
 };
 
 const internals = (service: LiveDocumentationService) => service as unknown as Internals;
@@ -217,7 +218,7 @@ describe('TASK-1020 — realtimeRunContext exposes the prequel to agents and fra
 
 describe('TASK-1020 — the per-turn prompt appends the prequel the way it appends prior case notes', () => {
   const prompt = (service: LiveDocumentationService, carry?: { sameDayPrequel?: string; testResults?: string }) =>
-    internals(service).buildTextUserPrompt(
+    liveUserOf(internals(service).buildLivePromptParts(
       '',
       'Patient back with results.',
       '',
@@ -229,27 +230,28 @@ describe('TASK-1020 — the per-turn prompt appends the prequel the way it appen
       undefined,
       'PRIOR',
       carry,
-    );
+    ));
 
-  it('appends `SAME-DAY EARLIER VISIT(S):` after the prior case notes', async () => {
+  it('appends the `SAME-DAY EARLIER VISIT(S)` data section after the prior case notes', async () => {
     const { service } = buildService();
 
     const text = prompt(service, { sameDayPrequel: PREQUEL });
 
-    expect(text).toContain(`\n\nSAME-DAY EARLIER VISIT(S):\n${PREQUEL}`);
-    expect(text.indexOf('PREVIOUS CASE NOTES SUMMARY:')).toBeLessThan(text.indexOf('SAME-DAY EARLIER VISIT(S):'));
+    expect(text).toContain(dataBlock('same_day_prequel_summary', 'SAME-DAY EARLIER VISIT(S)', PREQUEL));
+    expect(text.indexOf('--- PREVIOUS CASE NOTES SUMMARY ---')).toBeLessThan(text.indexOf('--- SAME-DAY EARLIER VISIT(S) ---'));
   });
 
-  it('appends `TEST RESULTS:` when the client sent investigations', async () => {
+  it('appends the `TEST RESULTS` data section when the client sent investigations', async () => {
     const { service } = buildService();
 
-    expect(prompt(service, { testResults: '- Hb: 10.2 g/dL' })).toContain('\n\nTEST RESULTS:\n- Hb: 10.2 g/dL');
+    expect(prompt(service, { testResults: '- Hb: 10.2 g/dL' })).toContain(dataBlock('test_results', 'TEST RESULTS', '- Hb: 10.2 g/dL'));
   });
 
   it('is byte-identical to the pre-ticket prompt when there is no prequel and no results', async () => {
     const { service } = buildService();
 
-    const before = internals(service).buildTextUserPrompt(
+    const before = liveUserOf(
+      internals(service).buildLivePromptParts(
       '',
       'Patient back with results.',
       '',
@@ -260,6 +262,7 @@ describe('TASK-1020 — the per-turn prompt appends the prequel the way it appen
       '',
       undefined,
       'PRIOR',
+      ),
     );
 
     expect(prompt(service, { sameDayPrequel: '', testResults: '  ' })).toBe(before);

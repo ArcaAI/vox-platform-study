@@ -42,6 +42,7 @@ const DISCHARGE: ResolvedDocumentTemplate = {
 
 interface TextCall {
   prompt?: string;
+  system_prompt?: string;
   response_format?: { json_schema?: { title?: string; properties?: Record<string, unknown>; required?: string[] } };
 }
 
@@ -133,7 +134,9 @@ describe('the live loop serves the tenant’s document template', () => {
 
     // A model told in prose to produce a SOAP note while being decoded against
     // a discharge-summary schema is being given two different jobs.
-    expect(calls[0].prompt).toContain('Discharge Summary');
+    // The turn's instructions — the prose that names the document — are the system message.
+    expect(calls[0].system_prompt).toContain('Discharge Summary');
+    expect(calls[0].system_prompt).not.toContain('SOAP');
     expect(calls[0].prompt).not.toContain('SOAP');
   });
 

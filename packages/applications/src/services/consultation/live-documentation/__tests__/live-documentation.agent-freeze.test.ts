@@ -17,6 +17,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { LiveDocumentationService, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT } from '../live-documentation.service';
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot, type ILiveAgentResolver } from '../live-agent.port';
+import { agentSystemHead, dataBlock, headOf, liveSystemHead } from './live-compose-expectations';
 
 const CID = 'consultation-agent-001';
 const TENANT = 'tenant-agent-001';
@@ -147,8 +148,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     await service.flush(CID);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
+    expect(String(calls[0].system_prompt)).toContain(`\n\n${LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX}`);
+    expect(headOf(calls[0].system_prompt, LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
   });
 
   it('with the port resolving the SYSTEM default (bytes == the constants), the payload is still byte-identical', async () => {
@@ -172,8 +173,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
-    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
+    expect(String(calls[0].system_prompt)).toContain(`\n\n${LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX}`);
+    expect(headOf(calls[0].system_prompt, LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
   });
 
   it('a bound agent’s prompt bytes actually reach TEXT (the capability is real, not decorative)', async () => {
@@ -185,8 +186,8 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
-    expect(calls[0].prompt.startsWith('CUSTOM SURGERY LIVE PREFIX.')).toBe(true);
-    expect(calls[0].system_prompt).toBe('CUSTOM SURGERY SYSTEM PROMPT.');
+    expect(String(calls[0].system_prompt)).toContain('\n\nCUSTOM SURGERY LIVE PREFIX.');
+    expect(headOf(calls[0].system_prompt, 'CUSTOM SURGERY SYSTEM PROMPT.')).toBe(agentSystemHead('CUSTOM SURGERY SYSTEM PROMPT.'));
   });
 
   it('the legacy flush resolves the tenant`s ASSIGNED TEXT_GENERATION agent per flush (TASK-876: the frozen `liveLlm` tier is gone)', async () => {
@@ -228,7 +229,7 @@ describe('C3-T2 — freeze semantics and three-tier recovery', () => {
 
     expect(resolveForSession).toHaveBeenCalledTimes(1);
     expect(calls).toHaveLength(3);
-    for (const call of calls) expect(call.prompt.startsWith('V1 PREFIX.')).toBe(true);
+    for (const call of calls) expect(String(call.system_prompt)).toContain('\n\nV1 PREFIX.');
   });
 
   it('persists the frozen snapshot to Redis under the agent key with the owner-lock TTL', async () => {
@@ -261,7 +262,7 @@ describe('C3-T2 — freeze semantics and three-tier recovery', () => {
     await service.flush(CID);
 
     expect(resolveForSession).not.toHaveBeenCalled();
-    expect(calls[0].prompt.startsWith('ADOPTED PREFIX.')).toBe(true);
+    expect(String(calls[0].system_prompt)).toContain('\n\nADOPTED PREFIX.');
   });
 
   it('stamps the agent lineage into the durable LIVE_SOAP_SNAPSHOT metaData (the C5 hand-off)', async () => {
@@ -362,8 +363,8 @@ describe('C3-T4 — fail-open: a resolution failure never fails a live consultat
     const payload = await service.flush(CID);
 
     expect(payload).not.toBeNull();
-    expect(calls[0].prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
-    expect(calls[0].system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
+    expect(String(calls[0].system_prompt)).toContain(`\n\n${LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX}`);
+    expect(headOf(calls[0].system_prompt, LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
   });
 
   it('a Redis outage on the agent key degrades to a fresh resolve rather than failing', async () => {
@@ -377,7 +378,7 @@ describe('C3-T4 — fail-open: a resolution failure never fails a live consultat
     service.ingestSegment(CID, { text: 'cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
-    expect(calls[0].prompt.startsWith('CUSTOM SURGERY LIVE PREFIX.')).toBe(true);
+    expect(String(calls[0].system_prompt)).toContain('\n\nCUSTOM SURGERY LIVE PREFIX.');
   });
 });
 
@@ -420,6 +421,6 @@ describe('C3-T5 — zero added blocking I/O per flush', () => {
     await flushed;
 
     expect(resolveForSession).toHaveBeenCalledTimes(1);
-    expect(calls[0].prompt.startsWith('SLOW-RESOLVED PREFIX.')).toBe(true);
+    expect(String(calls[0].system_prompt)).toContain('\n\nSLOW-RESOLVED PREFIX.');
   });
 });

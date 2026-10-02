@@ -22,6 +22,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { LiveDocumentationService } from '../live-documentation.service';
+import { dataBlock, liveUserOf, type LiveParts } from './live-compose-expectations';
 
 const TENANT = 'tenant-982';
 const CID = 'consultation-982';
@@ -138,7 +139,7 @@ describe('the live-lane prompt carries the two client data blocks', () => {
   const buildPrompt = (service: LiveDocumentationService, vitals?: string, previousVisits?: string) =>
     (
       service as unknown as {
-        buildTextUserPrompt(
+        buildLivePromptParts(
           priorNote: string,
           delta: string,
           notes: string,
@@ -149,24 +150,24 @@ describe('the live-lane prompt carries the two client data blocks', () => {
           turnContract?: string,
           clientVitals?: string,
           clientPreviousVisits?: string,
-        ): string;
+        ): LiveParts;
       }
-    ).buildTextUserPrompt('', 'Patient reports chest tightness.', '', false, 'SYSTEM PREFIX', 'Consultation Note', '', '', vitals, previousVisits);
+    ).buildLivePromptParts('', 'Patient reports chest tightness.', '', false, 'SYSTEM PREFIX', 'Consultation Note', '', '', vitals, previousVisits);
 
   it('appends the measured readings under the `Recent Vitals` tier the template names', async () => {
     const { service } = buildService();
 
-    const prompt = buildPrompt(service, 'BP 128/82 mmHg · HR 88 bpm');
+    const prompt = liveUserOf(buildPrompt(service, 'BP 128/82 mmHg · HR 88 bpm'));
 
-    expect(prompt).toContain('Recent Vitals:\nBP 128/82 mmHg · HR 88 bpm');
+    expect(prompt).toContain(dataBlock('recent_vitals', 'Recent Vitals', 'BP 128/82 mmHg · HR 88 bpm'));
   });
 
   it('appends the history under the `PREVIOUS CASE NOTES SUMMARY` tier', async () => {
     const { service } = buildService();
 
-    const prompt = buildPrompt(service, undefined, '2026-03-02 · Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L.');
+    const prompt = liveUserOf(buildPrompt(service, undefined, '2026-03-02 · Lipid panel follow-up\nPRIOR-NOTE-BRAVO: LDL 3.9 mmol/L.'));
 
-    expect(prompt).toContain('PREVIOUS CASE NOTES SUMMARY:\n2026-03-02 · Lipid panel follow-up');
+    expect(prompt).toContain('--- PREVIOUS CASE NOTES SUMMARY ---\n2026-03-02 · Lipid panel follow-up');
   });
 
   it('appends neither block when the client sent nothing — the prompt is byte-identical to before', async () => {
@@ -174,19 +175,20 @@ describe('the live-lane prompt carries the two client data blocks', () => {
 
     const withClient = buildPrompt(service, undefined, undefined);
     const withoutArguments = (
-      service as unknown as { buildTextUserPrompt(a: string, b: string, c: string, d: boolean, e: string, f: string, g: string, h: string): string }
-    ).buildTextUserPrompt('', 'Patient reports chest tightness.', '', false, 'SYSTEM PREFIX', 'Consultation Note', '', '');
+      service as unknown as { buildLivePromptParts(a: string, b: string, c: string, d: boolean, e: string, f: string, g: string, h: string): LiveParts }
+    ).buildLivePromptParts('', 'Patient reports chest tightness.', '', false, 'SYSTEM PREFIX', 'Consultation Note', '', '');
 
-    expect(withClient).toBe(withoutArguments);
-    expect(withClient).not.toContain('Recent Vitals:');
-    expect(withClient).not.toContain('PREVIOUS CASE NOTES SUMMARY:');
+    expect(liveUserOf(withClient)).toBe(liveUserOf(withoutArguments));
+    expect(withClient.instructions).toBe(withoutArguments.instructions);
+    expect(liveUserOf(withClient)).not.toContain('Recent Vitals');
+    expect(liveUserOf(withClient)).not.toContain('PREVIOUS CASE NOTES SUMMARY');
   });
 
-  it('keeps the stable prefix leading the prompt, so the engine cache still hits', async () => {
+  it('keeps the stable prefix leading the turn instructions, so the engine cache still hits', async () => {
     const { service } = buildService();
 
-    const prompt = buildPrompt(service, 'HR 88 bpm', 'A prior note.');
+    const parts = buildPrompt(service, 'HR 88 bpm', 'A prior note.');
 
-    expect(prompt.startsWith('SYSTEM PREFIX')).toBe(true);
+    expect(parts.instructions.startsWith('SYSTEM PREFIX')).toBe(true);
   });
 });
