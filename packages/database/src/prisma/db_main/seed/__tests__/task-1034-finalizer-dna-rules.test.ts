@@ -45,7 +45,7 @@ describe('TASK-1034 R3 — the finalization prompt carries the clinician`s redac
   });
 
   it('is a declared field of `consultation_note_context`, next to `dna_style_text`', () => {
-    const kind = NOTE_CONTEXT_SCHEMA_DEFINITION.kinds.find((k: any) => k.key === 'context') as any;
+    const kind = (NOTE_CONTEXT_SCHEMA_DEFINITION.kinds as Array<Record<string, any>>).find((k) => k.key === 'context') as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(kind.fields.properties.dna_redaction_rules_text).toMatchObject({ type: 'string' });
   });
 });
