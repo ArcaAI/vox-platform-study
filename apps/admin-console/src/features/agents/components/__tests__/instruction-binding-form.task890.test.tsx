@@ -8,6 +8,7 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import { InstructionBindingForm, type InstructionBindingValue } from '../instruction-binding-form';
 
 const TEMPLATE = {
@@ -104,7 +105,8 @@ describe('InstructionBindingForm', () => {
     // The kind selector sits beside the field.
     fireEvent.click(screen.getByLabelText('patientAge binding kind'));
     fireEvent.click(await screen.findByRole('option', { name: 'Context path' }));
-    fireEvent.change(screen.getByLabelText('patientAge *'), { target: { value: 'context.patientAge' } });
+    // A context path is a TemplateEditor (CodeMirror), driven through its own transaction API.
+    setTemplateEditorValue(await screen.findByRole('textbox', { name: 'patientAge' }), 'context.patientAge');
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ variables: { patientAge: { path: 'context.patientAge' } } }));
   });
 

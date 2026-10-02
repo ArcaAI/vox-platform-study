@@ -38,6 +38,12 @@ export interface AgentFinding {
   message: string;
 }
 
+export interface EffectiveContextSchema {
+  id: string;
+  versionNumber: number;
+  inheritedFrom: 'agent' | 'workflow';
+}
+
 export interface AgentValidationReport {
   checkedAt: string;
   blocking: boolean;
@@ -155,6 +161,12 @@ export interface Agent {
   contextSchemaId: string | null;
   /** The pinned schema VERSION; `null` ⇒ follow the schema's own pin. */
   contextSchemaVersionNumber: number | null;
+  /**
+   * The schema `{{context.*}}` actually resolves against: the agent's own, or — when it binds none
+   * and a workflow node binds it — that workflow's trigger schema. Optional: an older gateway
+   * does not send it, and the console then falls back to `contextSchemaId`.
+   */
+  effectiveContextSchema?: EffectiveContextSchema | null;
   modelSlug: string | null;
   fallbacks: AgentFallback[];
   instruction: Record<string, unknown> | null;
