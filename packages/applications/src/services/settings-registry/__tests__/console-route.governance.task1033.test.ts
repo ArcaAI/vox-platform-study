@@ -42,7 +42,7 @@ describe('TASK-1033 — consoleRoute on dedicated-surface descriptors', () => {
       expect(d.consoleRoute, d.key).toMatch(/^\//);
       expect(d.consoleRouteLabel, d.key).toBeTruthy();
     }
-    expect(HOPE_SETTINGS_REGISTRY.get('storage.platformDefault.publicEndpoint')!.consoleRoute).toBe('/tenants/storage');
+    expect(HOPE_SETTINGS_REGISTRY.get('storage.platformDefault.publicEndpoint')!.consoleRoute).toBe('/tenants/storage?tab=configs');
     expect(HOPE_SETTINGS_REGISTRY.get('entitlements.featurePlatformDefaultCredential')!.consoleRoute).toBe('/entitlements');
   });
 });

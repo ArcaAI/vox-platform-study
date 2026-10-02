@@ -17,7 +17,7 @@ describe('SettingsCatalogController.getCatalog — TASK-1033', () => {
     const { controller, resolver } = controllerFor({ 'storage.platformDefault.publicEndpoint': { value: 'https://admin.example.com', version: 7 } });
     const res = await controller.getCatalog();
     const item = res.items.find((i) => i.key === 'storage.platformDefault.publicEndpoint')!;
-    expect(item.consoleRoute).toBe('/tenants/storage');
+    expect(item.consoleRoute).toBe('/tenants/storage?tab=configs');
     expect(item.consoleRouteLabel).toBe('Tenant storage');
     expect(item.dedicatedRow).toEqual({ value: 'https://admin.example.com', version: 7 });
     // one row read for the whole catalog, not one per key
@@ -28,7 +28,7 @@ describe('SettingsCatalogController.getCatalog — TASK-1033', () => {
     const { controller } = controllerFor({});
     const item = (await controller.getCatalog()).items.find((i) => i.key === 'storage.platformDefault.region')!;
     expect(item.dedicatedRow).toBeNull();
-    expect(item.consoleRoute).toBe('/tenants/storage');
+    expect(item.consoleRoute).toBe('/tenants/storage?tab=configs');
   });
 
   it('entitlement keys route to /entitlements; global-kv / env / vault-kv carry null route and null dedicatedRow', async () => {

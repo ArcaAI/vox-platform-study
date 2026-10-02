@@ -124,7 +124,7 @@ export class SettingCatalogItemResponse {
     type: String,
     nullable: true,
     description: "Admin-console route that owns this key's write (db-config / entitlement / redis-flag tiers). Null for every other tier.",
-    example: '/tenants/storage',
+    example: '/tenants/storage?tab=configs',
   })
   consoleRoute!: string | null;
 

@@ -26,7 +26,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.provider',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     // stt selects its object-store backend from this; its `STORAGE_PROVIDER`
     // env field is closed structurally (`stt/core/control_plane.py`), so this
@@ -55,7 +55,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.endpoint',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     // harness's claim-check store IS platform object storage; it reads the
     // location from this cascade instead of a parallel HARNESS_CLAIM_CHECK_* block.
@@ -82,7 +82,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     // No `consumedBy`: only the gateway presigns.
     key: 'storage.platformDefault.publicEndpoint',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     dataType: 'string',
     sensitivity: 'internal',
@@ -99,7 +99,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.region',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     consumedBy: ['harness'],
     dataType: 'string',
@@ -118,7 +118,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.forcePathStyle',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     // `consumedBy: ['harness']` was declared here until TASK-872. The KEY stays
     // — the gateway's own storage resolver reads it — but the harness does not:
@@ -142,7 +142,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
   {
     key: 'storage.platformDefault.containerPrefix',
     tier: 'db-config',
-    consoleRoute: '/tenants/storage',
+    consoleRoute: '/tenants/storage?tab=configs',
     consoleRouteLabel: 'Tenant storage',
     // Applied by harness to its claim-check bucket name, so an operator can
     // namespace every physical bucket in one place.

@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest';
 import { NAV_ENTRIES } from '@/shared/navigation/nav-config';
 
 /** The owner routes the gateway descriptors name (db-config / entitlement / redis-flag). */
-const CONSOLE_ROUTES = ['/tenants/storage', '/entitlements', '/features'] as const;
+const CONSOLE_ROUTES = ['/tenants/storage?tab=configs', '/entitlements', '/features'] as const;
 
 describe('catalog consoleRoute ↔ nav-config parity', () => {
   it.each(CONSOLE_ROUTES)('%s is a registered nav route', (route) => {
-    expect(NAV_ENTRIES.some((entry) => entry.route === route)).toBe(true);
+    // A route may carry a tab query; the PATH is what the nav inventory registers.
+    const path = route.split('?')[0];
+    expect(NAV_ENTRIES.some((entry) => entry.route === path)).toBe(true);
   });
 });
