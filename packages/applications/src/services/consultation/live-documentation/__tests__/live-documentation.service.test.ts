@@ -1699,7 +1699,7 @@ describe('LiveDocumentationService', () => {
 
       // The add path must produce the SAME notes block as before the re-key:
       // the prompt carries the note text verbatim under the clinician-notes label.
-      expect(lastTextPrompt(httpMock)).toContain('Clinician notes / labs:\nPatient reports chest pain');
+      expect(lastTextPrompt(httpMock)).toContain('--- Clinician notes / labs ---\nPatient reports chest pain');
     });
 
     it('drops a removed note from the TEXT prompt on the next flush, keeping the others', async () => {

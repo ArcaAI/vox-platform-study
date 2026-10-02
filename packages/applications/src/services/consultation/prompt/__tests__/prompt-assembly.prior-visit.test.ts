@@ -46,7 +46,7 @@ async function buildService() {
   );
 }
 
-const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string }> }, extra: Record<string, unknown> = {}) =>
+const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string; systemPrompt: string }> }, extra: Record<string, unknown> = {}) =>
   service.assemble({
     tenantId: TENANT,
     departmentId: 'dept-1',
@@ -76,15 +76,17 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
   it('appends a spotlighting-wrapped, explicitly non-authoritative block when supplied', async () => {
     const service = await buildService();
 
-    const { userPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER hypertension stable on ramipril' });
+    const { userPrompt, systemPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER hypertension stable on ramipril' });
 
     expect(userPrompt).toContain('<<<EXTERNAL_DATA section="prior_visit_summary">>>');
     expect(userPrompt).toContain('PRIOR-NOTE-MARKER hypertension stable on ramipril');
     expect(userPrompt).toContain('<<<END_EXTERNAL_DATA>>>');
-    // The safety preamble is the whole point of the feature — assert its load-bearing clauses.
-    expect(userPrompt).toMatch(/re-?confirm/i);
-    expect(userPrompt).toMatch(/previous encounter|prior visit/i);
-    expect(userPrompt).toMatch(/not.*current[- ]visit evidence|never.*without current-visit evidence/i);
+    // The safety preamble is the whole point of the feature — platform guidance, so it is part of
+    // the SYSTEM message; assert its load-bearing clauses.
+    expect(systemPrompt).toMatch(/re-?confirm/i);
+    expect(systemPrompt).toMatch(/previous encounter|prior visit/i);
+    expect(systemPrompt).toMatch(/not.*current[- ]visit evidence|never.*without current-visit evidence/i);
+    expect(systemPrompt).not.toContain('PRIOR-NOTE-MARKER');
   });
 
   it('substitutes {{context.prior_visit_summary}} when the template consumes it, without appending a duplicate block', async () => {
@@ -116,11 +118,12 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
     );
     const service = await buildService();
 
-    const { userPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'MORNING-PREQUEL-MARKER' });
+    const { userPrompt, systemPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'MORNING-PREQUEL-MARKER' });
 
-    // The variable has a producer again (`harness/same-day-prequel.ts`), so it is substituted…
-    expect(userPrompt).toContain('Prequel: MORNING-PREQUEL-MARKER.');
-    // …once, and it never switches the carry-forward block on.
+    // The variable has a producer again (`harness/same-day-prequel.ts`): the body points at its
+    // data section…
+    expect(systemPrompt).toContain('Prequel: [see the SAME-DAY EARLIER VISIT(S) data section below].');
+    // …which appears once, and never switches the carry-forward block on.
     expect(userPrompt.split('MORNING-PREQUEL-MARKER').length - 1).toBe(1);
     expect(userPrompt).not.toContain('prior_visit_summary');
   });

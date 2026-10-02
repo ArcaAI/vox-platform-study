@@ -104,6 +104,7 @@ import {
   primaryTemplateId,
   primaryTemplateRef,
   WORKFLOW_NODE_REGISTRY,
+  type CompositeResolvedPrompt,
   type WorkflowGraph,
   type WorkflowGraphNode,
 } from '@arcaai/workflow-contract';
@@ -195,6 +196,18 @@ export interface ResolvedPromptConfig {
    * re-deriving it from `promptType`.
    */
   resolvedCapability?: 'summary' | 'pre-summary' | 'live';
+
+  /**
+   * The resolved AGENT's frozen COMPOSITE instruction, when an agent tier resolved and its
+   * published instruction is composite. `content` above is then only the primary template's
+   * snapshot (the governance pointer); the assembler composes THIS — every fragment, selected
+   * over the render scope — so a conditional fragment applies on finalize exactly as it does on
+   * the agent lanes.
+   */
+  resolvedPrompt?: CompositeResolvedPrompt;
+
+  /** The resolved agent's own `instruction.variables` bindings, which a composite renders with. */
+  promptVariables?: Record<string, unknown>;
 }
 
 /**
@@ -422,6 +435,31 @@ interface ResolvedPromptId {
   content?: string | null;
   versionNumber?: number | null;
   agentId?: string;
+  /** See `ResolvedPromptConfig.resolvedPrompt`. */
+  composite?: AgentComposite;
+}
+
+/** A published agent's frozen composite instruction and the variable bindings it renders with. */
+interface AgentComposite {
+  resolvedPrompt: CompositeResolvedPrompt;
+  variables: Record<string, unknown>;
+}
+
+/**
+ * The agent's FROZEN composite (`compiledConfig.resolvedPrompt`), or `null` for the two single-body
+ * forms. Read off the published artifact because that is what the agent lanes render: publish
+ * freezes each fragment's text, so finalize composes the version that was approved.
+ */
+function agentComposite(agent: { compiledConfig?: unknown; instruction?: unknown }): AgentComposite | null {
+  const compiled = agent.compiledConfig as { resolvedPrompt?: { source?: string } } | null | undefined;
+  const resolvedPrompt = compiled?.resolvedPrompt;
+  if (!resolvedPrompt || resolvedPrompt.source !== 'composite') return null;
+  const instruction = agent.instruction as { variables?: unknown } | null | undefined;
+  const variables =
+    instruction?.variables && typeof instruction.variables === 'object' && !Array.isArray(instruction.variables)
+      ? (instruction.variables as Record<string, unknown>)
+      : {};
+  return { resolvedPrompt: resolvedPrompt as unknown as CompositeResolvedPrompt, variables };
 }
 
 // ============================================================================
@@ -734,7 +772,14 @@ export class PromptResolutionService {
       trace.usedDefaults.push('contextVariables');
     }
 
-    const { promptId, tier: resolvedFrom, content: resolvedContent, versionNumber: resolvedVersionNumber, agentId: resolvedAgentId } = resolvedPrompt;
+    const {
+      promptId,
+      tier: resolvedFrom,
+      content: resolvedContent,
+      versionNumber: resolvedVersionNumber,
+      agentId: resolvedAgentId,
+      composite,
+    } = resolvedPrompt;
 
     this.logger.debug({
       message: 'Prompt config resolved',
@@ -766,6 +811,10 @@ export class PromptResolutionService {
     }
     if (resolvedAgentId) {
       result.resolvedAgentId = resolvedAgentId;
+    }
+    if (composite) {
+      result.resolvedPrompt = composite.resolvedPrompt;
+      result.promptVariables = composite.variables;
     }
 
     return result;
@@ -824,7 +873,14 @@ export class PromptResolutionService {
 
       trace.agentId = agent.id;
       trace.agentVersionNumber = agent.versionNumber;
-      return { promptId: templateId, tier: 'agent', agentId: agent.id, ...(await this.governedSnapshot(templateId)) };
+      const composite = agentComposite(agent);
+      return {
+        promptId: templateId,
+        tier: 'agent',
+        agentId: agent.id,
+        ...(await this.governedSnapshot(templateId)),
+        ...(composite ? { composite } : {}),
+      };
     } catch (error) {
       // A selector is an OPTIONAL refinement. A failure to evaluate it must degrade to the
       // ordinary chain, never take out a clinical generation call.
@@ -1174,6 +1230,7 @@ export class PromptResolutionService {
           content: agentResolution.content,
           versionNumber: agentResolution.versionNumber,
           agentId: agentResolution.agentId,
+          ...(agentResolution.composite ? { composite: agentResolution.composite } : {}),
         };
       }
     }
@@ -1455,7 +1512,7 @@ export class PromptResolutionService {
     tenantId: string,
     departmentId: string,
     visitType: string | null = null,
-  ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string; agentId: string } | null> {
+  ): Promise<{ templateId: string; content: string; versionNumber: number; nodeId: string; agentId: string; composite?: AgentComposite } | null> {
     if (!this.agentRepository) return null;
 
     try {
@@ -1505,7 +1562,15 @@ export class PromptResolutionService {
             : await this.promptVersionRepository.findLatestVersion(template.id);
         if (!version || version.content === null || version.content === undefined) continue;
 
-        return { templateId: template.id, content: version.content, versionNumber: version.versionNumber, nodeId: node.id, agentId: agent.id };
+        const composite = agentComposite(agent);
+        return {
+          templateId: template.id,
+          content: version.content,
+          versionNumber: version.versionNumber,
+          nodeId: node.id,
+          agentId: agent.id,
+          ...(composite ? { composite } : {}),
+        };
       }
       return null;
     } catch (error) {

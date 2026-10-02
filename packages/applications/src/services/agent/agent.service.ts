@@ -25,6 +25,7 @@ import {
   ResourceType,
   SYSTEM_TENANT_ID,
   SysEventType,
+  WorkflowDefinitionRepository,
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
@@ -32,13 +33,15 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import type { AgentCompiledConfig, AgentCompiledPromptFragment } from '@arcaai/types';
 import {
+  buildPromptScope,
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
   AGENT_TASK_MODEL_TASK_TYPE,
   AGENT_TASK_SERVICE,
   PROMPT_COMPOSITION_JOIN,
-  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
@@ -47,7 +50,8 @@ import {
   boundTemplateRefs,
   buildPortableBundle,
   canonicalJson,
-  composePrompt,
+  composeMessages,
+  platformRules,
   conditionRootProblems,
   isCompositeInstruction,
   mapBoundTemplateRefs,
@@ -60,7 +64,6 @@ import {
   templateSyntaxProblems,
   type AgentConfigView,
   type BoundTemplateRef,
-  type ComposedPrompt,
   type DeclaredNamespaces,
   type AgentModelView,
   type AgentProviderCapabilities,
@@ -107,7 +110,6 @@ import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness
 import { parsePromptVariableDeclarations, type PromptVariableDeclarationDto } from '../prompt-management/dto/prompt-variable-declaration.dto';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { redactConditionDetail } from './agent-condition-detail';
-import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
 import type { CompiledModelRef } from './agent-wire-model';
 import { AgentDtoMapper } from './agent.dto.mapper';
@@ -127,6 +129,7 @@ import {
 } from './agent-bundle';
 import {
   AgentBundleResponse,
+  AgentEffectiveContextSchemaResponse,
   AgentLineageAssignmentResponse,
   AgentResponse,
   AgentSummaryResponse,
@@ -145,6 +148,7 @@ import {
   TestAgentRequest,
   UpdateAgentRequest,
 } from './dto';
+import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
 
 const AGENT_FILTER_MODEL = 'Agent';
@@ -158,6 +162,16 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 ]);
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
+
+/** Does this graph run the agent `slug` in one of its `core.agent` nodes? */
+function graphRunsAgent(graph: unknown, slug: string): boolean {
+  const nodes = (graph as { nodes?: unknown } | null | undefined)?.nodes;
+  if (!Array.isArray(nodes)) return false;
+  return nodes.some((node) => {
+    const candidate = node as { type?: unknown; config?: { agentRef?: { slug?: unknown } } } | null;
+    return candidate?.type === 'core.agent' && candidate.config?.agentRef?.slug === slug;
+  });
+}
 
 /**
  * TASK-947 (OD-8) — what ONE resolved template fragment declares, carried from `resolvePrompt`
@@ -263,6 +277,10 @@ export class AgentService extends BaseService implements IAgentService {
     // dependency above; absent ⇒ the summary reports no assignment, which the console renders as
     // the same "Unassigned" warning an unassigned slug gets.
     @Optional() private readonly assignmentRepository?: AgentAssignmentRepository,
+    // OD-6 — the published workflows a schema-less agent inherits its context schema from.
+    // TRAILING and @Optional() for the same reason as every dependency above; absent ⇒ no
+    // inheritance, so a schema-less agent is checked against no `context.*` vocabulary.
+    @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -329,7 +347,53 @@ export class AgentService extends BaseService implements IAgentService {
   async getById(id: string): Promise<AgentResponse> {
     const entity = await this.loadVisible(id);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id });
-    return this.respond(entity);
+    const response = await this.respond(entity);
+    response.effectiveContextSchema = await this.effectiveContextSchemaOf(entity);
+    return response;
+  }
+
+  /**
+   * OD-6 / R1 — WHICH context schema this agent's prompt paths are checked against, and where it
+   * came from: its own pin (`agent`), or — for an agent that pins none — the trigger schema of a
+   * published workflow whose `core.agent` node runs it (`workflow`). `null` when neither applies.
+   */
+  private async effectiveContextSchemaOf(entity: AgentEntity): Promise<AgentEffectiveContextSchemaResponse | null> {
+    if (entity.contextSchemaId) {
+      const own = await this.resolveContextSchema(entity);
+      return own.resolved ? { id: own.resolved.schemaId, versionNumber: own.resolved.versionNumber, inheritedFrom: 'agent' } : null;
+    }
+    const inherited = await this.workflowContextSchema(entity);
+    return inherited ? { id: inherited.schemaId, versionNumber: inherited.versionNumber, inheritedFrom: 'workflow' } : null;
+  }
+
+  /**
+   * OD-6 — the trigger context schema an agent with NO pin of its own inherits: the one a
+   * published, active workflow of this tenant binds, when one of its `core.agent` nodes names this
+   * agent. Workflows are read in slug order, so the answer is deterministic when several bind it.
+   *
+   * VALIDATION only — it is never frozen into the agent's compiled artifact, which keeps an agent
+   * that pins nothing exactly the runtime artifact it was. TOTAL: any failure answers `null`
+   * (no inheritance), because a publish must not fail on this method's own dependency.
+   */
+  private async workflowContextSchema(entity: AgentEntity): Promise<AgentCompiledContextSchema | null> {
+    if (!this.workflowDefinitionRepository || !this.contextSchemas) return null;
+    let definitions: Awaited<ReturnType<WorkflowDefinitionRepository['findActivePublishedByTenant']>>;
+    try {
+      definitions = await this.workflowDefinitionRepository.findActivePublishedByTenant(entity.tenantId);
+    } catch {
+      return null;
+    }
+    for (const definition of definitions) {
+      if (!definition.contextSchemaId || !graphRunsAgent(definition.graph, entity.slug)) continue;
+      try {
+        const outcome = await this.contextSchemas.resolveReference(definition.contextSchemaId, definition.contextSchemaVersionNumber ?? null);
+        if (outcome.outcome === 'failed') continue;
+        return { schemaId: outcome.schemaId, versionNumber: outcome.versionNumber, versionId: outcome.versionId, payloadSchema: outcome.payloadSchema };
+      } catch {
+        continue;
+      }
+    }
+    return null;
   }
 
   async listVersions(id: string): Promise<AgentResponse[]> {
@@ -722,7 +786,7 @@ export class AgentService extends BaseService implements IAgentService {
     // Built through the same failure mapping as the render below: a `{ path }` binding resolves
     // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
     const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
-    // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
+    // TASK-947 — the SAME composition the invocation route runs, so what the bench shows is
     // what production sends: a composite is SELECTED and joined here, never served as its static
     // projection (which would show an author the base prompt and hide the branch they came to test).
     // TASK-983 R9 — the bench reports EVERY unresolved placeholder, not just the first, so an
@@ -741,9 +805,20 @@ export class AgentService extends BaseService implements IAgentService {
         missingVariables,
       });
     }
-    const composed: ComposedPrompt = this.renderMapped(() => composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }));
-    const assembledSystemPrompt = composed.prompt;
-    const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    // The ONE composer — the same `composeMessages` call the invocation route makes, so the bench
+    // shows exactly the system + user messages production sends (platform rules included).
+    const inputText = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    const composed = this.renderMapped(() =>
+      composeMessages({
+        platformRules: platformRules(),
+        resolvedPrompt: compiled.resolvedPrompt,
+        scope,
+        dataBlocks: [agentInputBlock(inputText)],
+        templateRef: `agent:${entity.slug}`,
+      }),
+    );
+    const assembledSystemPrompt = composed.system;
+    const assembledUserPrompt = composed.user;
 
     const resolved = await this.testTarget(entity, model as AiModelEntity, dto);
     const ack: AgentTestAckResponse = {
@@ -778,7 +853,7 @@ export class AgentService extends BaseService implements IAgentService {
         code: 'DRY_RUN_ONLY',
       });
     }
-    if (assembledUserPrompt.length === 0) {
+    if (inputText.length === 0) {
       // Refused rather than sent: an empty prompt spends the tenant's own `monthlyLlmTokens`
       // allowance on a generation that answers nothing, and the author would read the resulting
       // noise as a defect in their agent. A DRY run with no `input.text` is fine — it still shows
@@ -846,7 +921,7 @@ export class AgentService extends BaseService implements IAgentService {
     // renders here is what will render on the invocation route, the realtime lane and the durable
     // lane. When the bench had its own scope it was the only site that resolved `{ path }`
     // bindings, so it rendered a value the three runtimes did not.
-    return buildAgentPromptScope({
+    return buildPromptScope({
       // J3-5 — the object `{{context.*}}` resolves against, which under the single-kind rule is
       // the kind itself rather than the envelope wrapping it.
       trigger: this.contextRenderScope(context, contextSchema),
@@ -1830,7 +1905,10 @@ export class AgentService extends BaseService implements IAgentService {
       const outcome = await this.resolvePrompt(asRecord(entity.instruction));
       findings.push(...outcome.findings);
       resolvedPrompt = outcome.resolvedPrompt;
-      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, context.resolved, outcome.templateVariables));
+      // OD-6 — the paths are checked against the agent's own schema, or, when it pins none, the
+      // schema a workflow running it binds (inheritance; never frozen into the artifact).
+      const pathSchema = context.resolved ?? (entity.contextSchemaId ? null : await this.workflowContextSchema(entity));
+      findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, pathSchema, outcome.templateVariables));
     }
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
@@ -2044,7 +2122,7 @@ export class AgentService extends BaseService implements IAgentService {
     };
 
     return templateReferenceProblems(content, declared).map((problem) => ({
-      severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      severity: PROMPT_VARIABLE_UNDECLARED_SEVERITY,
       code: 'PROMPT_VARIABLE_UNDECLARED' as const,
       path,
       message: `${templateRef}: ${problem}`,
@@ -2069,7 +2147,7 @@ export class AgentService extends BaseService implements IAgentService {
       if (typeof fragment.when !== 'string' || fragment.when.length === 0) continue;
       for (const problem of conditionRootProblems(fragment.when, boundNames)) {
         findings.push({
-          severity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+          severity: PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
           code: 'PROMPT_FRAGMENT_CONDITION_ROOT',
           path: `instruction.fragments[${index}].when`,
           message: `fragment \`${fragment.key}\`: ${problem}`,

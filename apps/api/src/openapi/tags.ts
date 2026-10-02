@@ -225,6 +225,12 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description: 'The structured-context schemas consultations are validated against.',
   },
   { name: 'admin-consultations', displayName: 'Consultations', plane: 'admin', description: 'Cross-tenant consultation administration and review.' },
+  {
+    name: 'admin-composed-prompts',
+    displayName: 'Composed Prompts',
+    plane: 'admin',
+    description: 'The encrypted record of the exact messages each LLM call was sent, kept for incident reconstruction.',
+  },
   { name: 'admin-departments', displayName: 'Departments', plane: 'admin', description: 'The tenant department tree.' },
   {
     name: 'admin-document-templates',
@@ -455,6 +461,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description:
       'The generic model-registry credential resolver every backend service (nlp, tts, harness, stt) uses for s3:// weight sources. ' +
       'Excluded from the public reference; reachable only with an internal service token.',
+  },
+  {
+    name: 'internal-composed-prompts',
+    displayName: 'Internal — Composed Prompts',
+    plane: 'platform',
+    description:
+      'Service-to-service record of the composed messages a harness text call was sent. Excluded from the public reference; reachable only with an internal service token.',
   },
   { name: 'health', displayName: 'Health', plane: 'platform', description: 'Liveness, readiness, and dependency health probes.' },
   // Emitted by the VENDORED `@willsoto/nestjs-prometheus` controller, which we

@@ -36,7 +36,7 @@ import {
   publishFindings,
   registryChecksum,
   stripRetiredGraphGuardrailOptOuts,
-  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
   validate,
   WORKFLOW_NODE_REGISTRY,
   workflowNodeClassLookup,
@@ -2199,9 +2199,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
    * that gate, wired: `publish()` refuses on an ERROR finding and `validate()` records the same
    * findings without refusing, so a draft gets the feedback long before anyone publishes it.
    *
-   * `templateReferenceSeverity` comes from ONE contract constant (the OD-C ramp): today an
-   * undeclared prompt variable is a WARNING, because no agent binds a context schema yet (gap
-   * 4e) and enforcing it now would be a migration wearing a gate's clothes.
+   * `templateReferenceSeverity` comes from ONE contract constant: an undeclared prompt variable
+   * is an ERROR and blocks publish, on workflows exactly as on agents.
    *
    * Both per-agent slots are RESOLVED here — `triggerContextSchema` by L2's resolver and
    * `agents` by `AgentService.publishAgentViews` over the slugs this graph's `core.agent` nodes
@@ -2218,7 +2217,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const agents = await this.publishAgentViews(graph);
     const contractFindings = publishFindings(graph, {
       schemaValueProblems: jsonSchemaValueProblems,
-      templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+      templateReferenceSeverity: PROMPT_VARIABLE_UNDECLARED_SEVERITY,
       ...(agents === undefined ? {} : { agents }),
       // `undefined` = not resolved, and the contract SKIPS the check. `null` = resolved to
       // nothing, which is the finding. The two are deliberately different values.

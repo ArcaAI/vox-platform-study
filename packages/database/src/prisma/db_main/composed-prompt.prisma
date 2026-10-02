@@ -1,0 +1,54 @@
+// ============================================================================
+// ComposedPromptRecord — the exact system + user messages one LLM call was
+// sent, kept for incident reconstruction (OD-9).
+//
+// Both messages carry PHI (the instruction renders patient facts; the data
+// sections carry the transcript), so they are Vault-Transit (hope-phi)
+// ciphertext only — never a plaintext column. `sha256` is the digest of the
+// plaintext `system + "\n\n" + user`, so two records of identical prompts can
+// be matched without a decrypt.
+//
+// APPEND-ONLY: written once by the gateway's text call sites and by the
+// harness (POST internal/composed-prompts), never updated. Retention is the
+// governed setting `composedPrompts.retentionDays`; a daily purge HARD-deletes
+// expired rows — an expired PHI audit copy is removed, not soft-deleted.
+// ============================================================================
+
+model ComposedPromptRecord {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields — plain ids, no FK
+  consultationId   String?
+  agentSlug        String?
+  // Which generation this was: live / pre-summary / finalize / workflow / test / …
+  phase            String
+  provider         String
+  // 'local' | 'cloud' — the egress locality the call was stamped with
+  locality         String
+  systemCiphertext Bytes
+  userCiphertext   Bytes
+  keyVersion       Int?
+  sha256           String
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "ComposedPromptRecord_tenantId_idx")
+  @@index([tenantId, consultationId, createdAt], name: "ComposedPromptRecord_tenant_consultation_createdAt_idx")
+  @@index([createdAt], name: "ComposedPromptRecord_createdAt_idx")
+  @@schema("core")
+}

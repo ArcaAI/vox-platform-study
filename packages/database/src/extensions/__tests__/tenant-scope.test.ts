@@ -176,7 +176,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +2 (88): TASK-1032 adds `TenantCheckpoint` and `TenantCheckpointRestore` — both tenantId-bearing,
     // tenant-owned rows (a checkpoint is never SYSTEM-shared).
     // +1 (89): TASK-1034 adds `DnaWritingSample` — a clinician's DNA memory sample, tenant-owned.
-    expect(TENANT_SCOPED_MODELS.size).toBe(89);
+    // +1 (90): `ComposedPromptRecord` — the per-call composed-prompt incident record, tenant-owned PHI ciphertext.
+    expect(TENANT_SCOPED_MODELS.size).toBe(90);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -24,7 +24,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LiveDocumentationService } from '../live-documentation.service';
+import { LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX, LIVE_DOCUMENT_SYSTEM_PROMPT, LiveDocumentationService } from '../live-documentation.service';
+import { liveSystemHead } from './live-compose-expectations';
 
 const CID = 'consultation-frame-001';
 const TENANT = 'tenant-frame';
@@ -32,10 +33,12 @@ const TENANT = 'tenant-frame';
 function recordingHttpMock(prompts: string[]) {
   return {
     axiosRef: {
-      post: vi.fn().mockImplementation((url: string, body: { prompt?: string }) => {
+      post: vi.fn().mockImplementation((url: string, body: { prompt?: string; system_prompt?: string }) => {
         if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
         if (url.includes('/generate')) {
-          prompts.push(String(body?.prompt ?? ''));
+          // The turn's instructions — the frame among them — are the SYSTEM message; the data
+          // (transcript, note so far) is the USER message. Recorded in the order the model reads.
+          prompts.push(`${String(body?.system_prompt ?? '')}\n\n${String(body?.prompt ?? '')}`);
           return Promise.resolve({ data: { summary: 'Subjective: cough\nObjective:\nAssessment:\nPlan:' } });
         }
         return Promise.resolve({ data: {} });
@@ -106,10 +109,11 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
     // 5 — the consultation is still running.
     expect(prompt).toMatch(/still in progress/);
 
-    // The frame is the LAST thing the model reads: it is the turn's procedure.
+    // The frame is the turn's procedure: an INSTRUCTION, in the system message, after the stable
+    // lead-in — and the transcript is DATA, after every instruction, never inside one.
     const frameAt = prompt.indexOf('HOW TO PRODUCE THIS TURN:');
-    expect(frameAt).toBeGreaterThan(prompt.indexOf('Transcript so far:'));
-    expect(prompt.slice(frameAt)).not.toContain('Transcript so far:');
+    expect(frameAt).toBeGreaterThan(prompt.indexOf(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX));
+    expect(prompt.indexOf('<<<EXTERNAL_DATA section="transcript">>>')).toBeGreaterThan(frameAt);
   });
 
   it('names the SESSION`s own section keys, not a hardcoded SOAP tuple', async () => {
@@ -130,7 +134,7 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
    */
   it('states the platform default — English — whatever the consultation declared (TASK-1001)', async () => {
     const prompt = await flushOnce({ summaryLanguage: 'ml' });
-    const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'));
+    const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'), prompt.indexOf('<<<EXTERNAL_DATA section="transcript">>>'));
 
     expect(frame).toContain('Write every section value in English, whatever language was spoken');
     expect(frame).toContain('regardless of any instruction elsewhere in this prompt to write content in the conversation language');
@@ -138,9 +142,9 @@ describe('TASK-932 §3.7 — the partial-summary operating frame', () => {
     expect(prompt).not.toContain('Malayalam');
   });
 
-  it('leaves the prefix-cacheable lead-in untouched — the frame is appended, never prepended', async () => {
+  it('leaves the prefix-cacheable lead-in untouched — the frame is appended after it, never prepended', async () => {
     const prompt = await flushOnce({ summaryLanguage: 'ml' });
-    expect(prompt.startsWith(LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX)).toBe(true);
+    expect(prompt.startsWith(liveSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT, LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX))).toBe(true);
   });
 
   it('survives a consultation repository that is not wired at all', async () => {

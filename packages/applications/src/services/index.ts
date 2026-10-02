@@ -73,6 +73,7 @@ export * from './text';
 // BUG-018 — the shared TEXT request-enrichment service (tenant BYO credentials
 // + runtime profile) used by both the TEXT proxy and the prompt-test bench.
 export * from './text-request';
+export * from './composed-prompt';
 export * from './stt';
 // The SYSTEM-only model registry (TASK-860): catalogue CRUD, publish-to-bucket, inventory.
 export * from './ai-model';

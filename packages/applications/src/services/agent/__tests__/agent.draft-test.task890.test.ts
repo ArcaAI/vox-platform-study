@@ -21,6 +21,7 @@ import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStat
 import { AgentService } from '../agent.service';
 import { AgentDraftTestService } from '../agent-draft-test.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
+import { asInputBlock, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -57,6 +58,18 @@ const mockProviderConnections = {
   findRow: vi.fn(async () => null),
 };
 const mockContextSchemas = { resolveReference: vi.fn() };
+/**
+ * An OPEN context schema bound by the fixture agent: an undeclared reference blocks publish and
+ * the bench, so the fixture declares a `context` root that admits the paths these cases read.
+ */
+const OPEN_CONTEXT_SCHEMA = {
+  outcome: 'resolved',
+  schemaId: 'schema-open',
+  versionNumber: 1,
+  versionId: 'schema-open-v1',
+  payloadSchema: { type: 'object' },
+};
+
 const mockDraftTest = { submit: vi.fn(), finalize: vi.fn() };
 
 function agent(overrides: Record<string, unknown> = {}) {
@@ -71,7 +84,7 @@ function agent(overrides: Record<string, unknown> = {}) {
     status: WorkflowDefinitionStatus.DRAFT,
     isActive: false,
     modelId: 'model-llm',
-    contextSchemaId: null,
+    contextSchemaId: 'schema-open',
     contextSchemaVersionNumber: null,
     instruction: { systemPrompt: 'You are a scribe for {{context.clinic}}.' },
     parameters: null,
@@ -124,6 +137,7 @@ beforeEach(() => {
   mockFallbackRepository.findByAgentId.mockResolvedValue([]);
   mockProviderConnections.resolveConnection.mockResolvedValue({ source: 'system', encryptedApiKey: new Uint8Array([1]) });
   mockDraftTest.submit.mockResolvedValue({ taskId: 'task-1', streamUrl: 'text-generations/tasks/task-1/stream' });
+  mockContextSchemas.resolveReference.mockResolvedValue(OPEN_CONTEXT_SCHEMA);
 });
 
 describe('testDraft — dry run (the default)', () => {
@@ -135,8 +149,8 @@ describe('testDraft — dry run (the default)', () => {
     });
 
     expect(ack.mode).toBe('dry-run');
-    expect(ack.assembledSystemPrompt).toBe('You are a scribe for Ward B.');
-    expect(ack.assembledUserPrompt).toBe('Summarise the visit');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('You are a scribe for Ward B.'));
+    expect(ack.assembledUserPrompt).toBe(asInputBlock('Summarise the visit'));
     expect(ack.taskId).toBeUndefined();
     expect(mockDraftTest.submit).not.toHaveBeenCalled();
   });
@@ -184,7 +198,7 @@ describe('testDraft — dry run (the default)', () => {
     );
     bindTemplate('Tone: {{tone}} / {{context.style}}');
     const ack = await makeService().testDraft('agent-1', { context: { style: 'concise' } });
-    expect(ack.assembledSystemPrompt).toBe('Tone: concise / concise');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Tone: concise / concise'));
   });
 
   it('lets the caller`s `variables` win over the agent`s own binding', async () => {
@@ -193,7 +207,7 @@ describe('testDraft — dry run (the default)', () => {
     );
     bindTemplate('Tone: {{tone}}');
     const ack = await makeService().testDraft('agent-1', { variables: { tone: 'blunt' } });
-    expect(ack.assembledSystemPrompt).toBe('Tone: blunt');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Tone: blunt'));
   });
 });
 
@@ -253,7 +267,7 @@ describe('testDraft — the gates', () => {
     });
 
     const ack = await makeService().testDraft('agent-1', { context: { safe_age: '41' } });
-    expect(ack.assembledSystemPrompt).toBe('Age 41.');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Age 41.'));
   });
 
   it('a non-TEXT_GENERATION draft answers dry-run only', async () => {

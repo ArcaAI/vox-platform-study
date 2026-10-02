@@ -198,7 +198,7 @@ describe('the graph publish gate resolves the referenced agents', () => {
     expect(publishAgentViews).toHaveBeenCalledWith(['summarizer']);
   });
 
-  it('WARNS on a `core.agent` override referencing a variable the agent does not declare', async () => {
+  it('REFUSES a `core.agent` override referencing a variable the agent does not declare (an ERROR)', async () => {
     const graph = coreGraph({}, { agentRef: { slug: 'summarizer' }, overrides: { promptVariables: { tone: '{{context.absent}}' } } });
     mockRepository.findById.mockResolvedValue(entity({ graph }));
     // The agent's BOUND context schema is what makes `context.absent` undeclared rather than
@@ -211,13 +211,16 @@ describe('the graph publish gate resolves the referenced agents', () => {
       },
     }));
 
-    const published = await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+    const refusal = await makeService({ publishAgentViews })
+      .publish('def-1', { activate: false })
+      .then(
+        () => null,
+        (error: { response?: { findings?: Array<{ code?: string; severity: string }> } }) => error,
+      );
 
-    expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
-    const written = mockRepository.update.mock.calls[0]?.[1] as { validationReport: { findings: Array<{ code?: string; severity: string }> } };
-    const undeclared = written.validationReport.findings.filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
+    const undeclared = (refusal?.response?.findings ?? []).filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(undeclared.length).toBeGreaterThan(0);
-    expect(undeclared.every((f) => f.severity === 'WARNING')).toBe(true);
+    expect(undeclared.every((f) => f.severity === 'ERROR')).toBe(true);
   });
 
   it('says nothing when the agent DOES declare it', async () => {

@@ -7,7 +7,7 @@
  *
  * It produces a shape nobody can use for the SEEDED combination, which is one kind whose key is
  * `context`: the envelope becomes `{ context: { safe_age, … } }`, the seeded templates read
- * `{{context.safe_age}}`, and `buildAgentPromptScope` aliases `scope.context` to the WHOLE
+ * `{{context.safe_age}}`, and `buildPromptScope` aliases `scope.context` to the WHOLE
  * envelope — so the reference resolves to nothing and the only way to write it would be
  * `{{context.context.safe_age}}`. Every seeded platform prompt is therefore un-runnable on an
  * agent bound to the bridge schema, which is the pairing the seed itself ships.

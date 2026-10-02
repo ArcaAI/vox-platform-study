@@ -175,4 +175,5 @@ export enum ResourceType {
   TenantCheckpoint = 'TenantCheckpoint',
   TenantCheckpointRestore = 'TenantCheckpointRestore',
   DnaWritingSample = 'DnaWritingSample',
+  ComposedPromptRecord = 'ComposedPromptRecord',
 }

@@ -927,7 +927,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // credential fold, exactly as the TEXT proxy does. Caller-set fields win; an agent that
     // authored no posture injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'dna' });
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
       timeout: 120000,
       // the tenant is MANDATORY on this hop: `apps/text /generate`

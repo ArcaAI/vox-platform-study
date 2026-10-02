@@ -30,8 +30,8 @@
  * the two sources states the language — the tenant's policy or the platform default — the clause
  * must be in the prompt.
  *
- * Everything is asserted through the REAL request the service sends: `prompt` carries the operating
- * frame, `system_prompt` the composed instruction.
+ * Everything is asserted through the REAL request the service sends: `system_prompt` carries the
+ * composed instruction and, after it, the operating frame.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -231,7 +231,7 @@ async function settle(): Promise<void> {
 interface Flush {
   prompt: string;
   systemPrompt: string;
-  /** From `HOW TO PRODUCE THIS TURN:` to the end of the user prompt. */
+  /** From `HOW TO PRODUCE THIS TURN:` to the end of the system message. */
   frame: string;
   /** The numbered frame steps, in order. */
   steps: string[];
@@ -254,10 +254,14 @@ async function flushOnce(
   expect(generate.length, 'the flush made no TEXT call').toBeGreaterThan(0);
   const body = generate.at(-1)![1] as { prompt?: string; system_prompt?: string };
   const prompt = String(body.prompt ?? '');
-  const frame = prompt.slice(prompt.indexOf('HOW TO PRODUCE THIS TURN:'));
+  // The turn's operating frame is an instruction, so it is part of the SYSTEM message, after the
+  // agent's instruction and the stable lead-in; `systemPrompt` is everything before it.
+  const system = String(body.system_prompt ?? '');
+  const frameAt = system.indexOf('HOW TO PRODUCE THIS TURN:');
+  const frame = system.slice(frameAt);
   return {
     prompt,
-    systemPrompt: String(body.system_prompt ?? ''),
+    systemPrompt: system.slice(0, frameAt),
     frame,
     steps: frame.split('\n').filter((line) => /^\d+\. /.test(line)),
   };

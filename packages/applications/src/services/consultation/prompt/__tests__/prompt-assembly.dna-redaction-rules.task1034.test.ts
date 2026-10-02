@@ -99,23 +99,24 @@ function resolvesTo(content: string): void {
 const RULES_TEXT = '- Never write "Ms. Ada Byron".\n- Always write "pt" as "patient".';
 
 describe('TASK-1034 R3 — `dna_redaction_rules_text` in the gateway-assembled prompt', () => {
-  it('appends the rules under their own heading when the template has no slot for them', async () => {
+  it('appends the rules under their own heading — an INSTRUCTION, in the system message — when the template has no slot for them', async () => {
     resolvesTo('Write the note.');
-    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
-    expect(userPrompt).toContain('--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n' + RULES_TEXT);
+    const { systemPrompt, userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
+    expect(systemPrompt).toContain('--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n' + RULES_TEXT);
+    expect(userPrompt).not.toContain('CLINICIAN REDACTION RULES');
   });
 
   it('a template that binds `{{context.dna_redaction_rules_text}}` renders it ONCE, in place', async () => {
     resolvesTo('Rules:\n{{context.dna_redaction_rules_text}}');
-    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
-    expect(userPrompt.startsWith('Rules:\n' + RULES_TEXT)).toBe(true);
-    expect(userPrompt).not.toContain('CLINICIAN REDACTION RULES');
+    const { systemPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
+    expect(systemPrompt).toContain('Rules:\n' + RULES_TEXT);
+    expect(systemPrompt).not.toContain('CLINICIAN REDACTION RULES');
   });
 
   it.each([[undefined], ['']])('renders nothing for %j — the gate is off or the doctor authored no rules', async (text) => {
     resolvesTo('Rules: [{{context.dna_redaction_rules_text}}]');
-    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: text });
-    expect(userPrompt.startsWith('Rules: []')).toBe(true);
-    expect(userPrompt).not.toContain('CLINICIAN REDACTION RULES');
+    const { systemPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: text });
+    expect(systemPrompt).toContain('Rules: []');
+    expect(systemPrompt).not.toContain('CLINICIAN REDACTION RULES');
   });
 });

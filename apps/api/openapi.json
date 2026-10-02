@@ -393,6 +393,31 @@
         ],
         "type": "object"
       },
+      "AgentEffectiveContextSchemaResponse": {
+        "properties": {
+          "id": {
+            "description": "The context schema id.",
+            "type": "string"
+          },
+          "inheritedFrom": {
+            "enum": [
+              "agent",
+              "workflow"
+            ],
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The concrete version the paths are checked against.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "versionNumber",
+          "inheritedFrom"
+        ],
+        "type": "object"
+      },
       "AgentFallbackResponse": {
         "properties": {
           "enabled": {
@@ -748,6 +773,16 @@
           "description": {
             "nullable": true,
             "type": "string"
+          },
+          "effectiveContextSchema": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentEffectiveContextSchemaResponse"
+              }
+            ],
+            "description": "The context schema the prompt paths are checked against — the agent`s own, or inherited from a workflow that runs it. Present on the agent DETAIL (`GET admin/agents/:id`); null when neither applies.",
+            "nullable": true,
+            "type": "object"
           },
           "fallbacks": {
             "items": {
@@ -4242,6 +4277,149 @@
         "required": [
           "partNumber",
           "etag"
+        ],
+        "type": "object"
+      },
+      "ComposedPromptDetailResponse": {
+        "properties": {
+          "agentSlug": {
+            "example": "casenote-finalization",
+            "nullable": true,
+            "type": "string"
+          },
+          "consultationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "ISO time the call was recorded.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "locality": {
+            "enum": [
+              "local",
+              "cloud"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "example": "finalize",
+            "type": "string"
+          },
+          "provider": {
+            "example": "lm-studio",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 (hex) of the plaintext `system + \"\\n\\n\" + user`.",
+            "type": "string"
+          },
+          "system": {
+            "description": "The composed SYSTEM message, as sent.",
+            "type": "string"
+          },
+          "user": {
+            "description": "The composed USER message, as sent.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "consultationId",
+          "agentSlug",
+          "phase",
+          "provider",
+          "locality",
+          "sha256",
+          "createdAt",
+          "system",
+          "user"
+        ],
+        "type": "object"
+      },
+      "ComposedPromptPageResponse": {
+        "properties": {
+          "count": {
+            "example": 42,
+            "type": "number"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ComposedPromptSummaryResponse"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "example": 20,
+            "type": "number"
+          },
+          "page": {
+            "example": 1,
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "count",
+          "page",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "ComposedPromptSummaryResponse": {
+        "properties": {
+          "agentSlug": {
+            "example": "casenote-finalization",
+            "nullable": true,
+            "type": "string"
+          },
+          "consultationId": {
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "ISO time the call was recorded.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "locality": {
+            "enum": [
+              "local",
+              "cloud"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "example": "finalize",
+            "type": "string"
+          },
+          "provider": {
+            "example": "lm-studio",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 (hex) of the plaintext `system + \"\\n\\n\" + user`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "consultationId",
+          "agentSlug",
+          "phase",
+          "provider",
+          "locality",
+          "sha256",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -18875,6 +19053,205 @@
           "changed",
           "changes",
           "stats"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewBlockResponse": {
+        "properties": {
+          "chars": {
+            "description": "Characters of the block kept within its budget.",
+            "example": 5120,
+            "type": "number"
+          },
+          "key": {
+            "example": "transcript",
+            "type": "string"
+          },
+          "truncated": {
+            "description": "Whether the block was cut to its budget.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "chars",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewEgressResponse": {
+        "properties": {
+          "detected": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Detected identifiers by taxonomy label — counts only, never values.",
+            "example": {
+              "medical_record_number": 1,
+              "person": 2
+            },
+            "type": "object"
+          },
+          "redacted": {
+            "description": "Occurrences a CLOUD call would replace with a token; 0 on a local call.",
+            "example": 3,
+            "type": "number"
+          }
+        },
+        "required": [
+          "detected",
+          "redacted"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewExclusionResponse": {
+        "properties": {
+          "key": {
+            "example": "revisit",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "condition_false",
+              "condition_error"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewMessagesResponse": {
+        "properties": {
+          "system": {
+            "description": "The SYSTEM message.",
+            "type": "string"
+          },
+          "user": {
+            "description": "The USER message.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "system",
+          "user"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewRequest": {
+        "properties": {
+          "agentSlug": {
+            "description": "Compose this published TEXT_GENERATION agent`s instruction instead of the one the tenant`s chain resolves.",
+            "example": "casenote-finalization",
+            "type": "string"
+          },
+          "phase": {
+            "description": "Which generation to compose the prompt of.",
+            "enum": [
+              "live",
+              "pre-summary",
+              "finalize"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewResponse": {
+        "properties": {
+          "blocks": {
+            "description": "The data sections of the user message, in order.",
+            "items": {
+              "$ref": "#/components/schemas/PromptPreviewBlockResponse"
+            },
+            "type": "array"
+          },
+          "egressPreview": {
+            "$ref": "#/components/schemas/PromptPreviewEgressResponse"
+          },
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/PromptPreviewExclusionResponse"
+            },
+            "type": "array"
+          },
+          "locality": {
+            "description": "The egress locality of the model that would serve the call; unknown is cloud.",
+            "enum": [
+              "local",
+              "cloud"
+            ],
+            "type": "string"
+          },
+          "providerView": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PromptPreviewMessagesResponse"
+              }
+            ],
+            "description": "What a CLOUD provider would receive: identifiers pseudonymized as `[<LABEL>_<n>]`. `null` on a local call (sent as is).",
+            "nullable": true,
+            "type": "object"
+          },
+          "resolvedFrom": {
+            "description": "Which tier of the prompt chain supplied the instruction.",
+            "example": "agent",
+            "type": "string"
+          },
+          "selected": {
+            "description": "Selected fragment keys of a composite instruction, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "system": {
+            "description": "The composed SYSTEM message (platform rules, instruction, guidance).",
+            "type": "string"
+          },
+          "tokenEstimate": {
+            "$ref": "#/components/schemas/PromptPreviewTokenEstimateResponse"
+          },
+          "user": {
+            "description": "The composed USER message (the delimited data sections).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "system",
+          "user",
+          "locality",
+          "egressPreview",
+          "tokenEstimate",
+          "resolvedFrom",
+          "selected",
+          "excluded",
+          "blocks"
+        ],
+        "type": "object"
+      },
+      "PromptPreviewTokenEstimateResponse": {
+        "properties": {
+          "system": {
+            "description": "Estimated tokens of the system message (characters ÷ 4, rounded up).",
+            "example": 812,
+            "type": "number"
+          },
+          "user": {
+            "description": "Estimated tokens of the user message (characters ÷ 4, rounded up).",
+            "example": 2210,
+            "type": "number"
+          }
+        },
+        "required": [
+          "system",
+          "user"
         ],
         "type": "object"
       },
@@ -35698,7 +36075,8 @@
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
-                "DnaWritingSample"
+                "DnaWritingSample",
+                "ComposedPromptRecord"
               ],
               "type": "string"
             }
@@ -35937,7 +36315,8 @@
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
-                "DnaWritingSample"
+                "DnaWritingSample",
+                "ComposedPromptRecord"
               ],
               "type": "string"
             }
@@ -36177,7 +36556,8 @@
                 "ModelResidencyPolicy",
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
-                "DnaWritingSample"
+                "DnaWritingSample",
+                "ComposedPromptRecord"
               ],
               "type": "string"
             }
@@ -37280,6 +37660,127 @@
         ]
       }
     },
+    "/api/v1/admin/composed-prompts": {
+      "get": {
+        "description": "Newest first, optionally for one consultation. METADATA only (phase, provider, locality, agent, digest, time) — the messages themselves are returned only by the single-record read. Audited.",
+        "operationId": "ComposedPromptAdminController_list",
+        "parameters": [
+          {
+            "description": "Only the records of this consultation.",
+            "in": "query",
+            "name": "consultationId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number (starting from 1).",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Page size.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposedPromptPageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid query."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No tenant in context."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List composed-prompt records",
+        "tags": [
+          "admin-composed-prompts"
+        ]
+      }
+    },
+    "/api/v1/admin/composed-prompts/{id}": {
+      "get": {
+        "description": "The exact system and user messages the call was sent, decrypted from Vault-Transit ciphertext. Audited.",
+        "operationId": "ComposedPromptAdminController_getById",
+        "parameters": [
+          {
+            "description": "Composed-prompt record id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComposedPromptDetailResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such record in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read one composed-prompt record, decrypted",
+        "tags": [
+          "admin-composed-prompts"
+        ]
+      }
+    },
     "/api/v1/admin/consent-grants": {
       "get": {
         "description": "Paginated register of `ConsentGrant` rows in the caller tenant. Filter by `externalPatientId` (trim-normalized, exact-case — Q3), `purpose`, and `state`. `state=ACTIVE` applies the SAME predicate the ABAC choke point evaluates (not revoked and not expired as of now), so an Active row here is exactly a row `assertConsent` would allow at that instant.",
@@ -38129,6 +38630,69 @@
           }
         ],
         "summary": "Server-side, zero-filled new/revisit aggregation over a\ndate range. Scope follows the same model as `list`: a SUPER_ADMIN with\nno working tenant aggregates cross-tenant; everyone else is pinned to their\nCLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not\ncaptured by the `:id` param matcher.",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{consultationId}/prompt-preview": {
+      "post": {
+        "description": "Composes the prompt for `phase` (`live`, `pre-summary`, `finalize`) from the consultation`s own data — optionally with a named agent`s instruction — and returns the system and user messages, the egress locality of the model that would serve the call, the provider view (identifiers pseudonymized as `[<LABEL>_<n>]`, cloud only), detected identifier counts, a token estimate and the composition (selected fragments and data sections). Nothing is generated. Audited.",
+        "operationId": "PromptPreviewController_preview",
+        "parameters": [
+          {
+            "description": "Consultation id",
+            "in": "path",
+            "name": "consultationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptPreviewResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid body, no working tenant, or a prompt variable nothing supplies (`PROMPT_VARIABLE_UNRESOLVED`)."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`PROMPT_INSPECTOR_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation in this tenant, or no such published TEXT_GENERATION agent."
+          },
+          "503": {
+            "description": "PII detection is unavailable (`GUARDRAIL_UNAVAILABLE`)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Preview the prompt a consultation would send",
         "tags": [
           "admin-consultations"
         ]
@@ -67701,6 +68265,10 @@
       "name": "admin-consultations"
     },
     {
+      "description": "The encrypted record of the exact messages each LLM call was sent, kept for incident reconstruction.",
+      "name": "admin-composed-prompts"
+    },
+    {
       "description": "The tenant department tree.",
       "name": "admin-departments"
     },
@@ -67911,6 +68479,10 @@
     {
       "description": "The generic model-registry credential resolver every backend service (nlp, tts, harness, stt) uses for s3:// weight sources. Excluded from the public reference; reachable only with an internal service token.",
       "name": "internal-model-registry"
+    },
+    {
+      "description": "Service-to-service record of the composed messages a harness text call was sent. Excluded from the public reference; reachable only with an internal service token.",
+      "name": "internal-composed-prompts"
     },
     {
       "description": "Liveness, readiness, and dependency health probes.",

@@ -490,13 +490,13 @@ export const PRE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
  * Every pre-summary variable, bound to the trigger's validated context.
  *
  * The bodies themselves are written in the `{{context.<name>}}` grammar and are NOT rewritten:
- * `buildAgentPromptScope` publishes the trigger under BOTH `trigger` and `context`
- * (`agent-prompt-scope.ts`), so `{{context.safe_age}}` already resolves from
+ * `buildPromptScope` publishes the trigger under BOTH `trigger` and `context`
+ * (`@arcaai/workflow-contract prompt-scope.ts`), so `{{context.safe_age}}` already resolves from
  * `trigger.context.safe_age` with no binding at all. The bindings below are declared anyway, for
  * two reasons that are not decoration:
  *
  *  - the bare name and the dotted path must be the SAME value ("`{{age}}` and
- *    `{{context.patientAge}}` are the same value", `agent-prompt-scope.ts` §3.3), and declaring
+ *    `{{context.patientAge}}` are the same value", `@arcaai/workflow-contract prompt-scope.ts` §3.3), and declaring
  *    the binding is how that is stated rather than assumed;
  *  - `publish-findings` cross-checks a template's placeholders against the agent's DECLARED
  *    variables plus the trigger's namespace, so an author editing the body in the Studio sees the

@@ -61,21 +61,23 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
 import {
-  composePrompt,
+  buildPromptScope,
+  composeMessages,
   CORE_PALETTE_KEY,
+  platformRules,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
   selectPromptFragments,
   type ComposableResolvedPrompt,
-  type ComposedPrompt,
+  type ComposeDataBlock,
+  type ComposedMessages,
   type ExpressionValue,
 } from '@arcaai/workflow-contract';
 // TASK-1001 (owner decision 2026-09-23) — the platform-reserved key of a tenant's output-language
 // policy fragment. Declared in `@arcaai/types` so the seed that attaches it and this lane that asks
 // whether it was selected read ONE spelling.
 import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
-import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -330,7 +332,7 @@ class LivePromptUnresolvedError extends Error {
  * so `context.visit_type` selected a fragment on three lanes and was a silent `condition_error` on
  * this one. `trigger` stays the payload verbatim.
  *
- * Throws what `buildAgentPromptScope` throws (an unresolvable `{ path }` binding).
+ * Throws what `buildPromptScope` throws (an unresolvable `{ path }` binding).
  */
 function livePromptScope(
   variables: Record<string, unknown>,
@@ -339,7 +341,7 @@ function livePromptScope(
   contextSchema?: ResolvedTextCandidate['contextSchema'],
 ): Record<string, unknown> {
   const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
-  return buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+  return buildPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
 }
 
 /**
@@ -399,29 +401,30 @@ function outputLanguagePolicySelected(
  * `trigger` still means "this lane has no trigger", and that is now only true of a caller that
  * passes none.
  *
- * TASK-947 §4.1 — the render goes through `composePrompt`, which is what makes a COMPOSITE
- * artifact select its fragments over THIS scope (built once, before any condition), render each
- * fragment on its own and join them. The two single-body forms take that function's other branch,
- * which is `renderTemplate` over this same scope — byte-identical to what this function did
- * before. A fragment names itself in an error as `agent:<slug>#<key>`, so an unresolved variable
- * inside one still degrades the node with the PATH named, exactly as §3.2 requires.
+ * TASK-947 §4.1 — the render goes through `composeMessages` (and through it `composePrompt`),
+ * which is what makes a COMPOSITE artifact select its fragments over THIS scope (built once, before
+ * any condition), render each fragment on its own and join them. A fragment names itself in an
+ * error as `agent:<slug>#<key>`, so an unresolved variable inside one still degrades the node with
+ * the PATH named, exactly as §3.2 requires.
  */
-function renderLivePrompt(
+function composeLiveMessages(
   resolvedPrompt: ComposableResolvedPrompt,
   variables: Record<string, unknown>,
   agentSlug: string,
+  parts: LivePromptParts,
+  corrective?: string,
   trigger?: Readonly<Record<string, unknown>> | null,
   contextSchema?: ResolvedTextCandidate['contextSchema'],
-): ComposedPrompt {
+): ComposedMessages {
   try {
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
     const scope = livePromptScope(variables, agentSlug, trigger, contextSchema);
-    return composePrompt(resolvedPrompt, scope, { templateRef: `agent:${agentSlug}` });
+    return composeLivePromptParts(resolvedPrompt, scope, `agent:${agentSlug}`, parts, corrective);
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
-      throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.path} (agent '${agentSlug}')`);
+      throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.paths.join(', ')} (agent '${agentSlug}')`);
     }
     if (error instanceof PromptTemplateSyntaxError) {
       throw new LivePromptUnresolvedError(`core.agent: prompt_template_syntax: ${error.message} (agent '${agentSlug}')`);
@@ -453,6 +456,42 @@ function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, ins
   if (resolvedPrompt && resolvedPrompt.source === 'composite') return resolvedPrompt;
   const content = resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
   return content ? { source: 'inline', content } : null;
+}
+
+/**
+ * One live turn's prompt, before composition: the per-flush INSTRUCTIONS (the template's stable
+ * lead-in, the turn directive, the operating frame and the turn contract — tenant-governed or
+ * platform-authored text) and the per-flush DATA (transcript, the note so far, the clinician's and
+ * the client's material), each a delimited block in the user message.
+ *
+ * The blocks keep the order the single user prompt used to carry them in — the stable lead-in's
+ * prefix-cache ordering — and the instructions keep theirs.
+ */
+export interface LivePromptParts {
+  readonly instructions: string;
+  readonly blocks: readonly ComposeDataBlock[];
+}
+
+/**
+ * The ONE composition of a live turn: platform rules → the agent's instruction → the turn's
+ * instructions (+ the bounded corrective, last, so the stable layers stay byte-identical between
+ * an original call and its repair) in the SYSTEM message; the turn's data in the USER message.
+ */
+function composeLivePromptParts(
+  resolvedPrompt: ComposableResolvedPrompt,
+  scope: Readonly<Record<string, unknown>>,
+  templateRef: string,
+  parts: LivePromptParts,
+  corrective?: string,
+): ComposedMessages {
+  return composeMessages({
+    platformRules: platformRules(),
+    resolvedPrompt,
+    scope,
+    outputContract: [parts.instructions, corrective?.trim()].filter((part): part is string => !!part).join('\n\n'),
+    dataBlocks: parts.blocks,
+    templateRef,
+  });
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -3364,7 +3403,7 @@ return 0`;
     // TASK-1001 (owner decision 2026-09-23) — the platform-default OUTPUT language, frozen on the
     // session. Resolved here, before either prompt is built, so both branches state the same one.
     const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
-    const promptText = this.buildTextUserPrompt(
+    const promptParts = this.buildLivePromptParts(
       priorNote,
       delta || transcript,
       notes,
@@ -3474,7 +3513,7 @@ return 0`;
     const graph = lane
       ? await this.runGraphLane(session, lane, {
           buildPrompt: (sourceText, policySelected) =>
-            this.buildTextUserPrompt(
+            this.buildLivePromptParts(
               priorNote,
               sourceText,
               notes,
@@ -3551,7 +3590,7 @@ return 0`;
           generate: async (retry) => {
             const startedAt = Date.now();
             const { text, stats, structured } = await this.callText(
-              promptText,
+              promptParts,
               session.tenantId,
               signal,
               retry?.corrective,
@@ -4073,7 +4112,7 @@ return 0`;
        * the agent this node runs, which only the node knows: selected ⇒ the frame states no
        * language (the tenant's text owns it); not selected ⇒ it states the platform default.
        */
-      buildPrompt: (sourceText: string, policySelected: boolean) => string;
+      buildPrompt: (sourceText: string, policySelected: boolean) => LivePromptParts;
       agent: FrozenLiveAgentSnapshot;
       template: ResolvedDocumentTemplate;
       signal: AbortSignal;
@@ -4176,7 +4215,7 @@ return 0`;
         // selected. Asked of the PRIMARY: it is the candidate that serves unless it fails, and the
         // prompt is built once for the whole fallback walk. The assigned-agent path
         // (`textAgent` undefined) serves a single-template snapshot, so nothing can be selected.
-        const promptText = ctx.buildPrompt(
+        const promptParts = ctx.buildPrompt(
           input.sourceText,
           textAgent
             ? outputLanguagePolicySelected(textAgent.spec.primary, textAgent.overrides, ctx.runContext.trigger as Readonly<Record<string, unknown>>)
@@ -4194,7 +4233,7 @@ return 0`;
             generate: async (retry) => {
               const startedAt = Date.now();
               const { text, stats, structured } = await this.callText(
-                promptText,
+                promptParts,
                 session.tenantId,
                 signal,
                 retry?.corrective,
@@ -4649,7 +4688,7 @@ return 0`;
    */
   /**
    * TASK-943 — the run context the realtime lane evaluates guards against AND every `core.agent`
-   * renders its instruction from (its `trigger` root, via `buildAgentPromptScope`).
+   * renders its instruction from (its `trigger` root, via `buildPromptScope`).
    *
    * ## The defect this replaced
    *
@@ -6091,115 +6130,84 @@ return 0`;
     return churn;
   }
 
-  private buildTextUserPrompt(
+  /**
+   * One live turn's prompt as {@link LivePromptParts}: the INSTRUCTIONS and the delimited DATA,
+   * composed into the system and user messages by `composeLivePromptParts`.
+   *
+   * Instructions, in order: the stable lead-in (byte-identical across every flush of a session —
+   * the prefix-cache anchor), the turn directive, the elision note (only when something was
+   * elided), the REFERENCE-ONLY rule (only when a reference block is present), the operating frame
+   * (the turn's procedure) and the turn contract LAST (the output contract, nearest the generation
+   * point, where a model honours it most reliably).
+   *
+   * Data blocks, in the order the single user prompt used to carry them: the transcript (so far /
+   * since the last update), the note so far, the clinician's notes/labs, then the CLIENT-context
+   * blocks — `Recent Vitals` and `PREVIOUS CASE NOTES SUMMARY` (the department templates'
+   * source-of-truth T3/T4 tiers, labelled with the exact names those templates give them), the
+   * client's lab results and the patient's EARLIER visits today. An empty block is skipped, so a
+   * session with none of the optional material produces exactly the blocks it did before.
+   */
+  private buildLivePromptParts(
     priorNote: string,
     delta: string,
     notes: string,
     elided = false,
     stablePrefix: string = LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
-    // the resolved template's own title. The three blocks below used
-    // to say "SOAP note" in prose while the response schema described whatever
-    // the tenant actually published; a model told to update a SOAP note and
-    // decoded against a discharge summary is being given two different jobs.
+    // the resolved template's own title, so the instructions name the document the response
+    // schema actually describes.
     documentTitle: string = PLATFORM_TEMPLATE.compiled.title,
-    // TASK-932 §3.7 — the operating frame, already rendered. Passed in rather than built here so
-    // this method stays a pure string assembly and the frame is testable on its own.
+    // TASK-932 §3.7 — the operating frame, already rendered.
     operatingFrame = '',
     // TASK-939 OD-2(a) — the turn contract's prose half (`turnInstruction`), already rendered.
-    // Trailing and defaulted so every positional fixture keeps its arity. Empty ⇒ the pre-ticket
-    // whole-document prompt, which is what the durable/compat callers still want.
+    // Empty ⇒ the pre-ticket whole-document directive.
     turnContract = '',
-    // What the CLIENT sent at `open`, already rendered by the shared reader: the measured
-    // readings line and the prior-visit history. Both trailing and optional, so every existing
-    // positional fixture keeps its arity and a session with neither produces a byte-identical
-    // prompt.
+    // What the CLIENT sent at `open`, already rendered by the shared reader.
     clientVitals?: string,
     clientPreviousVisits?: string,
-    // TASK-1020 — the same-day prequel and the client's lab results. Trailing and optional for the
-    // same reason as the two above: absent or blank ⇒ a byte-identical prompt.
+    // TASK-1020 — the same-day prequel and the client's lab results.
     carry?: { sameDayPrequel?: string; testResults?: string },
-  ): string {
-    const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
+  ): LivePromptParts {
     const hasPriorNote = priorNote.trim().length > 0;
-    // In windowed mode an over-cap backlog drops its oldest part.
-    // Say so: a partial window presented as the whole encounter would invite the
-    // model to treat absent findings as absent from the visit. Appended AFTER the
-    // stable prefix, and only when something was actually elided, so both the
-    // prefix-cache-stable lead-in and the `whole`-mode prompt stay untouched.
-    const elisionBlock = elided
-      ? `\n\nNOTE: earlier transcript from this update was elided to fit the context window; the ${documentTitle} above already reflects it. Do not treat its absence as new information.`
-      : '';
-
-    // prefix-cache-friendly ordering:
-    //   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
-    // The leading stable-system block is identical across the first flush and
-    // every update flush (see LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX), so the engine
-    // reuses the cached KV of that prefix. The mode-specific directive that
-    // used to LEAD the prompt (breaking the shared prefix between first/update
-    // flushes) is now the trailing block.
-    const transcriptBlock = hasPriorNote ? `\n\nNew transcript since last update:\n${delta}` : `\n\nTranscript so far:\n${delta}`;
-    const currentNoteBlock = hasPriorNote ? `\n\nCurrent ${documentTitle} so far:\n${priorNote}` : '';
-    // TASK-939 — under the turn contract the instruction is about the CONTRIBUTION, not about the
-    // document: "update the existing note" invited the model to hand back the note, which is what
-    // it did. `turnContract` (appended last) carries the field-level rules; this line only has to
-    // say what the turn is FOR.
+    // TASK-939 — under the turn contract the directive is about the CONTRIBUTION, not about the
+    // document: "update the existing note" invited the model to hand back the note.
     const deltaInstruction = turnContract
       ? hasPriorNote
-        ? `\n\nReport what the new transcript adds to the ${documentTitle} above. Do not reproduce the note.`
-        : `\n\nThis is the first turn of this ${documentTitle}: report what the transcript above establishes.`
+        ? `Report what the new transcript adds to the ${documentTitle} in the data sections. Do not reproduce the note.`
+        : `This is the first turn of this ${documentTitle}: report what the transcript in the data sections establishes.`
       : hasPriorNote
-        ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
-        : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
-
-    // The frame goes LAST, after the delta instruction: it is the turn's procedure, and a
-    // trailing block is what the model reads immediately before generating. It is deliberately
-    // NOT part of `stablePrefix` — the prefix is byte-identical across every flush of a session
-    // so the engine can reuse its cached KV, and the frame carries the same bytes for the same
-    // session, so appending it here costs the cache nothing while keeping the prefix's contract
-    // (tenant-governed prose + compiled structure) unmuddied.
-    // `turnContract` is LAST of all — after the operating frame — because it is the output
-    // contract, and the nearest instruction to the generation point is the one a model honours
-    // most reliably. It is per-session-stable like the frame, so the prefix cache is unaffected.
-    // The two CLIENT-context blocks. Labelled with the exact names the department templates'
-    // own source-of-truth protocol gives them — `Recent Vitals` is its T3 tier and
-    // `PREVIOUS CASE NOTES SUMMARY` its T4 — so the rules those templates already state about
-    // each tier bind to the block rather than describing material that is not in the prompt.
-    // Appended here rather than written into the bodies, so no seeded template is regenerated.
-    //
-    // Placed AFTER the transcript and note blocks and BEFORE the operating frame: they are
-    // per-session-stable like the frame, so the prefix cache is unaffected, and the turn's own
-    // procedure and output contract stay nearest the generation point, where a model honours
-    // them most reliably.
-    const clientVitalsBlock = clientVitals?.trim() ? `\n\nRecent Vitals:\n${clientVitals.trim()}` : '';
-    const clientPreviousVisitsBlock = clientPreviousVisits?.trim() ? `\n\nPREVIOUS CASE NOTES SUMMARY:\n${clientPreviousVisits.trim()}` : '';
-    // TASK-1020 — appended the same way, after the prior case notes: the client's lab results, then
-    // the patient's EARLIER visits today (dated, attributed blocks from `same-day-prequel.ts`).
-    const testResultsBlock = carry?.testResults?.trim() ? `\n\nTEST RESULTS:\n${carry.testResults.trim()}` : '';
-    const sameDayPrequelBlock = carry?.sameDayPrequel?.trim() ? `\n\nSAME-DAY EARLIER VISIT(S):\n${carry.sameDayPrequel.trim()}` : '';
-    // TASK-1022 — the three blocks above are REFERENCE, not dictation. A live replay's turn 1 ("Your
-    // reports are back.") copied them into today's sections on its own. One rule line, stated once
-    // before the first of them; absent when none is present, so such a prompt stays byte-identical.
-    // `Recent Vitals` stays outside the frame: the templates' VITALS rule already governs it.
-    const referenceRuleBlock =
-      clientPreviousVisitsBlock || testResultsBlock || sameDayPrequelBlock
-        ? "\n\nREFERENCE ONLY — the blocks below are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
+        ? `Update the existing ${documentTitle} in the data sections using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
+        : `From the transcript and any clinician notes/labs in the data sections, produce the running ${documentTitle} now.`;
+    // In windowed mode an over-cap backlog drops its oldest part. Say so: a partial window
+    // presented as the whole encounter would invite the model to treat absent findings as absent
+    // from the visit.
+    const elisionNote = elided
+      ? `NOTE: earlier transcript from this update was elided to fit the context window; the ${documentTitle} in the data sections already reflects it. Do not treat its absence as new information.`
+      : '';
+    const previousVisits = clientPreviousVisits?.trim() ?? '';
+    const testResults = carry?.testResults?.trim() ?? '';
+    const sameDayPrequel = carry?.sameDayPrequel?.trim() ?? '';
+    // TASK-1022 — the three reference blocks are REFERENCE, not dictation. One rule line, absent
+    // when none is present. `Recent Vitals` stays outside it: the templates' VITALS rule governs it.
+    const referenceRule =
+      previousVisits || testResults || sameDayPrequel
+        ? "REFERENCE ONLY — the PREVIOUS CASE NOTES SUMMARY, TEST RESULTS and SAME-DAY EARLIER VISIT(S) data sections are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
         : '';
 
-    return (
-      stablePrefix +
-      transcriptBlock +
-      currentNoteBlock +
-      elisionBlock +
-      deltaInstruction +
-      notesBlock +
-      clientVitalsBlock +
-      referenceRuleBlock +
-      clientPreviousVisitsBlock +
-      testResultsBlock +
-      sameDayPrequelBlock +
-      operatingFrame +
-      turnContract
-    );
+    return {
+      instructions: [stablePrefix, deltaInstruction, elisionNote, referenceRule, operatingFrame, turnContract]
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .join('\n\n'),
+      blocks: [
+        { key: 'transcript', label: hasPriorNote ? 'New transcript since last update' : 'Transcript so far', content: delta },
+        { key: 'current_note', label: `Current ${documentTitle} so far`, content: hasPriorNote ? priorNote : null },
+        { key: 'clinician_notes', label: 'Clinician notes / labs', content: notes || null },
+        { key: 'recent_vitals', label: 'Recent Vitals', content: clientVitals?.trim() || null },
+        { key: 'previous_case_notes_summary', label: 'PREVIOUS CASE NOTES SUMMARY', content: previousVisits || null },
+        { key: 'test_results', label: 'TEST RESULTS', content: testResults || null },
+        { key: 'same_day_prequel_summary', label: 'SAME-DAY EARLIER VISIT(S)', content: sameDayPrequel || null },
+      ],
+    };
   }
 
   /**
@@ -6605,7 +6613,7 @@ return 0`;
   }
 
   private async callText(
-    promptText: string,
+    promptParts: LivePromptParts,
     tenantId: string,
     signal?: AbortSignal,
     corrective?: string,
@@ -6639,7 +6647,7 @@ return 0`;
       for (const candidate of candidates) {
         try {
           return await this.callTextCandidate(
-            promptText,
+            promptParts,
             tenantId,
             candidate,
             textAgent.overrides,
@@ -6702,12 +6710,21 @@ return 0`;
     // the bounded auto-repair retry appends the corrective
     // instruction AFTER the stable prompt so the prefix-cache-friendly lead-in
     // (Phase 4D.1) stays byte-identical between the original and repair calls.
+    // The frozen snapshot's system prompt (identical to the exported constant whenever no agent
+    // binding customized it — the paired sha256 guards prove the constant and the seeded SYSTEM
+    // default carry the same bytes), composed through the ONE composer. It is the session's frozen
+    // text, rendered over an empty scope: a placeholder in it cannot resolve here, and refusing
+    // by name beats sending a literal `{{…}}` to the model.
+    const composed = composeLivePromptParts(
+      { source: 'inline', content: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT },
+      buildPromptScope({}),
+      'live:assigned-agent',
+      promptParts,
+      corrective,
+    );
     const payload = {
-      prompt: corrective ? `${promptText}${corrective}` : promptText,
-      // The frozen snapshot's system prompt; identical to the exported constant
-      // whenever no agent binding customized it (the paired sha256 guards prove
-      // the constant and the seeded SYSTEM default carry the same bytes).
-      system_prompt: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
+      prompt: composed.user,
+      system_prompt: composed.system,
       provider,
       model,
       max_tokens: this.realtimeBudgets.textMaxTokens,
@@ -6743,7 +6760,7 @@ return 0`;
    * running note, so the document shape, not the agent's `responseFormat`, is the contract.
    */
   private async callTextCandidate(
-    promptText: string,
+    promptParts: LivePromptParts,
     tenantId: string,
     candidate: ResolvedTextCandidate,
     overrides: NodeOverrides,
@@ -6762,12 +6779,19 @@ return 0`;
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
     const instruction = asRecord(candidate.instruction);
     const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
-    // TASK-947 §4.1 — ONE render seam for all three instruction forms. `composed` is `null` only
-    // when the candidate carries no instruction body at all, which is the pre-947 `LIVE_DOCUMENT_
-    // SYSTEM_PROMPT` case.
+    // TASK-947 §4.1 — ONE render seam for all three instruction forms. A candidate with no
+    // instruction body at all serves `LIVE_DOCUMENT_SYSTEM_PROMPT`, the pre-947 case.
     const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
-    const composed = promptSource ? renderLivePrompt(promptSource, variables, candidate.agent.slug, trigger, candidate.contextSchema) : null;
-    if (composed && composed.excluded.length > 0) {
+    const composed = composeLiveMessages(
+      promptSource ?? { source: 'inline', content: LIVE_DOCUMENT_SYSTEM_PROMPT },
+      variables,
+      candidate.agent.slug,
+      promptParts,
+      corrective,
+      trigger,
+      candidate.contextSchema,
+    );
+    if (composed.excluded.length > 0) {
       // OD-11 — KEY + REASON only. A `when` and a fragment body are authored clinical text; the
       // point of naming the exclusions at all is that an author can tell "the branch was false"
       // from "the branch could not be read", and both fit in the reason.
@@ -6779,7 +6803,7 @@ return 0`;
     }
     // Selected KEYS, and only for a composite: a single-body agent has no fragments to report, and
     // `[]` there would read as "every fragment was excluded".
-    const promptFragments = promptSource?.source === 'composite' && composed ? [...composed.selected] : null;
+    const promptFragments = promptSource?.source === 'composite' ? [...composed.selected] : null;
     // TASK-876 — the RESOLVED candidate's own credential is authoritative for this request.
     // Without it `postTextGenerate`'s enrichment recomputes `provider_overrides` from the CLS
     // tenant, so a call served by the SYSTEM platform default would be forwarded with the
@@ -6789,8 +6813,8 @@ return 0`;
     const frequencyPenalty = numberOrUndefined(generation.frequencyPenalty);
     const presencePenalty = numberOrUndefined(generation.presencePenalty);
     const payload = {
-      prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt: composed?.prompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
+      prompt: composed.user,
+      system_prompt: composed.system,
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
@@ -6970,6 +6994,7 @@ return 0`;
       deploymentKind: egress?.deploymentKind ?? null,
       consultationId: consultationId ?? null,
       context: egress?.context ?? null,
+      phase: 'live',
     });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
@@ -7049,7 +7074,7 @@ return 0`;
       stream: false as const,
     };
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
@@ -7121,7 +7146,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
@@ -7227,7 +7252,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
     // (this method is not given one), so the row is attributed to the tenant alone; threading

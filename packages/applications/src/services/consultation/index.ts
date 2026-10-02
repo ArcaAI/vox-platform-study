@@ -12,6 +12,8 @@ export * from './timeline';
 // behind `GET admin/consultations/:id/telemetry`.
 export * from './telemetry';
 export * from './prompt';
+// The Prompt Inspector — a dry run of the prompt a consultation would send (`admin/consultations/:id/prompt-preview`).
+export * from './prompt-preview';
 // the VISIT-TYPE vocabulary — the platform's two visit types, one shared
 // definition instead of a derived literal in nine places (TASK-882: no longer a
 // tenant-configurable catalogue).

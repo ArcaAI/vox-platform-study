@@ -402,7 +402,7 @@ describe('AgentController — the guardrail disposition on the ledger row (§3.1
 
   it('blocking: stamps `screened` even when a stale resolver answer still carries the retired opt-out', async () => {
     const { controller, usageLedger, invocation, resolver } = make();
-    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } });
+    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } } as typeof RESOLVED);
     invocation.invokeText.mockResolvedValue(usageResult());
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, undefined);
     await new Promise((resolve) => setImmediate(resolve));
@@ -421,7 +421,7 @@ describe('AgentController — the guardrail disposition on the ledger row (§3.1
 
   it('stream: the same disposition rides the `generate.stream` row', async () => {
     const { controller, usageLedger, invocation, resolver } = make();
-    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } });
+    resolver.resolve.mockResolvedValue({ ...RESOLVED, guardrail: { enabled: false } } as typeof RESOLVED);
     const stream = new PassThrough();
     invocation.invokeText.mockResolvedValue({ stream });
     await controller.invoke('clinic-summarizer', { text: 'hi' }, fakeRes() as never, 'stream');

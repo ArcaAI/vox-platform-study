@@ -58,13 +58,14 @@ beforeEach(() => {
 });
 
 describe('TASK-1020 — same_day_prequel_summary', () => {
-  it('substitutes {{context.same_day_prequel_summary}} in place, with no appended duplicate', async () => {
+  it('points {{context.same_day_prequel_summary}} at its ONE data section', async () => {
     withBody('Earlier today:\n{{context.same_day_prequel_summary}}\n' + PLAIN_BODY);
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({ ...base, sameDayPrequelSummary: PREQUEL });
+    const { userPrompt, systemPrompt } = await service.assemble({ ...base, sameDayPrequelSummary: PREQUEL });
 
-    expect(userPrompt).toContain(`Earlier today:\n${PREQUEL}`);
+    expect(systemPrompt).toContain('Earlier today:\n[see the SAME-DAY EARLIER VISIT(S) data section below]');
+    expect(systemPrompt).not.toContain('MORNING-NOTE');
     expect(userPrompt.split('MORNING-NOTE').length - 1).toBe(1);
   });
 
@@ -80,9 +81,9 @@ describe('TASK-1020 — same_day_prequel_summary', () => {
     withBody('Earlier today: [{{context.same_day_prequel_summary}}] ' + PLAIN_BODY);
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({ ...base });
+    const { userPrompt, systemPrompt } = await service.assemble({ ...base });
 
-    expect(userPrompt).toContain('Earlier today: [] ');
+    expect(systemPrompt).toContain('Earlier today: [] ');
     expect(userPrompt).not.toContain('same_day_prequel_summary');
   });
 
@@ -98,13 +99,13 @@ describe('TASK-1020 — same_day_prequel_summary', () => {
 });
 
 describe('TASK-1020 — formatted_test_results', () => {
-  it('fills v1’s {{context.formatted_test_results}} from the investigations kind', async () => {
+  it('points v1’s {{context.formatted_test_results}} at the TEST RESULTS section built from the investigations kind', async () => {
     withBody(V1_BODY);
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({ ...base, promptType: 'pre-summary', testResults: RESULTS });
+    const { userPrompt, systemPrompt } = await service.assemble({ ...base, promptType: 'pre-summary', testResults: RESULTS });
 
-    expect(userPrompt).toContain(`- Tests: ${RESULTS}`);
+    expect(systemPrompt).toContain('- Tests: [see the TEST RESULTS data section below]');
     expect(userPrompt.split('Haemoglobin').length - 1).toBe(1);
   });
 
@@ -112,9 +113,9 @@ describe('TASK-1020 — formatted_test_results', () => {
     withBody(V1_BODY);
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({ ...base, promptType: 'pre-summary' });
+    const { systemPrompt } = await service.assemble({ ...base, promptType: 'pre-summary' });
 
-    expect(userPrompt).toContain('- Tests: \n');
+    expect(systemPrompt).toContain('- Tests: \n');
   });
 
   it('appends a TEST RESULTS data block on a body that inlines nothing', async () => {

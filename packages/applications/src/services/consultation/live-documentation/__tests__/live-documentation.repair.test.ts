@@ -107,9 +107,15 @@ describe('LiveDocumentationService — bounded JSON auto-repair (Phase 4D.3)', (
     expect(payload?.runningSummary).toContain('amlodipine');
 
     // The corrective retry appended the seeded CORRECTIVE_RETRY instruction.
-    const generateBodies = http.axiosRef.post.mock.calls.filter((c) => String(c[0]).includes('/generate')).map((c) => c[1] as { prompt: string });
-    expect(generateBodies[0].prompt).not.toContain('REVISE STRICTLY');
-    expect(generateBodies[1].prompt).toContain('REVISE STRICTLY');
+    // The corrective is an INSTRUCTION, appended last to the system message, so every stable layer
+    // before it is byte-identical between the original call and the repair.
+    const generateBodies = http.axiosRef.post.mock.calls
+      .filter((c) => String(c[0]).includes('/generate'))
+      .map((c) => c[1] as { prompt: string; system_prompt: string });
+    expect(generateBodies[0].system_prompt).not.toContain('REVISE STRICTLY');
+    expect(generateBodies[1].system_prompt).toContain('REVISE STRICTLY');
+    expect(generateBodies[1].system_prompt.startsWith(generateBodies[0].system_prompt)).toBe(true);
+    expect(generateBodies[1].prompt).toBe(generateBodies[0].prompt);
 
     // Both the original and the repair TEXT calls are recorded as ordered LLM_CALL steps.
     const steps = recordedSteps(trajectory);

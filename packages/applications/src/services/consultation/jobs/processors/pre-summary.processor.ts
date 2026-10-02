@@ -379,6 +379,7 @@ export class PreSummaryProcessor extends WorkerHost {
       await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, {
         deploymentKind: deploymentKind ?? null,
         consultationId: consultationId ?? null,
+        phase: 'pre-summary',
       });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
       // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — `tenantId` is the

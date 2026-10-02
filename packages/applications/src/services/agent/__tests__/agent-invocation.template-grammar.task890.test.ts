@@ -24,6 +24,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type { ResolvedAgent } from '@arcaai/types';
 import { AgentInvocationService } from '../agent-invocation.service';
+import { asInputBlock, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 
@@ -82,7 +83,7 @@ describe('AgentInvocationService renders the instruction through the shared gram
   it('resolves a dotted `input.*` path from the request body', async () => {
     await service().invokeText(withPrompt('Summarise: {{input.text}} for ward {{ward}}.'), TENANT, { text: 'a cough' }, 'blocking');
 
-    expect(sentBody().system_prompt).toBe('Summarise: a cough for ward 3.');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Summarise: a cough for ward 3.'));
   });
 
   it('resolves a dotted `context.*` path from the request context', async () => {
@@ -93,13 +94,13 @@ describe('AgentInvocationService renders the instruction through the shared gram
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('Patient Ada, age 41.');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Patient Ada, age 41.'));
   });
 
   it('lets the caller’s `variables` win over the agent’s bound ones', async () => {
     await service().invokeText(withPrompt('Ward {{ward}}'), TENANT, { text: 't', variables: { ward: '7' } }, 'blocking');
 
-    expect(sentBody().system_prompt).toBe('Ward 7');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Ward 7'));
   });
 
   it('refuses an undeclared, undefaulted path with a 400 that names it — nothing is sent', async () => {
@@ -112,13 +113,13 @@ describe('AgentInvocationService renders the instruction through the shared gram
   it('honours `default("…")` instead of refusing', async () => {
     await service().invokeText(withPrompt('{{context.absent | default("n/a")}}'), TENANT, { text: 't', context: {} }, 'blocking');
 
-    expect(sentBody().system_prompt).toBe('n/a');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('n/a'));
   });
 
   it('leaves a single brace VERBATIM — the deleted grammar has no fallback pass', async () => {
     await service().invokeText(withPrompt('Language: {language_name}'), TENANT, { text: 't' }, 'blocking');
 
-    expect(sentBody().system_prompt).toBe('Language: {language_name}');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Language: {language_name}'));
   });
 });
 
@@ -185,7 +186,7 @@ describe('the invocation itself refuses a context the bound schema does not admi
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('Age 41');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Age 41'));
   });
 });
 
@@ -250,7 +251,7 @@ describe('the single-kind `context` envelope (J3-5)', () => {
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('Patient age 41.');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Patient age 41.'));
   });
 
   it('also renders from the ENVELOPE form, so one prompt is portable from a workflow trigger', async () => {
@@ -261,7 +262,7 @@ describe('the single-kind `context` envelope (J3-5)', () => {
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('Patient age 41.');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Patient age 41.'));
   });
 
   it('leaves a MULTI-kind envelope verbatim — a flat payload there is still a violation', () => {

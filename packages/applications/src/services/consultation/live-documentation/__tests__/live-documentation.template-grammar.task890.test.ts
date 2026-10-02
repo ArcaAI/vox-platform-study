@@ -7,7 +7,7 @@
  *  - **§2.4 flavours 5 vs 6.** The realtime lane rendered the SAME `core.agent` node with a flat
  *    `variables[key]` lookup while the durable lane resolved DOTTED paths, so a prompt that
  *    worked in a Temporal run emitted a literal `{{…}}` on the live lane. Both now render
- *    through `renderTemplate` over the scope `buildAgentPromptScope` builds.
+ *    through `renderTemplate` over the scope `buildPromptScope` builds.
  *  - **§2.7 #6 / BLOCKER #7.** This lane posts straight to `apps/text` and recorded NOTHING: a
  *    production LLM path that billed nothing and could not be quota-limited. Every call is now
  *    preceded by `assertMeterQuota('monthlyLlmTokens')` and followed by one `generate` row
@@ -22,6 +22,7 @@ import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gat
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
 import type { ResolvedWorkflowAssignment } from '../../../workflow-assignment/IWorkflowAssignmentService';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../../agent/text-generation-spec';
+import { agentSystemHead, dataBlock, headOf, liveSystemHead } from './live-compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const CID = 'consultation-890';
@@ -200,35 +201,35 @@ describe('the realtime core.agent lane renders the agent instruction through the
     const { service, post } = buildService(withPrompt('Patient {{patient.name}}, ward {{patient.ward}}.', { patient: { name: 'Ada', ward: '3' } }));
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('Patient Ada, ward 3.');
+    expect(headOf(calls[0]?.system_prompt, 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
   });
 
   it('exposes the bound map under `variables.*`, as the durable scope does', async () => {
     const { service, post } = buildService(withPrompt('Tone: {{variables.tone}}', { tone: 'formal' }));
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('Tone: formal');
+    expect(headOf(calls[0]?.system_prompt, 'Tone: formal')).toBe(agentSystemHead('Tone: formal'));
   });
 
   it('lets the node’s `overrides.promptVariables` win over the agent’s own', async () => {
     const { service, post } = buildService(withPrompt('Ward {{ward}}', { ward: '3' }), { overrides: { promptVariables: { ward: '7' } } });
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('Ward 7');
+    expect(headOf(calls[0]?.system_prompt, 'Ward 7')).toBe(agentSystemHead('Ward 7'));
   });
 
   it('honours `default("…")`', async () => {
     const { service, post } = buildService(withPrompt('{{absent | default("n/a")}}'));
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('n/a');
+    expect(headOf(calls[0]?.system_prompt, 'n/a')).toBe(agentSystemHead('n/a'));
   });
 
   it('leaves a single brace VERBATIM — no fallback pass over the deleted grammar', async () => {
     const { service, post } = buildService(withPrompt('Language: {language_name}'));
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('Language: {language_name}');
+    expect(headOf(calls[0]?.system_prompt, 'Language: {language_name}')).toBe(agentSystemHead('Language: {language_name}'));
   });
 
   it('degrades the node on an unresolved variable WITHOUT calling TEXT or walking the fallback chain', async () => {

@@ -103,6 +103,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'DnaUsageRecord',
   'DnaWritingSample',
   'PromptUsageRecord',
+  // composed-prompt.prisma (1) — the per-call prompt record (PHI ciphertext).
+  'ComposedPromptRecord',
   // prompt-template.prisma (2)
   'PromptTemplate',
   'PromptVersion',

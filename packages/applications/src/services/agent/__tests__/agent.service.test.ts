@@ -143,6 +143,12 @@ function agent(overrides: Record<string, unknown> = {}) {
   return base as never;
 }
 
+/** The report persisted by a REFUSED publish (the row stays DRAFT, the report is still stored). */
+function refusedReport(): { blocking: boolean; findings: Array<{ code: string; severity: string; message: string }> } {
+  const persisted = mockAgentRepository.update.mock.calls.at(-1)?.[1] as { validationReport: unknown } | undefined;
+  return persisted?.validationReport as { blocking: boolean; findings: Array<{ code: string; severity: string; message: string }> };
+}
+
 function makeService() {
   return new AgentService(
     mockAgentRepository as never,
@@ -370,14 +376,13 @@ describe('publish — the resolved prompt is checked as a template', () => {
     expect(persisted.validationReport.blocking).toBe(true);
   });
 
-  it('records PROMPT_VARIABLE_UNDECLARED as a WARNING and still publishes (release 1 ramp)', async () => {
+  it('REFUSES PROMPT_VARIABLE_UNDECLARED as an ERROR — a reference nothing declares blocks publish', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(withPrompt('Summarise for {{context.patientAge}}'));
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
-    const published = await makeService().publish('agent-1', {});
-    expect(published.status).toBe('PUBLISHED');
-    const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
-    expect(report.blocking).toBe(false);
-    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', severity: 'WARNING' }));
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'PROMPT_VARIABLE_UNDECLARED' } });
+    const report = refusedReport();
+    expect(report.blocking).toBe(true);
+    expect(report.findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', severity: 'ERROR' }));
   });
 
   it('says nothing about a reference the agent`s own `instruction.variables` declares', async () => {
@@ -406,9 +411,8 @@ describe('publish — the resolved prompt is checked as a template', () => {
       }),
     );
     mockAgentRepository.findOwnActiveBySlug.mockResolvedValue(null);
-    const published = await makeService().publish('agent-1', {});
-    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
-    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'PROMPT_VARIABLE_UNDECLARED' } });
+    const undeclared = refusedReport().findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(undeclared).toHaveLength(1);
     expect(undeclared[0]?.message).toContain('input.nope');
   });
@@ -792,9 +796,8 @@ describe('publish — the bound context schema (§3.4)', () => {
       },
     });
 
-    const published = await makeService().publish('agent-1', {});
-    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
-    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'PROMPT_VARIABLE_UNDECLARED' } });
+    const undeclared = refusedReport().findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(undeclared).toHaveLength(1);
     expect(undeclared[0]?.message).toContain('context.absent');
     // The seeded bridge kind does NOT close itself (`fields: { type: 'object', properties }` with
@@ -832,9 +835,8 @@ describe('publish — the bound context schema (§3.4)', () => {
       versionId: 'schema-1-v1',
       payloadSchema: PAYLOAD,
     });
-    const published = await makeService().publish('agent-1', {});
-    const report = published.validationReport as unknown as { findings: Array<{ code: string; message: string }> };
-    const undeclared = report.findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
+    await expect(makeService().publish('agent-1', {})).rejects.toMatchObject({ response: { code: 'PROMPT_VARIABLE_UNDECLARED' } });
+    const undeclared = refusedReport().findings.filter((finding) => finding.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(undeclared).toHaveLength(1);
     expect(undeclared[0]?.message).toContain('context.absent');
   });

@@ -53,7 +53,7 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import { selectAuthoritativeNoteText, truncatePriorVisitSummary } from './prior-visit-summary';
 import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone } from './same-day-prequel';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
-import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
+import { PromptAssemblyService, type AssembledPrompt, type NerEntityForPrompt, type PromptAssemblyParams } from '../prompt/prompt-assembly.service';
 import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
@@ -1315,150 +1315,8 @@ export class HarnessInternalService extends BaseService {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
-      const consultation = await this.consultationRepository.findById(consultationId);
-      assertEqualTenants(consultation, { tenantId });
-
-      const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-      const transcript = transcripts.map((t) => t.content).join('\n\n');
-
-      const nerEntities = await this.loadNerEntities(consultationId);
-
-      // Fold the doctor's case-notes / work-notes / attachments
-      // into the authoritative-SOAP prompt. Read entities directly from the
-      // repository (reads already filter resourceStatus = ENABLED, so soft-deleted
-      // items drop out). Work notes are labeled `[work note]`; attachments use the
-      // extracted text when present (GAP #5), else the stored filename label.
-      const [caseNotes, workNotes, attachmentItems] = await Promise.all([
-        this.contextItemRepository.findCaseNotes(consultationId),
-        this.contextItemRepository.findWorknotes(consultationId),
-        this.contextItemRepository.findAttachments(consultationId),
-      ]);
-
-      const clinicianNotes = [
-        ...caseNotes.filter((n) => n.content?.trim()).map((n) => `[case note] ${n.content!.trim()}`),
-        ...workNotes.filter((n) => n.content?.trim()).map((n) => `[work note] ${n.content!.trim()}`),
-      ];
-      const attachments = attachmentItems
-        .map((a) => {
-          // Prefer the extracted file text (txt / csv / md /
-          // json, threaded onto `metaData.extractedText` at upload); fall back to
-          // the stored "Lab/exam result: <name>" filename label when none exists.
-          const meta = a.metaData as Record<string, unknown> | undefined;
-          const extracted = typeof meta?.extractedText === 'string' ? meta.extractedText.trim() : '';
-          return HarnessInternalService.truncateAttachmentText(extracted || a.content?.trim() || '');
-        })
-        .filter((c): c is string => !!c);
-
-      // Thread the doctor's manual highlight spans into
-      // the authoritative SOAP prompt, labeled `[highlight]` alongside the
-      // clinician notes. Best-effort: optional repo + soft-deleted rows already
-      // excluded by the repository's resourceStatus filter. A SEPARATE aggregate
-      // from NamedEntity, so manual marks never pollute the NER aggregation.
-      const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
-      const highlights = highlightEntities.filter((h) => h.exact?.trim()).map((h) => `[highlight] ${h.exact.trim()}`);
-
-      // Warm-start `generate` from the live SOAP
-      // snapshot instead of cold-generating: inject the running SOAP note as
-      // {pre_summary_text} so the model refines it. Cold path when absent.
-      // Gated behind the kill-switch (default OFF): when disabled we skip the
-      // snapshot lookup entirely so nothing is injected.
-      // The snapshot load is now UNCONDITIONAL, because the
-      // load is what tells us whether a live agent ran at all. Lineage present
-      // (the live loop stamped `metaData.agent`) ⇒ inject unconditionally, per
-      // R-N2 / DR-4; lineage absent ⇒ the flag gates the injection exactly as
-      // before, so the legacy case-notes path is byte-identical.
-      const liveSnapshot = await this.loadLiveSoapSnapshot(consultationId);
-      const liveLineage = readLiveAgentLineage(liveSnapshot);
-      const injectPriorDraft = liveLineage !== null || (await this.resolveWarmStartEnabled(tenantId));
-
-      // Thread the doctor's preferred prompt id (Tier-0)
-      // through the async/harness path too. Read-only from UserProfile via the
-      // ConfigResolver, keyed off the consultation's doctor. Best-effort: when the
-      // resolver is unwired (unit fixtures) or there is no doctor, the id is omitted
-      // and assembly falls back to the department/global tier exactly as before.
-      const preferredPromptTemplateId = this.configResolver
-        ? await this.configResolver.resolvePreferredPromptTemplateId(consultation?.doctorId ?? null)
-        : undefined;
-
-      // Gate the DNA style on the effective decision
-      // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
-      // has opted out or the tenant flag is off. No-op (passes the requested id
-      // through) when ConfigResolver is unwired (legacy fixtures).
-      const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
-      // TASK-1034 R3 — the redaction rules as INSTRUCTIONS, behind the REDACTION gate (not the style gate).
-      const dnaRedactionRulesText = await this.resolveDnaRedactionRulesText(
-        tenantId,
-        consultation?.departmentId,
-        consultation?.doctorId,
-        consultationId,
-      );
-
-      // Re-visit carry-forward (F-18). Both conditions are load-bearing: a first
-      // visit has nothing to carry, and a deployment that has not opted in must
-      // behave exactly as before. Short-circuited so neither case pays for the
-      // governance read or the context query.
-      const priorVisitSummary =
-        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId, consultation))
-          ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
-          : null;
-
-      // The measured readings and prior-visit history the client stated at `open`. Read from the
-      // consultation's own rows, so the durable finalize sees exactly what the live lane saw.
-      const clientReader = clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService);
-      const client = await clientReader.read(consultationId);
-      // TASK-1020 — the client's lab results, and the same-day prequel (the patient's EARLIER visits
-      // today, chained by `parentConsultationId`). The prequel is produced UNCONDITIONALLY when a
-      // same-day ancestor exists: unlike `priorVisitSummary` above it rides no graph binding. Both
-      // never throw, and both are spread only when present so the key is ABSENT otherwise — the same
-      // regression-lock shape `priorVisitSummary` uses.
-      const [testResults, sameDayPrequel] = await Promise.all([
-        clientReader.readTestResults(consultationId),
-        resolveSameDayPrequel(
-          { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
-          consultation,
-          { timeZone: await resolveSameDayPrequelTimeZone(this.effectiveSettings, tenantId) },
-        ),
-      ]);
-
-      const assembled = await this.promptAssemblyService.assemble({
-        vitals: client.vitals,
-        previousVisits: client.previousVisits,
-        ...(testResults ? { testResults } : {}),
-        ...(sameDayPrequel.hasSameDayPrequel ? { sameDayPrequelSummary: sameDayPrequel.summary } : {}),
-        // Explicit tenant so prompt assembly resolves the SAME
-        // effective warm-start policy this method just gated the snapshot on
-        // (the harness runs outside the API-edge CLS middleware).
-        tenantId,
-        departmentId: consultation?.departmentId ?? undefined,
-        // The visit type comes from the shared vocabulary, not a literal: the value the caller
-        // STATED at open (TASK-951 §D-3) first, `parentConsultationId` as the follow-up signal
-        // when it stated none.
-        promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
-          recorded: readRecordedVisitType(consultation?.metadata),
-          isFollowUp: Boolean(consultation?.parentConsultationId),
-        }).key,
-        transcript,
-        conversationLanguage: dto.conversationLanguage?.trim() || 'en',
-        dnaStyleId: effectiveDnaStyleId,
-        ...(dnaRedactionRulesText ? { dnaRedactionRulesText } : {}),
-        explicitTemplate: dto.template,
-        preferredPromptTemplateId,
-        nerEntities,
-        clinicianNotes,
-        attachments,
-        highlights,
-        preSummaryText: injectPriorDraft ? (liveSnapshot?.content ?? undefined) : undefined,
-        // Same agent reviews and finalizes: unconditional
-        // injection on the lineage path + the resolver's agent tier pinned to
-        // that exact agent. Both absent for every non-live consultation.
-        preSummaryLineage: liveLineage ?? undefined,
-        pinnedAgentId: liveLineage?.agentId ?? undefined,
-        // Spread rather than `?? undefined` so the key is ABSENT (not present-
-        // and-undefined) when carry-forward is off — the assembler's regression
-        // lock is "no such param", and an explicit undefined would still show up
-        // in a caller assertion.
-        ...(priorVisitSummary ? { priorVisitSummary } : {}),
-      });
+      const { params, transcripts } = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const assembled = await this.promptAssemblyService.assemble(params);
 
       const promptTemplateId = assembled.promptId ?? null;
       // Provenance must name the version whose content the LLM actually saw
@@ -1487,6 +1345,214 @@ export class HarnessInternalService extends BaseService {
         segmentCitations,
       };
     });
+  }
+
+  /**
+   * The Prompt Inspector's view of a consultation's assembly: the SAME inputs `assemble` gathers,
+   * shaped for the inspector's `phase`, with an optional instruction override (its `agentSlug`),
+   * and returned with the composition the harness response does not carry.
+   *
+   *   - `finalize` — exactly what `assemble` sends;
+   *   - `pre-summary` — the pre-summary chain's shape: the department-free body, NO transcript
+   *     (that chain has no recording) and the case notes under their own section;
+   *   - `live` — the governed live prompt over the transcript so far. An approximation of a live
+   *     turn: the per-turn delta, frame and turn contract exist only inside a running session.
+   */
+  async previewAssembly(
+    consultationId: string,
+    dto: HarnessAssembleRequest,
+    options: { phase: 'live' | 'pre-summary' | 'finalize'; instructionOverride?: PromptAssemblyParams['instructionOverride'] },
+  ): Promise<AssembledPrompt> {
+    const tenantId = dto.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    return this.cls.run({ ifNested: 'inherit' }, async () => {
+      this.cls.set('tenantId', tenantId);
+      const { params, caseNoteTexts } = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const shaped: PromptAssemblyParams =
+        options.phase === 'pre-summary'
+          ? {
+              ...params,
+              promptType: 'pre-summary',
+              preSummaryVariant: 'dept-free',
+              transcript: '',
+              caseNotes: caseNoteTexts,
+              clinicianNotes: [],
+              preSummaryText: undefined,
+              preSummaryLineage: undefined,
+              pinnedAgentId: undefined,
+            }
+          : options.phase === 'live'
+            ? { ...params, promptType: 'live' }
+            : params;
+      return this.promptAssemblyService.assemble({
+        ...shaped,
+        ...(options.instructionOverride ? { instructionOverride: options.instructionOverride } : {}),
+      });
+    });
+  }
+
+  /**
+   * Gather every input the consultation's prompt is assembled from — the ONE gathering both
+   * `assemble` (the harness) and `previewAssembly` (the Prompt Inspector) run, so the inspector
+   * shows exactly what the harness would send.
+   */
+  private async buildAssembleParams(
+    consultationId: string,
+    tenantId: string,
+    dto: HarnessAssembleRequest,
+  ): Promise<{
+    params: PromptAssemblyParams;
+    transcripts: Awaited<ReturnType<ContextItemRepository['findTranscripts']>>;
+    caseNoteTexts: string[];
+  }> {
+    const consultation = await this.consultationRepository.findById(consultationId);
+    assertEqualTenants(consultation, { tenantId });
+
+    const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+    const transcript = transcripts.map((t) => t.content).join('\n\n');
+
+    const nerEntities = await this.loadNerEntities(consultationId);
+
+    // Fold the doctor's case-notes / work-notes / attachments
+    // into the authoritative-SOAP prompt. Read entities directly from the
+    // repository (reads already filter resourceStatus = ENABLED, so soft-deleted
+    // items drop out). Work notes are labeled `[work note]`; attachments use the
+    // extracted text when present (GAP #5), else the stored filename label.
+    const [caseNotes, workNotes, attachmentItems] = await Promise.all([
+      this.contextItemRepository.findCaseNotes(consultationId),
+      this.contextItemRepository.findWorknotes(consultationId),
+      this.contextItemRepository.findAttachments(consultationId),
+    ]);
+
+    const clinicianNotes = [
+      ...caseNotes.filter((n) => n.content?.trim()).map((n) => `[case note] ${n.content!.trim()}`),
+      ...workNotes.filter((n) => n.content?.trim()).map((n) => `[work note] ${n.content!.trim()}`),
+    ];
+    const attachments = attachmentItems
+      .map((a) => {
+        // Prefer the extracted file text (txt / csv / md /
+        // json, threaded onto `metaData.extractedText` at upload); fall back to
+        // the stored "Lab/exam result: <name>" filename label when none exists.
+        const meta = a.metaData as Record<string, unknown> | undefined;
+        const extracted = typeof meta?.extractedText === 'string' ? meta.extractedText.trim() : '';
+        return HarnessInternalService.truncateAttachmentText(extracted || a.content?.trim() || '');
+      })
+      .filter((c): c is string => !!c);
+
+    // Thread the doctor's manual highlight spans into
+    // the authoritative SOAP prompt, labeled `[highlight]` alongside the
+    // clinician notes. Best-effort: optional repo + soft-deleted rows already
+    // excluded by the repository's resourceStatus filter. A SEPARATE aggregate
+    // from NamedEntity, so manual marks never pollute the NER aggregation.
+    const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
+    const highlights = highlightEntities.filter((h) => h.exact?.trim()).map((h) => `[highlight] ${h.exact.trim()}`);
+
+    // Warm-start `generate` from the live SOAP
+    // snapshot instead of cold-generating: inject the running SOAP note as
+    // {pre_summary_text} so the model refines it. Cold path when absent.
+    // Gated behind the kill-switch (default OFF): when disabled we skip the
+    // snapshot lookup entirely so nothing is injected.
+    // The snapshot load is now UNCONDITIONAL, because the
+    // load is what tells us whether a live agent ran at all. Lineage present
+    // (the live loop stamped `metaData.agent`) ⇒ inject unconditionally, per
+    // R-N2 / DR-4; lineage absent ⇒ the flag gates the injection exactly as
+    // before, so the legacy case-notes path is byte-identical.
+    const liveSnapshot = await this.loadLiveSoapSnapshot(consultationId);
+    const liveLineage = readLiveAgentLineage(liveSnapshot);
+    const injectPriorDraft = liveLineage !== null || (await this.resolveWarmStartEnabled(tenantId));
+
+    // Thread the doctor's preferred prompt id (Tier-0)
+    // through the async/harness path too. Read-only from UserProfile via the
+    // ConfigResolver, keyed off the consultation's doctor. Best-effort: when the
+    // resolver is unwired (unit fixtures) or there is no doctor, the id is omitted
+    // and assembly falls back to the department/global tier exactly as before.
+    const preferredPromptTemplateId = this.configResolver
+      ? await this.configResolver.resolvePreferredPromptTemplateId(consultation?.doctorId ?? null)
+      : undefined;
+
+    // Gate the DNA style on the effective decision
+    // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
+    // has opted out or the tenant flag is off. No-op (passes the requested id
+    // through) when ConfigResolver is unwired (legacy fixtures).
+    const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
+    // TASK-1034 R3 — the redaction rules as INSTRUCTIONS, behind the REDACTION gate (not the style gate).
+    const dnaRedactionRulesText = await this.resolveDnaRedactionRulesText(
+      tenantId,
+      consultation?.departmentId,
+      consultation?.doctorId,
+      consultationId,
+    );
+
+    // Re-visit carry-forward (F-18). Both conditions are load-bearing: a first
+    // visit has nothing to carry, and a deployment that has not opted in must
+    // behave exactly as before. Short-circuited so neither case pays for the
+    // governance read or the context query.
+    const priorVisitSummary =
+      consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId, consultation))
+        ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
+        : null;
+
+    // The measured readings and prior-visit history the client stated at `open`. Read from the
+    // consultation's own rows, so the durable finalize sees exactly what the live lane saw.
+    const clientReader = clientClinicalContextReaderFor(this.contextItemRepository, this.secretsService);
+    const client = await clientReader.read(consultationId);
+    // TASK-1020 — the client's lab results, and the same-day prequel (the patient's EARLIER visits
+    // today, chained by `parentConsultationId`). The prequel is produced UNCONDITIONALLY when a
+    // same-day ancestor exists: unlike `priorVisitSummary` above it rides no graph binding. Both
+    // never throw, and both are spread only when present so the key is ABSENT otherwise — the same
+    // regression-lock shape `priorVisitSummary` uses.
+    const [testResults, sameDayPrequel] = await Promise.all([
+      clientReader.readTestResults(consultationId),
+      resolveSameDayPrequel(
+        { consultationRepository: this.consultationRepository, contextItemRepository: this.contextItemRepository },
+        consultation,
+        { timeZone: await resolveSameDayPrequelTimeZone(this.effectiveSettings, tenantId) },
+      ),
+    ]);
+
+    const params: PromptAssemblyParams = {
+      vitals: client.vitals,
+      previousVisits: client.previousVisits,
+      ...(testResults ? { testResults } : {}),
+      ...(sameDayPrequel.hasSameDayPrequel ? { sameDayPrequelSummary: sameDayPrequel.summary } : {}),
+      // Explicit tenant so prompt assembly resolves the SAME
+      // effective warm-start policy this method just gated the snapshot on
+      // (the harness runs outside the API-edge CLS middleware).
+      tenantId,
+      departmentId: consultation?.departmentId ?? undefined,
+      // The visit type comes from the shared vocabulary, not a literal: the value the caller
+      // STATED at open (TASK-951 §D-3) first, `parentConsultationId` as the follow-up signal
+      // when it stated none.
+      promptType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(tenantId, {
+        recorded: readRecordedVisitType(consultation?.metadata),
+        isFollowUp: Boolean(consultation?.parentConsultationId),
+      }).key,
+      transcript,
+      conversationLanguage: dto.conversationLanguage?.trim() || 'en',
+      dnaStyleId: effectiveDnaStyleId,
+      ...(dnaRedactionRulesText ? { dnaRedactionRulesText } : {}),
+      explicitTemplate: dto.template,
+      preferredPromptTemplateId,
+      nerEntities,
+      clinicianNotes,
+      attachments,
+      highlights,
+      preSummaryText: injectPriorDraft ? (liveSnapshot?.content ?? undefined) : undefined,
+      // Same agent reviews and finalizes: unconditional
+      // injection on the lineage path + the resolver's agent tier pinned to
+      // that exact agent. Both absent for every non-live consultation.
+      preSummaryLineage: liveLineage ?? undefined,
+      pinnedAgentId: liveLineage?.agentId ?? undefined,
+      // Spread rather than `?? undefined` so the key is ABSENT (not present-
+      // and-undefined) when carry-forward is off — the assembler's regression
+      // lock is "no such param", and an explicit undefined would still show up
+      // in a caller assertion.
+      ...(priorVisitSummary ? { priorVisitSummary } : {}),
+    };
+    const caseNoteTexts = caseNotes.map((note) => note.content?.trim() ?? '').filter((text) => text.length > 0);
+    return { params, transcripts, caseNoteTexts };
   }
 
   /**

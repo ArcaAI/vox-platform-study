@@ -170,8 +170,8 @@ describe('PromptAssemblyService', () => {
         conversationLanguage: 'French',
       });
 
-      expect(result.userPrompt).toContain('French');
-      expect(result.userPrompt).not.toContain('{{context.conversation_language}}');
+      expect(result.systemPrompt).toContain('French');
+      expect(result.systemPrompt).not.toContain('{{context.conversation_language}}');
     });
 
     it('should substitute {style_DNA_*} when dnaStyleId is provided', async () => {
@@ -184,8 +184,8 @@ describe('PromptAssemblyService', () => {
         dnaStyleId: 'dna-001',
       });
 
-      expect(result.userPrompt).toContain('Use bullet points. Be concise.');
-      expect(result.userPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
+      expect(result.systemPrompt).toContain('Use bullet points. Be concise.');
+      expect(result.systemPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
     });
 
     // The styleText column is Vault-Transit ciphertext (plaintext
@@ -206,8 +206,8 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(mockDnaWritingStyleRepository.findByIdWithDecryptedFields).toHaveBeenCalledWith('dna-001', mockSecretsService);
-      expect(result.userPrompt).toContain('Formal prose, no abbreviations.');
-      expect(result.userPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
+      expect(result.systemPrompt).toContain('Formal prose, no abbreviations.');
+      expect(result.systemPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
     });
 
     // ArcaAI governed templates declare NO {style_DNA_*} placeholder,
@@ -235,7 +235,9 @@ describe('PromptAssemblyService', () => {
         dnaStyleId: 'dna-001',
       });
 
-      expect(result.userPrompt).toContain('Terse SOAP, active voice.');
+      // Trusted style INSTRUCTION, so it rides the system message — never the data sections.
+      expect(result.systemPrompt).toContain('Terse SOAP, active voice.');
+      expect(result.userPrompt).not.toContain('Terse SOAP, active voice.');
     });
 
     it('should load hyperparameters from template metaData.promptConfig', async () => {
@@ -340,9 +342,9 @@ describe('PromptAssemblyService', () => {
         conversationLanguage: 'English',
       });
 
-      expect(result.userPrompt).toContain('{constructor} {toString} {valueOf} {hasOwnProperty}');
-      expect(result.userPrompt).not.toContain('native code');
-      expect(result.userPrompt).not.toContain('function');
+      expect(result.systemPrompt).toContain('{constructor} {toString} {valueOf} {hasOwnProperty}');
+      expect(result.systemPrompt).not.toContain('native code');
+      expect(result.systemPrompt).not.toContain('function');
     });
 
     it('should handle missing template gracefully with fallback', async () => {
@@ -401,8 +403,11 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'Previous notes: HbA1c 7.2%',
       });
 
+      // The body names it, so it reaches the model — as a DATA section the body points at.
       expect(result.userPrompt).toContain('Previous notes: HbA1c 7.2%');
-      expect(result.userPrompt).not.toContain('{{context.pre_summary_text}}');
+      expect(result.systemPrompt).toContain('[see the PRIOR DRAFT');
+      expect(result.systemPrompt).not.toContain('{{context.pre_summary_text}}');
+      expect(result.systemPrompt).not.toContain('HbA1c 7.2%');
     });
 
     // `sameDayPrequelSummary` was once removed here as dead (zero producers). TASK-1020 gave it a
@@ -478,7 +483,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).toContain('@11-22');
     });
 
-    it('substitutes the {{context.ner_entities}} placeholder in template content (no duplicate appended block)', async () => {
+    it('points the {{context.ner_entities}} placeholder at the ONE entities data section', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({
           content: 'Known entities: {{context.ner_entities}}. Language: {{context.conversation_language}}.',
@@ -493,11 +498,11 @@ describe('PromptAssemblyService', () => {
         nerEntities: [{ text: 'pneumonia', type: 'CONDITION', icdCode: 'J18.9' }],
       });
 
-      expect(result.userPrompt).toContain('pneumonia');
       expect(result.userPrompt).toContain('icd:J18.9');
-      expect(result.userPrompt).not.toContain('{{context.ner_entities}}');
-      // Block was consumed by the placeholder → no second "RECOGNIZED" section.
-      expect(result.userPrompt).not.toContain('RECOGNIZED CLINICAL ENTITIES');
+      // The body POINTS at the section; the entities themselves are data, once, in the user message.
+      expect(result.systemPrompt).toContain('Known entities: [see the RECOGNIZED CLINICAL ENTITIES (from NER) data section below]');
+      expect(result.systemPrompt).not.toContain('icd:J18.9');
+      expect(result.userPrompt.split('--- RECOGNIZED CLINICAL ENTITIES').length - 1).toBe(1);
     });
 
     it('prefers normalizedText for the entity label when present', async () => {
@@ -639,7 +644,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).toContain('Troponin 0.9 ng/mL (elevated)');
     });
 
-    it('substitutes {{context.clinician_notes}} and {{context.attachments}} placeholders without duplicating blocks', async () => {
+    it('points {{context.clinician_notes}} and {{context.attachments}} at their ONE data section each', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({
           content: 'Notes: {{context.clinician_notes}}\nAttachments: {{context.attachments}}\nLang: {{context.conversation_language}}.',
@@ -657,11 +662,12 @@ describe('PromptAssemblyService', () => {
 
       expect(result.userPrompt).toContain('Follow up in 2 weeks');
       expect(result.userPrompt).toContain('CBC within normal limits');
-      expect(result.userPrompt).not.toContain('{{context.clinician_notes}}');
-      expect(result.userPrompt).not.toContain('{{context.attachments}}');
-      // Consumed by placeholders → no duplicated appended sections.
-      expect(result.userPrompt).not.toContain('--- CLINICIAN NOTES');
-      expect(result.userPrompt).not.toContain('--- ATTACHMENTS');
+      expect(result.systemPrompt).toContain('Notes: [see the CLINICIAN NOTES (case / work notes) data section below]');
+      expect(result.systemPrompt).toContain('Attachments: [see the ATTACHMENTS (lab / exam results) data section below]');
+      expect(result.systemPrompt).not.toContain('Follow up in 2 weeks');
+      // Each section appears exactly once.
+      expect(result.userPrompt.split('--- CLINICIAN NOTES').length - 1).toBe(1);
+      expect(result.userPrompt.split('--- ATTACHMENTS').length - 1).toBe(1);
     });
 
     it('does not add clinician notes / attachments sections when none are provided', async () => {
@@ -701,7 +707,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).toContain('radiating to the left arm');
     });
 
-    it('substitutes the {{context.doctor_highlights}} placeholder without duplicating the block', async () => {
+    it('points the {{context.doctor_highlights}} placeholder at the ONE highlights data section', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({ content: 'Highlights: {{context.doctor_highlights}}\nLang: {{context.conversation_language}}.' }),
       );
@@ -715,8 +721,8 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(result.userPrompt).toContain('severe cough');
-      expect(result.userPrompt).not.toContain('{{context.doctor_highlights}}');
-      expect(result.userPrompt).not.toContain('--- DOCTOR HIGHLIGHTS');
+      expect(result.systemPrompt).toContain('Highlights: [see the DOCTOR HIGHLIGHTS (clinician-flagged spans) data section below]');
+      expect(result.userPrompt.split('--- DOCTOR HIGHLIGHTS').length - 1).toBe(1);
     });
 
     it('adds no highlights section when none are provided', async () => {
@@ -755,12 +761,12 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
       });
 
-      // Proves the latent no-op is fixed: the snapshot text reaches the prompt …
+      // Proves the latent no-op is fixed: the snapshot text reaches the prompt as DATA …
       expect(result.userPrompt).toContain('S: chest pain O: BP 120/80 A: stable P: review');
-      // … under a refinement-instruction header that keeps the transcript authoritative.
       expect(result.userPrompt).toContain('PRIOR DRAFT');
-      expect(result.userPrompt).toContain('Refine');
-      expect(result.userPrompt).toContain('source of truth');
+      // … with a refinement INSTRUCTION in the system message that keeps the transcript authoritative.
+      expect(result.systemPrompt).toContain('Refine');
+      expect(result.systemPrompt).toContain('source of truth');
     });
 
     // Mature the single-append fallback into the explicit
@@ -780,7 +786,7 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
       });
 
-      const prompt = result.userPrompt;
+      const prompt = result.systemPrompt;
       // The prior live draft is the STAGE 1 SCRATCHPAD; the harness produces the STAGE 2 FINAL.
       expect(prompt).toContain('SCRATCHPAD');
       expect(prompt).toContain('FINAL');
@@ -799,7 +805,7 @@ describe('PromptAssemblyService', () => {
       expect(prompt).not.toContain('preserve correct content and revise only where');
     });
 
-    it('substitutes {{context.pre_summary_text}} without duplicating the prior-draft block', async () => {
+    it('points {{context.pre_summary_text}} at the ONE prior-draft data section', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({ content: 'Prior: {{context.pre_summary_text}}. Lang: {{context.conversation_language}}.' }),
       );
@@ -813,9 +819,8 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(result.userPrompt).toContain('S: running soap draft');
-      expect(result.userPrompt).not.toContain('{{context.pre_summary_text}}');
-      // Consumed by the placeholder → no duplicated appended section.
-      expect(result.userPrompt).not.toContain('--- PRIOR DRAFT');
+      expect(result.systemPrompt).toContain('Prior: [see the PRIOR DRAFT');
+      expect(result.userPrompt.split('--- PRIOR DRAFT').length - 1).toBe(1);
     });
 
     it('adds no prior-draft section when preSummaryText is absent (cold path unchanged)', async () => {
@@ -882,12 +887,12 @@ describe('PromptAssemblyService', () => {
         conversationLanguage: 'English',
       });
 
-      expect(result.userPrompt).toContain('PINNED v3');
-      expect(result.userPrompt).not.toContain('MUTABLE v5');
-      expect(result.userPrompt).not.toContain('DO NOT SERVE');
+      expect(result.systemPrompt).toContain('PINNED v3');
+      expect(result.systemPrompt).not.toContain('MUTABLE v5');
+      expect(result.systemPrompt).not.toContain('DO NOT SERVE');
       // Variable substitution runs on the GOVERNED content, not the row.
-      expect(result.userPrompt).toContain('English');
-      expect(result.userPrompt).not.toContain('{{context.conversation_language}}');
+      expect(result.systemPrompt).toContain('English');
+      expect(result.systemPrompt).not.toContain('{{context.conversation_language}}');
       // Truthful provenance surfaced to callers.
       expect(result.resolvedVersionNumber).toBe(3);
     });
@@ -916,8 +921,8 @@ describe('PromptAssemblyService', () => {
         conversationLanguage: 'English',
       });
 
-      expect(result.userPrompt).toContain('APPROVED v4 body');
-      expect(result.userPrompt).not.toContain('UNAPPROVED v5 live edit');
+      expect(result.systemPrompt).toContain('APPROVED v4 body');
+      expect(result.systemPrompt).not.toContain('UNAPPROVED v5 live edit');
       expect(result.resolvedVersionNumber).toBe(4);
     });
 
@@ -943,8 +948,8 @@ describe('PromptAssemblyService', () => {
       });
 
       // Body from the resolver snapshot …
-      expect(result.userPrompt).toContain('Governed body');
-      expect(result.userPrompt).not.toContain('ignored mutable content');
+      expect(result.systemPrompt).toContain('Governed body');
+      expect(result.systemPrompt).not.toContain('ignored mutable content');
       // … metaData still comes from the fetched template row.
       expect(result.hyperparameters.temperature).toBe(0.1);
       expect(result.responseFormat.json_schema.title).toBe('SurgeryNote');
@@ -972,8 +977,10 @@ describe('PromptAssemblyService', () => {
 
     it('is deterministic — identical across consultations, no timestamps (prefix-cache stable)', async () => {
       service = await getService();
+      // Per-encounter DATA never enters the system message, so two consultations of one template
+      // share it byte for byte.
       const a = await service.assemble({ departmentId: 'd', promptType: 'new-patient', transcript: 'one', conversationLanguage: 'English' });
-      const b = await service.assemble({ departmentId: 'd', promptType: 'new-patient', transcript: 'two different', conversationLanguage: 'French' });
+      const b = await service.assemble({ departmentId: 'd', promptType: 'new-patient', transcript: 'two different', conversationLanguage: 'English' });
 
       expect(a.systemPrompt).toBe(b.systemPrompt);
       // No embedded ISO timestamp / date.
@@ -1007,7 +1014,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).toContain('ignore previous instructions');
     });
 
-    it('keeps the warm-start refine INSTRUCTION outside the prior-draft data delimiters', async () => {
+    it('keeps the warm-start refine INSTRUCTION in the system message, apart from the prior-draft data', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
       );
@@ -1020,15 +1027,11 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'S: draft body',
       });
 
-      const p: string = result.userPrompt;
-      const openIdx = p.indexOf('<<<EXTERNAL_DATA section="prior_draft">>>');
-      expect(openIdx).toBeGreaterThan(-1);
-      // The refine instruction sits AFTER the block's closing delimiter (it is
-      // a genuine instruction, never inside the data block).
-      const closeIdx = p.indexOf('<<<END_EXTERNAL_DATA>>>', openIdx);
-      const instrIdx = p.indexOf('Do not regenerate from scratch');
-      expect(closeIdx).toBeGreaterThan(openIdx);
-      expect(instrIdx).toBeGreaterThan(closeIdx);
+      // The draft is DATA in the user message; the refine instruction is a genuine instruction
+      // and lives in the system message — never inside (or beside) the data block.
+      expect(result.userPrompt).toContain('<<<EXTERNAL_DATA section="prior_draft">>>');
+      expect(result.userPrompt).not.toContain('Do not regenerate from scratch');
+      expect(result.systemPrompt).toContain('Do not regenerate from scratch');
     });
   });
 });
