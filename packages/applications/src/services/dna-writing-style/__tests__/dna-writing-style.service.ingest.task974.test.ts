@@ -191,6 +191,9 @@ describe('the batch itself', () => {
       clinicianUserId: CALLER,
       acceptedItems: 2,
       window: { from: '2026-09-01T09:00:00.000Z', to: '2026-09-02T09:00:00.000Z' },
+      // TASK-1034 — the response now also reports memory persistence (no store composed here).
+      stored: 0,
+      duplicates: 0,
     });
   });
 

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /** The time span the accepted batch covers — echoed so a caller can see what the server understood. */
 export class DnaIngestWindowResponse {
@@ -17,11 +17,19 @@ export class DnaIngestWindowResponse {
  * clinician already has.
  */
 export class DnaIngestJobResponse {
-  @ApiProperty({ description: 'The queued job — poll `GET dna-writing-styles/ingest/jobs/{jobId}` with it.' })
-  jobId!: string;
+  @ApiProperty({
+    description: 'The queued job — poll `GET dna-writing-styles/ingest/jobs/{jobId}` with it. `null` when `generate: false` queued nothing.',
+    type: String,
+    nullable: true,
+  })
+  jobId!: string | null;
 
-  @ApiProperty({ description: 'Always `PENDING` on acceptance; the job has been enqueued, not run.', example: 'PENDING' })
-  status!: 'PENDING';
+  @ApiProperty({
+    description: '`PENDING` when an analysis was enqueued (not run); `STORED` when `generate: false` only stored the samples as memory.',
+    enum: ['PENDING', 'STORED'],
+    example: 'PENDING',
+  })
+  status!: 'PENDING' | 'STORED';
 
   @ApiProperty({
     description: 'The clinician the profile will belong to — RESOLVED, so a caller who omitted it can see whom the server chose.',
@@ -34,4 +42,10 @@ export class DnaIngestJobResponse {
 
   @ApiProperty({ description: 'The time span the accepted samples cover.', type: DnaIngestWindowResponse })
   window!: DnaIngestWindowResponse;
+
+  @ApiPropertyOptional({ description: 'TASK-1034 — samples newly persisted as the clinician`s DNA memory (source INGEST).', example: 40 })
+  stored?: number;
+
+  @ApiPropertyOptional({ description: 'TASK-1034 — samples already in memory (same normalised text) and skipped.', example: 2 })
+  duplicates?: number;
 }
