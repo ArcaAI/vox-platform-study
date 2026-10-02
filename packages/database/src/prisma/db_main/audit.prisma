@@ -431,6 +431,8 @@ enum ResourceType {
   TenantCheckpointRestore
   // TASK-1034 — DNA writing-style memory sample (captured edit/sign-off or ingested history).
   DnaWritingSample
+  // The composed prompt one LLM call was sent (OD-9 incident record) — every read is audited.
+  ComposedPromptRecord
 
   @@schema("core")
 }
