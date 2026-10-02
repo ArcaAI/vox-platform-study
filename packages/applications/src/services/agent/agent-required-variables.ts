@@ -36,7 +36,7 @@ function boundVariablesOf(instruction: Record<string, unknown> | null | undefine
 /**
  * A binding's `{ path }`, or `null` for a literal (`{ value }`) / a plain value.
  *
- * This is `agent-prompt-scope.ts`'s `resolveBinding` read backwards: a `{ path }` binding is a
+ * This is `@arcaai/workflow-contract prompt-scope.ts`'s `resolveBinding` read backwards: a `{ path }` binding is a
  * REFERENCE, resolved through the grammar on every render, so it is a requirement of the call
  * even when no placeholder mentions the bound name. A `{ value }` binding is a literal and
  * requires nothing.
@@ -51,7 +51,7 @@ function bindingPath(binding: unknown): string | null {
 /**
  * Which request key satisfies `path`.
  *
- * `trigger` and `context` are the SAME root on this plane (`buildAgentPromptScope` publishes the
+ * `trigger` and `context` are the SAME root on this plane (`buildPromptScope` publishes the
  * request's validated `context` under both), so both answer `context`. A bare name — or a dotted
  * path whose root the agent BINDS — is a caller `variables` entry. `vars` / `nodes` are
  * workflow-only roots: an invocation cannot supply them at all, so the honest answer is `null`
@@ -106,7 +106,7 @@ export interface UnresolvedBinding {
  * TASK-983 follow-up — split a call's merged variables map into the bindings that RESOLVE and
  * the ones that do not, against the roots alone.
  *
- * Why this exists: `buildAgentPromptScope` resolves every `{ path }` binding EAGERLY and raises
+ * Why this exists: `buildPromptScope` resolves every `{ path }` binding EAGERLY and raises
  * `PromptVariableUnresolvedError` on the first one that fails, which happens before any
  * template can be looked at. The seeded `general-medicine-summarization` agent binds all nine of
  * its context paths that way (`seed/25-agents.ts`) and reads them as BARE names, so the

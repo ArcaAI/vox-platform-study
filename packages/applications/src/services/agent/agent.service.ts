@@ -32,6 +32,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import type { AgentCompiledConfig, AgentCompiledPromptFragment } from '@arcaai/types';
 import {
+  buildPromptScope,
   AGENT_INSTRUCTION_SCHEMAS,
   AGENT_IO_DEFAULTS,
   AGENT_PARAMETER_SCHEMAS,
@@ -48,7 +49,8 @@ import {
   boundTemplateRefs,
   buildPortableBundle,
   canonicalJson,
-  composePrompt,
+  composeMessages,
+  platformRules,
   conditionRootProblems,
   isCompositeInstruction,
   mapBoundTemplateRefs,
@@ -61,7 +63,6 @@ import {
   templateSyntaxProblems,
   type AgentConfigView,
   type BoundTemplateRef,
-  type ComposedPrompt,
   type DeclaredNamespaces,
   type AgentModelView,
   type AgentProviderCapabilities,
@@ -108,7 +109,6 @@ import type { InferenceReadinessSnapshot, ModelReadiness } from '../ai-readiness
 import { parsePromptVariableDeclarations, type PromptVariableDeclarationDto } from '../prompt-management/dto/prompt-variable-declaration.dto';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { redactConditionDetail } from './agent-condition-detail';
-import { buildAgentPromptScope } from './agent-prompt-scope';
 import { textWireProvider } from './text-generation-spec';
 import type { CompiledModelRef } from './agent-wire-model';
 import { AgentDtoMapper } from './agent.dto.mapper';
@@ -146,6 +146,7 @@ import {
   TestAgentRequest,
   UpdateAgentRequest,
 } from './dto';
+import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
 
 const AGENT_FILTER_MODEL = 'Agent';
@@ -723,7 +724,7 @@ export class AgentService extends BaseService implements IAgentService {
     // Built through the same failure mapping as the render below: a `{ path }` binding resolves
     // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
     const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
-    // TASK-947 — the SAME `composePrompt` the invocation route runs, so what the bench shows is
+    // TASK-947 — the SAME composition the invocation route runs, so what the bench shows is
     // what production sends: a composite is SELECTED and joined here, never served as its static
     // projection (which would show an author the base prompt and hide the branch they came to test).
     // TASK-983 R9 — the bench reports EVERY unresolved placeholder, not just the first, so an
@@ -742,9 +743,20 @@ export class AgentService extends BaseService implements IAgentService {
         missingVariables,
       });
     }
-    const composed: ComposedPrompt = this.renderMapped(() => composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${entity.slug}` }));
-    const assembledSystemPrompt = composed.prompt;
-    const assembledUserPrompt = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    // The ONE composer — the same `composeMessages` call the invocation route makes, so the bench
+    // shows exactly the system + user messages production sends (platform rules included).
+    const inputText = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    const composed = this.renderMapped(() =>
+      composeMessages({
+        platformRules: platformRules(),
+        resolvedPrompt: compiled.resolvedPrompt,
+        scope,
+        dataBlocks: [agentInputBlock(inputText)],
+        templateRef: `agent:${entity.slug}`,
+      }),
+    );
+    const assembledSystemPrompt = composed.system;
+    const assembledUserPrompt = composed.user;
 
     const resolved = await this.testTarget(entity, model as AiModelEntity, dto);
     const ack: AgentTestAckResponse = {
@@ -779,7 +791,7 @@ export class AgentService extends BaseService implements IAgentService {
         code: 'DRY_RUN_ONLY',
       });
     }
-    if (assembledUserPrompt.length === 0) {
+    if (inputText.length === 0) {
       // Refused rather than sent: an empty prompt spends the tenant's own `monthlyLlmTokens`
       // allowance on a generation that answers nothing, and the author would read the resulting
       // noise as a defect in their agent. A DRY run with no `input.text` is fine — it still shows
@@ -847,7 +859,7 @@ export class AgentService extends BaseService implements IAgentService {
     // renders here is what will render on the invocation route, the realtime lane and the durable
     // lane. When the bench had its own scope it was the only site that resolved `{ path }`
     // bindings, so it rendered a value the three runtimes did not.
-    return buildAgentPromptScope({
+    return buildPromptScope({
       // J3-5 — the object `{{context.*}}` resolves against, which under the single-kind rule is
       // the kind itself rather than the envelope wrapping it.
       trigger: this.contextRenderScope(context, contextSchema),

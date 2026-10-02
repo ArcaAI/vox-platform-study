@@ -61,6 +61,7 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
 import {
+  buildPromptScope,
   composePrompt,
   CORE_PALETTE_KEY,
   PromptCompositionEmptyError,
@@ -75,7 +76,6 @@ import {
 // policy fragment. Declared in `@arcaai/types` so the seed that attaches it and this lane that asks
 // whether it was selected read ONE spelling.
 import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
-import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -330,7 +330,7 @@ class LivePromptUnresolvedError extends Error {
  * so `context.visit_type` selected a fragment on three lanes and was a silent `condition_error` on
  * this one. `trigger` stays the payload verbatim.
  *
- * Throws what `buildAgentPromptScope` throws (an unresolvable `{ path }` binding).
+ * Throws what `buildPromptScope` throws (an unresolvable `{ path }` binding).
  */
 function livePromptScope(
   variables: Record<string, unknown>,
@@ -339,7 +339,7 @@ function livePromptScope(
   contextSchema?: ResolvedTextCandidate['contextSchema'],
 ): Record<string, unknown> {
   const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
-  return buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+  return buildPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
 }
 
 /**
@@ -4649,7 +4649,7 @@ return 0`;
    */
   /**
    * TASK-943 — the run context the realtime lane evaluates guards against AND every `core.agent`
-   * renders its instruction from (its `trigger` root, via `buildAgentPromptScope`).
+   * renders its instruction from (its `trigger` root, via `buildPromptScope`).
    *
    * ## The defect this replaced
    *

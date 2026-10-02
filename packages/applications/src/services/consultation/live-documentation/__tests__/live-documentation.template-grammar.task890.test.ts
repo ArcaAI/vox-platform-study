@@ -7,7 +7,7 @@
  *  - **§2.4 flavours 5 vs 6.** The realtime lane rendered the SAME `core.agent` node with a flat
  *    `variables[key]` lookup while the durable lane resolved DOTTED paths, so a prompt that
  *    worked in a Temporal run emitted a literal `{{…}}` on the live lane. Both now render
- *    through `renderTemplate` over the scope `buildAgentPromptScope` builds.
+ *    through `renderTemplate` over the scope `buildPromptScope` builds.
  *  - **§2.7 #6 / BLOCKER #7.** This lane posts straight to `apps/text` and recorded NOTHING: a
  *    production LLM path that billed nothing and could not be quota-limited. Every call is now
  *    preceded by `assertMeterQuota('monthlyLlmTokens')` and followed by one `generate` row

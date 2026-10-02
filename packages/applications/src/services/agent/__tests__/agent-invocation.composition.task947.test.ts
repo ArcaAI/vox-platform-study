@@ -1,7 +1,7 @@
 /**
  * TASK-947 §4.1 — `POST /agents/:slug/invocations` COMPOSES the system prompt.
  *
- * The renderer is `composePrompt`, over the SAME scope `buildAgentPromptScope` already builds:
+ * The renderer is `composePrompt`, over the SAME scope `buildPromptScope` already builds:
  *
  *  1. a fragment with no `when` is always in; a `when` that holds selects; one that does not
  *     EXCLUDES — and one that cannot evaluate excludes too (OD-5), because a missing branch
@@ -16,7 +16,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, Logger } from '@nestjs/common';
 import type { AgentCompiledPromptFragment, ResolvedAgent } from '@arcaai/types';
+import { platformRules } from '@arcaai/workflow-contract';
 import { AgentInvocationService } from '../agent-invocation.service';
+import { asInputBlock, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 
@@ -82,7 +84,7 @@ describe('selection over the render scope (§4.1, OD-5)', () => {
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('BASE\n\nREVISIT');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('BASE\n\nREVISIT'));
     expect(result.promptFragments).toEqual({ selected: ['base', 'revisit'] });
   });
 
@@ -94,7 +96,7 @@ describe('selection over the render scope (§4.1, OD-5)', () => {
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('BASE');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('BASE'));
     expect(result.promptFragments).toEqual({ selected: ['base'] });
   });
 
@@ -106,7 +108,7 @@ describe('selection over the render scope (§4.1, OD-5)', () => {
       'blocking',
     );
 
-    expect(sentBody().system_prompt).toBe('BASE');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('BASE'));
     expect(result.promptFragments).toEqual({ selected: ['base'] });
   });
 
@@ -139,7 +141,7 @@ describe('rendering (§4.1 — one pass PER fragment)', () => {
       { text: 'a cough', context: { ward: 'B' } },
       'blocking',
     );
-    expect(sentBody().system_prompt).toBe('Ward B\n\nNote: a cough');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Ward B\n\nNote: a cough'));
   });
 
   it('never lets a `{{` pair with a `}}` across a fragment boundary', async () => {
@@ -164,7 +166,7 @@ describe('rendering (§4.1 — one pass PER fragment)', () => {
       { text: 't', context: { ward: '{{context.secret}}', secret: 'leaked' } },
       'blocking',
     );
-    expect(sentBody().system_prompt).toBe('Ward {{context.secret}}\n\nend');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Ward {{context.secret}}\n\nend'));
   });
 
   it('still refuses an unresolved variable INSIDE a fragment with a 400 naming the path', async () => {
@@ -191,16 +193,17 @@ describe('the two pre-947 shapes are untouched', () => {
     agent.compiledConfig.resolvedPrompt = { source: 'inline', content: 'Ward {{context.ward}}' };
     const result = await service().invokeText(agent, TENANT, { text: 't', context: { ward: 'B' } }, 'blocking');
 
-    expect(sentBody().system_prompt).toBe('Ward B');
+    expect(sentBody().system_prompt).toBe(withPlatformRules('Ward B'));
     expect(result.promptFragments).toBeNull();
   });
 
-  it('an agent with NO resolved prompt sends no `system_prompt` at all', async () => {
+  it('an agent with NO resolved prompt sends the platform rules alone as its system message', async () => {
     const agent = composite([]);
     agent.compiledConfig.resolvedPrompt = null;
     const result = await service().invokeText(agent, TENANT, { text: 't' }, 'blocking');
 
-    expect(sentBody()).not.toHaveProperty('system_prompt');
+    expect(sentBody().system_prompt).toBe(platformRules());
+    expect(sentBody().prompt).toBe(asInputBlock('t'));
     expect(result.promptFragments).toBeNull();
   });
 });

@@ -5,11 +5,13 @@ import { ClsService } from 'nestjs-cls';
 import type { Readable } from 'node:stream';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
+  buildPromptScope,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  composePrompt,
+  composeMessages,
   outputSchemaResponseFormat,
+  platformRules,
   unresolvedPromptVariables,
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
@@ -25,7 +27,7 @@ import {
   type UserIdentityBinding,
 } from '../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
-import { buildAgentPromptScope } from './agent-prompt-scope';
+import { agentInputBlock } from './agent-input-block';
 import { promptVariableSlot, splitBindings, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
 
@@ -305,6 +307,9 @@ export class AgentInvocationService {
     // []`), and a composite selects its fragments over THIS scope — the same object the
     // templates render against, so what a condition saw and what the prompt saw cannot differ.
     const trigger = this.contextScopeFor(resolved, input.context);
+    // The ONE composer (`composeMessages`): platform rules, then the agent's composed instruction
+    // in the SYSTEM message; the caller's text in the USER message as a delimited data block, so
+    // nothing a caller sends can read as an instruction.
     const composed = this.renderScoped(resolved.slug, () => {
       // TASK-983 R9 — EVERY missing variable, in ONE refusal, BEFORE the render.
       //
@@ -319,9 +324,15 @@ export class AgentInvocationService {
         trigger,
         templateRef: `agent:${resolved.slug}`,
       });
-      return composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${resolved.slug}` });
+      return composeMessages({
+        platformRules: platformRules(),
+        resolvedPrompt: compiled.resolvedPrompt,
+        scope,
+        dataBlocks: [agentInputBlock(input.text)],
+        templateRef: `agent:${resolved.slug}`,
+      });
     });
-    const systemPrompt = composed.prompt ?? undefined;
+    const systemPrompt = composed.system;
     const promptFragments = compiled.resolvedPrompt?.source === 'composite' ? { selected: [...composed.selected] } : null;
     // TASK-947 R2 M-1 — an exclusion left NO server-side record on this lane, so a safety fragment
     // dropped by a wrong-typed caller input was unreconstructible. Keys and reasons only (never the
@@ -344,7 +355,7 @@ export class AgentInvocationService {
     const wireModel = this.requireWireModelId(resolved);
 
     const body: Record<string, unknown> = {
-      prompt: String(input.text ?? ''),
+      prompt: composed.user,
       ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
       ...(compiled.model.provider ? { provider: compiled.model.provider } : {}),
       model: wireModel,
@@ -641,12 +652,12 @@ export class AgentInvocationService {
   ): Record<string, unknown> {
     // The roots alone (`trigger` / `context` / `input`), with no variables — so nothing is
     // resolved yet and nothing can throw. This is the scope a BINDING is resolved against.
-    const roots = buildAgentPromptScope({ input: scopeInput.input, trigger: scopeInput.trigger, templateRef: scopeInput.templateRef });
+    const roots = buildPromptScope({ input: scopeInput.input, trigger: scopeInput.trigger, templateRef: scopeInput.templateRef });
     const { resolvable, unresolved } = splitBindings(scopeInput.variables, roots);
     // Built from the bindings that DO resolve, so the builder cannot raise and the template diff
     // below sees exactly what the render will see. A name whose binding failed is absent here,
     // which is correct: it is missing, and it is named by its PATH rather than by itself.
-    const scope = buildAgentPromptScope({ ...scopeInput, variables: resolvable });
+    const scope = buildPromptScope({ ...scopeInput, variables: resolvable });
     const failedNames = new Set(unresolved.map((binding) => binding.name));
     const missing = [
       ...unresolved.map((binding) => binding.path),
@@ -708,9 +719,12 @@ export class AgentInvocationService {
         });
       }
       if (error instanceof PromptVariableUnresolvedError) {
-        throw new BadRequestException(
-          `Agent '${agentSlug}' instruction references \`${error.path}\`, which this invocation does not supply. Provide it under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
-        );
+        throw new BadRequestException({
+          message: `Agent '${agentSlug}' instruction references ${error.paths.map((path) => `\`${path}\``).join(', ')}, which this invocation does not supply. Provide each under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
+          code: 'PROMPT_VARIABLE_UNRESOLVED',
+          path: error.path,
+          missingVariables: [...error.paths],
+        });
       }
       if (error instanceof PromptTemplateSyntaxError) {
         // The parser's own message rides as a FIELD, never interpolated into a composed body:
@@ -880,3 +894,4 @@ function responseFormatOf(parameters: Record<string, unknown>): Record<string, u
   }
   return {};
 }
+
