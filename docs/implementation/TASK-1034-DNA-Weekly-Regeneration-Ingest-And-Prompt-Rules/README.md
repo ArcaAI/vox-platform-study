@@ -1,6 +1,6 @@
 # TASK-1034 — DNA writing style: weekly feedback-gated regeneration, tenant-admin ingest, style + rules in the prompt
 
-**Status:** In Progress (owner go 2026-10-02)
+**Status:** Review — merged on dev-2.2 2026-10-02; cluster rollout + live proof pending the push
 **Type:** feature
 **Branch:** dev-2.2
 **Raised:** 2026-10-02, after the ALaaS ↔ cluster E2E (lifecycle, sign-off and DNA all passed; see §2.4)
@@ -208,8 +208,64 @@ Unit + e2e gates per layer; then a live cluster proof: ingest 20 historical note
 
 ## 6. Implementation Summary
 
-_Not started._
+Three worktree lanes merged into `dev-2.2` (merges `100faba3c` backend, `68202fdaa` prompt, `15d347672` console;
+integration fixes `5b12031bf`, `1b3691404`; e2e `79bc5ebe4`).
+
+**DB / domain** — `DnaWritingSample` + `DnaSampleSource` (EDIT | SIGNOFF | INGEST), migration
+`20261002045042_task_1034_dna_writing_sample`, `ResourceType` value, tenant-scope allow-list (89 models), tenant-checkpoint
+registry entry (CLINICAL RECONCILE softDelete). Hand-authored entity/factory/mapper/repository.
+
+**Memory capture** — `summary.service.ts` emits `dna.memory.capture-requested` after a committed content change
+(`updateSummary`, EDIT) and after `approveSummary` (SIGNOFF); `DnaMemoryCaptureService` handles it async, gated on the
+effective DNA style decision, Vault-Transit encrypted, sha256 dedupe, never throws into the clinical action.
+
+**Ingest** — persisted as INGEST samples (encrypted, deduped), `generate` flag (default true); response adds `stored`,
+`duplicates`; `generate:false` → `jobId: null`, `status: 'STORED'`.
+
+**Weekly scheduler** — one `dna-regeneration` ticker every minute evaluates each tenant's own `dna-regen.cron`
+(default `0 2 * * 1`, enabled) in the tenant zone; candidates = doctors with ≥ `dna-regen.min-new-samples` (3) unconsumed
+samples since their latest report (or 7 days, incl. never-reported); skips counted noFeedback / optedOut / quota /
+belowFloor; idempotency per ISO week (BullMQ id uses `_` — BullMQ refuses >2 `:`); last run in Redis
+`dna-regen:last-run:<tenant>` (90 d). `dna-regen.*` are settings-registry descriptors; seed rows moved to SYSTEM.
+Processor corpus = approved summaries ∪ samples; used samples marked consumed.
+
+**Admin API** — `GET admin/dna-writing-styles/memory/summary`, `GET …/memory`, `DELETE …/memory/:id`,
+`GET|PUT …/schedule`, `POST …/schedule/run`; five artifacts regenerated.
+
+**R3** — `config.dna` gains `style` / `redaction`. Owner 2026-10-02: an explicit `style: true` or `redaction: true` enables
+that gate on its own; `enabled: true` = both unless one is `false`; `enabled: false` vetoes both; the doctor opt-in still
+vetoes. `renderDnaRedactionRulesText` → `dna_redaction_rules_text`, emitted by the live handoff and the harness gateway
+(`prompt-assembly` block "CLINICIAN REDACTION RULES (never include / always rewrite)"); the finalizer seed renders it; the
+deterministic post-generation redaction is unchanged. Pre-summary gates `dnaStyleId`. `rollout.mjs` republishes
+`casenote-finalization` with the rules block (not yet run on the cluster).
+
+**Console** — `/dna-writing-styles` → "DNA Writing Style Memory": Reports | Memory | Ingest (.json / .csv / .txt) | Schedule.
+
+### Evidence (post-merge, dev-2.2)
+
+| Gate | Result |
+|---|---|
+| `pnpm turbo build --filter=@arcaai/api... --filter=@arcaai/admin-console` | 18/18 successful |
+| `@arcaai/applications test` | 1110 files, 16469 passed, 4 skipped |
+| `@arcaai/database test` | 111 files, 2021 passed |
+| `@arcaai/domains test` | 182 files, 2016 passed |
+| `@arcaai/workflow-contract test` | 57 files, 980 passed |
+| `@arcaai/api test` (unit) | 369 files, 4809 passed |
+| `@arcaai/admin-console test` | 404/405 in the parallel run; the one failure (settings-registry screen, timing under load) passes alone 44/44 |
+| harness pytest | 2871 passed |
+| lint (api, applications, admin-console, domains, workflow-contract; harness ruff) | 0 errors; no warning on a TASK-1034 line |
+| e2e `dna-memory-cross-tenant.spec.ts` | 5 passed |
+| e2e `task-776-route-authz-matrix.spec.ts` | 7 passed |
+
+### Open
+
+- Push → deploy → `rollout.mjs` on the cluster (DRY_RUN first) → live proof per §5 Verification.
+- Each tenant's `consultation_note_context` schema declares `dna_redaction_rules_text` only after a republish (both lanes
+  work without it).
+- ALaaS mapping typo `arcaai_doctor_neuro` → `arcaai_doctor_neur` (ALaaS repo).
 
 ## 7. Change History
 
+- 2026-10-02 — Lanes merged into dev-2.2, integration fixes, e2e; status Review.
+- 2026-10-02 — Owner: `style:true` / `redaction:true` each enable their gate alone.
 - 2026-10-02 — Plan drafted from the code survey; dev-cluster staffId 1001–1006 set on the seeded ArcaAI clinicians.
