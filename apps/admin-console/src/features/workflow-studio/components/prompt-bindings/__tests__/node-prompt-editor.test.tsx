@@ -18,6 +18,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue, templateEditorValue } from '@/test/template-editor';
 import type { NodePromptBinding } from '../../../api/types';
 import { NodePromptEditor } from '../node-prompt-editor';
 
@@ -65,7 +66,7 @@ async function openEditor() {
     <NodePromptEditor binding={binding()} definitionId="def-1" etag='"7"' open onOpenChange={vi.fn()} onSaved={vi.fn()} />,
   );
   const dialog = await screen.findByRole('dialog');
-  await waitFor(() => expect((within(dialog).getByLabelText('Prompt content') as HTMLTextAreaElement).value).toBe(LATEST_CONTENT));
+  await waitFor(() => expect(templateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }))).toBe(LATEST_CONTENT));
   return dialog;
 }
 
@@ -81,7 +82,7 @@ describe('NodePromptEditor — reporting what the server actually did', () => {
     stubEditor(updateResponse({ promptVersionMinted: true, promptVersionNumber: 6, previousPromptVersionNumber: 4 }));
     const dialog = await openEditor();
 
-    fireEvent.change(within(dialog).getByLabelText('Prompt content'), { target: { value: 'Edited wording.' } });
+    setTemplateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }), 'Edited wording.');
     fireEvent.click(within(dialog).getByRole('button', { name: /Save as v6 and pin this node/ }));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
@@ -121,7 +122,7 @@ describe('NodePromptEditor — reporting what the server actually did', () => {
     expect(within(dialog).getByRole('button', { name: /Adopt v5 for this node/ })).toBeDefined();
     expect(within(dialog).queryByRole('button', { name: /Save as v6/ })).toBeNull();
 
-    fireEvent.change(within(dialog).getByLabelText('Prompt content'), { target: { value: 'Edited wording.' } });
+    setTemplateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }), 'Edited wording.');
     expect(within(dialog).getByRole('button', { name: /Save as v6 and pin this node/ })).toBeDefined();
   });
 
@@ -141,5 +142,14 @@ describe('NodePromptEditor — reporting what the server actually did', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(toast.success).not.toHaveBeenCalled();
+  });
+});
+
+describe('NodePromptEditor — the content is a TemplateEditor', () => {
+  it('flags a placeholder that does not parse, inline at the field', async () => {
+    stubEditor(updateResponse({ promptVersionMinted: true, promptVersionNumber: 6, previousPromptVersionNumber: 4 }));
+    const dialog = await openEditor();
+    setTemplateEditorValue(within(dialog).getByRole('textbox', { name: 'Prompt content' }), 'Hello {{ unfinished');
+    await waitFor(() => expect(within(dialog).getByText(/unterminated placeholder/)).toBeTruthy(), { timeout: 2000 });
   });
 });

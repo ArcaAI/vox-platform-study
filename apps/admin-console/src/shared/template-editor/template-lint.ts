@@ -61,6 +61,19 @@ export interface DeclaredNamespacesInput {
   openRoots?: readonly string[];
 }
 
+/**
+ * `DeclaredNamespaces` from an already-derived path list: each of `roots` that has paths is
+ * checked against them; a root with no paths, and every `openRoots` entry, is admitted unchecked.
+ */
+export function declaredNamespacesFromPaths(
+  paths: readonly VariablePath[],
+  { roots, variables = [], openRoots = [] }: { roots: readonly string[]; variables?: readonly string[]; openRoots?: readonly string[] },
+): DeclaredNamespaces {
+  const declared: Record<string, unknown> = Object.fromEntries(openRoots.map((root) => [root, null]));
+  for (const root of roots) declared[root] = rootSchema(paths, root);
+  return { roots: declared, variables };
+}
+
 /** The same `DeclaredNamespaces` shape publish builds: `context` + `trigger` from the schema, plus open roots. */
 export function declaredNamespaces({ definition, variables, openRoots = ['input'] }: DeclaredNamespacesInput): DeclaredNamespaces {
   const roots: Record<string, unknown> = Object.fromEntries(openRoots.map((root) => [root, null]));

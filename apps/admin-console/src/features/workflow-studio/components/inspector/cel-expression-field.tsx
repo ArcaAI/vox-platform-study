@@ -4,15 +4,17 @@
  * `CelExpressionField` — the Studio's CEL editor (TASK-864 B1) for every `format: 'cel'`
  * string in a core node's config schema (`core.condition.branches[].when`, `core.loop.until`).
  *
- * Deliberately small: a monospace textarea (never placeholder-only — the label is visible), a
- * client-side FAST-FAIL that only checks what a text box can check without the evaluator
- * (balanced brackets and quotes, non-empty), and quick-insert chips for the run-context
- * references the graph offers (`trigger`, `vars.<key>`, `nodes.<id>`). Type-checking against
+ * Deliberately small: a `TemplateEditor` in CEL mode (completion after `trigger.` / `context.` /
+ * `nodes.` over the workflow's schema paths and graph references), a client-side FAST-FAIL that
+ * only checks what a text box can check without the evaluator (balanced brackets and quotes,
+ * non-empty), and quick-insert chips for the run-context references the graph offers — the
+ * single-pointer alternative to typing. Type-checking against
  * the context schema stays SERVER-SIDE at publish (`expressionProblems`) — the same posture as
  * the rest of the inspector: the client decides how to RENDER, never whether a value is valid.
  */
-import { Button, Field, FieldError, FieldLabel, Textarea } from '@arcaai/ui';
-import { useId } from 'react';
+import { Button, Field, FieldError, FieldLabel } from '@arcaai/ui';
+import { TemplateEditor, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
+import { useId, useMemo } from 'react';
 import { FieldCopy } from './field-copy';
 
 export interface CelExpressionFieldProps {
@@ -28,6 +30,8 @@ export interface CelExpressionFieldProps {
   errors?: string[];
   /** Run-context references the graph offers (computed by the inspector from the graph). */
   references?: readonly string[];
+  /** The workflow's schema paths (`trigger.*` / `context.*`), offered as completions. */
+  paths?: readonly VariablePath[];
   disabled?: boolean;
 }
 
@@ -57,26 +61,48 @@ export function celSyntaxProblem(expression: string): string | null {
   return null;
 }
 
-export function CelExpressionField({ id, label, summary, description, required, value, onChange, errors, references = [], disabled }: CelExpressionFieldProps) {
+const NO_PATHS: readonly VariablePath[] = [];
+const NO_REFERENCES: readonly string[] = [];
+
+export function CelExpressionField({
+  id,
+  label,
+  summary,
+  description,
+  required,
+  value,
+  onChange,
+  errors,
+  references = NO_REFERENCES,
+  paths = NO_PATHS,
+  disabled,
+}: CelExpressionFieldProps) {
   const hintId = useId();
+  const labelId = `${id}-label`;
+  const completionPaths = useMemo(
+    () => [...paths, ...references.map((path) => ({ path, type: 'reference', required: false, phiClass: null, description: null, deprecated: false }))],
+    [paths, references],
+  );
   const syntax = celSyntaxProblem(value);
   const allErrors = [...(syntax ? [syntax] : []), ...(errors ?? [])];
   return (
     <Field data-invalid={allErrors.length > 0 ? 'true' : undefined}>
-      <FieldLabel htmlFor={id}>
+      <FieldLabel id={labelId}>
         {label}
         {required ? ' *' : ''}
       </FieldLabel>
       <FieldCopy label={label} summary={summary} description={description} />
-      <Textarea
+      <TemplateEditor
         id={id}
+        mode="cel"
         value={value}
-        rows={3}
-        spellCheck={false}
-        disabled={disabled}
+        onChange={onChange}
+        paths={completionPaths}
+        minLines={2}
+        readOnly={disabled}
+        aria-labelledby={labelId}
         aria-describedby={hintId}
-        className="resize-none font-mono text-xs"
-        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={allErrors.length > 0}
       />
       <span id={hintId} className="text-muted-foreground text-xs">
         CEL over the run context — <code className="font-mono">trigger.*</code>, <code className="font-mono">vars.*</code>, <code className="font-mono">nodes.&lt;id&gt;.*</code>.

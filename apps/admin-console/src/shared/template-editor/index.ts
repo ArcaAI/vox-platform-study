@@ -1,6 +1,7 @@
 export {
   contextVariablePaths,
   declaredNamespaces,
+  declaredNamespacesFromPaths,
   findingsAt,
   templateLint,
   templateSyntaxLint,

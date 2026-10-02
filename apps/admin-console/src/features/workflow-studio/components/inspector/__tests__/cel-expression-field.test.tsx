@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import { CelExpressionField, celSyntaxProblem } from '../cel-expression-field';
 
 describe('celSyntaxProblem', () => {
@@ -18,15 +19,15 @@ describe('celSyntaxProblem', () => {
 });
 
 describe('CelExpressionField', () => {
-  it('is a labelled textarea that reports a syntax problem inline and inserts references', () => {
+  it('is a labelled CEL editor that reports a syntax problem inline and inserts references', () => {
     const onChange = vi.fn();
     render(<CelExpressionField id="when" label="When" value="(a" onChange={onChange} references={['trigger', 'vars.count']} />);
-    const box = screen.getByLabelText(/when/i);
-    expect(box.tagName).toBe('TEXTAREA');
+    const box = screen.getByRole('textbox', { name: /when/i });
+    expect(box.closest('[data-slot="template-editor"]')?.getAttribute('data-mode')).toBe('cel');
     expect(screen.getByText('Missing closing ")".')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'vars.count' }));
     expect(onChange).toHaveBeenCalledWith('(a vars.count');
-    fireEvent.change(box, { target: { value: '(a)' } });
+    setTemplateEditorValue(box, '(a)');
     expect(onChange).toHaveBeenCalledWith('(a)');
   });
 });
