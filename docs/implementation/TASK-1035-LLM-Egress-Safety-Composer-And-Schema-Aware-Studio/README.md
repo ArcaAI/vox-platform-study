@@ -191,6 +191,55 @@ Lanes are partitioned by package, so each worktree has one writer (rule 14). The
 | L5 harness | `apps/harness` (retire Presidio egress, use text pipeline, lane G fix, fallback schema fix, opt-out removal) | L1, L2 |
 | L6 console | `packages/ui` `TemplateEditor`, `apps/admin-console` (agents, workflow-studio, prompt-templates, context-schemas, quick start, inspector) | L1 |
 
+### 5.0b P1/P2 contract (frozen 2026-10-02, before wave A)
+
+**Waves.** A = CONTRACT, alone. B = GATEWAY-COMPOSER ∥ HARNESS-COMPOSER ∥ CONSOLE, all branched AFTER wave A is merged. Every B lane consumes the A exports below and never re-defines them.
+
+**A — `@arcaai/workflow-contract` exports. Python mirror under `apps/harness/src/harness/temporal/interpreter/`, pinned by a golden fixture in `tests/contracts/`:**
+
+| Export | Signature / rule |
+|---|---|
+| `composeMessages(input)` → `{ system: string, user: string, selected, excluded, blocks: {key, chars, truncated}[] }` | `input = { platformRules: string; resolvedPrompt: ComposableResolvedPrompt; scope; outputLanguage?: {name: string} \| null; outputContract?: string \| null; dataBlocks?: {key: string; label: string; content: string \| null; maxChars?: number}[]; templateRef? }`. <ul><li>**system** = `platformRules` → composed instruction (`composePrompt`) → output-language step (one fixed sentence naming the language) → `outputContract`, each joined by `\n\n` and omitted when empty.</li><li>**user** = data blocks in the GIVEN order, each wrapped `<<EXTERNAL_DATA key="…" label="…">>\n…\n<<END_EXTERNAL_DATA>>`. Empty or null blocks are skipped. A block over `maxChars` is cut at the last newline before the cap, marked `truncated: true` and suffixed with `\n[…truncated]`.</li><li>Throws `PromptVariableUnresolvedError` listing EVERY missing path (no empty rendering, ever).</li></ul> |
+| `PLATFORM_RULES_VERSION` + `platformRules()` | The one platform system text (moved from `PLATFORM_SYSTEM_PROMPT` in `prompt-assembly.service.ts`, content unchanged). |
+| `buildPromptScope(parts)` | Canonical scope (moved from `applications/.../agent-prompt-scope.ts`, behaviour unchanged) PLUS OD-6: `trigger` is an alias of `context` (same object) whenever only one of them is supplied. When both are supplied they are kept as given (the workflow lane's payload). |
+| `schemaVariablePaths(definition, root = 'context')` → `{ path, type, required, phiClass: string \| null, description: string \| null, deprecated: boolean }[]` | <ul><li>Derived from a `ConsultationContextSchemaVersion.definition`: kinds plus the declared fields of STRUCTURED kinds, applying the agent sole-kind collapse when `root === 'context'` and exactly one kind exists.</li><li>Replaces the console's `lib/trigger-variable-paths.ts` and the gateway's `soleContextKindSchema` derivation.</li><li>Paths are sorted and stable.</li></ul> |
+| `PROMPT_VARIABLE_UNDECLARED` severity | `ERROR` (blocks publish) for agents AND workflows. `PROMPT_FRAGMENT_CONDITION_ROOT` stays WARNING. |
+
+**B — GATEWAY-COMPOSER (`packages/{applications,database,domains}` + `apps/api`):**
+
+- **Every gateway composer uses `composeMessages`.** That covers agent invoke and bench (A/B), live (C, with its stable-prefix ordering preserved as data-block order) and `PromptAssemblyService` (E, template body moves to SYSTEM, conditional fragments honoured, a missing variable is a 400 `PROMPT_VARIABLE_UNRESOLVED` naming the variables).
+- **Lane F** (`text-proxy.controller.ts` raw `template.content`) renders through `composeMessages` with the template as an inline resolved prompt. It never sends unrendered `{{…}}`.
+- **Prompt Inspector API:** `POST admin/consultations/:consultationId/prompt-preview` with body `{ phase: 'live' | 'pre-summary' | 'finalize', agentSlug?: string }`, answering 200 `{ system, user, locality, providerView: { system, user } | null, egressPreview: { detected: Record<string,number>, redacted: number }, tokenEstimate: { system: number, user: number }, resolvedFrom, selected, excluded, blocks }`.
+  - `providerView` is the pseudonymized text a cloud provider would receive, and is null on local.
+  - Gate: `@CanRead('Consultation')`, cross-tenant 404, audited with `forceAuditLog: true`. The detect call reuses the guardrail `/screen/inbound` `include_pii_spans`.
+- **OD-9 storage:** Prisma model `ComposedPromptRecord` with fields `tenantId`, `consultationId?`, `agentSlug?`, `phase`, `provider`, `locality`, `systemCiphertext`, `userCiphertext`, `keyVersion`, `sha256`, `createdAt`, plus the standard template.
+  - Encryption uses the existing Vault Transit service.
+  - Written fire-and-forget by every gateway text call site and by `POST internal/composed-prompts` (service-token, for the harness).
+  - Read via `GET admin/composed-prompts?consultationId=` (metadata) and `GET admin/composed-prompts/:id` (decrypted; `@CanRead('Consultation')`, audited).
+  - Retention comes from the governed setting `composedPrompts.retentionDays` (default 30) with a daily purge (hard delete is sanctioned for an expired PHI audit copy; state it in the code).
+  - The migration is authored OFFLINE with `prisma migrate diff --from-schema <old> --to-schema <new> --script`. The lane never touches a DB.
+- **OD-6 / R1 on the backend:**
+  - Agent publish validates prompt paths against its own schema, or, when it has none and is bound by a workflow node, against that workflow's trigger schema (inheritance).
+  - The agent detail response exposes `effectiveContextSchema: { id, versionNumber, inheritedFrom: 'agent' | 'workflow' } | null`.
+
+**B — HARNESS-COMPOSER (`apps/harness`):**
+- **Durable `core.agent` (D)** and the palette lane switch to `compose_messages` (the Python mirror), with the output-language step moving into it.
+- **`trigger`/`context` alias** in the Python scope (OD-6).
+- **Recording:** after each text call it posts the composed messages to `POST /api/v1/internal/composed-prompts` (fire-and-forget, bounded timeout, never fails the step).
+
+**B — CONSOLE (`packages/ui` + `apps/admin-console`):**
+- **`TemplateEditor` in `@arcaai/ui`** (CodeMirror 6; deps already added):
+  - Typing `{{` opens a completion list fed by a `paths: VariablePath[]` prop; each item shows a type, required and PHI badge.
+  - A `lint(content) => {from,to,message,severity}[]` prop renders squiggles.
+  - It also offers CEL mode (completion after `context.` / `trigger.` / `nodes.`).
+  - It meets a11y requirements (labelled, keyboard completion) and supports both themes.
+- **Admin-console screens:**
+  - Every prompt, instruction, fragment, `when`, node-prompt and variable-binding field uses `TemplateEditor` with `schemaVariablePaths` and debounced `templateReferenceProblems`.
+  - Findings render at the field.
+  - The agent wizard step "Schemas" is renamed "Input / Output contract", and the context schema is chosen in step 1.
+  - The agent detail shows an inherited schema read-only.
+  - Add a Quick-start page (preset schema → agent → workflow → assignment) and a Prompt Inspector screen on the consultation detail, using the API above.
+
 ### 5.1 TDD test list (RED first)
 
 **L1**
