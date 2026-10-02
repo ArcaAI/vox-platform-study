@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { schemaVariablePaths } from '@arcaai/workflow-contract';
-import { contextVariablePaths, declaredNamespaces, findingsAt, templateLint, variableNamePaths, withPlatformPaths } from '../template-lint';
+import { contextCompletionPaths, contextVariablePaths, declaredNamespaces, findingsAt, templateLint, variableNamePaths, withPlatformPaths } from '../template-lint';
 
 const DEFINITION = {
   schemaVersion: 1,
@@ -18,6 +18,14 @@ const DEFINITION = {
 };
 
 describe('template lint helpers', () => {
+  it('offers only the canonical context root for completion, while the lint still admits the trigger alias', () => {
+    const offered = contextCompletionPaths(DEFINITION).map((entry) => entry.path);
+    expect(offered).toContain('context.patient.age');
+    expect(offered.some((path) => path.startsWith('trigger.'))).toBe(false);
+    const lint = templateLint(declaredNamespaces({ definition: DEFINITION, variables: [] }));
+    expect(lint('{{trigger.patient.age}}')).toEqual([]);
+  });
+
   it('offers context and trigger paths from one definition, plus bare variable names', () => {
     const paths = [...contextVariablePaths(DEFINITION), ...variableNamePaths(['topic'])];
     const names = paths.map((entry) => entry.path);

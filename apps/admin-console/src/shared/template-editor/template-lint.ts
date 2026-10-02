@@ -27,6 +27,16 @@ export function contextVariablePaths(definition: unknown): VariablePath[] {
 }
 
 /**
+ * What an agent prompt editor OFFERS: the `context.*` paths only. `trigger` is a deprecated alias
+ * of `context` on the agent lane, so offering both doubled every suggestion; the lint still
+ * declares both roots (via `contextVariablePaths`), so a prompt using the alias stays valid.
+ */
+export function contextCompletionPaths(definition: unknown): VariablePath[] {
+  if (definition === null || definition === undefined) return [];
+  return schemaVariablePaths(definition, 'context');
+}
+
+/**
  * `paths` plus the flat `context.*` names the gateway binds itself (`PLATFORM_CONTEXT_VARIABLES`),
  * badged `platform` — for a TEXT_GENERATION prompt. A path the schema already offers keeps the
  * schema's entry.

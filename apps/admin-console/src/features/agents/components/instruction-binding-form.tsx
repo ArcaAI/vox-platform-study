@@ -36,7 +36,7 @@ import {
 import { useContextSchemaDefinition, useContextSchemaOptions } from '@/shared/catalog';
 import {
   TemplateField,
-  contextVariablePaths,
+  contextCompletionPaths,
   declaredNamespaces,
   findingsAt,
   templateLint,
@@ -108,7 +108,7 @@ function useSchemaAssist(
   const names = useMemo(() => [...Object.keys(value.variables), ...extraNames], [value.variables, extraNames]);
   return useMemo(() => {
     // Plus the platform's own `context.*` names, which publish admits for every TEXT_GENERATION prompt.
-    const paths = [...withPlatformPaths(contextVariablePaths(definition)), ...variableNamePaths(names)];
+    const paths = [...withPlatformPaths(contextCompletionPaths(definition)), ...variableNamePaths(names)];
     // A bound schema whose definition has not arrived yet admits its roots rather than flagging them.
     const pending = schemaId !== null && definition === null;
     const declared = declaredNamespaces({

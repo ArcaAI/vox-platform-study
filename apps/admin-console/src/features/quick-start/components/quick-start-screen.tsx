@@ -21,7 +21,7 @@ import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { PromptTemplatePicker } from '@/shared/prompt-picker';
-import { TemplateField, contextVariablePaths, declaredNamespaces, templateLint, withPlatformPaths } from '@/shared/template-editor';
+import { TemplateField, contextCompletionPaths, declaredNamespaces, templateLint, withPlatformPaths } from '@/shared/template-editor';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { quickStartApi } from '../api/client';
 import {
@@ -112,7 +112,7 @@ export function QuickStartBody() {
   const existing = useContextSchemaDefinition(schemaMode === 'existing' && existingSchemaId ? existingSchemaId : null, null);
   const definition = schemaMode === 'preset' ? (presetByKey(presetKey)?.definition ?? null) : existing.definition;
   // The agent is TEXT_GENERATION, so the platform's own `context.*` names resolve too.
-  const paths = useMemo(() => withPlatformPaths(contextVariablePaths(definition)), [definition]);
+  const paths = useMemo(() => withPlatformPaths(contextCompletionPaths(definition)), [definition]);
   const lint = useMemo(() => templateLint(declaredNamespaces({ definition, variables: [], platform: true })), [definition]);
 
   const agentSlug = slugify(agentName);
