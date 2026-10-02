@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
-import { RedisSubscriberService } from '../redisSubscriber.service';
+import { INITIAL_CONNECT_WAIT_MS, RedisSubscriberService } from '../redisSubscriber.service';
 import { IConfigService } from '../../../baseServices/_meta/config';
 
 // Mock ioredis - external network boundary
@@ -524,6 +524,77 @@ describe('RedisSubscriberService', () => {
       await service.onModuleInit();
 
       expect(() => service.unsubscribeFromChannel('test:channel')).not.toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Subscribing during the initial connection (boot-time race)
+  // -----------------------------------------------------------------------
+
+  describe('subscribing before the initial connection is up', () => {
+    it('waits for the first connect and then subscribes the channel', async () => {
+      service = new RedisSubscriberService(mockConfigService);
+      await service.onModuleInit();
+      expect(service.isConnected()).toBe(false);
+
+      // An onModuleInit subscriber runs before ioredis has emitted 'connect'.
+      const pending = service.subscribeToChannel('tenant-lock:invalidate');
+      await Promise.resolve();
+      expect(mockRedisInstance.subscribe).not.toHaveBeenCalled();
+
+      eventHandlers['connect']();
+      const messages: string[] = [];
+      let completed = false;
+      (await pending).subscribe({
+        next: (msg) => messages.push(msg),
+        complete: () => {
+          completed = true;
+        },
+      });
+
+      expect(mockRedisInstance.subscribe).toHaveBeenCalledWith('tenant-lock:invalidate');
+      eventHandlers['message']('tenant-lock:invalidate', '{"tenantId":"t1"}');
+      expect(messages).toEqual(['{"tenantId":"t1"}']);
+      expect(completed).toBe(false);
+    });
+
+    it('returns a completing observable when the initial connection gives up', async () => {
+      service = new RedisSubscriberService(mockConfigService);
+      await service.onModuleInit();
+
+      const pending = service.subscribeToChannel('tenant-lock:invalidate');
+      eventHandlers['end']();
+
+      let completed = false;
+      (await pending).subscribe({
+        complete: () => {
+          completed = true;
+        },
+      });
+      expect(completed).toBe(true);
+      expect(mockRedisInstance.subscribe).not.toHaveBeenCalled();
+    });
+
+    it('stops waiting after the bounded initial-connect window', async () => {
+      vi.useFakeTimers();
+      try {
+        service = new RedisSubscriberService(mockConfigService);
+        await service.onModuleInit();
+
+        const pending = service.subscribeToChannel('tenant-lock:invalidate');
+        await vi.advanceTimersByTimeAsync(INITIAL_CONNECT_WAIT_MS);
+
+        let completed = false;
+        (await pending).subscribe({
+          complete: () => {
+            completed = true;
+          },
+        });
+        expect(completed).toBe(true);
+        expect(mockRedisInstance.subscribe).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -4,6 +4,13 @@ import { Observable, Subject, finalize } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
 
 /**
+ * How long a subscribe issued before the FIRST connection waits for it. Boot-time
+ * subscribers (`onModuleInit`) race ioredis' initial connect; the wait is bounded so a
+ * down Redis cannot stall module init behind ioredis' retries.
+ */
+export const INITIAL_CONNECT_WAIT_MS = 5_000;
+
+/**
  * Dedicated Redis Subscriber Service
  *
  * Redis requires that a connection in SUBSCRIBE mode cannot execute
@@ -31,6 +38,10 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
   private readonly refCounts = new Map<string, number>();
 
   private connected = false;
+
+  /** Pending until the first 'connect' (or until the client gives up); null once settled. */
+  private initialConnection: Promise<void> | null = null;
+  private settleInitialConnection: (() => void) | null = null;
 
   constructor(@Optional() @Inject(IConfigService) private readonly configService?: IConfigService) {}
 
@@ -86,8 +97,17 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
         lazyConnect: false,
       });
 
+      this.initialConnection = new Promise<void>((resolve) => {
+        this.settleInitialConnection = () => {
+          this.initialConnection = null;
+          this.settleInitialConnection = null;
+          resolve();
+        };
+      });
+
       this.subscriber.on('connect', () => {
         this.connected = true;
+        this.settleInitialConnection?.();
         this.logger.log({
           message: 'Redis subscriber connected',
           host: config.host,
@@ -108,6 +128,11 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn({ message: 'Redis subscriber connection closed' });
       });
 
+      // Retries exhausted — release anyone still waiting for the first connection.
+      this.subscriber.on('end', () => {
+        this.settleInitialConnection?.();
+      });
+
       // Dispatch incoming messages to the correct channel Subject
       this.subscriber.on('message', (channel: string, message: string) => {
         const subject = this.channels.get(channel);
@@ -116,6 +141,7 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
         }
       });
     } catch (error) {
+      this.settleInitialConnection?.();
       this.logger.error({
         message: 'Failed to initialize Redis subscriber',
         error: error instanceof Error ? error.message : String(error),
@@ -127,6 +153,7 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
    * Disconnect and clean up all subscriptions.
    */
   private async disconnect(): Promise<void> {
+    this.settleInitialConnection?.();
     // Complete all active subjects
     for (const [channel, subject] of this.channels.entries()) {
       subject.complete();
@@ -159,10 +186,19 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
    * the underlying Redis subscription. When the last observer unsubscribes,
    * the Redis subscription is removed.
    *
+   * A call made while the FIRST connection is still being established waits for it (bounded
+   * by `INITIAL_CONNECT_WAIT_MS`) instead of being refused — otherwise every `onModuleInit`
+   * subscriber that runs before ioredis emits 'connect' silently loses its channel for the
+   * process lifetime. After a later connection loss the call still degrades immediately.
+   *
    * @param channel - Redis channel name (e.g. "stt:transcription:{jobId}")
    * @returns Promise resolving to Observable that emits raw JSON message strings
    */
   async subscribeToChannel(channel: string): Promise<Observable<string>> {
+    if (this.subscriber && !this.connected && this.initialConnection) {
+      await this.waitForInitialConnection(this.initialConnection);
+    }
+
     if (!this.subscriber || !this.connected) {
       this.logger.warn({
         message: 'Cannot subscribe — Redis subscriber not connected',
@@ -212,6 +248,20 @@ export class RedisSubscriberService implements OnModuleInit, OnModuleDestroy {
         this.decrementAndCleanup(channel);
       }),
     );
+  }
+
+  private async waitForInitialConnection(initialConnection: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        initialConnection,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, INITIAL_CONNECT_WAIT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
