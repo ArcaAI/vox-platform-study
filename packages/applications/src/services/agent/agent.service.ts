@@ -136,6 +136,7 @@ import {
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
+  AgentTagSuggestionResponse,
   AgentTestAckResponse,
   AgentTestResultResponse,
   CloneAgentRequest,
@@ -154,6 +155,10 @@ import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
 
 const AGENT_FILTER_MODEL = 'Agent';
+
+/** TASK-1036 R1 — the tag autocomplete's page size, the prompt-template route's numbers. */
+const TAG_SUGGESTION_DEFAULT_LIMIT = 20;
+const TAG_SUGGESTION_MAX_LIMIT = 100;
 
 /** TASK-965 — what a lineage nothing assigns reports; the console renders it as the "Unassigned" warning. */
 const NO_ASSIGNMENT: AgentLineageAssignmentResponse = { tenantDefault: false, departmentCount: 0, selectorCount: 0 };
@@ -344,6 +349,35 @@ export class AgentService extends BaseService implements IAgentService {
       page: props.page ?? DEFAULT_PAGE,
       data: data.map((lineage) => AgentDtoMapper.toLineageResponse(lineage, assignments.get(lineage.slug) ?? NO_ASSIGNMENT, slugs)),
     });
+  }
+
+  /**
+   * TASK-1036 R1 — tag autocomplete for the agent editor, mirroring the prompt-template route.
+   *
+   * The caller tenant's OWN agents only (`findAllForTenant`; SYSTEM rows are never suggested), each
+   * tag normalised to lower case (Q16) and counted per LINEAGE — an agent with four versions is one
+   * agent carrying the tag, not four. Ranked by count (desc) then alphabetically; `q` is a
+   * case-insensitive substring; `limit` 20 by default, capped at 100.
+   */
+  async listTagSuggestions(query: { q?: string; limit?: number }): Promise<AgentTagSuggestionResponse[]> {
+    const tenantId = this.requireTenant();
+    const limit = query.limit && query.limit > 0 ? Math.min(Math.floor(query.limit), TAG_SUGGESTION_MAX_LIMIT) : TAG_SUGGESTION_DEFAULT_LIMIT;
+    const needle = query.q?.trim().toLowerCase();
+    const rows = await this.agentRepository.findAllForTenant(tenantId);
+    const slugsByTag = new Map<string, Set<string>>();
+    for (const row of rows) {
+      for (const raw of row.tags ?? []) {
+        const tag = raw.trim().toLowerCase();
+        if (tag.length === 0 || (needle && !tag.includes(needle))) continue;
+        const slugs = slugsByTag.get(tag) ?? new Set<string>();
+        slugs.add(row.slug);
+        slugsByTag.set(tag, slugs);
+      }
+    }
+    return [...slugsByTag.entries()]
+      .map(([tag, slugs]) => ({ tag, count: slugs.size }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+      .slice(0, limit);
   }
 
   async getById(id: string): Promise<AgentResponse> {

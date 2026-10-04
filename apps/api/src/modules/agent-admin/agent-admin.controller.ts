@@ -2,6 +2,7 @@ import {
   AsrLanguageCapabilityService,
   AgentBundleResponse,
   AgentResponse,
+  AgentTagSuggestionResponse,
   ListAgentLineagesQuery,
   PaginatedAgentLineageResponse,
   AgentSyncResponse,
@@ -92,6 +93,28 @@ export class AgentAdminController {
   @ApiResponse({ status: 400, description: 'Unknown `task`, or a malformed `filters` token.' })
   async fetchLineages(@Query() query: ListAgentLineagesQuery): Promise<PaginatedAgentLineageResponse> {
     return this.agentService.listLineages(query);
+  }
+
+  /**
+   * TASK-1036 R1 — tag autocomplete for the agent editor's `TagsField`, the mirror of
+   * `GET admin/prompt-templates/tags`. Static path, so it is declared ABOVE every `:id` route.
+   * Inherits the class gate; reads ONLY the caller tenant's agents.
+   */
+  @Get('tags')
+  @ApiOperation({
+    summary: 'Distinct agent tags with usage counts (autocomplete)',
+    description:
+      "Distinct tags over the caller tenant's agents, normalised to lower case and counted per agent LINEAGE (slug), ranked by count " +
+      '(descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Case-insensitive substring filter' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max suggestions (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Tag suggestions', type: [AgentTagSuggestionResponse] })
+  @ApiResponse({ status: 400, description: 'No tenant context on the request' })
+  @ApiResponse({ status: 403, description: 'Caller lacks manage:Agent' })
+  async listTags(@Query() queryParams: { q?: string; limit?: string }): Promise<AgentTagSuggestionResponse[]> {
+    const limit = Number(queryParams.limit);
+    return this.agentService.listTagSuggestions({ q: queryParams.q, limit: Number.isFinite(limit) && limit > 0 ? limit : undefined });
   }
 
   @Get(':id')
