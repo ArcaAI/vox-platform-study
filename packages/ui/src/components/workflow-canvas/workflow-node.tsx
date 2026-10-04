@@ -13,6 +13,7 @@ import type {
   WorkflowCanvasNode,
   WorkflowCanvasNodeRendererProps,
   WorkflowCanvasNodeTypes,
+  WorkflowCanvasPort,
   WorkflowCanvasRunState,
   WorkflowCanvasStepMarker,
 } from './types';
@@ -48,6 +49,48 @@ const SEVERITY_BADGE_VARIANT: Record<'ERROR' | 'WARNING', 'destructive' | 'secon
 const PRIMARY_HANDLE_CLASS = '!bg-[var(--workflow-canvas-handle)]';
 /** Branch handles sit inline beside their label rather than at React Flow's absolute mid-edge default (`canvas-tokens.css`). */
 const BRANCH_HANDLE_CLASS = 'workflow-canvas-branch !bg-[var(--workflow-canvas-handle-control)]';
+
+/**
+ * TASK-1036 — a typed port handle. Inline beside its label (like a branch handle), coloured by its
+ * tone through `--workflow-canvas-port-<tone>` and SHAPED by its family — round for a scalar,
+ * square for a list, a diamond for an audio/file reference — so the kind never rests on colour.
+ */
+const PORT_HANDLE_CLASS = 'workflow-canvas-port';
+
+function portTitle(port: WorkflowCanvasPort): string {
+  return `${port.label} · ${port.type}${port.required ? ' · required' : ''}`;
+}
+
+function PortRows({ ports, kind }: { ports: readonly WorkflowCanvasPort[]; kind: 'target' | 'source' }) {
+  const target = kind === 'target';
+  return (
+    <div
+      data-slot={target ? 'workflow-node-inputs' : 'workflow-node-outputs'}
+      role="group"
+      aria-label={target ? 'Inputs' : 'Outputs'}
+      className={cn('flex flex-col gap-1', target ? 'items-start' : 'items-end')}
+    >
+      {ports.map((port) => (
+        <div key={port.id} className={cn('flex items-center gap-1 text-[11px] leading-4', target ? 'flex-row' : 'flex-row-reverse text-right')}>
+          <Handle
+            id={port.id}
+            type={kind}
+            position={target ? Position.Left : Position.Right}
+            className={PORT_HANDLE_CLASS}
+            data-port-type={port.type}
+            data-port-tone={port.tone ?? 'any'}
+            title={portTitle(port)}
+          />
+          <span className="truncate">
+            {port.label}
+            {port.required ? <span aria-hidden> *</span> : null}
+            <span className="sr-only">{` ${target ? 'input' : 'output'}, ${port.type}${port.required ? ', required' : ''}`}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const STEP_MARKER_GLYPH: Record<WorkflowCanvasStepMarker, string> = { cycle: '↻', unreachable: '⚠' };
 const STEP_MARKER_NAME: Record<WorkflowCanvasStepMarker, string> = {
@@ -149,8 +192,11 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
   const mandatory = isMandatory(node);
   const group = node.kind === 'group';
   const rendererProps: WorkflowCanvasNodeRendererProps = { node, selected: Boolean(selected) };
-  const hasInput = node.hasInput ?? true;
-  const hasOutput = node.hasOutput ?? true;
+  const inputPorts = node.inputPorts ?? [];
+  const outputPorts = node.outputPorts ?? [];
+  // A node that declares typed fields draws them INSTEAD of the primary dot on that side.
+  const hasInput = (node.hasInput ?? true) && inputPorts.length === 0;
+  const hasOutput = (node.hasOutput ?? true) && outputPorts.length === 0;
   const branches = node.branches ?? [];
 
   return (
@@ -222,6 +268,13 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
       {Renderer ? (
         <div className="nodrag mt-2">
           <Renderer {...rendererProps} />
+        </div>
+      ) : null}
+
+      {inputPorts.length > 0 || outputPorts.length > 0 ? (
+        <div className="mt-2 flex items-start justify-between gap-3" data-slot="workflow-node-ports">
+          {inputPorts.length > 0 ? <PortRows ports={inputPorts} kind="target" /> : <span />}
+          {outputPorts.length > 0 ? <PortRows ports={outputPorts} kind="source" /> : null}
         </div>
       ) : null}
 

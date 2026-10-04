@@ -25,6 +25,21 @@ export interface WorkflowCanvasBranch {
   label: string;
 }
 
+/**
+ * TASK-1036 C2b — one TYPED port: a field of the node's I/O contract drawn as its own labelled
+ * handle. `id` is the React Flow handle id (the consumer's field handle, e.g. `in:message`);
+ * `type` is the value type (`text`, `list<entity>`, …) and `tone` its colour family. The shape
+ * also encodes the family (round = scalar, square = list, diamond = audio/file reference), so a
+ * port's kind is never conveyed by colour alone.
+ */
+export interface WorkflowCanvasPort {
+  id: string;
+  label: string;
+  type: string;
+  tone?: 'text' | 'number' | 'boolean' | 'date' | 'json' | 'list' | 'audio' | 'file' | 'any';
+  required?: boolean;
+}
+
 /** Per-node sandbox run state, rendered as a status chip in the node header. */
 export type WorkflowCanvasRunState = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
 
@@ -52,6 +67,10 @@ export interface WorkflowCanvasNode {
   hasOutput?: boolean;
   /** Extra labelled SOURCE handles stacked below the primary output. Absent/empty = primary only. */
   branches?: readonly WorkflowCanvasBranch[];
+  /** TASK-1036 — typed INPUT fields. Non-empty REPLACES the primary `in` dot; absent/empty keeps it. */
+  inputPorts?: readonly WorkflowCanvasPort[];
+  /** TASK-1036 — typed OUTPUT fields. Non-empty REPLACES the primary `out` dot; absent/empty keeps it. */
+  outputPorts?: readonly WorkflowCanvasPort[];
   /** 1-based execution order badge. `null`/absent renders no badge. */
   stepNumber?: number | null;
   /** Rendered INSTEAD of `stepNumber` when the node is not linearly ordered. */
@@ -121,6 +140,21 @@ export interface WorkflowCanvasProps {
    */
   selectedNodeIds?: readonly string[];
   readOnly?: boolean;
+  /** TASK-1036 — the controlled selected EDGE (the edge inspector). */
+  selectedEdgeId?: string | null;
+  /** TASK-1036 — an edge was selected (`null` when the selection no longer holds one). */
+  onEdgeSelect?: (edgeId: string | null) => void;
+  /**
+   * TASK-1036 §8.4 item 7 — `+` on an edge: a named button at the link's midpoint asks the
+   * consumer to insert a step there (and re-wire it). Absent or `readOnly` = no button.
+   */
+  onEdgeInsert?: (edgeId: string) => void;
+  /**
+   * TASK-1036 §8.4 item 7 — a link dragged out of a SOURCE handle and dropped on empty canvas.
+   * Reports the handle it came from and the drop point in flow coordinates, so the consumer can
+   * open its add-a-step menu there and connect the new step. Never called while `readOnly`.
+   */
+  onConnectEndOnPane?: (from: { nodeId: string; handleId: string | null }, position: { x: number; y: number }) => void;
   /** Reserved for run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
   overlay?: (node: WorkflowCanvasNode) => ReactNode;
   onNodesChange?: (nodes: WorkflowCanvasNode[]) => void;
