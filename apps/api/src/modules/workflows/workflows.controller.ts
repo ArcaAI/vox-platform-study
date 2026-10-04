@@ -62,6 +62,13 @@ export interface WorkflowRunStreamTicketResponse {
   scope: string;
   /** The socket to open with it, query string already built and encoded. */
   url: string;
+  /**
+   * TASK-1038 B3a (G12) — the SSE stream to open with the SAME ticket instead (protocol v2
+   * selected), for a browser app on an API key: `EventSource` cannot send `X-API-Key`, and the
+   * route's `@StreamScope('workflow_run', runId)` accepts this ticket. The ticket is single-use:
+   * open ONE of `url` / `sseUrl`.
+   */
+  sseUrl: string;
 }
 
 /**
@@ -432,7 +439,10 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
-  @ApiResponse({ status: 201, description: 'The ticket, its absolute expiry, its scope, and the socket URL to open with it.' })
+  @ApiResponse({
+    status: 201,
+    description: 'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
+  })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
@@ -459,7 +469,14 @@ export class WorkflowsController {
     });
 
     const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
-    return { ticket: issued.ticket, expiresAt: issued.expiresAt, scope: issued.scope, url: `/ws/workflows?${query.toString()}` };
+    const sseQuery = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+      url: `/ws/workflows?${query.toString()}`,
+      sseUrl: `/api/v1/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/stream?${sseQuery.toString()}`,
+    };
   }
 
   @Get(':slug/runs/:runId/stream')
