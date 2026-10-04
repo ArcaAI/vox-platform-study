@@ -222,6 +222,14 @@ class RunLimits(BaseModel):
     #: The pre-flight guard: an activity input larger than this fails the run by name
     #: (``PAYLOAD_TOO_LARGE``) instead of wedging on Temporal's own payload-size refusal.
     activity_input_max_bytes: int = Field(alias="activityInputMaxBytes", gt=0)
+    #: TASK-1038 (lane B3a → B1) — the two thresholds the ACTIVITIES apply, now resolved by the
+    #: gateway (settings registry) and injected with the start. Additive-optional: a run started
+    #: before the injection carries neither, and its activities keep reading the
+    #: `HARNESS_CLAIM_CHECK_*` settings (the one-release transition).
+    node_output_claim_check_min_bytes: int | None = Field(
+        default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
+    )
+    result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
 
 
 class InterpreterInput(BaseModel):
@@ -261,6 +269,12 @@ class InterpreterInput(BaseModel):
     # settings). Absent on every run started before TASK-1038 — and on those the walk behaves
     # exactly as it did, which is what keeps their replay byte-identical.
     limits: RunLimits | None = None
+    # TASK-1038 (OD-25), additive-optional. `workflowRuns.eventRetentionHours × 3600`, resolved by
+    # the gateway and injected with the start (gateway-resolved injection, never a literal in a
+    # producer). The terminal run event carries it so the event stream expires with its keys.
+    # Absent on a run the gateway started before the injection: its terminal append then passes
+    # `'0'` and the gateway's own `EXPIRE … NX` backstop starts the clock.
+    retention_seconds: int | None = None
 
 
 class InterpreterResult(BaseModel):
