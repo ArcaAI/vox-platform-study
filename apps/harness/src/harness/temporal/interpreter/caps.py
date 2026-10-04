@@ -15,6 +15,8 @@ rationale behind each concrete value.
 
 from __future__ import annotations
 
+from typing import Any
+
 # Per-node ceilings.
 MAX_NODE_TIMEOUT_SECONDS = 900
 MAX_NODE_ATTEMPTS = 5
@@ -40,3 +42,57 @@ def clamp_timeout(requested_seconds: int) -> int:
 def clamp_attempts(requested_attempts: int) -> int:
     """Tighten-only: a tenant may request fewer attempts than the platform ceiling, never more."""
     return min(requested_attempts, MAX_NODE_ATTEMPTS)
+
+
+# ---------------------------------------------------------------------------
+# TASK-1038 D-B — the whole-run bound.
+# ---------------------------------------------------------------------------
+
+#: The longest a consultation-bound run parks waiting for its live session to hand off (the
+#: workflow's own `_LIVE_HANDOFF_MAX_WAIT`, defined here so the dispatcher's backstop and the
+#: walk's wait cannot disagree). A durable wait on a clinician, not compute: it is NOT charged to
+#: `maxTotalSeconds`.
+LIVE_HANDOFF_MAX_WAIT_SECONDS = 7200
+
+#: Headroom the Temporal `execution_timeout` backstop adds on top of everything the walk may
+#: legitimately spend, so the in-workflow deadline always fires first and has time to cancel
+#: in-flight work, settle the stage and emit `workflow.run.completed` with `TIMED_OUT`.
+RUN_TIMEOUT_GRACE_SECONDS = 300
+
+
+def run_budget_seconds(max_total_seconds: int) -> int:
+    """The compute budget a run may spend (tighten-only, like every other cap; never < 1)."""
+    return max(1, min(max_total_seconds, MAX_TOTAL_SECONDS))
+
+
+def execution_timeout_seconds(config: Any, *, consultation_bound: bool) -> int | None:
+    """The Temporal ``execution_timeout`` BACKSTOP for a run of ``config``, or ``None``.
+
+    The primary bound is the in-workflow deadline (``workflow.py``), which charges compute only:
+    the live-handoff wait and every human review are excluded from ``maxTotalSeconds``. The
+    backstop therefore adds the longest each of those may legitimately last, plus a grace — and
+    is ``None`` when one of them has no ceiling the compiled config states:
+
+    * a blocking HITL gate (its SLA ladder comes from the tenant's harness policy at run time);
+    * a ``core.humanReview`` inside a loop body (it may run once per iteration).
+    """
+    if config.gates:
+        return None
+    for loop in getattr(config, "loops", []) or []:
+        for stage in loop.body.stages:
+            if any(node.type == "core.humanReview" for node in stage.nodes):
+                return None
+    seconds = run_budget_seconds(config.caps.max_total_seconds)
+    for stage in config.stages:
+        for node in stage.nodes:
+            if node.type == "core.humanReview":
+                seconds += review_wait_seconds(node)
+    if consultation_bound:
+        seconds += LIVE_HANDOFF_MAX_WAIT_SECONDS
+    return seconds + RUN_TIMEOUT_GRACE_SECONDS
+
+
+def review_wait_seconds(node: Any) -> int:
+    """How long one ``core.humanReview`` may wait — the same expression the walk hands its
+    ``ReviewGateWorkflow`` child (``workflow._run_review``)."""
+    return int(node.config.get("timeoutSeconds") or node.timeout_seconds)

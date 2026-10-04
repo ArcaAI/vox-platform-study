@@ -862,3 +862,25 @@ class LiveOutputsResult(BaseModel):
     ended_at: str | None = Field(default=None, alias="endedAt")
     outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContextPathRequest(BaseModel):
+    """TASK-1038 R-3 — resolve one dotted path of a run context that crosses a reference.
+
+    The workflow cannot read a claim-checked value, so ``interpreter.resolve_context_path`` does
+    it: dereference what the path walks through, then resolve it. ``run_payload`` is what the
+    run context's ``$hopeRunPayload`` sentinel (if any) stands for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_context: dict[str, Any] = Field(default_factory=dict)
+    run_payload: dict[str, Any] = Field(default_factory=dict)
+    path: str
+
+
+class ContextPathResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    found: bool = False
+    value: Any = None

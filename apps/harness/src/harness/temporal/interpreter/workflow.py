@@ -26,11 +26,12 @@ from harness.temporal.workflow_ids import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from harness.temporal.interpreter import caps
+    from harness.temporal.interpreter import caps, payload_refs
     from harness.temporal.interpreter.activities import (
         emit_run_events,
         load_config,
         load_live_outputs,
+        resolve_context_path,
     )
     from harness.temporal.interpreter.compiled_config import (
         CompiledGate,
@@ -50,6 +51,8 @@ with workflow.unsafe.imports_passed_through():
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
+        ContextPathRequest,
+        ContextPathResult,
         CoreLoopBounds,
         CoreLoopInput,
         CoreLoopResult,
@@ -66,6 +69,7 @@ with workflow.unsafe.imports_passed_through():
         ReviewGateResult,
         RunEventBatch,
         RunEventSpec,
+        RunLimits,
         RunStatus,
         StageResult,
     )
@@ -207,6 +211,22 @@ NON_RETRYABLE_NODE_ERROR_TYPES: tuple[str, ...] = (
 # is gated. The cheap operand (the degraded result CARRIES an output) is checked first.
 _KEEP_DEGRADED_PATCH = "task-1038-keep-degraded-output"
 
+# TASK-1038 R-3 — payloads by REFERENCE. The run payload travels once per activity input (or as
+# a claim-check reference once the trigger offloaded it) and the run context names it
+# symbolically; an activity input above the run's ceiling fails the run by name before anything
+# is scheduled; a `core.loop` whose `over` path crosses a reference resolves it through a NEW
+# activity. All three change what is sent or scheduled, so they share one marker.
+_PAYLOAD_REFS_PATCH = "task-1038-payload-refs"
+
+#: The run-level failure name for an activity input over the run's ceiling. Also an
+#: `ApplicationError` type a node activity raises for an oversized RESULT.
+PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+
+_CONTEXT_PATH_TIMEOUT = timedelta(seconds=60)
+_CONTEXT_PATH_RETRY = RetryPolicy(
+    maximum_attempts=3, non_retryable_error_types=["ClaimCheckIntegrityError"]
+)
+
 #: How long the walk parks between two handoff reads. A timer plus one short activity per
 #: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
 #: ceiling, and the finalize starts within one interval of the clinician pressing stop.
@@ -216,7 +236,7 @@ _LIVE_HANDOFF_POLL_INTERVAL = timedelta(seconds=15)
 #: session this platform documents; the walk proceeds with whatever the handoff last reported,
 #: which for an empty one is the pre-existing `no_bound_text` degrade. NEVER an infinite wait:
 #: a workflow that can park forever is one nobody can reason about.
-_LIVE_HANDOFF_MAX_WAIT = timedelta(hours=2)
+_LIVE_HANDOFF_MAX_WAIT = timedelta(seconds=caps.LIVE_HANDOFF_MAX_WAIT_SECONDS)
 
 _LIVE_OUTPUTS_TIMEOUT = timedelta(seconds=30)
 #: One retry. The poll loop IS the retry policy — a read that fails is asked again in 15s — so
@@ -322,6 +342,23 @@ def _activity_error_reason(error: BaseException) -> str:
     if len(reason) <= _ACTIVITY_REASON_MAX_CHARS:
         return reason
     return reason[: _ACTIVITY_REASON_MAX_CHARS - 3] + "..."
+
+
+def _oversized_input_reason(activity_input: NodeActivityInput, limits: RunLimits) -> str | None:
+    """``PAYLOAD_TOO_LARGE: …`` when the input would exceed the run's ceiling, else ``None``.
+
+    Pure and deterministic: the size of the input's own JSON encoding (what the pydantic data
+    converter puts on the wire, to within its envelope), against a ceiling recorded on the run's
+    input.
+    """
+    size = len(activity_input.model_dump_json().encode("utf-8"))
+    ceiling = limits.activity_input_max_bytes
+    if size <= ceiling:
+        return None
+    return (
+        f"{PAYLOAD_TOO_LARGE}: the activity input for node {activity_input.node_id!r} "
+        f"({activity_input.node_type}) is {size} bytes > {ceiling}"
+    )
 
 
 def _node_retry_policy(node: CompiledNode, max_attempts: int) -> RetryPolicy:
@@ -433,6 +470,12 @@ class WorkflowInterpreter:
         self._live_skipped: set[str] = set()
         self._live_handoff_done = False
         self._live_context: dict[str, Any] = {}
+        # TASK-1038 R-3 — a NAMED run-level failure (today only `PAYLOAD_TOO_LARGE`), carried
+        # onto `workflow.run.completed` so a caller learns WHY, not only that it failed.
+        self._run_failure_reason: str | None = None
+        # TASK-1038 R-3 — whether the trigger published the run payload unchanged (decided once,
+        # the first time an input is built after the trigger ran). Pure derived state.
+        self._trigger_is_payload: bool | None = None
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -611,6 +654,7 @@ class WorkflowInterpreter:
                 RunEventSpec(
                     event_type=EVENT_RUN_COMPLETED,
                     status=status,
+                    reason=self._run_failure_reason,
                     node_count=node_count,
                     failed_node_count=failed_node_count,
                     degraded_node_count=degraded_node_count,
@@ -954,6 +998,14 @@ class WorkflowInterpreter:
             node_type=node.type,
             doctor_id=_run_doctor_id(inp),
         )
+        by_reference = workflow.patched(_PAYLOAD_REFS_PATCH)
+        bound_inputs = self._resolve_bound_inputs(node)
+        if by_reference:
+            run_payload, run_context = self._payload_views(inp, core=node.type.startswith("core."))
+            bound_inputs = self._bound_payload_by_reference(bound_inputs, inp)
+        else:
+            run_payload = inp.payload
+            run_context = self._run_context() if node.type.startswith("core.") else {}
         activity_input = NodeActivityInput(
             node_id=node.node_id,
             node_type=node.type,
@@ -961,13 +1013,26 @@ class WorkflowInterpreter:
             tenant_id=inp.tenant_id,
             sandbox=inp.sandbox,
             trajectory=trajectory,
-            bound_inputs=self._resolve_bound_inputs(node),
-            run_payload=inp.payload,
+            bound_inputs=bound_inputs,
+            run_payload=run_payload,
             run_id=inp.run_id,
             # TASK-864 — the run context, for `core.*` nodes only: a legacy node's payload stays
             # byte-identical to every run before this ticket.
-            run_context=self._run_context() if node.type.startswith("core.") else {},
+            run_context=run_context,
         )
+        if by_reference and inp.limits is not None:
+            too_large = _oversized_input_reason(activity_input, inp.limits)
+            if too_large is not None:
+                # TASK-1038 R-3 — refused BEFORE scheduling. Temporal would refuse the payload
+                # itself, failing the workflow TASK (not the node) and retrying it forever; a
+                # named FAILED node fails the run instead, whatever the node's criticality.
+                self._run_failure_reason = PAYLOAD_TOO_LARGE
+                return NodeResult(
+                    node_id=node.node_id,
+                    node_type=node.type,
+                    status="FAILED",
+                    reason=too_large,
+                )
 
         retry_policy = (
             _node_retry_policy(node, max_attempts)
@@ -1087,7 +1152,7 @@ class WorkflowInterpreter:
         payload, so the handoff's value overrides an identically-named key that arrived with the
         invocation — in both views.
         """
-        trigger: dict[str, Any] = {}
+        trigger: Any = {}
         variables: dict[str, Any] = {}
         for node_id, output in self._node_outputs.items():
             node_type = self._node_types.get(node_id)
@@ -1095,14 +1160,105 @@ class WorkflowInterpreter:
                 trigger = output["context"]
             elif node_type == "core.variable" and isinstance(output.get("vars"), dict):
                 variables.update(output["vars"])
-        envelope = trigger.get("context")
-        authored = envelope if isinstance(envelope, dict) else trigger
-        published = {
-            **trigger,
-            **self._live_context,
-            "context": {**authored, **self._live_context},
-        }
+        # TASK-1038 R-3 — a trigger context stored out of band (a claim-check MARKER) cannot be
+        # unwrapped here, because the workflow cannot read it. It is published as a DEFERRED view
+        # instead, which the consuming activity rebuilds with the same `publish_trigger`.
+        published = (
+            payload_refs.deferred_trigger(trigger, self._live_context)
+            if payload_refs.is_marker(trigger)
+            else payload_refs.publish_trigger(trigger, self._live_context)
+        )
         return {"trigger": published, "vars": variables, "nodes": dict(self._node_outputs)}
+
+    def _trigger_output(self) -> tuple[str, Any] | None:
+        """``(nodeId, context)`` of the trigger's published context, or ``None`` (pure)."""
+        found: tuple[str, Any] | None = None
+        for node_id, output in self._node_outputs.items():
+            if self._node_types.get(node_id) == "core.trigger" and isinstance(
+                output.get("context"), dict
+            ):
+                found = (node_id, output["context"])
+        return found
+
+    def _payload_views(
+        self, inp: InterpreterInput, *, core: bool
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """TASK-1038 R-3 — ``(run_payload, run_context)`` for ONE activity input (pure).
+
+        Before, a ``core.*`` input carried the run payload four times: ``run_payload``,
+        ``run_context.trigger`` (flat), ``run_context.trigger.context``, and
+        ``run_context.nodes.<trigger>.context`` — because ``core.trigger`` publishes the run
+        payload unchanged as its ``context``. Now:
+
+        * once the trigger OFFLOADED its context (a claim-check marker), the run payload itself
+          travels as that marker — the trigger published it unchanged, so they are one value;
+        * otherwise the payload travels once, in ``run_payload``, and the run context NAMES it
+          (``$hopeRunPayload``); the node-activity envelope rebuilds every view before the node
+          runs, with the same ``publish_trigger``.
+        """
+        trigger = self._trigger_output()
+        run_payload: dict[str, Any] = inp.payload
+        if trigger is not None and payload_refs.is_marker(trigger[1]):
+            run_payload = trigger[1]
+        if not core:
+            return run_payload, {}
+        context = self._run_context()
+        if trigger is None or payload_refs.is_marker(trigger[1]):
+            return run_payload, context
+        if self._trigger_is_payload is None:
+            self._trigger_is_payload = trigger[1] == inp.payload
+        if not self._trigger_is_payload:
+            return run_payload, context
+        trigger_id = trigger[0]
+        sentinel = payload_refs.run_payload_sentinel()
+        nodes = dict(context["nodes"])
+        nodes[trigger_id] = {**nodes[trigger_id], "context": sentinel}
+        return run_payload, {
+            **context,
+            "trigger": payload_refs.deferred_trigger(sentinel, self._live_context),
+            "nodes": nodes,
+        }
+
+    def _bound_payload_by_reference(
+        self, bound: dict[str, Any], inp: InterpreterInput
+    ) -> dict[str, Any]:
+        """TASK-1038 R-3 — a bound value that IS the run payload is sent as the sentinel (pure).
+
+        The edge ``trigger.out -> in`` binds the trigger's published context, which is the run
+        payload unchanged — so without this the payload would travel twice in one input (once in
+        ``run_payload``, once here).
+        """
+        trigger = self._trigger_output()
+        if trigger is None or payload_refs.is_marker(trigger[1]) or not self._trigger_is_payload:
+            return bound
+        context = trigger[1]
+        sentinel = payload_refs.run_payload_sentinel()
+        return {port: (sentinel if value is context else value) for port, value in bound.items()}
+
+    async def _resolve_context_path(
+        self, inp: InterpreterInput, run_context: dict[str, Any], path: str
+    ) -> Any:
+        """TASK-1038 R-3 — resolve a dotted path that crosses a reference, in an ACTIVITY.
+
+        The workflow cannot read a claim-checked value, so a ``core.loop``'s ``over`` path that
+        walks into one is resolved by ``interpreter.resolve_context_path``. ``MISSING`` when the
+        activity finds nothing (or cannot run): the loop then degrades exactly as it always did
+        for an unresolvable path, observably.
+        """
+        try:
+            answer: ContextPathResult = await workflow.execute_activity(
+                resolve_context_path,
+                ContextPathRequest(
+                    run_context=run_context,
+                    run_payload=self._payload_views(inp, core=False)[0],
+                    path=path,
+                ),
+                start_to_close_timeout=_CONTEXT_PATH_TIMEOUT,
+                retry_policy=_CONTEXT_PATH_RETRY,
+            )
+        except ActivityError:
+            return MISSING
+        return answer.value if answer.found else MISSING
 
     async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
         """Dispatch a `core.humanReview` as a `ReviewGateWorkflow` child and TAKE its outcome
@@ -1217,6 +1373,13 @@ class WorkflowInterpreter:
         if mode == "foreach":
             over = config.get("over")
             resolved = resolve_dotted_path(run_context, over) if isinstance(over, str) else MISSING
+            if (
+                not isinstance(resolved, list)
+                and isinstance(over, str)
+                and payload_refs.reference_on_path(run_context, over)
+                and workflow.patched(_PAYLOAD_REFS_PATCH)
+            ):
+                resolved = await self._resolve_context_path(inp, run_context, over)
             if not isinstance(resolved, list):
                 return NodeResult(
                     node_id=node.node_id,
@@ -1240,7 +1403,11 @@ class WorkflowInterpreter:
             body=body,
             nested=dict(self._loops_by_id),
             seed_inputs=self._resolve_bound_inputs(node),
-            run_payload=inp.payload,
+            run_payload=(
+                self._payload_views(inp, core=False)[0]
+                if workflow.patched(_PAYLOAD_REFS_PATCH)
+                else inp.payload
+            ),
             run_context=run_context,
         )
         max_duration = int(loop_input.bounds.max_duration_seconds)
