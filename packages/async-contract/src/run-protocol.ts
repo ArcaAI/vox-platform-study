@@ -9,9 +9,10 @@
  * { seq, runId, type, ts, nodeId?, data }
  * ```
  *
- * The SIX divergent frame shapes that exist today stay readable for one release behind the
- * protocol header {@link RUN_PROTOCOL_HEADER} (`2` selects this protocol); the SDKs move to it in
- * 5.0.0 (OD-23).
+ * The SIX divergent frame shapes that exist today stay readable for one release: a stream
+ * request selects this protocol with the header {@link RUN_PROTOCOL_HEADER} `: 2` or, where a
+ * header cannot be set (browser `EventSource` / `WebSocket`), the query `?protocol=2`
+ * ({@link selectRunProtocol}). The SDKs move to it in 5.0.0 (OD-23).
  *
  * ## Audiences
  *
@@ -22,35 +23,63 @@
  *
  * ## Ordering and resume
  *
- * - `seq` is per run, starts at 1, and increases by exactly 1 per STORED event. It is the SSE
- *   `id:` line, so a browser `EventSource` (or the SDK) reconnects with `Last-Event-ID: <seq>`.
- *   A first connect may ask for `?after=<seq>` instead ({@link parseResumeCursor}: the header wins
- *   over the query, and both absent means "from the beginning", `after = 0`). The server replays
- *   every stored event with `seq > after`, then continues live. WS uses the same envelope as a
- *   JSON text frame and the same `?after=<seq>` on its URL.
- * - Two types are SYNTHETIC — emitted to one connection, never stored, never advancing `seq`:
- *   `ping` repeats the latest stored `seq` (0 before the first event) and `run.resync` carries
- *   `seq === data.snapshot.lastSeq`. A client keeps its cursor at that value; neither is a gap.
- * - A stored event whose `seq` is greater than `last + 1` means the client missed events. It
- *   reconnects with its last seq; the server answers with the missing events, or with
- *   `run.resync` when it can no longer produce them.
- * - Retention (OD-25): a run's event stream EXPIRES 24 h after the run is terminal; its status and
- *   result survive in the read model for `workflowRuns.resultRetentionDays`. A cursor that points
- *   before the oldest retained event, or at an expired stream, is answered with `run.resync`: a
- *   snapshot of the run (status, per-node status, the text accumulated per output field, and the
- *   result when terminal), after which the stream continues live from `lastSeq + 1`. A client
- *   that receives a terminal snapshot without an inline result reads `GET …/runs/:runId/result`.
+ * - `seq` is per run, starts at 1, and is assigned by ONE sequencer (the append script
+ *   {@link RUN_APPEND_LUA}): every STORED event gets the next integer, so the stored stream is
+ *   contiguous on the server. It is the SSE `id:` line, so a browser `EventSource` (or the SDK)
+ *   reconnects with `Last-Event-ID: <seq>`. A first connect may ask for `?after=<seq>` instead
+ *   ({@link parseResumeCursor}: the header wins over the query, and both absent means "from the
+ *   beginning", `after = 0`). The server replays every stored event with `seq > after` that the
+ *   connection may see, then continues live. WS uses the same envelope as a JSON text frame and
+ *   the same `?after=<seq>` on its URL.
+ * - **For a client, `seq` is monotonic but NOT contiguous.** The PUBLIC plane is filtered out of
+ *   the same stored sequence (admin debug events and admin-only outputs are dropped), so a jump
+ *   from 3 to 7 is normal. A client NEVER infers loss from a jump; it keeps the highest `seq` it
+ *   has seen as its cursor and drops anything at or below it as a replayed duplicate
+ *   ({@link advanceRunCursor}).
+ * - **Only the server signals loss**, with `run.resync { reason, snapshot }`
+ *   ({@link RUN_RESYNC_REASONS}): `gap` (events the cursor needs were trimmed from the bounded
+ *   stream), `expired` (the stream's retention elapsed), `cursor_invalid` (the cursor names a
+ *   `seq` the run never stored), `unavailable` (the event transport is down; the snapshot comes
+ *   from the read model). The server can detect every one of these exactly because the STORED
+ *   stream is contiguous. A client receiving `run.resync` REPLACES its run state with the
+ *   snapshot and sets its cursor to `seq`.
+ * - Two types are SYNTHETIC — emitted to one connection, never stored, never advancing the
+ *   sequencer: `ping` carries this connection's position (the last stored `seq` the server has
+ *   delivered OR filtered out for it; 0 before the first event), so a client may move its cursor
+ *   up to it; `run.resync` carries `seq === data.snapshot.lastSeq`, and the stream continues at
+ *   `lastSeq + 1`.
+ * - Retention (OD-25): a run's event stream EXPIRES `workflowRuns.eventRetentionHours` (24 h)
+ *   after the run is terminal; its status and result survive in the read model for
+ *   `workflowRuns.resultRetentionDays`. A cursor that points before the oldest retained event, or
+ *   at an expired stream, is answered with `run.resync`: a snapshot of the run (status, per-node
+ *   status, the outputs per node and field, and the result when terminal), after which the stream
+ *   continues live from `lastSeq + 1`. A client that receives a terminal snapshot without an
+ *   inline result reads `GET …/runs/:runId/result`.
  *
  * ## Deltas and results
  *
  * - Every delta names its node AND its output field (OD-33): `output.text.delta { field, text }`,
  *   `output.audio.delta { field, chunk, format }`, `output.data { field, value }`, each with
- *   `nodeId` on the envelope. Text deltas stream from nodes wired into the End node, plus any node
- *   flagged `stream` (OD-24).
+ *   `nodeId` on the envelope. On the PUBLIC plane (OD-24) outputs come only from nodes wired into
+ *   the End node, plus any node flagged `stream`: text as deltas, other values as `output.data`.
+ * - The ADMIN trace needs every node's outputs (the Test tab). At each node's completion the
+ *   producer emits `output.data { field, value, visibility: 'admin' }` for every declared output
+ *   of that node that has not already gone out as a public `output.data` — so a streamed text
+ *   field also arrives once as its final value. Visibility is therefore EVENT-level, not only
+ *   type-level: filter with {@link runEventAudience} / {@link toPublicRunEvent}, never with the
+ *   type alone. `run.resync.snapshot.outputs` is keyed by `nodeId`, then `field`; the public
+ *   plane's snapshot carries only public outputs.
  * - `run.completed.data.result` is either `{ kind: 'inline', value }` (the result serialises to at
  *   most {@link RUN_RESULT_INLINE_MAX_BYTES}) or `{ kind: 'ref', bucket, key, sizeBytes, sha256 }`
  *   (larger; the gateway serves it through a short-lived signed URL). Absent when the run produced
  *   no result. Lanes A1 (producer) and A2 (consumer) implement exactly these two shapes.
+ *
+ * ## Errors
+ *
+ * `run.failed.error` and `node.failed.error` carry a fixed SCREAMING_SNAKE `code` and the fixed
+ * label of that code as `message` ({@link runErrorMessage}) — never interpolated text, which could
+ * echo a patient value to a business caller. Free text is `error.detail`, on the stored event and
+ * the admin trace only; {@link toPublicRunEvent} strips it.
  *
  * ## Validation
  *
@@ -66,6 +95,29 @@ export const RUN_PROTOCOL_VERSION = 2;
 
 /** Request header selecting the protocol (`x-hope-run-protocol: 2`); absent ⇒ the legacy shapes for one release (OD-23). */
 export const RUN_PROTOCOL_HEADER = 'x-hope-run-protocol';
+
+/**
+ * Query parameter selecting the protocol (`?protocol=2`). A browser `EventSource` cannot set a
+ * header, and neither can a browser `WebSocket`, so both stream routes accept this too
+ * ({@link selectRunProtocol}).
+ */
+export const RUN_PROTOCOL_QUERY_PARAM = 'protocol';
+
+/**
+ * Which frame shapes a stream request selected: the {@link RUN_PROTOCOL_HEADER} when present
+ * (non-empty), else the {@link RUN_PROTOCOL_QUERY_PARAM}, else `legacy` (one release, OD-23). Any
+ * value other than `"2"` is refused (the route answers 400) — never silently downgraded to the
+ * legacy shapes, which a v2 client cannot parse.
+ */
+export function selectRunProtocol(input: {
+  readonly header?: string | null;
+  readonly query?: string | null;
+}): { readonly version: typeof RUN_PROTOCOL_VERSION | 'legacy' } | { readonly problems: readonly string[] } {
+  const raw = [input.header, input.query].find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+  if (raw === undefined || raw === null) return { version: 'legacy' };
+  if (raw === String(RUN_PROTOCOL_VERSION)) return { version: RUN_PROTOCOL_VERSION };
+  return { problems: [`unsupported run protocol ${JSON.stringify(raw)} (supported: ${RUN_PROTOCOL_VERSION})`] };
+}
 
 /** A result whose JSON is at most this many bytes rides inline on `run.completed`; larger is a `ref` (D-I). */
 export const RUN_RESULT_INLINE_MAX_BYTES = 64 * 1024;
@@ -121,15 +173,45 @@ export const RUN_EVENT_VISIBILITY: Readonly<Record<RunEventType, RunEventVisibil
 );
 
 /**
- * Whether the envelope MUST carry `nodeId` (`required`) or must NOT (`forbidden`). Run-level
- * events and `ping` belong to no node; `input.validated` validates the RUN's input. Everything a
- * step does — including every delta (OD-33) and every debug event of §10.3 — names its node.
+ * Whether the envelope MUST carry `nodeId` (`required`), MAY (`optional`) or must NOT
+ * (`forbidden`). Run-level events and `ping` belong to no node; `input.validated` validates the
+ * RUN's input. Everything a step does — including every delta (OD-33) and every debug event of
+ * §10.3 — names its node. Two conventions keep that rule honest where there is no graph node:
+ *
+ * - an AGENT run (`POST /agents/:slug/runs`) has exactly one step, whose `nodeId` is
+ *   {@link AGENT_RUN_NODE_ID} (`runEventProblems(…, { runKind: 'agent' })` enforces it);
+ * - `transcript.partial|final` is `optional`: a graph's ASR node names itself, but a transcript
+ *   sourced by the consultation SESSION (the gateway's STT bridge, no ASR node in the graph)
+ *   carries no `nodeId`.
  */
-export const RUN_EVENT_NODE_SCOPE: Readonly<Record<RunEventType, 'required' | 'forbidden'>> = Object.freeze(
+export const RUN_EVENT_NODE_SCOPE: Readonly<Record<RunEventType, RunEventNodeScope>> = Object.freeze(
   Object.fromEntries(
-    RUN_EVENT_TYPES.map((type) => [type, type.startsWith('run.') || type === 'ping' || type === 'input.validated' ? 'forbidden' : 'required']),
-  ) as Record<RunEventType, 'required' | 'forbidden'>,
+    RUN_EVENT_TYPES.map((type) => [
+      type,
+      type.startsWith('run.') || type === 'ping' || type === 'input.validated'
+        ? 'forbidden'
+        : type.startsWith('transcript.')
+          ? 'optional'
+          : 'required',
+    ]),
+  ) as Record<RunEventType, RunEventNodeScope>,
 );
+
+export type RunEventNodeScope = 'required' | 'optional' | 'forbidden';
+
+/** The `nodeId` of the single step of an agent run (`POST /agents/:slug/runs`). */
+export const AGENT_RUN_NODE_ID = 'agent';
+
+/** What a validator knows about the run beyond the event itself. */
+export interface RunEventValidationOptions {
+  /** `agent`: every `nodeId` present must be {@link AGENT_RUN_NODE_ID}. Unknown ⇒ no run-kind rule. */
+  readonly runKind?: 'agent' | 'workflow';
+  /**
+   * `public`: what a business-plane client may receive — no admin-audience event, no error
+   * `detail`. `admin` (or absent): the stored / admin-trace form.
+   */
+  readonly plane?: 'public' | 'admin';
+}
 
 /** Emitted to one connection, never stored, never advancing `seq` (see the module doc). */
 export const SYNTHETIC_RUN_EVENT_TYPES: readonly RunEventType[] = Object.freeze(['ping', 'run.resync'] as RunEventType[]);
@@ -138,7 +220,11 @@ export function isRunEventType(value: unknown): value is RunEventType {
   return typeof value === 'string' && (RUN_EVENT_TYPES as readonly string[]).includes(value);
 }
 
-/** `true` for the public subset; `false` for admin-debug types and anything unknown. */
+/**
+ * TYPE-level: `true` for the types that MAY reach the public plane; `false` for admin-debug types
+ * and anything unknown. A public type can still carry an admin-only instance (`output.data` with
+ * `visibility: 'admin'`), so a stream filter uses {@link runEventAudience} / {@link toPublicRunEvent}.
+ */
 export function isPublicRunEvent(type: string): boolean {
   return isRunEventType(type) && RUN_EVENT_VISIBILITY[type] === 'public';
 }
@@ -152,11 +238,52 @@ export interface RunTokens {
   readonly out: number;
 }
 
+/**
+ * A run or step failure (fix 7). `code` is a fixed SCREAMING_SNAKE identifier and `message` is the
+ * fixed label {@link runErrorMessage} gives that code — so nothing a producer interpolates (a model
+ * error, a patient value) can reach a business caller. Free text lives only in `detail`, which the
+ * public plane never carries ({@link toPublicRunEvent} strips it).
+ */
 export interface RunError {
   readonly code: string;
+  /** Always `runErrorMessage(code)`. */
   readonly message: string;
   /** The node the failure is attributed to, when it is a step's failure. */
   readonly nodeId?: string;
+  /** ADMIN TRACE ONLY: free-text diagnosis (may echo values; PHI shown to admins only, audited). */
+  readonly detail?: string;
+}
+
+/**
+ * The fixed labels. A producer may use a code that is not listed (it must still be SCREAMING_SNAKE);
+ * its label is then {@link RUN_ERROR_FALLBACK_MESSAGE}. Adding a code here is a contract change
+ * (fixture + Python mirror), never a per-call string.
+ */
+export const RUN_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  RUN_TIMED_OUT: 'The run exceeded its time limit.',
+  NODE_TIMED_OUT: 'The step exceeded its time limit.',
+  RUN_CANCELLED: 'The run was cancelled.',
+  INPUT_INVALID: 'The run input does not match its schema.',
+  OUTPUT_INVALID: 'The output does not match its declared contract.',
+  BINDING_UNRESOLVED: 'A required input of the step has no value.',
+  PROMPT_VARIABLE_UNRESOLVED: 'A required prompt variable has no value.',
+  PAYLOAD_TOO_LARGE: 'A payload exceeded the size limit.',
+  MODEL_UNAVAILABLE: 'The model did not answer.',
+  MODEL_ERROR: 'The model returned an error.',
+  PROVIDER_NOT_CONFIGURED: 'No usable provider connection is configured.',
+  AGENT_VERSION_UNAVAILABLE: 'The pinned agent version is not available.',
+  GUARDRAIL_BLOCKED: 'A guardrail blocked the content.',
+  CONSULTATION_READ_FAILED: 'Consultation data could not be read.',
+  DOWNSTREAM_UNAVAILABLE: 'A downstream service did not answer.',
+  INTERNAL_ERROR: 'An internal error occurred.',
+});
+
+/** The label of every code {@link RUN_ERROR_MESSAGES} does not list. */
+export const RUN_ERROR_FALLBACK_MESSAGE = 'The step could not be completed.';
+
+/** The one message a `RunError` with this code may carry. */
+export function runErrorMessage(code: string): string {
+  return Object.prototype.hasOwnProperty.call(RUN_ERROR_MESSAGES, code) ? (RUN_ERROR_MESSAGES[code] as string) : RUN_ERROR_FALLBACK_MESSAGE;
 }
 
 /** `run.completed.data.result` — EXACTLY these two shapes (lanes A1/A2). */
@@ -167,6 +294,13 @@ export type RunResult =
 /** The persisted run status vocabulary (`GoverningRunSummary.status`). */
 export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
 
+/**
+ * Why the SERVER sent `run.resync` — the only loss signal a client ever acts on (see the module
+ * doc). A client never derives one of these itself.
+ */
+export const RUN_RESYNC_REASONS = Object.freeze(['gap', 'expired', 'cursor_invalid', 'unavailable'] as const);
+export type RunResyncReason = (typeof RUN_RESYNC_REASONS)[number];
+
 export type RunNodeStatus = 'waiting' | 'running' | 'completed' | 'degraded' | 'failed' | 'skipped';
 
 export interface RunSnapshot {
@@ -174,8 +308,12 @@ export interface RunSnapshot {
   /** The last stored `seq` the snapshot reflects; the stream continues at `lastSeq + 1`. */
   readonly lastSeq: number;
   readonly nodes: Readonly<Record<string, { readonly status: RunNodeStatus; readonly durationMs?: number }>>;
-  /** Text accumulated so far per output field (and any `output.data` value), keyed by field. */
-  readonly outputs: Readonly<Record<string, unknown>>;
+  /**
+   * Outputs so far, keyed by `nodeId`, then `field`: text accumulated from deltas, or the latest
+   * `output.data` value. Two nodes may declare the same field name; they never collide. The public
+   * plane's snapshot holds only the outputs that plane may see.
+   */
+  readonly outputs: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly result?: RunResult;
 }
 
@@ -199,7 +337,7 @@ export interface RunEventDataMap {
   'run.failed': { readonly status: 'FAILED' | 'TIMED_OUT'; readonly durationMs: number; readonly error: RunError; readonly tokens?: RunTokens };
   /** `CANCELED` is the persisted status spelling; the event type keeps OD-23's `run.cancelled`. */
   'run.cancelled': { readonly status: 'CANCELED'; readonly durationMs: number; readonly reason?: string };
-  'run.resync': { readonly reason: 'cursor_expired' | 'gap' | 'reconnect'; readonly snapshot: RunSnapshot };
+  'run.resync': { readonly reason: RunResyncReason; readonly snapshot: RunSnapshot };
   'node.started': { readonly kind: string; readonly label?: string; readonly attempt?: number };
   'node.completed': {
     readonly status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED';
@@ -216,7 +354,12 @@ export interface RunEventDataMap {
     readonly format: 'wav' | 'mp3' | 'ogg' | 'pcm';
     readonly sampleRate?: number;
   };
-  'output.data': { readonly field: string; readonly value: unknown };
+  'output.data': {
+    readonly field: string;
+    readonly value: unknown;
+    /** `admin`: a trace-only output (fix 5) — the public plane never sees it. Absent ⇒ public. */
+    readonly visibility?: 'admin';
+  };
   ping: Record<string, never>;
   'input.validated': {
     readonly valid: boolean;
@@ -249,13 +392,20 @@ export interface RunEventDataMap {
     readonly speaker?: string;
     readonly language?: string;
   };
-  /** Layers and token counts ONLY — the composed content is read through the Prompt Inspector (`composedPromptId`). */
+  /**
+   * Layers and their SIZES only — the composed content is read through the Prompt Inspector
+   * (`composedPromptId`). Characters are always counted; tokens only where the producer has a
+   * tokenizer for the model (the harness has none), so `tokens` / `tokensTotal` are optional and a
+   * consumer never estimates them from `chars`.
+   */
   'prompt.composed': {
     readonly layers: ReadonlyArray<{
       readonly name: 'platformRules' | 'instruction' | 'outputLanguage' | 'outputContract' | 'data';
-      readonly tokens: number;
+      readonly chars: number;
+      readonly tokens?: number;
     }>;
-    readonly tokensTotal: number;
+    readonly charsTotal: number;
+    readonly tokensTotal?: number;
     readonly selected: readonly string[];
     readonly excluded: ReadonlyArray<{ readonly key: string; readonly reason: 'condition_false' | 'condition_error' }>;
     readonly blocks: ReadonlyArray<{ readonly key: string; readonly chars: number; readonly truncated: boolean }>;
@@ -292,7 +442,7 @@ export type RunEventV2<T extends RunEventType = RunEventType> = T extends RunEve
       readonly type: T;
       /** ISO-8601 UTC, when the event happened (not when it was delivered). */
       readonly ts: string;
-      /** Present exactly when {@link RUN_EVENT_NODE_SCOPE} says `required`. */
+      /** Present when {@link RUN_EVENT_NODE_SCOPE} says `required`, absent when `forbidden`, either when `optional`. */
       readonly nodeId?: string;
       readonly data: RunEventDataMap[T];
     }
@@ -341,7 +491,15 @@ function closed(properties: Record<string, RunEventDataSchema>, required: readon
 }
 
 const TOKENS = closed({ in: INT0, out: INT0 }, ['in', 'out']);
-const ERROR = closed({ code: STR1, message: STR, nodeId: STR1 }, ['code', 'message']);
+const ERROR = closed(
+  {
+    code: Object.freeze({ type: 'string', pattern: '^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$', maxLength: 64 }),
+    message: STR,
+    nodeId: STR1,
+    detail: Object.freeze({ type: 'string', maxLength: 4000 }),
+  },
+  ['code', 'message'],
+);
 const SHA256: RunEventDataSchema = Object.freeze({ type: 'string', pattern: '^[0-9a-f]{64}$' });
 const RESULT: RunEventDataSchema = Object.freeze({
   anyOf: Object.freeze([
@@ -386,7 +544,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
   'run.cancelled': closed({ status: Object.freeze({ const: 'CANCELED' }), durationMs: INT0, reason: STR }, ['status', 'durationMs']),
   'run.resync': closed(
     {
-      reason: Object.freeze({ type: 'string', enum: Object.freeze(['cursor_expired', 'gap', 'reconnect']) }),
+      reason: Object.freeze({ type: 'string', enum: RUN_RESYNC_REASONS }),
       snapshot: closed(
         {
           status: Object.freeze({ type: 'string', enum: Object.freeze(['RUNNING', 'COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']) }),
@@ -401,7 +559,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
               ['status'],
             ),
           }),
-          outputs: Object.freeze({ type: 'object', additionalProperties: ANY }),
+          outputs: Object.freeze({ type: 'object', additionalProperties: Object.freeze({ type: 'object', additionalProperties: ANY }) }),
           result: RESULT,
         },
         ['status', 'lastSeq', 'nodes', 'outputs'],
@@ -430,7 +588,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
     },
     ['field', 'chunk', 'format'],
   ),
-  'output.data': closed({ field: FIELD, value: ANY }, ['field', 'value']),
+  'output.data': closed({ field: FIELD, value: ANY, visibility: Object.freeze({ const: 'admin' }) }, ['field', 'value']),
   ping: closed({}),
   'input.validated': closed({ valid: BOOL, problems: STRINGS, schema: closed({ slug: STR1, versionNumber: INT1 }, ['slug']) }, ['valid', 'problems']),
   'data.bound': closed(
@@ -475,11 +633,13 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
               type: 'string',
               enum: Object.freeze(['platformRules', 'instruction', 'outputLanguage', 'outputContract', 'data']),
             }),
+            chars: INT0,
             tokens: INT0,
           },
-          ['name', 'tokens'],
+          ['name', 'chars'],
         ),
       }),
+      charsTotal: INT0,
       tokensTotal: INT0,
       selected: STRINGS,
       excluded: Object.freeze({
@@ -492,7 +652,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
       blocks: Object.freeze({ type: 'array', items: closed({ key: STR1, chars: INT0, truncated: BOOL }, ['key', 'chars', 'truncated']) }),
       composedPromptId: STR1,
     },
-    ['layers', 'tokensTotal', 'selected', 'excluded', 'blocks'],
+    ['layers', 'charsTotal', 'selected', 'excluded', 'blocks'],
   ),
   'model.request': closed(
     {
@@ -593,7 +753,7 @@ const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d
  * Every problem with a candidate run event. Empty array = conforms. Never throws — the package's
  * house idiom (`asyncEnvelopeProblems`).
  */
-export function runEventProblems(value: unknown): string[] {
+export function runEventProblems(value: unknown, options: RunEventValidationOptions = {}): string[] {
   if (!isPlainObject(value)) return ['run event must be a JSON object'];
   const problems: string[] = [];
 
@@ -626,6 +786,9 @@ export function runEventProblems(value: unknown): string[] {
     const scope = RUN_EVENT_NODE_SCOPE[type];
     if (scope === 'required' && !hasNodeId) problems.push(`nodeId is required on ${type}`);
     if (scope === 'forbidden' && hasNodeId) problems.push(`nodeId must be absent on ${type} (a run-level event)`);
+    if (options.runKind === 'agent' && hasNodeId && value.nodeId !== AGENT_RUN_NODE_ID) {
+      problems.push(`nodeId must be '${AGENT_RUN_NODE_ID}' on every step event of an agent run (received ${JSON.stringify(value.nodeId)})`);
+    }
   }
 
   if (!isPlainObject(value.data)) {
@@ -635,13 +798,25 @@ export function runEventProblems(value: unknown): string[] {
     if (type === 'run.resync' && isPlainObject(value.data.snapshot) && value.data.snapshot.lastSeq !== value.seq) {
       problems.push('run.resync seq must equal data.snapshot.lastSeq (the stream continues at lastSeq + 1)');
     }
+    const error = value.data.error;
+    if ((type === 'run.failed' || type === 'node.failed') && isPlainObject(error) && typeof error.code === 'string') {
+      const label = runErrorMessage(error.code);
+      if (error.message !== label)
+        problems.push(`data.error.message must be the fixed label of ${error.code} (${JSON.stringify(label)}); free text belongs in detail`);
+      if (options.plane === 'public' && Object.prototype.hasOwnProperty.call(error, 'detail')) {
+        problems.push('data.error.detail is admin-trace only and never reaches the public plane');
+      }
+    }
+    if (options.plane === 'public' && runEventAudience({ type, data: value.data } as Pick<RunEventV2, 'type' | 'data'>) !== 'public') {
+      problems.push(`${type} with this audience is admin-trace only and never reaches the public plane`);
+    }
   }
   return problems;
 }
 
 /** Refuse-if-unknown parse: the event itself, or `null` for ANY problem (the caller must not proceed on `null`). */
-export function parseRunEvent(value: unknown): RunEventV2 | null {
-  return runEventProblems(value).length === 0 ? (value as RunEventV2) : null;
+export function parseRunEvent(value: unknown, options: RunEventValidationOptions = {}): RunEventV2 | null {
+  return runEventProblems(value, options).length === 0 ? (value as RunEventV2) : null;
 }
 
 /** Thrown by {@link toSseFrame} for an event that does not conform — a producer never emits one. */
@@ -719,6 +894,229 @@ export function parseSseFrame(frame: string): ParsedSseFrame {
 }
 
 // =============================================================================================
+// The ONE sequencer — the stored shape (F2 fix 2)
+// =============================================================================================
+
+/**
+ * Every run's events live under three keys that share the `wf:run:<runId>:` prefix. The events key
+ * is the literal the gateway (`runEventStreamKey`) and the harness (`run_event_stream_key`) already
+ * use. Not Redis-Cluster-safe as spelled (no `{hash tag}`): HOPE runs one Redis; a cluster move is a
+ * new protocol version, never a silent respelling.
+ */
+export const RUN_STREAM_KEY_PREFIX = 'wf:run:';
+/** `INCR` counter — the last `seq` assigned. Never written except by {@link RUN_APPEND_LUA}. */
+export const RUN_SEQ_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:seq`;
+/** The Redis Stream of stored events. Never `XADD`ed except by {@link RUN_APPEND_LUA}. */
+export const RUN_EVENTS_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:events`;
+/** Hash `dedupeKey → "<seq> <streamId>"`: a retried append returns the first append's position. */
+export const RUN_DEDUPE_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:dedupe`;
+
+/** `XADD … MAXLEN ~` bound — the harness' existing `RUN_EVENT_STREAM_MAX_LEN`. Trimming past a cursor is a `gap` resync. */
+export const RUN_STREAM_MAX_LEN = 10_000;
+
+/** The stored entry's field order. `nodeId` is present only when the event has one. */
+export const RUN_STREAM_FIELDS = Object.freeze(['seq', 'type', 'ts', 'nodeId', 'vis', 'body'] as const);
+
+/** The error reply of an append to a stream whose terminal clock is already running. */
+export const RUN_STREAM_CLOSED_ERROR = 'RUN_STREAM_CLOSED';
+
+/** The events that end a run: the append that stores one starts the retention clock on every key. */
+export const TERMINAL_RUN_EVENT_TYPES = Object.freeze(['run.completed', 'run.failed', 'run.cancelled'] as const);
+
+/**
+ * The append script. EVERY producer — the harness for graph events, the gateway for the events it
+ * originates (consultation transcripts, run-level events of gateway-owned runs) — appends through
+ * this script and nothing else, so one run has one sequence however many processes write to it.
+ *
+ * `KEYS`: {@link RUN_SEQ_KEY}, {@link RUN_EVENTS_KEY}, {@link RUN_DEDUPE_KEY}.
+ * `ARGV[1]` the `MAXLEN ~` bound; `ARGV[2]` retention seconds (`'0'` unless the event is
+ * terminal); `ARGV[3]` dedupe key (`''` for none); `ARGV[4..]` the field/value pairs AFTER `seq`,
+ * in {@link RUN_STREAM_FIELDS} order. Returns `{ seq, streamId, duplicate }`.
+ *
+ * 1. A dedupe hit returns the first append's position and writes nothing (an activity retry).
+ * 2. A stream whose events key already has an expiry is CLOSED (the run is terminal, or the
+ *    gateway's terminal backstop ran): the append is refused with {@link RUN_STREAM_CLOSED_ERROR}.
+ * 3. `INCR` then `XADD … MAXLEN ~ n * seq <n> …` — atomic, so stored seqs are contiguous.
+ * 4. A terminal append (`ARGV[2] > 0`) sets the SAME expiry on all three keys, so they vanish
+ *    together and a counter can never outlive its stream (or the reverse) and re-issue a `seq`.
+ *
+ * The harness loads these exact bytes from `tests/contracts/run-protocol.fixture.json`.
+ */
+export const RUN_APPEND_LUA = [
+  '-- HOPE run protocol v2: the ONE run-event sequencer (TASK-1038).',
+  '-- KEYS: [1] wf:run:<runId>:seq  [2] wf:run:<runId>:events  [3] wf:run:<runId>:dedupe',
+  "-- ARGV: [1] maxLen  [2] retention seconds ('0' = not terminal)  [3] dedupe key ('' = none)",
+  '--       [4..] field/value pairs after seq: type, ts, [nodeId], vis, body',
+  'local dedupe = ARGV[3]',
+  "if dedupe ~= '' then",
+  "  local prior = redis.call('HGET', KEYS[3], dedupe)",
+  '  if prior then',
+  "    local s, id = string.match(prior, '^(%d+) (.+)$')",
+  '    return {tonumber(s), id, 1}',
+  '  end',
+  'end',
+  "if redis.call('PTTL', KEYS[2]) >= 0 then",
+  "  return redis.error_reply('RUN_STREAM_CLOSED')",
+  'end',
+  "local seq = redis.call('INCR', KEYS[1])",
+  "local xadd = {'XADD', KEYS[2], 'MAXLEN', '~', ARGV[1], '*', 'seq', tostring(seq)}",
+  'for i = 4, #ARGV do xadd[#xadd + 1] = ARGV[i] end',
+  'local id = redis.call(unpack(xadd))',
+  "if dedupe ~= '' then redis.call('HSET', KEYS[3], dedupe, seq .. ' ' .. id) end",
+  'local ttl = tonumber(ARGV[2])',
+  'if ttl > 0 then',
+  "  for i = 1, 3 do redis.call('EXPIRE', KEYS[i], ttl) end",
+  'end',
+  'return {seq, id, 0}',
+  '',
+].join('\n');
+
+/** What a producer hands {@link buildRunAppend}: one event WITHOUT its `seq` (the script assigns it). */
+export interface RunAppendInput {
+  readonly runId: string;
+  readonly type: RunEventType;
+  readonly ts: string;
+  readonly nodeId?: string;
+  readonly data: Readonly<Record<string, unknown>>;
+  /** A key derived from intent (run, node, attempt, …) — never a clock or a UUID. A retry with the same key appends nothing. */
+  readonly dedupeKey?: string;
+  /**
+   * REQUIRED on a terminal event, refused on every other: `workflowRuns.eventRetentionHours × 3600`,
+   * resolved by the gateway and passed to the harness with the run start (gateway-resolved
+   * injection) — never a literal in the producer.
+   */
+  readonly retentionSeconds?: number;
+  /** Defaults to {@link RUN_STREAM_MAX_LEN}. */
+  readonly maxLen?: number;
+}
+
+/** `EVALSHA`/`EVAL` arguments for one append: `keys` and `args` exactly as the script reads them. */
+export interface RunAppendCommand {
+  readonly keys: readonly string[];
+  readonly args: readonly string[];
+}
+
+/**
+ * The audience of ONE event — what the stored `vis` field records and the public plane filters
+ * on: the type's visibility, narrowed to `admin` for an admin-trace `output.data`.
+ */
+export function runEventAudience(event: Pick<RunEventV2, 'type' | 'data'>): RunEventVisibility {
+  if (event.type === 'output.data' && (event.data as { visibility?: unknown }).visibility === 'admin') return 'admin';
+  return RUN_EVENT_VISIBILITY[event.type];
+}
+
+/**
+ * The event as the PUBLIC plane (business callers, the SDKs) receives it, or `null` when that
+ * plane must not receive it at all. The gateway applies this to every stored event before it
+ * writes a public frame; the admin trace sends events unchanged.
+ */
+export function toPublicRunEvent(event: RunEventV2): RunEventV2 | null {
+  if (runEventAudience(event) !== 'public') return null;
+  if (event.type !== 'run.failed' && event.type !== 'node.failed') return event;
+  const { detail: _detail, ...error } = event.data.error;
+  void _detail;
+  return { ...event, data: { ...event.data, error } } as RunEventV2;
+}
+
+/**
+ * Validate one event and build its append command. Throws {@link RunProtocolError} for a synthetic
+ * type (never stored), a non-conforming event, or a retention on the wrong kind of event.
+ */
+export function buildRunAppend(input: RunAppendInput): RunAppendCommand {
+  if (SYNTHETIC_RUN_EVENT_TYPES.includes(input.type)) throw new RunProtocolError([`${input.type} is synthetic and is never stored`]);
+  const candidate: Record<string, unknown> = { seq: 1, runId: input.runId, type: input.type, ts: input.ts };
+  if (input.nodeId !== undefined) candidate.nodeId = input.nodeId;
+  candidate.data = input.data;
+  const problems = runEventProblems(candidate);
+  const terminal = (TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(input.type);
+  const retention = input.retentionSeconds;
+  if (terminal && (retention === undefined || !Number.isSafeInteger(retention) || retention < 1)) {
+    problems.push(`retentionSeconds (a positive integer) is required on the terminal event ${input.type}`);
+  }
+  if (!terminal && retention !== undefined) problems.push(`retentionSeconds is only allowed on a terminal event (received it on ${input.type})`);
+  const maxLen = input.maxLen ?? RUN_STREAM_MAX_LEN;
+  if (!Number.isSafeInteger(maxLen) || maxLen < 1) problems.push('maxLen must be a positive integer');
+  if (input.dedupeKey !== undefined && input.dedupeKey.length === 0) problems.push('dedupeKey must be non-empty when given');
+  if (problems.length > 0) throw new RunProtocolError(problems);
+
+  const fields: string[] = ['type', input.type, 'ts', input.ts];
+  if (input.nodeId !== undefined) fields.push('nodeId', input.nodeId);
+  fields.push('vis', runEventAudience(candidate as unknown as RunEventV2), 'body', JSON.stringify(input.data));
+  return {
+    keys: [RUN_SEQ_KEY(input.runId), RUN_EVENTS_KEY(input.runId), RUN_DEDUPE_KEY(input.runId)],
+    args: [String(maxLen), String(retention ?? 0), input.dedupeKey ?? '', ...fields],
+  };
+}
+
+export type ParsedStoredRunEvent =
+  | { readonly kind: 'event'; readonly event: RunEventV2; readonly visibility: RunEventVisibility }
+  /** A pre-v2 entry (`data` = an async envelope, no `seq`): a v2 reader skips it. */
+  | { readonly kind: 'legacy' }
+  | { readonly kind: 'invalid'; readonly problems: readonly string[] };
+
+const STORED_SEQ_PATTERN = /^[1-9][0-9]*$/;
+
+/**
+ * Read one stream entry (its flat field list, as `XRANGE`/`XREAD` return it) back into the
+ * envelope. `runId` comes from the key, never from the entry. A broken entry is `invalid`, never
+ * repaired; a reader logs it and moves past it.
+ */
+export function parseStoredRunEvent(runId: string, fields: readonly string[]): ParsedStoredRunEvent {
+  const map = new Map<string, string>();
+  for (let i = 0; i + 1 < fields.length; i += 2) map.set(fields[i] as string, fields[i + 1] as string);
+  const rawSeq = map.get('seq');
+  if (rawSeq === undefined) return { kind: 'legacy' };
+  const problems: string[] = [];
+  if (!STORED_SEQ_PATTERN.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq)))
+    problems.push(`stored seq must be a positive integer (received ${JSON.stringify(rawSeq)})`);
+  let data: unknown;
+  try {
+    data = JSON.parse(map.get('body') ?? '');
+  } catch {
+    problems.push('stored body is not JSON');
+  }
+  if (problems.length > 0) return { kind: 'invalid', problems };
+  const event: Record<string, unknown> = { seq: Number(rawSeq), runId, type: map.get('type'), ts: map.get('ts') };
+  if (map.has('nodeId')) event.nodeId = map.get('nodeId');
+  event.data = data;
+  problems.push(...runEventProblems(event));
+  if (isRunEventType(event.type) && SYNTHETIC_RUN_EVENT_TYPES.includes(event.type)) problems.push(`${event.type} is synthetic and is never stored`);
+  if (problems.length > 0) return { kind: 'invalid', problems };
+  const typed = event as unknown as RunEventV2;
+  const visibility = runEventAudience(typed);
+  if (map.get('vis') !== visibility)
+    return { kind: 'invalid', problems: [`stored vis ${JSON.stringify(map.get('vis'))} disagrees with ${visibility}`] };
+  return { kind: 'event', event: typed, visibility };
+}
+
+export type RunResumePlan =
+  /** Replay every retained event with `seq > after` the connection may see, then continue live. */
+  | { readonly kind: 'replay'; readonly after: number }
+  /** Answer with `run.resync { reason }` and continue live from the snapshot's `lastSeq + 1`. */
+  | { readonly kind: 'resync'; readonly reason: RunResyncReason };
+
+/**
+ * Where a (re)connect resumes. The STORED stream is contiguous (one sequencer, trimmed only from
+ * the front), so the server can tell exactly whether everything after the cursor is retained:
+ *
+ * - `lastSeq` is `GET` {@link RUN_SEQ_KEY} (`null` when absent);
+ * - `oldestSeq` is the `seq` field of `XRANGE <events> - + COUNT 1` (`null` when empty or absent).
+ *
+ * For `replay`, the gateway turns `after` into an `XREAD` id: `0-0` when `after < oldestSeq`,
+ * otherwise the id of the entry whose `seq === after`, found by scanning back from the tail with
+ * `XREVRANGE <events> + - COUNT <page>` (resumes are near the tail; the scan is bounded by
+ * {@link RUN_STREAM_MAX_LEN}).
+ */
+export function planRunResume(input: { readonly after: number; readonly oldestSeq: number | null; readonly lastSeq: number | null }): RunResumePlan {
+  const { after, oldestSeq, lastSeq } = input;
+  if (lastSeq === null) return after === 0 ? { kind: 'replay', after: 0 } : { kind: 'resync', reason: 'expired' };
+  if (after > lastSeq) return { kind: 'resync', reason: 'cursor_invalid' };
+  if (oldestSeq === null) return after === lastSeq ? { kind: 'replay', after } : { kind: 'resync', reason: 'gap' };
+  if (after + 1 < oldestSeq) return { kind: 'resync', reason: 'gap' };
+  return { kind: 'replay', after };
+}
+
+// =============================================================================================
 // Resume
 // =============================================================================================
 
@@ -741,4 +1139,31 @@ export function parseResumeCursor(input: {
     return { problems: [`resume cursor must be a non-negative decimal integer (received ${JSON.stringify(raw)})`] };
   }
   return { after: parsed };
+}
+
+/** One step of a client's cursor — what {@link advanceRunCursor} decided for one received event. */
+export interface RunCursorStep {
+  /** The cursor to keep (and to send as `Last-Event-ID` / `?after=` on the next reconnect). */
+  readonly cursor: number;
+  /** Whether the event is new to this client and must be applied. */
+  readonly deliver: boolean;
+  /** `run.resync`: discard the run state and replace it with `data.snapshot`. */
+  readonly reset: boolean;
+}
+
+/**
+ * The client side of the gap rule (fix 1). `seq` is monotonic but NOT contiguous for a client, so
+ * there is no "missed events" branch here at all:
+ *
+ * - a stored event with `seq > cursor` is delivered and becomes the cursor, however far it jumps;
+ * - a stored event with `seq <= cursor` is a replayed duplicate and is dropped;
+ * - `ping` is never delivered; it can only move the cursor forward;
+ * - `run.resync` is delivered with `reset: true` and sets the cursor to its `seq`
+ *   (`=== data.snapshot.lastSeq`), even when that is lower — the server's snapshot is the truth.
+ */
+export function advanceRunCursor(cursor: number, event: RunEventV2): RunCursorStep {
+  if (event.type === 'run.resync') return { cursor: event.seq, deliver: true, reset: true };
+  if (event.type === 'ping') return { cursor: Math.max(cursor, event.seq), deliver: false, reset: false };
+  if (event.seq <= cursor) return { cursor, deliver: false, reset: false };
+  return { cursor: event.seq, deliver: true, reset: false };
 }
