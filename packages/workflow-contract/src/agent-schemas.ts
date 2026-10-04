@@ -1201,8 +1201,9 @@ const TRANSCRIPT_AUDIO_SYNC_SCHEMA: NodeConfigSchema = Object.freeze({
 
 export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = Object.freeze({
   // TASK-1036 OD-8 — the user turn is `message`; `text` stays accepted as a DEPRECATED alias for
-  // one release. EXACTLY one of the two: each `anyOf` branch closes the object over its own
-  // spelling, so a body carrying both matches neither branch. Written with `anyOf` +
+  // one release. At most one of the two, and `message` is OPTIONAL (contract freeze): a body may
+  // carry only `variables`. Each `anyOf` branch closes the object over its own spelling, so a body
+  // carrying both spellings matches no branch, and an empty body matches none either. Written with `anyOf` +
   // `additionalProperties: false` rather than an undiscriminated `oneOf`, which the authoring gate
   // (`authorableJsonSchemaProblems`) refuses. Read it with `readTextAgentMessage`.
   TEXT_GENERATION: Object.freeze({
@@ -1233,6 +1234,12 @@ export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = O
           required: Object.freeze(['text']),
           additionalProperties: false,
           properties: Object.freeze({ text: Object.freeze({ type: 'string' }), variables: Object.freeze({ type: 'object' }) }),
+        }),
+        // Contract freeze: `message` is optional — an agent may run on its prompt variables alone.
+        Object.freeze({
+          required: Object.freeze(['variables']),
+          additionalProperties: false,
+          properties: Object.freeze({ variables: Object.freeze({ type: 'object' }) }),
         }),
       ]),
     }),

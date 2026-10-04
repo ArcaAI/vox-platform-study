@@ -372,6 +372,13 @@ export const DATA_CONTRACT_RULES: readonly DataContractRule[] = Object.freeze([
   },
   {
     ruleId: 'WF-PUB',
+    code: 'AGENT_NOTHING_BOUND',
+    severity: 'WARNING',
+    title: 'A text agent step has nothing to work on: no message, no context and no prompt variable is bound.',
+    fix: 'Bind its message or context, or set a prompt variable; otherwise it runs on its prompt alone.',
+  },
+  {
+    ruleId: 'WF-PUB',
     code: 'CONSULTATION_SCOPE_UNAVAILABLE',
     severity: 'ERROR',
     title: 'A step reads consultation data, but the workflow is not started by a consultation.',

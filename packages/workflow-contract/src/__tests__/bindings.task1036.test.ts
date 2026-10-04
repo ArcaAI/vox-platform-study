@@ -199,15 +199,24 @@ describe('bindingIssues — authored inputs', () => {
   it('REQUIRED_INPUT_UNBOUND: a required input with neither a binding nor a data edge', () => {
     const graph: WorkflowGraph = {
       version: 1,
+      nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_ner', 'ner', { inputs: {} })],
+      edges: [e('n_trigger', 'next', 'n_ner', 'after')],
+    };
+    const issues = bindingIssues(graph, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_ner:REQUIRED_INPUT_UNBOUND']);
+    expect(issues[0]?.input).toBe('text');
+  });
+
+  it('a text agent`s `message` is OPTIONAL: binding only `context` is complete', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
       nodes: [
         { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
         agent('n_gen', 'summary', { inputs: { context: { from: 'nodes.n_trigger.outputs.context' } } }),
       ],
       edges: [e('n_trigger', 'next', 'n_gen', 'after')],
     };
-    const issues = bindingIssues(graph, { agents: AGENTS });
-    expect(codes(issues, 'ERROR')).toEqual(['n_gen:REQUIRED_INPUT_UNBOUND']);
-    expect(issues[0]?.input).toBe('message');
+    expect(codes(bindingIssues(graph, { agents: AGENTS }))).toEqual([]);
   });
 
   it('INPUT_MULTIPLE_PRODUCERS: on a node that declares inputs, two data edges into one unbound input is an ERROR', () => {
@@ -362,7 +371,7 @@ describe('authored `firstOf` — a deliberate ordered coalesce is not fan-in (OD
     };
     const issues = bindingIssues(audio, { agents: AGENTS });
     expect(codes(issues, 'ERROR')).toEqual(['n_x:BINDING_TYPE_MISMATCH']);
-    expect(issues[0]?.path).toBe('/inputs/message/firstOf/1');
+    expect(issues.find((issue) => issue.code === 'BINDING_TYPE_MISMATCH')?.path).toBe('/inputs/message/firstOf/1');
     const unknown = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nope.x'] } });
     expect(codes(bindingIssues(unknown, { agents: AGENTS }), 'ERROR')).toEqual(['n_ner:BINDING_UNKNOWN_PATH']);
   });
@@ -385,5 +394,34 @@ describe('authored `firstOf` — a deliberate ordered coalesce is not fan-in (OD
     const fanIn = issues.find((issue) => issue.code === 'INPUT_MULTIPLE_PRODUCERS');
     expect(fanIn?.severity).toBe('ERROR');
     expect(fanIn?.message).toContain('firstOf');
+  });
+});
+
+describe('AGENT_NOTHING_BOUND — a text agent with nothing to work on (WARNING)', () => {
+  const build = (genConfig: Record<string, unknown>, edges: WorkflowGraphEdge[] = [e('n_trigger', 'next', 'n_gen', 'after')]): WorkflowGraph => ({
+    version: 1,
+    nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_gen', 'summary', genConfig)],
+    edges,
+  });
+
+  it('warns when no message, no context and no prompt variable is bound — legacy or authored', () => {
+    for (const config of [{}, { inputs: {} }, { overrides: { promptVariables: {} } }]) {
+      const issues = bindingIssues(build(config), { agents: AGENTS });
+      expect(codes(issues), JSON.stringify(config)).toEqual(['n_gen:AGENT_NOTHING_BOUND']);
+      expect(issues[0]).toMatchObject({ severity: 'WARNING', path: '/inputs' });
+    }
+  });
+
+  it('is silent when any one of the three is bound: an authored input, a data edge, or a prompt variable', () => {
+    expect(codes(bindingIssues(build({ inputs: { message: { value: 'Hi' } } }), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({ inputs: { context: { from: 'nodes.n_trigger.outputs.context' } } }), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({}, [e('n_trigger', 'out', 'n_gen', 'context')]), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({ overrides: { promptVariables: { tone: 'brief' } } }), { agents: AGENTS }))).toEqual([]);
+  });
+
+  it('only judges a node whose agent is KNOWN to be a text agent', () => {
+    expect(codes(bindingIssues(build({}), {}))).toEqual([]);
+    const tts: WorkflowGraph = { version: 1, nodes: [agent('n_tts', 'tts')], edges: [] };
+    expect(codes(bindingIssues(tts, { agents: AGENTS }))).toEqual([]);
   });
 });

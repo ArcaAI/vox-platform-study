@@ -359,6 +359,20 @@
         },
         "issues": [
           {
+            "nodeId": "n_a",
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
+          },
+          {
+            "nodeId": "n_b",
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
+          },
+          {
             "nodeId": "n_fin",
             "code": "INPUT_MULTIPLE_PRODUCERS",
             "severity": "WARNING",
@@ -460,7 +474,15 @@
             }
           }
         },
-        "issues": []
+        "issues": [
+          {
+            "nodeId": "n_gen",
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
+          }
+        ]
       }
     },
     {
@@ -1710,6 +1732,81 @@
             }
           },
           {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              },
+              "inputs": {}
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_ner-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_ner",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {},
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "REQUIRED_INPUT_UNBOUND",
+            "severity": "ERROR",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-text-message-optional",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
             "id": "n_gen",
             "type": "core.agent",
             "config": {
@@ -1771,13 +1868,80 @@
             }
           }
         },
+        "issues": []
+      }
+    },
+    {
+      "name": "agent-nothing-bound",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {}
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_gen-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_gen",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {},
         "issues": [
           {
             "nodeId": "n_gen",
-            "code": "REQUIRED_INPUT_UNBOUND",
-            "severity": "ERROR",
-            "input": "message",
-            "path": "/inputs/message"
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
           }
         ]
       }
@@ -3470,6 +3634,13 @@
         },
         "issues": [
           {
+            "nodeId": "n_a",
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
+          },
+          {
             "nodeId": "n_b",
             "code": "BINDING_NOT_ANCESTOR",
             "severity": "ERROR",
@@ -4022,6 +4193,13 @@
           }
         },
         "issues": [
+          {
+            "nodeId": "n_gen",
+            "code": "AGENT_NOTHING_BOUND",
+            "severity": "WARNING",
+            "input": null,
+            "path": "/inputs"
+          },
           {
             "nodeId": "n_x",
             "code": "BINDING_TYPE_MISMATCH",

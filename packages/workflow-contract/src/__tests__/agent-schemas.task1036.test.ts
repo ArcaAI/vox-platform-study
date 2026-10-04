@@ -211,13 +211,15 @@ describe('TEXT input default `{ message }`, `text` a deprecated alias — exactl
     expect(authorableJsonSchemaProblems(input)).toEqual([]);
   });
 
-  it('accepts message, or text, never both, never neither', () => {
+  it('accepts message, or text, or variables alone — never message and text together, never nothing', () => {
     expect(jsonSchemaValueProblems(input, { message: 'Hi' })).toEqual([]);
     expect(jsonSchemaValueProblems(input, { text: 'Hi' })).toEqual([]);
     expect(jsonSchemaValueProblems(input, { message: 'Hi', variables: { a: 'b' } })).toEqual([]);
+    // Contract freeze: a text agent may run on its prompt variables alone (`message` is optional).
+    expect(jsonSchemaValueProblems(input, { variables: { a: 'b' } })).toEqual([]);
     expect(jsonSchemaValueProblems(input, { message: 'Hi', text: 'Hi' }).length).toBeGreaterThan(0);
     expect(jsonSchemaValueProblems(input, {}).length).toBeGreaterThan(0);
-    expect(jsonSchemaValueProblems(input, { variables: { a: 'b' } }).length).toBeGreaterThan(0);
+    expect(jsonSchemaValueProblems(input, { variables: { a: 'b' }, extra: 1 }).length).toBeGreaterThan(0);
     expect(jsonSchemaValueProblems(input, { message: '' }).length).toBeGreaterThan(0);
   });
 

@@ -78,6 +78,7 @@ describe('bindings.fixture.json', () => {
       'REQUIRED_INPUT_UNBOUND',
       'INPUT_MULTIPLE_PRODUCERS',
       'CONSULTATION_SCOPE_UNAVAILABLE',
+      'AGENT_NOTHING_BOUND',
     ]) {
       expect(codes.has(code), code).toBe(true);
     }

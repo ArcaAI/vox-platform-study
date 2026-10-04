@@ -72,9 +72,11 @@ describe('NODE_IO — one declaration per core node type', () => {
 });
 
 describe('agentNodeIO — the agent task decides the sockets', () => {
-  it('TEXT_GENERATION: message (text, required) + context (json, optional) -> text', () => {
+  it('TEXT_GENERATION: message (text, optional) + context (json, optional) -> text', () => {
     const io = agentNodeIO('TEXT_GENERATION');
-    expect(io.inputs.message).toMatchObject({ type: 'text', required: true });
+    // Optional since the contract freeze: a text agent may run on its prompt variables alone
+    // (`AGENT_NOTHING_BOUND` warns when it has nothing at all).
+    expect(io.inputs.message).toMatchObject({ type: 'text', required: false });
     expect(io.inputs.context).toMatchObject({ type: 'json', required: false });
     expect(Object.keys(io.outputs)).toEqual(['text']);
   });

@@ -71,8 +71,8 @@ describe('bindings reach the publish gate', () => {
         OUTPUT,
       ],
       [
-        { id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_a', toPort: 'after' },
-        { id: 'e2', from: 'n_trigger', fromPort: 'next', to: 'n_b', toPort: 'after' },
+        { id: 'e1', from: 'n_trigger', fromPort: 'out', to: 'n_a', toPort: 'context' },
+        { id: 'e2', from: 'n_trigger', fromPort: 'out', to: 'n_b', toPort: 'context' },
         { id: 'e3', from: 'n_a', fromPort: 'out', to: 'n_c', toPort: 'in' },
         { id: 'e4', from: 'n_b', fromPort: 'out', to: 'n_c', toPort: 'in' },
         { id: 'e5', from: 'n_c', fromPort: 'out', to: 'n_output', toPort: 'in' },
@@ -163,6 +163,7 @@ describe('DATA_CONTRACT_RULES — the catalogue', () => {
     expect(new Set(codes).size).toBe(codes.length);
     expect([...codes].sort()).toEqual(
       [
+        'AGENT_NOTHING_BOUND',
         'BINDING_NOT_ANCESTOR',
         'BINDING_TYPE_CONVERTED',
         'BINDING_TYPE_MISMATCH',

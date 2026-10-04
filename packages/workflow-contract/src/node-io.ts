@@ -226,7 +226,9 @@ function io(inputs: Record<string, NodeIOInput>, outputs: Record<string, NodeIOO
 
 /** One canonical description per agent field, shared by every task that declares it. */
 const AGENT_FIELDS = Object.freeze({
-  message: input('text', true, 'The text the agent works on: the user turn, or the document to operate on.'),
+  // OPTIONAL (TASK-1036 contract freeze): a text agent may run on its context or its prompt
+  // variables alone. `bindings.ts` warns (`AGENT_NOTHING_BOUND`) when it has none of the three.
+  message: input('text', false, 'The text the agent works on: the user turn, or the document to operate on.'),
   context: input('json', false, 'Structured context for the prompt (the run input, or an earlier step`s data).'),
   audio: input('audio', true, 'The recording to transcribe (a reference, never inline bytes).'),
   speechText: input('text', true, 'The text to speak.'),

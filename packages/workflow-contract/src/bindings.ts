@@ -52,6 +52,7 @@
  * | `REQUIRED_INPUT_UNBOUND` | ERROR | a required input has neither a binding nor a data edge |
  * | `INPUT_MULTIPLE_PRODUCERS` | ERROR / WARNING | several data edges feed one unbound input |
  * | `CONSULTATION_SCOPE_UNAVAILABLE` | ERROR | a node reads `consultation.*` and `sources` lacks `consultation` |
+ * | `AGENT_NOTHING_BOUND` | WARNING | a KNOWN text agent has no `message`, no `context` and no prompt variable (legacy or authored) |
  *
  * Mirrored in Python (lane B1) against `tests/contracts/bindings.fixture.json`.
  */
@@ -263,7 +264,8 @@ export type BindingIssueCode =
   | 'BINDING_UNKNOWN_INPUT'
   | 'REQUIRED_INPUT_UNBOUND'
   | 'INPUT_MULTIPLE_PRODUCERS'
-  | 'CONSULTATION_SCOPE_UNAVAILABLE';
+  | 'CONSULTATION_SCOPE_UNAVAILABLE'
+  | 'AGENT_NOTHING_BOUND';
 
 export interface BindingIssue {
   readonly code: BindingIssueCode;
@@ -626,6 +628,33 @@ function checkPromptVariableNodes(issues: BindingIssue[], node: WorkflowGraphNod
 }
 
 /**
+ * A text agent's `message` is optional (it may run on its context or prompt variables alone), so
+ * an agent with NONE of the three — no `message`, no `context` (authored or by a data edge), no
+ * `overrides.promptVariables` entry — runs on its prompt with no data at all. Legal, rarely meant:
+ * a WARNING. Judged only when the agent's task is KNOWN to be text generation.
+ */
+function checkAgentNothingBound(
+  issues: BindingIssue[],
+  graph: WorkflowGraph,
+  node: WorkflowGraphNode,
+  authored: Record<string, unknown> | undefined,
+  agents?: AgentIOResolver,
+): void {
+  if (node.type !== 'core.agent' || agentTaskOf(asObject(node.config), agents) !== 'TEXT_GENERATION') return;
+  const bound = new Set([...Object.keys(authored ?? {}), ...edgeProducers(graph, node, agents).keys()]);
+  if (bound.has('message') || bound.has('context')) return;
+  const promptVariables = asObject(asObject(asObject(node.config)?.overrides)?.promptVariables);
+  if (promptVariables !== undefined && Object.keys(promptVariables).length > 0) return;
+  issues.push({
+    code: 'AGENT_NOTHING_BOUND',
+    severity: 'WARNING',
+    nodeId: node.id,
+    path: '/inputs',
+    message: `text agent step ${label(node)} has nothing to work on: bind its \`message\` or \`context\`, or set a prompt variable. As it is, it runs on its prompt alone.`,
+  });
+}
+
+/**
  * Every binding problem in the graph, ERROR / WARNING / INFO. `publishFindings` reports the ERROR
  * and WARNING ones; INFO (`BINDING_TYPE_CONVERTED`) is for the console, which shows how a value
  * converts.
@@ -647,6 +676,7 @@ export function bindingIssues(graph: WorkflowGraph, ctx: BindingIssueContext = {
     }
     checkEdgeProducers(issues, graph, node, authored, ctx.agents);
     checkPromptVariableNodes(issues, node, scope);
+    checkAgentNothingBound(issues, graph, node, authored, ctx.agents);
 
     if (!sources.has('consultation')) {
       const reads = nodeConsultationReads(asObject(node.config));
