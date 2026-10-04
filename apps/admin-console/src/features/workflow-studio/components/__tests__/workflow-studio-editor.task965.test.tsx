@@ -26,6 +26,13 @@ import { renderWithProviders } from '@/test/render';
 import { WorkflowStudioEditor } from '../workflow-studio-editor';
 import type { WorkflowDefinition, WorkflowNodeDescriptor, WorkflowValidationReport } from '../../api/types';
 
+/** TASK-1036 R-C #13 — the rare header actions (New, Edit details, Clone, …) live in the ⋯ menu. */
+function chooseMoreAction(name: RegExp | string) {
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'More workflow actions' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(screen.getByRole('menuitem', { name }));
+}
+
+
 const push = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
@@ -288,7 +295,7 @@ describe('WorkflowStudioEditor — ETag and buffer discipline (TASK-965 WS-1)', 
     const calls = installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={withNode({ status: 'VALIDATED', validationReport: OK_REPORT })} etag='"1"' registryNodes={[NOTE]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /edit details/i }));
+    chooseMoreAction(/edit details/i);
     fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'Discharge Summary v2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
@@ -307,12 +314,12 @@ describe('WorkflowStudioEditor — ETag and buffer discipline (TASK-965 WS-1)', 
     renderWithProviders(<WorkflowStudioEditor definition={withNode()} etag='"1"' registryNodes={[NOTE]} />);
 
     moveNode();
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    chooseMoreAction('New workflow');
     expect(confirm).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
 
     confirm.mockReturnValue(true);
-    fireEvent.click(screen.getByRole('button', { name: 'New' }));
+    chooseMoreAction('New workflow');
     expect(push).toHaveBeenCalledWith('/workflow-studio/new');
   });
 });

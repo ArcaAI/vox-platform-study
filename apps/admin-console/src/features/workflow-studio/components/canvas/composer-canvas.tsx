@@ -22,6 +22,12 @@
  * MOUNT CONTRACT (lane C2a / the editor): render inside `GraphStoreProvider` in place of
  * `<WorkflowCanvas …>`, passing `descriptorByType` (the live registry) and, optionally, the
  * validation findings, the run overlay, the multi-selection and `fitViewKey`.
+ *
+ * TASK-1036 review R-C #1/#2/#9: `viewportInsets` (how far the studio's docked panes reach in) is
+ * handed to the canvas — its controls, minimap and fit stay clear of the panes — and the canvas's
+ * own chrome ("Add a step", the "Can't connect" status) is laid out in the free band between them.
+ * `wheelZoom` passes through; a read-only canvas with none (the Test tab's Flow) lets the wheel
+ * scroll the page and zooms on Ctrl/⌘+wheel.
  */
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -41,6 +47,7 @@ import {
   WorkflowCanvas,
   type WorkflowCanvasEdge,
   type WorkflowCanvasEdgeRunState,
+  type WorkflowCanvasInsets,
   type WorkflowCanvasNode,
   type WorkflowCanvasPort,
   type WorkflowCanvasRunState,
@@ -81,13 +88,22 @@ export interface ComposerCanvasProps {
   onSelectionChange?: (nodeIds: string[]) => void;
   fitViewKey?: number;
   emptyState?: ReactNode;
+  /** R-C #1/#2 — px each docked pane reaches in from the canvas's left / right edge. */
+  viewportInsets?: WorkflowCanvasInsets;
+  /** R-C #9 — what the wheel does (the canvas defaults a read-only one to `modifier`). */
+  wheelZoom?: 'scroll' | 'modifier';
   className?: string;
 }
 
+/**
+ * Where "Add a step" sits within its band. R-C #1: the band is the FREE strip between the docked
+ * panes (`left` / `right` = their footprints), so the corner or the centre is measured there rather
+ * than across the whole canvas.
+ */
 const ADD_STEP_PLACEMENT: Record<NonNullable<ComposerCanvasProps['addStepPlacement']>, string> = {
-  'top-left': 'top-2 left-2',
-  'top-center': 'top-2 left-1/2 -translate-x-1/2',
-  'top-right': 'top-2 right-2',
+  'top-left': 'justify-start',
+  'top-center': 'justify-center',
+  'top-right': 'justify-end',
 };
 
 type MenuState =
@@ -116,8 +132,12 @@ export function ComposerCanvas({
   onSelectionChange,
   fitViewKey,
   emptyState,
+  viewportInsets,
+  wheelZoom,
   className,
 }: ComposerCanvasProps) {
+  const insetLeft = viewportInsets?.left ?? 0;
+  const insetRight = viewportInsets?.right ?? 0;
   const storeApi = useGraphStoreApi();
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
@@ -402,16 +422,32 @@ export function ComposerCanvas({
         }}
         fitViewKey={fitViewKey}
         emptyState={emptyState}
+        {...(viewportInsets ? { viewportInsets } : {})}
+        {...(wheelZoom ? { wheelZoom } : {})}
       />
       {!readOnly ? (
-        <Button type="button" size="sm" variant="secondary" className={`absolute z-10 shadow-raised ${ADD_STEP_PLACEMENT[addStepPlacement]}`} onClick={openAddMenu}>
-          <IconPlus aria-hidden="true" />
-          Add a step
-        </Button>
+        <div
+          data-slot="composer-add-step"
+          className={`pointer-events-none absolute top-2 z-10 flex px-2 ${ADD_STEP_PLACEMENT[addStepPlacement]}`}
+          style={{ left: insetLeft, right: insetRight }}
+        >
+          <Button type="button" size="sm" variant="secondary" className="shadow-raised pointer-events-auto" onClick={openAddMenu}>
+            <IconPlus aria-hidden="true" />
+            Add a step
+          </Button>
+        </div>
       ) : null}
-      <p role="status" aria-live="polite" className={announcement ? 'bg-background/95 text-foreground absolute right-2 bottom-2 z-10 max-w-sm rounded-md border px-3 py-1.5 text-xs shadow-raised' : 'sr-only'}>
-        {announcement}
-      </p>
+      {/* R-C #1 — centred in the FREE band, under "Add a step": never under a docked pane, and clear
+          of the zoom controls (bottom-left) and the minimap (bottom-right) a bottom corner shares. */}
+      <div
+        data-slot="composer-announcement"
+        className="pointer-events-none absolute top-12 z-10 flex justify-center px-2"
+        style={{ left: insetLeft, right: insetRight }}
+      >
+        <p role="status" aria-live="polite" className={announcement ? 'bg-background/95 text-foreground max-w-sm rounded-md border px-3 py-1.5 text-xs shadow-raised' : 'sr-only'}>
+          {announcement}
+        </p>
+      </div>
       <NodePickerMenu open={menu !== null} onOpenChange={(open) => !open && setMenu(null)} descriptors={descriptors} onPick={handlePick} description={menu?.description} />
       <AlertDialog open={offer !== null} onOpenChange={(open) => !open && setOffer(null)}>
         <AlertDialogContent>

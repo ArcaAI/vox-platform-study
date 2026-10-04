@@ -235,10 +235,10 @@ describe('studio shell — tabs (§3.6)', () => {
     expect(screen.getByRole('tab', { name: 'Composer' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('the toolbar Test button switches to the Test tab', async () => {
-    const { onUrlUpdate } = renderEditor();
-    fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
-    await waitFor(() => expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get('tab')).toBe('test'));
+  it('has no toolbar Test button any more — the Test tab is the one way in (R-C #13)', () => {
+    renderEditor();
+    expect(screen.queryByRole('button', { name: /^test$/i })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Test' })).toBeTruthy();
   });
 
   it('warns on the Test tab while the buffer has unsaved edits — a run executes the SAVED definition', () => {

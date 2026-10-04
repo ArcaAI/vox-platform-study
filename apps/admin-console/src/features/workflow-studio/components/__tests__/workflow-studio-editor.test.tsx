@@ -23,6 +23,13 @@ import { renderWithProviders } from '@/test/render';
 import { WorkflowStudioEditor } from '../workflow-studio-editor';
 import type { WorkflowDefinition, WorkflowNodeDescriptor } from '../../api/types';
 
+/** TASK-1036 R-C #13 — the rare header actions (New, Edit details, Clone, …) live in the ⋯ menu. */
+function chooseMoreAction(name: RegExp | string) {
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'More workflow actions' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(screen.getByRole('menuitem', { name }));
+}
+
+
 const push = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const refresh = vi.hoisted(() => vi.fn());
@@ -88,6 +95,16 @@ vi.mock('../inspector', () => ({
     const body = props.tab === 'problems' ? props.problemsSlot : null;
     return <div data-testid="inspector-stub">{body as ReactNode}</div>;
   },
+}));
+
+/**
+ * The Test tab is lane C3's and has its own suite; this file pins what the EDITOR does around it
+ * (the tab switch, the "runs the saved definition" warning). Its real surface reads the session,
+ * which this file's generic fetch mock does not model.
+ */
+vi.mock('../test-tab', () => ({
+  TestTab: (props: { definitionId: string }) => <div data-testid="test-tab" data-definition-id={props.definitionId} />,
+  useNodeLastRuns: () => ({}),
 }));
 
 function definition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
@@ -319,7 +336,7 @@ describe('WorkflowStudioEditor — save model (TASK-893 OD-7)', () => {
     const calls = installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /edit details/i }));
+    chooseMoreAction(/edit details/i);
     fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'Discharge Summary v2' } });
 
     expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
@@ -442,7 +459,7 @@ describe('WorkflowStudioEditor — socket resolution on connect (TASK-893 §6.6)
  * with what is on the canvas.
  */
 describe('WorkflowStudioEditor — the inspector composition (TASK-893 §6.8)', () => {
-  it('opens the inspector on a selection, and "Test" switches to the Test tab instead of the old Run rail', async () => {
+  it('opens the inspector on a selection, and the Test TAB (the toolbar button is gone, R-C #13) replaces the old Run rail', async () => {
     installFetchMock();
     const onUrlUpdate = vi.fn();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE]} />, { onUrlUpdate });
@@ -451,7 +468,8 @@ describe('WorkflowStudioEditor — the inspector composition (TASK-893 §6.8)', 
     expect(screen.queryByTestId('inspector-stub')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'palette add' }));
-    fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Test' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Test' }));
 
     await waitFor(() => expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get('tab')).toBe('test'));
     // The Test tab runs the SAVED definition; the buffer is dirty, and the tab says so.

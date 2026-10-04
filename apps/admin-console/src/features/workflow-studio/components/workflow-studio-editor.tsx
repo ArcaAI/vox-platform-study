@@ -37,9 +37,21 @@
  * gateway stored (adopted from validate / save / publish responses), never a client validator, and
  * a dirty buffer withholds it too — publish freezes the SAVED definition.
  *
- * REFLOW (WCAG 1.4.10): below `md` the Composer is one scrolling column — palette, canvas,
- * inspector as stacked sections; at `md` and up the panes float. One scroll container is active
- * per panel in either branch — never nested (rule 11 §1).
+ * REFLOW (WCAG 1.4.10): below `md` the Composer is one column — palette, canvas, inspector as
+ * stacked sections — and the studio flows at its NATURAL height, so the shell's content region is
+ * the one scroll container (TASK-1036 R-C #3: 1280×720 at 200 % is a 640×360 CSS viewport, where a
+ * pinned header + toolbar left the canvas no room at all). At `md` and up the panes float, and the
+ * studio holds a minimum height (`md:min-h-[40rem]`): on a short window the shell scrolls instead
+ * of squeezing the canvas to nothing. Never two nested scroll containers (rule 11 §1).
+ *
+ * PANES AND THE CANVAS (R-C #1/#2). Each floating pane reports its footprint (how far it reaches
+ * in from the stage's edge); the canvas gets the widest per side as `viewportInsets`, so its zoom
+ * controls, minimap, "Add a step" and fit stay in the free band between the panes — keyboard
+ * focus on Zoom never lands under a pane and so never makes one yield.
+ *
+ * DECLUTTER (R-C #13). The header keeps the switcher, "Edit as new draft" (read-only) and the ⋯
+ * menu, which holds the rare actions: New, Edit details, Clone, Template, Import. The toolbar's
+ * Test button is gone (the Test tab is the way in); the inspector's Last run links to it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -51,6 +63,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Empty,
   EmptyDescription,
@@ -61,14 +74,14 @@ import {
   TabsList,
   TabsTrigger,
 } from '@arcaai/ui';
-import { IconDots, IconLock, IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
+import { IconDots, IconLock, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
 import { ACTION_CATALOGUE } from '@arcaai/workflow-contract';
 import { layoutWorkflowGraph } from '@arcaai/ui/components/workflow-canvas';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { GatewayError } from '@/shared/api';
-import { FloatingPane } from '@/shared/floating-pane';
+import { FloatingPane, type FloatingPaneFootprint } from '@/shared/floating-pane';
 import { useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
 import { useSaveModel, type SaveDefinitionPatch } from '../hooks/use-save-model';
 import {
@@ -106,6 +119,7 @@ import {
   selectCanUndo,
   selectDirty,
   selectEdges,
+  selectHidePhi,
   selectNodes,
   selectSaveState,
   selectSelectedEdgeId,
@@ -202,6 +216,26 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const storeCanDiscard = useGraphStore(selectCanDiscard);
   const canUndo = useGraphStore(selectCanUndo);
   const canRedo = useGraphStore(selectCanRedo);
+  const hidePhi = useGraphStore(selectHidePhi);
+
+  /**
+   * R-C #1/#2 — each floating pane's footprint (px it reaches in from the stage's left / right
+   * edge). The canvas is inset by the widest per side. Callbacks are stable per pane id so a pane's
+   * report effect does not re-run on every render of this editor.
+   */
+  const [footprints, setFootprints] = useState<Readonly<Record<string, FloatingPaneFootprint>>>({});
+  const reportFootprint = useMemo(() => {
+    const make = (paneId: string) => (footprint: FloatingPaneFootprint) =>
+      setFootprints((previous) => {
+        const current = previous[paneId];
+        if (current && current.left === footprint.left && current.right === footprint.right) return previous;
+        return { ...previous, [paneId]: footprint };
+      });
+    return { palette: make('palette'), inspector: make('inspector') };
+  }, []);
+  const insetLeft = Math.max(0, ...Object.values(footprints).map((footprint) => footprint.left));
+  const insetRight = Math.max(0, ...Object.values(footprints).map((footprint) => footprint.right));
+  const canvasInsets = useMemo(() => ({ left: insetLeft, right: insetRight }), [insetLeft, insetRight]);
 
   /**
    * The canvas's FULL selection (OD-5: "the loop must be able to wrap one or many node").
@@ -880,7 +914,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       : publishBlockedReason(report);
 
   return (
-    <Tabs value={tab} onValueChange={(next) => void setTab(next as StudioTab)} className="min-h-0 flex-1 gap-0">
+    // R-C #3 — natural height below md (the shell scrolls once); a minimum height at md and up.
+    <Tabs value={tab} onValueChange={(next) => void setTab(next as StudioTab)} className="min-h-0 flex-1 gap-0 max-md:flex-none md:min-h-[40rem]">
       <ScreenTemplate
         contentMode="fill"
         header={
@@ -910,14 +945,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                     {draftFrom.isPending ? 'Creating…' : 'Edit as new draft'}
                   </Button>
                 ) : null}
-                <Button type="button" variant="outline" size="sm" onClick={() => navigate('/workflow-studio/new')}>
-                  <IconPlus aria-hidden="true" />
-                  New
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => setMetadataOpen(true)}>
-                  <IconPencil aria-hidden="true" />
-                  Edit details
-                </Button>
+                {/* R-C #13 — the rare actions live in one menu; the header keeps what is used every visit. */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button type="button" variant="outline" size="icon-sm" aria-label="More workflow actions">
@@ -925,6 +953,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onSelect={() => navigate('/workflow-studio/new')}>New workflow</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setMetadataOpen(true)}>Edit details</DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => openClone(definition)}>Clone this workflow</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => openClone(null)}>Start from a template</DropdownMenuItem>
                     <DropdownMenuItem
@@ -969,7 +1000,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             onRedo={handleRedo}
             problemCount={findings.length}
             onOpenProblems={() => openRail('problems')}
-            onOpenTest={() => void setTab('test')}
+            hidePhi={hidePhi}
+            onHidePhiChange={(hide) => storeApi.getState().setHidePhi(hide)}
             onAutoLayout={() => void handleAutoLayout()}
             onExport={handleExport}
             onImport={handleImportGraph}
@@ -1017,8 +1049,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             `md`+ the stage is a positioned box the canvas fills and the panes float over; below it
             the stage is one scrolling column (palette, canvas, inspector in DOM order). */}
         <TabsContent value="composer" forceMount hidden={tab !== 'composer'} className={TAB_PANEL_CLASS}>
-          <div className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto md:block md:overflow-hidden">
-            <FloatingPane id="studio-palette" title="Nodes" defaultDock="left" defaultWidth={260} minWidth={200} keepMounted>
+          <div data-slot="composer-stage" className="relative flex flex-col gap-4 md:block md:min-h-0 md:flex-1 md:overflow-hidden">
+            <FloatingPane
+              id="studio-palette"
+              title="Nodes"
+              defaultDock="left"
+              defaultWidth={260}
+              minWidth={200}
+              keepMounted
+              onFootprintChange={reportFootprint.palette}
+            >
               {readOnly ? (
                 <p className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
                   <IconLock aria-hidden="true" className="size-3.5 shrink-0" />
@@ -1048,6 +1088,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 selectedNodeIds={selectedNodeIds}
                 onSelectionChange={handleSelectionChange}
                 fitViewKey={fitViewKey}
+                viewportInsets={canvasInsets}
+                // The Composer canvas fills its region: the wheel zooms it, published or not (R-C #9
+                // applies to read-only canvases embedded in a scrolling page, like the Test tab's Flow).
+                wheelZoom="scroll"
                 emptyState={
                   <Empty>
                     <EmptyMedia variant="icon">
@@ -1064,7 +1108,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             </div>
 
             {railOpen ? (
-              <FloatingPane id="studio-inspector" title="Inspector" defaultDock="right" defaultWidth={360} minWidth={280} bodyScroll={false} onClose={closeRail}>
+              <FloatingPane
+                id="studio-inspector"
+                title="Inspector"
+                defaultDock="right"
+                defaultWidth={360}
+                minWidth={280}
+                bodyScroll={false}
+                onClose={closeRail}
+                onFootprintChange={reportFootprint.inspector}
+              >
                 <InspectorPanel
                   node={selectedNode}
                   configSchema={selectedNodeConfigSchema}
@@ -1079,6 +1132,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                   onTabChange={setInspectorTab}
                   problemCount={findings.length}
                   lastRunByNode={lastRunByNode}
+                  onOpenTest={() => void setTab('test')}
                   problemsSlot={
                     <div className="flex flex-col gap-4">
                       <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
@@ -1104,7 +1158,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
 
         {visitedTabs.has('test') ? (
           <TabsContent value="test" forceMount hidden={tab !== 'test'} className={TAB_PANEL_CLASS}>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+            <div className="flex flex-col gap-3 md:min-h-0 md:flex-1 md:overflow-y-auto">
               {/* A run executes the SERVER's stored graph, not the editor buffer, so unsaved edits
                   are a stated reason to distrust the result rather than a silent mismatch with
                   what is on the canvas. The Save button stays in the toolbar above every tab. */}
@@ -1119,7 +1173,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         ) : null}
         {visitedTabs.has('integration') ? (
           <TabsContent value="integration" forceMount hidden={tab !== 'integration'} className={TAB_PANEL_CLASS}>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
               <IntegrationTab definitionId={definition.id} unsavedChanges={dirty || metadataDirty} />
             </div>
           </TabsContent>
