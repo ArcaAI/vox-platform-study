@@ -65,7 +65,7 @@ export type LimitGroupId = 'quantity' | 'meter';
 export const LIMIT_FIELDS: LimitField[] = [
   { key: 'maxUsers', label: 'Max users', group: 'quantity' },
   { key: 'maxDepartments', label: 'Max departments', group: 'quantity' },
-  { key: 'maxPromptTemplates', label: 'Max prompt templates', group: 'quantity' },
+  { key: 'maxPromptTemplates', label: 'Max Hope Prompts', group: 'quantity' },
   { key: 'maxApiKeys', label: 'Max API keys', group: 'quantity' },
   { key: 'maxWorkflowDefinitions', label: 'Max published workflow definitions', group: 'quantity' },
   { key: 'maxAiProviderConnections', label: 'Max AI provider connections', group: 'quantity' },
