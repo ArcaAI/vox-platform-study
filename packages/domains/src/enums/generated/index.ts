@@ -77,4 +77,5 @@ export * from './WebhookRunStatus';
 export * from './WorkflowDefinitionStatus';
 export * from './WorkflowRulePredicateType';
 export * from './WorkflowRuleSeverity';
+export * from './WorkflowRunKind';
 export * from './WorkflowRunStatus';
