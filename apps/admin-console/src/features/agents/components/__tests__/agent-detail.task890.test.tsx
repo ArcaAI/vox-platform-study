@@ -143,7 +143,7 @@ describe('AgentLineageDrawer — the Draft tab (TASK-890, on the TASK-965 lineag
     fireEvent.click(await screen.findByRole('button', { name: 'Edit draft' }));
     expect(screen.getByLabelText('Model')).toBeTruthy();
     expect(await screen.findByLabelText('Hope Prompt')).toBeTruthy();
-    expect(screen.getByLabelText('Tags')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: /tags/i })).toBeTruthy();
   });
 
   it('saving the draft PATCHes modelId, fallbackModelIds, instruction and tags', async () => {
@@ -160,12 +160,14 @@ describe('AgentLineageDrawer — the Draft tab (TASK-890, on the TASK-965 lineag
 
     fireEvent.click(screen.getByLabelText('Model'));
     fireEvent.click(await screen.findByRole('option', { name: /GPT-OSS 20B/ }));
-    fireEvent.change(screen.getByLabelText('Tags'), { target: { value: 'specialty:rheumatology' } });
+    const tagsInput = screen.getByRole('combobox', { name: /tags/i });
+    fireEvent.change(tagsInput, { target: { value: 'specialty:rheumatology' } });
+    fireEvent.keyDown(tagsInput, { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.url.endsWith('/admin/agents/a-1'))).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/agents/a-1'));
-    expect(patch?.body).toMatchObject({ modelId: 'm-2', tags: ['specialty:rheumatology'], instruction: { promptTemplateId: 'tpl-1' } });
+    expect(patch?.body).toMatchObject({ modelId: 'm-2', tags: ['specialty:general', 'specialty:rheumatology'], instruction: { promptTemplateId: 'tpl-1' } });
   });
 
   it('with no draft open, the Draft tab explains that a published version is immutable and offers "New draft" (never "Branch as my agent")', async () => {

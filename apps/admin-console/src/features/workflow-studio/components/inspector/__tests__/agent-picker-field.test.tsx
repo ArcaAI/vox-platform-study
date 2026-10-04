@@ -18,7 +18,8 @@ describe('AgentPickerField', () => {
     render(<AgentPickerField id="agent" value="platform-summarization" onChange={onChange} />);
     expect(useAgentOptions).toHaveBeenCalledWith(undefined);
     expect(screen.getByRole('combobox', { name: /agent/i })).toBeTruthy();
-    expect(screen.getByText(/create agent/i).closest('a')?.getAttribute('href')).toBe('/agents?create=1');
+    // TASK-1036 OD-12 — Create agent is an inline wizard now, not a navigation away from the Studio.
+    expect(screen.getByRole('button', { name: 'Create agent' })).toBeTruthy();
   });
 
   it('falls back to a slug box when the agent surface is unavailable, keeping the value editable', () => {
