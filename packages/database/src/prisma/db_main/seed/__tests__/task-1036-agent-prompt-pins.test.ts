@@ -54,6 +54,7 @@ const { agentConfigProblems } = contract;
 interface TemplateRow {
   id: string;
   name: string;
+  category: string;
   status?: string;
   currentVersionNumber?: number;
   approvedVersionNumber?: number | null;

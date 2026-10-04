@@ -34,13 +34,13 @@ describe('the seed`s task I/O defaults equal the contract`s AGENT_IO_DEFAULTS', 
     const schema = IO_DEFAULTS.TEXT_GENERATION.inputSchema as { required?: string[]; properties: Record<string, { deprecated?: boolean }> };
     expect(schema.required).toBeUndefined();
     expect(Object.keys(schema.properties)).toEqual(['message', 'text', 'variables']);
-    expect(schema.properties.text.deprecated).toBe(true);
+    expect(schema.properties.text?.deprecated).toBe(true);
   });
 
   it('ASR output has `transcript` as TEXT and the structure on `segments` — the retired transcript array is gone', () => {
     const schema = IO_DEFAULTS.SPEECH_TO_TEXT.outputSchema as { properties: Record<string, { type?: string }> };
-    expect(schema.properties.transcript.type).toBe('string');
-    expect(schema.properties.segments.type).toBe('array');
+    expect(schema.properties.transcript?.type).toBe('string');
+    expect(schema.properties.segments?.type).toBe('array');
   });
 
   it('the NER default is unchanged by this lane: it stays the INTERFACES section 2.3 literal pinned in task-930-agents.test.ts', () => {
