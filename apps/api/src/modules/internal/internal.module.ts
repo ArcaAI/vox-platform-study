@@ -1,5 +1,6 @@
 import {
   AgentServiceModule,
+  AgentVersionResolverService,
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
   ComposedPromptServiceModule,
@@ -10,8 +11,10 @@ import {
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
 import { TenantLockModule } from '@arcaai/applications';
+import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { AgentInternalController } from './agent-internal.controller';
+import { AgentVersionInternalController } from './agent-version-internal.controller';
 import { ComposedPromptInternalController } from './composed-prompt-internal.controller';
 import { EffectiveConfigController } from './effective-config.controller';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
@@ -45,17 +48,21 @@ import { SttInternalController } from './stt-internal.controller';
     ModelServingSpecServiceModule,
     // `ComposedPromptInternalController` (`/internal/composed-prompts`) — the harness's composed-prompt records (OD-9).
     ComposedPromptServiceModule,
+    // TASK-1038 — `AgentRepository` for the pinned-version lookup.
+    CoreDatabaseModule,
   ],
   controllers: [
     SttInternalController,
     EffectiveConfigController,
     ModelRegistryInternalController,
     AgentInternalController,
+    // TASK-1038 — GET internal/agents/:slug/versions/:versionNumber/resolved (the harness's pinned version).
+    AgentVersionInternalController,
     ModelServingInternalController,
     ComposedPromptInternalController,
   ],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
-  providers: [InternalServiceTokenGuard],
+  providers: [InternalServiceTokenGuard, AgentVersionResolverService],
 })
 export class InternalModule {}

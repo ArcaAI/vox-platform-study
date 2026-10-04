@@ -12,6 +12,7 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setOriginEnforcementResolver } from '../../../cors.config';
+import { RunEventStreamHub } from '../../workflows/run-event-stream-hub';
 import { WORKFLOW_RUN_COMPLETED } from '../../workflows/workflow-run-event';
 import {
   WORKFLOW_RUN_TICKET_NAMESPACE,
@@ -51,7 +52,7 @@ const makeCls = () => ({
 });
 
 /** No Redis: a non-terminal run would close 1011 after the snapshot; every case here stays before that. */
-const config = { isRedisConfigured: vi.fn(() => false), getRedisConfig: vi.fn() };
+const hub = new RunEventStreamHub({ isRedisConfigured: () => false } as never);
 
 const makeOriginRegistry = (registered: string[]) => ({
   size: vi.fn(() => registered.length),
@@ -77,7 +78,7 @@ function build(opts: { ticket?: Record<string, unknown> | null; run?: Record<str
   const exposure = makeExposure(opts.run ?? terminalSnapshot);
   const cls = makeCls();
   const registry = makeOriginRegistry(opts.origins ?? [REGISTERED_ORIGIN]);
-  const gateway = new WorkflowWsGateway(tickets as never, exposure as never, cls as never, config as never, registry as never);
+  const gateway = new WorkflowWsGateway(tickets as never, exposure as never, cls as never, hub, registry as never);
   return { gateway, tickets, exposure, cls, registry, client: makeSocket() };
 }
 

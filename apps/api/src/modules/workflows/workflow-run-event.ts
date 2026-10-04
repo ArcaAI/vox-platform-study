@@ -111,3 +111,18 @@ export function formatSseFrame(envelope: AsyncEnvelope<unknown>, resumeToken?: s
   const idLine = resumeToken === undefined ? '' : `id: ${resumeToken}\n`;
   return `event: ${envelope.type}\n${idLine}data: ${JSON.stringify(envelope)}\n\n`;
 }
+
+/**
+ * Order two Redis stream ids (`<ms>-<seq>`). Returns 1 / 0 / -1 like a comparator.
+ *
+ * String comparison is WRONG here and quietly so: `"10-0" < "9-0"` lexically, so a stream that
+ * crosses a digit boundary would report a phantom gap. Both halves are compared numerically.
+ */
+export function compareStreamIds(left: string, right: string): number {
+  // A bare `<ms>` (e.g. a `0` cursor) has an implicit sequence of 0.
+  const [leftMs, leftSeq = 0] = left.split('-').map((part) => Number(part));
+  const [rightMs, rightSeq = 0] = right.split('-').map((part) => Number(part));
+  if (leftMs !== rightMs) return leftMs > rightMs ? 1 : -1;
+  if (leftSeq !== rightSeq) return leftSeq > rightSeq ? 1 : -1;
+  return 0;
+}

@@ -5,6 +5,7 @@ import {
   WorkflowReviewDecisionResponse,
   WorkflowReviewResponse,
   WorkflowRunCancelResponse,
+  WorkflowRunResult,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from './dto';
@@ -79,6 +80,14 @@ export interface IWorkflowExposureService {
 
   /** Live run status + stages. Cross-tenant `runId`, or a `runId` that does not belong to `slug`'s lineage -> `NotFoundException`. */
   getRunStatus(slug: string, runId: string): Promise<WorkflowRunStatusResponse>;
+
+  /**
+   * TASK-1038 D-I — what the run DELIVERED: inline JSON, a short-lived signed URL for a
+   * claim-checked result, `none`, or `expired` once `workflowRuns.resultRetentionDays` has passed.
+   * Same 404 posture as {@link getRunStatus}; a run that is not terminal yet is a `ConflictException`
+   * (`RUN_NOT_TERMINAL`, carrying the current status). Every read is audited (the output is PHI).
+   */
+  getRunResult(slug: string, runId: string): Promise<WorkflowRunResult>;
 
   /** Sends the interpreter's allow-listed `cancel` signal — never a caller-supplied signal name. Same 404 posture as {@link getRunStatus}. */
   cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse>;

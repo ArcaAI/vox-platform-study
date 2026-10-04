@@ -10,6 +10,8 @@ export * from './agent-reasoning';
 export * from './agent.dto.mapper';
 export * from './agent.service';
 export * from './agent-resolver.service';
+// TASK-1038 — one PINNED version, same materialisation (GET internal/agents/:slug/versions/:n/resolved).
+export * from './agent-version-resolver.service';
 export * from './text-generation-spec';
 export * from './text-agent-resolver.service';
 export * from './tts-spec';
