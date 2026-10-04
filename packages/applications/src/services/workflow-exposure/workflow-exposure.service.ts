@@ -32,6 +32,7 @@ import type { UserIdentityBinding } from '../consultation-context-schema/context
 import {
   deliveredRunResultFrom,
   interpreterSessionId,
+  isResultKeyInTenantPrefix,
   IWorkflowRunService,
   readPersistedRunResult,
   terminalStatusOf,
@@ -563,6 +564,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     if (stored.kind === 'inline') return { runId, status, kind: 'inline', value: stored.value };
     if (stored.kind === 'expired') return { runId, status, kind: 'expired', expiredAt: stored.expiredAt };
 
+    // TASK-1038 E2 (fix 13) — sign only an object under the run tenant's prefix. A key outside it
+    // (another tenant's, a shared content-addressed key, a legacy un-prefixed key) is not provably
+    // this tenant's: the house 404, and nothing is signed.
+    // `tenantId` is the run's own tenant: `resolveOwnedRun` read the row under it.
+    if (!isResultKeyInTenantPrefix(tenantId, stored.key)) {
+      throw new NotFoundException(`Run '${runId}' has no readable result.`);
+    }
     if (!this.blobStorage) {
       throw new ServiceUnavailableException('This run delivered a stored result, but no object storage is configured to sign a download URL for it.');
     }

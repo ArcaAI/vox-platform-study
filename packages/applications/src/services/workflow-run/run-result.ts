@@ -22,6 +22,22 @@ export interface ExpiredRunResult {
 
 export type PersistedRunResult = DeliveredRunResult | ExpiredRunResult;
 
+/**
+ * TASK-1038 E2 (fixes 7, 13) — is a claim-checked result's object key under the run tenant's
+ * prefix (`<tenantId>/…`)? The harness writes run results there (lane E3), so a key that is not
+ * is not provably the tenant's: the result route refuses to sign it (404) and the retention purge
+ * never deletes it on the tenant's behalf. A key that merely STARTS with the tenant id
+ * (`<tenantId>-x/…`) does not count — the separator is part of the prefix.
+ *
+ * Legacy un-prefixed keys are NOT accepted: the stored shape is the frozen protocol-v2
+ * `run.completed.result` (`{ kind, bucket, key, sizeBytes, sha256 }`, closed), so nothing on the
+ * row can mark a key written before the prefix rule, and the gateway cannot prove such an object
+ * is the caller's.
+ */
+export function isResultKeyInTenantPrefix(tenantId: string, key: string): boolean {
+  return typeof tenantId === 'string' && tenantId.length > 0 && typeof key === 'string' && key.startsWith(`${tenantId}/`) && key.length > tenantId.length + 1;
+}
+
 /** Structural check — a malformed value is never persisted or served as if it were a result. */
 export function isDeliveredRunResult(value: unknown): value is DeliveredRunResult {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
