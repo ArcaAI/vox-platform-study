@@ -13,6 +13,7 @@ import {
   PreferredPromptTemplateResponse,
   PromptVersionDiffResponse,
   PromptUsageRecordResponse,
+  PromptTagSuggestionResponse,
 } from './dto';
 import { Paginated } from '../../common/dto/paginated.response';
 import { DepartmentResponse } from '../department/dto';
@@ -66,6 +67,12 @@ export abstract class IPromptManagementService {
   abstract approveTemplate(id: string, dto: ApprovePromptTemplateRequest): Promise<PromptTemplateResponse>;
   abstract getPromptTemplate(id: string): Promise<PromptTemplateResponse | null>;
   abstract listPromptTemplates(filters?: ListPromptTemplatesFilters): Promise<PromptTemplateResponse[]>;
+  /**
+   * Tag autocomplete (TASK-1036 R1): distinct tags over the CALLER tenant's non-deleted prompts,
+   * ranked count desc then alphabetical. `q` is a case-insensitive substring; `limit` defaults to
+   * 20 and is capped at 100.
+   */
+  abstract listTagSuggestions(query: { q?: string; limit?: number }): Promise<PromptTagSuggestionResponse[]>;
   abstract listPromptTemplatesPaginated(filters?: ListPromptTemplatesFilters): Promise<PaginatedPromptTemplates>;
   abstract listDefaultsForDepartment(departmentId: string): Promise<PromptTemplateResponse[]>;
   abstract listMyPersonalForDepartment(departmentId: string): Promise<PromptTemplateResponse[]>;

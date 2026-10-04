@@ -305,8 +305,8 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
   ) : (
     <EmptyState
       icon={IconRobot}
-      title="No prompt templates yet"
-      description="Prompt instruction templates are the blueprints agents and summaries are generated from. Create the first one to start versioning prompts."
+      title="No Hope Prompts yet"
+      description="Hope Prompts are the blueprints agents and summaries are generated from. Create the first one to start versioning prompts."
       action={
         <Button onClick={() => onCreatingChange(true)}>
           <IconPlus aria-hidden />
@@ -334,7 +334,7 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
   return (
     <>
       <VirtualizedDataGrid<PromptTemplate>
-        aria-label="Prompt templates"
+        aria-label="Hope Prompts"
         columns={columns}
         data={rows}
         getRowId={(row) => row.id}

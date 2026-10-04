@@ -450,7 +450,7 @@ export function PromptFallbacksTab() {
     return (
       <EmptyState
         icon={IconFileText}
-        title="No prompt templates yet"
+        title="No Hope Prompts yet"
         description="Create a template on the Templates tab, then come back to see how it resolves."
       />
     );

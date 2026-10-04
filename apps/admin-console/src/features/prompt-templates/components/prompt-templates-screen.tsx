@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Prompt Instruction Templates (tier 30-49) — the tenant-admin
+ * Hope Prompts (tier 30-49) — the tenant-admin
  * surface for viewing, creating, updating, versioning, diffing and approving
  * the prompts that drive pre-summary and summary generation.
  *
@@ -114,7 +114,7 @@ function PromptTemplatesScreenBody() {
         }
         header={
           <PageHeader
-            title="Prompt Instruction Templates"
+            title="Hope Prompts"
             meta={
               tab === 'templates' ? (
                 gridState.loaded ? (
@@ -166,13 +166,13 @@ function PromptTemplatesScreenBody() {
 export function PromptTemplatesScreen() {
   return (
     <WorkingTenantGate
-      title="Prompt Instruction Templates"
+      title="Hope Prompts"
       meta={
         <span aria-hidden className="text-muted-foreground font-mono text-xs">
           GET /admin/prompt-templates
         </span>
       }
-      description="Prompt templates are administered per tenant. Pick a working tenant from the switcher in the top bar to load its templates."
+      description="Hope Prompts are administered per tenant. Pick a working tenant from the switcher in the top bar to load its prompts."
     >
       <PromptTemplatesScreenBody />
     </WorkingTenantGate>

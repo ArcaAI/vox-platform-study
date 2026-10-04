@@ -71,7 +71,7 @@ describe('PromptTemplatePicker — the picker', () => {
     );
     const onChange = vi.fn();
     renderPicker('', onChange);
-    const box = await screen.findByLabelText(/prompt template id/i);
+    const box = await screen.findByLabelText(/Hope Prompt id/i);
     fireEvent.change(box, { target: { value: 'tpl-x' } });
     expect(onChange).toHaveBeenCalledWith('tpl-x');
     expect(screen.getByText(/unavailable/i)).toBeTruthy();
@@ -82,7 +82,7 @@ describe('PromptTemplatePicker — the picker', () => {
     const onChange = vi.fn();
     renderPicker(null, onChange);
 
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
     expect(onChange).toHaveBeenCalledWith('tpl-2');
   });
@@ -99,7 +99,7 @@ describe('PromptTemplatePicker — the picker', () => {
     stubList([template(), template({ id: 'tpl-2', name: 'Cardiology Note', status: 'DRAFT', approvedVersionNumber: null })]);
     renderPicker(null);
 
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     expect(within(listbox).getByRole('option', { name: /SOAP Summary/ })).toBeTruthy();
     expect(within(listbox).queryByRole('option', { name: /Cardiology Note/ })).toBeNull();
   });
@@ -110,7 +110,7 @@ describe('PromptTemplatePicker — the picker', () => {
     renderPicker(null, onChange);
 
     fireEvent.click(await screen.findByLabelText(/include drafts/i));
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     fireEvent.click(within(listbox).getByRole('option', { name: /Cardiology Note/ }));
     expect(onChange).toHaveBeenCalledWith('tpl-2');
   });
@@ -122,7 +122,7 @@ describe('PromptTemplatePicker — the picker', () => {
     // The quick view resolves (the bound row is found in the full list, not the narrowed one)…
     expect(await screen.findByText('Cardiology Note')).toBeTruthy();
     // …and the option is present, so re-opening the select does not silently clear the binding.
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     expect(within(listbox).getByRole('option', { name: /Cardiology Note/ })).toBeTruthy();
   });
 
@@ -131,7 +131,7 @@ describe('PromptTemplatePicker — the picker', () => {
     stubList([{ ...template({ id: 'tpl-3', name: 'Unlabelled' }), status: undefined as never }]);
     renderPicker(null);
 
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     expect(within(listbox).getByRole('option', { name: /Unlabelled/ })).toBeTruthy();
     expect(screen.queryByLabelText(/include drafts/i)).toBeNull();
   });
@@ -153,7 +153,7 @@ describe('PromptTemplatePicker — the picker', () => {
     const tagList = await openSelect('Filter by tag');
     fireEvent.click(within(tagList).getByRole('option', { name: 'dept:cardiology' }));
 
-    const listbox = await openSelect('Prompt template');
+    const listbox = await openSelect('Hope Prompt');
     expect(within(listbox).queryByRole('option', { name: /SOAP Summary/ })).toBeNull();
     expect(within(listbox).getByRole('option', { name: /Cardiology Note/ })).toBeTruthy();
     // The already-selected template stays resolvable even though it is filtered out.
@@ -164,7 +164,7 @@ describe('PromptTemplatePicker — the picker', () => {
     stubList([template({ tags: [] })]);
     renderPicker(null);
 
-    await screen.findByLabelText('Prompt template');
+    await screen.findByLabelText('Hope Prompt');
     expect(screen.queryByLabelText('Filter by tag')).toBeNull();
   });
 
@@ -186,7 +186,7 @@ describe('PromptTemplatePicker — the picker', () => {
     expect(quickView.getByText('topic')).toBeTruthy();
     expect(quickView.getByText('depth?')).toBeTruthy();
     expect(quickView.getByText(/You are a clinical assistant/)).toBeTruthy();
-    const link = quickView.getByRole('link', { name: /open in prompt templates/i });
+    const link = quickView.getByRole('link', { name: /open in Hope Prompts/i });
     expect(link.getAttribute('href')).toBe('/prompt-templates?template=tpl-1');
   });
 
@@ -229,7 +229,7 @@ describe('PromptTemplatePicker — accessibility', () => {
     document.documentElement.classList.add('dark');
     stubList([]);
     const { container } = renderPicker(null);
-    await screen.findByLabelText(/prompt template id/i);
+    await screen.findByLabelText(/Hope Prompt id/i);
     expect(await axe(container)).toHaveNoViolations();
   });
 });
