@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto';
-import { ConflictException, HttpException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   IRedisCacheService,
   TenantSettingsService,
@@ -58,7 +67,9 @@ function stableJson(value: unknown): string {
 }
 
 export function agentRunBodyHash(body: unknown): string {
-  return createHash('sha256').update(stableJson(body ?? {}), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update(stableJson(body ?? {}), 'utf8')
+    .digest('hex');
 }
 
 /**
@@ -203,7 +214,8 @@ export class AgentRunService {
    * is the run's End-wired output by construction, one step and nothing else).
    */
   snapshotOf(state: AgentRunState, lastSeq: number): RunSnapshot {
-    const nodeStatus = state.status === 'COMPLETED' ? 'completed' : state.status === 'RUNNING' ? 'running' : state.status === 'CANCELED' ? 'skipped' : 'failed';
+    const nodeStatus =
+      state.status === 'COMPLETED' ? 'completed' : state.status === 'RUNNING' ? 'running' : state.status === 'CANCELED' ? 'skipped' : 'failed';
     return {
       status: state.status,
       lastSeq,
@@ -350,6 +362,9 @@ export class AgentRunService {
   }
 
   private unavailable(): ServiceUnavailableException {
-    return new ServiceUnavailableException({ code: 'AGENT_RUN_STORE_UNAVAILABLE', message: 'Agent runs are unavailable: the run store is not reachable.' });
+    return new ServiceUnavailableException({
+      code: 'AGENT_RUN_STORE_UNAVAILABLE',
+      message: 'Agent runs are unavailable: the run store is not reachable.',
+    });
   }
 }

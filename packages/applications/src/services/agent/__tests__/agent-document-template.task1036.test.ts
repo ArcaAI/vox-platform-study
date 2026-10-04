@@ -37,7 +37,11 @@ const TEXT_MODEL = {
   resourceStatus: ResourceStatusType.ENABLED,
   metaData: null,
 };
-const aiModelRepository = { findById: vi.fn(async () => TEXT_MODEL), findBySlug: vi.fn(async () => null), findByTaskTypeSharedRead: vi.fn(async () => []) };
+const aiModelRepository = {
+  findById: vi.fn(async () => TEXT_MODEL),
+  findBySlug: vi.fn(async () => null),
+  findByTaskTypeSharedRead: vi.fn(async () => []),
+};
 const databaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
 
 function makeService() {
@@ -82,7 +86,9 @@ describe('create accepts the document template and the DNA switch on the agent (
   });
 
   it('refuses a DNA block that is not `{ enabled: boolean }`', async () => {
-    await expect(makeService().create({ ...CREATE, instruction: { systemPrompt: 'x' }, parameters: { dna: { enabled: 'yes' } } } as never)).rejects.toMatchObject({
+    await expect(
+      makeService().create({ ...CREATE, instruction: { systemPrompt: 'x' }, parameters: { dna: { enabled: 'yes' } } } as never),
+    ).rejects.toMatchObject({
       status: 400,
     });
   });

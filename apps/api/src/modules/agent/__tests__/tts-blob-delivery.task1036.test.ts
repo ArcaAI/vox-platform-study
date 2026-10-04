@@ -58,16 +58,40 @@ describe('persistSpeechBlob', () => {
   it('stores the audio in the tenant AUDIO bucket, registers a Media row, and signs a short-lived URL', async () => {
     const d = deps();
     const audio = wav(12_000, 24_000);
-    const answer = await persistSpeechBlob(d as never, { tenantId: 't1', agentSlug: 'calm-voice', audio, format: 'wav', sampleRate: null, durationMs: null });
+    const answer = await persistSpeechBlob(d as never, {
+      tenantId: 't1',
+      agentSlug: 'calm-voice',
+      audio,
+      format: 'wav',
+      sampleRate: null,
+      durationMs: null,
+    });
 
     expect(d.blobStorage.putObject).toHaveBeenCalledWith(
-      expect.objectContaining({ bucket: 'tenant-t1-audio', key: expect.stringMatching(/\/tts\/calm-voice\/.+\.wav$/), body: audio, contentType: 'audio/wav' }),
+      expect.objectContaining({
+        bucket: 'tenant-t1-audio',
+        key: expect.stringMatching(/\/tts\/calm-voice\/.+\.wav$/),
+        body: audio,
+        contentType: 'audio/wav',
+      }),
     );
     expect(d.media.create).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 't1', extension: 'wav', mimeType: 'audio/wav', size: audio.length, uri: expect.stringMatching(/^s3:\/\/tenant-t1-audio\//) }),
+      expect.objectContaining({
+        tenantId: 't1',
+        extension: 'wav',
+        mimeType: 'audio/wav',
+        size: audio.length,
+        uri: expect.stringMatching(/^s3:\/\/tenant-t1-audio\//),
+      }),
     );
     expect(d.blobStorage.presignGet).toHaveBeenCalledWith(expect.objectContaining({ bucket: 'tenant-t1-audio', expiresInSeconds: 300 }));
-    expect(answer).toMatchObject({ mediaId: 'media-42', url: 'https://minio.example/signed?x=1', format: 'wav', sampleRate: 24_000, durationMs: 500 });
+    expect(answer).toMatchObject({
+      mediaId: 'media-42',
+      url: 'https://minio.example/signed?x=1',
+      format: 'wav',
+      sampleRate: 24_000,
+      durationMs: 500,
+    });
     expect(Date.parse(answer.expiresAt)).toBeGreaterThan(Date.now());
   });
 
@@ -85,14 +109,31 @@ describe('persistSpeechBlob', () => {
 
   it('falls back to the `recordings` bucket slug, and refuses (503) when the tenant has no audio bucket', async () => {
     const fallback = deps({
-      tenantBuckets: { getBucketByPurpose: vi.fn(async () => null), getBucketBySlug: vi.fn(async (slug: string) => (slug === 'recordings' ? { name: 'rec' } : null)) },
+      tenantBuckets: {
+        getBucketByPurpose: vi.fn(async () => null),
+        getBucketBySlug: vi.fn(async (slug: string) => (slug === 'recordings' ? { name: 'rec' } : null)),
+      },
     });
-    await persistSpeechBlob(fallback as never, { tenantId: 't1', agentSlug: 'v', audio: Buffer.alloc(10), format: 'pcm', sampleRate: 16_000, durationMs: null });
+    await persistSpeechBlob(fallback as never, {
+      tenantId: 't1',
+      agentSlug: 'v',
+      audio: Buffer.alloc(10),
+      format: 'pcm',
+      sampleRate: 16_000,
+      durationMs: null,
+    });
     expect(fallback.blobStorage.putObject).toHaveBeenCalledWith(expect.objectContaining({ bucket: 'rec' }));
 
     const none = deps({ tenantBuckets: { getBucketByPurpose: vi.fn(async () => null), getBucketBySlug: vi.fn(async () => null) } });
     await expect(
-      persistSpeechBlob(none as never, { tenantId: 't1', agentSlug: 'v', audio: Buffer.alloc(10), format: 'pcm', sampleRate: 16_000, durationMs: null }),
+      persistSpeechBlob(none as never, {
+        tenantId: 't1',
+        agentSlug: 'v',
+        audio: Buffer.alloc(10),
+        format: 'pcm',
+        sampleRate: 16_000,
+        durationMs: null,
+      }),
     ).rejects.toMatchObject({ status: 503, response: { code: 'TTS_BLOB_STORAGE_UNAVAILABLE' } });
   });
 });

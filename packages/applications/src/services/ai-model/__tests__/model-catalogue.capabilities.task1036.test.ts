@@ -74,7 +74,13 @@ describe('catalogue capabilities — ModelCapabilities (TASK-1036 W2)', () => {
   });
 
   it('defaults on a row with no metadata at all', () => {
-    expect(capabilitiesOf(null)).toMatchObject({ supportsTools: false, supportsVision: false, supportsAttachments: false, voices: [], supportedGenerationParams: [] });
+    expect(capabilitiesOf(null)).toMatchObject({
+      supportsTools: false,
+      supportsVision: false,
+      supportsAttachments: false,
+      voices: [],
+      supportedGenerationParams: [],
+    });
   });
 
   it('refuses a non-boolean flag and non-string voices rather than passing them on', () => {

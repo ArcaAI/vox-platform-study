@@ -170,7 +170,12 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     const compiled = await publish({
       fragments: [
         { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
-        { key: 'revisit', promptTemplateId: 'tpl-revisit', promptVersionNumber: 5, when: "has(context.visit_type) && context.visit_type == 'revisit'" },
+        {
+          key: 'revisit',
+          promptTemplateId: 'tpl-revisit',
+          promptVersionNumber: 5,
+          when: "has(context.visit_type) && context.visit_type == 'revisit'",
+        },
         { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'has(context.patient_age) && context.patient_age < 18' },
       ],
     });
@@ -330,9 +335,7 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
         { key: 'bad', promptTemplateId: 'tpl-bad', when: 'true' },
       ],
     });
-    expect(findings).toContainEqual(
-      expect.objectContaining({ code: 'PROMPT_TEMPLATE_SYNTAX', path: 'instruction.fragments[1]', severity: 'ERROR' }),
-    );
+    expect(findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_TEMPLATE_SYNTAX', path: 'instruction.fragments[1]', severity: 'ERROR' }));
   });
 
   it('refuses an undeclared reference inside a fragment as an ERROR, at that fragment’s path', async () => {

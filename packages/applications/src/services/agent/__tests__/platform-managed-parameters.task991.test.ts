@@ -44,7 +44,11 @@ describe('the locked paths come from the contract, not from a list in the servic
 
     it('reports nothing when the path is absent from BOTH — an agent that never diarized stays editable', () => {
       expect(
-        platformManagedParameterChanges(AgentTask.SPEECH_TO_TEXT, { audioFrontEnd: { vad: { enabled: false } } }, { audioFrontEnd: { vad: { enabled: true } } }),
+        platformManagedParameterChanges(
+          AgentTask.SPEECH_TO_TEXT,
+          { audioFrontEnd: { vad: { enabled: false } } },
+          { audioFrontEnd: { vad: { enabled: true } } },
+        ),
       ).toEqual([]);
     });
 
@@ -239,10 +243,15 @@ describe('AgentService.update — the platform-managed lock (TASK-991 OD-3)', ()
   it('PASSES an ordinary edit that sends the locked value back unchanged', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(sttAgent());
     await makeService().update('agent-1', {
-      parameters: { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' }, vad: { enabled: true } }, decoding: { beamSize: 5 } },
+      parameters: {
+        audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' }, vad: { enabled: true } },
+        decoding: { beamSize: 5 },
+      },
     });
     expect(mockAgentRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-    expect(persisted()).toMatchObject({ audioFrontEnd: { vad: { enabled: true }, diarization: { embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } } });
+    expect(persisted()).toMatchObject({
+      audioFrontEnd: { vad: { enabled: true }, diarization: { embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } },
+    });
   });
 
   it('PASSES an edit that touches no parameters at all', async () => {

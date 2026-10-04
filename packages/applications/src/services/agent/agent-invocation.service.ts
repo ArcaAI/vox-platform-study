@@ -918,4 +918,3 @@ function responseFormatOf(parameters: Record<string, unknown>): Record<string, u
   }
   return {};
 }
-

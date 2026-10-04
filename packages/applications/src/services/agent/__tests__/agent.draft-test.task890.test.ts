@@ -158,7 +158,10 @@ describe('testDraft — dry run (the default)', () => {
   // TASK-1036 OD-8 — the bench reads the user turn the way invocation does: `message`, else `text`.
   it('reads `input.message` as the user turn', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
-    const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' }, input: { message: 'Summarise {{input.note}}', note: 'the visit' } });
+    const ack = await makeService().testDraft('agent-1', {
+      context: { clinic: 'Ward B' },
+      input: { message: 'Summarise {{input.note}}', note: 'the visit' },
+    });
     expect(ack.assembledUserPrompt).toBe(asInputBlock('Summarise the visit'));
   });
 
@@ -507,14 +510,24 @@ describe('AgentDraftTestService — metering (§3.13, OD-E)', () => {
  */
 describe('testDraft — the bound connection travels to the transport', () => {
   it('passes the primary model`s connection when the target is the row`s own', async () => {
-    mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, provider: 'azure', sourceConnectionId: 'conn-azure-2', wireModelId: 'gpt-5.4-mini' });
+    mockAiModelRepository.findById.mockResolvedValue({
+      ...LLM_MODEL,
+      provider: 'azure',
+      sourceConnectionId: 'conn-azure-2',
+      wireModelId: 'gpt-5.4-mini',
+    });
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' }, input: { text: 'go' }, dryRun: false });
     expect(mockDraftTest.submit).toHaveBeenCalledWith(expect.objectContaining({ connectionId: 'conn-azure-2', connectionProvider: 'azure' }));
   });
 
   it('sends no connection for a caller-supplied {provider, model} override — that is a different target', async () => {
-    mockAiModelRepository.findById.mockResolvedValue({ ...LLM_MODEL, provider: 'azure', sourceConnectionId: 'conn-azure-2', wireModelId: 'gpt-5.4-mini' });
+    mockAiModelRepository.findById.mockResolvedValue({
+      ...LLM_MODEL,
+      provider: 'azure',
+      sourceConnectionId: 'conn-azure-2',
+      wireModelId: 'gpt-5.4-mini',
+    });
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     await makeService().testDraft('agent-1', {
       context: { clinic: 'Ward B' },

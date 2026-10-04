@@ -129,7 +129,6 @@ function makeService() {
   );
 }
 
-
 beforeEach(() => {
   vi.clearAllMocks();
   templates.clear();

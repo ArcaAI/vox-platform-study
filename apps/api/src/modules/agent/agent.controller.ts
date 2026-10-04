@@ -533,7 +533,12 @@ export class AgentController {
   }
 
   /** One blocking TEXT_GENERATION call, metered — the invocation route's answer and a run's execution. */
-  private async executeText(resolved: ResolvedAgent, tenantId: string, slug: string, body: AgentInvocationBody): Promise<AgentTextInvocationResponse> {
+  private async executeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+  ): Promise<AgentTextInvocationResponse> {
     const guardrail: GuardrailDisposition = 'screened';
     const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
     this.emitInvocationUsage(await this.buildBlockingUsage(tenantId, resolved, result), slug, guardrail);
@@ -634,9 +639,16 @@ export class AgentController {
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same key + the same body joins the existing run.' })
-  @ApiBody({ required: true, description: 'The invocation body (see `POST /agents/{slug}/invocations`).', schema: { type: 'object', additionalProperties: true } })
+  @ApiBody({
+    required: true,
+    description: 'The invocation body (see `POST /agents/{slug}/invocations`).',
+    schema: { type: 'object', additionalProperties: true },
+  })
   @ApiResponse({ status: 202, description: '`{ runId, status, links: { self, events, result, cancel } }`.' })
-  @ApiResponse({ status: 400, description: 'The body does not match the agent’s inputSchema, or the agent’s task has no run form (use `/speech` or `/transcriptions`).' })
+  @ApiResponse({
+    status: 400,
+    description: 'The body does not match the agent’s inputSchema, or the agent’s task has no run form (use `/speech` or `/transcriptions`).',
+  })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent — one answer.' })
   @ApiResponse({ status: 409, description: '`IDEMPOTENCY_KEY_REUSED` — the key already started a run with a different body.' })
   @ApiResponse({ status: 429, description: 'The tenant has reached its usage allowance. Refused before anything runs.' })
@@ -803,11 +815,18 @@ export class AgentController {
     const write = (event: RunEventV2): void => void res.write(toSseFrame(event));
     const resync = async (reason: RunResyncReason, lastSeq: number): Promise<void> => {
       state = await runs.get(tenantId, slug, runId);
-      write({ seq: lastSeq, runId, type: 'run.resync', ts: new Date().toISOString(), data: { reason, snapshot: runs.snapshotOf(state, lastSeq) } } as RunEventV2);
+      write({
+        seq: lastSeq,
+        runId,
+        type: 'run.resync',
+        ts: new Date().toISOString(),
+        data: { reason, snapshot: runs.snapshotOf(state, lastSeq) },
+      } as RunEventV2);
     };
 
     const hub = this.runEventHub;
     if (!hub || !hub.available()) {
+      // swallow-ok: the push transport is already down; the snapshot (from the run state) is the answer, and seq 0 is its documented cursor.
       await resync('unavailable', (await runs.store.lastSeq(runId).catch(() => null)) ?? 0);
       res.end();
       return;
@@ -833,7 +852,9 @@ export class AgentController {
 
     let first = true;
     while (!abort.signal.aborted) {
-      const entries = first ? await hub.readNow(key, streamCursor) : await hub.read(key, streamCursor, { timeoutMs: SSE_HEARTBEAT_INTERVAL_MS, signal: abort.signal });
+      const entries = first
+        ? await hub.readNow(key, streamCursor)
+        : await hub.read(key, streamCursor, { timeoutMs: SSE_HEARTBEAT_INTERVAL_MS, signal: abort.signal });
       first = false;
       if (entries.length === 0) {
         if (abort.signal.aborted) break;
@@ -936,7 +957,11 @@ export class AgentController {
       example: { text: 'Your appointment is confirmed for Tuesday at ten.' },
     },
   })
-  @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed — or, with `delivery: "blob"`, JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'audio/pcm | audio/wav | audio/mpeg, streamed — or, with `delivery: "blob"`, JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`.',
+  })
   @ApiResponse({ status: 503, description: '`TTS_BLOB_STORAGE_UNAVAILABLE` — `delivery: "blob"` and the tenant has no audio bucket.' })
   @ApiResponse({ status: 400, description: 'Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })

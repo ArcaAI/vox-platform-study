@@ -424,7 +424,12 @@ export class AgentService extends BaseService implements IAgentService {
       try {
         const outcome = await this.contextSchemas.resolveReference(definition.contextSchemaId, definition.contextSchemaVersionNumber ?? null);
         if (outcome.outcome === 'failed') continue;
-        return { schemaId: outcome.schemaId, versionNumber: outcome.versionNumber, versionId: outcome.versionId, payloadSchema: outcome.payloadSchema };
+        return {
+          schemaId: outcome.schemaId,
+          versionNumber: outcome.versionNumber,
+          versionId: outcome.versionId,
+          payloadSchema: outcome.payloadSchema,
+        };
       } catch {
         continue;
       }
@@ -1539,6 +1544,7 @@ export class AgentService extends BaseService implements IAgentService {
     const templateId = binding.promptTemplateId;
     if (typeof templateId !== 'string' || templateId.length === 0 || binding.promptVersionNumber !== undefined) return null;
     if (!this.promptTemplateRepository) return null;
+    // swallow-ok: stamping is a convenience; an unreadable template is left unpinned and the publish gate re-reads it and refuses with the real reason.
     const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
     if (!template || template.status !== 'APPROVED') return null;
     const version = template.approvedVersionNumber ?? template.currentVersionNumber ?? null;

@@ -77,7 +77,11 @@ describe('start → complete', () => {
     expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5]);
     for (const event of events) expect(runEventProblems(event, { runKind: 'agent', plane: 'public' })).toEqual([]);
     expect(events[0].data).toEqual({ kind: 'agent', slug: 'scribe', versionNumber: 3, mode: 'async' });
-    expect(events[4].data).toMatchObject({ status: 'COMPLETED', tokens: { in: 12, out: 4 }, result: { kind: 'inline', value: { text: 'The note.' } } });
+    expect(events[4].data).toMatchObject({
+      status: 'COMPLETED',
+      tokens: { in: 12, out: 4 },
+      result: { kind: 'inline', value: { text: 'The note.' } },
+    });
   });
 
   it('puts the terminal retention on all three keys (OD-25: 24 h), closing the stream', async () => {
@@ -196,6 +200,8 @@ describe('404-over-403', () => {
 describe('no run store', () => {
   it('is a named 503, never a run that cannot be followed', async () => {
     redis.connected = false;
-    await expect(service().start(startInput(async () => ({ output: {}, tokens: { in: 0, out: 0 } })))).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(service().start(startInput(async () => ({ output: {}, tokens: { in: 0, out: 0 } })))).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

@@ -50,7 +50,9 @@ let redis: FakeAgentRunRedis;
 /** A hub over the fake streams: `readNow` / `read` return what is stored after the cursor id. */
 function fakeHub() {
   const after = (key: string, cursor: string) =>
-    (redis.streams.get(key) ?? []).filter(([id]) => cursor === '0-0' || Number(id.split('-')[0]) > Number(cursor.split('-')[0])).map(([id, fields]) => ({ id, fields }));
+    (redis.streams.get(key) ?? [])
+      .filter(([id]) => cursor === '0-0' || Number(id.split('-')[0]) > Number(cursor.split('-')[0]))
+      .map(([id, fields]) => ({ id, fields }));
   return {
     available: () => true,
     readNow: vi.fn(async (key: string, cursor: string) => after(key, cursor)),
@@ -254,14 +256,16 @@ describe('GET …/events — run protocol v2 over SSE', () => {
   it('refuses a protocol other than 2 with 400', async () => {
     const { controller } = make();
     const { runId } = await controller.startRun('scribe', { message: 'x' }, undefined);
-    await expect(controller.runEvents('scribe', runId, { headers: {}, query: { protocol: '1' } } as never, fakeRes() as never)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      controller.runEvents('scribe', runId, { headers: {}, query: { protocol: '1' } } as never, fakeRes() as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('a foreign run is a 404 before any frame is written', async () => {
     const { controller } = make();
-    await expect(controller.runEvents('scribe', 'nope', { headers: {}, query: {} } as never, fakeRes() as never)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.runEvents('scribe', 'nope', { headers: {}, query: {} } as never, fakeRes() as never)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   void RUN_EVENTS_KEY;

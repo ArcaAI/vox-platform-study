@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { RUN_APPEND_LUA, RUN_EVENTS_KEY, RUN_SEQ_KEY, buildRunAppend, type RunAppendInput, type RunError, type RunStatus } from '@arcaai/async-contract';
+import {
+  RUN_APPEND_LUA,
+  RUN_EVENTS_KEY,
+  RUN_SEQ_KEY,
+  buildRunAppend,
+  type RunAppendInput,
+  type RunError,
+  type RunStatus,
+} from '@arcaai/async-contract';
 
 /**
  * TASK-1038 OD-26 — the agent run's STATE, held in Redis.

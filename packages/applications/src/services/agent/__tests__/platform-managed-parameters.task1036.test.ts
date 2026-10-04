@@ -149,9 +149,9 @@ describe('which paths are platform-managed — the contract decides', () => {
 describe('update — a tenant admin', () => {
   it('REFUSES a change to a platform-managed path (403, named), and writes nothing', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(textAgent());
-    await expect(
-      makeService().update('agent-1', { parameters: { generation: { temperature: 0.2, topP: 0.5, seed: 7 } } }),
-    ).rejects.toMatchObject({ response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED', paths: ['generation.topP'] } });
+    await expect(makeService().update('agent-1', { parameters: { generation: { temperature: 0.2, topP: 0.5, seed: 7 } } })).rejects.toMatchObject({
+      response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED', paths: ['generation.topP'] },
+    });
     expect(mockAgentRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 
@@ -169,9 +169,9 @@ describe('update — a tenant admin', () => {
 
   it('REFUSES an explicit null over a stored platform-managed value — that is a change, not an omission', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(textAgent());
-    await expect(
-      makeService().update('agent-1', { parameters: { generation: { temperature: 0.2, topP: null, seed: 7 } } }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(makeService().update('agent-1', { parameters: { generation: { temperature: 0.2, topP: null, seed: 7 } } })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });
 
@@ -203,9 +203,9 @@ const CREATE = {
 
 describe('create', () => {
   it('REFUSES a tenant admin setting a platform-managed path', async () => {
-    await expect(
-      makeService().create({ ...CREATE, parameters: { generation: { temperature: 0.2, seed: 1 } } } as never),
-    ).rejects.toMatchObject({ response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED', paths: ['generation.seed'] } });
+    await expect(makeService().create({ ...CREATE, parameters: { generation: { temperature: 0.2, seed: 1 } } } as never)).rejects.toMatchObject({
+      response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED', paths: ['generation.seed'] },
+    });
     expect(mockAgentRepository.create).not.toHaveBeenCalled();
   });
 

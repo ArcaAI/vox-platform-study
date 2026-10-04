@@ -52,7 +52,11 @@ function wavInfo(audio: Buffer): { sampleRate: number; channels: number; bitsPer
     const id = audio.toString('ascii', offset, offset + 4);
     const size = audio.readUInt32LE(offset + 4);
     if (id === 'fmt ' && offset + 24 <= audio.length) {
-      fmt = { channels: audio.readUInt16LE(offset + 10), sampleRate: audio.readUInt32LE(offset + 12), bitsPerSample: audio.readUInt16LE(offset + 22) };
+      fmt = {
+        channels: audio.readUInt16LE(offset + 10),
+        sampleRate: audio.readUInt32LE(offset + 12),
+        bitsPerSample: audio.readUInt16LE(offset + 22),
+      };
     }
     if (id === 'data') {
       if (!fmt) return null;
