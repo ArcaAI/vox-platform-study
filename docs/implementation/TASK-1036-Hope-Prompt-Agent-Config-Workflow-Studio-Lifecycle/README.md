@@ -716,6 +716,50 @@ The orchestrator re-checked three blockers in code before acting:
 - barrels and one re-verification;
 - B1 brief additions: NodeIO envelope mapping, the dual `nodes.*` scope, no `consultation` in CEL, `run.now = workflow.now()`, loop `item` binding.
 
+**Freeze merged** (`dca2bfb0b` + integration `5320a4c13`):
+- Run-protocol v2 exports added.
+- Seeds regenerated with the **semantic** registry checksum `52a0cfd5…`. It is identical over the base `45ce54bc6` registry, so wave A changed nothing semantic.
+- The tenant-checkpoint registry now mirrors the DEPRECATED freeze. `status` and `deprecatedAt` are frozen for PUBLISHED and DEPRECATED live rows, which is conservative: a restore never rewinds a frozen version's lifecycle.
+
+Re-verified:
+
+| Check | Result |
+|---|---|
+| `@arcaai/workflow-contract` | 1,352 tests |
+| `@arcaai/async-contract` | 167 tests |
+| workflow-definition, context-schema, prompt-management and agent services | 1,461 tests |
+| Seeds | 943 tests |
+| tenant-checkpoint | 254 tests |
+| Type checks: applications, api, admin-console | 0 errors |
+
+One consequence to plan for: definitions published before this change carry the old checksum (`69527f06…`). They are flagged NEEDS_REVIEW **once** on the next deploy, and never again for additive optional properties.
+
+### 6.4 Wave B: launched 2026-10-04 from the frozen contract `5320a4c13`
+
+| Lane | Ticket | Tier | Worktree / branch |
+|---|---|---|---|
+| B1 HARNESS-CONTRACT | 1036 + 1038 | opus | `../hope-v2-task-1038-b1-harness` / `task-1038/b1-harness-contract` |
+| B2 GATEWAY-AGENT | 1036 + 1038 | opus | `../hope-v2-task-1036-b2-agent` / `task-1036/b2-gateway-agent` |
+| B3a GATEWAY-STREAMS | 1038 | opus | `../hope-v2-task-1038-b3a-streams` / `task-1038/b3a-gateway-streams` |
+| B3b GATEWAY-PUBLISH-READ | 1036 + 1038 | opus | `../hope-v2-task-1036-b3b-publish` / `task-1036/b3b-publish-read` |
+| B4 TEXT-EGRESS | 1036 | sonnet | `../hope-v2-task-1036-b4-egress` / `task-1036/b4-text-egress` |
+| B5 SEEDS-ALIGN (added) | 1036 | sonnet | `../hope-v2-task-1036-b5-seeds` / `task-1036/b5-seeds-align` |
+
+B5 is a new lane. It covers:
+- W3 prompt pins for the 26 seeded agents;
+- the retired `transcript` array and the stale TEXT input schema in `25-agents.ts`;
+- the SYSTEM `default_io` context schema;
+- capability metadata on seeded models.
+
+**Cross-lane interfaces fixed in the briefs:**
+
+| Interface | Shape |
+|---|---|
+| Consultation read route (B3b serves, B1 calls) | `POST internal/consultations/:id/read {runId, nodeId, paths}` → `{values, readAt, schemaVersion}`; undeclared path → 400 |
+| Run start body (B3a sends, B1 reads) | `retentionSeconds` plus `limits {nodeOutputClaimCheckMinBytes, resultInlineMaxBytes, activityInputMaxBytes}` from new `workflowRuns.*` descriptors. This replaces A1's env tunables; the env fields remain a one-release fallback. |
+| Sequencer | Both producers use `RUN_APPEND_LUA`. B2's agent runs append with `nodeId: 'agent'`. |
+| Data contract | The `workflows.emitDataContract` setting (B3b) defaults off, and the orchestrator flips it after B1 merges. |
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
