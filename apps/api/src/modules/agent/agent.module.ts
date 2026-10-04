@@ -3,10 +3,12 @@ import {
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
   BillingServiceModule,
+  CommonServiceModule,
   EntitlementsServiceModule,
   MediaServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  TenantSettingsService,
   TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
@@ -14,6 +16,7 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { gatewayKeepAliveAgents } from '../../common';
 import { AgentController } from './agent.controller';
+import { AgentRunService } from './agent-run.service';
 
 /** `/agents/**` — the Agent business plane (TASK-863 §3.5). */
 @Module({
@@ -40,7 +43,12 @@ import { AgentController } from './agent.controller';
     // `UsageLedgerServiceModule` above, which provides its `TenantSettingsService` locally. This
     // module therefore needs no `EffectiveSettingsModule` of its own; the controller reads that
     // descriptor through the shared resolver rather than through a second copy of the cascade.
+    // TASK-1038 OD-26 — the agent RUN resource: `CommonServiceModule` brings the settings plane
+    // `TenantSettingsService` reads the A2 retention knobs from (provided LOCALLY, the
+    // `WorkflowRunCompletionModule` precedent); `IRedisCacheService` is @Global.
+    CommonServiceModule,
   ],
+  providers: [TenantSettingsService, AgentRunService],
   controllers: [AgentController],
 })
 export class AgentModule {}
