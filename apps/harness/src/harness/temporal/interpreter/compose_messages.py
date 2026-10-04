@@ -224,18 +224,24 @@ def compose_messages(
     layers = [
         platform_rules,
         composed.prompt,
-        output_language_step(language_name) if _non_empty(language_name) else None,
+        (
+            output_language_step(language_name)
+            if isinstance(language_name, str) and language_name
+            else None
+        ),
         output_contract,
     ]
-    system = MESSAGE_LAYER_JOIN.join(layer for layer in layers if _non_empty(layer))
-    layer_sizes = [
+    system = MESSAGE_LAYER_JOIN.join(
+        layer for layer in layers if isinstance(layer, str) and _non_empty(layer)
+    )
+    layer_sizes: list[tuple[str, int]] = [
         (name, len(text))
         for name, text in zip(
             ("platformRules", "instruction", "outputLanguage", "outputContract"),
             layers,
             strict=True,
         )
-        if _non_empty(text)
+        if isinstance(text, str) and text
     ]
 
     wrapped: list[str] = []

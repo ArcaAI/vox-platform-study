@@ -154,7 +154,8 @@ def _run_context(payload: NodeActivityInput) -> dict[str, Any]:
         return context
     served: dict[str, Any] = {}
     for node_id, output in nodes.items():
-        info = meta.get(node_id) if isinstance(meta.get(node_id), dict) else {}
+        raw_info = meta.get(node_id)
+        info: dict[str, Any] = raw_info if isinstance(raw_info, dict) else {}
         if isinstance(output, dict) and "outputs" not in output:
             view = outputs_view(str(info.get("type") or ""), output, task=info.get("task"))
             served[node_id] = {**output, "outputs": view}
@@ -832,14 +833,16 @@ def _agent_prompt_scope(
     vars_root = run_context.get("vars")
     nodes_root = run_context.get("nodes")
     variables = _agent_variables(resolved, config)
-    roots = {
-        "trigger": trigger_view,
-        "context": context_view,
-        "vars": vars_root if isinstance(vars_root, dict) else None,
-        "nodes": nodes_root if isinstance(nodes_root, dict) else None,
-    }
+    vars_view = vars_root if isinstance(vars_root, dict) else None
+    nodes_view = nodes_root if isinstance(nodes_root, dict) else None
     if run_context.get(_V2_SCOPE) is not True:
-        return build_prompt_scope(variables=variables, **roots)
+        return build_prompt_scope(
+            variables=variables,
+            trigger=trigger_view,
+            context=context_view,
+            vars=vars_view,
+            nodes=nodes_view,
+        )
     # TASK-1036 (lane B1) — under run protocol v2 the scope also carries the `consultation` and
     # `run` roots, and an `overrides.promptVariables` string containing `{{…}}` is RENDERED
     # against the run scope (it used to be bound LITERALLY: `{{nodes.x.text}}` reached the model
@@ -850,7 +853,12 @@ def _agent_prompt_scope(
         for name in ("consultation", "run")
         if isinstance(run_context.get(name), dict)
     }
-    base = {**build_prompt_scope(**roots), **extra_roots}
+    base = {
+        **build_prompt_scope(
+            trigger=trigger_view, context=context_view, vars=vars_view, nodes=nodes_view
+        ),
+        **extra_roots,
+    }
     overrides = config.get("overrides")
     prompt_variables = overrides.get("promptVariables") if isinstance(overrides, dict) else None
     for key, value in (prompt_variables or {}).items():
@@ -858,7 +866,13 @@ def _agent_prompt_scope(
             variables[key] = render_template(
                 value, base, template_ref=f"overrides.promptVariables.{key}"
             )
-    scope = build_prompt_scope(variables=variables, **roots)
+    scope = build_prompt_scope(
+        variables=variables,
+        trigger=trigger_view,
+        context=context_view,
+        vars=vars_view,
+        nodes=nodes_view,
+    )
     for name, root in extra_roots.items():
         scope.setdefault(name, root)
     return scope
@@ -1957,7 +1971,8 @@ class _GenerationTrace:
         egress = getattr(result, "egress", None)
         inbound = _guardrail_event(verdicts.get("inbound"))
         if inbound is None and isinstance(egress, dict):
-            detected = egress.get("detected") if isinstance(egress.get("detected"), dict) else {}
+            raw_detected = egress.get("detected")
+            detected: dict[str, Any] = raw_detected if isinstance(raw_detected, dict) else {}
             counts = [v for v in detected.values() if isinstance(v, int)]
             redacted = egress.get("redacted") is True
             inbound = {

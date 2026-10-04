@@ -502,11 +502,8 @@ class LoopWorkflow:
                     run_payload=inp.run_payload,
                     run_id=inp.run_id,
                     run_context=run_context,
-                    **(
-                        {"protocol": 2, "event_scope": f"iter:{iteration}"}
-                        if inp.protocol == 2
-                        else {}
-                    ),
+                    protocol=2 if inp.protocol == 2 else None,
+                    event_scope=f"iter:{iteration}" if inp.protocol == 2 else None,
                 ),
                 start_to_close_timeout=timedelta(seconds=caps.clamp_timeout(node.timeout_seconds)),
                 retry_policy=RetryPolicy(

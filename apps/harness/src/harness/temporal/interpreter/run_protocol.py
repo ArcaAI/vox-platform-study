@@ -542,7 +542,7 @@ def run_event_problems(
     if has_node_id and (not isinstance(node_id, str) or not node_id or len(node_id) > 255):
         problems.append("nodeId must be a non-empty string of at most 255 characters")
     if known:
-        scope = RUN_EVENT_NODE_SCOPE[type_]
+        scope = RUN_EVENT_NODE_SCOPE[str(type_)]
         if scope == "required" and not has_node_id:
             problems.append(f"nodeId is required on {type_}")
         if scope == "forbidden" and has_node_id:
@@ -556,7 +556,7 @@ def run_event_problems(
     if not isinstance(data, dict):
         problems.append("data must be a JSON object")
     elif known:
-        problems.extend(_schema_problems(RUN_EVENT_DATA_SCHEMAS[type_], data, "data"))
+        problems.extend(_schema_problems(RUN_EVENT_DATA_SCHEMAS[str(type_)], data, "data"))
         snapshot = data.get("snapshot")
         if type_ == "run.resync" and isinstance(snapshot, dict) and snapshot.get("lastSeq") != seq:
             problems.append(

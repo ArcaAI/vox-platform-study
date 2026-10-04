@@ -517,11 +517,12 @@ async def _read_generation_stream(
             parts.append(chunk["content"])
             await on_delta(chunk["content"])
             return None
+        payload = chunk.get("data")
+        data: dict[str, Any] = payload if isinstance(payload, dict) else {}
         if kind == "error":
-            data = chunk.get("data") if isinstance(chunk.get("data"), dict) else {}
             raise TextServiceError(f"text stream failed: {data.get('error') or 'error frame'}")
         if kind == "done":
-            return chunk.get("data") if isinstance(chunk.get("data"), dict) else {}
+            return data
         return None
 
     async for line in resp.aiter_lines():
