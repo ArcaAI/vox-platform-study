@@ -19,7 +19,13 @@ import type { WorkflowRunStatusResponse } from '@arcaai/applications';
 import type { RunCompletedCounts } from './run-completed-counts';
 import { RunEventStreamHub, RunStreamEntry, storedSeqOf } from './run-event-stream-hub';
 import { parseRunStreamEntry } from './run-stream-delivery';
-import { RUN_EVENT_TRANSPORT, WORKFLOW_RUN_COMPLETED, buildWorkflowRunEventEnvelope, compareStreamIds, isTerminalRunStatus } from './workflow-run-event';
+import {
+  RUN_EVENT_TRANSPORT,
+  WORKFLOW_RUN_COMPLETED,
+  buildWorkflowRunEventEnvelope,
+  compareStreamIds,
+  isTerminalRunStatus,
+} from './workflow-run-event';
 
 /**
  * TASK-1038 B3a — run protocol v2 DELIVERY (protocol-v2.md §2, §5, §6), shared by the three
@@ -577,7 +583,12 @@ class RunDeliveryLoop {
       return 'continue';
     }
     if (parsed.kind === 'invalid') {
-      o.logger.warn({ message: 'run stream entry is not a valid protocol v2 event — skipped', runId: o.runId, entryId: entry.id, problems: parsed.problems });
+      o.logger.warn({
+        message: 'run stream entry is not a valid protocol v2 event — skipped',
+        runId: o.runId,
+        entryId: entry.id,
+        problems: parsed.problems,
+      });
       return 'continue';
     }
 
@@ -655,7 +666,13 @@ class RunDeliveryLoop {
     }
     const snapshot = this.fold.snapshot(status, lastSeq ?? 0);
     this.position = snapshot.lastSeq;
-    const event = { seq: snapshot.lastSeq, runId: o.runId, type: 'run.resync', ts: new Date().toISOString(), data: { reason, snapshot } } as RunEventV2;
+    const event = {
+      seq: snapshot.lastSeq,
+      runId: o.runId,
+      type: 'run.resync',
+      ts: new Date().toISOString(),
+      data: { reason, snapshot },
+    } as RunEventV2;
     return this.writeV2(event);
   }
 

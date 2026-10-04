@@ -92,7 +92,12 @@ test.describe('Agent runs — cross-tenant (404-over-403)', () => {
   });
 
   test('a run owned by tenant A is 404 to tenant B on every by-id route; tenant A still reads it', async ({ request }) => {
-    const ownerKey = await createScopedApiKey(request, ownerAdminToken, ['agent:definition:read', 'agent:invocation:write'], 'task-1038-agentrun-owner');
+    const ownerKey = await createScopedApiKey(
+      request,
+      ownerAdminToken,
+      ['agent:definition:read', 'agent:invocation:write'],
+      'task-1038-agentrun-owner',
+    );
     ownerKeyIds.push(ownerKey.id);
     const slug = await findTextAgent(request, ownerKey.rawKey);
     test.skip(slug === null, 'the owner tenant has no published TEXT_GENERATION agent; an agent run cannot be created here');
@@ -139,7 +144,9 @@ test.describe('Agent runs — cross-tenant (404-over-403)', () => {
     test.skip(started.status() !== 202, `the run start was refused before the 202 (${started.status()}); no run row exists`);
     const { runId } = (await started.json()) as { runId: string };
 
-    const list = await request.get('/api/v1/admin/workflow-runs?limit=100&includeSandbox=true', { headers: { Authorization: `Bearer ${ownerAdminToken}` } });
+    const list = await request.get('/api/v1/admin/workflow-runs?limit=100&includeSandbox=true', {
+      headers: { Authorization: `Bearer ${ownerAdminToken}` },
+    });
     expect(list.status()).toBe(200);
     const page = (await list.json()) as { data: Array<{ runId: string }> };
     expect(page.data.map((row) => row.runId)).not.toContain(runId);

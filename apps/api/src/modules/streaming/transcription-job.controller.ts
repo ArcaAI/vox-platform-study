@@ -611,7 +611,11 @@ export class TranscriptionJobController {
     description:
       'Retry-safe key (TASK-1038): the same key with the same upload (audio bytes + fields) returns the same job without a second upload or dispatch; a different upload under the same key is a 409.',
   })
-  @ApiResponse({ status: 409, description: '`IDEMPOTENCY_KEY_REUSED` — this Idempotency-Key was used with a different upload; `IDEMPOTENCY_KEY_IN_FLIGHT` — the first request is still starting.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`IDEMPOTENCY_KEY_REUSED` — this Idempotency-Key was used with a different upload; `IDEMPOTENCY_KEY_IN_FLIGHT` — the first request is still starting.',
+  })
   async transcribeFile(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: TranscribeFileRequest,

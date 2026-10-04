@@ -86,10 +86,10 @@ vi.mock('../palette', () => ({
 }));
 
 /** The inspector is Lane B's; the editor's contract with it is the props it hands over. */
-let capturedInspectorProps: Record<string, unknown> | null = null;
+let _capturedInspectorProps: Record<string, unknown> | null = null;
 vi.mock('../inspector', () => ({
   InspectorPanel: (props: Record<string, unknown>) => {
-    capturedInspectorProps = props;
+    _capturedInspectorProps = props;
     // The real panel renders exactly one tab's slot at a time; the stub does the same so the
     // editor's `problemsSlot` composition is exercised rather than merely handed over.
     const body = props.tab === 'problems' ? props.problemsSlot : null;
@@ -214,7 +214,7 @@ afterEach(() => {
   replace.mockClear();
   refresh.mockClear();
   capturedCanvasProps = null;
-  capturedInspectorProps = null;
+  _capturedInspectorProps = null;
 });
 
 /**

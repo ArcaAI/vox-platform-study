@@ -4,7 +4,7 @@
  * Integration tab is told when the buffer has unsaved changes.
  */
 import type { ReactNode } from 'react';
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { WorkflowStudioEditor } from '../workflow-studio-editor';

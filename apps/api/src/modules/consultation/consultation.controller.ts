@@ -1943,7 +1943,6 @@ export class ConsultationController {
     tenantId: string,
     userId: string,
   ): Promise<{ jobId: string; createdAt: string }> {
-
     // this route used to enqueue onto the legacy `GenerateSummary`
     // BullMQ queue (`ConsultationJobService.createSummaryJob`), which decided
     // harness-vs-legacy only later, inside `SummaryProcessor.process()`. That
@@ -2005,7 +2004,8 @@ export class ConsultationController {
   @ApiHeader({
     name: 'Idempotency-Key',
     required: false,
-    description: 'Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409. Wins over the body field `idempotencyKey`.',
+    description:
+      'Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409. Wins over the body field `idempotencyKey`.',
   })
   async generatePreSummaryAsync(
     @Param('id') consultationId: string,

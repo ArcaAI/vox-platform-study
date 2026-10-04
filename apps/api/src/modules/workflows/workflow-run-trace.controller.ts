@@ -76,7 +76,10 @@ export class WorkflowRunTraceController {
   @ApiQuery({ name: 'after', required: false, description: 'Resume cursor (`seq`) for a client that cannot set headers.' })
   @ApiQuery({ name: 'protocol', required: false, description: 'Optional; when present it must be `2`.' })
   @ApiResponse({ status: 400, description: 'A protocol other than 2, or a cursor that is not a decimal seq.' })
-  @ApiResponse({ status: 403, description: '`RUN_TRACE_FORBIDDEN` — not a super administrator or a tenant administrator of this tenant; or no working tenant selected.' })
+  @ApiResponse({
+    status: 403,
+    description: '`RUN_TRACE_FORBIDDEN` — not a super administrator or a tenant administrator of this tenant; or no working tenant selected.',
+  })
   @ApiResponse({ status: 404, description: 'Run not found for the tenant (absent or belongs to another tenant).' })
   async streamTrace(
     @Param('runId') runId: string,
@@ -149,7 +152,9 @@ export class WorkflowRunTraceController {
   private resolveWorkingTenantId(): string {
     const tenantId = this.cls.get('tenantId');
     if (!tenantId) {
-      throw new ForbiddenException(isSuperAdmin(this.cls.get('user')) ? 'No working tenant selected' : 'Tenant context required to trace a workflow run');
+      throw new ForbiddenException(
+        isSuperAdmin(this.cls.get('user')) ? 'No working tenant selected' : 'Tenant context required to trace a workflow run',
+      );
     }
     return tenantId;
   }

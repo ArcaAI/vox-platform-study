@@ -110,10 +110,16 @@ export class WorkflowWsGateway implements OnGatewayConnection {
     let protocol: RunProtocolVersion;
     let cursor: ClientCursor;
     try {
-      protocol = resolveRunProtocol({ header: req.headers?.[RUN_PROTOCOL_HEADER] as string | undefined, query: url.searchParams.get(RUN_PROTOCOL_QUERY_PARAM) });
+      protocol = resolveRunProtocol({
+        header: req.headers?.[RUN_PROTOCOL_HEADER] as string | undefined,
+        query: url.searchParams.get(RUN_PROTOCOL_QUERY_PARAM),
+      });
       cursor = parseClientCursor({ after: url.searchParams.get('after'), legacyQuery: url.searchParams.get('lastEventId') }, protocol);
     } catch (err) {
-      this.logger.warn({ message: 'workflow WS handshake rejected — unsupported run protocol or cursor', error: err instanceof Error ? err.message : String(err) });
+      this.logger.warn({
+        message: 'workflow WS handshake rejected — unsupported run protocol or cursor',
+        error: err instanceof Error ? err.message : String(err),
+      });
       client.close(WORKFLOW_WS_CLOSE_PROTOCOL_UNSUPPORTED, 'Unsupported run protocol or resume cursor');
       return;
     }

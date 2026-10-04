@@ -73,7 +73,8 @@ export class MediaController {
   @ApiResponse({ status: 201, type: MediaUploadResponse, description: '`{ mediaId, mime, sizeBytes, sha256 }`.' })
   @ApiResponse({
     status: 400,
-    description: 'No file, an empty file, a type on neither allow-list (`MEDIA_TYPE_UNSUPPORTED`), or content that is not the declared type (`MEDIA_CONTENT_MISMATCH`).',
+    description:
+      'No file, an empty file, a type on neither allow-list (`MEDIA_TYPE_UNSUPPORTED`), or content that is not the declared type (`MEDIA_CONTENT_MISMATCH`).',
   })
   @ApiResponse({ status: 403, description: 'Scope or ability violation.' })
   @ApiResponse({ status: 413, description: '`MEDIA_TOO_LARGE` — over the configured ceiling for its category.' })

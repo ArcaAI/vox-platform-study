@@ -103,6 +103,6 @@ describe('TemplateEditor — Enter on an un-navigated `/` list is a newline', ()
 describe('TemplateEditor — rows are styled by scope', () => {
   it('gives each option a scope class the theme colours', () => {
     const options = (templateCompletionSource(() => PATHS)(contextAt('{{'))?.options ?? []) as Completion[];
-    expect(options.map((option) => option.class)).toEqual(['cm-scope-steps', 'cm-scope-context']);
+    expect(options.map((option) => (option as Completion & { class?: string }).class)).toEqual(['cm-scope-steps', 'cm-scope-context']);
   });
 });

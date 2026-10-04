@@ -70,7 +70,7 @@ export class AgentRunEventStream {
     await this.client().eval(RUN_APPEND_LUA, command.keys.length, ...command.keys, ...command.args);
   }
 
-/** `GET wf:run:<runId>:seq` — the last assigned seq, `null` when the stream has no counter. */
+  /** `GET wf:run:<runId>:seq` — the last assigned seq, `null` when the stream has no counter. */
   async lastSeq(runId: string): Promise<number | null> {
     const raw = await this.client().get(RUN_SEQ_KEY(runId));
     const parsed = raw === null ? NaN : Number(raw);

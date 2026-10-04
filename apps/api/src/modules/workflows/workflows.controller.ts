@@ -447,7 +447,8 @@ export class WorkflowsController {
   @ApiParam({ name: 'runId' })
   @ApiResponse({
     status: 201,
-    description: 'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
+    description:
+      'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
   })
   @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings enable neither the `sse` nor the `socket` connection.' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
@@ -511,11 +512,24 @@ export class WorkflowsController {
   @ApiHeader({
     name: 'Last-Event-ID',
     required: false,
-    description: 'Resume cursor: the `seq` of the last event received (protocol v2), or a legacy opaque token (accepted for one release). Omit on a first connect.',
+    description:
+      'Resume cursor: the `seq` of the last event received (protocol v2), or a legacy opaque token (accepted for one release). Omit on a first connect.',
   })
-  @ApiHeader({ name: RUN_PROTOCOL_HEADER, required: false, description: 'Set to `2` to select run protocol v2. Absent = the legacy frame shapes (one release).' })
-  @ApiQuery({ name: 'protocol', required: false, description: '`2` selects run protocol v2 — for clients that cannot set headers (EventSource). Any other value is a 400.' })
-  @ApiQuery({ name: 'after', required: false, description: 'Protocol v2 resume cursor (`seq`) for a client that cannot set headers. The header wins.' })
+  @ApiHeader({
+    name: RUN_PROTOCOL_HEADER,
+    required: false,
+    description: 'Set to `2` to select run protocol v2. Absent = the legacy frame shapes (one release).',
+  })
+  @ApiQuery({
+    name: 'protocol',
+    required: false,
+    description: '`2` selects run protocol v2 — for clients that cannot set headers (EventSource). Any other value is a 400.',
+  })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    description: 'Protocol v2 resume cursor (`seq`) for a client that cannot set headers. The header wins.',
+  })
   @ApiQuery({
     name: 'lastEventId',
     required: false,
