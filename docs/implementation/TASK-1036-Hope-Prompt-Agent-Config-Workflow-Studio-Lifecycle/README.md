@@ -764,6 +764,55 @@ B5 is a new lane. It covers:
 | Sequencer | Both producers use `RUN_APPEND_LUA`. B2's agent runs append with `nodeId: 'agent'`. |
 | Data contract | The `workflows.emitDataContract` setting (B3b) defaults off, and the orchestrator flips it after B1 merges. |
 
+### 6.5 Wave B: merged into dev-2.2 (2026-10-04)
+
+**Lane heads:**
+
+| Lane | Head | Summary |
+|---|---|---|
+| B5 | `7999588aa` | 39 seeded agents pinned to v1; IO-defaults parity test; `default_io` (Global → SYSTEM, not a tenant default); capability flags on 31 of 34 models |
+| B4 | `3c3cd17f7` | Inbound screen and judge see the context blocks plus caller text outside blocks, never the system prompt; `pii_leak` source is the blocks |
+| B3b | `b3340ef0f` | Publish pins (`AGENT_PIN_UNRESOLVED` 400 replaces a warning); data-contract setting; consultation read route; sandbox attachments and recording; workflow tags; publish+activate in one transaction |
+| B2 | `04fb10038` | Capabilities; platform-managed guard; publish pins; document template + DNA; `message`; agent runs (Redis store — replaced by B6a); TTS blob + socket `agentSlug`; agent tags; `guardrails: 'always_on'` |
+| B3a | `702fd61fb` | One delivery loop on protocol v2 (SSE, WS, admin trace); legacy frames derived; run-start limits and retention; `Idempotency-Key` on job starts; job-stream fixes; `metaData.consultationId` |
+| B1 | `829a88ed9` | Python contract parity; binding resolver; NodeIO envelopes; declared reads; v2 events through the Lua sequencer; text streaming; `promptVariables` rendering (v2); 3 new patch markers and forward fixtures |
+
+**Integration:**
+
+| Commit | What |
+|---|---|
+| `597032104` | `workflows.emitDataContract` default **on**; merge type fixes (a duplicate `canonicalJson` export, and a missing import of `WorkflowTagSuggestionResponse`); five artifacts regenerated; internal route inventory 40; Lua mirror rule settled (byte-for-byte constant plus a parity test, because the image ships no fixtures) |
+| `3d4f7a6be`, `651d230af` | Wave C stubs: `TestTab`, `IntegrationTab`, `VersionHistorySheet`, `SettingsDialog` |
+
+Applications, api and admin-console type-check clean. No suites were run (owner rule).
+
+**Lane test discipline:** B2, B3a, B3b and B5 had partly run broader suites or whole-package checks before the owner's correction reached them. Those numbers are recorded as lane data only.
+
+### 6.6 Wave C batch 1 + backend follow-ups: launched from `651d230af`
+
+| Lane | Ticket | Tier | Branch |
+|---|---|---|---|
+| C1 MANAGEMENT | 1036 | sonnet | `task-1036/c1-management` |
+| C2a STUDIO-SHELL | 1036 | sonnet | `task-1036/c2a-studio-shell` |
+| C2b COMPOSER | 1036 | opus | `task-1036/c2b-composer` |
+| C5 AGENT-EDITOR | 1036 | sonnet | `task-1036/c5-agent-editor` |
+| S1 VOX-NODE-5 | 1039 | sonnet | `task-1039/s1-vox-node-5` |
+| B6a AGENT-RUN-PERSISTENCE | 1038 | opus | `task-1038/b6a-agent-run-persistence` |
+| B6b BACKEND-FOLLOWUPS | 1036 + 1038 | opus | `task-1036/b6b-backend-followups` |
+
+**Why B6a exists:** B2's Redis run store breaks OD-25 (results kept 30 days) and the PHI posture, because Redis runs without persistence here. B6a moves agent runs into the run read model through a `kind` column; the orchestrator authors the migration.
+
+**B6b covers:**
+- TS `promptVariables` rendering;
+- run node counts derived from v2 events;
+- an audit event when the admin trace is viewed (it shows PHI);
+- settings-gated exposure wiring;
+- live STT transcripts into sandbox runs;
+- seed regeneration with the data contract and publish pins;
+- OD-10 switched on in the TS and Python call sites.
+
+**Batch 2** (C3 Test tab, C4 Integration tab, C6 Prompt UI, S2 vox 5) starts after batch 1 merges. The C3 brief must open the recording session against the sandbox consultation (B3b note). The S2 brief must fix the `consultation_job:<id>` ticket scope (B3a note) and the console tag field's client-side case check (F2 note).
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
