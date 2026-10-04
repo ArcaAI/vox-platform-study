@@ -129,7 +129,8 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
     kwargs = guardrail.validate.await_args.kwargs
     assert kwargs["tenant_id"] == "tenant-42"
     assert kwargs["prompt"] == "patient note"
-    assert kwargs["system_prompt"] == "be careful"
+    # TASK-1036 OD-1: the judge never sees the system prompt.
+    assert kwargs["system_prompt"] is None
 
 
 @pytest.mark.asyncio

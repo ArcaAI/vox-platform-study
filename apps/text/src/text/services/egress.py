@@ -32,6 +32,7 @@ from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
 from text.models.responses import EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
+from text.services.data_blocks import context_text, screened_ranges
 from text.services.external_guardrail import GUARDRAIL_UNAVAILABLE_REASON
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
@@ -68,25 +69,46 @@ class InboundResult:
     spans_by_segment: list[list[Span]]
 
 
-def _combine(segments: list[str]) -> tuple[str, list[int]]:
-    """Join ``segments`` and return each one's start offset in the joined text."""
+#: One screened stretch: (segment index, start, end) within that segment's text.
+_Region = tuple[int, int, int]
+
+
+def _regions(segments: list[str], *, system_index: int | None) -> list[_Region]:
+    """The stretches of ``segments`` the guardrails inspect (TASK-1036 OD-1).
+
+    Every caller-supplied user-side text: ``EXTERNAL_DATA`` block bodies AND any
+    text outside a block, minus only the composer's own markers. The system prompt
+    (``system_index``) is never inspected.
+    """
+    regions: list[_Region] = []
+    for index, text in enumerate(segments):
+        if index == system_index:
+            continue
+        regions.extend((index, start, end) for start, end in screened_ranges(text))
+    return regions
+
+
+def _combine(segments: list[str], regions: list[_Region]) -> tuple[str, list[int]]:
+    """Join the ``regions`` and return each one's start offset in the joined text."""
     offsets: list[int] = []
     parts: list[str] = []
     position = 0
-    for index, segment in enumerate(segments):
-        if index:
+    for count, (index, start, end) in enumerate(regions):
+        if count:
             parts.append(_SEGMENT_SEPARATOR)
             position += len(_SEGMENT_SEPARATOR)
         offsets.append(position)
-        parts.append(segment)
-        position += len(segment)
+        parts.append(segments[index][start:end])
+        position += end - start
     return "".join(parts), offsets
 
 
-def _split_spans(raw: Any, segments: list[str], offsets: list[int]) -> list[list[Span]]:
+def _split_spans(
+    raw: Any, segments: list[str], regions: list[_Region], offsets: list[int]
+) -> list[list[Span]]:
     """Re-base the screen's spans onto the segment each one fell in.
 
-    A span that is malformed, or that crosses a segment boundary, is dropped from
+    A span that is malformed, or that crosses a region boundary, is dropped from
     the span list — the caller's ``known_phi`` still covers a value it knows.
     """
     by_segment: list[list[Span]] = [[] for _ in segments]
@@ -101,10 +123,11 @@ def _split_spans(raw: Any, segments: list[str], offsets: list[int]) -> list[list
             end = int(item["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        for index, base in enumerate(offsets):
-            limit = base + len(segments[index])
+        for (index, region_start, region_end), base in zip(regions, offsets, strict=True):
+            limit = base + (region_end - region_start)
             if base <= start and end <= limit:
-                by_segment[index].append(Span(label, start - base, end - base))
+                shift = region_start - base
+                by_segment[index].append(Span(label, start + shift, end + shift))
                 break
     return by_segment
 
@@ -136,11 +159,13 @@ async def run_inbound_gate(
 ) -> InboundResult:
     """Run the inbound screen and the medical judge CONCURRENTLY; both verdicts block.
 
-    ``segments`` are the texts the provider will receive; the screen sees them
-    joined and its PII spans come back per segment. The judge sees
-    ``system_prompt`` + ``prompt`` exactly as before. A client that is not wired is
-    only ever a process the lifespan did not build (the unit harness): nothing to
-    call, no spans.
+    ``segments`` are the texts the provider will receive (segment 0 is the system
+    prompt whenever ``system_prompt`` is not ``None``). The screen sees every
+    caller-supplied user-side text — block bodies and text outside blocks, not the
+    composer's markers — joined, and its PII spans come back per segment. The
+    judge sees that same text and never the system prompt (TASK-1036 OD-1).
+    A client that is not wired is only ever a process the lifespan did not build
+    (the unit harness): nothing to call, no spans.
 
     The cycle tripwire holds: guardrail delegates its judgement to this service,
     so reaching this gate from the judge lane raises.
@@ -149,15 +174,18 @@ async def run_inbound_gate(
         return InboundResult(None, [[] for _ in segments])
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
-    combined, offsets = _combine(segments)
+    regions = _regions(segments, system_index=0 if system_prompt is not None else None)
+    combined, offsets = _combine(segments, regions)
+    # An empty context is nothing to screen; the judge still gets the direct prompt.
+    judged = combined if regions and any(r[2] > r[1] for r in regions) else prompt
     screen = guardrail_client.screen_inbound(combined, tenant_id=tenant_id)
     if medical_exempt == "internal":
         screen_verdict = await screen
         medical_verdict: dict[str, Any] | None = None
     else:
         judge = guardrail_client.validate(
-            prompt=prompt,
-            system_prompt=system_prompt,
+            prompt=judged,
+            system_prompt=None,
             tenant_id=tenant_id,
             tenant_policy=tenant_policy,
             # The connection the gateway injected, forwarded so guardrail's judge
@@ -181,7 +209,9 @@ async def run_inbound_gate(
     if not screen_verdict.get("allowed", False):
         _raise_for(screen_verdict, medical=False)
 
-    return InboundResult(usage, _split_spans(screen_verdict.get("pii_spans"), segments, offsets))
+    return InboundResult(
+        usage, _split_spans(screen_verdict.get("pii_spans"), segments, regions, offsets)
+    )
 
 
 # ── pseudonymize / restore ───────────────────────────────────────────────────
@@ -269,8 +299,9 @@ def prepare_egress(
             pseudonymizer.pseudonymize(text, segment_spans) if text else text
             for text, segment_spans in zip(segments, spans, strict=False)
         ]
-        # The output screen's source is what the provider was given, minus the
-        # platform sentence (it names a token shape, not anything the model read).
+        # The output screen's source is the context the provider was given (its
+        # data blocks), minus the platform sentence (it names a token shape, not
+        # anything the model read).
         source_context = _source_context(rewritten[0] or None, rewritten[1])
         system_prompt = rewritten[0]
         system_prompt = (
@@ -309,8 +340,13 @@ def prepare_egress(
 
 
 def _source_context(system_prompt: str | None, prompt: str) -> str:
-    """Joined the way the post-receive gate has always joined them."""
-    return f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    """The context the response was generated FROM, for the ``pii_leak`` check.
+
+    The ``EXTERNAL_DATA`` block bodies of ``prompt`` (the user message), or the
+    user message itself when it carries none. The system prompt is the platform's
+    own text, not data supplied, so it is never part of it (TASK-1036 OD-1).
+    """
+    return context_text(prompt)
 
 
 def prepare_text_egress(

@@ -48,6 +48,7 @@ from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError,
 from text.core.locality import CLOUD, LOCAL
 from text.core.logging import get_logger
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
+from text.services.data_blocks import context_text
 from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
     ExternalGuardrailClient,
@@ -190,13 +191,12 @@ def assemble_completion(content: str | None, reasoning: str | None) -> str:
 def source_context_of(request_body: Any) -> str:
     """The source the response was generated FROM, for guardrail's PII-leak check.
 
-    Identical to the text the input gate screened, so a response that repeats
-    the consultation's own identifiers is not a leak, and one that introduces
-    identifiers absent from it is.
+    The context the input gate screened (the ``EXTERNAL_DATA`` block bodies of the
+    user message, or the message itself when it has none), so a response that
+    repeats the consultation's own identifiers is not a leak, and one that
+    introduces identifiers absent from it is. The system prompt is never part of it.
     """
-    prompt = str(getattr(request_body, "prompt", "") or "")
-    system_prompt = getattr(request_body, "system_prompt", None)
-    return f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    return context_text(str(getattr(request_body, "prompt", "") or ""))
 
 
 async def gate_completion(

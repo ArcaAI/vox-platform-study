@@ -159,9 +159,9 @@ def _body(provider: str, **extra: Any) -> dict[str, Any]:
 
 
 def _guardrail_with_smith(**kwargs: Any) -> _Guardrail:
-    combined = f"{_SYSTEM}\n\n{_PROMPT}"
+    # The screen sees the user message only (TASK-1036 OD-1): spans are offsets into it.
     return _Guardrail(
-        spans=[_span(combined, "Dr Smith"), _span(combined, "MRN-0042", "mrn")], **kwargs
+        spans=[_span(_PROMPT, "Dr Smith"), _span(_PROMPT, "MRN-0042", "mrn")], **kwargs
     )
 
 
