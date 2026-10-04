@@ -340,8 +340,10 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
     const wanted = buildEditPatch(state);
     if (stableKey(wanted) === stableKey(buildEditPatch(stateFromAgent(draft)))) return draft;
     const fresh = await getAgent(draft.id);
+    // Compare-and-set on the version just read; the strong ETag is `"<_version>"`.
+    const etag = fresh.etag ?? `"${fresh.data.version}"`;
     try {
-      const saved = await update.mutateAsync({ id: draft.id, patch: wanted, etag: fresh.etag });
+      const saved = await update.mutateAsync({ id: draft.id, patch: wanted, etag });
       draftRef.current = saved.data;
       return saved.data;
     } catch (error) {

@@ -18,7 +18,7 @@
  * import each other; this lives inside the `agents` feature and consumes the SHARED
  * picker/catalogue, never a copy of either).
  */
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import {
   Field,
   FieldDescription,
@@ -43,7 +43,7 @@ import {
   variableNamePaths,
   withPlatformPaths,
 } from '@/shared/template-editor';
-import { PromptTemplatePicker, type PromptPickerTemplate } from '@/shared/prompt-picker';
+import { PromptTemplatePicker, usePromptTemplateOptions, type PromptPickerTemplate } from '@/shared/prompt-picker';
 import {
   instructionForm,
   readFragments,
@@ -190,19 +190,13 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
     onChange({ ...value, ...next });
   }
 
-  // TASK-1036 W3 — stamp the approved version when a template is CHOSEN (not when a stored
-  // agent merely loads it), so a saved `null` is never rewritten behind the author's back.
-  const valueRef = useRef(value);
-  valueRef.current = value;
-  const stampFor = useRef<string | null>(null);
-  function handleTemplateChange(next: PromptPickerTemplate | null) {
-    setTemplate(next);
-    if (simple && next && stampFor.current === next.id) {
-      stampFor.current = null;
-      if (next.approvedVersionNumber != null && valueRef.current.promptTemplateId === next.id) {
-        onChange({ ...valueRef.current, promptVersionNumber: next.approvedVersionNumber });
-      }
-    }
+  // TASK-1036 W3 — the approved version is stamped when a template is CHOSEN (never when a stored
+  // agent merely loads it), so a saved `null` is not rewritten behind the author's back. Read from
+  // the picker's own cached list (same query key), so no second fetch.
+  const promptOptions = usePromptTemplateOptions();
+  function choosePrompt(id: string | null) {
+    const approved = simple ? ((promptOptions.data ?? []).find((candidate) => candidate.id === id)?.approvedVersionNumber ?? null) : null;
+    patch({ promptTemplateId: id, promptVersionNumber: approved, variables: {} });
   }
 
   return (
@@ -232,11 +226,8 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
           <PromptTemplatePicker
             id={`${idPrefix}-template`}
             value={value.promptTemplateId}
-            onChange={(id) => {
-              stampFor.current = id;
-              patch({ promptTemplateId: id, promptVersionNumber: null, variables: {} });
-            }}
-            onTemplateChange={handleTemplateChange}
+            onChange={choosePrompt}
+            onTemplateChange={setTemplate}
             disabled={disabled}
           />
           {value.promptTemplateId && template ? (

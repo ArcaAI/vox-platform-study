@@ -62,7 +62,7 @@ beforeEach(() => {
       if (url.includes('admin/agents/a-v2/versions') && method === 'POST') return json(agent({ id: 'a-v3', versionNumber: 3, status: 'DRAFT', isActive: false, publishedAt: null }));
       if (url.includes('admin/agents/a-v2/versions')) return json([agent()]);
       if (url.endsWith('admin/agents/a-v3') && method === 'GET') return json(agent({ id: 'a-v3', versionNumber: 3, status: 'DRAFT', isActive: false }), { ETag: '"1"' });
-      if (url.endsWith('admin/agents/a-v3') && method === 'PATCH') return json(agent({ id: 'a-v3', versionNumber: 3, status: 'DRAFT', isActive: false, version: 2, parameters: (body as { parameters: object }).parameters }), { ETag: '"2"' });
+      if (url.endsWith('admin/agents/a-v3') && method === 'PATCH') return json(agent({ id: 'a-v3', versionNumber: 3, status: 'DRAFT', isActive: false, version: 2, parameters: (body as { parameters: Record<string, unknown> }).parameters }), { ETag: '"2"' });
       if (url.endsWith('admin/agents/a-v3/publish')) return publishResponse();
       if (url.includes('admin/prompt-templates/')) return json(TEMPLATE);
       if (url.includes('admin/prompt-templates')) return json({ data: [TEMPLATE] });
