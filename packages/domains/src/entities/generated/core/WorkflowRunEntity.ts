@@ -8,7 +8,10 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 /**
- * The runs/observability read model — one row per workflow-substrate run.
+ * The runs/observability read model — one row per workflow-substrate run, and (TASK-1038 OD-26)
+ * one row per AGENT run (`POST /agents/:slug/runs`). `kind` says which; a row names exactly one
+ * identity — the four workflow columns for WORKFLOW, `agentSlug` / `agentVersionId` /
+ * `agentVersionNumber` for AGENT — and every WORKFLOW reader filters `kind = WORKFLOW`.
  *
  * A tenant-scoped OPERATIONAL TELEMETRY row, the same posture as
  * AgentTrajectoryStep (see that entity's header):
@@ -25,10 +28,20 @@ import * as Entities from '../../../entities';
  * machinery, exactly like AgentTrajectoryStep.
  */
 export interface IWorkflowRunEntity extends IBaseTenantEntity {
-  workflowVersionId: string;
-  workflowSlug: string;
-  workflowVersionNumber: number;
-  definitionName: string;
+  /**
+   * TASK-1038 OD-26 — what the row is a run OF. Optional on the INPUT so every pre-existing caller
+   * (and the column default) keeps meaning WORKFLOW; the entity always holds a value.
+   */
+  kind?: Enums.WorkflowRunKind;
+  /** WORKFLOW identity — set on every `kind = WORKFLOW` row, NULL on an AGENT row. */
+  workflowVersionId: string | null;
+  workflowSlug: string | null;
+  workflowVersionNumber: number | null;
+  definitionName: string | null;
+  /** AGENT identity (TASK-1038 OD-26) — set on every `kind = AGENT` row, NULL on a WORKFLOW row. */
+  agentSlug?: string | null;
+  agentVersionId?: string | null;
+  agentVersionNumber?: number | null;
   sessionId: string;
   // Non-null "" sentinel, mirroring AgentTrajectoryStep.runId — the composite
   // unique idempotency on (tenantId, sessionId, runId) depends on this never
@@ -71,6 +84,10 @@ export interface IWorkflowRunEntity extends IBaseTenantEntity {
 }
 
 export class WorkflowRunEntity extends BaseTenantEntity {
+  private _kind: Enums.WorkflowRunKind;
+  private _agentSlug: string | null;
+  private _agentVersionId: string | null;
+  private _agentVersionNumber: number | null;
   private _workflowVersionId: IWorkflowRunEntity['workflowVersionId'];
   private _workflowSlug: IWorkflowRunEntity['workflowSlug'];
   private _workflowVersionNumber: IWorkflowRunEntity['workflowVersionNumber'];
@@ -92,6 +109,10 @@ export class WorkflowRunEntity extends BaseTenantEntity {
 
   constructor(init: IWorkflowRunEntity) {
     super(init);
+    this._kind = init.kind ?? Enums.WorkflowRunKind.WORKFLOW;
+    this._agentSlug = init.agentSlug ?? null;
+    this._agentVersionId = init.agentVersionId ?? null;
+    this._agentVersionNumber = init.agentVersionNumber ?? null;
     this._workflowVersionId = init.workflowVersionId;
     this._workflowSlug = init.workflowSlug;
     this._workflowVersionNumber = init.workflowVersionNumber;
@@ -114,6 +135,38 @@ export class WorkflowRunEntity extends BaseTenantEntity {
     // no `_metadata` at all. A stored `null` would claim the question was asked and answered
     // "nothing", which is not what an absent input means.
     this._metaData = init.metaData;
+  }
+
+  get kind(): Enums.WorkflowRunKind {
+    return this._kind;
+  }
+
+  set kind(value: Enums.WorkflowRunKind) {
+    this.setProperty('kind', value);
+  }
+
+  get agentSlug(): string | null {
+    return this._agentSlug;
+  }
+
+  set agentSlug(value: string | null) {
+    this.setProperty('agentSlug', value);
+  }
+
+  get agentVersionId(): string | null {
+    return this._agentVersionId;
+  }
+
+  set agentVersionId(value: string | null) {
+    this.setProperty('agentVersionId', value);
+  }
+
+  get agentVersionNumber(): number | null {
+    return this._agentVersionNumber;
+  }
+
+  set agentVersionNumber(value: number | null) {
+    this.setProperty('agentVersionNumber', value);
   }
 
   get workflowVersionId(): IWorkflowRunEntity['workflowVersionId'] {
@@ -265,11 +318,31 @@ export class WorkflowRunEntity extends BaseTenantEntity {
     if (!this._sessionId || this._sessionId.trim().length === 0) {
       throw new BusinessException('WorkflowRun sessionId is required.');
     }
-    if (!this._workflowVersionId || this._workflowVersionId.trim().length === 0) {
-      throw new BusinessException('WorkflowRun workflowVersionId is required.');
-    }
-    if (!this._workflowSlug || this._workflowSlug.trim().length === 0) {
-      throw new BusinessException('WorkflowRun workflowSlug is required.');
+    // TASK-1038 OD-26 — one identity, by kind (the domain twin of the SQL CHECK constraint
+    // `WorkflowRun_kind_identity_check`).
+    if (this._kind === Enums.WorkflowRunKind.AGENT) {
+      if (!this._agentSlug || this._agentSlug.trim().length === 0) {
+        throw new BusinessException('An AGENT WorkflowRun requires agentSlug.');
+      }
+      if (!this._agentVersionId || this._agentVersionId.trim().length === 0) {
+        throw new BusinessException('An AGENT WorkflowRun requires agentVersionId.');
+      }
+      if (this._agentVersionNumber === null || this._agentVersionNumber === undefined) {
+        throw new BusinessException('An AGENT WorkflowRun requires agentVersionNumber.');
+      }
+      if (this._workflowVersionId || this._workflowSlug || this._workflowVersionNumber != null || this._definitionName) {
+        throw new BusinessException('An AGENT WorkflowRun carries no workflow identity.');
+      }
+    } else {
+      if (!this._workflowVersionId || this._workflowVersionId.trim().length === 0) {
+        throw new BusinessException('WorkflowRun workflowVersionId is required.');
+      }
+      if (!this._workflowSlug || this._workflowSlug.trim().length === 0) {
+        throw new BusinessException('WorkflowRun workflowSlug is required.');
+      }
+      if (this._agentSlug || this._agentVersionId) {
+        throw new BusinessException('A WORKFLOW WorkflowRun carries no agent identity.');
+      }
     }
     if (this._status === undefined || this._status === null) {
       throw new BusinessException('WorkflowRun status is required.');

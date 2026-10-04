@@ -13,15 +13,17 @@
  */
 import 'reflect-metadata';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, GoneException, NotFoundException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { API_KEY_REQUIRED_SCOPES, REQUIRED_PERMISSIONS_KEY, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
 import { RUN_EVENTS_KEY, parseSseFrame } from '@arcaai/async-contract';
 import { AgentController } from '../agent.controller';
 import { AgentRunService } from '../agent-run.service';
 import { FakeAgentRunRedis } from './fake-agent-run-redis';
+import { FakeWorkflowRunRepository } from './fake-workflow-run-repository';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
+const OTHER_TENANT = '51000000-0000-0000-0000-000000000000';
 const RESOLVED = {
   agentId: 'a1',
   agentVersionId: 'a1',
@@ -46,6 +48,8 @@ const RESOLVED = {
 };
 
 let redis: FakeAgentRunRedis;
+/** The run read model — shared across controller instances, as one Postgres is across gateways. */
+let repository: FakeWorkflowRunRepository;
 
 /** A hub over the fake streams: `readNow` / `read` return what is stored after the cursor id. */
 function fakeHub() {
@@ -81,17 +85,17 @@ function fakeRes() {
   return res;
 }
 
-function make() {
+function make(tenantId: string = TENANT) {
   const resolver = { resolve: vi.fn(async () => RESOLVED) };
   const invocation = {
     inputProblems: vi.fn(() => [] as string[]),
     invokeText: vi.fn(async () => ({ text: 'The note.', provider: 'lm-studio', model: 'gpt-x', usage: { promptTokens: 10, completionTokens: 3 } })),
     invokeNer: vi.fn(),
   };
-  const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1' } : undefined)) };
+  const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? { id: 'u1' } : undefined)) };
   const entitlementsService = { assertMeterQuota: vi.fn(async () => undefined) };
   const usageLedger = { recordUsage: vi.fn(async () => ({ written: 1 })) };
-  const runs = new AgentRunService(redis as never, { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never);
+  const runs = new AgentRunService(repository as never, redis as never, { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never);
   const hub = fakeHub();
   const controller = new AgentController(
     {} as never,
@@ -120,6 +124,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
   redis = new FakeAgentRunRedis();
+  repository = new FakeWorkflowRunRepository();
 });
 
 describe('route metadata — the invocation route’s posture', () => {
@@ -150,6 +155,7 @@ describe('POST /agents/:slug/runs', () => {
     const { controller, invocation } = make();
     invocation.inputProblems.mockReturnValue(['missing message']);
     await expect(controller.startRun('scribe', {}, undefined)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.rows.size).toBe(0);
     expect(redis.strings.size).toBe(0);
   });
 
@@ -206,6 +212,43 @@ describe('GET …/result and POST …/cancel', () => {
     const { controller } = make();
     const { runId } = await controller.startRun('scribe', { message: 'x' }, undefined);
     await expect(controller.getRun('another', runId)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('410 RESULT_EXPIRED once the OD-25 purge has tombstoned the output', async () => {
+    const { controller } = make();
+    const { runId } = await controller.startRun('scribe', { message: 'x' }, undefined);
+    await flush();
+    repository.rowOf(runId)!.resultRef = { kind: 'expired', expiredAt: '2026-11-04T04:45:00.000Z' };
+    const error = await controller.getRunResult('scribe', runId, fakeRes() as never).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(GoneException);
+    expect((error as GoneException).getResponse()).toMatchObject({ code: 'RESULT_EXPIRED', expiredAt: '2026-11-04T04:45:00.000Z' });
+  });
+});
+
+describe('cross-tenant — 404-over-403 on every by-id route', () => {
+  it('another tenant`s caller gets the same 404 as an unknown id, and changes nothing', async () => {
+    const owner = make(TENANT);
+    const { runId } = await owner.controller.startRun('scribe', { message: 'x' }, undefined);
+    await flush();
+    const intruder = make(OTHER_TENANT);
+    await expect(intruder.controller.getRun('scribe', runId)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(intruder.controller.getRunResult('scribe', runId, fakeRes() as never)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(intruder.controller.cancelRun('scribe', runId)).rejects.toBeInstanceOf(NotFoundException);
+    const res = fakeRes();
+    await expect(intruder.controller.runEvents('scribe', runId, { headers: {}, query: {} } as never, res as never)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(res.chunks).toEqual([]);
+    expect(res.flushHeaders).not.toHaveBeenCalled();
+    // The owner's run is untouched.
+    expect((await owner.controller.getRun('scribe', runId)).status).toBe('COMPLETED');
+  });
+
+  it('the same Idempotency-Key in two tenants starts two runs', async () => {
+    const a = await make(TENANT).controller.startRun('scribe', { message: 'x' }, 'shared-key');
+    const b = await make(OTHER_TENANT).controller.startRun('scribe', { message: 'x' }, 'shared-key');
+    expect(a.runId).not.toBe(b.runId);
+    expect(repository.rows.size).toBe(2);
   });
 });
 

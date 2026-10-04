@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
-import { AiCapability, AiDeploymentKind, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric, WorkflowRunKind } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IMeteringService, MeterUsage } from './IMeteringService';
 import { currentMonthWindow } from './metering-window';
@@ -260,8 +260,9 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
       client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
       // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window),
-      // the same business-object shape as consultations/summaries.
-      client.workflowRun.count({ where: { tenantId, startedAt: window } }),
+      // the same business-object shape as consultations/summaries. WORKFLOW rows only
+      // (TASK-1038 OD-26): an agent run is metered by its tokens, never as a workflow invocation.
+      client.workflowRun.count({ where: { tenantId, kind: WorkflowRunKind.WORKFLOW, startedAt: window } }),
       this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
       // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and
       // harness LLM rows share the LLM capability but must never count (D16).

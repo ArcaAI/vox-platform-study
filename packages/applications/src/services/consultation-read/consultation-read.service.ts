@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationRepository, ResourceType, SysEventType, WorkflowDefinitionRepository, WorkflowRunRepository } from '@arcaai/domains';
+import { ConsultationRepository, ResourceType, SysEventType, WorkflowDefinitionRepository, WorkflowRunKind, WorkflowRunRepository } from '@arcaai/domains';
 import type { ConsultationEntity } from '@arcaai/domains';
 import { CONSULTATION_READ_SCHEMA_VERSION } from '@arcaai/workflow-contract';
 import { BaseService } from '../../common';
@@ -78,9 +78,10 @@ export class ConsultationReadService extends BaseService implements IConsultatio
       });
     }
 
-    // Run → tenant. `findAll` (not `findFirst`, which throws) so a miss is a plain 404.
-    const [run] = await this.workflowRunRepository.findAll({ filters: { tenantId: input.tenantId, runId: input.runId } });
-    if (!run || run.tenantId !== input.tenantId) throw this.notFound(input);
+    // Run → tenant. `findAll` (not `findFirst`, which throws) so a miss is a plain 404. WORKFLOW
+    // runs only (TASK-1038 OD-26): an agent run has no workflow version and no declared reads.
+    const [run] = await this.workflowRunRepository.findAll({ filters: { tenantId: input.tenantId, runId: input.runId, kind: WorkflowRunKind.WORKFLOW } });
+    if (!run || run.tenantId !== input.tenantId || !run.workflowVersionId) throw this.notFound(input);
 
     const consultation = (await this.consultationRepository.findByIdOrNull(input.consultationId)) as ConsultationEntity | null;
     if (!consultation || consultation.tenantId !== input.tenantId) throw this.notFound(input);

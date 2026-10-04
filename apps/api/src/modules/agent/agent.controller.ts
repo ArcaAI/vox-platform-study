@@ -60,6 +60,7 @@ import {
   ConflictException,
   Controller,
   Get,
+  GoneException,
   Headers,
   HttpCode,
   HttpException,
@@ -98,9 +99,8 @@ import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/do
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
 import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
-import { AgentRunService, agentRunLinks, type AgentRunOutcome } from './agent-run.service';
+import { AgentRunService, agentRunLinks, type AgentRunOutcome, type AgentRunTask } from './agent-run.service';
 import { persistSpeechBlob, type SpeechBlobFormat } from './tts-blob-delivery';
-import type { AgentRunTask } from './agent-run.store';
 import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
@@ -727,7 +727,8 @@ export class AgentController {
     summary: 'The output a finished agent run produced',
     description:
       'Mirrors `GET /workflows/{slug}/runs/{runId}/result`: 200 with `X-Hope-Result-Kind: inline` and the agent output as the body ' +
-      '(`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs.',
+      '(`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs; ' +
+      '410 `RESULT_EXPIRED` once the output has passed `workflowRuns.resultRetentionDays`.',
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiParam({ name: 'runId', type: String })
@@ -735,6 +736,7 @@ export class AgentController {
   @ApiResponse({ status: 204, description: 'The run is terminal and produced no output.' })
   @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
   @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status.' })
+  @ApiResponse({ status: 410, description: '`RESULT_EXPIRED` — the result existed and has passed its retention window.' })
   async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
     const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
     if (state.status === 'RUNNING') {
@@ -743,6 +745,14 @@ export class AgentController {
     if (state.status === 'COMPLETED' && state.output) {
       res.setHeader('X-Hope-Result-Kind', 'inline');
       return state.output;
+    }
+    // OD-25 — the daily purge replaced the output with a tombstone: it existed and is gone.
+    if (state.result?.kind === 'expired') {
+      throw new GoneException({
+        code: 'RESULT_EXPIRED',
+        message: `The result of run '${runId}' has passed its retention window.`,
+        expiredAt: state.result.expiredAt,
+      });
     }
     res.status(HttpStatus.NO_CONTENT);
     return undefined;
@@ -827,14 +837,14 @@ export class AgentController {
     const hub = this.runEventHub;
     if (!hub || !hub.available()) {
       // swallow-ok: the push transport is already down; the snapshot (from the run state) is the answer, and seq 0 is its documented cursor.
-      await resync('unavailable', (await runs.store.lastSeq(runId).catch(() => null)) ?? 0);
+      await resync('unavailable', (await runs.events.lastSeq(runId).catch(() => null)) ?? 0);
       res.end();
       return;
     }
 
     const key = RUN_EVENTS_KEY(runId);
-    const lastSeq = await runs.store.lastSeq(runId);
-    const oldestSeq = await runs.store.oldestSeq(runId);
+    const lastSeq = await runs.events.lastSeq(runId);
+    const oldestSeq = await runs.events.oldestSeq(runId);
     const plan = planRunResume({ after: cursor.after, oldestSeq, lastSeq });
     let streamCursor = '0-0';
     let delivered = cursor.after;
@@ -845,9 +855,9 @@ export class AgentController {
         res.end();
         return;
       }
-      streamCursor = (await runs.store.entryIdForSeq(runId, delivered)) ?? '0-0';
+      streamCursor = (await runs.events.entryIdForSeq(runId, delivered)) ?? '0-0';
     } else if (plan.after > 0 && oldestSeq !== null && plan.after >= oldestSeq) {
-      streamCursor = (await runs.store.entryIdForSeq(runId, plan.after)) ?? '0-0';
+      streamCursor = (await runs.events.entryIdForSeq(runId, plan.after)) ?? '0-0';
     }
 
     let first = true;
@@ -861,7 +871,7 @@ export class AgentController {
         // Nothing new: a run that ended without a terminal event in its retained stream is closed
         // here (its state is the record); otherwise a ping keeps the connection and the cursor.
         state = await runs.get(tenantId, slug, runId);
-        if (TERMINAL_STATUSES.has(state.status) && (await runs.store.lastSeq(runId)) === delivered) {
+        if (TERMINAL_STATUSES.has(state.status) && (await runs.events.lastSeq(runId)) === delivered) {
           res.end();
           return;
         }

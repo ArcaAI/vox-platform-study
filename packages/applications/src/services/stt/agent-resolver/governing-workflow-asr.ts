@@ -224,8 +224,10 @@ export class GoverningWorkflowAsrReader {
     // The marker carries the RUN's `runId`, not the WorkflowRun row id: consultation dispatch
     // keys the row `(tenantId, 'wf-' + runId, runId)`, the same key `WorkflowRunService` reads.
     const run = await tolerant(() => this.workflowRuns.findByRunKey(tenantId, consultationDispatchSessionId(workflowRunId), workflowRunId));
-    if (!run || run.tenantId !== tenantId || !run.workflowVersionId) return null;
-    const definition = await tolerant(() => this.workflowDefinitions.findById(run.workflowVersionId));
+    // A local, so the narrowing survives into the closure (the column is nullable since TASK-1038 OD-26).
+    const workflowVersionId = run?.workflowVersionId;
+    if (!run || run.tenantId !== tenantId || !workflowVersionId) return null;
+    const definition = await tolerant(() => this.workflowDefinitions.findById(workflowVersionId));
     if (!definition || definition.tenantId !== tenantId || !definition.compiledConfig) return null;
     return { slug: definition.slug, versionNumber: definition.versionNumber ?? null, compiledConfig: definition.compiledConfig };
   }

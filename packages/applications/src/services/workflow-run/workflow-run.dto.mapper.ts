@@ -34,10 +34,13 @@ export class WorkflowRunDtoMapper {
     const dto = new WorkflowRunResponse();
     dto.id = entity.id;
     dto.tenantId = entity.tenantId;
-    dto.workflowVersionId = entity.workflowVersionId;
-    dto.workflowSlug = entity.workflowSlug;
-    dto.workflowVersionNumber = entity.workflowVersionNumber;
-    dto.definitionName = entity.definitionName;
+    // WORKFLOW rows only reach this mapper (every reader filters `kind = WORKFLOW`), and on that
+    // kind the four identity columns are NOT NULL (CHECK `WorkflowRun_kind_identity_check`). The
+    // columns are nullable since TASK-1038 OD-26 only because AGENT rows share the table.
+    dto.workflowVersionId = entity.workflowVersionId ?? '';
+    dto.workflowSlug = entity.workflowSlug ?? '';
+    dto.workflowVersionNumber = entity.workflowVersionNumber ?? 0;
+    dto.definitionName = entity.definitionName ?? '';
     dto.sessionId = entity.sessionId;
     dto.runId = entity.runId;
     dto.trigger = entity.trigger;

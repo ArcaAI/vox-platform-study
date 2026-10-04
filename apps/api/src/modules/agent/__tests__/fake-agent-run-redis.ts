@@ -1,11 +1,12 @@
 import { RUN_APPEND_LUA } from '@arcaai/async-contract';
-import type { AgentRunRedis } from '../agent-run.store';
+import type { AgentRunRedis } from '../agent-run.events';
 
 /**
- * An in-memory stand-in for the Redis the agent run store EVALs against. It does not run Lua: it
- * recognises each of the store's scripts and reproduces its semantics — including the run
+ * An in-memory stand-in for the Redis the agent run EVENT STREAM EVALs against. It does not run
+ * Lua: it recognises each of the stream's scripts and reproduces its semantics — including the run
  * sequencer's (`RUN_APPEND_LUA`: INCR + XADD, dedupe, terminal retention, closed-stream refusal),
- * so a test sees the same stored entries a real Redis would hold.
+ * so a test sees the same stored entries a real Redis would hold. Any other script — e.g. a write
+ * of run STATE, which lives in Postgres since lane B6a — is refused loudly.
  */
 export class FakeAgentRunRedis implements AgentRunRedis {
   connected = true;
@@ -27,25 +28,6 @@ export class FakeAgentRunRedis implements AgentRunRedis {
     const keys = args.slice(0, numKeys).map(String);
     const argv = args.slice(numKeys).map(String);
     if (script === RUN_APPEND_LUA) return this.append(keys, argv);
-    if (script.includes("if decoded['status'] ~= 'RUNNING'")) {
-      const prior = this.strings.get(keys[0]);
-      if (!prior || (JSON.parse(prior) as { status: string }).status !== 'RUNNING') return 0;
-      this.strings.set(keys[0], argv[0]);
-      this.ttls.set(keys[0], Number(argv[1]));
-      return 1;
-    }
-    if (script.includes("local prior = redis.call('GET', KEYS[1])") && script.includes('return prior')) {
-      const prior = this.strings.get(keys[0]);
-      if (prior) return prior;
-      this.strings.set(keys[0], argv[0]);
-      this.ttls.set(keys[0], Number(argv[1]));
-      return argv[0];
-    }
-    if (script.startsWith("redis.call('SET'")) {
-      this.strings.set(keys[0], argv[0]);
-      this.ttls.set(keys[0], Number(argv[1]));
-      return 1;
-    }
     if (script.includes("'XRANGE'")) {
       const rows = this.streams.get(keys[0]) ?? [];
       return rows.length === 0 ? null : rows[0];
