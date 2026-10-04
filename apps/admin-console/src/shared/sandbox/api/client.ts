@@ -5,7 +5,18 @@
  */
 
 import { deleteJson, getJson, patchJson, postJson } from '@/shared/api';
-import type { CreateFixtureBody, Fixture, FixturesPage, RunTrace, SandboxRun, SandboxRunStatus, StartSandboxRunBody, UpdateFixtureBody } from './types';
+import type {
+  CreateFixtureBody,
+  CreateSttStreamSessionBody,
+  Fixture,
+  FixturesPage,
+  RunTrace,
+  SandboxRun,
+  SandboxRunStatus,
+  SttStreamSession,
+  StartSandboxRunBody,
+  UpdateFixtureBody,
+} from './types';
 
 const WORKFLOW_DEFINITIONS = 'admin/workflow-definitions';
 const WORKFLOW_TEST_FIXTURES = 'admin/workflow-test-fixtures';
@@ -42,4 +53,31 @@ export function cancelSandboxRun(definitionId: string, runId: string): Promise<{
 /** The sandbox seam's per-node inspector reuses this bounded trace read verbatim. */
 export function getRunTrace(runId: string): Promise<RunTrace> {
   return getJson(`${WORKFLOW_RUNS}/${encodeURIComponent(runId)}/trace`);
+}
+
+// --- Test-tab recording (TASK-1036 OD-15) ------------------------------------------------------
+// The SAME end-user streaming-session routes the live-transcription playground uses; the sandbox
+// run (not this session) creates the sandbox consultation and binds the session to it, so the
+// session is opened WITHOUT a consultation.
+
+const STT_SESSION = 'audio/transcription-jobs/stream/session';
+
+export function createSttStreamSession(body: CreateSttStreamSessionBody): Promise<SttStreamSession> {
+  return postJson(STT_SESSION, body);
+}
+
+export function refreshSttStreamTicket(sessionId: string): Promise<{ ticket: string; ticketExpiresAt: number }> {
+  return postJson(`${STT_SESSION}/${encodeURIComponent(sessionId)}/refresh-ticket`);
+}
+
+export function closeSttStreamSession(sessionId: string): Promise<void> {
+  return deleteJson(`${STT_SESSION}/${encodeURIComponent(sessionId)}`);
+}
+
+/** Direct-gateway WS URL (streams never traverse the BFF): one-shot ticket + the tenant claim the WS guard requires. */
+export function buildSttWsUrl(apiHost: string, wsPath: string, params: { sessionId: string; ticket: string; tenantId: string }): string {
+  const parsed = new URL(apiHost);
+  const wsProtocol = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss:' : 'ws:';
+  const search = new URLSearchParams({ sessionId: params.sessionId, ticket: params.ticket, tenantId: params.tenantId });
+  return `${wsProtocol}//${parsed.host}${wsPath}?${search.toString()}`;
 }
