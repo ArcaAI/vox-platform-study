@@ -177,12 +177,13 @@ export type ContextAudioDelivery = (typeof CONTEXT_AUDIO_DELIVERIES)[number];
 
 /**
  * TASK-1036 OD-6 — the MIME types an ATTACHMENT (a `DOCUMENT` or `IMAGE` kind) may declare in
- * `constraints.mimeTypes`: the types the platform can actually extract text from or show a model.
+ * `constraints.mimeTypes`: the types the platform can actually extract text from or show a model
+ * (PNG and WebP joined JPEG at the contract freeze).
  * `image/jpg` is accepted as the common misspelling of `image/jpeg`, and matching is
  * case-insensitive ({@link normalizeContextMimeType}). Other primitives keep their unrestricted
  * `mimeTypes`, exactly as before.
  */
-export const CONTEXT_ATTACHMENT_MIME_TYPES = ['text/plain', 'text/markdown', 'application/pdf', 'image/jpeg'] as const;
+export const CONTEXT_ATTACHMENT_MIME_TYPES = ['text/plain', 'text/markdown', 'application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
 const ATTACHMENT_PRIMITIVES: readonly string[] = ['DOCUMENT', 'IMAGE'];
 
 /** Lower-cased, trimmed, `image/jpg` → `image/jpeg`. The form a MIME type is compared (and should be stored) in. */
