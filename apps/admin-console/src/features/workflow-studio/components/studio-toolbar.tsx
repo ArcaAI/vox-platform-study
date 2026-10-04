@@ -15,8 +15,9 @@
  * menu without replacing it — it is the ONLY non-drag path for "connect" and "move into a loop".
  *
  * TASK-1036 §3.6 — Validate and Publish moved to the studio header (`./header`), which owns the
- * lifecycle strip; "Test" now switches to the Test tab (the sandbox panel it used to open in the
- * inspector's Run tab is gone).
+ * lifecycle strip. R-C #13: the toolbar's "Test" button duplicated the Test TAB beside it and is
+ * gone; the inspector's Last run tab links to the full trace there. R-C #7: the studio-level
+ * "Hide PHI" toggle lives here, for every view of test-run data in the Composer.
  */
 import {
   AlertDialog,
@@ -47,8 +48,8 @@ import {
   IconDeviceFloppy,
   IconDots,
   IconDownload,
+  IconEyeOff,
   IconFileExport,
-  IconFlask,
   IconLayoutDistributeHorizontal,
   IconRestore,
   IconUpload,
@@ -110,8 +111,9 @@ export interface StudioToolbarProps {
   /** Opens the inspector's Problems tab; the count is the server report's finding total. */
   problemCount: number;
   onOpenProblems: () => void;
-  /** Switches to the Test tab — the in-studio run surface that replaced the Workbench deep link. */
-  onOpenTest: () => void;
+  /** TASK-1036 R-C #7 — the studio's Hide PHI switch; the toggle renders when a handler is given. */
+  hidePhi?: boolean;
+  onHidePhiChange?: (hide: boolean) => void;
   /** TASK-864 B1 — arrange the graph (layered, left to right). Absent = no button. */
   onAutoLayout?: () => void;
   /** TASK-864 B1 — hand the caller the graph JSON to save/copy. Absent = no button. */
@@ -145,7 +147,8 @@ export function StudioToolbar({
   onRedo,
   problemCount,
   onOpenProblems,
-  onOpenTest,
+  hidePhi = false,
+  onHidePhiChange,
   onAutoLayout,
   onExport,
   onImport,
@@ -337,12 +340,21 @@ export function StudioToolbar({
           Problems
           {problemCount > 0 ? <Badge variant="secondary">{problemCount}</Badge> : null}
         </Button>
-        {/* TASK-1036 §3.6 — testing is its own TAB now: this switches to it. Offered on read-only
-            versions too — a published graph is the one most worth running, and a run is a read. */}
-        <Button type="button" variant="outline" size="sm" onClick={onOpenTest} title="Open the Test tab to run this workflow">
-          <IconFlask aria-hidden="true" />
-          Test
-        </Button>
+        {/* R-C #7 — one switch for every test-run value the Composer shows (Last run, the picker's
+            samples, the {{ completion). Offered on read-only versions too: they have runs. */}
+        {onHidePhiChange ? (
+          <Button
+            type="button"
+            variant={hidePhi ? 'secondary' : 'outline'}
+            size="sm"
+            aria-pressed={hidePhi}
+            onClick={() => onHidePhiChange(!hidePhi)}
+            title="Mask PHI-classed values from test runs in the Composer"
+          >
+            <IconEyeOff aria-hidden="true" />
+            Hide PHI
+          </Button>
+        ) : null}
       </div>
     </div>
   );
