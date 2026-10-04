@@ -573,3 +573,29 @@ describe('errors — a fixed code and a fixed label; free text only in the admin
     expect(runEventProblems(debug, { plane: 'public' }).join('\n')).toContain('admin');
   });
 });
+
+describe('kept as frozen (F2 fix 8)', () => {
+  it('run.cancelled keeps the persisted spelling CANCELED in its status', () => {
+    const cancelled = { seq: 19, runId: 'r', type: 'run.cancelled', ts: '2026-10-04T10:00:00Z', data: { status: 'CANCELED', durationMs: 1 } };
+    expect(runEventProblems(cancelled)).toEqual([]);
+    expect(runEventProblems({ ...cancelled, data: { status: 'CANCELLED', durationMs: 1 } }).join('\n')).toContain('status');
+  });
+
+  it('ping and run.resync are synthetic: never stored, may carry seq 0, resync.seq === snapshot.lastSeq', () => {
+    const snapshot = { status: 'RUNNING', lastSeq: 0, nodes: {}, outputs: {} };
+    expect(runEventProblems({ seq: 0, runId: 'r', type: 'ping', ts: '2026-10-04T10:00:00Z', data: {} })).toEqual([]);
+    expect(runEventProblems({ seq: 0, runId: 'r', type: 'run.resync', ts: '2026-10-04T10:00:00Z', data: { reason: 'expired', snapshot } })).toEqual(
+      [],
+    );
+    expect(
+      runEventProblems({ seq: 1, runId: 'r', type: 'run.resync', ts: '2026-10-04T10:00:00Z', data: { reason: 'expired', snapshot } }).join('\n'),
+    ).toContain('lastSeq');
+  });
+});
+
+describe('the contract page (F2 fix 9)', () => {
+  it('protocol-v2.md carries the exact Lua bytes the fixture and the code carry', () => {
+    const page = readFileSync(join(__dirname, '../../../../docs/implementation/TASK-1038-Run-Integrity-And-Delivery-Plane/protocol-v2.md'), 'utf-8');
+    expect(page).toContain('```lua\n' + RUN_APPEND_LUA + '```');
+  });
+});
