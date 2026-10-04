@@ -257,9 +257,9 @@ def test_closed_value_sets_match_the_normative_schema(
     label: str, model: type[BaseModel], node: dict[str, Any], field: str
 ) -> None:
     generated = model.model_json_schema()["properties"][field]
-    assert _allowed_values(generated) == _allowed_values(
-        node["properties"][field]
-    ), f"{label}.{field}"
+    assert _allowed_values(generated) == _allowed_values(node["properties"][field]), (
+        f"{label}.{field}"
+    )
 
 
 def test_the_format_version_constant_agrees_with_the_schema() -> None:
@@ -517,7 +517,9 @@ def test_a_malformed_binding_is_refused(binding: dict[str, Any]) -> None:
 
 def test_a_consultation_read_must_name_a_consultation_path() -> None:
     document = copy.deepcopy(FIXTURE)
-    document["stages"][1]["nodes"][0]["consultationReads"] = [{"path": "context.x", "at": "nodeStart"}]
+    document["stages"][1]["nodes"][0]["consultationReads"] = [
+        {"path": "context.x", "at": "nodeStart"}
+    ]
     with pytest.raises(ValidationError):
         CompiledWorkflowConfig.model_validate(document)
 
