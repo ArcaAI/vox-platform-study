@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any, Protocol, cast
+from urllib.parse import quote
 
 import httpx
 import structlog
@@ -23,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.provider_credentials import ProviderCredential
 from harness.sensors.base import NEREntity, normalize_text
+from harness.temporal import http_pool
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
     CaptureFeedbackResponse,
@@ -419,10 +421,13 @@ class ApiClient:
     async def _post(
         self, path: str, body: dict[str, Any], *, idempotency_key: str | None = None
     ) -> dict[str, Any]:
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
                 resp = await client.post(
-                    self._url(path), json=body, headers=self._headers(idempotency_key)
+                    self._url(path),
+                    json=body,
+                    headers=self._headers(idempotency_key),
+                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
@@ -435,9 +440,11 @@ class ApiClient:
         headers = self._headers()
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
-                resp = await client.get(self._url(path), params=params, headers=headers)
+                resp = await client.get(
+                    self._url(path), params=params, headers=headers, timeout=self._timeout
+                )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise _api_error(path, exc) from exc
@@ -518,12 +525,47 @@ class ApiClient:
         params: dict[str, Any] = {"service": "harness", "tenantId": tenant_id, "agentSlug": slug}
         headers = {**self._headers(), "X-Tenant-Id": tenant_id}
         url = f"{self._base_url}/api/v1/internal/agents/resolve"
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
-                resp = await client.get(url, params=params, headers=headers)
+                resp = await client.get(url, params=params, headers=headers, timeout=self._timeout)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise _api_error("/internal/agents/resolve", exc) from exc
+            return cast("dict[str, Any]", resp.json())
+
+    async def resolve_agent_version(
+        self, *, slug: str, version_number: int, tenant_id: str
+    ) -> dict[str, Any]:
+        """TASK-1038 D-A — resolve ONE PINNED agent version, not the active one.
+
+            GET /api/v1/internal/agents/{slug}/versions/{versionNumber}/resolved
+                ?service=harness&tenantId=<uuid>
+            headers: X-Service-Token, X-Tenant-Id
+            200 -> the SAME ``ResolvedAgent`` body as :meth:`resolve_agent` (parsed by the same
+                   ``interpreter/models.py::ResolvedAgent``), for exactly that version — served
+                   even when a newer version is active or this one is DEPRECATED, because a
+                   published workflow's pin must keep running (owner rule W3).
+            404 -> unknown slug/version, or another tenant's (404-over-403)
+
+        Same sibling mount and the same ``InternalServiceTokenGuard`` as :meth:`resolve_agent`,
+        so ``service=harness`` rides on the query for the same reason. The slug is path-escaped;
+        a 4xx raises the terminal :class:`ApiClientError`, a transport fault the retryable
+        :class:`ApiServiceError`, and the activity fails CLOSED on either.
+        """
+        path = (
+            f"/api/v1/internal/agents/{quote(slug, safe='')}/versions/{int(version_number)}"
+            "/resolved"
+        )
+        params: dict[str, Any] = {"service": "harness", "tenantId": tenant_id}
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+            try:
+                resp = await client.get(
+                    f"{self._base_url}{path}", params=params, headers=headers, timeout=self._timeout
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error("/internal/agents/{slug}/versions/{n}/resolved", exc) from exc
             return cast("dict[str, Any]", resp.json())
 
     async def record_composed_prompt(self, body: dict[str, Any], *, tenant_id: str) -> None:
@@ -537,10 +579,14 @@ class ApiClient:
         """
         headers = {**self._headers(), "X-Tenant-Id": tenant_id}
         url = f"{self._base_url}/api/v1/internal/composed-prompts"
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
                 resp = await client.post(
-                    url, params={"service": "harness"}, json=body, headers=headers
+                    url,
+                    params={"service": "harness"},
+                    json=body,
+                    headers=headers,
+                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:

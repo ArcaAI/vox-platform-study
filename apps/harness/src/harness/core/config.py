@@ -302,6 +302,21 @@ class ClaimCheckConfig(BaseSettings):
     store: str = "memory"
     # Blobs at/above this many utf-8 BYTES are offloaded; below it they stay inline.
     min_bytes: int = 65_536  # 64 KiB
+    # TASK-1038 R-3 — the WORKFLOW INTERPRETER's three payload ceilings, on the same mechanism.
+    # A node output whose serialized size reaches this is stored out of band and replaced by a
+    # claim-check reference, dereferenced inside the consuming activity (never in the workflow).
+    # Tighter than `min_bytes` on purpose: every interpreter node output is ALSO copied into
+    # every later `core.*` activity input through the run context, so a 60 KiB note that stays
+    # inline costs 60 KiB per later node, not once.
+    node_output_min_bytes: int = 20_480  # 20 KiB
+    # TASK-1038 D-I — the largest run result `workflow.run.completed` carries INLINE; a larger
+    # one rides as a claim-check reference the gateway turns into a signed URL.
+    result_inline_max_bytes: int = 65_536  # 64 KiB
+    # TASK-1038 R-3 — the pre-flight guard: an interpreter activity input (or node result)
+    # larger than this fails the run by name (`PAYLOAD_TOO_LARGE`) instead of meeting
+    # Temporal's own ~2 MB payload refusal, which wedges the workflow task in a retry loop.
+    # Headroom below 2 MiB for the envelope Temporal adds.
+    activity_input_max_bytes: int = 1_572_864  # 1.5 MiB
     # Tenant-scoped, access-controlled PHI bucket (NOT a public bucket).
     bucket: str = "harness-claim-check"
     # Self-hosted MinIO S3 endpoint (host under platform control — no cloud egress).
@@ -359,6 +374,13 @@ class ClaimCheckConfig(BaseSettings):
     def _positive_min_bytes(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("min_bytes must be a positive integer")
+        return v
+
+    @field_validator("node_output_min_bytes", "result_inline_max_bytes", "activity_input_max_bytes")
+    @classmethod
+    def _positive_ceiling(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("a claim-check payload ceiling must be a positive integer")
         return v
 
 

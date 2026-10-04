@@ -13,8 +13,8 @@ Pinned here:
    order merged by slug, instruction / parameters / schemas / resolvedPrompt lifted).
 2. A legacy flat payload still validates unchanged (older fixtures).
 3. The gateway-resolved prompt text wins over re-reading the raw instruction.
-4. `agentRef.versionNumber` is honoured AFTER resolution: the route serves the active version and
-   takes no pin, so a drift fails the node CLOSED instead of running whatever is active.
+4. `agentRef.versionNumber` is honoured BY RESOLUTION (TASK-1038 D-A): a pinned node is resolved
+   through the by-version route and runs that version; it never consults the active-version route.
 """
 
 from __future__ import annotations
@@ -211,9 +211,13 @@ class _StubApi:
         self.calls.append(kwargs)
         return self.answer
 
+    async def resolve_agent_version(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        return {**self.answer, "versionNumber": kwargs["version_number"]}
+
 
 @pytest.fixture
-def stub_api(monkeypatch: pytest.MonkeyPatch) -> _StubApi:
+def stub_api(monkeypatch: pytest.MonkeyPatch):
     api = _StubApi(_wire_863())
     monkeypatch.setattr(core, "_api_client", lambda _settings: api)
 
@@ -221,21 +225,39 @@ def stub_api(monkeypatch: pytest.MonkeyPatch) -> _StubApi:
         return None
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    return api
+    core.agent_version_cache.clear()
+    yield api
+    core.agent_version_cache.clear()
 
 
 class TestVersionPin:
     @pytest.mark.asyncio
-    async def test_a_drifted_pin_fails_closed(self, stub_api: _StubApi) -> None:
+    async def test_a_pin_behind_the_active_version_runs_the_pinned_version(
+        self, stub_api: _StubApi, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TASK-1038 D-A: this used to REFUSE (`agent_version_drift`). The pin now RUNS."""
+        seen: list[ResolvedAgent] = []
+
+        async def _generate(
+            _payload: NodeActivityInput,
+            resolved: ResolvedAgent,
+            _started: Any,
+            fallback: Any = None,
+            primary: Any = None,
+        ) -> NodeActivityResult:
+            seen.append(resolved)
+            return NodeActivityResult(status="SUCCEEDED", output={"ok": True})
+
+        monkeypatch.setattr(core, "_run_text_generation", _generate)
         result = await core.interpreter_core_agent(
             _payload(agentRef={"slug": "discharge-writer", "versionNumber": 2})
         )
 
-        assert result.status == "DEGRADED"
-        assert "pinned to v2" in (result.reason or "")
-        assert "resolved v3" in (result.reason or "")
-        # The pin never travels to the gateway — the route has no such parameter.
-        assert stub_api.calls == [{"slug": "discharge-writer", "tenant_id": _TENANT}]
+        assert result.status == "SUCCEEDED"
+        assert [r.version_number for r in seen] == [2]
+        assert stub_api.calls == [
+            {"slug": "discharge-writer", "version_number": 2, "tenant_id": _TENANT}
+        ]
 
     @pytest.mark.asyncio
     async def test_a_matching_pin_and_no_pin_both_dispatch_by_task(

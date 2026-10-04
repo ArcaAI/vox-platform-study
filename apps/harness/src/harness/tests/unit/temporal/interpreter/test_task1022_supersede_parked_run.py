@@ -7,8 +7,10 @@ child — otherwise a clinician would be left with two reviews for one note.
 
 These tests pin the two Temporal facts that choice rests on, with no workflow-code change:
 
-1. the interpreter's `cancel` SIGNAL does not release a run parked on its review — the flag is
-   read between stages, and the walk is awaiting the child — so the gateway cannot use it;
+1. the interpreter's `cancel` SIGNAL — which until TASK-1038 R-4 did NOT release a run parked on
+   its review (the flag was read between stages while the walk awaited the child) — now cancels
+   the review child and settles the run CANCELLED. The gateway still TERMINATES on supersede;
+   both now close the child;
 2. TERMINATING the parked run closes its review child too (the default parent-close policy,
    `_run_review` sets none), which is what the gateway's `terminateWorkflowRun` relies on.
 
@@ -76,7 +78,8 @@ async def _parked_run(env: WorkflowEnvironment, tq: str) -> tuple[Any, str]:
 
 class TestRetiringAParkedGoverningRun:
     @pytest.mark.asyncio
-    async def test_the_cancel_signal_does_not_release_a_run_parked_on_its_review(self):
+    async def test_the_cancel_signal_now_releases_a_run_parked_on_its_review(self):
+        """TASK-1038 R-4: this pinned the OPPOSITE until now — a parked run ignored `cancel`."""
         async with await WorkflowEnvironment.start_time_skipping(
             data_converter=pydantic_data_converter
         ) as env:
@@ -87,15 +90,13 @@ class TestRetiringAParkedGoverningRun:
                 handle, run_id = await _parked_run(env, tq)
 
                 await handle.signal(WorkflowInterpreter.cancel)
-                await asyncio.sleep(1.0)
+                result = await handle.result()
 
-                parent = await handle.describe()
                 child = await env.client.get_workflow_handle(
                     review_gate_workflow_id(run_id, "n_review")
                 ).describe()
-                assert parent.status == WorkflowExecutionStatus.RUNNING
-                assert child.status == WorkflowExecutionStatus.RUNNING
-                await handle.terminate(reason="test cleanup")
+                assert result.status == "CANCELLED"
+                assert child.status == WorkflowExecutionStatus.CANCELED
 
     @pytest.mark.asyncio
     @pytest.mark.skipif(

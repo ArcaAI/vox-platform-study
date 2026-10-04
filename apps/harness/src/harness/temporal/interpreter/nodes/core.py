@@ -68,6 +68,7 @@ from harness.temporal.interpreter.models import (
     ResolvedAgent,
     ResolvedClassificationModel,
 )
+from harness.temporal.interpreter.nodes import agent_version_cache
 from harness.temporal.interpreter.nodes._consultation_shared import run_identity
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
@@ -102,6 +103,19 @@ from harness.temporal.interpreter.prompt_composition import (
 from harness.temporal.interpreter.templating import PromptVariableUnresolved
 
 _LOGGER = structlog.get_logger(__name__)
+
+
+class ContextSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run payload does not match the trigger's declared context schema.
+
+    A NAMED type so the interpreter's retry policy can list it as non-retryable (Temporal matches
+    on the failure type, i.e. this class name): the same payload is refused on every attempt.
+    """
+
+
+class OutputSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run result does not match ``core.output``'s declared schema. Named
+    for the same reason as :class:`ContextSchemaViolation`."""
 
 
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
@@ -276,7 +290,7 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
     violation = _schema_violation(declared, _authored_context(context))
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
-        raise RuntimeError(
+        raise ContextSchemaViolation(
             f"core.trigger: run payload violates the declared context schema: {violation}"
         )
     await record_and_flush(payload, status=STATUS_OK, started=started)
@@ -2021,6 +2035,30 @@ async def _run_ner(
     )
 
 
+async def _resolve_agent_answer(slug: str, version: int | None, tenant_id: str) -> dict[str, Any]:
+    """The gateway's ``ResolvedAgent`` answer for one ``core.agent`` node.
+
+    TASK-1038 D-A (owner rule W3) — a node that pins ``agentRef.versionNumber`` RUNS that
+    version: it is resolved BY VERSION (``resolve_agent_version``), so a republished agent (vN+1
+    active) or a DEPRECATED pinned version does not change or break a published workflow, and the
+    prompt that runs is the one frozen inside that version (``compiledConfig.resolvedPrompt``,
+    lifted by :class:`ResolvedAgent`). There is no runtime template fetch on this path.
+
+    The pinned answer is cached per ``(tenantId, slug, versionNumber)`` — see
+    ``agent_version_cache`` for why that is safe and why a credential-bearing answer is not
+    cached. An UNPINNED node keeps asking for the ACTIVE version on every run, exactly as before.
+    """
+    api = _api_client(get_settings())
+    if version is None:
+        return await api.resolve_agent(slug=slug, tenant_id=tenant_id)
+    cached = agent_version_cache.get(tenant_id, slug, version)
+    if cached is not None:
+        return cached
+    answer = await api.resolve_agent_version(slug=slug, version_number=version, tenant_id=tenant_id)
+    agent_version_cache.put(tenant_id, slug, version, answer)
+    return answer
+
+
 @activity.defn(name="interpreter.core_agent")
 async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     """Resolve the referenced Agent through the gateway and dispatch by its TASK."""
@@ -2035,33 +2073,38 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
         return NodeActivityResult(
             status="DEGRADED", reason="core.agent: `agentRef.slug` is required"
         )
-    version = ref.get("versionNumber") if isinstance(ref, dict) else None
+    raw_version = ref.get("versionNumber") if isinstance(ref, dict) else None
+    # `bool` is an `int`; a boolean is never a version number.
+    version = (
+        raw_version if isinstance(raw_version, int) and not isinstance(raw_version, bool) else None
+    )
 
     try:
-        raw = await _api_client(get_settings()).resolve_agent(
-            slug=slug, tenant_id=payload.tenant_id
-        )
+        raw = await _resolve_agent_answer(slug, version, payload.tenant_id)
         resolved = ResolvedAgent.model_validate(raw)
     except (ApiServiceError, ValueError) as exc:
-        # Fails CLOSED: an unresolvable agent is never substituted with a default.
+        # Fails CLOSED: an unresolvable agent is never substituted with a default — and a pinned
+        # version the gateway cannot serve is never substituted with the ACTIVE one either.
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="agent_unresolvable"
         )
+        pinned = f" v{version}" if version is not None else ""
         return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: agent `{slug}` did not resolve: {exc}"
+            status="DEGRADED",
+            reason=f"core.agent: agent `{slug}`{pinned} did not resolve: {exc}",
         )
-    if isinstance(version, int) and resolved.version_number != version:
-        # The gateway resolves the ACTIVE published version and takes no pin (TASK-863 §3.4), so
-        # honouring `agentRef.versionNumber` means REFUSING a different one — a pin that ran
-        # whatever is active would be no pin at all. Fails CLOSED, like every other selection.
+    if version is not None and resolved.version_number != version:
+        # TASK-1038 D-A — the by-version route answered for a DIFFERENT version. That is a
+        # gateway defect, not drift: the pin is the contract, so the node fails CLOSED rather
+        # than running a version nobody pinned.
         await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="agent_version_drift"
+            payload, status=STATUS_DEGRADED, started=started, error_code="agent_version_mismatch"
         )
         return NodeActivityResult(
             status="DEGRADED",
             reason=(
-                f"core.agent: `{slug}` is pinned to v{version} but the gateway resolved "
-                f"v{resolved.version_number}"
+                f"core.agent: agent_version_mismatch: `{slug}` is pinned to v{version} but the "
+                f"by-version resolve answered v{resolved.version_number}"
             ),
         )
 
@@ -2114,7 +2157,7 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
         mode = config.get("onSchemaViolation") or "fail"
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         if mode == "fail":
-            raise RuntimeError(
+            raise OutputSchemaViolation(
                 f"core.output: result violates the declared output schema: {violation}"
             )
         return NodeActivityResult(

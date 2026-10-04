@@ -23,7 +23,10 @@ NodeStatus = Literal["SUCCEEDED", "DEGRADED", "SKIPPED", "FAILED"]
 # ---------------------------------------------------------------------------
 # Run-level terminal states (contracts/execution-semantics.md)
 # ---------------------------------------------------------------------------
-RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED"]
+# TASK-1038 D-B — `TIMED_OUT`: the walk spent its `caps.maxTotalSeconds` compute budget and the
+# stage in flight was interrupted. Distinct from FAILED (nothing refused the work; it ran out of
+# time) and from CANCELLED (nobody asked it to stop).
+RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED", "TIMED_OUT"]
 
 
 class NodeActivityInput(BaseModel):
@@ -206,6 +209,21 @@ def sanitize_run_payload(
     return clean
 
 
+class RunLimits(BaseModel):
+    """TASK-1038 R-3 — the size ceilings a run enforces on its own activity traffic.
+
+    Values come from ``ClaimCheckConfig`` (``HARNESS_CLAIM_CHECK_*``), the same mechanism as the
+    claim-check offload threshold, and are carried on the run's INPUT so the deterministic workflow
+    reads them without any I/O.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    #: The pre-flight guard: an activity input larger than this fails the run by name
+    #: (``PAYLOAD_TOO_LARGE``) instead of wedging on Temporal's own payload-size refusal.
+    activity_input_max_bytes: int = Field(alias="activityInputMaxBytes", gt=0)
+
+
 class InterpreterInput(BaseModel):
     """WorkflowInterpreter's ``@workflow.run`` input.
 
@@ -238,6 +256,11 @@ class InterpreterInput(BaseModel):
     # gap, not this ticket's fix (a different, actively-reviewed ticket's files) — recorded here
     # so the gap is traceable, not silently papered over.
     payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-1038 R-3, additive-optional. The payload ceilings the workflow enforces on itself,
+    # resolved from settings by the dispatcher BEFORE the start (the workflow body cannot read
+    # settings). Absent on every run started before TASK-1038 — and on those the walk behaves
+    # exactly as it did, which is what keeps their replay byte-identical.
+    limits: RunLimits | None = None
 
 
 class InterpreterResult(BaseModel):
@@ -446,6 +469,12 @@ class RunEventSpec(BaseModel):
     failed_node_count: int | None = None
     degraded_node_count: int | None = None
     skipped_node_count: int | None = None
+    #: TASK-1038 D-I — for `workflow.run.completed` only: what each `core.output` node published
+    #: (`{nodeId: output}`), from which the emit activity builds the event's `result` (inline, or
+    #: a claim-check reference). Additive-optional on an ACTIVITY INPUT, like the counts above;
+    #: `None` (every replayed pre-TASK-1038 history, and every run with no output) emits no
+    #: `result` at all.
+    result_outputs: dict[str, dict[str, Any]] | None = None
 
 
 class RunEventBatch(BaseModel):
@@ -842,3 +871,25 @@ class LiveOutputsResult(BaseModel):
     ended_at: str | None = Field(default=None, alias="endedAt")
     outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContextPathRequest(BaseModel):
+    """TASK-1038 R-3 — resolve one dotted path of a run context that crosses a reference.
+
+    The workflow cannot read a claim-checked value, so ``interpreter.resolve_context_path`` does
+    it: dereference what the path walks through, then resolve it. ``run_payload`` is what the
+    run context's ``$hopeRunPayload`` sentinel (if any) stands for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_context: dict[str, Any] = Field(default_factory=dict)
+    run_payload: dict[str, Any] = Field(default_factory=dict)
+    path: str
+
+
+class ContextPathResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    found: bool = False
+    value: Any = None

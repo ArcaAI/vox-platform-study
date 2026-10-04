@@ -14,7 +14,7 @@ effect goes through ``workflow.execute_activity``.
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from temporalio import workflow
@@ -26,11 +26,12 @@ from harness.temporal.workflow_ids import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from harness.temporal.interpreter import caps
+    from harness.temporal.interpreter import caps, payload_refs
     from harness.temporal.interpreter.activities import (
         emit_run_events,
         load_config,
         load_live_outputs,
+        resolve_context_path,
     )
     from harness.temporal.interpreter.compiled_config import (
         CompiledGate,
@@ -50,6 +51,8 @@ with workflow.unsafe.imports_passed_through():
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
+        ContextPathRequest,
+        ContextPathResult,
         CoreLoopBounds,
         CoreLoopInput,
         CoreLoopResult,
@@ -66,6 +69,7 @@ with workflow.unsafe.imports_passed_through():
         ReviewGateResult,
         RunEventBatch,
         RunEventSpec,
+        RunLimits,
         RunStatus,
         StageResult,
     )
@@ -175,6 +179,68 @@ _LIVE_HANDOFF_PATCH = "task-932-live-handoff"
 # review never consults the marker and never records one.
 _REVIEW_SKIP_PATCH = "task-946-review-skip-empty-payload"
 
+# TASK-1038 R-5 — the node retry policy honours the COMPILED backoff and names the failures a
+# retry cannot fix. A retry policy is an activity OPTION (the recorded command sequence does not
+# change), but it changes how often a refused call is re-sent, so it is a behaviour change and
+# rides behind its own marker like every other one. A history recorded before it keeps the old
+# attempts-only policy on replay.
+_RETRY_PATCH = "task-1038-node-retry-policy"
+
+#: Failure TYPES no retry can change, matched by Temporal on the failure's recorded type — the
+#: exception's class name, or an ``ApplicationError``'s ``type``. Retrying them re-sends the
+#: identical input to get the identical refusal, spending the node's whole timeout budget on it.
+#:
+#: * ``ApiClientError`` — a gateway 4xx other than 408/429 (``services/api_client.py`` already
+#:   classifies those two as retryable ``ApiServiceError``).
+#: * ``ValidationError`` — a pydantic schema/validation failure (input or answer shape).
+#: * ``ContextSchemaViolation`` / ``OutputSchemaViolation`` — ``core.trigger`` / ``core.output``
+#:   refusing a payload against the graph's declared schema.
+#: * ``ClaimCheckIntegrityError`` — a stored blob whose hash does not match its reference.
+#: * ``PAYLOAD_TOO_LARGE`` — an activity input or result above the safe Temporal payload size.
+NON_RETRYABLE_NODE_ERROR_TYPES: tuple[str, ...] = (
+    "ApiClientError",
+    "ValidationError",
+    "ContextSchemaViolation",
+    "OutputSchemaViolation",
+    "ClaimCheckIntegrityError",
+    "PAYLOAD_TOO_LARGE",
+)
+
+# TASK-1038 D-H — a DEGRADED node's OUTPUT is kept. Storing it changes what every downstream node
+# binds, and through `_is_empty_review_payload` whether a review child is started at all, so it
+# is gated. The cheap operand (the degraded result CARRIES an output) is checked first.
+_KEEP_DEGRADED_PATCH = "task-1038-keep-degraded-output"
+
+# TASK-1038 R-3 — payloads by REFERENCE. The run payload travels once per activity input (or as
+# a claim-check reference once the trigger offloaded it) and the run context names it
+# symbolically; an activity input above the run's ceiling fails the run by name before anything
+# is scheduled; a `core.loop` whose `over` path crosses a reference resolves it through a NEW
+# activity. All three change what is sent or scheduled, so they share one marker.
+_PAYLOAD_REFS_PATCH = "task-1038-payload-refs"
+
+#: The run-level failure name for an activity input over the run's ceiling. Also an
+#: `ApplicationError` type a node activity raises for an oversized RESULT.
+PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+
+_CONTEXT_PATH_TIMEOUT = timedelta(seconds=60)
+_CONTEXT_PATH_RETRY = RetryPolicy(
+    maximum_attempts=3, non_retryable_error_types=["ClaimCheckIntegrityError"]
+)
+
+# TASK-1038 R-4 — cancel stops IN-FLIGHT work. The `cancel` signal used to set a flag the walk
+# read only BETWEEN stages: a running node (an LLM generation, a review child parked for an hour)
+# kept running while the run already read as cancelled. Under this marker a stage is a RACE between
+# its nodes settling and the run being cancelled (or timing out, below): the losers' activities
+# and children are cancelled. Racing adds a `wait_condition` and, on interruption, cancel
+# commands, so it is gated — decided ONCE per run, at its start, so one run never mixes the two
+# shapes.
+_CANCEL_PATCH = "task-1038-cancel-in-flight"
+
+# TASK-1038 D-B — the run's compute budget (`caps.maxTotalSeconds`, clamped tighten-only) as a
+# deadline the walk enforces on itself: a timer the stage race watches. A new command (the timer),
+# so gated, and decided once per run like the cancel race.
+_DEADLINE_PATCH = "task-1038-run-deadline"
+
 #: How long the walk parks between two handoff reads. A timer plus one short activity per
 #: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
 #: ceiling, and the finalize starts within one interval of the clinician pressing stop.
@@ -184,7 +250,7 @@ _LIVE_HANDOFF_POLL_INTERVAL = timedelta(seconds=15)
 #: session this platform documents; the walk proceeds with whatever the handoff last reported,
 #: which for an empty one is the pre-existing `no_bound_text` degrade. NEVER an infinite wait:
 #: a workflow that can park forever is one nobody can reason about.
-_LIVE_HANDOFF_MAX_WAIT = timedelta(hours=2)
+_LIVE_HANDOFF_MAX_WAIT = timedelta(seconds=caps.LIVE_HANDOFF_MAX_WAIT_SECONDS)
 
 _LIVE_OUTPUTS_TIMEOUT = timedelta(seconds=30)
 #: One retry. The poll loop IS the retry policy — a read that fails is asked again in 15s — so
@@ -292,6 +358,42 @@ def _activity_error_reason(error: BaseException) -> str:
     return reason[: _ACTIVITY_REASON_MAX_CHARS - 3] + "..."
 
 
+def _oversized_input_reason(activity_input: NodeActivityInput, limits: RunLimits) -> str | None:
+    """``PAYLOAD_TOO_LARGE: …`` when the input would exceed the run's ceiling, else ``None``.
+
+    Pure and deterministic: the size of the input's own JSON encoding (what the pydantic data
+    converter puts on the wire, to within its envelope), against a ceiling recorded on the run's
+    input.
+    """
+    size = len(activity_input.model_dump_json().encode("utf-8"))
+    ceiling = limits.activity_input_max_bytes
+    if size <= ceiling:
+        return None
+    return (
+        f"{PAYLOAD_TOO_LARGE}: the activity input for node {activity_input.node_id!r} "
+        f"({activity_input.node_type}) is {size} bytes > {ceiling}"
+    )
+
+
+def _node_retry_policy(node: CompiledNode, max_attempts: int) -> RetryPolicy:
+    """TASK-1038 R-5 — the retry policy a node's activity is scheduled with (pure).
+
+    Honours the COMPILED backoff (``retry.initialIntervalSeconds`` / ``retry.backoffCoefficient``,
+    already clamped by the TypeScript compiler) and names the deterministic failures that must not
+    be retried (:data:`NON_RETRYABLE_NODE_ERROR_TYPES`). A value Temporal would reject (a
+    non-positive interval, a coefficient below 1) falls back to Temporal's own default for that
+    field rather than failing the workflow task.
+    """
+    initial = node.retry.initial_interval_seconds
+    coefficient = node.retry.backoff_coefficient
+    return RetryPolicy(
+        maximum_attempts=max_attempts,
+        initial_interval=timedelta(seconds=initial) if initial > 0 else timedelta(seconds=1),
+        backoff_coefficient=coefficient if coefficient >= 1 else 2.0,
+        non_retryable_error_types=list(NON_RETRYABLE_NODE_ERROR_TYPES),
+    )
+
+
 def _is_empty_review_payload(payload: dict[str, Any]) -> bool:
     """Whether a `core.humanReview`'s bound payload gives a clinician NOTHING to decide on.
 
@@ -382,6 +484,24 @@ class WorkflowInterpreter:
         self._live_skipped: set[str] = set()
         self._live_handoff_done = False
         self._live_context: dict[str, Any] = {}
+        # TASK-1038 R-3 — a NAMED run-level failure (today only `PAYLOAD_TOO_LARGE`), carried
+        # onto `workflow.run.completed` so a caller learns WHY, not only that it failed.
+        self._run_failure_reason: str | None = None
+        # TASK-1038 R-3 — whether the trigger published the run payload unchanged (decided once,
+        # the first time an input is built after the trigger ran). Pure derived state.
+        self._trigger_is_payload: bool | None = None
+        # TASK-1038 R-4 / D-B — the bounded walk. `_bounded` is decided once, at the run's start
+        # (`_CANCEL_PATCH`); the deadline fields are set only when `_DEADLINE_PATCH` is. The
+        # budget clock is paused across DURABLE waits on a clinician (live handoff, review, gate),
+        # which are not compute and carry bounds of their own. All workflow time.
+        self._bounded = False
+        self._timed_out = False
+        self._budget_seconds: float | None = None
+        self._clock_started: datetime | None = None
+        self._paused_seconds = 0.0
+        self._pause_depth = 0
+        self._pause_started: datetime | None = None
+        self._deadline_task: asyncio.Future[None] | None = None
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -421,11 +541,16 @@ class WorkflowInterpreter:
         for indexed_loop in config.loops:
             self._loops_by_id[indexed_loop.node_id] = indexed_loop.body.model_dump(by_alias=True)
 
+        # TASK-1038 R-4 / D-B — decided once, here, for the whole run.
+        self._bounded = workflow.patched(_CANCEL_PATCH)
+        if workflow.patched(_DEADLINE_PATCH):
+            self._start_deadline(caps.run_budget_seconds(config.caps.max_total_seconds))
+
         run_failed = False
         run_degraded = False
 
         for stage in config.stages:
-            if self._cancelled:
+            if self._cancelled or self._timed_out:
                 break
             # TASK-932 R-16a — the LIVE HANDOFF, once, immediately before the first stage that
             # consumes a live-owned node's output. Placed here rather than at the top of `run`
@@ -454,7 +579,8 @@ class WorkflowInterpreter:
         # it runs here, after the walk, which is also what the graph means: `WF-CONS-004` makes
         # the gate terminal for everything except the palette-agnostic `core.end` marker.
         # Skipped when a critical node already failed: there is nothing to sign off.
-        if config.gates and workflow.patched(_GATE_PATCH):
+        interrupted = self._bounded and (self._cancelled or self._timed_out)
+        if config.gates and not interrupted and workflow.patched(_GATE_PATCH):
             gate_result = await self._run_gate(config.gates[0], inp, blocked=run_failed)
             self._stages.append(StageResult(stage_index=len(self._stages), nodes=[gate_result]))
             if gate_result.status == "FAILED":
@@ -462,9 +588,14 @@ class WorkflowInterpreter:
             elif gate_result.status in ("DEGRADED", "SKIPPED"):
                 run_degraded = True
 
+        if self._deadline_task is not None and not self._deadline_task.done():
+            self._deadline_task.cancel()
+
         status: RunStatus
         if self._cancelled:
             status = "CANCELLED"
+        elif self._timed_out:
+            status = "TIMED_OUT"
         elif run_failed:
             status = "FAILED"
         elif run_degraded:
@@ -560,6 +691,8 @@ class WorkflowInterpreter:
                 RunEventSpec(
                     event_type=EVENT_RUN_COMPLETED,
                     status=status,
+                    reason=self._run_failure_reason,
+                    result_outputs=self._result_outputs(),
                     node_count=node_count,
                     failed_node_count=failed_node_count,
                     degraded_node_count=degraded_node_count,
@@ -567,6 +700,22 @@ class WorkflowInterpreter:
                 )
             ],
         )
+
+    def _result_outputs(self) -> dict[str, dict[str, Any]] | None:
+        """TASK-1038 D-I — what every ``core.output`` node published, by node id (pure).
+
+        Read from the walk's own output cache, so a ``core.output`` that FAILED (and stored
+        nothing) contributes nothing, and a DEGRADED one that published a mismatching payload
+        (``onSchemaViolation: degrade``) does — the run's status says which it was. ``None`` when
+        no output node published anything: the completed event then carries no ``result``.
+        """
+        published = {
+            node_id: output
+            for node_id, output in self._node_outputs.items()
+            if self._node_types.get(node_id) == "core.output"
+            and ("payload" in output or "resultRef" in output)
+        }
+        return published or None
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:
         """All-settled join: every node's own coroutine catches its own ACTIVITY exceptions
@@ -578,11 +727,120 @@ class WorkflowInterpreter:
         not declare. That is a CONTRACT violation rather than a node outcome — there is no honest
         value to thread and no retry that would change it — so it fails the run loudly instead of
         being flattened into a per-node ``DEGRADED``."""
-        return list(
-            await asyncio.gather(
-                *(self._dispatch_node(node, inp, stage.stage_index) for node in stage.nodes)
+        if not self._bounded:
+            return list(
+                await asyncio.gather(
+                    *(self._dispatch_node(node, inp, stage.stage_index) for node in stage.nodes)
+                )
             )
+        # TASK-1038 R-4 / D-B — the stage RACES the run being cancelled or timing out. The nodes
+        # still run concurrently and the join is still all-settled; what changes is that a cancel
+        # or the deadline no longer waits for the slowest node to finish on its own.
+        tasks = [
+            asyncio.ensure_future(self._dispatch_node(node, inp, stage.stage_index))
+            for node in stage.nodes
+        ]
+        await workflow.wait_condition(
+            lambda: all(task.done() for task in tasks) or self._cancelled or self._timed_out
         )
+        pending = [not task.done() for task in tasks]
+        for task, was_pending in zip(tasks, pending, strict=True):
+            if was_pending:
+                task.cancel()
+        results: list[NodeResult] = []
+        for node, task, was_pending in zip(stage.nodes, tasks, pending, strict=True):
+            try:
+                settled = await task
+            except asyncio.CancelledError:
+                settled = None
+            # A node interrupted mid-flight is reported as INTERRUPTED whatever its coroutine
+            # made of the cancellation (a child's cancellation may surface as its own error).
+            results.append(self._interrupted(node) if was_pending or settled is None else settled)
+        return results
+
+    def _interrupted(self, node: CompiledNode) -> NodeResult:
+        """The settled record of a node a cancel or the deadline interrupted (pure)."""
+        if self._cancelled:
+            return NodeResult(
+                node_id=node.node_id, node_type=node.type, status="SKIPPED", reason="cancelled"
+            )
+        return NodeResult(
+            node_id=node.node_id, node_type=node.type, status="FAILED", reason="run_timed_out"
+        )
+
+    # TASK-1038 D-B — the run deadline.
+
+    def _start_deadline(self, budget_seconds: int) -> None:
+        self._budget_seconds = float(budget_seconds)
+        self._clock_started = workflow.now()
+        self._deadline_task = asyncio.ensure_future(self._watch_deadline())
+
+    def _remaining_budget(self) -> float:
+        """Compute seconds left (pure): budget minus elapsed workflow time minus paused time."""
+        if self._budget_seconds is None or self._clock_started is None:
+            return float("inf")
+        now = workflow.now()
+        paused = self._paused_seconds
+        if self._pause_depth and self._pause_started is not None:
+            paused += (now - self._pause_started).total_seconds()
+        elapsed = (now - self._clock_started).total_seconds() - paused
+        return self._budget_seconds - elapsed
+
+    async def _watch_deadline(self) -> None:
+        """One timer at a time, until the budget is spent.
+
+        While the clock is PAUSED (a durable wait on a clinician) no timer runs at all — the
+        watch parks on the pause ending — so a two-hour consultation or an hour-long review costs
+        one cancelled timer, not one re-armed timer per remaining-budget interval.
+        """
+        while True:
+            if self._pause_depth:
+                await workflow.wait_condition(lambda: self._pause_depth == 0)
+                continue
+            remaining = self._remaining_budget()
+            if remaining <= 0:
+                self._timed_out = True
+                return
+            try:
+                await workflow.wait_condition(
+                    lambda: self._pause_depth > 0, timeout=timedelta(seconds=remaining)
+                )
+            except TimeoutError:
+                continue
+
+    def _pause_clock(self) -> None:
+        """Enter a durable wait on a clinician: the budget stops being charged. A no-op on a run
+        without a deadline (every run recorded before `_DEADLINE_PATCH`)."""
+        if self._budget_seconds is None:
+            return
+        if self._pause_depth == 0:
+            self._pause_started = workflow.now()
+        self._pause_depth += 1
+
+    def _resume_clock(self) -> None:
+        if self._budget_seconds is None:
+            return
+        self._pause_depth -= 1
+        if self._pause_depth == 0 and self._pause_started is not None:
+            self._paused_seconds += (workflow.now() - self._pause_started).total_seconds()
+            self._pause_started = None
+
+    async def _await_cancellable(self, awaitable: Any) -> tuple[bool, Any]:
+        """``(interrupted, result)`` — await ``awaitable`` unless the run is cancelled first.
+
+        For the waits OUTSIDE a stage race (the HITL gate). The deadline does not apply: the gate
+        is a durable wait on a clinician with its own SLA ladder.
+        """
+        task = asyncio.ensure_future(awaitable)
+        await workflow.wait_condition(lambda: task.done() or self._cancelled)
+        if task.done():
+            return False, task.result()
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 — however it surfaced
+            pass
+        return True, None
 
     def _resolve_bound_inputs(self, node: CompiledNode) -> dict[str, Any]:
         """Thread completed predecessors' outputs into this node's input, via `node.inputs`
@@ -733,6 +991,15 @@ class WorkflowInterpreter:
                 }
             ),
         )
+        # TASK-1038 D-B — parked on a clinician, not computing: the budget clock stops.
+        self._pause_clock()
+        try:
+            await self._poll_live_outputs(request)
+        finally:
+            self._resume_clock()
+
+    async def _poll_live_outputs(self, request: LiveOutputsRequest) -> None:
+        """The handoff poll loop itself (see `_await_live_outputs`)."""
         deadline = workflow.now() + _LIVE_HANDOFF_MAX_WAIT
         while not self._cancelled:
             try:
@@ -755,7 +1022,16 @@ class WorkflowInterpreter:
                 return
             if workflow.now() >= deadline:
                 return
-            await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
+            if self._bounded:
+                # TASK-1038 R-4 — a cancel ends the wait NOW, not at the next poll.
+                try:
+                    await workflow.wait_condition(
+                        lambda: self._cancelled, timeout=_LIVE_HANDOFF_POLL_INTERVAL
+                    )
+                except TimeoutError:
+                    pass
+            else:
+                await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
 
     def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
         """Every reason this walk declines a node BEFORE dispatching anything (pure).
@@ -903,6 +1179,14 @@ class WorkflowInterpreter:
             node_type=node.type,
             doctor_id=_run_doctor_id(inp),
         )
+        by_reference = workflow.patched(_PAYLOAD_REFS_PATCH)
+        bound_inputs = self._resolve_bound_inputs(node)
+        if by_reference:
+            run_payload, run_context = self._payload_views(inp, core=node.type.startswith("core."))
+            bound_inputs = self._bound_payload_by_reference(bound_inputs, inp)
+        else:
+            run_payload = inp.payload
+            run_context = self._run_context() if node.type.startswith("core.") else {}
         activity_input = NodeActivityInput(
             node_id=node.node_id,
             node_type=node.type,
@@ -910,20 +1194,38 @@ class WorkflowInterpreter:
             tenant_id=inp.tenant_id,
             sandbox=inp.sandbox,
             trajectory=trajectory,
-            bound_inputs=self._resolve_bound_inputs(node),
-            run_payload=inp.payload,
+            bound_inputs=bound_inputs,
+            run_payload=run_payload,
             run_id=inp.run_id,
             # TASK-864 — the run context, for `core.*` nodes only: a legacy node's payload stays
             # byte-identical to every run before this ticket.
-            run_context=self._run_context() if node.type.startswith("core.") else {},
+            run_context=run_context,
         )
+        if by_reference and inp.limits is not None:
+            too_large = _oversized_input_reason(activity_input, inp.limits)
+            if too_large is not None:
+                # TASK-1038 R-3 — refused BEFORE scheduling. Temporal would refuse the payload
+                # itself, failing the workflow TASK (not the node) and retrying it forever; a
+                # named FAILED node fails the run instead, whatever the node's criticality.
+                self._run_failure_reason = PAYLOAD_TOO_LARGE
+                return NodeResult(
+                    node_id=node.node_id,
+                    node_type=node.type,
+                    status="FAILED",
+                    reason=too_large,
+                )
 
+        retry_policy = (
+            _node_retry_policy(node, max_attempts)
+            if workflow.patched(_RETRY_PATCH)
+            else RetryPolicy(maximum_attempts=max_attempts)
+        )
         try:
             result: NodeActivityResult = await workflow.execute_activity(
                 spec.activity,
                 activity_input,
                 start_to_close_timeout=timedelta(seconds=timeout_seconds),
-                retry_policy=RetryPolicy(maximum_attempts=max_attempts),
+                retry_policy=retry_policy,
             )
         except ActivityError as exc:
             # Timeout OR an application-raised exception both surface here identically
@@ -945,11 +1247,21 @@ class WorkflowInterpreter:
             return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
         if result.status == "DEGRADED":
             promoted_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
+            reason = result.reason or "activity_error"
+            if result.output is not None and workflow.patched(_KEEP_DEGRADED_PATCH):
+                # TASK-1038 D-H — the work this node DID produce (a generated, billed note whose
+                # persist then failed; a result that missed its schema) is kept, marked, so the
+                # review and the output downstream can still use it. `_degraded` is a reserved
+                # key: a downstream binding reads one named key and never sees it.
+                self._node_outputs[node.node_id] = {
+                    **result.output,
+                    "_degraded": {"reason": reason},
+                }
             return NodeResult(
                 node_id=node.node_id,
                 node_type=node.type,
                 status=promoted_status,
-                reason=result.reason or "activity_error",
+                reason=reason,
             )
         # result.status == "SKIPPED" (the activity itself declined, e.g. a future
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.
@@ -1021,7 +1333,7 @@ class WorkflowInterpreter:
         payload, so the handoff's value overrides an identically-named key that arrived with the
         invocation — in both views.
         """
-        trigger: dict[str, Any] = {}
+        trigger: Any = {}
         variables: dict[str, Any] = {}
         for node_id, output in self._node_outputs.items():
             node_type = self._node_types.get(node_id)
@@ -1029,14 +1341,105 @@ class WorkflowInterpreter:
                 trigger = output["context"]
             elif node_type == "core.variable" and isinstance(output.get("vars"), dict):
                 variables.update(output["vars"])
-        envelope = trigger.get("context")
-        authored = envelope if isinstance(envelope, dict) else trigger
-        published = {
-            **trigger,
-            **self._live_context,
-            "context": {**authored, **self._live_context},
-        }
+        # TASK-1038 R-3 — a trigger context stored out of band (a claim-check MARKER) cannot be
+        # unwrapped here, because the workflow cannot read it. It is published as a DEFERRED view
+        # instead, which the consuming activity rebuilds with the same `publish_trigger`.
+        published = (
+            payload_refs.deferred_trigger(trigger, self._live_context)
+            if payload_refs.is_marker(trigger)
+            else payload_refs.publish_trigger(trigger, self._live_context)
+        )
         return {"trigger": published, "vars": variables, "nodes": dict(self._node_outputs)}
+
+    def _trigger_output(self) -> tuple[str, Any] | None:
+        """``(nodeId, context)`` of the trigger's published context, or ``None`` (pure)."""
+        found: tuple[str, Any] | None = None
+        for node_id, output in self._node_outputs.items():
+            if self._node_types.get(node_id) == "core.trigger" and isinstance(
+                output.get("context"), dict
+            ):
+                found = (node_id, output["context"])
+        return found
+
+    def _payload_views(
+        self, inp: InterpreterInput, *, core: bool
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """TASK-1038 R-3 — ``(run_payload, run_context)`` for ONE activity input (pure).
+
+        Before, a ``core.*`` input carried the run payload four times: ``run_payload``,
+        ``run_context.trigger`` (flat), ``run_context.trigger.context``, and
+        ``run_context.nodes.<trigger>.context`` — because ``core.trigger`` publishes the run
+        payload unchanged as its ``context``. Now:
+
+        * once the trigger OFFLOADED its context (a claim-check marker), the run payload itself
+          travels as that marker — the trigger published it unchanged, so they are one value;
+        * otherwise the payload travels once, in ``run_payload``, and the run context NAMES it
+          (``$hopeRunPayload``); the node-activity envelope rebuilds every view before the node
+          runs, with the same ``publish_trigger``.
+        """
+        trigger = self._trigger_output()
+        run_payload: dict[str, Any] = inp.payload
+        if trigger is not None and payload_refs.is_marker(trigger[1]):
+            run_payload = trigger[1]
+        if not core:
+            return run_payload, {}
+        context = self._run_context()
+        if trigger is None or payload_refs.is_marker(trigger[1]):
+            return run_payload, context
+        if self._trigger_is_payload is None:
+            self._trigger_is_payload = trigger[1] == inp.payload
+        if not self._trigger_is_payload:
+            return run_payload, context
+        trigger_id = trigger[0]
+        sentinel = payload_refs.run_payload_sentinel()
+        nodes = dict(context["nodes"])
+        nodes[trigger_id] = {**nodes[trigger_id], "context": sentinel}
+        return run_payload, {
+            **context,
+            "trigger": payload_refs.deferred_trigger(sentinel, self._live_context),
+            "nodes": nodes,
+        }
+
+    def _bound_payload_by_reference(
+        self, bound: dict[str, Any], inp: InterpreterInput
+    ) -> dict[str, Any]:
+        """TASK-1038 R-3 — a bound value that IS the run payload is sent as the sentinel (pure).
+
+        The edge ``trigger.out -> in`` binds the trigger's published context, which is the run
+        payload unchanged — so without this the payload would travel twice in one input (once in
+        ``run_payload``, once here).
+        """
+        trigger = self._trigger_output()
+        if trigger is None or payload_refs.is_marker(trigger[1]) or not self._trigger_is_payload:
+            return bound
+        context = trigger[1]
+        sentinel = payload_refs.run_payload_sentinel()
+        return {port: (sentinel if value is context else value) for port, value in bound.items()}
+
+    async def _resolve_context_path(
+        self, inp: InterpreterInput, run_context: dict[str, Any], path: str
+    ) -> Any:
+        """TASK-1038 R-3 — resolve a dotted path that crosses a reference, in an ACTIVITY.
+
+        The workflow cannot read a claim-checked value, so a ``core.loop``'s ``over`` path that
+        walks into one is resolved by ``interpreter.resolve_context_path``. ``MISSING`` when the
+        activity finds nothing (or cannot run): the loop then degrades exactly as it always did
+        for an unresolvable path, observably.
+        """
+        try:
+            answer: ContextPathResult = await workflow.execute_activity(
+                resolve_context_path,
+                ContextPathRequest(
+                    run_context=run_context,
+                    run_payload=self._payload_views(inp, core=False)[0],
+                    path=path,
+                ),
+                start_to_close_timeout=_CONTEXT_PATH_TIMEOUT,
+                retry_policy=_CONTEXT_PATH_RETRY,
+            )
+        except ActivityError:
+            return MISSING
+        return answer.value if answer.found else MISSING
 
     async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
         """Dispatch a `core.humanReview` as a `ReviewGateWorkflow` child and TAKE its outcome
@@ -1107,6 +1510,8 @@ class WorkflowInterpreter:
                 doctor_id=_run_doctor_id(inp),
             ),
         )
+        # TASK-1038 D-B — a review is a durable wait on a clinician: not charged to the budget.
+        self._pause_clock()
         try:
             result: ReviewGateResult = await workflow.execute_child_workflow(
                 ReviewGateWorkflow.run,
@@ -1120,6 +1525,8 @@ class WorkflowInterpreter:
                 status="DEGRADED",
                 reason="review_unavailable",
             )
+        finally:
+            self._resume_clock()
 
         self._node_outputs[node.node_id] = {"decision": result.model_dump()}
         self._taken_handles[node.node_id] = {result.outcome}
@@ -1151,6 +1558,13 @@ class WorkflowInterpreter:
         if mode == "foreach":
             over = config.get("over")
             resolved = resolve_dotted_path(run_context, over) if isinstance(over, str) else MISSING
+            if (
+                not isinstance(resolved, list)
+                and isinstance(over, str)
+                and payload_refs.reference_on_path(run_context, over)
+                and workflow.patched(_PAYLOAD_REFS_PATCH)
+            ):
+                resolved = await self._resolve_context_path(inp, run_context, over)
             if not isinstance(resolved, list):
                 return NodeResult(
                     node_id=node.node_id,
@@ -1174,7 +1588,11 @@ class WorkflowInterpreter:
             body=body,
             nested=dict(self._loops_by_id),
             seed_inputs=self._resolve_bound_inputs(node),
-            run_payload=inp.payload,
+            run_payload=(
+                self._payload_views(inp, core=False)[0]
+                if workflow.patched(_PAYLOAD_REFS_PATCH)
+                else inp.payload
+            ),
             run_context=run_context,
         )
         max_duration = int(loop_input.bounds.max_duration_seconds)
@@ -1296,14 +1714,28 @@ class WorkflowInterpreter:
             ),
         )
 
+        gate_child = workflow.execute_child_workflow(
+            ConsultationGateWorkflow.run,
+            gate_input,
+            # Deterministic, derived from the parent's run id — never `uuid4()` inside a
+            # workflow body. Same task queue by inheritance (worker.py hosts both types).
+            id=gate_workflow_id(inp.run_id),
+        )
+        result: ConsultationGateResult
+        self._pause_clock()
         try:
-            result: ConsultationGateResult = await workflow.execute_child_workflow(
-                ConsultationGateWorkflow.run,
-                gate_input,
-                # Deterministic, derived from the parent's run id — never `uuid4()` inside a
-                # workflow body. Same task queue by inheritance (worker.py hosts both types).
-                id=gate_workflow_id(inp.run_id),
-            )
+            if self._bounded:
+                # TASK-1038 R-4 — a cancel stops the wait on the clinician too.
+                interrupted, result = await self._await_cancellable(gate_child)
+                if interrupted:
+                    return NodeResult(
+                        node_id=gate.node_id,
+                        node_type=node_type,
+                        status="SKIPPED",
+                        reason="cancelled",
+                    )
+            else:
+                result = await gate_child
         except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
             # A gate that could not run is NOT an approval. `critical: true` promotes this to a
             # run-level FAILED, which is the only safe reading.
@@ -1313,6 +1745,8 @@ class WorkflowInterpreter:
                 status="FAILED",
                 reason="gate_unavailable",
             )
+        finally:
+            self._resume_clock()
 
         if result.approved:
             self._node_outputs[gate.node_id] = {
