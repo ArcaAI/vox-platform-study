@@ -383,8 +383,13 @@ describe('WorkflowStudioEditor — 412 recovery (TASK-965 WS-1, WF-3)', () => {
 
 describe('WorkflowStudioEditor — the published version stays reachable (TASK-965, O-2 / WF-24; TASK-1036 §3.6)', () => {
   it('reaches the integration guide through the Integration TAB of a PUBLISHED version', async () => {
-    installFetchMock();
-    renderWithProviders(<WorkflowStudioEditor definition={withNode({ status: 'PUBLISHED', isActive: true })} etag='"1"' registryNodes={[NOTE]} />);
+    const published = withNode({ status: 'PUBLISHED', isActive: true });
+    // TASK-1036 C4 — the Integration tab now reads the definition (`useWorkflowDefinition`) and
+    // derives the run guide from its `graph` (`effectiveSettings`). The default stub answers every
+    // request with `{ id, version }`, a shape the definition route never returns, so the GET
+    // answers with the real definition.
+    installFetchMock((call) => (call.method === 'GET' && call.path.endsWith('/d-1') ? Response.json(published, { headers: { etag: '"1"' } }) : undefined));
+    renderWithProviders(<WorkflowStudioEditor definition={published} etag='"1"' registryNodes={[NOTE]} />);
 
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Integration' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Integration' }));
