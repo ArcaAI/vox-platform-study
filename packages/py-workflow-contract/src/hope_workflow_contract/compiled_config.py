@@ -127,6 +127,65 @@ class CompiledBranchGuard(_CompiledModel):
     handle: str = Field(min_length=1)
 
 
+class CompiledFromBinding(_CompiledModel):
+    """TASK-1036 §9.2 — ``{ from: <path> }`` (``at`` only for a ``consultation.*`` read, OD-30)."""
+
+    from_: str = Field(alias="from", min_length=1)
+    at: Literal["nodeStart", "runStart"] | None = None
+
+
+class CompiledValueBinding(_CompiledModel):
+    """``{ value: <literal> }`` — any JSON value, ``null`` included."""
+
+    value: Any
+
+
+class CompiledTemplateBinding(_CompiledModel):
+    """``{ template: <text> }`` — rendered with the one template grammar."""
+
+    template: str
+
+
+class CompiledFirstOfBinding(_CompiledModel):
+    """``{ firstOf: [<path>, …] }`` — the first path that has a value (an authored coalesce, or
+    the legacy fan-in translation)."""
+
+    first_of: list[Annotated[str, Field(min_length=1)]] = Field(min_length=2)
+
+
+#: Exactly one of the four closed shapes (``compiledBinding``'s ``anyOf``). Each model forbids
+#: the others' keys, so a document naming two shapes matches none.
+CompiledBinding = (
+    CompiledFromBinding | CompiledValueBinding | CompiledTemplateBinding | CompiledFirstOfBinding
+)
+
+
+class CompiledConsultationRead(_CompiledModel):
+    """TASK-1036 §9.3 — one declared ``consultation.*`` read and when it is snapshotted."""
+
+    path: str = Field(pattern=r"^consultation\.")
+    at: Literal["nodeStart", "runStart"]
+
+
+WorkflowConnection = Literal["api", "webhook", "sse", "socket"]
+WorkflowSource = Literal["consultation", "schedule"]
+
+
+class CompiledSettings(_CompiledModel):
+    """TASK-1036 §3.5 — the effective workflow settings frozen into the artifact."""
+
+    connections: list[WorkflowConnection]
+    sources: list[WorkflowSource]
+
+    @field_validator("connections", "sources")
+    @classmethod
+    def _unique(cls, value: list[str]) -> list[str]:
+        # The schema's `uniqueItems: true`.
+        if len(set(value)) != len(value):
+            raise ValueError("must not repeat a value")
+        return value
+
+
 class CompiledNode(_CompiledModel):
     node_id: NodeIdStr
     type: str = Field(min_length=1)
@@ -147,6 +206,11 @@ class CompiledNode(_CompiledModel):
     #: TASK-864, additive-optional: OMITTED by the compiler when empty, so a legacy artifact
     #: (and its checksum) is untouched. Present only behind a router/review branch handle.
     branch_guards: list[CompiledBranchGuard] | None = None
+    #: TASK-1036 §9.2, additive-optional (only under the compiler's `emitDataContract`, and
+    #: OMITTED when the node binds nothing): this node's inputs by NodeIO name.
+    bindings: dict[str, CompiledBinding] | None = None
+    #: TASK-1036 §9.3, additive-optional: the `consultation.*` paths this node reads and when.
+    consultation_reads: list[CompiledConsultationRead] | None = None
 
 
 class CompiledStage(_CompiledModel):
@@ -290,6 +354,8 @@ class CompiledWorkflowConfig(_CompiledModel):
     caps: CompiledCaps
     #: TASK-864, additive-optional — present only when the graph carries a `core.loop`.
     loops: list[CompiledLoop] | None = None
+    #: TASK-1036 §3.5, additive-optional — present only under the compiler's `emitDataContract`.
+    settings: CompiledSettings | None = None
     checksum: str = Field(min_length=1)
 
     @model_validator(mode="before")
