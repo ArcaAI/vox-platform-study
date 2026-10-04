@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
-import { WorkflowStudioScreen } from '@/features/workflow-studio/components';
+import { WorkflowManagementScreen } from '@/features/workflow-studio/components/management';
 
 export const metadata: Metadata = { title: 'Workflow Studio' };
 
 /**
- * TASK-893 OD-1 — the definitions GRID is deleted; this route IS the studio. With no id in the
- * URL the screen resolves the tenant's most workable definition and replaces the URL with its
- * canonical deep link `/workflow-studio/[definitionId]`, so a shared link always names a
- * workflow (tier 30-49).
+ * TASK-1036 OD-13 — `/workflow-studio` is the workflow MANAGEMENT list again (one row per slug),
+ * reversing TASK-893 OD-1's redirect-into-the-studio. A row opens `/workflow-studio/[definitionId]`,
+ * the canonical deep link into the studio; `/workflow-studio/new` is the create form (tier 30-49).
  */
 export default function WorkflowStudioPage() {
-  return <WorkflowStudioScreen />;
+  return <WorkflowManagementScreen />;
 }
