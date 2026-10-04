@@ -16,7 +16,10 @@ import { Empty, EmptyDescription, EmptyMedia, EmptyTitle, Input, Label, Skeleton
 import { IconPuzzle, IconSearch } from '@tabler/icons-react';
 import { humanizeKey } from '../../lib/schema-form';
 import type { WorkflowNodeDescriptor } from '../../api/types';
+import { PALETTE_PRESETS, type PalettePreset } from '../../lib/palette-presets';
+import { writePaletteDragType } from '../../lib/palette-drag';
 import { PaletteItem } from './palette-item';
+import { NodeTypeIcon } from './node-type-icon';
 
 const UTILITY_GROUP_LABEL = 'Utility';
 /** The one authoring vocabulary (TASK-864) — always the first group, whatever the registry order. */
@@ -28,7 +31,11 @@ export interface PaletteRailProps {
    *  descriptor whose `entitlementKey` is not a member. */
   entitledFeatureKeys?: Set<string>;
   loading?: boolean;
-  onAddNode: (descriptor: WorkflowNodeDescriptor) => void;
+  /**
+   * TASK-1036 — `options` carries a PRESET's ready-made config (the Merge step). The caller adds
+   * the node with `addNode(…, { config: options.config })`; a plain node type passes none.
+   */
+  onAddNode: (descriptor: WorkflowNodeDescriptor, options?: { config: Record<string, unknown>; preset: PalettePreset }) => void;
 }
 
 function groupByPalette(descriptors: WorkflowNodeDescriptor[]): Map<string, WorkflowNodeDescriptor[]> {
@@ -83,6 +90,13 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
   }
 
   const groups = groupByPalette(filtered);
+  // TASK-1036 (OD-18) — presets: a registry type with a ready-made config, offered only when the
+  // registry carries the type and the filter matches.
+  const byType = new Map(offered.map((descriptor) => [descriptor.type, descriptor]));
+  const needle = query.trim().toLowerCase();
+  const presets = PALETTE_PRESETS.filter(
+    (preset) => byType.has(preset.type) && (needle === '' || [preset.label, preset.summary, preset.key].some((text) => text.toLowerCase().includes(needle))),
+  );
 
   return (
     <nav aria-label="Node palette" className="flex flex-col gap-4">
@@ -106,6 +120,30 @@ export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNo
           <EmptyTitle>No matching node types</EmptyTitle>
           <EmptyDescription>Nothing in this palette matches “{query}”.</EmptyDescription>
         </Empty>
+      ) : null}
+      {presets.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Combine</h3>
+          {presets.map((preset) => {
+            const descriptor = byType.get(preset.type) as WorkflowNodeDescriptor;
+            return (
+              <button
+                key={preset.key}
+                type="button"
+                draggable
+                onDragStart={(event) => writePaletteDragType(event.dataTransfer, preset.type, preset.key)}
+                onClick={() => onAddNode(descriptor, { config: preset.config, preset })}
+                className="bg-card hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-ring flex w-full min-w-0 items-start gap-3 rounded-md border p-3 text-left transition-colors outline-hidden focus-visible:ring-[3px]"
+              >
+                <NodeTypeIcon type={preset.type} className="text-muted-foreground mt-0.5 size-5 shrink-0" />
+                <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                  <span className="truncate text-sm font-medium">{preset.label}</span>
+                  <span className="text-muted-foreground line-clamp-2 text-xs">{preset.summary}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       ) : null}
       {[...groups.entries()].map(([paletteKey, items]) => (
         <div key={paletteKey} className="flex flex-col gap-2">
