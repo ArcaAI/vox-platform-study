@@ -165,10 +165,11 @@ describe('TASK-950 — actingUserId reaches the run row’s _metadata', () => {
     expect(runStarted().metaData).toBeUndefined();
   });
 
-  it('omits metaData on a CONSULTATION-BOUND run — identity is fixed at open, never re-decided here (OD-5)', async () => {
+  it('stamps no actingUserId on a CONSULTATION-BOUND run — identity is fixed at open, never re-decided here (OD-5)', async () => {
     await build().invoke('triage_flow', INPUT, { consultationId: 'consult-1' });
 
     expect(resolveOrProvision).not.toHaveBeenCalled();
-    expect(runStarted().metaData).toBeUndefined();
+    // TASK-1038 B3a — the row now carries the bound consultation (and nothing about identity).
+    expect(runStarted().metaData).toEqual({ consultationId: 'consult-1' });
   });
 });
