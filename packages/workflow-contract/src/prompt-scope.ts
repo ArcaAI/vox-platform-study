@@ -32,7 +32,7 @@
  *    `{{age}}` and `{{context.patientAge}}` are the same value. An author who tests a prompt on
  *    the bench must not get different bytes in production.
  */
-import { renderTemplate } from './template';
+import { PromptVariableUnresolvedError, renderTemplate } from './template';
 
 export interface PromptScopeParts {
   /**
@@ -59,6 +59,26 @@ export interface PromptScopeParts {
   readonly nodes?: Readonly<Record<string, unknown>> | null;
   /** Names the template in a `PromptVariableUnresolved` raised while resolving a `{ path }` binding. */
   readonly templateRef?: string;
+  /**
+   * TASK-1036 OD-10 — the prompt's variable DECLARATIONS, opting the scope into nullable
+   * variables. Absent (the default) ⇒ today's behaviour, byte for byte.
+   *
+   * When given, a declared BARE name that is absent after binding resolution — missing, `null`, or
+   * a `{ path }` binding that does not resolve — takes its declared `default` when it has one,
+   * else renders `""` when it is `required: false`. A `required: true` absent variable (and any
+   * undeclared one) is left absent, so the renderer still fails BY NAME. A declaration whose name
+   * is a root the caller supplied (`context`, `trigger`, …) is left alone. The fill applies to the
+   * bare name and its `variables.<name>` spelling, never to a sub-path (`{{opt.x}}` still fails).
+   */
+  readonly variableDeclarations?: readonly PromptScopeVariableDeclaration[];
+}
+
+/** The slice of a prompt variable declaration the scope reads (OD-10). */
+export interface PromptScopeVariableDeclaration {
+  readonly name: string;
+  readonly required: boolean;
+  /** Used when the variable is absent, whatever `required` says (the declaration DTO's meaning). */
+  readonly default?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -84,9 +104,35 @@ export function buildPromptScope(parts: PromptScopeParts): Record<string, unknow
   if (isRecord(parts.nodes)) scope.nodes = parts.nodes;
 
   const declared = isRecord(parts.variables) ? parts.variables : {};
+  // OD-10 — only when the caller opts in; `undefined` keeps every pre-1036 byte.
+  const declarations = Array.isArray(parts.variableDeclarations) ? nullableDeclarations(parts.variableDeclarations) : undefined;
   const variables: Record<string, unknown> = {};
   for (const [name, binding] of Object.entries(declared)) {
-    variables[name] = resolveBinding(binding, scope, parts.templateRef ?? `instruction.variables.${name}`);
+    const templateRef = parts.templateRef ?? `instruction.variables.${name}`;
+    const fallback = declarations?.get(name);
+    if (fallback === undefined) {
+      variables[name] = resolveBinding(binding, scope, templateRef);
+      continue;
+    }
+    try {
+      variables[name] = resolveBinding(binding, scope, templateRef);
+    } catch (error) {
+      // A declared variable with a fallback absorbs an unresolved `{ path }`; anything else
+      // (a syntax error, a required variable) still propagates by name.
+      if (!(error instanceof PromptVariableUnresolvedError)) throw error;
+      variables[name] = undefined;
+    }
+  }
+  if (declarations !== undefined) {
+    for (const [name, fallback] of declarations) {
+      if (Object.prototype.hasOwnProperty.call(scope, name)) continue;
+      const value = variables[name];
+      if (value === undefined || value === null) variables[name] = fallback;
+    }
+    // An absorbed binding with no fallback stays ABSENT (not a key holding `undefined`).
+    for (const [name, value] of Object.entries(variables)) {
+      if (value === undefined) delete variables[name];
+    }
   }
   Object.assign(scope, variables);
   // The pre-890 durable scope also exposed the bound map under its own key; a seeded instruction
@@ -94,6 +140,21 @@ export function buildPromptScope(parts: PromptScopeParts): Record<string, unknow
   // cannot disagree.
   scope.variables = variables;
   return scope;
+}
+
+/**
+ * OD-10 — the value each declared name falls back to when absent: its `default`, else `""` for an
+ * optional one. A required declaration without a default has NO fallback and is omitted, which is
+ * what keeps "a missing required variable fails by name" true.
+ */
+function nullableDeclarations(declarations: readonly PromptScopeVariableDeclaration[]): Map<string, string> {
+  const fallbacks = new Map<string, string>();
+  for (const declaration of declarations) {
+    if (!isRecord(declaration) || typeof declaration.name !== 'string') continue;
+    if (typeof declaration.default === 'string') fallbacks.set(declaration.name, declaration.default);
+    else if (declaration.required === false) fallbacks.set(declaration.name, '');
+  }
+  return fallbacks;
 }
 
 /**

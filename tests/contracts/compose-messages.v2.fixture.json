@@ -1,0 +1,159 @@
+{
+  "$comment": "TASK-1036 OD-10 — the OPT-IN v2 behaviours of `buildPromptScope` / `composeMessages` (`packages/workflow-contract/src/{prompt-scope,compose-messages}.ts`). Same case shape as `compose-messages.fixture.json`, plus two new inputs: `scopeParts.variableDeclarations` (the prompt's declarations `{ name, required, default? }`) and `dropEmptyBlocks`. Without either input the output is byte-identical to v1 (the v1 fixture is unchanged and still passes). Rules: a declared variable that is absent after binding resolution (missing, null, or a `{ path }` binding that does not resolve) takes its declared `default` when it has one, else renders `\"\"` when `required: false`; a `required: true` (or undeclared) absent variable still fails BY NAME. The fill applies to bare names only — `{{opt.x}}` under an absent optional `opt` still fails. `dropEmptyBlocks: true` drops a data block whose content is only spaces, tabs, CR and LF. TypeScript reads this file in `packages/workflow-contract/src/__tests__/compose-messages.v2.test.ts`; the harness Python mirror adopts it in wave B.",
+  "scopeCases": [
+    {
+      "name": "optional-absent-binds-empty-string-under-both-spellings",
+      "parts": { "variables": {}, "variableDeclarations": [{ "name": "suffix", "required": false }] },
+      "expected": { "suffix": "", "variables": { "suffix": "" } }
+    },
+    {
+      "name": "declared-default-fills-an-absent-variable",
+      "parts": { "variables": {}, "variableDeclarations": [{ "name": "lang", "required": true, "default": "English" }] },
+      "expected": { "lang": "English", "variables": { "lang": "English" } }
+    },
+    {
+      "name": "present-value-wins-over-default-and-optional",
+      "parts": { "variables": { "lang": { "value": "Malayalam" } }, "variableDeclarations": [{ "name": "lang", "required": false, "default": "English" }] },
+      "expected": { "lang": "Malayalam", "variables": { "lang": "Malayalam" } }
+    },
+    {
+      "name": "optional-unresolved-path-binding-renders-empty",
+      "parts": { "context": {}, "variables": { "age": { "path": "context.patient.age" } }, "variableDeclarations": [{ "name": "age", "required": false }] },
+      "expected": { "context": {}, "trigger": {}, "age": "", "variables": { "age": "" } }
+    },
+    {
+      "name": "required-unresolved-path-binding-still-throws",
+      "parts": { "context": {}, "variables": { "age": { "path": "context.patient.age" } }, "variableDeclarations": [{ "name": "age", "required": true }] },
+      "error": { "name": "PromptVariableUnresolved", "paths": ["context.patient.age"] }
+    },
+    {
+      "name": "required-absent-is-left-absent-for-the-renderer-to-name",
+      "parts": { "variables": {}, "variableDeclarations": [{ "name": "must", "required": true }] },
+      "expected": { "variables": {} }
+    },
+    {
+      "name": "null-value-is-absent",
+      "parts": { "variables": { "x": null }, "variableDeclarations": [{ "name": "x", "required": false }] },
+      "expected": { "x": "", "variables": { "x": "" } }
+    },
+    {
+      "name": "declaration-named-after-a-present-root-is-left-alone",
+      "parts": { "context": { "a": 1 }, "variables": {}, "variableDeclarations": [{ "name": "context", "required": false }] },
+      "expected": { "context": { "a": 1 }, "trigger": { "a": 1 }, "variables": {} }
+    }
+  ],
+  "cases": [
+    {
+      "name": "optional-absent-renders-empty",
+      "input": {
+        "platformRules": "RULES",
+        "resolvedPrompt": { "source": "inline", "content": "Hello {{name}}{{suffix}}." },
+        "scopeParts": { "variables": { "name": { "value": "Ada" } }, "variableDeclarations": [{ "name": "name", "required": true }, { "name": "suffix", "required": false }] }
+      },
+      "expected": { "system": "RULES\n\nHello Ada.", "user": "", "selected": [], "excluded": [], "blocks": [] }
+    },
+    {
+      "name": "optional-visible-under-the-variables-root",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": { "source": "inline", "content": "[{{variables.suffix}}]" },
+        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "suffix", "required": false }] }
+      },
+      "expected": { "system": "[]", "user": "", "selected": [], "excluded": [], "blocks": [] }
+    },
+    {
+      "name": "required-absent-still-fails-by-name",
+      "input": {
+        "platformRules": "RULES",
+        "resolvedPrompt": { "source": "inline", "content": "{{must}} {{opt}} {{undeclared}}" },
+        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "must", "required": true }, { "name": "opt", "required": false }] },
+        "templateRef": "agent:x"
+      },
+      "error": { "name": "PromptVariableUnresolved", "paths": ["must", "undeclared"] }
+    },
+    {
+      "name": "optional-dotted-reference-still-fails",
+      "input": {
+        "platformRules": "RULES",
+        "resolvedPrompt": { "source": "inline", "content": "{{opt.x}}" },
+        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "opt", "required": false }] }
+      },
+      "error": { "name": "PromptVariableUnresolved", "paths": ["opt.x"] }
+    },
+    {
+      "name": "declared-default-renders",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": { "source": "inline", "content": "Write in {{lang}}." },
+        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "lang", "required": true, "default": "English" }] }
+      },
+      "expected": { "system": "Write in English.", "user": "", "selected": [], "excluded": [], "blocks": [] }
+    },
+    {
+      "name": "without-declarations-an-absent-variable-fails-as-in-v1",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": { "source": "inline", "content": "{{suffix}}" },
+        "scopeParts": { "variables": {} }
+      },
+      "error": { "name": "PromptVariableUnresolved", "paths": ["suffix"] }
+    },
+    {
+      "name": "drop-empty-blocks-drops-whitespace-only-content",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": null,
+        "scopeParts": {},
+        "dropEmptyBlocks": true,
+        "dataBlocks": [
+          { "key": "blank", "label": "Blank", "content": "  \n\t \r\n" },
+          { "key": "empty", "label": "Empty", "content": "" },
+          { "key": "kept", "label": "Kept", "content": "B" }
+        ]
+      },
+      "expected": {
+        "system": "",
+        "user": "<<<EXTERNAL_DATA section=\"kept\">>>\n--- Kept ---\nB\n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [{ "key": "kept", "chars": 1, "truncated": false }]
+      }
+    },
+    {
+      "name": "drop-empty-blocks-default-off-keeps-whitespace-block",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": null,
+        "scopeParts": {},
+        "dataBlocks": [
+          { "key": "blank", "label": "Blank", "content": " " },
+          { "key": "kept", "label": "Kept", "content": "B" }
+        ]
+      },
+      "expected": {
+        "system": "",
+        "user": "<<<EXTERNAL_DATA section=\"blank\">>>\n--- Blank ---\n \n<<<END_EXTERNAL_DATA>>>\n\n<<<EXTERNAL_DATA section=\"kept\">>>\n--- Kept ---\nB\n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [{ "key": "blank", "chars": 1, "truncated": false }, { "key": "kept", "chars": 1, "truncated": false }]
+      }
+    },
+    {
+      "name": "drop-empty-blocks-keeps-non-breaking-space-content",
+      "input": {
+        "platformRules": "",
+        "resolvedPrompt": null,
+        "scopeParts": {},
+        "dropEmptyBlocks": true,
+        "dataBlocks": [{ "key": "nbsp", "label": "NBSP", "content": " " }]
+      },
+      "expected": {
+        "system": "",
+        "user": "<<<EXTERNAL_DATA section=\"nbsp\">>>\n--- NBSP ---\n \n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [{ "key": "nbsp", "chars": 1, "truncated": false }]
+      }
+    }
+  ]
+}
