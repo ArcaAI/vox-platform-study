@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Opt
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
+import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunKind, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MAX_CURSOR_LIMIT, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
@@ -195,7 +195,9 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     }
     const limit = clampCursorLimit(options.limit);
 
-    const where: Record<string, unknown> = { tenantId };
+    // TASK-1038 OD-26 — the table also holds AGENT runs (`POST /agents/:slug/runs`); this is the
+    // WORKFLOW runs list, so they never appear in it.
+    const where: Record<string, unknown> = { tenantId, kind: WorkflowRunKind.WORKFLOW };
     if (filters.workflowSlug) where.workflowSlug = filters.workflowSlug;
     if (filters.workflowVersionId) where.workflowVersionId = filters.workflowVersionId;
     if (filters.status) where.status = filters.status;
