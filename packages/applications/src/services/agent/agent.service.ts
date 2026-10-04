@@ -72,9 +72,9 @@ import {
 } from '@arcaai/workflow-contract';
 import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
-// TASK-991 OD-3 — which agent parameters the PLATFORM owns, derived from the contract's own
-// `readOnly` annotation so the schema, this guard and the console cannot disagree.
-import { platformManagedParameterChanges } from './platform-managed-parameters';
+// TASK-991 OD-3 / TASK-1036 W2 — which agent parameters the PLATFORM owns, derived from the
+// contract's `platformManagedPaths` so the schema, this guard and the console cannot disagree.
+import { carryForwardPlatformManagedParameters, platformManagedParameterChanges } from './platform-managed-parameters';
 import { agentRequiredVariables } from './agent-required-variables';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
@@ -440,6 +440,8 @@ export class AgentService extends BaseService implements IAgentService {
   async create(dto: CreateAgentRequest): Promise<AgentResponse> {
     const tenantId = this.requireTenant();
     this.assertTagGrammar(dto.tags);
+    // TASK-1036 W2 — before any read, so a refused create touches nothing.
+    this.guardPlatformManagedParameters(dto.task, dto.parameters, undefined);
     const model = await this.loadModelOrThrow(dto.modelId, tenantId);
     const fallbackModels = await this.loadFallbackModelsOrThrow(dto.fallbackModelIds ?? [], tenantId);
 
@@ -488,7 +490,7 @@ export class AgentService extends BaseService implements IAgentService {
     // TASK-991 OD-3 — after `loadOwned` (existence first, privilege second: a gate whose answer
     // varies by ROW must never become an existence oracle) and before any field is applied, so a
     // refused write leaves the entity exactly as it was loaded.
-    this.assertPlatformManagedParametersUnchanged(entity, dto);
+    const parameters = this.guardPlatformManagedParameters(entity.task, dto.parameters, entity.parameters);
 
     const model = await this.loadModelOrThrow(dto.modelId ?? entity.modelId, entity.tenantId);
     const currentFallbacks = await this.fallbackRepository.findByAgentId(entity.id);
@@ -506,7 +508,7 @@ export class AgentService extends BaseService implements IAgentService {
     if (dto.contextSchemaId !== undefined) entity.contextSchemaId = dto.contextSchemaId;
     if (dto.contextSchemaVersionNumber !== undefined) entity.contextSchemaVersionNumber = dto.contextSchemaVersionNumber;
     if (dto.instruction !== undefined) entity.instruction = dto.instruction as JsonValue;
-    if (dto.parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(dto.parameters) as JsonValue;
+    if (parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(parameters) as JsonValue;
     if (dto.inputSchema !== undefined) entity.inputSchema = dto.inputSchema as JsonValue;
     if (dto.outputSchema !== undefined) entity.outputSchema = dto.outputSchema as JsonValue;
     if (dto.tools !== undefined) entity.tools = dto.tools as JsonValue;
@@ -1349,6 +1351,8 @@ export class AgentService extends BaseService implements IAgentService {
 
     const slug = dto.slug ?? payload.slug;
     this.assertTagGrammar(payload.tags);
+    // TASK-1036 W2 — a bundle is a tenant WRITE like any other: it may not carry platform-managed values.
+    this.guardPlatformManagedParameters(payload.task as AgentTask, payload.parameters ?? undefined, undefined);
 
     const view = this.viewOf(payload.task as AgentTask, { ...payload, instruction });
     const model = await this.loadModelOrThrow(modelId as string, tenantId);
@@ -1456,33 +1460,36 @@ export class AgentService extends BaseService implements IAgentService {
   }
 
   /**
-   * TASK-991 (owner decision OD-3, 2026-09-19) — the PLATFORM-MANAGED parameter lock.
+   * TASK-991 (OD-3) generalised by TASK-1036 W2 / OD-11 — the PLATFORM-MANAGED parameter lock.
    *
-   * The speaker-embedding model is fixed for every tenant: a voice profile is an embedding in ONE
-   * model's vector space, so re-pointing an agent at another `SPEAKER_EMBEDDING` row raises no
-   * error anywhere — it just silently stops diarization recognising anyone the tenant enrolled.
-   * Which paths are locked is declared by the CONTRACT (`readOnly: true` on the property), not by
-   * a list here; see `platform-managed-parameters.ts`.
+   * WHICH paths: the contract's `platformManagedPaths(task)` — every parameter leaf outside the
+   * tenant-editable set (temperature, max tokens and the §8.6 task switches), plus TASK-991's
+   * `readOnly` speaker-embedding slug. See `platform-managed-parameters.ts`.
    *
    * REFUSED, never ignored. Dropping the value on the floor and saving the rest is how an admin
    * concludes the field is broken and files a bug against the wrong thing; a 403 naming the path
-   * says who owns it and where it is changed.
+   * says who owns it.
    *
-   * THE ONE EXEMPTION is a super administrator writing the SYSTEM-tier agent — the tier OD-3 puts
-   * the value in ("a PLATFORM admin owns it at the SYSTEM tier, so it is changed by editing a
-   * value, not by shipping a release"). Deliberately narrower than `isSuperAdmin` alone: a
-   * platform admin acting inside a CUSTOMER tenant is still editing that tenant's cloned agent,
-   * and one tenant's profiles break exactly the same way whoever typed the change.
+   * WHO is exempt: a SUPER_ADMIN, in ANY tenant (OD-11 replaced TASK-991's SYSTEM-only exemption).
+   * Their write is taken exactly as written — removing a value is theirs to do.
+   *
+   * EXISTING VALUES are left untouched: a path the tenant OMITS keeps its stored value
+   * (`carryForwardPlatformManagedParameters`), a path sent back unchanged passes, and only an
+   * actual change — a new value, or an explicit `null` over a stored one — is refused. `current`
+   * is `undefined` on create and import, so there any platform-managed value at all is a change.
+   *
+   * Returns the parameters to persist (the carried-forward copy for a tenant, `next` otherwise).
    */
-  private assertPlatformManagedParametersUnchanged(entity: AgentEntity, dto: UpdateAgentRequest): void {
-    if (dto.parameters === undefined) return;
-    if (entity.tenantId === SYSTEM_TENANT_ID && isSuperAdmin(this.requestUser)) return;
-    const paths = platformManagedParameterChanges(entity.task, dto.parameters, entity.parameters);
-    if (paths.length === 0) return;
+  private guardPlatformManagedParameters(task: AgentTask, next: unknown, current: unknown): unknown {
+    if (next === undefined) return undefined;
+    if (isSuperAdmin(this.requestUser)) return next;
+    const merged = carryForwardPlatformManagedParameters(task, next, current);
+    const paths = platformManagedParameterChanges(task, merged, current);
+    if (paths.length === 0) return merged;
     throw new ForbiddenException({
       message:
-        `This agent parameter is managed by the platform and is the same for every tenant: ${paths.join(', ')}. ` +
-        'A platform administrator changes it once, on the SYSTEM-tier agent; send the stored value back unchanged, or omit it.',
+        `These agent parameters are managed by the platform: ${paths.join(', ')}. ` +
+        'They come from the model defaults a platform administrator maintains; send the stored value back unchanged, or omit it.',
       code: 'AGENT_PARAMETER_PLATFORM_MANAGED',
       paths,
     });
