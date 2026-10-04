@@ -43,6 +43,10 @@ forward guards for ``task-1038-run-protocol-v2``, ``task-1036-bindings`` and
 run-start AND a node-start declared read, bound inputs, an End-wired node, a review fed by a
 binding) and ``loop_workflow_task1036_bindings_history`` / ``interpreter_task1036_loop_history``
 (a loop body bound to ``nodes.<loop>.outputs.item``).
+
+``--task1038-e3`` records the forward guard for ``task-1038-loop-run-start-reads`` (TASK-1038
+lane E3): ``interpreter_task1038_e3_loop_reads_history`` and its loop child's first generation
+``loop_workflow_task1038_e3_reads_history``.
 """
 
 from __future__ import annotations
@@ -737,12 +741,117 @@ async def capture_task1036_era(out_dir: Path) -> None:
             )
 
 
+# ---------------------------------------------------------------------------------------------
+# TASK-1038 lane E3 (`--task1038-e3`): loop-body `runStart` reads.
+# ---------------------------------------------------------------------------------------------
+
+
+async def capture_task1038_e3_era(out_dir: Path) -> None:
+    """Forward guard for ``task-1038-loop-run-start-reads``, on the post-change definition.
+
+    ``interpreter_task1038_e3_loop_reads_history`` — a consultation-bound run with a TOP-LEVEL
+    run-start read (``task-1036-consultation-reads``) AND a loop-body node's run-start read (the
+    new marker, taken after it), the body binding it on each of two iterations; and
+    ``loop_workflow_task1038_e3_reads_history`` — the loop child's first generation, whose input
+    carries the reads.
+    """
+    from harness.temporal.interpreter import activities as interpreter_activities
+    from harness.tests.unit.temporal.interpreter import _task1038_harness as h
+    from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
+
+    class _Api:
+        async def read_consultation(self, consultation_id: str, **kwargs: Any) -> dict[str, Any]:
+            answers = {"consultation.patient.age": 41, "consultation.visitType": "revisit"}
+            return {
+                "values": {p: answers.get(p) for p in kwargs["paths"]},
+                "readAt": "2026-10-04T10:00:00.000Z",
+                "schemaVersion": 1,
+            }
+
+    interpreter_activities._RUN_EVENT_REDIS = FakeRunStreamRedis()  # noqa: SLF001
+    interpreter_activities._RUN_EVENT_REDIS_BUILT = True  # noqa: SLF001
+    interpreter_activities._api_client = lambda _settings: _Api()  # type: ignore[assignment]  # noqa: SLF001
+
+    trigger = h.trigger()
+    trigger["config"] = {"kinds": ["consultation", "api"]}
+    top = {
+        **h.agent("n_top", _stub="echo"),
+        "bindings": {"age": {"from": "consultation.patient.age", "at": "runStart"}},
+        "consultationReads": [{"path": "consultation.patient.age", "at": "runStart"}],
+    }
+    loop_node = _node(
+        "n_loop",
+        "core.loop",
+        "interpreter.core_loop",
+        config={
+            "mode": "foreach",
+            "over": "trigger.items",
+            "bounds": {"maxIterations": 5, "maxDurationSeconds": 600, "maxTotalTokens": 100000},
+            "collect": "text",
+        },
+        inputs=[_edge("n_trigger", "out", "in")],
+        timeout=3600,
+    )
+    body_node = {
+        **h.agent("n_body", _stub="echo"),
+        "bindings": {
+            "message": {"from": "nodes.n_loop.outputs.item"},
+            "visit": {"from": "consultation.visitType", "at": "runStart"},
+        },
+        "consultationReads": [{"path": "consultation.visitType", "at": "runStart"}],
+    }
+    graph = h.body(
+        [
+            {"stageIndex": 0, "nodes": [trigger]},
+            {"stageIndex": 1, "nodes": [top, loop_node]},
+        ],
+        loops=[{"nodeId": "n_loop", "body": {"stages": [{"stageIndex": 0, "nodes": [body_node]}]}}],
+    )
+    run_id = "run-task1038-e3-loop-reads"
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        ref = await _ref(graph)
+        tq = f"task1038-e3-{uuid.uuid4()}"
+        async with Worker(
+            env.client, task_queue=tq, workflows=h.WORKFLOWS, activities=h.ACTIVITIES
+        ):
+            handle = await env.client.start_workflow(
+                WorkflowInterpreter.run,
+                InterpreterInput(
+                    session_id="s-fixture",
+                    workflow_version_id="v-fixture",
+                    config_ref=ref,
+                    tenant_id=_TENANT,
+                    run_id=run_id,
+                    payload={"items": ["first", "second"]},
+                    subject=RunSubject(consultationId=_CONSULTATION),
+                    retention_seconds=86_400,
+                ),
+                id=f"interpreter-task1038-e3-{uuid.uuid4()}",
+                task_queue=tq,
+            )
+            result = await handle.result()
+            print(f"task1038 e3 loop reads: status={result.status}")
+            parent = await handle.fetch_history()
+            _write(out_dir, "interpreter_task1038_e3_loop_reads_history", parent)
+            loop_id = core_loop_workflow_id(run_id, "n_loop")
+            first_run = _child_first_run_id(parent, loop_id)
+            _write(
+                out_dir,
+                "loop_workflow_task1038_e3_reads_history",
+                await env.client.get_workflow_handle(loop_id, run_id=first_run).fetch_history(),
+            )
+
+
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a not in ("--task1038", "--task1036")]
+    args = [a for a in sys.argv[1:] if a not in ("--task1038", "--task1036", "--task1038-e3")]
     target = (
         Path(args[0]) if args else Path("apps/harness/src/harness/tests/unit/temporal/fixtures")
     )
-    if "--task1036" in sys.argv[1:]:
+    if "--task1038-e3" in sys.argv[1:]:
+        asyncio.run(capture_task1038_e3_era(target))
+    elif "--task1036" in sys.argv[1:]:
         asyncio.run(capture_task1036_era(target))
     elif "--task1038" in sys.argv[1:]:
         asyncio.run(capture_task1038_era(target))

@@ -882,6 +882,13 @@ class CoreLoopInput(BaseModel):
     #: TASK-1038 R6, additive-optional: `2` when the parent run speaks protocol v2 — the body's
     #: node activities then emit their admin events, scoped per iteration (`iter:<n>`).
     protocol: int | None = None
+    #: TASK-1038 lane E3, additive-optional: the body nodes' declared `runStart` consultation
+    #: reads, taken ONCE by the parent before its walk — values by node id, keyed by full path
+    #: (`consultation.visitType`), and the reads that failed (node id → reason). Both empty for
+    #: every loop started before the `task-1038-loop-run-start-reads` marker, so a replayed
+    #: history's body walk is unchanged. Carried across `continue_as_new` with the rest.
+    run_start_reads: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    run_start_read_failures: dict[str, str] = Field(default_factory=dict)
 
 
 class CoreLoopResult(BaseModel):
