@@ -1,5 +1,5 @@
 /**
- * Prompt Instruction Templates screen — the tenant-admin surface
+ * Hope Prompts screen — the tenant-admin surface
  * for the prompts behind pre-summary and summary generation.
  *
  * fetch is stubbed at the network boundary. Coverage: the working-tenant gate,
@@ -318,7 +318,7 @@ describe('PromptTemplatesScreen', () => {
       stubTemplates();
       renderWithProviders(<PromptTemplatesScreen />);
 
-      expect(await screen.findByRole('heading', { level: 1, name: 'Prompt Instruction Templates' })).toBeDefined();
+      expect(await screen.findByRole('heading', { level: 1, name: 'Hope Prompts' })).toBeDefined();
       expect(await screen.findByRole('tab', { name: 'Fallbacks', selected: true })).toBeDefined();
       expect(await screen.findByText('Clinical Pre-Summary')).toBeDefined();
       // The shape statement itself, not just the template name.
@@ -572,7 +572,7 @@ describe('PromptTemplatesScreen', () => {
     renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?create=1' });
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('New prompt template')).toBeDefined();
+    expect(within(dialog).getByText('New Hope Prompt')).toBeDefined();
   });
 
   /**
@@ -622,7 +622,7 @@ describe('PromptTemplatesScreen', () => {
       renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates&template=pt-ps' });
 
       const dialog = await screen.findByRole('dialog');
-      const tagBox = await within(dialog).findByRole('textbox', { name: 'Tags' });
+      const tagBox = await within(dialog).findByRole('combobox', { name: 'Tags' });
       fireEvent.change(tagBox, { target: { value: 'dept:cardiology' } });
       fireEvent.keyDown(tagBox, { key: 'Enter' });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
@@ -665,7 +665,7 @@ describe('PromptTemplatesScreen', () => {
       const dialog = await screen.findByRole('dialog');
       fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
       setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
-      const tagBox = within(dialog).getByRole('textbox', { name: 'Tags' });
+      const tagBox = within(dialog).getByRole('combobox', { name: 'Tags' });
       fireEvent.change(tagBox, { target: { value: 'dept:nephrology' } });
       fireEvent.keyDown(tagBox, { key: 'Enter' });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));

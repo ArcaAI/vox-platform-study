@@ -3,8 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { templateReferences } from '@arcaai/workflow-contract';
-import { IconPlus, IconTrash, IconWand, IconX } from '@tabler/icons-react';
-import { Badge } from '@arcaai/ui/components/shadcn/badge';
+import { IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -14,6 +13,7 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import { TemplateField, templateSyntaxLint, variableNamePaths, withPlatformPaths } from '@/shared/template-editor';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
+import { TagsField } from '@/shared/tags-field';
 import { useCreateTemplate, useDepartments, useUpdateTemplate } from '../api/hooks';
 import type { PromptTemplate, PromptTemplateCategory, PromptTemplateStatus, PromptVariableDeclaration, PromptVariableType } from '../api/types';
 
@@ -182,75 +182,12 @@ const STATUS_OPTIONS: { value: PromptTemplateStatus; label: string }[] = [
   { value: 'PUBLISHED', label: 'Published' },
 ];
 
-/**
- * Tag editor (chips + an add box) — shared by the create and edit forms.
- *
- * `PromptTemplate` is a TAGGED entity end to end (column, create/update DTOs,
- * response) and tags are already load-bearing at RESOLUTION time — the
- * tenant-wide pre-summary is picked by the `pre-summary` tag, minus
- * `dept-free` — yet the console had no way to read or write them. With the
- * `departmentId` scope being deprecated in favour of `dept:<slug>` tags, an
- * admin who cannot edit tags cannot steer resolution at all.
- *
- * Enter or a comma commits; a comma-separated paste adds several at once.
- * Duplicates and blanks are dropped, and order is preserved (the resolver's
- * tie-breaks are by row, never by tag order, so this is purely cosmetic).
- */
-function TagsField({ idPrefix, tags, onChange }: { idPrefix: string; tags: string[]; onChange: (next: string[]) => void }) {
-  const [draft, setDraft] = useState('');
-
-  function commit(raw: string) {
-    const added = raw
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    if (added.length === 0) return;
-    const next = [...tags];
-    for (const tag of added) if (!next.includes(tag)) next.push(tag);
-    onChange(next);
-    setDraft('');
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor={`${idPrefix}-tags`}>Tags</Label>
-      {tags.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="rounded-full py-0.5 pr-1 font-mono text-[11px]">
-              {tag}
-              <button
-                type="button"
-                aria-label={`Remove tag ${tag}`}
-                className="text-muted-foreground hover:text-foreground ml-1 cursor-pointer rounded-full"
-                onClick={() => onChange(tags.filter((entry) => entry !== tag))}
-              >
-                <IconX aria-hidden className="size-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      ) : null}
-      <Input
-        id={`${idPrefix}-tags`}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ',') return;
-          event.preventDefault();
-          commit(draft);
-        }}
-        onBlur={() => commit(draft)}
-        placeholder="dept:cardiology — Enter to add"
-        autoComplete="off"
-      />
-      <p className="text-muted-foreground text-xs">
-        Tags select prompts at resolution time (<span className="font-mono">pre-summary</span>) and carry the department axis as{' '}
-        <span className="font-mono">dept:&lt;slug&gt;</span>.
-      </p>
-    </div>
-  );
-}
+const TAGS_DESCRIPTION = (
+  <>
+    Tags select prompts at resolution time (<span className="font-mono">pre-summary</span>) and carry the department axis as{' '}
+    <span className="font-mono">dept:&lt;slug&gt;</span>.
+  </>
+);
 
 function RequiredMark() {
   return (
@@ -286,7 +223,16 @@ function TemplateContentField({
   );
   return (
     <div className="flex min-h-40 flex-1 flex-col">
-      <TemplateField label="Prompt content" required value={value} onChange={onChange} paths={paths} lint={templateSyntaxLint} minLines={10} placeholder={placeholder} />
+      <TemplateField
+        label="Prompt content"
+        required
+        value={value}
+        onChange={onChange}
+        paths={paths}
+        lint={templateSyntaxLint}
+        minLines={10}
+        placeholder={placeholder}
+      />
     </div>
   );
 }
@@ -417,7 +363,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
         placeholder={'You are a clinical scribe. Summarize {{transcript}} as…'}
       />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
-      <TagsField idPrefix="create-template" tags={tags} onChange={setTags} />
+      <TagsField id="create-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
       <FormActions>
         <Button type="button" variant="outline" onClick={onCancel} disabled={createTemplate.isPending}>
           Cancel
@@ -559,7 +505,7 @@ export function EditTemplateForm({
       </div>
       <TemplateContentField value={content} onChange={setContent} variables={variables} />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
-      <TagsField idPrefix="edit-template" tags={tags} onChange={setTags} />
+      <TagsField id="edit-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
       <div className="flex flex-col gap-2">
         <Label htmlFor="edit-template-change-reason">Change reason</Label>
         <Input

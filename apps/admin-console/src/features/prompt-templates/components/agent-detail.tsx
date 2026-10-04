@@ -128,7 +128,7 @@ export function AgentDetailDrawer({
   // Create mode: a single form, no tabs, no detail read.
   if (creating) {
     return (
-      <DetailDrawer open={open} onOpenChange={onOpenChange} size="lg" title="New prompt template">
+      <DetailDrawer open={open} onOpenChange={onOpenChange} size="lg" title="New Hope Prompt">
         <CreateTemplateForm onCreated={onCreated} onCancel={() => onOpenChange(false)} />
       </DetailDrawer>
     );
