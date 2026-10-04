@@ -134,15 +134,16 @@ export class WorkflowsController {
       '`blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s ' +
       'with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as ' +
       '`GET :slug/runs/:runId/stream`. ' +
-      '**Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — ' +
-      'the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. ' +
+      '**Idempotency**: send `Idempotency-Key` and a retry with the same body JOINS the existing run instead of starting (and billing) a ' +
+      'second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. The same key with a ' +
+      'different body is 409 `IDEMPOTENCY_KEY_REUSED`. ' +
       '**Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. ' +
       'To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation ' +
       'graph is not invocable here, and consultation identity is never accepted in the request body.',
   })
   @ApiParam({ name: 'slug' })
   @ApiQuery({ name: 'mode', required: false, enum: ['async', 'blocking', 'stream'], description: 'Response mode. Default `async`.' })
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value joins the existing run.' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value and body joins the existing run.' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse, description: '`mode=async` — the run handle.' })
   @ApiResponse({ status: 200, type: WorkflowRunStatusResponse, description: '`mode=blocking` — the terminal run status.' })
   @ApiResponse({
@@ -166,7 +167,8 @@ export class WorkflowsController {
     description:
       'The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries ' +
       'it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a ' +
-      'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row.',
+      'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row. ' +
+      '`IDEMPOTENCY_KEY_REUSED` — the `Idempotency-Key` already started a run with a different body.',
   })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   @ApiResponse({
