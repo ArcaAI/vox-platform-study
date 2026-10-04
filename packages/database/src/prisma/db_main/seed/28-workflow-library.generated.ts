@@ -245,7 +245,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -275,7 +276,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -302,7 +304,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -330,7 +337,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -343,7 +355,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -370,7 +383,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -383,7 +404,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -410,7 +432,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -423,7 +453,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
@@ -453,7 +484,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -485,7 +521,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -552,7 +593,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -561,7 +607,28 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0000-000000000040",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000051",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0000-000000000001",
         "entitlementKeys": [],
@@ -579,7 +646,17 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "2c02ff204655e312e262b037eb2c43df9987118750256a55e73abb3a1d8232c0"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "d862d22febb303925464655d1a8d07d150616e3b7dcf00abe91cda67db370d1e"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -809,7 +886,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
@@ -831,7 +909,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -863,7 +946,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         }
@@ -872,7 +960,18 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000051",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0000-000000000001",
         "entitlementKeys": [],
@@ -890,7 +989,14 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "dbe13444382c5bd76c1277069cd7b98b792f4476d39a79311fab8e5248200b16"
+      "settings": {
+        "connections": [
+          "api",
+          "sse"
+        ],
+        "sources": []
+      },
+      "checksum": "ebb9d00736317a8563f3e3e912c649db0a85044547e6a98ba1c583f6e7648718"
     }
   },
   "SYSTEM:general-medicine-consultation": {
@@ -1121,7 +1227,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1151,7 +1258,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1178,7 +1286,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -1206,7 +1319,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -1219,7 +1337,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1246,7 +1365,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -1259,7 +1386,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1286,7 +1414,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1299,7 +1435,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
@@ -1329,7 +1466,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1361,7 +1503,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1428,7 +1575,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -1437,7 +1589,28 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0000-000000000040",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000004",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0002-000000000001",
         "entitlementKeys": [],
@@ -1455,7 +1628,17 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "5d5f285038717dda2ed01da93ff4d6938f0a83feeb606c9fda1ba7d867153c5d"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "260c1552b45337a63ff39320bab670681362ed8461856ea5555551577c514302"
     }
   },
   "SYSTEM:platform-default-summarization": {
@@ -1685,7 +1868,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
@@ -1707,7 +1891,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -1739,7 +1928,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         }
@@ -1748,7 +1942,18 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000004",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0002-000000000001",
         "entitlementKeys": [],
@@ -1766,7 +1971,14 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "ca214f22cb1d97c1c3e0acce8732c3c021eb82ded23c5d351bd276b3dbe949d7"
+      "settings": {
+        "connections": [
+          "api",
+          "sse"
+        ],
+        "sources": []
+      },
+      "checksum": "f1490ad172f8f38e79515bad8167f7728696d7a345217a8515e73184601b1afa"
     }
   }
 };

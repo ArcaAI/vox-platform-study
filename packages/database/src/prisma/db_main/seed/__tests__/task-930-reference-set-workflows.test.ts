@@ -167,6 +167,9 @@ describe('phase 26 clones the SYSTEM workflow library into a tenant', () => {
       const real = engineOutputFor(
         { ...source, key: `PARITY:${row.slug}`, id: row.id, tenantId: TENANT, graph: row.graph, contextSchemaVersionId: tenantVersion.id },
         REGISTRY_CHECKSUM,
+        // TASK-1036 W3 — the clone carries the SOURCE's frozen agent/prompt pins verbatim (only
+        // identity and the context schema are re-stamped), so the parity compile reads SYSTEM's agents.
+        { pinTenantId: SYSTEM_TENANT_ID },
       );
       expect(real.problems).toEqual([]);
       expect(row.compiledConfig).toEqual(real.compiledConfig);
