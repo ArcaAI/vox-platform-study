@@ -203,9 +203,12 @@ async def stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     `audio` artifact (`_run_transcription`), a TEXT_GENERATION agent needs `in` or `context`
     (`_run_text_generation`).
     """
-    _BOUND[payload.node_id] = dict(payload.bound_inputs)
+    # TASK-1036 §9.2 — the seeded graphs now carry compiled `bindings`, which hand an agent its
+    # primary text by NodeIO name (`message` / `text`); the real activities read it through
+    # `core._bound`, which aliases it onto the legacy `in`. The stub reads it the same way.
+    bound = core._bound(payload)
+    _BOUND[payload.node_id] = dict(bound)
     slug = (payload.config.get("agentRef") or {}).get("slug") or ""
-    bound = payload.bound_inputs
 
     if slug == "realtime-transcription":
         if not bound.get("audio"):
@@ -337,7 +340,10 @@ class TestTheSeededWiring:
     def test_the_trigger_declares_the_transcript_kind(self, key: str) -> None:
         trigger = _compiled_node(_config(key), "n_trigger")
         resolved = trigger["config"]["contextSchema"]["resolved"]
-        assert resolved["properties"]["transcript"] == {"type": "object"}
+        # TASK-1038 F1 — a TEXT kind (cardinality ONE) also accepts a plain string.
+        assert resolved["properties"]["transcript"] == {
+            "anyOf": [{"type": "string"}, {"type": "object"}]
+        }
         assert "transcript" not in resolved.get("required", [])
 
     @pytest.mark.parametrize("key", _CONSULTATION_KEYS)

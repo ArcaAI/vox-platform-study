@@ -13,6 +13,10 @@ and ``activity_mismatch`` skips above it are, and these tests exercise ``_dispat
 directly with no Temporal server (the same hermetic approach as
 ``test_bound_input_resolution.py`` — ``WorkflowInterpreter.__init__`` sets plain fields).
 
+TASK-1036/1038 (95a1403e9): ``_dispatch_node`` is now a thin wrapper that records each node's
+duration in WORKFLOW time (``workflow.now()`` around the call), so the skip branches live in
+``_dispatch_node_inner`` and these tests call that — the purity property is unchanged there.
+
 Ordering matters and is asserted: lane ownership is decided FIRST. A ``realtime`` node is not
 this runtime's to report on at all, so a disabled realtime node must still come back as
 ``realtime_lane`` — exactly one runtime ever speaks for a given node.
@@ -89,7 +93,7 @@ _BOUND = RunSubject(consultationId="01a0816f-0000-7000-8000-000000000001")
 class TestADisabledNodeIsSkippedObservably:
     @pytest.mark.asyncio
     async def test_enabled_false_skips_with_disabled_by_config(self):
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(_DURABLE_TYPE, {"enabled": False, "onError": "degrade"}), _input(), 0
         )
 
@@ -104,7 +108,7 @@ class TestADisabledNodeIsSkippedObservably:
     async def test_the_skip_beats_the_activity_cross_check(self):
         # A node an admin switched OFF must not be reported as a wiring defect; the author's
         # intent is the more specific answer, and the activity is never going to be dispatched.
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(
                 _DURABLE_TYPE,
                 {"enabled": False, "onError": "degrade"},
@@ -136,7 +140,7 @@ class TestAbsentOrTrueMeansEnabled:
     async def test_dispatch_proceeds_past_the_toggle(self, config):
         # Reaching `activity_mismatch` is the observable proof that the enabled check did not
         # short-circuit: that branch sits AFTER it.
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(_DURABLE_TYPE, config, activity="interpreter.wrong"), _input(), 0
         )
 
@@ -153,7 +157,7 @@ class TestLaneOwnershipIsDecidedFirst:
         # `_configured_realtime` reads `execution.lane` off the node's own config.
         assert all(spec.lane != "realtime" for spec in NODE_REGISTRY.values())
 
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(
                 _REALTIME_TYPE,
                 {**_REALTIME_CONFIG, "enabled": False, "onError": "degrade"},
@@ -171,7 +175,7 @@ class TestLaneOwnershipIsDecidedFirst:
         # ownership has nobody to defer to and the node is this interpreter's to run — which
         # means the per-node kill switch is the thing that decides, and it must be REPORTED as
         # such rather than as a hand-off that never happens.
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(
                 _REALTIME_TYPE,
                 {**_REALTIME_CONFIG, "enabled": False, "onError": "degrade"},
@@ -200,7 +204,7 @@ class TestTheSkipIsAPureRead:
         monkeypatch.setattr(wf_module.workflow, "now", _boom)
         monkeypatch.setattr(wf_module.workflow, "random", _boom)
 
-        result = await WorkflowInterpreter()._dispatch_node(
+        result = await WorkflowInterpreter()._dispatch_node_inner(
             _node(_DURABLE_TYPE, {"enabled": False, "onError": "degrade"}), _input(), 0
         )
 

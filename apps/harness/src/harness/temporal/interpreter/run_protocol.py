@@ -21,7 +21,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeGuard
 
 RUN_PROTOCOL_VERSION = 2
 RUN_PROTOCOL_HEADER = "x-hope-run-protocol"
@@ -406,7 +406,7 @@ RUN_EVENT_DATA_SCHEMAS: dict[str, dict[str, Any]] = {
 # ---------------------------------------------------------------------------------------------
 
 
-def _is_number(value: Any) -> bool:
+def _is_number(value: Any) -> TypeGuard[int | float]:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
@@ -532,7 +532,7 @@ def run_event_problems(
         )
     synthetic = known and type_ in SYNTHETIC_RUN_EVENT_TYPES
     seq = value.get("seq")
-    if not (_is_number(seq) and float(seq).is_integer()) or seq < 0:
+    if not (_is_number(seq) and float(seq).is_integer() and seq >= 0):
         problems.append("seq must be a non-negative integer")
     elif known and not synthetic and seq < 1:
         problems.append("seq must be ≥ 1 on a stored event (only ping and run.resync may carry 0)")

@@ -73,7 +73,6 @@ async def main() -> None:
     rb = await retriever.retrieve(query=QUERY, tenant_id=TENANT_B)
     _dump("B: tenant-B same hypertension query (isolation)", rb)
     leaks = [c.chunk_id for c in rb.chunks if c.chunk_id == CHUNK_A]
-    foreign = [c.chunk_id for c in rb.chunks if c.knowledge_document_id and c.chunk_id == CHUNK_A]
     iso_ok = len(leaks) == 0
     print(
         f"  => CROSS-TENANT ISOLATION: {'PASS' if iso_ok else 'FAIL'} (tenant-A leaks into B: {leaks or 0})"
