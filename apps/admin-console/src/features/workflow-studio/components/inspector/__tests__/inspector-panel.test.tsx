@@ -39,7 +39,9 @@ afterEach(() => {
 describe('InspectorPanel', () => {
   it('shows an empty state when no node is selected', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    expect(screen.getByText(/select a node/i)).toBeTruthy();
+    // TASK-1036 E4a — the empty state names steps AND links ("Select a step or a link …").
+    expect(screen.getByText('No node selected')).toBeTruthy();
+    expect(screen.getByText(/select a step or a link on the canvas/i)).toBeTruthy();
   });
 
   it('renders a Skeleton matching the field layout while loading', () => {

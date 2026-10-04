@@ -27,7 +27,7 @@ import { compile, type CompiledNode, type CompiledWorkflowConfig, type CompilerC
 import type { WorkflowGraph } from '../graph-model';
 import { NODE_PORTS } from '../node-ports';
 import { nodeInfo, workflowNodeClassLookup, WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import type { AgentIOResolver } from '../node-io';
+import type { AgentIOResolution, AgentIOResolver } from '../node-io';
 import { publishFindings, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, type PublishAgentView } from '../publish-findings';
 import type { WorkflowFinding } from '../report';
 import { validate } from '../validate';
@@ -169,7 +169,8 @@ function publishPinsFor(target: Target): {
   agents: AgentIOResolver;
   promptTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
 } {
-  const agents: AgentIOResolver = {};
+  // Built mutably, returned as the read-only `AgentIOResolver` (TS2542 on an index write otherwise).
+  const agents: Record<string, AgentIOResolution> = {};
   const pins = new Map<string, { versionNumber: number; promptRefs: Array<{ templateId: string; versionNumber: number }> }>();
   const agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }> = [];
   for (const ref of PINS.agentNodeRefs(target.graph) as Array<{ nodeId: string; slug: string; versionNumber: number | null }>) {

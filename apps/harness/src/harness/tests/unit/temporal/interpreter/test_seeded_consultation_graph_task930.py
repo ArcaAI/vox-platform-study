@@ -69,6 +69,7 @@ from harness.temporal.interpreter.models import (
     ReviewDecisionSignal,
     RunSubject,
 )
+from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.review_workflow import ReviewGateWorkflow, review_gate_workflow_id
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
@@ -146,7 +147,9 @@ async def stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     asserts the graph survives their absence rather than pretending they produced something.
     """
     slug = (payload.config.get("agentRef") or {}).get("slug")
-    bound = payload.bound_inputs
+    # TASK-1036 §9.2 — compiled `bindings` hand an agent its primary text by NodeIO name
+    # (`message` / `text`); the real activities alias it onto `in` through `core._bound`.
+    bound = core._bound(payload)
 
     if slug == "realtime-transcription":
         if not bound.get("audio"):

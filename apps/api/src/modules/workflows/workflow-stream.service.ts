@@ -198,6 +198,8 @@ export class WorkflowStreamService {
         terminalCheckMs: terminalCheckIntervalMs(this.settings),
         blockMs: WORKFLOW_STREAM_BLOCK_MS,
         heartbeatMs: WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS,
+        // The pre-B3a loop's `!res.writableEnded` guard: an ended response issues no further read.
+        beforeRead: () => Promise.resolve(!res.writableEnded),
         logger: this.logger,
         sink: {
           v2: (event) => writeWithBackpressure(res, toSseFrame(event), closed.signal),

@@ -25,6 +25,7 @@ and dies with the request: it is never logged, cached or serialised.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -366,7 +367,7 @@ def prepare_text_egress(
     texts: list[str],
     *,
     provider: str,
-    provider_locality: dict[str, str] | None,
+    provider_locality: Mapping[str, str] | None,
     known_phi: Any,
     spans_by_segment: list[list[Span]] | None,
 ) -> tuple[EgressContext, list[str]]:

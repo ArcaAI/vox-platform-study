@@ -37,7 +37,7 @@ export interface FieldPickerProps {
 
 function FitNote({ item }: { item: PickerItem }) {
   if (item.disabledReason) return <span className="text-muted-foreground text-xs italic">{item.disabledReason}</span>;
-  if (item.bestMatch) return <span className="text-primary text-xs font-medium">Best match</span>;
+  if (item.bestMatch) return <span className="text-foreground text-xs font-medium">Best match</span>;
   if (item.convertNote) return <span className="text-muted-foreground text-xs">{item.convertNote}</span>;
   return null;
 }

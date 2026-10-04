@@ -8,7 +8,7 @@ hyperparameters are omitted so the Text service applies its own defaults.
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import httpx
@@ -222,7 +222,7 @@ class TextClient:
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         provider_override: dict[str, Any] | None = None,
-        provider_locality: dict[str, str] | None = None,
+        provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
@@ -321,7 +321,7 @@ class TextClient:
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
         provider_override: dict[str, Any] | None = None,
-        provider_locality: dict[str, str] | None = None,
+        provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
     ) -> TextGenerationResult:
         """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
@@ -395,7 +395,7 @@ class TextClient:
         context: dict[str, Any] | None,
         idempotency_key: str | None,
         provider_override: dict[str, Any] | None,
-        provider_locality: dict[str, str] | None,
+        provider_locality: Mapping[str, str] | None,
         known_phi: list[dict[str, str]] | None,
         stream: bool,
     ) -> tuple[str, dict[str, Any], dict[str, str]]:
@@ -426,7 +426,7 @@ class TextClient:
         if context is not None:
             body["context"] = context
         if provider_locality:
-            body["provider_locality"] = provider_locality
+            body["provider_locality"] = dict(provider_locality)
         if known_phi:
             body["known_phi"] = known_phi
 

@@ -166,10 +166,16 @@ describe('buildPostmanCollection — agent plane (flat body)', () => {
   it('TEXT_GENERATION emits a blocking invocation and a separate ?mode=stream invocation', () => {
     const collection = buildPostmanCollection(agentInput());
     const items = allItems(collection);
-    expect(items).toHaveLength(2);
+    // TASK-1036/1039 (batch 3 integration) — a third item starts the agent as a RUN
+    // (`POST agents/{slug}/runs`, SDK 5.0 `hope.agents.run`) beside the two invocations.
+    expect(items).toHaveLength(3);
+    const run = items.find((i) => i.request.url.path?.at(-1) === 'runs');
+    expect(run?.request.method).toBe('POST');
+    expect(run?.request.url.path).toEqual(['api', 'v1', 'agents', 'clinic-summarizer', 'runs']);
 
-    const blocking = items.find((i) => !i.request.url.raw.includes('mode=stream'));
-    const streaming = items.find((i) => i.request.url.raw.includes('mode=stream'));
+    const invocations = items.filter((i) => i !== run);
+    const blocking = invocations.find((i) => !i.request.url.raw.includes('mode=stream'));
+    const streaming = invocations.find((i) => i.request.url.raw.includes('mode=stream'));
     expect(blocking).toBeDefined();
     expect(streaming).toBeDefined();
 

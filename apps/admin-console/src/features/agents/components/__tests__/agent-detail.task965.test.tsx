@@ -184,7 +184,10 @@ describe('AgentLineageDrawer — Integration tab (TASK-965, O-2 / AG-8)', () => 
     fireEvent.mouseDown(within(drawer).getByRole('tab', { name: 'Integration' }), { button: 0 });
 
     expect(await within(drawer).findByText('POST /agents/clinic-summarizer/invocations')).toBeTruthy();
-    expect(within(drawer).getByRole('group', { name: /vox-node/i }).textContent).toContain('hope.agents.invoke');
+    // TASK-1036 C4 — the guide now carries TWO vox-node snippets: the invocation one and the SDK 5.0
+    // agent-run one (`hope.agents.run`), so each is addressed by its own name.
+    expect(within(drawer).getByRole('group', { name: /^Node\.js \(@arcaai\/vox-node\) snippet$/ }).textContent).toContain('hope.agents.invoke');
+    expect(within(drawer).getByRole('group', { name: /^Agent run \(@arcaai\/vox-node 5\.0\) snippet$/ }).textContent).toContain('hope.agents.run');
     expect((within(drawer).getByRole('link', { name: /api keys/i }) as HTMLAnchorElement).getAttribute('href')).toBe('/api-keys');
   });
 

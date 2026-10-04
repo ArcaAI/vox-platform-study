@@ -153,7 +153,11 @@ describe('response modes', () => {
 
     await controller.startRun('discharge_summary', { input: {} }, req, response, 'stream', undefined);
 
-    expect(deps.workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', response, undefined);
+    // TASK-1038 B3a — the protocol selection is forwarded to the one stream.
+    expect(deps.workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', response, undefined, {
+      protocolHeader: undefined,
+      protocol: undefined,
+    });
   });
 });
 

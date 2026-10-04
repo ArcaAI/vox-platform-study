@@ -56,7 +56,9 @@ describe('the `transcript` kind', () => {
   it('is an OPTIONAL property of both derived trigger payload schemas', () => {
     for (const definition of [NOTE_CONTEXT_SCHEMA_DEFINITION, ARCAAI_CONSULTATION_SCRIBE_DEFINITION]) {
       const payload = payloadSchemaFromDefinition(definition) as { properties: Record<string, unknown>; required?: string[] };
-      expect(payload.properties.transcript).toEqual({ type: 'object' });
+      // TASK-1038 F1 — payload shapes per primitive: a TEXT kind (cardinality ONE) accepts a plain
+      // string as well as the structured object it always accepted.
+      expect(payload.properties.transcript).toEqual({ anyOf: [{ type: 'string' }, { type: 'object' }] });
       expect(payload.required ?? []).not.toContain('transcript');
     }
   });

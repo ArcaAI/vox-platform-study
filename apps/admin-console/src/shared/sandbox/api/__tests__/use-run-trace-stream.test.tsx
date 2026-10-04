@@ -73,7 +73,8 @@ describe('useRunTraceStream', () => {
   it('opens the admin trace with a run-scoped ticket and protocol 2 from the beginning', async () => {
     renderHook(() => useRunTraceStream('run-1'));
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
-    expect(mints).toEqual([{ scope: 'workflow_run:run-1' }]);
+    // TASK-1038 E2 — the admin trace has its own JWT-only ticket namespace, `workflow_run_trace`.
+    expect(mints).toEqual([{ scope: 'workflow_run_trace:run-1' }]);
     const url = new URL(latest().url);
     expect(url.pathname).toBe('/api/v1/admin/workflow-runs/run-1/trace/stream');
     expect(url.searchParams.get('protocol')).toBe('2');

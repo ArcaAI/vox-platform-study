@@ -63,7 +63,12 @@ function WorkflowEdge({
   const binding = (data as { kind?: string } | undefined)?.kind === 'binding';
   const runState = (data as { runState?: 'idle' | 'done' | 'active' } | undefined)?.runState ?? 'idle';
   // Run overlay (TASK-1036 F2): a lit edge is recoloured through the canvas token, never a raw colour.
-  const stroke = runState === 'active' ? 'var(--workflow-canvas-edge-active)' : runState === 'done' ? 'var(--workflow-canvas-edge-done)' : 'var(--workflow-canvas-edge)';
+  const stroke =
+    runState === 'active'
+      ? 'var(--workflow-canvas-edge-active)'
+      : runState === 'done'
+        ? 'var(--workflow-canvas-edge-done)'
+        : 'var(--workflow-canvas-edge)';
   // Reveal state the portaled button cannot observe for itself: React Flow reports the pointer
   // entering the EDGE (`onEdgeMouseEnter`), but the button lives in the edge-label portal, so
   // moving the pointer off the path and onto the button would fire `onEdgeMouseLeave` and hide

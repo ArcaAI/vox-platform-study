@@ -513,7 +513,14 @@ const RESULT: RunEventDataSchema = Object.freeze({
   anyOf: Object.freeze([
     closed({ kind: Object.freeze({ const: 'inline' }), value: ANY }, ['kind', 'value']),
     closed(
-      { kind: Object.freeze({ const: 'ref' }), bucket: STR1, key: Object.freeze({ type: 'string', minLength: 1 }), sizeBytes: INT0, sha256: SHA256, tenantPrefixed: Object.freeze({ type: 'boolean' }) },
+      {
+        kind: Object.freeze({ const: 'ref' }),
+        bucket: STR1,
+        key: Object.freeze({ type: 'string', minLength: 1 }),
+        sizeBytes: INT0,
+        sha256: SHA256,
+        tenantPrefixed: Object.freeze({ type: 'boolean' }),
+      },
       ['kind', 'bucket', 'key', 'sizeBytes', 'sha256'],
     ),
   ]),
