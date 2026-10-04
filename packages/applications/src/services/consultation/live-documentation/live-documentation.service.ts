@@ -68,8 +68,10 @@ import {
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
+  resolvedPromptVariableDeclarations,
   selectPromptFragments,
   type ComposableResolvedPrompt,
+  type PromptScopeVariableDeclaration,
   type ComposeDataBlock,
   type ComposedMessages,
   type ExpressionValue,
@@ -343,17 +345,33 @@ function livePromptScope(
   const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
   // TASK-1036 (lane B6b) — the node's overrides travel SEPARATELY so `buildPromptScope` renders a
   // `{{…}}` override against the run scope instead of binding it literally (node still wins).
-  return buildPromptScope({ variables: bindings.variables, overrides: bindings.overrides, trigger, context, templateRef: `agent:${agentSlug}` });
+  return buildPromptScope({
+    variables: bindings.variables,
+    overrides: bindings.overrides,
+    // TASK-1036 OD-10 — an absent OPTIONAL declared variable renders `""` (or its default).
+    variableDeclarations: bindings.variableDeclarations,
+    trigger,
+    context,
+    templateRef: `agent:${agentSlug}`,
+  });
 }
 
-/** The agent's own `instruction.variables` and the node's `overrides.promptVariables`, kept apart. */
+/**
+ * The agent's own `instruction.variables` and the node's `overrides.promptVariables`, kept apart,
+ * plus the variable declarations the candidate's frozen prompt carries (OD-10).
+ */
 interface LivePromptBindings {
   readonly variables: Record<string, unknown>;
   readonly overrides: Record<string, unknown>;
+  readonly variableDeclarations: readonly PromptScopeVariableDeclaration[];
 }
 
-function livePromptBindings(instruction: Record<string, unknown>, overrides: NodeOverrides): LivePromptBindings {
-  return { variables: asRecord(instruction.variables), overrides: overrides.promptVariables };
+function livePromptBindings(instruction: Record<string, unknown>, overrides: NodeOverrides, resolvedPrompt: ComposableResolvedPrompt): LivePromptBindings {
+  return {
+    variables: asRecord(instruction.variables),
+    overrides: overrides.promptVariables,
+    variableDeclarations: resolvedPromptVariableDeclarations(resolvedPrompt),
+  };
 }
 
 /**
@@ -386,7 +404,7 @@ function outputLanguagePolicySelected(
   const fragments = Array.isArray(source.fragments) ? source.fragments : [];
   try {
     // The variables `callTextCandidate` renders with — the agent's own, the node's overrides on top.
-    const scope = livePromptScope(livePromptBindings(instruction, overrides), candidate.agent.slug, trigger, candidate.contextSchema);
+    const scope = livePromptScope(livePromptBindings(instruction, overrides, candidate.resolvedPrompt), candidate.agent.slug, trigger, candidate.contextSchema);
     return selectPromptFragments(fragments, scope).selected.some((fragment) => fragment.key === OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
   } catch {
     return false;
@@ -502,6 +520,8 @@ function composeLivePromptParts(
     outputContract: [parts.instructions, corrective?.trim()].filter((part): part is string => !!part).join('\n\n'),
     dataBlocks: parts.blocks,
     templateRef,
+    // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
+    dropEmptyBlocks: true,
   });
 }
 
@@ -6789,7 +6809,7 @@ return 0`;
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
     const instruction = asRecord(candidate.instruction);
-    const bindings = livePromptBindings(instruction, overrides);
+    const bindings = livePromptBindings(instruction, overrides, candidate.resolvedPrompt);
     // TASK-947 §4.1 — ONE render seam for all three instruction forms. A candidate with no
     // instruction body at all serves `LIVE_DOCUMENT_SYSTEM_PROMPT`, the pre-947 case.
     const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);

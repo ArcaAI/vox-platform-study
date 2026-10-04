@@ -234,6 +234,29 @@ describe('the realtime core.agent lane renders the agent instruction through the
     expect(calls).toHaveLength(0);
   });
 
+  it('TASK-1036 OD-10 — an absent OPTIONAL variable the frozen template declares renders ""', async () => {
+    const content = 'Tone: {{tone}}.';
+    const spec = {
+      schemaVersion: 1,
+      agent: {} as never,
+      primary: candidate({
+        resolvedPrompt: {
+          source: 'template',
+          promptTemplateId: 'tpl-1',
+          promptVersionNumber: 2,
+          content,
+          variables: [{ name: 'tone', type: 'string', required: false }],
+        } as never,
+        instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 2 },
+      }),
+      fallback: { autoSwitch: true, chain: [] },
+    } as ResolvedTextGenerationSpec;
+    const { service, post } = buildService(spec);
+    const { calls } = await runOneFlush(service, post);
+
+    expect(headOf(calls[0]?.system_prompt, 'Tone: .')).toBe(agentSystemHead('Tone: .'));
+  });
+
   it('honours `default("…")`', async () => {
     const { service, post } = buildService(withPrompt('{{absent | default("n/a")}}'));
     const { calls } = await runOneFlush(service, post);

@@ -99,6 +99,7 @@ from harness.temporal.interpreter.prompt_composition import (
     ComposedPrompt,
     PromptCompositionEmpty,
     build_prompt_scope,
+    resolved_prompt_variable_declarations,
 )
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 
@@ -872,6 +873,9 @@ def _agent_prompt_scope(
         context=context_view,
         vars=vars_view,
         nodes=nodes_view,
+        # TASK-1036 OD-10 (lane B6b) — the frozen template declarations: an absent OPTIONAL
+        # variable renders "" (or its default); a required one still fails by name.
+        variable_declarations=resolved_prompt_variable_declarations(resolved.resolved_prompt),
     )
     for name, root in extra_roots.items():
         scope.setdefault(name, root)

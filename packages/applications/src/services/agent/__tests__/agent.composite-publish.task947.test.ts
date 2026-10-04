@@ -417,6 +417,17 @@ describe('the two pre-947 forms are untouched', () => {
     });
   });
 
+  it('TASK-1036 OD-10 — a template version`s variable declarations are frozen beside its content (form 1 and fragments)', async () => {
+    const declarations = [{ name: 'tone', type: 'string', required: false }];
+    // The body references nothing: publish's undeclared-reference gate reads the AGENT's bindings, not these.
+    putTemplate('tpl-1', 'SOAP for the clinic.', { variables: declarations });
+    const single = await publish({ promptTemplateId: 'tpl-1', promptVersionNumber: 1 });
+    expect((single.resolvedPrompt as { variables?: unknown }).variables).toEqual(declarations);
+
+    const composite = await publish({ fragments: [{ key: 'base', promptTemplateId: 'tpl-1', promptVersionNumber: 1 }] });
+    expect((composite.resolvedPrompt as { fragments: Array<{ variables?: unknown }> }).fragments[0]?.variables).toEqual(declarations);
+  });
+
   it('form 2 (inline) still compiles to the flat `inline` shape', async () => {
     const compiled = await publish({ systemPrompt: 'You are a scribe.' });
     expect(compiled.resolvedPrompt).toEqual({ source: 'inline', content: 'You are a scribe.' });

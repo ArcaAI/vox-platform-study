@@ -34,6 +34,8 @@
  * renderer has ONE entry point and no `source` sniffing of its own.
  */
 import { evaluateCondition, expressionRootIdentifiers, parseExpression, type ExpressionValue } from './expressions';
+import type { PromptVariableDeclaration } from './derive-variable-declarations';
+import type { PromptScopeVariableDeclaration } from './prompt-scope';
 import { collectPlaceholders, renderTemplate, resolveTemplatePath } from './template';
 
 /** The roots a `when` may read — the render scope's own (`buildAgentPromptScope`), by name. */
@@ -51,6 +53,11 @@ export interface ResolvedPromptFragment {
   readonly content: string;
   /** The authored CEL condition, or `null` for an unconditional fragment. */
   readonly when: string | null;
+  /**
+   * TASK-1036 OD-10 — the template version's variable DECLARATIONS, frozen beside its content at
+   * publish (a `template` fragment only). Absent on an artifact frozen before this field existed.
+   */
+  readonly variables?: readonly PromptVariableDeclaration[];
 }
 
 export interface TemplateResolvedPrompt {
@@ -58,6 +65,8 @@ export interface TemplateResolvedPrompt {
   readonly promptTemplateId: string;
   readonly promptVersionNumber: number;
   readonly content: string;
+  /** TASK-1036 OD-10 — the version's variable declarations, frozen at publish. Absent on older artifacts. */
+  readonly variables?: readonly PromptVariableDeclaration[];
 }
 
 export interface InlineResolvedPrompt {
@@ -189,6 +198,35 @@ export function composePrompt(
  * which is the only honest thing to publish — `unresolvedPromptVariables` below is the
  * per-call, selection-aware half.
  */
+/**
+ * TASK-1036 OD-10 — the variable declarations a resolved prompt froze, for
+ * `buildPromptScope({ variableDeclarations })`: a template's own, or a composite's fragments' in
+ * fragment order (the FIRST declaration of a name wins — a later fragment cannot loosen or tighten
+ * an earlier one's). `[]` for an inline prompt, no prompt, or an artifact frozen before the field
+ * existed — which `buildPromptScope` treats exactly like no declarations at all. Pure; mirrored in
+ * Python as `resolved_prompt_variable_declarations`.
+ */
+export function resolvedPromptVariableDeclarations(resolvedPrompt: ComposableResolvedPrompt): PromptScopeVariableDeclaration[] {
+  if (!resolvedPrompt) return [];
+  const lists: Array<readonly PromptScopeVariableDeclaration[] | undefined> =
+    resolvedPrompt.source === 'template'
+      ? [resolvedPrompt.variables]
+      : resolvedPrompt.source === 'composite'
+        ? (Array.isArray(resolvedPrompt.fragments) ? resolvedPrompt.fragments : []).map((fragment) => fragment?.variables)
+        : [];
+  const seen = new Set<string>();
+  const out: PromptScopeVariableDeclaration[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const declaration of list) {
+      if (typeof declaration?.name !== 'string' || seen.has(declaration.name)) continue;
+      seen.add(declaration.name);
+      out.push(declaration);
+    }
+  }
+  return out;
+}
+
 export function requiredPromptVariables(resolvedPrompt: ComposableResolvedPrompt): string[] {
   if (resolvedPrompt === null || resolvedPrompt === undefined) return [];
   const templates =

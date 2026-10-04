@@ -30,8 +30,10 @@ import {
   buildPromptScope,
   composeMessages,
   platformRules,
+  resolvedPromptVariableDeclarations,
   templateReferences,
   type ComposableResolvedPrompt,
+  type PromptScopeVariableDeclaration,
   type ComposeDataBlock,
   type ComposedDataBlock,
   type ComposedMessages,
@@ -39,6 +41,7 @@ import {
 // TASK-890 §3.4 — the legacy bridge: the SYSTEM schema that DECLARES the v1 prompt vocabulary,
 // cloned into every tenant by the reference set. The slug is imported, never re-typed.
 import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
+import { parsePromptVariableDeclarations } from '../../prompt-management/dto/prompt-variable-declaration.dto';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
@@ -676,6 +679,12 @@ export class PromptAssemblyService {
       ? override.resolvedPrompt
       : (resolved.resolvedPrompt ?? (bodyTemplate ? { source: 'inline', content: bodyTemplate } : null));
     const agentVariables = override ? (override.variables ?? {}) : resolved.resolvedPrompt ? (resolved.promptVariables ?? {}) : {};
+    // TASK-1036 OD-10 — the declarations the instruction carries: frozen on an agent's resolved
+    // prompt, else the governed template row's own. An absent OPTIONAL one renders `""`.
+    const variableDeclarations: readonly PromptScopeVariableDeclaration[] =
+      override || resolved.resolvedPrompt
+        ? resolvedPromptVariableDeclarations(instruction)
+        : parsePromptVariableDeclarations((template as { variables?: unknown } | null)?.variables);
 
     const referenced = referencedNames([...instructionContents(instruction), ...bindingPaths(agentVariables)]);
     // Warm-start refinement, gated behind the kill-switch (default OFF): the live session's
@@ -743,6 +752,7 @@ export class PromptAssemblyService {
       instruction,
       rendered,
       agentVariables,
+      variableDeclarations,
       outputContract,
       outputLanguage: languageName ? { name: languageName } : null,
       dataBlocks,
@@ -799,6 +809,7 @@ export class PromptAssemblyService {
       instruction: ComposableResolvedPrompt;
       rendered: Record<string, string>;
       agentVariables: Record<string, unknown>;
+      variableDeclarations?: readonly PromptScopeVariableDeclaration[];
       outputContract: string;
       outputLanguage: { name: string } | null;
       dataBlocks: ComposeDataBlock[];
@@ -814,6 +825,7 @@ export class PromptAssemblyService {
         trigger: { context },
         context,
         variables: { ...input.rendered, ...input.agentVariables },
+        variableDeclarations: input.variableDeclarations,
         templateRef,
       });
       return composeMessages({
@@ -824,6 +836,8 @@ export class PromptAssemblyService {
         outputContract,
         dataBlocks: input.dataBlocks,
         templateRef,
+        // TASK-1036 OD-10 — a whitespace-only data section is dropped, not sent empty.
+        dropEmptyBlocks: true,
       });
     };
 

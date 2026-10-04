@@ -630,6 +630,9 @@ class ResolvedPromptFragment(BaseModel):
     when: str | None = None
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+    #: TASK-1036 OD-10 — the template version's variable DECLARATIONS, frozen at agent publish.
+    #: Absent (``[]``) on an artifact frozen before the field existed.
+    variables: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ResolvedPrompt(BaseModel):
@@ -656,6 +659,8 @@ class ResolvedPrompt(BaseModel):
     fragments: list[ResolvedPromptFragment] = Field(default_factory=list)
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+    #: TASK-1036 OD-10 — a ``template`` prompt's variable declarations, frozen at publish.
+    variables: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _registry_models(data: dict[str, Any]) -> list[dict[str, Any]]:

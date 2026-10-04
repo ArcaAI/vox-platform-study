@@ -68,6 +68,7 @@ __all__ = [
     "PromptCompositionEmpty",
     "build_prompt_scope",
     "compose_prompt",
+    "resolved_prompt_variable_declarations",
     "select_prompt_fragments",
     "static_projection",
     "unresolved_prompt_variables",
@@ -347,6 +348,42 @@ def build_prompt_scope(
 
 #: Internal "absent" marker for OD-10's fill: distinct from `None`, which is a JSON value.
 _ABSENT = object()
+
+
+def resolved_prompt_variable_declarations(resolved_prompt: Any) -> list[dict[str, Any]]:
+    """TASK-1036 OD-10 — the variable declarations a resolved prompt froze, for
+    ``build_prompt_scope(variable_declarations=...)``: a template's own, or a composite's fragments'
+    in fragment order (the FIRST declaration of a name wins). ``[]`` for an inline prompt, no
+    prompt, or an artifact frozen before the field existed. Accepts the model or its dict form.
+    Mirrors ``resolvedPromptVariableDeclarations``.
+    """
+    if resolved_prompt is None:
+        return []
+
+    def read(holder: Any, key: str) -> Any:
+        return holder.get(key) if isinstance(holder, Mapping) else getattr(holder, key, None)
+
+    source = read(resolved_prompt, "source")
+    if source == "template":
+        lists = [read(resolved_prompt, "variables")]
+    elif source == "composite":
+        fragments = read(resolved_prompt, "fragments")
+        lists = [read(fragment, "variables") for fragment in fragments or []]
+    else:
+        lists = []
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for declarations in lists:
+        if not isinstance(declarations, (list, tuple)):
+            continue
+        for declaration in declarations:
+            if not isinstance(declaration, Mapping) or not isinstance(declaration.get("name"), str):
+                continue
+            if declaration["name"] in seen:
+                continue
+            seen.add(declaration["name"])
+            out.append(dict(declaration))
+    return out
 
 
 def _nullable_declarations(declarations: Sequence[Any]) -> dict[str, str]:

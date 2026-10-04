@@ -158,6 +158,18 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
     expect(systemPrompt).toContain('Prior: []');
   });
 
+  it('TASK-1036 OD-10 — an absent OPTIONAL variable the template DECLARES renders "" instead of refusing', async () => {
+    resolvesTo('Tone: [{{tone}}]');
+    mockPromptTemplateRepository.findById.mockResolvedValue({
+      id: 'template-presummary',
+      metaData: null,
+      variables: [{ name: 'tone', type: 'string', required: false }],
+    });
+    const { systemPrompt } = await (await getService()).assemble(params());
+
+    expect(systemPrompt).toContain('Tone: []');
+  });
+
   it('honours `default("…")` over the empty binding', async () => {
     resolvesTo('Prior: {{context.prior_visit_summary | default("none recorded")}}');
     const { systemPrompt } = await (await getService()).assemble(params());

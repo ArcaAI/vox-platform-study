@@ -13,7 +13,9 @@ import {
   outputSchemaResponseFormat,
   platformRules,
   readTextAgentMessage,
+  resolvedPromptVariableDeclarations,
   unresolvedPromptVariables,
+  type PromptScopeVariableDeclaration,
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
@@ -343,6 +345,9 @@ export class AgentInvocationService {
         input,
         trigger,
         templateRef: `agent:${resolved.slug}`,
+        // TASK-1036 OD-10 — the frozen template declarations: an absent OPTIONAL variable renders
+        // `""` (or its default); a required one still fails by name.
+        variableDeclarations: resolvedPromptVariableDeclarations(compiled.resolvedPrompt),
       });
       return composeMessages({
         platformRules: platformRules(),
@@ -352,6 +357,8 @@ export class AgentInvocationService {
         // body) emits an empty block, so the user message is `''`.
         dataBlocks: [agentInputBlock(readTextAgentMessage(input))],
         templateRef: `agent:${resolved.slug}`,
+        // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
+        dropEmptyBlocks: true,
       });
     });
     const systemPrompt = composed.system;
@@ -672,7 +679,13 @@ export class AgentInvocationService {
   private assertPromptVariablesSupplied(
     agentSlug: string,
     resolvedPrompt: ResolvedAgent['compiledConfig']['resolvedPrompt'],
-    scopeInput: { variables: Record<string, unknown>; input: Record<string, unknown>; trigger?: Record<string, unknown>; templateRef: string },
+    scopeInput: {
+      variables: Record<string, unknown>;
+      input: Record<string, unknown>;
+      trigger?: Record<string, unknown>;
+      templateRef: string;
+      variableDeclarations?: readonly PromptScopeVariableDeclaration[];
+    },
   ): Record<string, unknown> {
     // The roots alone (`trigger` / `context` / `input`), with no variables — so nothing is
     // resolved yet and nothing can throw. This is the scope a BINDING is resolved against.
