@@ -8,7 +8,7 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreatePromptTemplateRequest } from '../dto/create-prompt-template.request';
 import { UpdatePromptTemplateRequest } from '../dto/update-prompt-template.request';
-import { PROMPT_TAG_MAX_COUNT, promptTagProblems } from '../dto/prompt-tag';
+import { PROMPT_TAG_MAX_COUNT, normalisePromptTags, promptTagProblems } from '../dto/prompt-tag';
 
 const base = { name: 'n', content: 'c', category: 'CUSTOM' };
 
@@ -53,6 +53,36 @@ describe('prompt tag grammar', () => {
 
   it('update DTO validates tags', async () => {
     expect(await errorsFor(UpdatePromptTemplateRequest, { tags: ['text-v1'] })).toEqual([]);
-    expect((await errorsFor(UpdatePromptTemplateRequest, { tags: ['UPPER'] })).length).toBeGreaterThan(0);
+    expect((await errorsFor(UpdatePromptTemplateRequest, { tags: ['up per'] })).length).toBeGreaterThan(0);
+  });
+});
+
+describe('prompt tags are normalised (trim + lower-case) BEFORE the grammar runs (TASK-1036 Q16)', () => {
+  it('normalisePromptTags trims and lower-cases strings and leaves anything else for the validator', () => {
+    expect(normalisePromptTags([' Pre-Summary ', 'DEPT:Cardiology', 'text-v1'])).toEqual(['pre-summary', 'dept:cardiology', 'text-v1']);
+    expect(normalisePromptTags([1, null])).toEqual([1, null]);
+    expect(normalisePromptTags(undefined)).toBeUndefined();
+    expect(normalisePromptTags('Pre-Summary')).toBe('Pre-Summary');
+  });
+
+  it("'Pre-Summary' on create is stored as 'pre-summary'", async () => {
+    const dto = plainToInstance(CreatePromptTemplateRequest, { ...base, tags: ['Pre-Summary', ' Dept:Cardiology '] });
+    expect(dto.tags).toEqual(['pre-summary', 'dept:cardiology']);
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it('update normalises the same way', async () => {
+    const dto = plainToInstance(UpdatePromptTemplateRequest, { tags: ['UPPER'] });
+    expect(dto.tags).toEqual(['upper']);
+    expect(await validate(dto)).toEqual([]);
+  });
+
+  it('still refuses illegal characters, over-limit lists, and duplicates that only appear after normalisation', async () => {
+    expect((await errorsFor(CreatePromptTemplateRequest, { ...base, tags: ['Has Space'] })).join(' ')).toContain('not a valid tag');
+    expect((await errorsFor(CreatePromptTemplateRequest, { ...base, tags: ['Pre-Summary', 'pre-summary'] })).join(' ')).toContain(
+      'Duplicate tag "pre-summary"',
+    );
+    const many = Array.from({ length: PROMPT_TAG_MAX_COUNT + 1 }, (_, i) => `T${i}`);
+    expect((await errorsFor(CreatePromptTemplateRequest, { ...base, tags: many })).join(' ')).toContain('At most');
   });
 });
