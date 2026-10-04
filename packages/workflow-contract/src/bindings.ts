@@ -11,6 +11,7 @@
  * | `{ from: <path> }` | `nodes.transcribe.outputs.transcript`, `context.patient.age`, `consultation.notes.preSummary` |
  * | `{ value: <literal> }` | `{ value: "en" }` |
  * | `{ template: <text> }` | `"Summarise: {{nodes.transcribe.outputs.transcript}}"` |
+ * | `{ firstOf: [<path>, …] }` | `{ firstOf: ["nodes.edit.outputs.text", "nodes.draft.outputs.text"] }` — the first that has a value |
  *
  * A path starts at one of five roots: `context.*` (the run input, typed by the context schema),
  * `consultation.*` (the platform read schema, `consultation-read-schema.ts`), `nodes.<id>.outputs.*`
@@ -27,10 +28,12 @@
  * `edgeImpliedBindings` translates each data edge into `nodes.<from>.outputs.<outputKey>` — the
  * exact runtime key the interpreter threads today (`_resolve_bound_inputs`) — under the target's
  * NodeIO input name. Fan-in (several producers into one input, D-E) is today LAST-WRITE-WINS in
- * `(toPort, fromNodeId)` order; the translation states the same rule explicitly as a COMPILED-only
+ * `(toPort, fromNodeId)` order; the translation states the same rule explicitly as
  * `{ firstOf: [...] }` (first path that produced a value, latest producer first), and publish flags
  * it (`INPUT_MULTIPLE_PRODUCERS`: a WARNING on a legacy node, an ERROR once the node declares
- * inputs — OD-18 refuses fan-in into a single-value input; a Merge step combines values).
+ * inputs — OD-18 refuses UNDECLARED fan-in into a single-value input). The author resolves it by
+ * binding one producer, by binding an explicit `firstOf` (an ordered coalesce is a deliberate
+ * choice, not fan-in — OD-18 as amended by the contract freeze), or with a Merge step.
  *
  * ## Publish rules (`bindingIssues`)
  *
@@ -55,7 +58,7 @@
 import { CONSULTATION_ROOT, consultationPathInfo, nodeConsultationReads, type ConsultationReadAt } from './consultation-read-schema';
 import { resolveInputPort, resolveOutputPort } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
-import { BINDING_JSON_SCHEMA } from './node-config-schemas';
+import { BINDING_FIRST_OF_MAX_PATHS, BINDING_JSON_SCHEMA } from './node-config-schemas';
 import { agentTaskOf, ioTypeOfJsonSchema, nodeIOFor, typeFits, type AgentIOResolver, type IoType, type NodeIO, type PhiClass } from './node-io';
 import { templateReferences } from './template';
 import { effectiveSettings, type WorkflowSource } from './workflow-settings';
@@ -72,26 +75,38 @@ export type BindingRoot = (typeof BINDING_ROOTS)[number];
 export type FromBinding = { readonly from: string; readonly at?: ConsultationReadAt };
 export type ValueBinding = { readonly value: unknown };
 export type TemplateBinding = { readonly template: string };
-export type Binding = FromBinding | ValueBinding | TemplateBinding;
-
 /**
- * COMPILED-ONLY: the first of these paths that produced a value. Emitted only by the legacy
- * translation of a fan-in, never authored (`BINDING_JSON_SCHEMA` refuses it on a node).
+ * An ORDERED COALESCE: the first of these paths that has a value (two or more, each read like a
+ * `from`). AUTHORABLE since the TASK-1036 contract freeze — a deliberate coalesce is not fan-in
+ * (OD-18 amended) — and also what the legacy translation of a fan-in compiles to. Every path is
+ * ancestor- and type-checked at publish exactly like a `from`. A value is "present" when the path
+ * resolved to something other than `undefined` / `null` (the B1 resolver's rule).
  */
 export type FirstOfBinding = { readonly firstOf: readonly string[] };
-export type CompiledBinding = Binding | FirstOfBinding;
+export type Binding = FromBinding | ValueBinding | TemplateBinding | FirstOfBinding;
+/** What `compiledBindings` emits — the authored shapes, unchanged. Kept as a name for the compiled artifact. */
+export type CompiledBinding = Binding;
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-/** Whether `value` is an authored binding — exactly one of the three closed shapes. */
+/** Whether `value` is an authored binding — exactly one of the four closed shapes. */
 export function isBinding(value: unknown): value is Binding {
   const object = asObject(value);
   if (object === undefined) return false;
   const keys = Object.keys(object);
   if (keys.length === 1 && keys[0] === 'value') return true;
   if (keys.length === 1 && keys[0] === 'template') return typeof object.template === 'string';
+  if (keys.length === 1 && keys[0] === 'firstOf') {
+    const paths = object.firstOf;
+    return (
+      Array.isArray(paths) &&
+      paths.length >= 2 &&
+      paths.length <= BINDING_FIRST_OF_MAX_PATHS &&
+      paths.every((path) => typeof path === 'string' && path.length > 0)
+    );
+  }
   if (keys.includes('from')) {
     if (typeof object.from !== 'string' || object.from.length === 0) return false;
     if (!keys.every((key) => key === 'from' || key === 'at')) return false;
@@ -484,6 +499,17 @@ function checkAuthoredNode(
         continue;
       }
       checkType(issues, node, name, `${pointer}/from`, target, resolved.ok.type, `\`${binding.from}\``);
+    } else if ('firstOf' in binding) {
+      // Each path is checked exactly like a `from`, at its own pointer.
+      binding.firstOf.forEach((path, index) => {
+        const at = `${pointer}/firstOf/${index}`;
+        const resolved = resolvePath(path, scope);
+        if ('code' in resolved) {
+          issues.push({ code: resolved.code, severity: 'ERROR', nodeId: node.id, input: name, path: at, message: resolved.message });
+          return;
+        }
+        checkType(issues, node, name, at, target, resolved.ok.type, `\`${path}\``);
+      });
     } else if ('template' in binding) {
       let broken = false;
       for (const reference of templateReferences(binding.template)) {
@@ -528,7 +554,7 @@ function checkEdgeProducers(
         `\`${name}\` of step ${label(node)} is fed by ${paths.length} steps (${paths.map((path) => `\`${path}\``).join(', ')}); only one value can arrive. ` +
         (authored === undefined
           ? 'Today the latest producer that ran wins. Bind the input explicitly, or combine the values with a Merge step.'
-          : 'Bind the input to one of them, or combine the values with a Merge step.'),
+          : `Bind the input to one of them, bind it as \`firstOf\` to take the first that has a value (\`{ "firstOf": [${paths.map((path) => `"${path}"`).join(', ')}] }\`), or combine the values with a Merge step.`),
     });
   }
 }

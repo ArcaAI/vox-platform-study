@@ -247,7 +247,7 @@ function templatePathsIn(value: unknown, out: string[]): void {
   if (object !== undefined) for (const entry of Object.values(object)) templatePathsIn(entry, out);
 }
 
-/** The consultation reads ONE node declares: its `inputs` `from` bindings and every template in its config. */
+/** The consultation reads ONE node declares: its `inputs` `from` / `firstOf` bindings and every template in its config. */
 export function nodeConsultationReads(config: Readonly<Record<string, unknown>> | undefined): ConsultationRead[] {
   const byPath = new Map<string, ConsultationReadAt>();
   const note = (path: string, at: ConsultationReadAt): void => {
@@ -259,6 +259,8 @@ export function nodeConsultationReads(config: Readonly<Record<string, unknown>> 
   for (const binding of Object.values(inputs ?? {})) {
     const entry = asObject(binding);
     if (typeof entry?.from === 'string') note(entry.from, entry.at === 'runStart' ? 'runStart' : 'nodeStart');
+    // An authored `{ firstOf }` (TASK-1036 contract freeze) reads each of its paths at node start.
+    if (Array.isArray(entry?.firstOf)) for (const path of entry.firstOf) if (typeof path === 'string') note(path, 'nodeStart');
   }
   const templated: string[] = [];
   templatePathsIn(config, templated);

@@ -1664,15 +1664,21 @@ const NODE_LABEL_PROPERTY: NodeConfigSchema = Object.freeze({
   description: 'Shown wherever this step is referenced. References are stored by node id, so renaming a step never breaks one.',
 });
 
+/** The most paths one `{ firstOf }` binding may list. */
+export const BINDING_FIRST_OF_MAX_PATHS = 8;
+
 /**
- * OD-29 — ONE binding: exactly one of `{ from }`, `{ value }`, `{ template }`, each closed. The
- * compiled-only `{ firstOf }` (the legacy fan-in translation) is deliberately NOT authorable.
- * Exported for `bindings.ts`, which re-exports it beside the TypeScript type.
+ * OD-29 — ONE binding: exactly one of `{ from }`, `{ value }`, `{ template }`, `{ firstOf }`, each
+ * closed. `{ firstOf: [path, path, …] }` (two or more `from`-style paths) is an ORDERED COALESCE —
+ * the first path that has a value — which is a deliberate authoring choice, not fan-in (OD-18 as
+ * amended by the TASK-1036 contract freeze): each path is ancestor- and type-checked exactly like
+ * a `from`. The legacy fan-in translation compiles to the same shape. Exported for `bindings.ts`,
+ * which re-exports it beside the TypeScript type.
  */
 export const BINDING_JSON_SCHEMA: NodeConfigSchema = Object.freeze({
   summary: 'Where this input comes from.',
   description:
-    '`{ from: <path> }` reads `context.*`, `consultation.*`, `nodes.<id>.outputs.*`, `vars.*` or `run.*`; `{ value }` is a literal; `{ template }` is text with `{{ … }}` references.',
+    '`{ from: <path> }` reads `context.*`, `consultation.*`, `nodes.<id>.outputs.*`, `vars.*` or `run.*`; `{ value }` is a literal; `{ template }` is text with `{{ … }}` references; `{ firstOf: [<path>, <path>, …] }` takes the first path that has a value.',
   anyOf: Object.freeze([
     Object.freeze({
       type: 'object',
@@ -1699,6 +1705,21 @@ export const BINDING_JSON_SCHEMA: NodeConfigSchema = Object.freeze({
       additionalProperties: false,
       required: Object.freeze(['template']),
       properties: Object.freeze({ template: Object.freeze({ type: 'string', maxLength: 8000 }) }),
+    }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['firstOf']),
+      properties: Object.freeze({
+        firstOf: Object.freeze({
+          type: 'array',
+          minItems: 2,
+          maxItems: BINDING_FIRST_OF_MAX_PATHS,
+          items: Object.freeze({ type: 'string', minLength: 1, maxLength: 512 }),
+          summary: 'Paths to try in order: the first one that has a value is used.',
+          description: 'Two or more `from`-style paths, each read like a `from` binding. The first path that produced a value wins.',
+        }),
+      }),
     }),
   ]),
 });

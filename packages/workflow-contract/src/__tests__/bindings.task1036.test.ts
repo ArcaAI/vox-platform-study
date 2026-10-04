@@ -67,6 +67,7 @@ describe('the binding shape', () => {
     [{ value: 'en' }],
     [{ value: null }],
     [{ template: 'Hi {{context.name}}' }],
+    [{ firstOf: ['nodes.a.outputs.text', 'context.note'] }],
   ])('accepts %j', (binding) => {
     expect(isBinding(binding)).toBe(true);
     expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '')).toEqual([]);
@@ -80,6 +81,12 @@ describe('the binding shape', () => {
     [{ from: 'a', at: 'later' }],
     [{ from: 'a', extra: 1 }],
     ['nodes.a.outputs.text'],
+    [{ firstOf: ['nodes.a.outputs.text'] }],
+    [{ firstOf: [] }],
+    [{ firstOf: ['a', ''] }],
+    [{ firstOf: ['a', 7] }],
+    [{ firstOf: ['a', 'b'], at: 'runStart' }],
+    [{ firstOf: 'a' }],
   ])('refuses %j', (binding) => {
     expect(isBinding(binding)).toBe(false);
     expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '').length).toBeGreaterThan(0);
@@ -316,5 +323,67 @@ describe('prompt-variable templates: `nodes.*` is no longer a wildcard (D-G)', (
     expect(codes(bindingIssues(build('{{nodes.n_a.outputs.nope}}'), { agents: AGENTS }), 'ERROR')).toEqual(['n_b:BINDING_UNKNOWN_PATH']);
     expect(codes(bindingIssues(build('{{nodes.n_a.outputs.text}}'), { agents: AGENTS }), 'ERROR')).toEqual([]);
     expect(codes(bindingIssues(build('{{nodes.n_a.text}}'), { agents: AGENTS }), 'ERROR')).toEqual([]);
+  });
+});
+
+describe('authored `firstOf` — a deliberate ordered coalesce is not fan-in (OD-18 amended)', () => {
+  function withInputs(nodeId: string, inputs: Record<string, unknown>, graph = seededShape()): WorkflowGraph {
+    const node = graph.nodes.find((candidate) => candidate.id === nodeId) as WorkflowGraphNode;
+    node.config = { ...node.config, inputs };
+    return graph;
+  }
+
+  it('is accepted when every path is an ancestor of a fitting type, and compiles verbatim', () => {
+    // The REVERSE of the legacy translation's order, so the authored binding is visibly the one compiled.
+    const firstOf = { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_transcript.outputs.text'] };
+    const graph = withInputs('n_ner', { text: firstOf });
+    expect(codes(bindingIssues(graph, { agents: AGENTS }))).toEqual([]);
+    expect(compiledBindings(graph, AGENTS).n_ner).toEqual({ text: firstOf });
+  });
+
+  it('checks each path for ancestry, pointing at the offending entry', () => {
+    const graph = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_finalize.outputs.text'] } });
+    const issues = bindingIssues(graph, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_ner:BINDING_NOT_ANCESTOR']);
+    expect(issues.find((issue) => issue.code === 'BINDING_NOT_ANCESTOR')?.path).toBe('/inputs/text/firstOf/1');
+  });
+
+  it('checks each path for type, and for being a known path at all', () => {
+    const mismatch = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_trigger.outputs.context'] } });
+    expect(codes(bindingIssues(mismatch, { agents: AGENTS }), 'INFO')).toEqual(['n_ner:BINDING_TYPE_CONVERTED']);
+    const audio: WorkflowGraph = {
+      version: 1,
+      nodes: [
+        agent('n_tts', 'tts'),
+        agent('n_gen', 'summary'),
+        agent('n_x', 'summary', { inputs: { message: { firstOf: ['nodes.n_gen.outputs.text', 'nodes.n_tts.outputs.audio'] } } }),
+      ],
+      edges: [e('n_tts', 'next', 'n_gen', 'after'), e('n_gen', 'next', 'n_x', 'after')],
+    };
+    const issues = bindingIssues(audio, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_x:BINDING_TYPE_MISMATCH']);
+    expect(issues[0]?.path).toBe('/inputs/message/firstOf/1');
+    const unknown = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nope.x'] } });
+    expect(codes(bindingIssues(unknown, { agents: AGENTS }), 'ERROR')).toEqual(['n_ner:BINDING_UNKNOWN_PATH']);
+  });
+
+  it('a consultation.* path inside firstOf is a declared read, and needs the consultation source', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
+      nodes: [
+        { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+        agent('n_gen', 'summary', { inputs: { message: { firstOf: ['context.note', 'consultation.transcript.text'] } } }),
+      ],
+      edges: [e('n_trigger', 'next', 'n_gen', 'after')],
+    };
+    expect(codes(bindingIssues(graph, { agents: AGENTS }), 'ERROR')).toEqual(['n_gen:CONSULTATION_SCOPE_UNAVAILABLE']);
+    expect(codes(bindingIssues(graph, { agents: AGENTS, sources: ['consultation'] }), 'ERROR')).toEqual([]);
+  });
+
+  it('INPUT_MULTIPLE_PRODUCERS on an authored node still errors, and suggests binding as firstOf', () => {
+    const issues = bindingIssues(withInputs('n_ner', {}), { agents: AGENTS });
+    const fanIn = issues.find((issue) => issue.code === 'INPUT_MULTIPLE_PRODUCERS');
+    expect(fanIn?.severity).toBe('ERROR');
+    expect(fanIn?.message).toContain('firstOf');
   });
 });

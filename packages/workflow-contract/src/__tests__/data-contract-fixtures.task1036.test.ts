@@ -58,7 +58,15 @@ describe('bindings.fixture.json', () => {
     const names = fixture.cases.map((entry: any) => entry.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual(
-      expect.arrayContaining(['legacy-seeded-consultation-shape', 'legacy-router-branches-carry-no-data', 'legacy-agent-in-port-by-task']),
+      expect.arrayContaining([
+        'legacy-seeded-consultation-shape',
+        'legacy-router-branches-carry-no-data',
+        'legacy-agent-in-port-by-task',
+        // The contract freeze: an AUTHORED firstOf is a binding, checked path by path.
+        'authored-first-of',
+        'authored-first-of-not-ancestor',
+        'authored-first-of-type-mismatch',
+      ]),
     );
     const codes = new Set(fixture.cases.flatMap((entry: any) => entry.expected.issues.map((issue: any) => issue.code)));
     for (const code of [
