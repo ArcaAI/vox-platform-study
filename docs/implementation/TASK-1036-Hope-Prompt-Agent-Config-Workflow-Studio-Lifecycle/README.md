@@ -925,6 +925,43 @@ After batch 2: the C7 label sweep (haiku), then wave D review, then the single o
 
 Findings are data. The orchestrator verifies each one, fixes it through a fix lane (or rejects it with a reason), and then runs the single gate.
 
+**Wave D results (2026-10-05)**
+
+| Reviewer | Findings | Most serious |
+|---|---|---|
+| R-A correctness | 14 | **Blocker:** browser `useRun` cannot stream any workflow whose settings omit `socket`, because B7 gated the shared stream ticket on `socket`. Majors: dispatch runs lack `metaData.consultationId`, so first consultation reads return 404; agent runs are unbounded and cancel does not abort the in-flight call; a result write race loses `resultRef`; the `seed-safety` test is stale since B6b's publish-like regeneration. Minors: metering, purge leaving objects, cache freezing document templates, loop run-start reads, deprecated authored pins, idempotency ordering and semantics. |
+| R-B security and tenancy | 10 | **High:** B4's egress narrowing skips the system prompt. `composeMessages` renders patient variables into it and the business route accepts a caller `system_prompt`, so PHI reaches cloud providers unredacted and screening can be bypassed. **Medium-high:** the admin trace reuses the `workflow_run` ticket namespace, so an API key whose bound human is a tenant admin can open it. **Medium:** sandbox can bind any user's STT session; the STT mirror can recreate a run stream with no TTL; run reads are tenant-wide with no principal binding; large results sit in the platform bucket unprefixed. **Low:** audio not content-sniffed; media metadata reads; inert media references; terminal-run reads. |
+| R-C UX and accessibility | 20 | **Major:** canvas controls, minimap and connect status hidden under docked panes; `fitView` ignores the panes; no short-viewport or zoom handling (1.4.10); no confirmation on bulk publish/unpublish; wizard loses work on Esc; pane geometry is not clamped; time-travel effects are off-screen; PHI shows in Composer samples with no mask; list rows are not keyboard-openable; no "Insert field" button. **Minor:** 10 items, plus a 14-point checklist for the live browser check. |
+
+The orchestrator re-verified the two highest-impact security claims in code:
+- `egress._regions` skips `system_index`.
+- The trace route uses `@StreamScope({namespace:'workflow_run'})`, identical to the business route.
+
+It also verified R-A's blocker: `issueRunStreamTicket` calls `assertEntryAllowed(…,'socket')`.
+
+**Rejected or deferred, with reasons:**
+- R-A #12 (an empty PATCH demotes a VALIDATED row) stems from the pinned known defect F-01. Rule 05 forbids "fixing" that pinned behaviour, so it is recorded only.
+- R-B low "doctor reads media metadata" is accepted as metadata-only.
+- R-B low "inert media references" is documented as a contract note for any future consumer.
+
+### 6.13 Wave E: fix lanes launched from `6fecb1eae`
+
+| Lane | Tier | Scope |
+|---|---|---|
+| E1 EGRESS | opus | Screen and pseudonymise every provider-bound segment, including the system prompt (TASK-1035 coverage restored). The medical judge keeps the OD-1 context-only scope. `pii_leak` source covers everything sent. Regression tests. |
+| E2 GATEWAY-FIXES | opus | 16 items: ticket gate by lane; trace ticket namespace (JWT only); dispatch stamps the consultation; agent-run sweeper and abort; result-write retry; metering; purge deletes objects; agent-events backstop; deprecated authored pins; agent idempotency first; one 409 semantic with no foreign `runId`; sandbox recording ownership; result-object tenant prefix assertion; STT mirror staleness and TTL backstop; audio sniffing; stale `seed-safety` test |
+| E3 HARNESS-FIXES | opus | Tenant-prefixed result objects (`tenantPrefixed`); pinned-agent cache excludes per-call document templates; loop-body run-start reads |
+| E4a STUDIO-UX | opus | 14 Studio and canvas UX/a11y fixes (R-C 1–3, 6, 8, 10–15, 17, 18 partial, 20) |
+| E4b CONSOLE-UX | sonnet | Management, Test tab, wizard, tags, settings and prompt-form UX/a11y fixes (R-C 4, 5, 7, 9, 15, 16, 18, 19) |
+
+**Owner decisions requested (OD-35 to OD-37):**
+
+| Id | Question | Recommendation |
+|---|---|---|
+| OD-35 | Business-plane run reads (status, result, events) are tenant-wide today, so any credential in the tenant with the read scope can read another credential's results. Bind them to the starting principal? | Yes for machine credentials (an API key or service account reads only runs it started, unless it holds a new `…:run:read-all` scope). Human admin JWTs stay tenant-wide. |
+| OD-36 | E1 restores screening and redaction of the system prompt, which is narrower than R7's wording "check only the context or the message response". | Keep it. Redaction must cover everything sent to a provider. Only the medical-relevance judge stays context-only. |
+| OD-37 | Add a business-plane route that binds a live recording to a standalone API workflow run? | Not now. Consultation-bound runs and the admin sandbox already take audio. |
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
