@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -19,16 +19,17 @@ import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
 import { WORKFLOW_EXPOSURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
+import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { WebhookService } from '../webhook/webhook.service';
-import { IS3Service } from '../baseServices/storage';
+import { IBlobStorageService, IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
 import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
 import { IBillingService } from '../billing/IBillingService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
-import { interpreterSessionId, IWorkflowRunService, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
+import { deliveredRunResultFrom, interpreterSessionId, IWorkflowRunService, readPersistedRunResult, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
@@ -40,7 +41,9 @@ import {
   WorkflowInvokeResponse,
   WorkflowReviewDecisionResponse,
   WorkflowReviewResponse,
+  RUN_NOT_TERMINAL,
   WorkflowRunCancelResponse,
+  WorkflowRunResult,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from './dto';
@@ -152,6 +155,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // other cross-cutting dependency here; absent, every trigger runs against its published
     // bytes — the behaviour a follow-latest workflow had before this existed.
     @Optional() private readonly effectiveTriggerSchema?: EffectiveTriggerSchemaService,
+    // TASK-1038 D-I — signs the short-lived GET URL for a claim-checked result (the tenant-bucket
+    // gate applies). `@Optional()` like every other cross-cutting dependency here; absent, a
+    // `ref` result answers 503 rather than a URL nobody can open.
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -419,8 +426,17 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const tenantId = this.requireTenantId();
     const run = await this.resolveOwnedRun(tenantId, slug, runId);
 
-    const upstream = await this.harnessGateway.getWorkflowRun(runId);
-    await this.syncTerminalStatus(tenantId, run, upstream);
+    let upstream: GetWorkflowRunResult;
+    try {
+      upstream = await this.harnessGateway.getWorkflowRun(runId);
+      await this.syncTerminalStatus(tenantId, run, upstream);
+    } catch (err) {
+      // TASK-1038 — the harness keeps a run only as long as Temporal does; once it has no record
+      // (404) the durable read model is the answer, not a failed status read. Any OTHER failure
+      // still propagates: "the harness is down" must never read as "the run is in this state".
+      if (!isHarnessNotFound(err)) throw err;
+      upstream = { runId: run.runId, status: run.status, stages: [], startedAt: run.startedAt ?? null, endedAt: run.endedAt ?? null };
+    }
 
     // TASK-982 (E6) — the SAME fold `WorkflowRunCompletionService.recordTerminal` applies, so the
     // live surface and the persisted row say the same thing for the same run: RUNNING/DEGRADED/
@@ -440,6 +456,63 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       run.degradedNodeCount ?? null,
       run.skippedNodeCount ?? null,
     );
+  }
+
+  async getRunResult(slug: string, runId: string): Promise<WorkflowRunResult> {
+    const tenantId = this.requireTenantId();
+    let run = await this.resolveOwnedRun(tenantId, slug, runId);
+
+    // The read model can lag the run by one missed completion event: ask the live status (which
+    // reconciles the row) before refusing, then re-read the row for the result it now carries.
+    if (terminalStatusOf(run.status) === null) {
+      const live = await this.getRunStatus(slug, runId);
+      if (terminalStatusOf(live.status) === null) {
+        throw new ConflictException({
+          code: RUN_NOT_TERMINAL,
+          message: `Run '${runId}' has not finished yet; its result is available once it is terminal.`,
+          status: live.status,
+        });
+      }
+      run = await this.resolveOwnedRun(tenantId, slug, runId);
+    }
+    const status = terminalStatusOf(run.status) ?? run.status;
+    const stored = readPersistedRunResult(run.resultRef);
+
+    // The delivered output is clinical content: every read is an audited PHI access.
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: run.workflowVersionId,
+      forceAuditLog: true,
+      data: { action: 'readResult', runId, slug: run.workflowSlug, kind: stored?.kind ?? 'none' },
+    });
+
+    if (stored === null) return { runId, status, kind: 'none' };
+    if (stored.kind === 'inline') return { runId, status, kind: 'inline', value: stored.value };
+    if (stored.kind === 'expired') return { runId, status, kind: 'expired', expiredAt: stored.expiredAt };
+
+    if (!this.blobStorage) {
+      throw new ServiceUnavailableException('This run delivered a stored result, but no object storage is configured to sign a download URL for it.');
+    }
+    const ttlSeconds = this.resultUrlTtlSeconds();
+    const issuedAt = Date.now();
+    const url = await this.blobStorage.presignGet({ bucket: stored.bucket, key: stored.key, expiresInSeconds: ttlSeconds });
+    return {
+      runId,
+      status,
+      kind: 'ref',
+      url,
+      expiresAt: new Date(issuedAt + ttlSeconds * 1000).toISOString(),
+      sizeBytes: stored.sizeBytes,
+      sha256: stored.sha256,
+    };
+  }
+
+  private resultUrlTtlSeconds(): number {
+    try {
+      const value = this.tenantSettings?.resolvePlatform<number>(WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY).value;
+      return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : WORKFLOW_RUNS_DEFAULTS.resultUrlTtlSeconds;
+    } catch {
+      return WORKFLOW_RUNS_DEFAULTS.resultUrlTtlSeconds;
+    }
   }
 
   async cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse> {
@@ -839,6 +912,9 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // against `TERMINAL_RUN_STATUSES` missed every SUCCEEDED/DEGRADED/CANCELLED run.
     const status = terminalStatusOf(upstream.status);
     if (!status || !TERMINAL_RUN_STATUSES.has(status)) return;
+    // TASK-1038 D-I — a harness status read that carries the delivered result (the producer's
+    // shape, validated) persists it too; one that does not leaves `resultRef` alone.
+    const result = deliveredRunResultFrom(upstream as unknown as Record<string, unknown>);
     try {
       await this.workflowRunService.recordRunFinished({
         tenantId,
@@ -846,6 +922,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         runId: run.runId,
         status,
         endedAt: upstream.endedAt ? new Date(upstream.endedAt) : undefined,
+        ...(result ? { resultRef: result as unknown as Record<string, unknown> } : {}),
       });
     } catch {
       // Best-effort read-model sync — the live upstream status is still returned to the caller
@@ -872,6 +949,12 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // by the cache service itself; never a reason to fail the invoke that already succeeded.
     }
   }
+}
+
+/** An axios-style "the harness answered 404" — the harness has no record of the run. */
+function isHarnessNotFound(err: unknown): boolean {
+  const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
+  return status === 404 || err instanceof NotFoundException;
 }
 
 /** The graph's one mandatory entry node — the same string `compiledTriggerContextSchema` matches. */

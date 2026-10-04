@@ -5,18 +5,18 @@ import {
   IWorkflowRunService,
   TenantSettingsService,
   createWorkerSession,
+  deliveredRunResultFrom,
   interpreterSessionId,
+  isDeliveredRunResult,
   terminalStatusOf,
 } from '@arcaai/applications';
-import type { IActiveUserContext } from '@arcaai/applications';
+import type { DeliveredRunResult, IActiveUserContext } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import { runCompletedCountsFromPayload } from './run-completed-counts';
 import type { RunCompletedCounts } from './run-completed-counts';
 import { RunEventStreamHub } from './run-event-stream-hub';
 import { parseRunStreamEntry, terminalCheckIntervalMs } from './run-stream-delivery';
-import { isRunResult, runResultFromPayload } from './run-result';
-import type { RunResult } from './run-result';
 import { WORKFLOW_RUN_COMPLETED, runEventStreamKey } from './workflow-run-event';
 
 export { runCompletedCountsFromPayload } from './run-completed-counts';
@@ -140,7 +140,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           envelope.occurredAt,
           consultationId,
           runCompletedCountsFromPayload(payload),
-          runResultFromPayload(payload),
+          deliveredRunResultFrom(payload),
         );
         return;
       }
@@ -192,8 +192,8 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     consultationId: string | null,
     counts: RunCompletedCounts = {},
     // TASK-1038 D-I — the run's delivered output from the completed event, already validated by
-    // `runResultFromPayload`. `undefined` leaves `WorkflowRun.resultRef` untouched.
-    result?: RunResult,
+    // `deliveredRunResultFrom`. `undefined` leaves `WorkflowRun.resultRef` untouched.
+    result?: DeliveredRunResult,
   ): Promise<void> {
     // A CLS context carrying the run's tenant: `broadcastSysEvent` stamps `tenantId` from CLS,
     // and the webhook matcher finds a tenant's subscriptions by it. Without this the event would
@@ -218,7 +218,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           failedNodeCount: counts.failedNodeCount,
           degradedNodeCount: counts.degradedNodeCount,
           skippedNodeCount: counts.skippedNodeCount,
-          ...(isRunResult(result) ? { resultRef: result as unknown as Record<string, unknown> } : {}),
+          ...(isDeliveredRunResult(result) ? { resultRef: result as unknown as Record<string, unknown> } : {}),
         });
       } catch (err) {
         this.logger.warn({

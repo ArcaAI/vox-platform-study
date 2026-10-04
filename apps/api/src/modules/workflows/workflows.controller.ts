@@ -7,6 +7,7 @@ import {
   WorkflowInvokeResponse,
   WorkflowRunCancelResponse,
   WorkflowRunResponseMode,
+  WorkflowRunResultRefResponse,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
   type WorkflowSchemaDescription,
@@ -14,6 +15,7 @@ import {
 import {
   Controller,
   Get,
+  GoneException,
   Headers,
   HttpCode,
   HttpStatus,
@@ -247,6 +249,57 @@ export class WorkflowsController {
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async getRunStatus(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunStatusResponse> {
     return this.workflowExposureService.getRunStatus(slug, runId);
+  }
+
+  /**
+   * TASK-1038 D-I — what the run DELIVERED, for the caller that started it.
+   *
+   * `WorkflowRun.resultRef` was always null before this ticket (no terminal path persisted the
+   * output), so a business-plane caller could watch a run finish and never read what it made.
+   * The completion watcher now persists the result the harness puts on `workflow.run.completed`,
+   * and this route serves it: small results inline, large ones (claim-checked by the harness) as
+   * a short-lived signed URL — never the bucket and key themselves. Same authorisation as the
+   * status route; every read is audited by the service, because the output is PHI.
+   */
+  @Get(':slug/runs/:runId/result')
+  @CanRead('WorkflowRun')
+  @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
+  @ApiOperation({
+    summary: 'The result a finished run delivered: the JSON value inline, or a short-lived signed URL for a large result.',
+    description:
+      'Answers once the run is terminal. The `X-Hope-Result-Kind` header says which shape the 200 carries: `inline` — the body IS the ' +
+      'delivered JSON value; `ref` — `{ url, expiresAt, sizeBytes, sha256 }`, a signed GET URL valid until `expiresAt` (request the route ' +
+      'again for a fresh one). 204 means the run ended and delivered nothing; 410 means it delivered a result that has passed the ' +
+      "tenant's result retention (`workflowRuns.resultRetentionDays`). A run that is still going is a 409 carrying its current status.",
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiParam({ name: 'runId' })
+  @ApiResponse({ status: 200, description: '`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below).', type: WorkflowRunResultRefResponse })
+  @ApiResponse({ status: 204, description: 'The run is terminal and delivered no result.' })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`.' })
+  @ApiResponse({ status: 410, description: 'The result existed and has passed its retention window.' })
+  @ApiResponse({ status: 503, description: 'A stored result exists but no object storage is configured to sign its URL.' })
+  async getRunResult(
+    @Param('slug') slug: string,
+    @Param('runId') runId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<unknown> {
+    const result = await this.workflowExposureService.getRunResult(slug, runId);
+    switch (result.kind) {
+      case 'inline':
+        res.setHeader('X-Hope-Result-Kind', 'inline');
+        return result.value;
+      case 'ref':
+        res.setHeader('X-Hope-Result-Kind', 'ref');
+        return { url: result.url, expiresAt: result.expiresAt, sizeBytes: result.sizeBytes, sha256: result.sha256 };
+      case 'expired':
+        throw new GoneException({ code: 'RESULT_EXPIRED', message: `The result of run '${runId}' has passed its retention window.`, expiredAt: result.expiredAt });
+      default:
+        res.status(HttpStatus.NO_CONTENT);
+        return undefined;
+    }
   }
 
   @Post(':slug/runs/:runId/cancel')
