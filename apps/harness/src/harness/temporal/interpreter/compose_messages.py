@@ -156,6 +156,9 @@ class ComposedMessages:
     selected: list[str] = field(default_factory=list)
     excluded: list[FragmentExclusion] = field(default_factory=list)
     blocks: list[ComposedDataBlock] = field(default_factory=list)
+    #: TASK-1038 (`prompt.composed`, sizes only): each EMITTED layer's name and code points —
+    #: `platformRules` / `instruction` / `outputLanguage` / `outputContract` / `data`.
+    layers: list[tuple[str, int]] = field(default_factory=list)
 
 
 def _non_empty(value: Any) -> bool:
@@ -225,6 +228,15 @@ def compose_messages(
         output_contract,
     ]
     system = MESSAGE_LAYER_JOIN.join(layer for layer in layers if _non_empty(layer))
+    layer_sizes = [
+        (name, len(text))
+        for name, text in zip(
+            ("platformRules", "instruction", "outputLanguage", "outputContract"),
+            layers,
+            strict=True,
+        )
+        if _non_empty(text)
+    ]
 
     wrapped: list[str] = []
     blocks: list[ComposedDataBlock] = []
@@ -246,10 +258,14 @@ def compose_messages(
         wrapped.append(_wrap_external_data(key, label, body))
         blocks.append(ComposedDataBlock(key=key, chars=chars, truncated=truncated))
 
+    user = MESSAGE_LAYER_JOIN.join(wrapped)
+    if user:
+        layer_sizes.append(("data", len(user)))
     return ComposedMessages(
         system=system,
-        user=MESSAGE_LAYER_JOIN.join(wrapped),
+        user=user,
         selected=list(composed.selected),
         excluded=list(composed.excluded),
         blocks=blocks,
+        layers=layer_sizes,
     )

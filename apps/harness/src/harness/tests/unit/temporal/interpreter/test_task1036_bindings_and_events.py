@@ -238,6 +238,10 @@ class TestProtocolV2Emission:
         started = next(e for e in events if e["type"] == "node.started" and e["nodeId"] == "n_note")
         assert started["data"] == {"kind": "core.agent", "label": "Write the note", "attempt": 1}
         assert any(e["type"] == "data.bound" and e["nodeId"] == "n_note" for e in events)
+        (validated_in,) = [e for e in events if e["type"] == "input.validated"]
+        assert "nodeId" not in validated_in and validated_in["data"]["valid"] is True
+        (validated_out,) = [e for e in events if e["type"] == "output.validated"]
+        assert validated_out["nodeId"] == "n_output" and validated_out["data"]["valid"] is True
         # n_note is wired into End: its text reaches the PUBLIC plane as a delta …
         deltas = [e for e in events if e["type"] == "output.text.delta"]
         assert [(d["nodeId"], d["data"]) for d in deltas] == [
