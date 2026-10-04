@@ -264,7 +264,12 @@ export function agentNodeIO(task: AgentTask, outputSchema?: Readonly<Record<stri
         isStructuredOutput(outputSchema)
           ? {
               text: AGENT_OUTPUTS.text,
-              data: output('json', 'The structured result, shaped by the agent`s output schema.', 'PHI', outputSchema as Readonly<Record<string, unknown>>),
+              data: output(
+                'json',
+                'The structured result, shaped by the agent`s output schema.',
+                'PHI',
+                outputSchema as Readonly<Record<string, unknown>>,
+              ),
             }
           : { text: AGENT_OUTPUTS.text },
       );
@@ -338,7 +343,10 @@ export const NODE_IO: Readonly<Record<string, NodeIO>> = Object.freeze({
     { in: input('any', false, 'What the reviewer is shown.') },
     { decision: output('json', 'The review outcome, reviewer, comment and any edited payload.', 'PHI') },
   ),
-  'core.variable': io({ set: input('json', false, 'Values to merge into the run variables.') }, { vars: output('json', 'The run variables after this step.') }),
+  'core.variable': io(
+    { set: input('json', false, 'Values to merge into the run variables.') },
+    { vars: output('json', 'The run variables after this step.') },
+  ),
   'core.condition': io(
     { in: input('any', false, 'The value the conditions read (they may also read the run context).') },
     {
@@ -382,7 +390,10 @@ export function agentTaskOf(config: Readonly<Record<string, unknown>> | undefine
  * The EXACT I/O of one node instance: an agent by its task, an action by its key, anything else
  * by its type. `undefined` for an unregistered type.
  */
-export function nodeIOFor(node: { readonly type: string; readonly config?: Readonly<Record<string, unknown>> }, agents?: AgentIOResolver): NodeIO | undefined {
+export function nodeIOFor(
+  node: { readonly type: string; readonly config?: Readonly<Record<string, unknown>> },
+  agents?: AgentIOResolver,
+): NodeIO | undefined {
   if (node.type === 'core.agent') {
     const slug = slugOf(node.config);
     const resolved = slug === undefined ? undefined : agents?.[slug];

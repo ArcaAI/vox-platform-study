@@ -32,7 +32,20 @@ describe('CONSULTATION_READ_SCHEMA_V1', () => {
 
   it('declares every field §9.3 names', () => {
     const top = Object.keys(CONSULTATION_READ_SCHEMA_V1.properties as Record<string, unknown>);
-    for (const field of ['id', 'visitType', 'department', 'language', 'patient', 'clinician', 'transcript', 'items', 'notes', 'vitals', 'testResults', 'previousVisits']) {
+    for (const field of [
+      'id',
+      'visitType',
+      'department',
+      'language',
+      'patient',
+      'clinician',
+      'transcript',
+      'items',
+      'notes',
+      'vitals',
+      'testResults',
+      'previousVisits',
+    ]) {
       expect(top).toContain(field);
     }
     expect(consultationPathInfo('consultation.patient.age')).toBeDefined();

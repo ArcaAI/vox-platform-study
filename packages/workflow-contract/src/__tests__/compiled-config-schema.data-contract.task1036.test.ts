@@ -19,7 +19,11 @@ const graph = {
     { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['consultation', 'api'] } },
     { id: 'n_a', type: 'core.agent', config: { agentRef: { slug: 'gen' } } },
     { id: 'n_b', type: 'core.agent', config: { agentRef: { slug: 'gen' } } },
-    { id: 'n_c', type: 'core.agent', config: { agentRef: { slug: 'gen' }, inputs: { context: { from: 'consultation.patient.age', at: 'runStart' } } } },
+    {
+      id: 'n_c',
+      type: 'core.agent',
+      config: { agentRef: { slug: 'gen' }, inputs: { context: { from: 'consultation.patient.age', at: 'runStart' } } },
+    },
     { id: 'n_output', type: 'core.output', config: { protocols: ['http', 'socket'] } },
   ],
   edges: [
@@ -44,7 +48,14 @@ describe('compiled-config schema — the data contract', () => {
       registryChecksum: registryChecksum(),
       ruleSetVersion: 1,
       caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
-      policyBindings: { guardrailProfile: 'STANDARD', redactionRuleSetId: null, promptTemplateRefs: [], documentTemplateRefs: [], contextSchemaVersionId: null, entitlementKeys: [] },
+      policyBindings: {
+        guardrailProfile: 'STANDARD',
+        redactionRuleSetId: null,
+        promptTemplateRefs: [],
+        documentTemplateRefs: [],
+        contextSchemaVersionId: null,
+        entitlementKeys: [],
+      },
       compiledAt: '2026-10-04T00:00:00.000Z',
       nodeInfo,
       agents: { gen: { task: 'TEXT_GENERATION' } },

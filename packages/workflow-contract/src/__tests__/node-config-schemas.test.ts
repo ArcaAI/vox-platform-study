@@ -456,10 +456,13 @@ describe('core.* summary copy (TASK-893 B2)', () => {
  * so the dead surface TASK-893 removed cannot come back under its old name.
  */
 describe('inputs are typed bindings, never the old config-shaped edge (TASK-893 -> TASK-1036 OD-29)', () => {
-  it.each(CORE_NODE_TYPES.filter((type) => type !== 'core.trigger' && type !== 'core.note'))('%s declares `inputs` as a map of typed bindings', (type) => {
-    const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, { additionalProperties?: unknown }> | undefined;
-    expect(properties?.inputs?.additionalProperties).toBeDefined();
-  });
+  it.each(CORE_NODE_TYPES.filter((type) => type !== 'core.trigger' && type !== 'core.note'))(
+    '%s declares `inputs` as a map of typed bindings',
+    (type) => {
+      const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, { additionalProperties?: unknown }> | undefined;
+      expect(properties?.inputs?.additionalProperties).toBeDefined();
+    },
+  );
 
   it('and a config-shaped binding is refused, which is what keeps the lie impossible', () => {
     const config = { agentRef: { slug: 'demo-agent' }, inputs: { context: { fromNodeId: 'trigger-1' } } };

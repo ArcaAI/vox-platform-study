@@ -41,8 +41,7 @@ export const WORKFLOW_SOURCES = Object.freeze(['consultation', 'schedule'] as co
 export type WorkflowSource = (typeof WORKFLOW_SOURCES)[number];
 
 export type WorkflowContextSchemaSetting =
-  | { readonly contextSchemaId: string; readonly versionNumber: number | null }
-  | { readonly inline: Readonly<Record<string, unknown>> };
+  { readonly contextSchemaId: string; readonly versionNumber: number | null } | { readonly inline: Readonly<Record<string, unknown>> };
 
 export interface WorkflowSettings {
   readonly connections: readonly WorkflowConnection[];
@@ -101,7 +100,8 @@ function contextSchemaProblems(value: unknown, pointer: string): string[] {
   for (const key of Object.keys(object)) {
     if (key !== 'contextSchemaId' && key !== 'versionNumber') problems.push(`${pointer}/${key}: is not a property of a context schema reference`);
   }
-  if (typeof object.contextSchemaId !== 'string' || object.contextSchemaId.length === 0) problems.push(`${pointer}/contextSchemaId: must be a non-empty string`);
+  if (typeof object.contextSchemaId !== 'string' || object.contextSchemaId.length === 0)
+    problems.push(`${pointer}/contextSchemaId: must be a non-empty string`);
   const version = object.versionNumber;
   if (version !== undefined && version !== null && !(typeof version === 'number' && Number.isInteger(version) && version >= 1)) {
     problems.push(`${pointer}/versionNumber: must be an integer >= 1, or null to follow the latest version`);
@@ -185,7 +185,9 @@ export function effectiveSettings(graph: WorkflowGraphWithSettings | Pick<Workfl
   const protocols = output === undefined ? [] : Array.isArray(output.protocols) ? output.protocols : LEGACY_DEFAULT_PROTOCOLS;
   const connections = [
     ...kindList,
-    ...protocols.map((protocol) => (typeof protocol === 'string' ? LEGACY_PROTOCOL_CONNECTION[protocol] : undefined)).filter((name): name is WorkflowConnection => name !== undefined),
+    ...protocols
+      .map((protocol) => (typeof protocol === 'string' ? LEGACY_PROTOCOL_CONNECTION[protocol] : undefined))
+      .filter((name): name is WorkflowConnection => name !== undefined),
   ];
   return {
     connections: ordered(connections, WORKFLOW_CONNECTIONS),
@@ -243,10 +245,20 @@ export function settingsImplications(
   const found: SettingsImplication[] = [];
 
   if (has.has('sse') && !has.has('api')) {
-    found.push({ ruleId: 'WF-SET-001', requires: 'api', nodeId: null, message: 'Streaming a run (SSE) needs the API connection: a stream follows a run started through the API.' });
+    found.push({
+      ruleId: 'WF-SET-001',
+      requires: 'api',
+      nodeId: null,
+      message: 'Streaming a run (SSE) needs the API connection: a stream follows a run started through the API.',
+    });
   }
   if (has.has('socket') && !has.has('api')) {
-    found.push({ ruleId: 'WF-SET-002', requires: 'api', nodeId: null, message: 'The socket connection needs the API connection: a socket attaches to a run started through the API.' });
+    found.push({
+      ruleId: 'WF-SET-002',
+      requires: 'api',
+      nodeId: null,
+      message: 'The socket connection needs the API connection: a socket attaches to a run started through the API.',
+    });
   }
 
   if (!has.has('socket')) {
@@ -264,7 +276,9 @@ export function settingsImplications(
   }
 
   const kinds = asObject(ctx.contextSchemaDefinition)?.kinds;
-  const kindObjects = Array.isArray(kinds) ? kinds.map((kind) => asObject(kind)).filter((kind): kind is Record<string, unknown> => kind !== undefined) : [];
+  const kindObjects = Array.isArray(kinds)
+    ? kinds.map((kind) => asObject(kind)).filter((kind): kind is Record<string, unknown> => kind !== undefined)
+    : [];
   if (!has.has('socket')) {
     const streamed = kindObjects.find((kind) => audioDelivery(kind) === 'stream');
     if (streamed !== undefined) {

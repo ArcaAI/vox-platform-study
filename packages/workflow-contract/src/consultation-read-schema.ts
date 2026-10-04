@@ -34,7 +34,12 @@ export const CONSULTATION_READ_SCHEMA_VERSION = 1 as const;
 /** The binding/template root this schema is published under. */
 export const CONSULTATION_ROOT = 'consultation';
 
-function leaf(type: 'string' | 'integer' | 'number' | 'boolean', phiClass: PhiClass, description: string, extra: Record<string, unknown> = {}): JsonSchema {
+function leaf(
+  type: 'string' | 'integer' | 'number' | 'boolean',
+  phiClass: PhiClass,
+  description: string,
+  extra: Record<string, unknown> = {},
+): JsonSchema {
   return Object.freeze({ type, ...extra, description, 'x-phiClass': phiClass });
 }
 
@@ -293,9 +298,15 @@ export interface PlatformContextAlias {
  */
 export const PLATFORM_CONTEXT_ALIASES: Readonly<Record<string, PlatformContextAlias>> = Object.freeze({
   'context.current_department': Object.freeze({ path: 'consultation.department.name', formatting: 'The department name; "General" when unknown.' }),
-  'context.dna_redaction_rules_text': Object.freeze({ path: 'consultation.clinician.dna.rules', formatting: 'The rules as a bullet list; empty when none.' }),
+  'context.dna_redaction_rules_text': Object.freeze({
+    path: 'consultation.clinician.dna.rules',
+    formatting: 'The rules as a bullet list; empty when none.',
+  }),
   'context.dna_style_text': Object.freeze({ path: 'consultation.clinician.dna.style', formatting: 'The effective style text; empty when none.' }),
-  'context.formatted_previous_visits': Object.freeze({ path: 'consultation.previousVisits', formatting: 'One block per visit, newest first; "" when none.' }),
+  'context.formatted_previous_visits': Object.freeze({
+    path: 'consultation.previousVisits',
+    formatting: 'One block per visit, newest first; "" when none.',
+  }),
   'context.formatted_test_results': Object.freeze({ path: 'consultation.testResults', formatting: 'One line per result; "" when none.' }),
   'context.language_name': Object.freeze({ path: 'consultation.outputLanguage.name', formatting: 'The language name; "English" by default.' }),
   'context.safe_age': Object.freeze({ path: 'consultation.patient.age', formatting: 'The age as text; "Unknown" when not held.' }),

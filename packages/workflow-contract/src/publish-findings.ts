@@ -304,7 +304,9 @@ function dataContractFindings(graph: WorkflowGraph, ctx: PublishContext): Workfl
 
   for (const issue of bindingIssues(graph, { agents, contextPayloadSchema: ctx.triggerContextSchema, sources: settings.sources })) {
     if (issue.severity === 'INFO') continue;
-    findings.push(finding(issue.code as PublishedBindingCode, 'schema', issue.severity, issue.nodeId, `node \`${issue.nodeId}\`: ${issue.message}`, issue.path));
+    findings.push(
+      finding(issue.code as PublishedBindingCode, 'schema', issue.severity, issue.nodeId, `node \`${issue.nodeId}\`: ${issue.message}`, issue.path),
+    );
   }
   return findings;
 }

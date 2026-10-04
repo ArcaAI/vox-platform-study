@@ -70,7 +70,11 @@ describe('effectiveSettings — settings first, legacy for one release', () => {
     const graph: WorkflowGraph = {
       version: 1,
       nodes: [
-        { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['consultation', 'api', 'webhook', 'schedule'], contextSchema: { contextSchemaId: 'cs-1' } } },
+        {
+          id: 'n_trigger',
+          type: 'core.trigger',
+          config: { kinds: ['consultation', 'api', 'webhook', 'schedule'], contextSchema: { contextSchemaId: 'cs-1' } },
+        },
         { id: 'n_output', type: 'core.output', config: { protocols: ['http', 'http-sse', 'socket'] } },
       ],
       edges: [],
@@ -97,7 +101,11 @@ describe('effectiveSettings — settings first, legacy for one release', () => {
 
   it('settings without a contextSchema still take the trigger`s, and an invalid settings block falls back whole', () => {
     const graph = graphWith({ connections: ['api'], sources: [] });
-    graph.nodes[0] = { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'], contextSchema: { contextSchemaId: 'cs-2', versionNumber: 3 } } };
+    graph.nodes[0] = {
+      id: 'n_trigger',
+      type: 'core.trigger',
+      config: { kinds: ['api'], contextSchema: { contextSchemaId: 'cs-2', versionNumber: 3 } },
+    };
     expect(effectiveSettings(graph).contextSchema).toEqual({ contextSchemaId: 'cs-2', versionNumber: 3 });
     expect(effectiveSettings(graphWith({ connections: 'api' })).origin).toBe('legacy');
   });
@@ -128,17 +136,17 @@ describe('settingsImplications — WF-SET-001..004', () => {
 
   it('WF-SET-003: a stream audio kind in the Input shape needs socket', () => {
     const definition = { schemaVersion: '1.0', kinds: [{ key: 'audio_stream', primitive: 'STREAM_AUDIO' }] };
-    expect(settingsImplications(graphWith(undefined), settings(['api']), { contextSchemaDefinition: definition }).map((entry) => entry.ruleId)).toEqual([
-      'WF-SET-003',
-    ]);
+    expect(
+      settingsImplications(graphWith(undefined), settings(['api']), { contextSchemaDefinition: definition }).map((entry) => entry.ruleId),
+    ).toEqual(['WF-SET-003']);
   });
 
   it('WF-SET-004: blob audio or an attachment needs api', () => {
     const blob = { schemaVersion: '1.0', kinds: [{ key: 'recording', primitive: 'STREAM_AUDIO', delivery: 'blob' }] };
     const attachment = { schemaVersion: '1.0', kinds: [{ key: 'attachment', primitive: 'DOCUMENT' }] };
-    expect(settingsImplications(graphWith(undefined), settings(['webhook']), { contextSchemaDefinition: blob }).map((entry) => entry.ruleId)).toEqual([
-      'WF-SET-004',
-    ]);
+    expect(settingsImplications(graphWith(undefined), settings(['webhook']), { contextSchemaDefinition: blob }).map((entry) => entry.ruleId)).toEqual(
+      ['WF-SET-004'],
+    );
     expect(
       settingsImplications(graphWith(undefined), settings(['webhook']), { contextSchemaDefinition: attachment }).map((entry) => entry.ruleId),
     ).toEqual(['WF-SET-004']);

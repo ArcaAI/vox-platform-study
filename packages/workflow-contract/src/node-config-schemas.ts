@@ -1688,7 +1688,12 @@ export const BINDING_JSON_SCHEMA: NodeConfigSchema = Object.freeze({
         }),
       }),
     }),
-    Object.freeze({ type: 'object', additionalProperties: false, required: Object.freeze(['value']), properties: Object.freeze({ value: Object.freeze({}) }) }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['value']),
+      properties: Object.freeze({ value: Object.freeze({}) }),
+    }),
     Object.freeze({
       type: 'object',
       additionalProperties: false,

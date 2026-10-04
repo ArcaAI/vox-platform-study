@@ -15,7 +15,7 @@
  */
 import path from 'node:path';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { compile, type CompiledNode, type CompiledWorkflowConfig, type CompilerContext } from '../compiler';
 import type { WorkflowGraph } from '../graph-model';
 import { NODE_PORTS } from '../node-ports';
@@ -27,15 +27,7 @@ import { validate } from '../validate';
 import { resolveOutputPort } from '../core-contract';
 import type { AgentTask } from '../agent-schemas';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 const SEED = path.resolve(__dirname, '../../../database/src/prisma/db_main/seed');
-const library: any = await import(/* @vite-ignore */ `${SEED}/28-workflow-library.ts`);
-const libraryGenerated: any = await import(/* @vite-ignore */ `${SEED}/28-workflow-library.generated.ts`);
-const arcaai: any = await import(/* @vite-ignore */ `${SEED}/29-arcaai-agents-and-workflows.ts`);
-const arcaaiGenerated: any = await import(/* @vite-ignore */ `${SEED}/29-arcaai-agents-and-workflows.generated.ts`);
-const agentsModule: any = await import(/* @vite-ignore */ `${SEED}/25-agents.ts`);
-const noteSchema: any = await import(/* @vite-ignore */ `${SEED}/07e-consultation-note-context-schema.ts`);
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface Target {
   key: string;
@@ -52,30 +44,56 @@ interface Blob {
   compiledConfig: CompiledWorkflowConfig;
 }
 
-const TARGETS: Array<{ target: Target; blob: Blob; registryChecksum: string }> = [
-  ...(library.WORKFLOW_LIBRARY_TARGETS as Target[]).map((target) => ({
-    target,
-    blob: libraryGenerated.WORKFLOW_LIBRARY_GENERATED[target.key] as Blob,
-    registryChecksum: libraryGenerated.REGISTRY_CHECKSUM as string,
-  })),
-  ...(arcaai.ARCAAI_WORKFLOW_TARGETS as Target[]).map((target) => ({
-    target,
-    blob: arcaaiGenerated.ARCAAI_GENERATED[target.key] as Blob,
-    registryChecksum: arcaaiGenerated.REGISTRY_CHECKSUM as string,
-  })),
-];
+interface SeededTarget {
+  target: Target;
+  blob: Blob;
+  registryChecksum: string;
+}
 
-/** Every seeded agent, by slug: its task and output schema (`null` = the task default). */
-const AGENT_SPECS: Array<{ slug: string; task: AgentTask; outputSchema: Record<string, unknown> | null }> = [
-  ...agentsModule.GLOBAL_AGENT_SPECS,
-  ...agentsModule.PLATFORM_AGENT_SPECS,
-  ...arcaai.ARCAAI_AGENT_SPECS,
-  arcaai.ARCAAI_FINALIZATION_AGENT_SPEC,
-];
-const AGENTS: AgentIOResolver = Object.fromEntries(AGENT_SPECS.map((spec) => [spec.slug, { task: spec.task, outputSchema: spec.outputSchema }]));
-const PUBLISH_AGENTS: Record<string, PublishAgentView> = Object.fromEntries(
-  AGENT_SPECS.map((spec) => [spec.slug, { declaredVariables: [], contextPayloadSchema: null, task: spec.task, outputSchema: spec.outputSchema }]),
-);
+let TARGETS: SeededTarget[] = [];
+let AGENTS: AgentIOResolver = {};
+let PUBLISH_AGENTS: Record<string, PublishAgentView> = {};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let noteSchema: any;
+
+/** Load the seed modules by path (read-only) — inside a hook, because this package compiles as CommonJS (no top-level await). */
+beforeAll(async () => {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const load = (name: string): Promise<any> => import(/* @vite-ignore */ `${SEED}/${name}`);
+  const [library, libraryGenerated, arcaai, arcaaiGenerated, agentsModule, note] = await Promise.all([
+    load('28-workflow-library.ts'),
+    load('28-workflow-library.generated.ts'),
+    load('29-arcaai-agents-and-workflows.ts'),
+    load('29-arcaai-agents-and-workflows.generated.ts'),
+    load('25-agents.ts'),
+    load('07e-consultation-note-context-schema.ts'),
+  ]);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  noteSchema = note;
+  TARGETS = [
+    ...(library.WORKFLOW_LIBRARY_TARGETS as Target[]).map((target) => ({
+      target,
+      blob: libraryGenerated.WORKFLOW_LIBRARY_GENERATED[target.key] as Blob,
+      registryChecksum: libraryGenerated.REGISTRY_CHECKSUM as string,
+    })),
+    ...(arcaai.ARCAAI_WORKFLOW_TARGETS as Target[]).map((target) => ({
+      target,
+      blob: arcaaiGenerated.ARCAAI_GENERATED[target.key] as Blob,
+      registryChecksum: arcaaiGenerated.REGISTRY_CHECKSUM as string,
+    })),
+  ];
+  /** Every seeded agent, by slug: its task and output schema (`null` = the task default). */
+  const specs: Array<{ slug: string; task: AgentTask; outputSchema: Record<string, unknown> | null }> = [
+    ...agentsModule.GLOBAL_AGENT_SPECS,
+    ...agentsModule.PLATFORM_AGENT_SPECS,
+    ...arcaai.ARCAAI_AGENT_SPECS,
+    arcaai.ARCAAI_FINALIZATION_AGENT_SPEC,
+  ];
+  AGENTS = Object.fromEntries(specs.map((spec) => [spec.slug, { task: spec.task, outputSchema: spec.outputSchema }]));
+  PUBLISH_AGENTS = Object.fromEntries(
+    specs.map((spec) => [spec.slug, { declaredVariables: [], contextPayloadSchema: null, task: spec.task, outputSchema: spec.outputSchema }]),
+  );
+});
 
 function payloadSchemaOf(target: Target): Record<string, unknown> {
   return noteSchema.payloadSchemaFromDefinition(target.contextSchemaDefinition ?? noteSchema.NOTE_CONTEXT_SCHEMA_DEFINITION);
@@ -104,7 +122,13 @@ function compilerContext(target: Target, blob: Blob, registryChecksum: string, e
       entitlementKeys: blob.compiledConfig.policyBindings.entitlementKeys,
     },
     triggerContextSchema: contextSchemaId
-      ? { schemaId: contextSchemaId, versionNumber: 1, versionId: target.contextSchemaVersionId, payloadSchema: payloadSchemaOf(target), followsLatest: true }
+      ? {
+          schemaId: contextSchemaId,
+          versionNumber: 1,
+          versionId: target.contextSchemaVersionId,
+          payloadSchema: payloadSchemaOf(target),
+          followsLatest: true,
+        }
       : null,
     compiledAt: blob.compiledConfig.compiledAt,
     nodeInfo,
@@ -118,13 +142,18 @@ function errorsOf(target: Target, withAgents: boolean): WorkflowFinding[] {
     schemaValueProblems: jsonSchemaValueProblems,
     templateReferenceSeverity: TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
     triggerContextSchema: payloadSchemaOf(target),
-    ...(withAgents ? { agents: PUBLISH_AGENTS, contextSchemaDefinition: target.contextSchemaDefinition ?? noteSchema.NOTE_CONTEXT_SCHEMA_DEFINITION } : {}),
+    ...(withAgents
+      ? { agents: PUBLISH_AGENTS, contextSchemaDefinition: target.contextSchemaDefinition ?? noteSchema.NOTE_CONTEXT_SCHEMA_DEFINITION }
+      : {}),
   });
   return [...report.findings, ...gate].filter((finding) => finding.severity === 'ERROR');
 }
 
 function nodesOf(config: CompiledWorkflowConfig): CompiledNode[] {
-  return [...config.stages.flatMap((stage) => stage.nodes), ...(config.loops ?? []).flatMap((loop) => loop.body.stages.flatMap((stage) => stage.nodes))];
+  return [
+    ...config.stages.flatMap((stage) => stage.nodes),
+    ...(config.loops ?? []).flatMap((loop) => loop.body.stages.flatMap((stage) => stage.nodes)),
+  ];
 }
 
 function withoutDataContract(config: CompiledWorkflowConfig): Record<string, unknown> {
@@ -150,27 +179,30 @@ describe('seed safety — the 15 seeded workflows', () => {
     }
   });
 
-  it.each(TARGETS.map((entry) => [entry.target.key, entry] as const))('%s: zero ERROR findings, as today', (_key, { target, blob }) => {
-    const today = blob.validationReport.findings.filter((finding) => finding.severity === 'ERROR');
-    expect(today).toEqual([]);
-    expect(errorsOf(target, false)).toEqual([]);
-    expect(errorsOf(target, true)).toEqual([]);
+  it('every target: zero ERROR findings, as today (agents unresolved, and resolved)', () => {
+    for (const { target, blob } of TARGETS) {
+      const today = blob.validationReport.findings.filter((finding) => finding.severity === 'ERROR');
+      expect(today, target.key).toEqual([]);
+      expect(errorsOf(target, false), target.key).toEqual([]);
+      expect(errorsOf(target, true), target.key).toEqual([]);
+    }
   });
 
-  it.each(TARGETS.map((entry) => [entry.target.key, entry] as const))('%s: compiles byte-identically with the data contract off', (_key, { target, blob, registryChecksum }) => {
-    const result = compile(target.graph, compilerContext(target, blob, registryChecksum));
-    if (!('config' in result)) throw new Error(JSON.stringify(result.findings));
-    expect(result.config.checksum).toBe(blob.compiledConfig.checksum);
-    expect(result.config).toEqual(blob.compiledConfig);
+  it('every target: compiles byte-identically with the data contract off', () => {
+    for (const { target, blob, registryChecksum } of TARGETS) {
+      const result = compile(target.graph, compilerContext(target, blob, registryChecksum));
+      if (!('config' in result)) throw new Error(`${target.key}: ${JSON.stringify(result.findings)}`);
+      expect(result.config.checksum, target.key).toBe(blob.compiledConfig.checksum);
+      expect(result.config, target.key).toEqual(blob.compiledConfig);
+    }
   });
 
-  it.each(TARGETS.map((entry) => [entry.target.key, entry] as const))(
-    '%s: with the data contract on, only the new keys change and every legacy data input becomes one binding of the same producer key',
-    (_key, { target, blob, registryChecksum }) => {
+  it('every target: with the data contract on, only the new keys change and every legacy data input becomes one binding of the same producer key', () => {
+    for (const { target, blob, registryChecksum } of TARGETS) {
       const result = compile(target.graph, compilerContext(target, blob, registryChecksum, { emitDataContract: true, agents: AGENTS }));
-      if (!('config' in result)) throw new Error(JSON.stringify(result.findings));
-      expect(withoutDataContract(result.config)).toEqual(withoutDataContract(blob.compiledConfig));
-      expect(result.config.settings?.connections.length).toBeGreaterThan(0);
+      if (!('config' in result)) throw new Error(`${target.key}: ${JSON.stringify(result.findings)}`);
+      expect(withoutDataContract(result.config), target.key).toEqual(withoutDataContract(blob.compiledConfig));
+      expect(result.config.settings?.connections.length, target.key).toBeGreaterThan(0);
 
       const typeOf = new Map(nodesOf(result.config).map((node) => [node.nodeId, node]));
       for (const node of nodesOf(result.config)) {
@@ -188,18 +220,24 @@ describe('seed safety — the 15 seeded workflows', () => {
         }
         expect([...bound].sort(), `${target.key} ${node.nodeId}`).toEqual([...expected].sort());
       }
-    },
-  );
+    }
+  });
 
   it('the documented seeded patterns translate as the brief requires', () => {
     const global = TARGETS.find((entry) => entry.target.key === 'GLOBAL:general-medicine-consultation');
     if (global === undefined) throw new Error('GLOBAL:general-medicine-consultation not seeded');
-    const result = compile(global.target.graph, compilerContext(global.target, global.blob, global.registryChecksum, { emitDataContract: true, agents: AGENTS }));
+    const result = compile(
+      global.target.graph,
+      compilerContext(global.target, global.blob, global.registryChecksum, { emitDataContract: true, agents: AGENTS }),
+    );
     if (!('config' in result)) throw new Error('compile failed');
     const nodes = new Map(nodesOf(result.config).map((node) => [node.nodeId, node]));
     expect(nodes.get('n_ner')?.bindings).toEqual({ text: { firstOf: ['nodes.n_transcript.outputs.text', 'nodes.n_asr.outputs.transcript'] } });
     expect(nodes.get('n_output')?.bindings).toEqual({ in: { from: 'nodes.n_finalize.outputs.data' } });
-    expect(nodes.get('n_summary')?.bindings).toEqual({ message: { from: 'nodes.n_ner.outputs.text' }, context: { from: 'nodes.n_trigger.outputs.context' } });
+    expect(nodes.get('n_summary')?.bindings).toEqual({
+      message: { from: 'nodes.n_ner.outputs.text' },
+      context: { from: 'nodes.n_trigger.outputs.context' },
+    });
   });
 
   it('records the WARNINGS the data contract adds, for the report (never blocking)', () => {

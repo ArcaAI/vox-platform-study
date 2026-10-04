@@ -4,15 +4,7 @@
  */
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
-import {
-  BINDING_JSON_SCHEMA,
-  bindingIssues,
-  compiledBindings,
-  edgeAncestors,
-  edgeImpliedBindings,
-  isBinding,
-  type BindingIssue,
-} from '../bindings';
+import { BINDING_JSON_SCHEMA, bindingIssues, compiledBindings, edgeAncestors, edgeImpliedBindings, isBinding, type BindingIssue } from '../bindings';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from '../graph-model';
 import type { AgentIOResolver } from '../node-io';
 
@@ -69,21 +61,29 @@ function codes(issues: readonly BindingIssue[], severity?: BindingIssue['severit
 }
 
 describe('the binding shape', () => {
-  it.each([[{ from: 'nodes.a.outputs.text' }], [{ from: 'consultation.patient.age', at: 'runStart' }], [{ value: 'en' }], [{ value: null }], [{ template: 'Hi {{context.name}}' }]])(
-    'accepts %j',
-    (binding) => {
-      expect(isBinding(binding)).toBe(true);
-      expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '')).toEqual([]);
-    },
-  );
+  it.each([
+    [{ from: 'nodes.a.outputs.text' }],
+    [{ from: 'consultation.patient.age', at: 'runStart' }],
+    [{ value: 'en' }],
+    [{ value: null }],
+    [{ template: 'Hi {{context.name}}' }],
+  ])('accepts %j', (binding) => {
+    expect(isBinding(binding)).toBe(true);
+    expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '')).toEqual([]);
+  });
 
-  it.each([[{}], [{ from: 'a', value: 1 }], [{ from: '' }], [{ template: 1 }], [{ from: 'a', at: 'later' }], [{ from: 'a', extra: 1 }], ['nodes.a.outputs.text']])(
-    'refuses %j',
-    (binding) => {
-      expect(isBinding(binding)).toBe(false);
-      expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '').length).toBeGreaterThan(0);
-    },
-  );
+  it.each([
+    [{}],
+    [{ from: 'a', value: 1 }],
+    [{ from: '' }],
+    [{ template: 1 }],
+    [{ from: 'a', at: 'later' }],
+    [{ from: 'a', extra: 1 }],
+    ['nodes.a.outputs.text'],
+  ])('refuses %j', (binding) => {
+    expect(isBinding(binding)).toBe(false);
+    expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '').length).toBeGreaterThan(0);
+  });
 });
 
 describe('edgeAncestors', () => {
@@ -241,7 +241,11 @@ describe('bindingIssues — authored inputs', () => {
   });
 
   it('context paths are checked against the bound payload schema (when it is known)', () => {
-    const payload = { type: 'object', additionalProperties: false, properties: { patient: { type: 'object', additionalProperties: false, properties: { age: { type: 'integer' } } } } };
+    const payload = {
+      type: 'object',
+      additionalProperties: false,
+      properties: { patient: { type: 'object', additionalProperties: false, properties: { age: { type: 'integer' } } } },
+    };
     const ok = withInputs('n_finalize', { message: { from: 'context.patient.age' } });
     expect(codes(bindingIssues(ok, { agents: AGENTS, contextPayloadSchema: payload }), 'ERROR')).toEqual([]);
     const bad = withInputs('n_finalize', { message: { from: 'context.patient.weight' } });

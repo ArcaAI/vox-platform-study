@@ -34,7 +34,11 @@ function dataContractFindings(g: WorkflowGraph, c: PublishContext = ctx()) {
 describe('bindings reach the publish gate', () => {
   it('an ERROR binding issue is a blocking finding, with the node, the pointer and the code', () => {
     const g = graph(
-      [TRIGGER, { id: 'n_gen', type: 'core.agent', config: { agentRef: { slug: 'gen' }, inputs: { message: { from: 'nodes.n_output.outputs.x' } } } }, OUTPUT],
+      [
+        TRIGGER,
+        { id: 'n_gen', type: 'core.agent', config: { agentRef: { slug: 'gen' }, inputs: { message: { from: 'nodes.n_output.outputs.x' } } } },
+        OUTPUT,
+      ],
       [
         { id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_gen', toPort: 'after' },
         { id: 'e2', from: 'n_gen', fromPort: 'out', to: 'n_output', toPort: 'in' },
@@ -81,7 +85,11 @@ describe('bindings reach the publish gate', () => {
     const g = graph(
       [
         { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['consultation'] } },
-        { id: 'n_gen', type: 'core.agent', config: { agentRef: { slug: 'gen' }, overrides: { promptVariables: { age: '{{consultation.patient.age}}', id: '{{run.id}}' } } } },
+        {
+          id: 'n_gen',
+          type: 'core.agent',
+          config: { agentRef: { slug: 'gen' }, overrides: { promptVariables: { age: '{{consultation.patient.age}}', id: '{{run.id}}' } } },
+        },
         OUTPUT,
       ],
       [
@@ -122,13 +130,23 @@ describe('workflow settings reach the publish gate', () => {
 
   it('the Input shape`s kinds are read from the resolved definition', () => {
     const definition = { schemaVersion: '1.0', kinds: [{ key: 'attachment', primitive: 'DOCUMENT' }] };
-    const found = dataContractFindings(graph([TRIGGER, OUTPUT], [{ id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_output', toPort: 'after' }], { connections: ['webhook'], sources: [] }), ctx({ contextSchemaDefinition: definition }));
+    const found = dataContractFindings(
+      graph([TRIGGER, OUTPUT], [{ id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_output', toPort: 'after' }], {
+        connections: ['webhook'],
+        sources: [],
+      }),
+      ctx({ contextSchemaDefinition: definition }),
+    );
     expect(found.map((finding) => finding.code)).toEqual(['SETTINGS_UPLOAD_REQUIRES_API']);
   });
 
   it('a consultation read without the consultation source is refused', () => {
     const g = graph(
-      [TRIGGER, { id: 'n_gen', type: 'core.agent', config: { agentRef: { slug: 'gen' }, inputs: { message: { from: 'consultation.transcript.text' } } } }, OUTPUT],
+      [
+        TRIGGER,
+        { id: 'n_gen', type: 'core.agent', config: { agentRef: { slug: 'gen' }, inputs: { message: { from: 'consultation.transcript.text' } } } },
+        OUTPUT,
+      ],
       [
         { id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_gen', toPort: 'after' },
         { id: 'e2', from: 'n_gen', fromPort: 'out', to: 'n_output', toPort: 'in' },
@@ -164,12 +182,11 @@ describe('DATA_CONTRACT_RULES — the catalogue', () => {
       expect(rule.title.length, rule.code).toBeGreaterThan(10);
       expect(rule.fix.length, rule.code).toBeGreaterThan(10);
     }
-    expect(DATA_CONTRACT_RULES.filter((rule) => rule.ruleId.startsWith('WF-SET-')).map((rule) => rule.ruleId).sort()).toEqual([
-      'WF-SET-001',
-      'WF-SET-002',
-      'WF-SET-003',
-      'WF-SET-004',
-    ]);
+    expect(
+      DATA_CONTRACT_RULES.filter((rule) => rule.ruleId.startsWith('WF-SET-'))
+        .map((rule) => rule.ruleId)
+        .sort(),
+    ).toEqual(['WF-SET-001', 'WF-SET-002', 'WF-SET-003', 'WF-SET-004']);
   });
 
   it('every code a publish finding can carry is in the publish code vocabulary (INFO excepted)', () => {

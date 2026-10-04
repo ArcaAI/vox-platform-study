@@ -458,7 +458,11 @@ function compileNode(
  * property of the version the workflow was PUBLISHED against. Omitted when the resolution
  * declares none, so nothing that compiled before this ticket moves.
  */
-function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext, settingsContextSchema: Record<string, unknown> | null): Record<string, unknown> {
+function compiledConfigFor(
+  node: WorkflowGraphNode,
+  ctx: CompilerContext,
+  settingsContextSchema: Record<string, unknown> | null,
+): Record<string, unknown> {
   const authoredConfig = node.config ?? {};
   if (node.type !== TRIGGER_NODE_TYPE) return authoredConfig;
 

@@ -9,7 +9,10 @@ import type { WorkflowGraph } from '../graph-model';
 const AGENTS = {
   asr: { task: 'SPEECH_TO_TEXT' as const },
   gen: { task: 'TEXT_GENERATION' as const },
-  finalize: { task: 'TEXT_GENERATION' as const, outputSchema: { type: 'object', properties: { case_note: { type: 'string', description: 'The note.' } } } },
+  finalize: {
+    task: 'TEXT_GENERATION' as const,
+    outputSchema: { type: 'object', properties: { case_note: { type: 'string', description: 'The note.' } } },
+  },
 };
 
 const CONTEXT_DEFINITION = {
@@ -91,7 +94,11 @@ describe('bindingSourcePaths', () => {
   it('Context comes from the context schema, typed in the I/O vocabulary', () => {
     const context = group(groups, 'context');
     expect(context.items.map((item) => item.raw)).toEqual(['context.encounter', 'context.encounter.age', 'context.transcript']);
-    expect(context.items.find((item) => item.raw === 'context.encounter.age')).toMatchObject({ type: 'number', phiClass: 'PHI', description: 'Age in years.' });
+    expect(context.items.find((item) => item.raw === 'context.encounter.age')).toMatchObject({
+      type: 'number',
+      phiClass: 'PHI',
+      description: 'Age in years.',
+    });
   });
 
   it('Consultation offers the platform read schema', () => {
@@ -130,7 +137,9 @@ describe('bindingSourcePaths', () => {
     const ranked = bindingSourcePaths(graph(), 'n_target', { contextSchema: CONTEXT_DEFINITION, agentOutputs: AGENTS, targetType: 'text' });
     const steps = group(ranked, 'steps').items;
     const fits = steps.map((item) => item.fit);
-    expect(fits).toEqual([...fits].sort((a, b) => ['match', 'convert', 'blocked'].indexOf(a ?? '') - ['match', 'convert', 'blocked'].indexOf(b ?? '')));
+    expect(fits).toEqual(
+      [...fits].sort((a, b) => ['match', 'convert', 'blocked'].indexOf(a ?? '') - ['match', 'convert', 'blocked'].indexOf(b ?? '')),
+    );
     expect(steps.filter((item) => item.bestMatch === true)).toHaveLength(1);
     expect(steps[0]?.bestMatch).toBe(true);
     const converted = steps.find((item) => item.fit === 'convert');

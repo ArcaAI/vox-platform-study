@@ -115,7 +115,9 @@ export const RUN_SCOPE_FIELDS: Readonly<Record<string, { readonly type: IoType; 
 // =============================================================================================
 
 function liveNodes(graph: Pick<WorkflowGraph, 'nodes'>): WorkflowGraphNode[] {
-  return (graph.nodes ?? []).filter((node): node is WorkflowGraphNode => typeof node?.id === 'string' && typeof node?.type === 'string' && node.type !== 'core.note');
+  return (graph.nodes ?? []).filter(
+    (node): node is WorkflowGraphNode => typeof node?.id === 'string' && typeof node?.type === 'string' && node.type !== 'core.note',
+  );
 }
 
 /**
@@ -312,10 +314,16 @@ function resolveNodePath(segments: readonly string[], scope: ResolveScope, path:
   const producer = nodeId === undefined ? undefined : scope.nodesById.get(nodeId);
   if (producer === undefined) return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: there is no step \`${nodeId ?? ''}\` in this workflow.` };
   if (!scope.ancestors.has(producer.id)) {
-    return { code: 'BINDING_NOT_ANCESTOR', message: `\`${path}\`: step ${label(producer)} does not run before this step, so its output is not available here. Connect it upstream first.` };
+    return {
+      code: 'BINDING_NOT_ANCESTOR',
+      message: `\`${path}\`: step ${label(producer)} does not run before this step, so its output is not available here. Connect it upstream first.`,
+    };
   }
   if (outputs !== 'outputs' || field === undefined) {
-    return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: a step's data is read from its \`outputs\` — \`nodes.${producer.id}.outputs.<field>\`.` };
+    return {
+      code: 'BINDING_UNKNOWN_PATH',
+      message: `\`${path}\`: a step's data is read from its \`outputs\` — \`nodes.${producer.id}.outputs.<field>\`.`,
+    };
   }
   const io = nodeIOFor(producer, scope.ctx.agents);
   const declared = io?.outputs[field];
@@ -329,7 +337,8 @@ function resolveNodePath(segments: readonly string[], scope: ResolveScope, path:
   if (rest.length === 0) return { ok: { type: declared.type, phiClass: declared.phiClass ?? null } };
   if (declared.schema !== undefined) {
     const walked = walkSchema(declared.schema, rest, true);
-    if (walked === 'unknown') return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: \`${rest.join('.')}\` is not a field of ${label(producer)}'s \`${field}\`.` };
+    if (walked === 'unknown')
+      return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: \`${rest.join('.')}\` is not a field of ${label(producer)}'s \`${field}\`.` };
     return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: declared.phiClass ?? null } };
   }
   if (declared.type === 'json' || declared.type === 'any') return { ok: { type: 'any', phiClass: declared.phiClass ?? null } };
@@ -358,7 +367,12 @@ function resolvePath(path: string, scope: ResolveScope): Resolution {
     case 'run': {
       const field = rest.length === 1 ? RUN_SCOPE_FIELDS[rest[0] as string] : undefined;
       if (field === undefined) {
-        return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\` is not a run field (${Object.keys(RUN_SCOPE_FIELDS).map((name) => `\`run.${name}\``).join(', ')}).` };
+        return {
+          code: 'BINDING_UNKNOWN_PATH',
+          message: `\`${path}\` is not a run field (${Object.keys(RUN_SCOPE_FIELDS)
+            .map((name) => `\`run.${name}\``)
+            .join(', ')}).`,
+        };
       }
       return { ok: { type: field.type, phiClass: 'NON_PHI' } };
     }
@@ -396,15 +410,36 @@ function declaredVars(nodes: readonly WorkflowGraphNode[]): Map<string, IoType> 
 // The publish rules
 // =============================================================================================
 
-function scopeFor(graph: WorkflowGraph, nodeId: string, nodesById: ReadonlyMap<string, WorkflowGraphNode>, vars: ReadonlyMap<string, IoType>, ctx: BindingIssueContext): ResolveScope {
+function scopeFor(
+  graph: WorkflowGraph,
+  nodeId: string,
+  nodesById: ReadonlyMap<string, WorkflowGraphNode>,
+  vars: ReadonlyMap<string, IoType>,
+  ctx: BindingIssueContext,
+): ResolveScope {
   return { graph, nodesById, ancestors: edgeAncestors(graph, nodeId), vars, ctx };
 }
 
-function checkType(issues: BindingIssue[], node: WorkflowGraphNode, input: string, pointer: string, target: IoType, source: IoType, what: string): void {
+function checkType(
+  issues: BindingIssue[],
+  node: WorkflowGraphNode,
+  input: string,
+  pointer: string,
+  target: IoType,
+  source: IoType,
+  what: string,
+): void {
   const fit = typeFits(target, source);
   if (fit === 'match') return;
   if (fit === 'convert') {
-    issues.push({ code: 'BINDING_TYPE_CONVERTED', severity: 'INFO', nodeId: node.id, input, path: pointer, message: `\`${input}\` takes ${target}; ${what} is ${source} and will be formatted as ${target}.` });
+    issues.push({
+      code: 'BINDING_TYPE_CONVERTED',
+      severity: 'INFO',
+      nodeId: node.id,
+      input,
+      path: pointer,
+      message: `\`${input}\` takes ${target}; ${what} is ${source} and will be formatted as ${target}.`,
+    });
     return;
   }
   issues.push({
@@ -417,7 +452,14 @@ function checkType(issues: BindingIssue[], node: WorkflowGraphNode, input: strin
   });
 }
 
-function checkAuthoredNode(issues: BindingIssue[], graph: WorkflowGraph, node: WorkflowGraphNode, inputs: Record<string, unknown>, scope: ResolveScope, io: NodeIO | undefined): void {
+function checkAuthoredNode(
+  issues: BindingIssue[],
+  graph: WorkflowGraph,
+  node: WorkflowGraphNode,
+  inputs: Record<string, unknown>,
+  scope: ResolveScope,
+  io: NodeIO | undefined,
+): void {
   for (const [name, binding] of Object.entries(inputs)) {
     const pointer = `/inputs/${name}`;
     const declared = io?.inputs[name];
@@ -447,7 +489,14 @@ function checkAuthoredNode(issues: BindingIssue[], graph: WorkflowGraph, node: W
       for (const reference of templateReferences(binding.template)) {
         const resolved = resolvePath(reference.path, scope);
         if ('code' in resolved) {
-          issues.push({ code: resolved.code, severity: 'ERROR', nodeId: node.id, input: name, path: `${pointer}/template`, message: resolved.message });
+          issues.push({
+            code: resolved.code,
+            severity: 'ERROR',
+            nodeId: node.id,
+            input: name,
+            path: `${pointer}/template`,
+            message: resolved.message,
+          });
           broken = true;
         }
       }
@@ -458,7 +507,13 @@ function checkAuthoredNode(issues: BindingIssue[], graph: WorkflowGraph, node: W
   }
 }
 
-function checkEdgeProducers(issues: BindingIssue[], graph: WorkflowGraph, node: WorkflowGraphNode, authored: Record<string, unknown> | undefined, agents?: AgentIOResolver): void {
+function checkEdgeProducers(
+  issues: BindingIssue[],
+  graph: WorkflowGraph,
+  node: WorkflowGraphNode,
+  authored: Record<string, unknown> | undefined,
+  agents?: AgentIOResolver,
+): void {
   for (const [name, producers] of edgeProducers(graph, node, agents)) {
     if (authored !== undefined && Object.prototype.hasOwnProperty.call(authored, name)) continue;
     const paths = firstOfOrder(producers);
@@ -478,7 +533,14 @@ function checkEdgeProducers(issues: BindingIssue[], graph: WorkflowGraph, node: 
   }
 }
 
-function checkRequired(issues: BindingIssue[], graph: WorkflowGraph, node: WorkflowGraphNode, authored: Record<string, unknown>, io: NodeIO | undefined, agents?: AgentIOResolver): void {
+function checkRequired(
+  issues: BindingIssue[],
+  graph: WorkflowGraph,
+  node: WorkflowGraphNode,
+  authored: Record<string, unknown>,
+  io: NodeIO | undefined,
+  agents?: AgentIOResolver,
+): void {
   if (io === undefined) return;
   const edgeBound = new Set(edgeProducers(graph, node, agents).keys());
   for (const [name, declared] of Object.entries(io.inputs)) {
@@ -505,7 +567,13 @@ function checkPromptVariableNodes(issues: BindingIssue[], node: WorkflowGraphNod
       if (root === 'nodes' && segments[2] !== 'outputs') {
         const producer = segments[1] === undefined ? undefined : scope.nodesById.get(segments[1]);
         if (producer === undefined) {
-          issues.push({ code: 'BINDING_UNKNOWN_PATH', severity: 'ERROR', nodeId: node.id, path: `/overrides/promptVariables/${key}`, message: `\`${reference.path}\`: there is no step \`${segments[1] ?? ''}\` in this workflow.` });
+          issues.push({
+            code: 'BINDING_UNKNOWN_PATH',
+            severity: 'ERROR',
+            nodeId: node.id,
+            path: `/overrides/promptVariables/${key}`,
+            message: `\`${reference.path}\`: there is no step \`${segments[1] ?? ''}\` in this workflow.`,
+          });
         } else if (!scope.ancestors.has(producer.id)) {
           issues.push({
             code: 'BINDING_NOT_ANCESTOR',
@@ -519,7 +587,14 @@ function checkPromptVariableNodes(issues: BindingIssue[], node: WorkflowGraphNod
       }
       if (root !== 'nodes' && root !== CONSULTATION_ROOT) continue; // other roots: PROMPT_VARIABLE_UNDECLARED's job
       const resolved = resolvePath(reference.path, scope);
-      if ('code' in resolved) issues.push({ code: resolved.code, severity: 'ERROR', nodeId: node.id, path: `/overrides/promptVariables/${key}`, message: resolved.message });
+      if ('code' in resolved)
+        issues.push({
+          code: resolved.code,
+          severity: 'ERROR',
+          nodeId: node.id,
+          path: `/overrides/promptVariables/${key}`,
+          message: resolved.message,
+        });
     }
   }
 }

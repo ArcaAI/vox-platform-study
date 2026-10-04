@@ -25,7 +25,16 @@ import { consultationReadPaths } from './consultation-read-schema';
 import { RUN_SCOPE_FIELDS, edgeAncestors } from './bindings';
 import { topologicalLevels } from './graph-algorithms';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
-import { ioTypeOfJsonSchema, ioTypeOfVariableType, nodeIOFor, typeFits, type AgentIOResolver, type IoType, type PhiClass, type TypeFit } from './node-io';
+import {
+  ioTypeOfJsonSchema,
+  ioTypeOfVariableType,
+  nodeIOFor,
+  typeFits,
+  type AgentIOResolver,
+  type IoType,
+  type PhiClass,
+  type TypeFit,
+} from './node-io';
 import { schemaVariablePaths } from './schema-variable-paths';
 import { effectiveSettings } from './workflow-settings';
 
@@ -190,7 +199,11 @@ export function bindingSourcePaths(graph: WorkflowGraph, nodeId: string, options
   return [
     group('steps', ranked(stepItems(graph, nodeId, options.agentOutputs), options.targetType, true), 'Nothing runs before this step yet.'),
     group('context', ranked(contextItems(options.contextSchema), options.targetType, false), 'No context schema is bound to this workflow.'),
-    group('consultation', ranked(consultationItems(consultationBound), options.targetType, false), 'The consultation read schema declares no fields.'),
+    group(
+      'consultation',
+      ranked(consultationItems(consultationBound), options.targetType, false),
+      'The consultation read schema declares no fields.',
+    ),
     group('run', ranked(runItems(graph), options.targetType, false), 'No run fields are available.'),
   ];
 }

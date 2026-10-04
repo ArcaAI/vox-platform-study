@@ -19,7 +19,14 @@ const BASE: CompilerContext = {
   registryChecksum: registryChecksum(),
   ruleSetVersion: 1,
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 },
-  policyBindings: { guardrailProfile: 'STANDARD', redactionRuleSetId: null, promptTemplateRefs: [], documentTemplateRefs: [], contextSchemaVersionId: null, entitlementKeys: [] },
+  policyBindings: {
+    guardrailProfile: 'STANDARD',
+    redactionRuleSetId: null,
+    promptTemplateRefs: [],
+    documentTemplateRefs: [],
+    contextSchemaVersionId: null,
+    entitlementKeys: [],
+  },
   compiledAt: '2026-10-04T00:00:00.000Z',
   nodeInfo,
 };
@@ -98,7 +105,10 @@ describe('emitDataContract on', () => {
   });
 
   it('authored bindings join the translated ones; a node with nothing bound carries no `bindings`', () => {
-    expect(nodes.n_summary?.bindings).toEqual({ message: { from: 'nodes.n_ner.outputs.text' }, context: { from: 'consultation.notes.preSummary', at: 'runStart' } });
+    expect(nodes.n_summary?.bindings).toEqual({
+      message: { from: 'nodes.n_ner.outputs.text' },
+      context: { from: 'consultation.notes.preSummary', at: 'runStart' },
+    });
     expect('bindings' in (nodes.n_asr as object)).toBe(false);
     expect('bindings' in (nodes.n_trigger as object)).toBe(false);
   });

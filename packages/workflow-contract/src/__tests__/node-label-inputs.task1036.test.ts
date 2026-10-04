@@ -4,7 +4,13 @@
  */
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
-import { ACTION_CONFIG_SCHEMAS, GRAPH_BOUNDARY_NODE_TYPES, MANDATORY_NODE_TYPES, NODE_CONFIG_SCHEMAS, NODE_LABEL_MAX_LENGTH } from '../node-config-schemas';
+import {
+  ACTION_CONFIG_SCHEMAS,
+  GRAPH_BOUNDARY_NODE_TYPES,
+  MANDATORY_NODE_TYPES,
+  NODE_CONFIG_SCHEMAS,
+  NODE_LABEL_MAX_LENGTH,
+} from '../node-config-schemas';
 import { CORE_NODE_TYPES } from '../node-registry';
 
 /** A minimal valid config per core type, so only the key under test can fail. */
