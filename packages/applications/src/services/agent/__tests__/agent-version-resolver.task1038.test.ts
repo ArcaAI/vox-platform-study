@@ -42,7 +42,14 @@ const version = (versionNumber: number, status: WorkflowDefinitionStatus, over: 
 
 const agentRepository = { findPublishedActiveBySlug: vi.fn(), findAllVersionsBySlug: vi.fn() };
 const aiModelRepository = {
-  findById: vi.fn(async (id: string) => ({ id, tenantId: SYSTEM_TENANT_ID, slug: id.replace('model-', ''), sourceUri: 'hf:x', format: 'GGUF', provider: 'lm-studio' })),
+  findById: vi.fn(async (id: string) => ({
+    id,
+    tenantId: SYSTEM_TENANT_ID,
+    slug: id.replace('model-', ''),
+    sourceUri: 'hf:x',
+    format: 'GGUF',
+    provider: 'lm-studio',
+  })),
   findBySlug: vi.fn(),
 };
 
@@ -88,7 +95,9 @@ describe('AgentVersionResolverService.resolveVersion', () => {
 
   it('serves a DEPRECATED pinned version (OD-21)', async () => {
     const { service } = make();
-    await expect(service.resolveVersion({ tenantId: TENANT, slug: 'clinic-summarizer', versionNumber: 2 })).resolves.toMatchObject({ versionNumber: 2 });
+    await expect(service.resolveVersion({ tenantId: TENANT, slug: 'clinic-summarizer', versionNumber: 2 })).resolves.toMatchObject({
+      versionNumber: 2,
+    });
   });
 
   it.each([
@@ -108,7 +117,9 @@ describe('AgentVersionResolverService.resolveVersion', () => {
   it('keeps the resolver`s platform-hidden rule: a hidden slug is a 404 like an unknown one', async () => {
     agentRepository.findAllVersionsBySlug.mockResolvedValue([version(1, WorkflowDefinitionStatus.PUBLISHED, { slug: 'dna-writing-style-analyst' })]);
     const { service } = make();
-    await expect(service.resolveVersion({ tenantId: TENANT, slug: 'dna-writing-style-analyst', versionNumber: 1 })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.resolveVersion({ tenantId: TENANT, slug: 'dna-writing-style-analyst', versionNumber: 1 })).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('never touches the shared resolver`s own lookup (the active version is not consulted)', async () => {

@@ -20,7 +20,9 @@ export type WorkflowRunResult =
 
 /** Body of the result route for a claim-checked (large) result: a short-lived signed GET URL. */
 export class WorkflowRunResultRefResponse {
-  @ApiProperty({ description: 'A short-lived signed GET URL for the result object. Do not log or share it: it is a bearer credential until it expires.' })
+  @ApiProperty({
+    description: 'A short-lived signed GET URL for the result object. Do not log or share it: it is a bearer credential until it expires.',
+  })
   url: string;
 
   @ApiProperty({ description: 'When `url` stops working (ISO-8601). Request the route again for a fresh one.' })

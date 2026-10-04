@@ -25,7 +25,10 @@ function build(rows: ReturnType<typeof row>[], lock: 'OK' | null = 'OK') {
     updateWithVersion: vi.fn(async (_id: string, entity: unknown) => entity),
   };
   const settings = {
-    resolve: vi.fn((key: string, tenantId: string) => ({ key, value: key === WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY && tenantId === 'tenant-b' ? 7 : undefined })),
+    resolve: vi.fn((key: string, tenantId: string) => ({
+      key,
+      value: key === WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY && tenantId === 'tenant-b' ? 7 : undefined,
+    })),
   };
   const redis = { eval: vi.fn(async () => lock), del: vi.fn(async () => 1) };
   const service = new WorkflowRunResultRetentionService(repository as never, settings as never, redis as never);
@@ -77,7 +80,9 @@ describe('WorkflowRunResultRetentionService.purgeExpired', () => {
 
   it('a row the completion watcher rewrote meanwhile (OCC) is skipped, not fatal', async () => {
     const { service, repository } = build([row('a', 'tenant-a', 40), row('b', 'tenant-a', 40)]);
-    repository.updateWithVersion.mockRejectedValueOnce(new OptimisticConcurrencyException('WorkflowRun', 'a', { expectedVersion: 3, currentVersion: 4 } as never));
+    repository.updateWithVersion.mockRejectedValueOnce(
+      new OptimisticConcurrencyException('WorkflowRun', 'a', { expectedVersion: 3, currentVersion: 4 } as never),
+    );
     const outcome = await service.purgeExpired();
     expect(outcome.expired).toBe(1);
     expect(repository.updateWithVersion).toHaveBeenCalledTimes(2);

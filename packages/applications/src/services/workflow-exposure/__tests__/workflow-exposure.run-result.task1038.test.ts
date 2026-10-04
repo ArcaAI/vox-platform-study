@@ -21,7 +21,10 @@ const mockHarnessGateway = { getWorkflowRun: vi.fn() };
 const mockWorkflowRunService = { getRun: vi.fn(), recordRunFinished: vi.fn() };
 const mockConfigService = { getConfigValue: vi.fn() };
 const mockBlobStorage = { presignGet: vi.fn() };
-const mockTenantSettings = { resolve: vi.fn(), resolvePlatform: vi.fn((key: string) => ({ key, value: key === WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY ? 120 : undefined })) };
+const mockTenantSettings = {
+  resolve: vi.fn(),
+  resolvePlatform: vi.fn((key: string) => ({ key, value: key === WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY ? 120 : undefined })),
+};
 
 function runRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -87,9 +90,7 @@ describe('TASK-1038 D-I — getRunResult', () => {
     const result = await build().getRunResult('discharge_summary', 'run-1');
 
     expect(mockBlobStorage.presignGet).toHaveBeenCalledWith({ bucket: ref.bucket, key: ref.key, expiresInSeconds: 120 });
-    expect(result).toEqual(
-      expect.objectContaining({ kind: 'ref', url: 'https://minio.example/signed', sizeBytes: 300_000, sha256: ref.sha256 }),
-    );
+    expect(result).toEqual(expect.objectContaining({ kind: 'ref', url: 'https://minio.example/signed', sizeBytes: 300_000, sha256: ref.sha256 }));
     const expiresAt = Date.parse((result as { expiresAt: string }).expiresAt);
     expect(expiresAt).toBeGreaterThanOrEqual(before + 120_000);
     expect(expiresAt).toBeLessThanOrEqual(Date.now() + 120_000);
@@ -135,19 +136,29 @@ describe('TASK-1038 D-I — getRunResult', () => {
     mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: { kind: 'inline', value: 'x' } }));
     await build().getRunResult('discharge_summary', 'run-1');
     const [, event] = mockEventEmitter.emit.mock.calls.at(-1)!;
-    expect(event).toEqual(expect.objectContaining({ forceAuditLog: true, data: expect.objectContaining({ action: 'readResult', runId: 'run-1', kind: 'inline' }) }));
+    expect(event).toEqual(
+      expect.objectContaining({ forceAuditLog: true, data: expect.objectContaining({ action: 'readResult', runId: 'run-1', kind: 'inline' }) }),
+    );
   });
 });
 
 describe('TASK-1038 — status falls back to the read model when the harness has no record', () => {
   it('answers from the read model on a harness 404', async () => {
     mockWorkflowRunService.getRun.mockResolvedValue(runRow({ status: 'COMPLETED', resultRef: { kind: 'inline', value: 1 } }));
-    mockHarnessGateway.getWorkflowRun.mockRejectedValue(Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } }));
+    mockHarnessGateway.getWorkflowRun.mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 404'), { response: { status: 404 } }),
+    );
 
     const status = await build().getRunStatus('discharge_summary', 'run-1');
 
     expect(status).toEqual(
-      expect.objectContaining({ runId: 'run-1', status: 'COMPLETED', startedAt: '2026-10-04T00:00:00.000Z', endedAt: '2026-10-04T00:01:00.000Z', stages: [] }),
+      expect.objectContaining({
+        runId: 'run-1',
+        status: 'COMPLETED',
+        startedAt: '2026-10-04T00:00:00.000Z',
+        endedAt: '2026-10-04T00:01:00.000Z',
+        stages: [],
+      }),
     );
     expect(mockWorkflowRunService.recordRunFinished).not.toHaveBeenCalled();
   });

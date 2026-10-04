@@ -48,7 +48,8 @@ export class AgentVersionResolverService {
   /** The shared resolver, with its by-slug row lookup answering with `pinned` and nothing else. */
   private resolverFor(tenantId: string, pinned: AgentEntity): AgentResolverService {
     const pinnedView: Pick<AgentRepository, 'findPublishedActiveBySlug'> = {
-      findPublishedActiveBySlug: async (lookupTenantId: string, slug: string) => (lookupTenantId === tenantId && slug === pinned.slug ? pinned : null),
+      findPublishedActiveBySlug: async (lookupTenantId: string, slug: string) =>
+        lookupTenantId === tenantId && slug === pinned.slug ? pinned : null,
     };
     return Object.create(this.resolver, { agentRepository: { value: pinnedView } }) as AgentResolverService;
   }

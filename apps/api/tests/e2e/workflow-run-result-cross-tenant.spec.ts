@@ -116,7 +116,9 @@ test.describe('GET /api/v1/workflows/:slug/runs/:runId/result — cross-tenant',
 
     const asForeign = await request.get(`/api/v1/workflows/${slug}/runs/${runId}/result`, { headers: { 'X-API-Key': foreignReader.rawKey } });
     expect(asForeign.status(), 'a foreign tenant must not learn the run exists').toBe(404);
-    const unknownAsForeign = await request.get(`/api/v1/workflows/${slug}/runs/${UNKNOWN_RUN}/result`, { headers: { 'X-API-Key': foreignReader.rawKey } });
+    const unknownAsForeign = await request.get(`/api/v1/workflows/${slug}/runs/${UNKNOWN_RUN}/result`, {
+      headers: { 'X-API-Key': foreignReader.rawKey },
+    });
     expect(asForeign.status(), 'foreign answer is indistinguishable from an unknown id').toBe(unknownAsForeign.status());
 
     const asOwner = await request.get(`/api/v1/workflows/${slug}/runs/${runId}/result`, { headers: { 'X-API-Key': ownerReader.rawKey } });

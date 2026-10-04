@@ -13,9 +13,7 @@
  * with an `expired` TOMBSTONE (the run's status and counts are kept; only the output goes), so
  * the result route can answer "this existed and is gone" (410) rather than "there never was one".
  */
-export type DeliveredRunResult =
-  | { kind: 'inline'; value: unknown }
-  | { kind: 'ref'; bucket: string; key: string; sizeBytes: number; sha256: string };
+export type DeliveredRunResult = { kind: 'inline'; value: unknown } | { kind: 'ref'; bucket: string; key: string; sizeBytes: number; sha256: string };
 
 export interface ExpiredRunResult {
   kind: 'expired';

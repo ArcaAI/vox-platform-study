@@ -61,7 +61,9 @@ function makeSocket() {
 }
 
 function frames(socket: ReturnType<typeof makeSocket>) {
-  return socket.send.mock.calls.map((call) => JSON.parse(String(call[0])) as { event: string; id?: string; data: { payload: { status?: string; nodeId?: string } } });
+  return socket.send.mock.calls.map(
+    (call) => JSON.parse(String(call[0])) as { event: string; id?: string; data: { payload: { status?: string; nodeId?: string } } },
+  );
 }
 
 function build(server: FakeRedisServer, getRunStatus: ReturnType<typeof vi.fn>, values: Record<string, number> = {}) {

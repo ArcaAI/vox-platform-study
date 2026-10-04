@@ -157,11 +157,36 @@ const ok = results.filter((r) => r.error === null);
 const failed = results.filter((r) => r.error !== null);
 
 console.log('');
-console.log(row('time-to-first-frame', ok.map((r) => r.firstFrameMs).filter((v) => v !== null)));
-console.log(row('time-to-first-push', ok.map((r) => r.firstPushMs).filter((v) => v !== null)));
-console.log(row('inter-event gap', ok.flatMap((r) => r.gaps)));
-console.log(row('delivery lag', ok.flatMap((r) => r.lags)));
-console.log(row('time-to-terminal', ok.map((r) => r.terminalMs).filter((v) => v !== null)));
+console.log(
+  row(
+    'time-to-first-frame',
+    ok.map((r) => r.firstFrameMs).filter((v) => v !== null),
+  ),
+);
+console.log(
+  row(
+    'time-to-first-push',
+    ok.map((r) => r.firstPushMs).filter((v) => v !== null),
+  ),
+);
+console.log(
+  row(
+    'inter-event gap',
+    ok.flatMap((r) => r.gaps),
+  ),
+);
+console.log(
+  row(
+    'delivery lag',
+    ok.flatMap((r) => r.lags),
+  ),
+);
+console.log(
+  row(
+    'time-to-terminal',
+    ok.map((r) => r.terminalMs).filter((v) => v !== null),
+  ),
+);
 console.log('');
 console.log(`streams: ${results.length}  completed: ${ok.length}  failed: ${failed.length}  frames: ${results.reduce((n, r) => n + r.frames, 0)}`);
 for (const r of failed.slice(0, 10)) console.log(`  ${r.runId}: ${r.error}`);

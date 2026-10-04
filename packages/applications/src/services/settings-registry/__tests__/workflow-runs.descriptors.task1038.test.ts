@@ -31,7 +31,12 @@ describe('workflowRuns.* descriptors (TASK-1038)', () => {
 
   it('result retention is tenant-overridable (a tenant owns its PHI retention); the delivery-plane knobs are platform-only', () => {
     expect(HOPE_SETTINGS_REGISTRY.get(WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY)).toMatchObject({ maxScope: 'tenant', globalOnly: false });
-    for (const key of [WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY, WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY, WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY, WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY]) {
+    for (const key of [
+      WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY,
+      WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY,
+      WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY,
+      WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY,
+    ]) {
       expect(HOPE_SETTINGS_REGISTRY.get(key)).toMatchObject({ maxScope: 'system', globalOnly: true });
     }
   });

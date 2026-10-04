@@ -29,7 +29,14 @@ import { IBillingService } from '../billing/IBillingService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
-import { deliveredRunResultFrom, interpreterSessionId, IWorkflowRunService, readPersistedRunResult, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
+import {
+  deliveredRunResultFrom,
+  interpreterSessionId,
+  IWorkflowRunService,
+  readPersistedRunResult,
+  terminalStatusOf,
+  WorkflowRunResponse,
+} from '../workflow-run';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';

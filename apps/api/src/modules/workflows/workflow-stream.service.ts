@@ -183,9 +183,11 @@ export class WorkflowStreamService {
         lastStatusCheck = Date.now();
         // R-2 — the terminal fallback. Without it a lost `workflow.run.completed` left this
         // stream open forever, heartbeating over a run that had already ended.
+        // swallow-ok: the terminal re-check is a fallback; a failed read just waits for the next interval.
         const status = await this.workflowExposureService.getRunStatus(slug, runId).catch(() => null);
         if (!status || !isTerminalRunStatus(status.status)) continue;
         // Deliver whatever IS retained first, so the close never overtakes a real event.
+        // swallow-ok: an unreadable tail still closes with the terminal snapshot, which is the truth the client needs.
         const tail = await hub.readNow(streamKey, cursor).catch(() => []);
         for (const entry of tail) {
           cursor = entry.id;
@@ -286,6 +288,7 @@ export class WorkflowStreamService {
 
       if (entries.length === 0 && Date.now() - lastStatusCheck >= checkEveryMs) {
         lastStatusCheck = Date.now();
+        // swallow-ok: the terminal re-check is a fallback; a failed read just waits for the next interval.
         const status = await this.workflowExposureService.getRunStatus(slug, runId).catch(() => null);
         if (status && isTerminalRunStatus(status.status)) {
           void hub.expireAfterTerminal(runId);

@@ -275,17 +275,17 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
-  @ApiResponse({ status: 200, description: '`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below).', type: WorkflowRunResultRefResponse })
+  @ApiResponse({
+    status: 200,
+    description: '`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below).',
+    type: WorkflowRunResultRefResponse,
+  })
   @ApiResponse({ status: 204, description: 'The run is terminal and delivered no result.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`.' })
   @ApiResponse({ status: 410, description: 'The result existed and has passed its retention window.' })
   @ApiResponse({ status: 503, description: 'A stored result exists but no object storage is configured to sign its URL.' })
-  async getRunResult(
-    @Param('slug') slug: string,
-    @Param('runId') runId: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<unknown> {
+  async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
     const result = await this.workflowExposureService.getRunResult(slug, runId);
     switch (result.kind) {
       case 'inline':
@@ -295,7 +295,11 @@ export class WorkflowsController {
         res.setHeader('X-Hope-Result-Kind', 'ref');
         return { url: result.url, expiresAt: result.expiresAt, sizeBytes: result.sizeBytes, sha256: result.sha256 };
       case 'expired':
-        throw new GoneException({ code: 'RESULT_EXPIRED', message: `The result of run '${runId}' has passed its retention window.`, expiredAt: result.expiredAt });
+        throw new GoneException({
+          code: 'RESULT_EXPIRED',
+          message: `The result of run '${runId}' has passed its retention window.`,
+          expiredAt: result.expiredAt,
+        });
       default:
         res.status(HttpStatus.NO_CONTENT);
         return undefined;

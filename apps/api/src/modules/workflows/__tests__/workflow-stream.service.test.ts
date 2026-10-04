@@ -22,7 +22,16 @@ import { RunEventStreamHub } from '../run-event-stream-hub';
 import { FakeRedisConnection, FakeRedisServer } from './fake-redis-streams';
 
 function makeRunning(overrides: Record<string, unknown> = {}) {
-  return { runId: 'run-1', slug: 'discharge_summary', workflowVersionNumber: 1, status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00.000Z', endedAt: null, ...overrides };
+  return {
+    runId: 'run-1',
+    slug: 'discharge_summary',
+    workflowVersionNumber: 1,
+    status: 'RUNNING',
+    stages: [],
+    startedAt: '2026-08-16T00:00:00.000Z',
+    endedAt: null,
+    ...overrides,
+  };
 }
 
 function envelope(type: string, payload: Record<string, unknown> = {}) {

@@ -106,7 +106,12 @@ export class WorkflowRunResultRetentionService {
       return true;
     } catch (error) {
       if (error instanceof OptimisticConcurrencyException) return false; // rewritten meanwhile — tomorrow's run
-      this.logger.error({ message: 'Workflow-run result could not be expired', runRowId: row.id, tenantId: row.tenantId, error: error instanceof Error ? error.name : 'unknown' });
+      this.logger.error({
+        message: 'Workflow-run result could not be expired',
+        runRowId: row.id,
+        tenantId: row.tenantId,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
       return false;
     }
   }
@@ -138,6 +143,7 @@ export class WorkflowRunResultRetentionService {
 
   private async releaseLock(): Promise<void> {
     if (!this.redis) return;
+    // swallow-ok: the lock carries a TTL; a failed release only delays the next run until it lapses.
     await this.redis.del(WORKFLOW_RUN_RESULT_PURGE_LOCK_KEY).catch(() => undefined);
   }
 }

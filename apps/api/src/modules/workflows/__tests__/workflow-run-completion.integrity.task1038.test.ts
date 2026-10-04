@@ -46,7 +46,9 @@ function build(server: FakeRedisServer, options: { checkSeconds?: number; upstre
   const runs = { recordRunFinished: vi.fn().mockResolvedValue({}) };
   const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
   const harnessGateway = {
-    getWorkflowRun: vi.fn().mockResolvedValue({ runId: RUN_ID, status: options.upstreamStatus ?? 'RUNNING', stages: [], startedAt: null, endedAt: null }),
+    getWorkflowRun: vi
+      .fn()
+      .mockResolvedValue({ runId: RUN_ID, status: options.upstreamStatus ?? 'RUNNING', stages: [], startedAt: null, endedAt: null }),
   };
   const service = new WorkflowRunCompletionService(runs as never, cls as never, hub, undefined, harnessGateway as never, settings as never);
   return { service, hub, runs, harnessGateway };
@@ -126,7 +128,10 @@ describe('TASK-1038 D-I — the delivered result reaches the read model', () => 
   it('leaves resultRef untouched when the run delivered nothing, and ignores a malformed result', async () => {
     const { service, runs } = build(new FakeRedisServer());
     await service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'SUCCEEDED', '2026-10-04T00:00:00.000Z', null, {}, undefined);
-    await service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'SUCCEEDED', '2026-10-04T00:00:00.000Z', null, {}, { kind: 'ref', bucket: 'b' } as never);
+    await service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'SUCCEEDED', '2026-10-04T00:00:00.000Z', null, {}, {
+      kind: 'ref',
+      bucket: 'b',
+    } as never);
     expect(runs.recordRunFinished.mock.calls[0][0].resultRef).toBeUndefined();
     expect(runs.recordRunFinished.mock.calls[1][0].resultRef).toBeUndefined();
     await service.onModuleDestroy();

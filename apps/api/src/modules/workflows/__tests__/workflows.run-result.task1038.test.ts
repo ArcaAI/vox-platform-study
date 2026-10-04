@@ -24,7 +24,9 @@ describe('GET workflows/:slug/runs/:runId/result', () => {
     const handler = (WorkflowsController.prototype as never as Record<string, () => void>).getRunResult;
     const status = (WorkflowsController.prototype as never as Record<string, () => void>).getRunStatus;
     for (const key of [REQUIRED_PERMISSIONS_KEY, API_KEY_REQUIRED_SCOPES, SERVICE_ACCOUNT_REQUIRED_SCOPES]) {
-      expect(reflector.getAllAndOverride(key, [handler, WorkflowsController])).toEqual(reflector.getAllAndOverride(key, [status, WorkflowsController]));
+      expect(reflector.getAllAndOverride(key, [handler, WorkflowsController])).toEqual(
+        reflector.getAllAndOverride(key, [status, WorkflowsController]),
+      );
     }
     expect(reflector.getAllAndOverride(API_KEY_REQUIRED_SCOPES, [handler, WorkflowsController])).toEqual(['workflow:run:read']);
   });
@@ -66,8 +68,12 @@ describe('GET workflows/:slug/runs/:runId/result', () => {
 
   it('passes the service`s 409 (not terminal) and 404 (not yours) through untouched', async () => {
     const conflict = new ConflictException({ code: 'RUN_NOT_TERMINAL', status: 'RUNNING' });
-    await expect(makeController(conflict).controller.getRunResult('flow', 'run-1', { setHeader: vi.fn(), status: vi.fn() } as never)).rejects.toBe(conflict);
+    await expect(makeController(conflict).controller.getRunResult('flow', 'run-1', { setHeader: vi.fn(), status: vi.fn() } as never)).rejects.toBe(
+      conflict,
+    );
     const missing = new NotFoundException();
-    await expect(makeController(missing).controller.getRunResult('flow', 'run-1', { setHeader: vi.fn(), status: vi.fn() } as never)).rejects.toBe(missing);
+    await expect(makeController(missing).controller.getRunResult('flow', 'run-1', { setHeader: vi.fn(), status: vi.fn() } as never)).rejects.toBe(
+      missing,
+    );
   });
 });

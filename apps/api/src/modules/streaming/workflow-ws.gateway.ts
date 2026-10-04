@@ -173,6 +173,7 @@ export class WorkflowWsGateway implements OnGatewayConnection {
     // test as SSE (oldest retained id newer than the cursor), same honest answer: a resync
     // snapshot, then everything still retained.
     if (cursor !== RESUME_FROM_BEGINNING && (await this.hasTrimmedGap(hub, streamKey, cursor))) {
+      // swallow-ok: a resync that cannot read the status still resumes from the retained beginning; the next idle re-check retries.
       const resync = await readStatus().catch(() => null);
       if (resync) {
         this.sendSnapshot(client, tenantId, resync);
@@ -200,8 +201,10 @@ export class WorkflowWsGateway implements OnGatewayConnection {
         if (closed.aborted || Date.now() - lastStatusCheck < checkEveryMs) continue;
         lastStatusCheck = Date.now();
         // R-2 — the terminal fallback, as on SSE.
+        // swallow-ok: the terminal re-check is a fallback; a failed read just waits for the next interval.
         const status = await readStatus().catch(() => null);
         if (!status || !isTerminalRunStatus(status.status)) continue;
+        // swallow-ok: an unreadable tail still closes with the terminal snapshot, which is the truth the client needs.
         const tail = await hub.readNow(streamKey, cursor).catch(() => []);
         entries = tail;
         if (!(await this.deliver(hub, client, runId, entries, closed, maxBuffered, (id) => (cursor = id)))) {

@@ -113,13 +113,21 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     while (!signal.aborted && Date.now() < deadline) {
       let entries;
       try {
-        entries = await hub.read(streamKey, cursor, { timeoutMs: Math.min(RUN_COMPLETION_BLOCK_MS, checkEveryMs, Math.max(1, deadline - Date.now())), signal });
+        entries = await hub.read(streamKey, cursor, {
+          timeoutMs: Math.min(RUN_COMPLETION_BLOCK_MS, checkEveryMs, Math.max(1, deadline - Date.now())),
+          signal,
+        });
         backoffMs = 0;
       } catch (err) {
         // R-2 — a transient Redis failure used to END the watcher, leaving the run `RUNNING` in
         // the read model until someone happened to read it. Retry instead; the stream is durable.
         backoffMs = Math.min(RUN_COMPLETION_RETRY_CAP_MS, Math.max(RUN_COMPLETION_RETRY_FLOOR_MS, backoffMs * 2));
-        this.logger.warn({ message: 'run completion watcher read failed — retrying', runId, backoffMs, error: err instanceof Error ? err.message : String(err) });
+        this.logger.warn({
+          message: 'run completion watcher read failed — retrying',
+          runId,
+          backoffMs,
+          error: err instanceof Error ? err.message : String(err),
+        });
         await abortableSleep(backoffMs, signal);
         continue;
       }
@@ -159,10 +167,15 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
    */
   private async reconcileFromHarness(hub: RunEventStreamHub, tenantId: string, runId: string, consultationId: string | null): Promise<boolean> {
     if (!this.harnessGateway) return false;
+    // swallow-ok: the idle re-check is a fallback; an unreachable harness means "ask again next interval", never a terminal status.
     const upstream = await this.harnessGateway.getWorkflowRun(runId).catch(() => null);
     const status = terminalStatusOf(upstream?.status);
     if (!upstream || status === null) return false;
-    this.logger.warn({ message: 'run reached a terminal state without a completion event on its stream — recording it from the harness', runId, status });
+    this.logger.warn({
+      message: 'run reached a terminal state without a completion event on its stream — recording it from the harness',
+      runId,
+      status,
+    });
     void hub.expireAfterTerminal(runId);
     await this.recordTerminal(tenantId, runId, status, String(upstream.status), upstream.endedAt ?? new Date().toISOString(), consultationId);
     return true;

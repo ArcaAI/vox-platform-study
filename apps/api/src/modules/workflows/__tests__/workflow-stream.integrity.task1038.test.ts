@@ -149,7 +149,11 @@ describe('TASK-1038 OD-25 — a terminal run stream starts its retention clock',
   it('EXPIREs the stream after the completion event, per workflowRuns.eventRetentionHours', async () => {
     const server = new FakeRedisServer();
     server.appendEnvelope(KEY, envelope('workflow.run.completed', { status: 'SUCCEEDED' }));
-    const { service, hub } = build(server, vi.fn().mockResolvedValue(status('RUNNING')), settingsWith({ [WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY]: 48 }));
+    const { service, hub } = build(
+      server,
+      vi.fn().mockResolvedValue(status('RUNNING')),
+      settingsWith({ [WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY]: 48 }),
+    );
 
     await service.stream('flow', 'run-1', makeRes() as never);
     await new Promise((resolve) => setTimeout(resolve, 10));

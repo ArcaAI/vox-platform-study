@@ -116,6 +116,7 @@ export class RunEventStreamHub implements OnModuleDestroy {
     const connections = [this.reader, this.control].filter((c): c is RunStreamConnection => c !== null);
     this.reader = null;
     this.control = null;
+    // swallow-ok: shutdown: a connection that cannot QUIT cleanly is being dropped anyway.
     await Promise.all(connections.map((connection) => connection.quit().catch(() => undefined)));
   }
 
@@ -137,16 +138,9 @@ export class RunEventStreamHub implements OnModuleDestroy {
    */
   read(key: string, cursor: string, options: RunStreamReadOptions): Promise<RunStreamEntry[]> {
     if (!this.available()) return Promise.reject(new Error('run event stream transport is not configured'));
+    if (options.signal?.aborted) return Promise.resolve([]);
     return new Promise<RunStreamEntry[]>((resolve, reject) => {
-      let timer: ReturnType<typeof setTimeout> | undefined;
       const onAbort = (): void => pending.settle([]);
-      const finish = (): boolean => {
-        if (!this.waiting.has(pending)) return false;
-        this.waiting.delete(pending);
-        if (timer) clearTimeout(timer);
-        options.signal?.removeEventListener('abort', onAbort);
-        return true;
-      };
       const pending: PendingRead = {
         key,
         cursor,
@@ -158,13 +152,16 @@ export class RunEventStreamHub implements OnModuleDestroy {
           if (finish()) reject(error);
         },
       };
+      const timer = setTimeout(() => pending.settle([]), Math.max(0, options.timeoutMs));
+      const finish = (): boolean => {
+        if (!this.waiting.has(pending)) return false;
+        this.waiting.delete(pending);
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', onAbort);
+        return true;
+      };
       this.waiting.add(pending);
-      if (options.signal?.aborted) {
-        pending.settle([]);
-        return;
-      }
       options.signal?.addEventListener('abort', onAbort, { once: true });
-      timer = setTimeout(() => pending.settle([]), Math.max(0, options.timeoutMs));
       this.kick(pending);
     });
   }

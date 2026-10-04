@@ -25,12 +25,7 @@ function build() {
     recordGovernedRunCompleted: vi.fn().mockResolvedValue(undefined),
   };
   const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
-  const service = new WorkflowRunCompletionService(
-    runs as never,
-    cls as never,
-    undefined,
-    harnessInternal as never,
-  );
+  const service = new WorkflowRunCompletionService(runs as never, cls as never, undefined, harnessInternal as never);
   return { service, runs, harnessInternal };
 }
 
