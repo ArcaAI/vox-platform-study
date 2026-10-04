@@ -31,6 +31,9 @@ import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
+import { IDocumentTemplateService } from '../document-template/IDocumentTemplateService';
+import type { IDocumentTemplateService as IDocumentTemplateServicePort } from '../document-template/IDocumentTemplateService';
+import type { CompiledDocumentTemplate } from '../document-template/document-template-compiler';
 
 export interface ResolveAgentInput {
   tenantId: string;
@@ -77,6 +80,28 @@ export interface ResolveAgentInput {
    */
   allowPlatformHidden?: boolean;
 }
+
+/**
+ * TASK-1036 OD-7 / OD-22 — the agent's document template as resolved for THIS call.
+ *
+ * `slug` is what the agent names; the rest is the version the request tenant serves now
+ * (`templateId: null` = nothing servable, so the platform shape in `compiled` applies — or
+ * `compiled: null` when this resolver has no document-template plane wired).
+ */
+export interface ResolvedAgentDocumentTemplate {
+  slug: string;
+  templateId: string | null;
+  versionNumber: number | null;
+  documentTemplateVersionId: string | null;
+  compiled: CompiledDocumentTemplate | null;
+}
+
+/**
+ * `ResolvedAgent` plus the members TASK-1036 adds, as an INTERSECTION (the `CompiledModelRef`
+ * precedent): the wire is JSON, `@arcaai/types` declares what every reader may rely on, and this
+ * names the additive member where it is produced. OMITTED when the agent names no template.
+ */
+export type ResolvedAgentWithDocument = ResolvedAgent & { documentTemplate?: ResolvedAgentDocumentTemplate };
 
 /** @see ResolveAgentInput.primaryBinding */
 export type PrimaryBindingPolicy = 'fail-closed' | 'mark';
@@ -249,9 +274,14 @@ export class AgentResolverService {
     // without it a connection-bound model falls back to the provider-name fold —
     // which is what this resolver did before the binding rule existed.
     @Optional() private readonly credentials?: ProviderCredentialResolver,
+    // TASK-1036 OD-7 / OD-22 — the agent's document template, resolved LATEST per call.
+    // `@Optional()` and TRAILING for the same reason as the two above; absent ⇒ the resolved
+    // agent carries the slug with no servable version (`templateId: null`), which every consumer
+    // already reads as "fall back to the platform shape".
+    @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplates?: IDocumentTemplateServicePort,
   ) {}
 
-  async resolve(input: ResolveAgentInput): Promise<ResolvedAgent> {
+  async resolve(input: ResolveAgentInput): Promise<ResolvedAgentWithDocument> {
     const { tenantId } = input;
     let entity: AgentEntity | null;
     let source: ResolvedAgent['source'];
@@ -310,6 +340,7 @@ export class AgentResolverService {
 
     const models = await this.materialiseModels(entity, compiledConfig, tenantId);
     const override = await this.providerOverrideFor(entity.slug, compiledConfig, models, tenantId, input.primaryBinding ?? 'fail-closed');
+    const documentTemplate = await this.documentTemplateFor(compiledConfig, tenantId);
 
     return {
       agentId: entity.id,
@@ -322,6 +353,32 @@ export class AgentResolverService {
       compiledConfig,
       models,
       ...(override ? { providerOverride: override.entry, fundingTier: override.fundingTier } : {}),
+      ...(documentTemplate ? { documentTemplate } : {}),
+    };
+  }
+
+  /**
+   * TASK-1036 OD-7 / OD-22 / W3 — the document template the agent names
+   * (`instruction.documentTemplate.slug`), resolved to the LATEST approved / published version in
+   * the REQUEST tenant. Deliberately read on every resolve and never frozen into `compiledConfig`:
+   * a document template floats, so republishing it changes the next run without republishing the
+   * agent. `resolveForGeneration` is fail-open (an unservable slug answers the platform shape with
+   * `templateId: null`), which is the documented behaviour of every other generation path.
+   */
+  private async documentTemplateFor(compiled: AgentCompiledConfig, tenantId: string): Promise<ResolvedAgentDocumentTemplate | null> {
+    const block = (compiled.instruction as Record<string, unknown> | null | undefined)?.documentTemplate;
+    const slug = block !== null && typeof block === 'object' ? (block as { slug?: unknown }).slug : undefined;
+    if (typeof slug !== 'string' || slug.length === 0) return null;
+    if (!this.documentTemplates) {
+      return { slug, templateId: null, versionNumber: null, documentTemplateVersionId: null, compiled: null };
+    }
+    const resolved = await this.documentTemplates.resolveForGeneration(tenantId, slug);
+    return {
+      slug,
+      templateId: resolved.templateId,
+      versionNumber: resolved.versionNumber,
+      documentTemplateVersionId: resolved.documentTemplateVersionId,
+      compiled: resolved.compiled ?? null,
     };
   }
 
