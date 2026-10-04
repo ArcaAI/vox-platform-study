@@ -165,8 +165,10 @@ function TestSurface({ definitionId }: TestTabProps) {
     };
   }, [stepNodeId, nodeById, labelOf, view.nodes]);
 
-  const running = controller.runId !== null && live.status === 'RUNNING';
   const terminal = TERMINAL.has(live.status);
+  // Started and not finished — including the moment between the start response and the first event.
+  const running = controller.runId !== null && !terminal;
+  const awaitingFirstEvent = controller.runId !== null && live.status === 'IDLE';
   const timeTravelling = controller.viewCount !== null;
 
   // The input box's own problem (blocks Run, stated under the controls).
@@ -331,13 +333,21 @@ function TestSurface({ definitionId }: TestTabProps) {
             onHidePhiChange={setHidePhi}
             elapsedMs={elapsedMs}
           />
-          <EventsPanel events={events} originTs={originTs} labelOf={labelOf} hidePhi={hidePhi} selectedIndex={selectedEventIndex} onSelect={selectEvent} />
+          <EventsPanel
+            events={events}
+            originTs={originTs}
+            labelOf={labelOf}
+            hidePhi={hidePhi}
+            selectedIndex={selectedEventIndex}
+            onSelect={selectEvent}
+            waiting={controller.starting || (controller.runId !== null && events.length === 0 && controller.streamStatus !== 'error')}
+          />
         </div>
       </div>
 
       <RunStatusBar
         status={live.status}
-        starting={controller.starting}
+        starting={controller.starting || awaitingFirstEvent}
         streamStatus={controller.streamStatus}
         elapsedMs={elapsedMs}
         tokens={view.tokens}

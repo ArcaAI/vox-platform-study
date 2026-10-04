@@ -26,7 +26,7 @@ export function TestFlow({ view }: { view: RunView }) {
 
   const runStates = useMemo(() => flowRunStates(nodes, view), [nodes, view]);
   const findings = useMemo(() => runWarningFindings(view), [view]);
-  const sheet = useMemo(() => edgeStyleSheet(scopeId, edgeRunStates(edges, view)), [scopeId, edges, view]);
+  const sheet = useMemo(() => edgeStyleSheet(scopeId, edgeRunStates(edges, view), { pulseRunning: view.activeNodeId !== null }), [scopeId, edges, view]);
 
   return (
     <Panel

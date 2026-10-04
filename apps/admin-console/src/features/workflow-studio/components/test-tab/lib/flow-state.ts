@@ -56,9 +56,11 @@ function cssString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\a ');
 }
 
-/** The scoped sheet that lights the links. Tokens only — never a raw colour. */
-export function edgeStyleSheet(scopeId: string, states: ReadonlyMap<string, EdgeRunState>): string {
-  if (states.size === 0) return '';
+/**
+ * The scoped sheet that lights the links (and pulses the running step's chip). Tokens only — never
+ * a raw colour; every animation sits behind `prefers-reduced-motion: no-preference`.
+ */
+export function edgeStyleSheet(scopeId: string, states: ReadonlyMap<string, EdgeRunState>, options: { pulseRunning?: boolean } = {}): string {
   const scope = `[data-test-flow="${cssString(scopeId)}"]`;
   const lit: string[] = [];
   const moving: string[] = [];
@@ -67,7 +69,9 @@ export function edgeStyleSheet(scopeId: string, states: ReadonlyMap<string, Edge
     lit.push(`${selector}{--workflow-canvas-edge:var(${state === 'active' ? '--primary' : '--success'});}`);
     if (state === 'active') moving.push(`${selector} .react-flow__edge-path{stroke-dasharray:6 5;animation:test-flow-dash 0.8s linear infinite;}`);
   }
-  const motion = moving.length > 0 ? `@media (prefers-reduced-motion: no-preference){${moving.join('')}@keyframes test-flow-dash{to{stroke-dashoffset:-22;}}}` : '';
+  if (moving.length > 0) moving.push('@keyframes test-flow-dash{to{stroke-dashoffset:-22;}}');
+  if (options.pulseRunning) moving.push(`${scope} [data-run-state="running"]{animation:test-flow-pulse 1s ease-in-out infinite;}@keyframes test-flow-pulse{50%{opacity:0.45;}}`);
+  const motion = moving.length > 0 ? `@media (prefers-reduced-motion: no-preference){${moving.join('')}}` : '';
   return `${lit.join('')}${motion}`;
 }
 

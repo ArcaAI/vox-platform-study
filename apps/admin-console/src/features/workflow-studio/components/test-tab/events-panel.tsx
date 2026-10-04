@@ -7,7 +7,7 @@
  * the cursor and the "Back to live" banner).
  */
 import { useId, useMemo, useState } from 'react';
-import { Badge, Input, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
+import { Badge, Input, Skeleton, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
 import { CopyButton } from '@/shared/copy-button';
 import type { RunEvent } from '@/shared/sandbox/api/run-protocol';
 import { EVENT_CATEGORIES, EVENT_CATEGORY_LABEL, categoriesOf, countByCategory, describeEvent, isWarningEvent, matchesEventQuery, relativeTime, type EventCategory } from './lib/event-display';
@@ -25,9 +25,11 @@ export interface EventsPanelProps {
   /** Index (0-based) of the event the view is pinned to, or `null` while live. */
   selectedIndex: number | null;
   onSelect: (index: number | null) => void;
+  /** A run has started and nothing has streamed yet. */
+  waiting: boolean;
 }
 
-export function EventsPanel({ events, originTs, labelOf, hidePhi, selectedIndex, onSelect }: EventsPanelProps) {
+export function EventsPanel({ events, originTs, labelOf, hidePhi, selectedIndex, onSelect, waiting }: EventsPanelProps) {
   const searchId = useId();
   const [filters, setFilters] = useState<EventCategory[]>([]);
   const [query, setQuery] = useState('');
@@ -64,7 +66,18 @@ export function EventsPanel({ events, originTs, labelOf, hidePhi, selectedIndex,
         <Input id={searchId} type="search" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-8 w-full sm:ml-auto sm:w-48" />
       </div>
 
-      {events.length === 0 ? (
+      {events.length === 0 && waiting ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-muted-foreground text-xs">Waiting for the run’s first event…</p>
+          {[0, 1, 2].map((row) => (
+            <div key={row} aria-hidden="true" className="grid grid-cols-[2.5rem_4rem_minmax(0,1fr)] gap-2 px-2">
+              <Skeleton className="h-4 w-8" />
+              <Skeleton className="h-4 w-12" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : events.length === 0 ? (
         <p className="text-muted-foreground text-sm">Press Run test to start. Every event of the run appears here as it happens.</p>
       ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">No event matches these filters.</p>

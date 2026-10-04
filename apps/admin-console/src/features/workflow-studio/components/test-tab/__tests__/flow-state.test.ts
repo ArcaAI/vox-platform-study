@@ -64,6 +64,13 @@ describe('edgeStyleSheet', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\{[^}]*\[data-id="e\\"2"\] \.react-flow__edge-path\{stroke-dasharray/);
     expect(edgeStyleSheet('flow-1', new Map())).toBe('');
   });
+
+  it('pulses a running step’s chip, also only without reduced motion', () => {
+    const css = edgeStyleSheet('flow-1', new Map(), { pulseRunning: true });
+    expect(css).toBe(
+      '@media (prefers-reduced-motion: no-preference){[data-test-flow="flow-1"] [data-run-state="running"]{animation:test-flow-pulse 1s ease-in-out infinite;}@keyframes test-flow-pulse{50%{opacity:0.45;}}}',
+    );
+  });
 });
 
 describe('runWarningFindings', () => {

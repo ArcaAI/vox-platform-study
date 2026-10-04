@@ -255,8 +255,14 @@ describe('TestTab — a live run', () => {
     const url = new URL(FakeEventSource.instances[0]!.url);
     expect(url.pathname).toBe('/api/v1/admin/workflow-runs/run-1/trace/stream');
     expect(url.searchParams.get('protocol')).toBe('2');
+    // Started, nothing streamed yet: skeleton rows, not the "press Run" empty state.
+    expect(screen.getByText('Waiting for the run’s first event…')).toBeTruthy();
+    expect(screen.queryByText(/Press Run test to start/)).toBeNull();
+    expect(within(statusBar()).getByText('Starting…')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy();
 
     playScenario();
+    expect(screen.queryByText('Waiting for the run’s first event…')).toBeNull();
     expect(canvasNode('t')?.runState).toBe('pending');
     expect(canvasNode('asr1')).toMatchObject({ runState: 'ok', runDurationMs: 1200 });
     expect(canvasNode('w')?.runState).toBe('running');
@@ -368,6 +374,27 @@ describe('TestTab — a live run', () => {
     await waitFor(() => expect(cancelled).toBe(1));
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     await waitFor(() => expect(screen.getByText(/Press Run test to start/)).toBeTruthy());
+  });
+});
+
+describe('TestTab — remount', () => {
+  it('resumes the definition’s latest run from the query cache (memory only), replaying its trace from the start', async () => {
+    const tree = (showTab: boolean) => (
+      <GraphStoreProvider>
+        <Capture>{showTab ? <TestTab definitionId="def-1" /> : null}</Capture>
+      </GraphStoreProvider>
+    );
+    const view = renderWithProviders(tree(true));
+    act(() => holder.api?.getState().hydrate(NODES, EDGES, { connections: ['api'], sources: [], contextSchema: { inline: DEFAULT_IO } }));
+    await startRun();
+    emit('run.started', { kind: 'workflow', slug: 'scribe', versionNumber: 7 });
+    view.rerender(tree(false));
+    view.rerender(tree(true));
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    const url = new URL(FakeEventSource.instances[1]!.url);
+    expect(url.pathname).toBe('/api/v1/admin/workflow-runs/run-1/trace/stream');
+    expect(url.searchParams.get('after')).toBe('0');
+    expect(window.localStorage.length).toBe(0);
   });
 });
 
