@@ -813,6 +813,49 @@ Applications, api and admin-console type-check clean. No suites were run (owner 
 
 **Batch 2** (C3 Test tab, C4 Integration tab, C6 Prompt UI, S2 vox 5) starts after batch 1 merges. The C3 brief must open the recording session against the sandbox consultation (B3b note). The S2 brief must fix the `consultation_job:<id>` ticket scope (B3a note) and the console tag field's client-side case check (F2 note).
 
+### 6.7 Wave C batch 1 + B6: merged (2026-10-05)
+
+**Lane heads:**
+
+| Lane | Head | Notes |
+|---|---|---|
+| C1 | `7cd08e236` | Lineage list, versions drawer, `VersionHistorySheet`, bulk actions with per-item results; the tag facet filters the current page only |
+| C2b | `0d99c455b` | Typed ports, connect planning, auto-map, `firstOf`, "+" on an edge, drop menu, four-group picker, Inputs panel, condition builder, Merge preset, edge inspector, W2 generation fields, settings dialog, Last-run tab contract |
+| C2a | `5493375cf` | Header, tabs, `FloatingPane`. The old Integration dialog and Run panel are removed. |
+| C5 | `5245b6b38` | Simple editor, inline wizard, deprecate notice (count arrives with B7) |
+| S1 | `bf45e27e4` | vox-node `RunHandle`. `workflows.run` changed shape (5.0); the old behaviour is `start()`. |
+| B6a | `4c77d5ef9` | Agent runs in the run read model (`kind`) |
+| B6b | `5fda89a06` | `promptVariables` render in TS, counts derived from events, trace PHI audit, settings-gated exposure, STT transcript mirror into runs, seeds with data contract and pins, OD-10 on |
+
+**Integration commits:**
+
+| Commit | What |
+|---|---|
+| `c8c28bb8f` | Migration `…_task_1038_agent_run_read_model`. Authored on a shadow DB, with the kind CHECK appended by hand, `migrate diff` empty, and the CHECK proven: a WORKFLOW row without workflow identity is refused, and so is an AGENT row carrying a workflow slug. |
+| `dcf1c6dd8` | Three merge type fixes; the editor drops the retired `runSlot`; OpenAPI and portal regenerated; `useNodeLastRuns` stub |
+
+Package builds pass (contracts, domains, ui, applications), and api / console / vox-node type-check clean. Seed regeneration is stable and env checks are OK. No suites were run.
+
+**Rule slips** (lane data only, not gate evidence): C2a, C2b, S1 and B6b each ran one directory or whole-package check before or despite the correction.
+
+**Review notes for wave D:**
+- Agent output is stored in plaintext JSONB, like inline workflow results.
+- FloatingPane drag and focus-yield are proven only in jsdom; they need the live browser check.
+- C1's tag facet is page-local.
+
+### 6.8 Wave C batch 2: launched from `dcf1c6dd8`
+
+| Lane | Ticket | Tier | Scope |
+|---|---|---|---|
+| C2c EDITOR-GLUE | 1036 | opus | Mount `ComposerCanvas` in the editor; persist `graph.settings`; Merge preset config; edge-select pane; `lastRunByNode`; header Edit-as-new-draft via C1's hook |
+| C3 TEST-TAB | 1036 + 1038 | opus | §10.2 in full on the admin trace stream; `useNodeLastRuns` |
+| C4 INTEGRATION-TAB | 1036 + 1039 | sonnet | Step-by-step guides; snippets moved to the 5.0 API |
+| C6 PROMPT-UI | 1036 | sonnet | Derive v2 UI; variable types; TagsField lower-case |
+| S2 VOX-5 | 1039 | sonnet | `useRun`, `useRunAudio`, normaliser, G6 ticket scope, `@arcaai/types` `resolvedPrompt.variables` |
+| B7 BACKEND-LEFTOVERS | 1036 + 1038 + 1039 | sonnet | Agent usage-count route (OD-21); socket ticket gated by settings; seeded agents' variable declarations; draft-bench declarations; vox-node example, guide and README updated to 5.0 |
+
+After batch 2: the C7 label sweep (haiku), then wave D review, then the single orchestrator gate.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
