@@ -128,17 +128,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** The row → the run as the routes answer it. */
 export function agentRunStateOf(entity: WorkflowRunEntity): AgentRunState {
-  const meta = entity.metaData ?? {};
+  const meta: Record<string, unknown> = entity.metaData ?? {};
   const result = readPersistedRunResult(entity.resultRef);
   const status = String(entity.status) as RunStatus;
   const code = entity.firstErrorCode;
+  const task = meta.agentTask;
+  const bodyHash = meta.requestBodyHash;
   return {
     runId: entity.runId,
     tenantId: entity.tenantId,
     slug: entity.agentSlug ?? '',
     agentVersionId: entity.agentVersionId ?? '',
     versionNumber: entity.agentVersionNumber ?? 0,
-    task: meta.agentTask === 'TEXT_GENERATION' || meta.agentTask === 'NAMED_ENTITY_RECOGNITION' ? meta.agentTask : null,
+    task: task === 'TEXT_GENERATION' || task === 'NAMED_ENTITY_RECOGNITION' ? task : null,
     status,
     createdAt: entity.startedAt.toISOString(),
     endedAt: entity.endedAt ? entity.endedAt.toISOString() : null,
@@ -146,7 +148,7 @@ export function agentRunStateOf(entity: WorkflowRunEntity): AgentRunState {
     output: result?.kind === 'inline' && isRecord(result.value) ? result.value : null,
     result,
     error: code && (status === 'FAILED' || status === 'TIMED_OUT') ? { code, message: runErrorMessage(code) } : null,
-    bodyHash: typeof meta.requestBodyHash === 'string' ? meta.requestBodyHash : null,
+    bodyHash: typeof bodyHash === 'string' ? bodyHash : null,
   };
 }
 
