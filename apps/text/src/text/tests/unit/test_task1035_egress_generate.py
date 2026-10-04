@@ -159,9 +159,11 @@ def _body(provider: str, **extra: Any) -> dict[str, Any]:
 
 
 def _guardrail_with_smith(**kwargs: Any) -> _Guardrail:
-    # The screen sees the user message only (TASK-1036 OD-1): spans are offsets into it.
+    # The screen sees every segment the provider receives, system prompt included
+    # (TASK-1036 E1): spans are offsets into the joined text.
+    combined = f"{_SYSTEM}\n\n{_PROMPT}"
     return _Guardrail(
-        spans=[_span(_PROMPT, "Dr Smith"), _span(_PROMPT, "MRN-0042", "mrn")], **kwargs
+        spans=[_span(combined, "Dr Smith"), _span(combined, "MRN-0042", "mrn")], **kwargs
     )
 
 
@@ -472,3 +474,35 @@ async def test_judge_lane_serves_an_engine_served_provider(make_client) -> None:
     )
 
     assert resp.status_code == 200, resp.text
+
+
+# ── TASK-1036 E1: the system prompt is not platform-only ─────────────────────
+
+
+async def test_phi_rendered_into_the_system_prompt_never_reaches_a_cloud_provider(
+    make_client,
+) -> None:
+    # `composeMessages` renders the agent instruction over the request's variables
+    # into the SYSTEM message; a caller may also send its own `system_prompt`.
+    system = "Scribe for patient Jane Roe, DOB 1980-02-03."
+    combined = f"{system}\n\n{_PROMPT}"
+    provider = _SpyProvider(reply="[PERSON_1] (born [DATE_OF_BIRTH_1]) is stable.")
+    guardrail = _Guardrail(
+        spans=[_span(combined, "Jane Roe"), _span(combined, "1980-02-03", "date_of_birth")]
+    )
+    client = await make_client(provider, guardrail)
+
+    resp = await client.post(
+        "/api/v1/generate",
+        json=_body("azure", system_prompt=system, provider_locality={"azure": "cloud"}),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert guardrail.inbound_texts == [combined]
+    sent = provider.requests[0]
+    assert "Jane Roe" not in sent.system_prompt and "1980-02-03" not in sent.system_prompt
+    assert "[PERSON_1]" in sent.system_prompt and "[DATE_OF_BIRTH_1]" in sent.system_prompt
+    assert resp.json()["content"] == "Jane Roe (born 1980-02-03) is stable."
+    # pii_leak is judged against everything sent, pseudonymised.
+    source = guardrail.outputs[0]["source_context"]
+    assert "[PERSON_1]" in source and "Jane Roe" not in source
