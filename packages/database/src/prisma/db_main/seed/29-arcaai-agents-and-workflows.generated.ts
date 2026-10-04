@@ -54,10 +54,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -226,13 +239,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -952,7 +1059,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "2c07e39a650fcebac765a9c7780c26263424017c3a842a4ef41cc0b128b397ad"
+      "checksum": "14cbcdf3b6df2d20562f9c77e69424b04100e33354d0bc77570ad925ccb18ecd"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
@@ -996,10 +1103,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -1168,13 +1288,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1894,7 +2108,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "f04a5062c4399109e468b48d88828f581ee62aab39201d463d2f1062fb308394"
+      "checksum": "edc8bdc4216c7e1c90210a93a7dc51a396db995bfb953a6dd1941113033aec7b"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
@@ -1938,10 +2152,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -2110,13 +2337,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -2836,7 +3157,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "4914293bb6ef22c0bbc578402c8d75641fe3e26725f48358f9efa24f5f1f2704"
+      "checksum": "933c92e6b62273110af4f451da1911dc073d08138bda01ee8ed4f41eca79a7db"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
@@ -2880,10 +3201,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -3052,13 +3386,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -3778,7 +4206,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "4f77ef102e77a19eb4e25b1f03b9c89a67ea4a8f2eec3622aef53a33ba2f4309"
+      "checksum": "bb3d9b96825bdbdc7e57990f74d7ed20cf4b2ebd6ed82d60d20a29a9f1794c32"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
@@ -3822,10 +4250,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -3994,13 +4435,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -4720,7 +5255,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "e6e5909aa365d79ef1181036c09e91fbeb94316762ab51d20100a9be45ec2b33"
+      "checksum": "a4aceadc1d67ebba96a7a7e32a86d7abb15a6d565590d3da8f1ee48af8bd4b8a"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
@@ -4764,10 +5299,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -4936,13 +5484,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -5662,7 +6304,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "28c27c542771ec826ae1a92a1c821413cd9b8191e432f56bbd8971cc545a8e01"
+      "checksum": "0cf79a3e6c7609b4e2dcc473a55053a36bcbe678ad51f8f1bcb6df13c363f70a"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
@@ -5706,10 +6348,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -5878,13 +6533,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -6604,7 +7353,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "7aeaeabda5d7da630278e6a54b3768a87036ba259f8053c2099035746176eb67"
+      "checksum": "128ba0e65b6bd5044453de1032cdbf44a25ac285a1f029ea695f698e25ed81d7"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
@@ -6648,10 +7397,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -6820,13 +7582,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -7546,7 +8402,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "1732be647abd3df71a352e951db6730c44f8461ac6ba8f142476c26ffb84d901"
+      "checksum": "e8e35cc89708a235608c6172ddf8056fdfb67f2148f66def3c0d8b8b1f5b5b55"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
@@ -7590,10 +8446,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -7762,13 +8631,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -8488,7 +9451,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "d7c0ebc1a04d34ab488cce95f9d1325161b378d7567a963bb65f66e096ff953a"
+      "checksum": "7e64d279554a06af83753aab1b5471973b06cfaa5060c3c1c40a8835fc8a2c20"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
@@ -8532,10 +9495,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -8704,13 +9680,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -9430,7 +10500,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "ce8fee78ea9c9011aaea9a48c3e1d3319f96486a1d6320d0a81896356b676cd7"
+      "checksum": "b411a29e4fb0fd32ebf53ee5733ef2fe80a4d5c4ef72ce2da26c0658f47b0649"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
@@ -9474,10 +10544,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -9646,13 +10729,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -10372,7 +11549,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
           "consultation"
         ]
       },
-      "checksum": "e36dd31cb3b7e722f12fb8b6a95c507f5b88ec0db4f29265d34c4aa0c1fdf5ff"
+      "checksum": "59c48145ae281d02bad63bc6532be0b049ef90ae5db575d4d092fe7e67ee498f"
     }
   }
 };

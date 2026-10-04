@@ -74,6 +74,7 @@ import {
   Req,
   Res,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -95,6 +96,8 @@ import {
 } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
+import { StreamTicketService } from '../auth/stream-ticket.service';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
@@ -185,6 +188,27 @@ export interface AgentRunStartResponse {
   runId: string;
   status: string;
   links: { self: string; events: string; result: string; cancel: string };
+}
+
+/**
+ * TASK-1038 (F1) — the ticket namespace of an agent run's SSE stream: `agent_run:<runId>`.
+ * Distinct from `workflow_run` on purpose, so a ticket for one kind of run can never open the
+ * other kind's stream even when the ids collide.
+ */
+export const AGENT_RUN_TICKET_NAMESPACE = 'agent_run';
+
+/**
+ * TASK-1038 (F1) — what `POST /agents/:slug/runs/:runId/stream-ticket` answers. The same shape as
+ * the workflow run ticket minus the socket `url`: an agent run has no WebSocket lane, only SSE.
+ */
+export interface AgentRunStreamTicketResponse {
+  ticket: string;
+  /** Epoch MILLISECONDS at which the ticket stops being redeemable (absolute, never a duration). */
+  expiresAt: number;
+  /** Always `agent_run:<runId>` — derived from the path, never accepted from the wire. */
+  scope: string;
+  /** The SSE stream to open with it (protocol v2 selected, query string already encoded). Single-use. */
+  sseUrl: string;
 }
 
 /** TASK-1038 OD-26 — `GET /agents/:slug/runs/:runId`. */
@@ -302,6 +326,10 @@ export class AgentController {
     @Optional() @Inject(ITenantBucketService) private readonly tenantBuckets?: ITenantBucketService,
     @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageServiceType,
     @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-1038 (F1) — the run-scoped stream ticket. `StreamTicketModule` is @Global in production;
+    // optional (and trailing) only so the positional unit fixtures keep constructing. Absent, the
+    // ticket route answers a named 503 rather than minting something unattributable.
+    @Optional() private readonly streamTicketService?: StreamTicketService,
   ) {}
 
   @Get()
@@ -778,16 +806,76 @@ export class AgentController {
     return { runId: state.runId, status: state.status };
   }
 
+  /**
+   * TASK-1038 (F1) — a single-use, ~30-second ticket for THIS agent run's SSE stream.
+   *
+   * The mirror of `POST /workflows/:slug/runs/:runId/stream-ticket`: a browser `EventSource` cannot
+   * send `X-API-Key`, and `POST /auth/stream-ticket` is JWT-only (`@ForbidApiKey()`). The scope is
+   * DERIVED from the path (`agent_run:<runId>`) so nothing wider than this run can be minted, and
+   * ownership is proved FIRST through the same read every other run route makes, so another
+   * tenant's run, an unknown id, or a run of another agent is a 404 and no ticket is issued.
+   * Same authorisation as the other agent run routes (bare `@Authorize()` + the invocation scopes
+   * for both machine classes).
+   */
+  @Post(':slug/runs/:runId/stream-ticket')
+  @HttpCode(HttpStatus.CREATED)
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @ApiOperation({
+    summary: 'Mint a single-use, 30-second ticket for this agent run’s SSE stream',
+    description:
+      'For a client that cannot send its credential on the stream request (a browser `EventSource` on an API key). The scope is derived ' +
+      'from the path (`agent_run:<runId>`) and the run’s ownership is proved before the ticket is issued. Open the returned `sseUrl` — ' +
+      'the ticket is consumed on first use and cannot be replayed.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 201, description: '`{ ticket, expiresAt (epoch ms), scope, sseUrl }`. The ticket is single-use.' })
+  @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
+  @ApiResponse({ status: 503, description: 'Stream tickets or the agent run store are not available on this gateway.' })
+  async issueRunStreamTicket(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStreamTicketResponse> {
+    if (!this.streamTicketService) {
+      throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
+    }
+    // FIRST: 404-over-403 ownership — tenant AND agent lineage — before anything is minted.
+    await this.requireRuns().get(this.requireTenant(), slug, runId);
+
+    const user = this.cls.get('user');
+    if (!user?.id) throw new UnauthorizedException('User context not available');
+    // The ACTIVE (CLS) tenant wins: a super admin's selected tenant and a service account's
+    // exchange-bound working tenant both land on the ticket the stream reads back.
+    const tenantId = this.cls.get('tenantId') || user.tenantId || null;
+    const issued = await this.streamTicketService.issueTicket({
+      userId: user.id,
+      tenantId,
+      scope: `${AGENT_RUN_TICKET_NAMESPACE}:${runId}`,
+      impersonatedBy: user.impersonatedBy ?? null,
+    });
+    const query = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+      sseUrl: `${agentRunLinks(slug, runId).events}?${query.toString()}`,
+    };
+  }
+
   @Get(':slug/runs/:runId/events')
   @Authorize()
   @RequiredScopes('agent:invocation:write')
   @RequiredSvcScopes('svc:agent:invocation:write')
+  // TASK-1038 (F1) — opened with `?ticket=` from `POST …/runs/:runId/stream-ticket` (scope `agent_run:<runId>`).
+  @StreamScope({ namespace: AGENT_RUN_TICKET_NAMESPACE, param: 'runId' })
   @ApiOperation({
     summary: 'Follow an agent run as run protocol v2 over SSE (resumable)',
     description:
       'Every frame is `event: <type>` / `id: <seq>` / `data: <envelope>`; the step is `nodeId: "agent"`. Resume with `Last-Event-ID` ' +
       '(or `?after=<seq>`); a cursor the server can no longer serve is answered with `run.resync` and a snapshot. The stream ends after ' +
-      'the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`.',
+      'the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`. A client that ' +
+      'cannot send its credential (a browser `EventSource`) opens it with a single-use `?ticket=` from `POST …/runs/{runId}/stream-ticket`.',
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiParam({ name: 'runId', type: String })

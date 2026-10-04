@@ -235,6 +235,20 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   // Media
   'media:file:read': { description: 'Read/download media files', category: 'Media', implies: [{ action: 'read', subject: 'Storage' }] },
   'media:file:write': { description: 'Upload media files', category: 'Media', implies: [{ action: 'create', subject: 'Storage' }] },
+  // TASK-1038 (F1) — `POST /media`: upload an attachment or an audio blob into the tenant's own
+  // bucket and get a `mediaId` a run references. Distinct from `media:file:write` (the bucket-level
+  // STORAGE browser, `create:Storage`): this one creates a `Media` row and nothing else — no bucket
+  // choice, no object key, no listing. `implies` is the plane's own abilities: `create:Media` for the
+  // upload and `read:Media` for reading a reference back (`GET /media/:mediaId`) — without the read,
+  // a SERVICE ACCOUNT (whose abilities come from its scopes alone) could upload but never read back.
+  'media:write': {
+    description: "Upload an attachment or audio file into the tenant's media store and read its reference back (POST /media)",
+    category: 'Media',
+    implies: [
+      { action: 'create', subject: 'Media' },
+      { action: 'read', subject: 'Media' },
+    ],
+  },
 
   // Admin
   'admin:user:read': {

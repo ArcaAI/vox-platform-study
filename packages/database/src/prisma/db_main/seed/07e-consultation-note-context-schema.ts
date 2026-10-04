@@ -74,11 +74,53 @@ export function payloadSchemaFromDefinition(definition: unknown): Record<string,
   if (isPlainObject(definition) && Array.isArray(definition.kinds)) {
     for (const kind of definition.kinds) {
       if (!isPlainObject(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
-      properties[kind.key] = kind.primitive === 'STRUCTURED' && isPlainObject(kind.fields) ? kind.fields : { type: 'object' };
+      properties[kind.key] = kindPayloadSchema(kind);
       if (kind.required === true) required.push(kind.key);
     }
   }
   return { type: 'object', additionalProperties: false, properties, ...(required.length > 0 ? { required } : {}) };
+}
+
+/** Copy of `mediaReferenceSchema` (TASK-1038 F1). */
+function mediaReferenceSchema(mimeTypes?: readonly unknown[]): Record<string, unknown> {
+  const normalize = (value: string): string => {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+  };
+  const declared = Array.isArray(mimeTypes) ? [...new Set(mimeTypes.filter((entry): entry is string => typeof entry === 'string').map(normalize))] : [];
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      mediaId: { type: 'string', minLength: 1 },
+      mime: declared.length > 0 ? { type: 'string', enum: declared } : { type: 'string', minLength: 1 },
+      name: { type: 'string' },
+      size: { type: 'integer', minimum: 0 },
+    },
+    required: ['mediaId', 'mime'],
+  };
+}
+
+/** Copy of `kindPayloadSchema` (TASK-1038 F1) — the shape ONE declared kind contributes. */
+function kindPayloadSchema(kind: Record<string, unknown>): Record<string, unknown> {
+  const oneOrMany = (item: Record<string, unknown>): Record<string, unknown> =>
+    kind.cardinality === 'MANY' ? { anyOf: [item, { type: 'array', items: item }] } : item;
+  const mimeTypes = isPlainObject(kind.constraints) && Array.isArray(kind.constraints.mimeTypes) ? kind.constraints.mimeTypes : undefined;
+  switch (kind.primitive) {
+    case 'STRUCTURED':
+      return isPlainObject(kind.fields) ? kind.fields : { type: 'object' };
+    case 'TEXT':
+      return kind.cardinality === 'MANY'
+        ? { anyOf: [{ type: 'string' }, { type: 'object' }, { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object' }] } }] }
+        : { anyOf: [{ type: 'string' }, { type: 'object' }] };
+    case 'DOCUMENT':
+    case 'IMAGE':
+      return oneOrMany(mediaReferenceSchema(mimeTypes));
+    case 'STREAM_AUDIO':
+      return kind.delivery === 'blob' ? oneOrMany(mediaReferenceSchema(mimeTypes)) : { type: 'object', properties: { sttSessionId: { type: 'string', minLength: 1 } } };
+    default:
+      return { type: 'object' };
+  }
 }
 
 // =============================================================================

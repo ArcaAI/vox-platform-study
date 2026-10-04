@@ -58,19 +58,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -656,7 +763,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
           "consultation"
         ]
       },
-      "checksum": "d862d22febb303925464655d1a8d07d150616e3b7dcf00abe91cda67db370d1e"
+      "checksum": "669cca907dfa936613bc93cb6e0786327ac8f2f6dd5dd9064d01c662714ba10a"
     }
   },
   "GLOBAL:platform-default-summarization": {
@@ -699,19 +806,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -996,7 +1210,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         ],
         "sources": []
       },
-      "checksum": "ebb9d00736317a8563f3e3e912c649db0a85044547e6a98ba1c583f6e7648718"
+      "checksum": "88ebec644237661ec0901de680d90338c27ea7afb4dcf8f97c461153efb3c375"
     }
   },
   "SYSTEM:general-medicine-consultation": {
@@ -1040,19 +1254,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1638,7 +1959,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
           "consultation"
         ]
       },
-      "checksum": "260c1552b45337a63ff39320bab670681362ed8461856ea5555551577c514302"
+      "checksum": "dcc4c10c694112603e5d53a855441fd37c551242c282f2bcd6c8218756cf570f"
     }
   },
   "SYSTEM:platform-default-summarization": {
@@ -1681,19 +2002,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1978,7 +2406,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
         ],
         "sources": []
       },
-      "checksum": "f1490ad172f8f38e79515bad8167f7728696d7a345217a8515e73184601b1afa"
+      "checksum": "b0604e4973d0d33b4f6d4e951a94e2019f8741a4c37ad2e9b33cf5c809caafde"
     }
   }
 };

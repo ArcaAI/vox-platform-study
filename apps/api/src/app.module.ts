@@ -120,6 +120,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { MediaModule } from './modules/media/media.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
@@ -539,6 +540,8 @@ const featureModules: any[] = [
   // /admin/resource-subscriptions (CRUD + toggle).
   ResourceSubscriptionModule,
   StorageModule,
+  // TASK-1038 (F1) — `POST /media`: the tenant media upload a run's attachments / audio blobs reference.
+  MediaModule,
   StorageAccessKeyModule,
   StreamingModule,
   SpeechModule,
