@@ -8,7 +8,9 @@ import {
   encodeResumeToken,
   parseStoredRunEvent,
   planRunResume,
+  RunProtocolError,
   runErrorMessage,
+  runEventProblems,
   selectRunProtocol,
   toPublicRunEvent,
 } from '@arcaai/async-contract';
@@ -107,6 +109,19 @@ export function toPublicPlaneEvent(event: RunEventV2): RunEventV2 | null {
 
 export function forPlane(event: RunEventV2, plane: RunPlane): RunEventV2 | null {
   return plane === 'admin' ? event : toPublicPlaneEvent(event);
+}
+
+/**
+ * One WS text frame: the SAME envelope the SSE `data:` line carries, keys in envelope order
+ * (protocol-v2.md §1). Throws `RunProtocolError` for a non-conforming event, as `toSseFrame` does.
+ */
+export function toWsFrame(event: RunEventV2): string {
+  const problems = runEventProblems(event);
+  if (problems.length > 0) throw new RunProtocolError(problems);
+  const ordered: Record<string, unknown> = { seq: event.seq, runId: event.runId, type: event.type, ts: event.ts };
+  if (event.nodeId !== undefined) ordered.nodeId = event.nodeId;
+  ordered.data = event.data;
+  return JSON.stringify(ordered);
 }
 
 // =============================================================================================
