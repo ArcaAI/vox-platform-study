@@ -892,6 +892,39 @@ After batch 2: the C7 label sweep (haiku), then wave D review, then the single o
 | F2 FINAL-UI | sonnet | First-class canvas run state (replacing C3's CSS); "Add a step" overlap; `replaceGraph` with settings; Composer run overlay; Test-tab Attach via the media route; Integration-tab unsaved notice |
 | C7 LABEL-SWEEP | haiku | Remaining "Hope Prompt" labels and their tests; Postman collection on the 5.0 flow |
 
+### 6.11 Wave C batch 3: merged (2026-10-05). All implementation is on dev-2.2 at `cd2ba1680`.
+
+**Lane heads:**
+
+| Lane | Head | Summary |
+|---|---|---|
+| F1 | `5c21aee3b` | Agent-run stream ticket (`agent_run:<runId>`, ownership checked before mint) |
+| | | `POST/GET /api/v1/media`: tenant bucket only, content-type sniffing, size limits from `media.upload.*` settings, new `media:write` / `svc:media:write` scopes |
+| | | Payload schema per kind: TEXT accepts a string; DOCUMENT/IMAGE/blob audio accept a media reference; sandbox inputs go to declared kinds, else 400 `SANDBOX_INPUT_UNDECLARED` |
+| F2 | `5a47f22f2` | First-class canvas run state (reduced-motion safe); "Add a step" overlap fixed; one-step import undo; Composer run overlay; Test-tab Attach via `/media`; Integration-tab unsaved notice |
+| C7 | `8c864c354` | "Hope Prompt" labels across the console and their tests; Postman `Idempotency-Key` |
+
+**Integration (`cd2ba1680`):**
+- Five artifacts regenerated.
+- The orchestrator added the missing Postman requests: the v2 run stream, the run result, and an agent run.
+- Builds pass; api, admin-console, vox and vox-node type-check clean; seeds and env are stable.
+- Every lane worktree is removed.
+
+**Known before the gate:**
+- `seed-safety.task1036.test.ts` fails 2 of 6, reported as pre-existing at batch-3 base. Wave D R-A diagnoses it.
+- Business runs may reference any `mediaId` without an ownership check; nothing reads attachments yet (R-B).
+- API-key presets and seeded keys lack `media:write`.
+
+### 6.12 Wave D: review launched (read-only, diff `45ce54bc6..cd2ba1680`)
+
+| Reviewer | Tier | Lens |
+|---|---|---|
+| R-A | opus | Correctness end to end: lifecycle, W3 pins, data contract, protocol v2, agent runs, console logic, predictable gate failures |
+| R-B | opus | Security and tenancy: every new route and stream, PHI on the public plane, Redis TTLs, guardrail scope |
+| R-C | sonnet | UX and accessibility against rules 10, 11 and 12, §10 and the prototype; produces the checklist for the live browser check |
+
+Findings are data. The orchestrator verifies each one, fixes it through a fix lane (or rejects it with a reason), and then runs the single gate.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
