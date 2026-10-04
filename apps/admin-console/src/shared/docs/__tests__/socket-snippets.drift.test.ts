@@ -206,3 +206,22 @@ describe('the websocat fallback mints the ticket before opening the url it retur
     expect(code).toMatch(/websocat "\$WS_ORIGIN\$URL"/);
   });
 });
+
+/**
+ * TASK-1036 lane C4 / TASK-1039 — the run is STARTED the 5.0 way (`run(slug, input)` returns a
+ * RunHandle; the input is the input itself, not the `{ input }` envelope). The socket option stays on
+ * `streamRun`, which is deprecated but not removed in 5.x, and the snippet says why.
+ */
+describe('workflowSocketVoxNodeSnippet — started with the 5.0 API', () => {
+  const code = workflowSocketVoxNodeSnippet('discharge-summary');
+
+  it('passes the input itself, not the { input } envelope', () => {
+    expect(code).toContain("hope.workflows.run('discharge-summary', {");
+    expect(code).not.toMatch(/\binput:\s*\{/);
+  });
+
+  it('keeps the socket option and says the RunHandle follows SSE', () => {
+    expect(code).toContain("transport: 'socket'");
+    expect(code).toMatch(/RunHandle/);
+  });
+});
