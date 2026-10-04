@@ -155,6 +155,13 @@ describe('testDraft — dry run (the default)', () => {
     expect(mockDraftTest.submit).not.toHaveBeenCalled();
   });
 
+  // TASK-1036 OD-8 — the bench reads the user turn the way invocation does: `message`, else `text`.
+  it('reads `input.message` as the user turn', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
+    const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' }, input: { message: 'Summarise {{input.note}}', note: 'the visit' } });
+    expect(ack.assembledUserPrompt).toBe(asInputBlock('Summarise the visit'));
+  });
+
   it('resolves the target off the agent`s own row, with a DERIVED funding tier', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent());
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' } });

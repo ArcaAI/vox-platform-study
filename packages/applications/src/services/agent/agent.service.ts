@@ -52,6 +52,7 @@ import {
   canonicalJson,
   composeMessages,
   platformRules,
+  readTextAgentMessage,
   conditionRootProblems,
   isCompositeInstruction,
   mapBoundTemplateRefs,
@@ -812,7 +813,9 @@ export class AgentService extends BaseService implements IAgentService {
     }
     // The ONE composer — the same `composeMessages` call the invocation route makes, so the bench
     // shows exactly the system + user messages production sends (platform rules included).
-    const inputText = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    // TASK-1036 OD-8 — `message`, else the deprecated `text` alias (the invocation route's read).
+    const turn = readTextAgentMessage(dto.input);
+    const inputText = turn !== undefined ? this.render(turn, scope, typeof dto.input?.message === 'string' ? 'input.message' : 'input.text') : '';
     const composed = this.renderMapped(() =>
       composeMessages({
         platformRules: platformRules(),
@@ -864,7 +867,7 @@ export class AgentService extends BaseService implements IAgentService {
       // noise as a defect in their agent. A DRY run with no `input.text` is fine — it still shows
       // the assembled system prompt and the resolved target.
       throw new BadRequestException({
-        message: 'A live agent test needs something to run on: supply `input.text`. (A dry run does not.)',
+        message: 'A live agent test needs something to run on: supply `input.message`. (A dry run does not.)',
         code: 'TEST_INPUT_REQUIRED',
       });
     }

@@ -79,6 +79,9 @@ import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
+  /** TASK-1036 OD-8 — the user turn. */
+  message?: string;
+  /** @deprecated TASK-1036 OD-8 — alias of `message`, accepted for one release. */
   text?: string;
   variables?: Record<string, string>;
   /**
@@ -256,7 +259,7 @@ export class AgentController {
   @ApiOperation({
     summary: 'Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)',
     description:
-      'The body is validated against the agent’s `inputSchema` (default: `{ text, variables? }`). `mode=blocking` answers `200 application/json`; ' +
+      'The body is validated against the agent’s `inputSchema` (default: `{ message } | { text } | { variables }` — `text` is a deprecated alias of `message`). `mode=blocking` answers `200 application/json`; ' +
       '`mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.',
   })
   @ApiParam({ name: 'slug', type: String })
@@ -270,7 +273,7 @@ export class AgentController {
   @ApiBody({
     required: true,
     description:
-      'FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) ' +
+      'FLAT — `{ message, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) ' +
       'The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — ' +
       'which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. ' +
       'A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.',
@@ -278,10 +281,15 @@ export class AgentController {
       type: 'object',
       additionalProperties: true,
       properties: {
-        text: {
+        message: {
           type: 'string',
           description:
-            'The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.',
+            'The user turn (TASK-1036 OD-8). Optional: a body may carry only `variables`. An agent that declares its own schema may name something else entirely.',
+        },
+        text: {
+          type: 'string',
+          deprecated: true,
+          description: 'DEPRECATED alias of `message`, accepted for one release. Send `message`.',
         },
         variables: {
           type: 'object',
@@ -295,7 +303,7 @@ export class AgentController {
             'The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.',
         },
       },
-      example: { text: 'Summarise the consultation note below.' },
+      example: { message: 'Summarise the consultation note below.' },
     },
   })
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
