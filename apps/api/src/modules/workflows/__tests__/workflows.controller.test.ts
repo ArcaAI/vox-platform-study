@@ -12,7 +12,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { API_KEY_REQUIRED_SCOPES, REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { Reflector } from '@nestjs/core';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
+import { encodeResumeToken } from '@arcaai/async-contract';
 import { WorkflowsController } from '../workflows.controller';
+import { parseClientCursor } from '../run-protocol-delivery';
+import { RUN_EVENT_TRANSPORT } from '../workflow-run-event';
 
 function makeController() {
   const workflowExposureService = {
@@ -94,7 +97,14 @@ describe('WorkflowsController', () => {
 
     await controller.streamRunStatus('discharge_summary', 'run-1', res);
 
-    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, undefined);
+    // TASK-1038 B3a — the route also forwards the run-protocol selection and the v2 `after`
+    // cursor; the service resolves the protocol and parses the cursor.
+    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, undefined, {
+      protocolHeader: undefined,
+      protocol: undefined,
+      after: undefined,
+      legacyQuery: undefined,
+    });
   });
 
   it('forwards the resume cursor, preferring the Last-Event-ID header over the query fallback', async () => {
@@ -105,11 +115,19 @@ describe('WorkflowsController', () => {
     const { controller, workflowStreamService } = makeController();
     const res = {} as never;
 
+    // TASK-1038 B3a — the header and the query fallback now travel separately (`lastEventId` vs
+    // `legacyQuery`); the precedence (header > `after` > query) is applied by `parseClientCursor`
+    // (run-protocol-delivery.ts), which is pinned below so the header still wins.
     await controller.streamRunStatus('discharge_summary', 'run-1', res, 'from-header', 'from-query');
-    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, 'from-header');
+    expect(workflowStreamService.stream).toHaveBeenCalledWith('discharge_summary', 'run-1', res, 'from-header', expect.objectContaining({ legacyQuery: 'from-query' }));
 
     await controller.streamRunStatus('discharge_summary', 'run-1', res, undefined, 'from-query');
-    expect(workflowStreamService.stream).toHaveBeenLastCalledWith('discharge_summary', 'run-1', res, 'from-query');
+    expect(workflowStreamService.stream).toHaveBeenLastCalledWith('discharge_summary', 'run-1', res, undefined, expect.objectContaining({ legacyQuery: 'from-query' }));
+
+    const header = encodeResumeToken(RUN_EVENT_TRANSPORT, '5-0');
+    const query = encodeResumeToken(RUN_EVENT_TRANSPORT, '1-0');
+    expect(parseClientCursor({ lastEventId: header, legacyQuery: query }, 'legacy')).toEqual({ kind: 'stream', id: '5-0' });
+    expect(parseClientCursor({ legacyQuery: query }, 'legacy')).toEqual({ kind: 'stream', id: '1-0' });
   });
 
   it('the stream route carries @StreamScope({ namespace: "workflow_run", param: "runId" })', () => {

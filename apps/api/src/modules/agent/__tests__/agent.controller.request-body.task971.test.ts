@@ -93,9 +93,11 @@ describe('openapi.json — POST /agents/{slug}/speech', () => {
     expect(jsonSchemaOf(path).$ref).toBeUndefined();
   });
 
-  it('documents text and ssml', () => {
+  // TASK-1036 §3.2 (lane B2) — the speech body gained `delivery: 'stream' | 'blob'` (OD-6: the
+  // wire carries `delivery` alongside the content), so the documented properties are three.
+  it('documents text and ssml (and the TASK-1036 delivery mode)', () => {
     const properties = jsonSchemaOf(path).properties as Record<string, unknown>;
-    expect(Object.keys(properties).sort()).toEqual(['ssml', 'text']);
+    expect(Object.keys(properties).sort()).toEqual(['delivery', 'ssml', 'text']);
   });
 
   it('says exactly one of the two is required', () => {

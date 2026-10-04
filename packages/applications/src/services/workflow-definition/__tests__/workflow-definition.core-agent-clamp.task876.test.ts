@@ -23,7 +23,9 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockRoutingPolicyService = { resolveGenerationCapabilities: vi.fn() };
-const agentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn() };
+// TASK-1038 E2 (fix 9, OD-21) — an unresolved explicit pin is re-checked against every version
+// (a DEPRECATED pin publishes with a warning), so the fixture carries `findAllVersionsBySlug`.
+const agentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn(), findAllVersionsBySlug: vi.fn() };
 const aiModelRepository = { findById: vi.fn() };
 
 const node = (config: Record<string, unknown>) => ({ id: 'n_agent', type: 'core.agent', config });
@@ -244,6 +246,7 @@ describe('publish — a core.agent override the bound agent`s provider rejects i
 
   it('an UNRESOLVABLE pin is an unknown capability set, and W3 refuses to publish it (AGENT_PIN_UNRESOLVED)', async () => {
     agentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([]); // v9 is not even a DEPRECATED version
     mockWorkflowDefinitionRepository.findById.mockResolvedValue(
       entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer', versionNumber: 9 }, overrides: { generation: { presencePenalty: 0.5 } } }) }),
     );

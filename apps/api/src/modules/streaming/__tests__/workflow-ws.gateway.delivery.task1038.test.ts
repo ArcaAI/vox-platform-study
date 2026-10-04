@@ -121,7 +121,10 @@ describe('TASK-1038 R-9 — WS backpressure', () => {
 
     const connecting = gateway.handleConnection(socket as never, req() as never);
     await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(frames(socket).map((frame) => frame.event)).toEqual(['workflow.run.progress']);
+    // TASK-1038 B3a/E2 — one delivery loop (`deliverRunEvents`): the connect snapshot now goes
+    // through the same backpressured sink as every other frame, so a client that is already
+    // behind at connect receives NOTHING (not even the snapshot) until its buffer drains.
+    expect(frames(socket).map((frame) => frame.event)).toEqual([]);
 
     socket.bufferedAmount = 0;
     await connecting;
