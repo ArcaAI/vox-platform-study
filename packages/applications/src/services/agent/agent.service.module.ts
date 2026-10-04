@@ -17,6 +17,7 @@ import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
 import { AgentService } from './agent.service';
+import { AgentUsageService } from './agent-usage.service';
 import { TextAgentResolverService } from './text-agent-resolver.service';
 import { IAgentService } from './IAgentService';
 
@@ -70,8 +71,9 @@ import { IAgentService } from './IAgentService';
     AgentResolverService,
     TextAgentResolverService,
     AgentInvocationService,
+    AgentUsageService,
     { provide: IAgentService, useExisting: AgentService },
   ],
-  exports: [IAgentService, AgentService, AgentDraftTestService, AgentResolverService, TextAgentResolverService, AgentInvocationService],
+  exports: [IAgentService, AgentService, AgentDraftTestService, AgentResolverService, TextAgentResolverService, AgentInvocationService, AgentUsageService],
 })
 export class AgentServiceModule {}
