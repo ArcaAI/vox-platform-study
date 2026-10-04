@@ -12,6 +12,7 @@ import { WorkflowRunServiceModule } from '../workflow-run';
 import { EffectiveTriggerSchemaModule } from './effective-trigger-schema.module';
 import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
+import { WorkflowEntryGateService } from './workflow-entry-gate.service';
 
 /**
  * WorkflowExposureService DI module.
@@ -69,6 +70,7 @@ import { WorkflowExposureService } from './workflow-exposure.service';
   ],
   providers: [
     WorkflowExposureService,
+    WorkflowEntryGateService,
     {
       provide: IWorkflowExposureService,
       // useExisting, not useClass — useClass would construct a second
@@ -76,6 +78,6 @@ import { WorkflowExposureService } from './workflow-exposure.service';
       useExisting: WorkflowExposureService,
     },
   ],
-  exports: [IWorkflowExposureService, WorkflowExposureService],
+  exports: [IWorkflowExposureService, WorkflowExposureService, WorkflowEntryGateService],
 })
 export class WorkflowExposureServiceModule {}

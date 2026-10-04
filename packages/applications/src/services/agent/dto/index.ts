@@ -14,3 +14,4 @@ export * from './test-agent.request';
 export * from './agent-test-ack.response';
 export * from './agent-test-result.response';
 export * from './agent-tag-suggestion.response';
+export * from './agent-usage.response';

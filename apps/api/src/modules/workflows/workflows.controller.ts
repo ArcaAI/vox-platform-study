@@ -10,6 +10,7 @@ import {
   WorkflowRunResultRefResponse,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
+  WorkflowEntryGateService,
   type WorkflowSchemaDescription,
 } from '@arcaai/applications';
 import {
@@ -104,6 +105,9 @@ export class WorkflowsController {
     // either is absent rather than minting something unattributable.
     @Optional() private readonly streamTicketService?: StreamTicketService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+    // TASK-1036 (OD-4) — the socket ticket is refused unless the workflow's settings admit `socket`.
+    // Optional so the positional unit fixtures keep constructing; absent, the settings are not read.
+    @Optional() private readonly entryGate?: WorkflowEntryGateService,
   ) {}
 
   @Get()
@@ -443,6 +447,7 @@ export class WorkflowsController {
     status: 201,
     description: 'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
   })
+  @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings do not enable the `socket` connection (use SSE).' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
@@ -451,7 +456,9 @@ export class WorkflowsController {
       throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
     }
     // FIRST: 404-over-403 ownership, through the same read every other run route makes.
-    await this.workflowExposureService.getRunStatus(slug, runId);
+    const run = await this.workflowExposureService.getRunStatus(slug, runId);
+    // TASK-1036 (OD-4) — the socket lane exists only when the run's workflow settings admit it.
+    await this.entryGate?.assertEntryAllowed(slug, run.workflowVersionNumber, 'socket');
 
     const user = this.cls.get('user');
     if (!user?.id) throw new UnauthorizedException('User context not available');

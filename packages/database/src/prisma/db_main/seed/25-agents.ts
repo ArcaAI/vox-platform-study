@@ -1213,10 +1213,61 @@ export interface SeedResolvedPromptFragment {
   promptVersionNumber?: number;
   content: string;
   when: string | null;
+  /** TASK-1036 OD-10 — the template version's variable declarations; omitted when it declares none. */
+  variables?: SeedVariableDeclaration[];
+}
+
+/**
+ * TASK-1036 OD-10 — one prompt variable declaration, as `AgentService` freezes it beside a
+ * template's content in `compiledConfig.resolvedPrompt` (field-for-field
+ * `PromptVariableDeclarationDto`; this package takes no applications dependency).
+ */
+export interface SeedVariableDeclaration {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+  required: boolean;
+  default?: string;
+  description?: string;
+  source?: { kind: 'context' | 'static'; path?: string };
+}
+
+const SEED_VARIABLE_TYPES: ReadonlyArray<SeedVariableDeclaration['type']> = ['string', 'number', 'boolean', 'date', 'json'];
+
+/**
+ * `parsePromptVariableDeclarations` of @arcaai/applications, verbatim in behaviour: array-only
+ * (the retired `{ [name]: … }` map and `null` are "no declarations"), unknown `type` → `string`,
+ * `required` only when exactly `true`.
+ */
+export function parseSeedVariableDeclarations(raw: unknown): SeedVariableDeclaration[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+    .filter((entry) => typeof entry.name === 'string' && entry.name.length > 0)
+    .map((entry) => {
+      const declaration: SeedVariableDeclaration = {
+        name: entry.name as string,
+        type: SEED_VARIABLE_TYPES.includes(entry.type as SeedVariableDeclaration['type']) ? (entry.type as SeedVariableDeclaration['type']) : 'string',
+        required: entry.required === true,
+      };
+      if (typeof entry.default === 'string') declaration.default = entry.default;
+      if (typeof entry.description === 'string') declaration.description = entry.description;
+      if (entry.source && typeof entry.source === 'object') {
+        const source = entry.source as Record<string, unknown>;
+        if (source.kind === 'context' || source.kind === 'static') {
+          declaration.source = typeof source.path === 'string' ? { kind: source.kind, path: source.path } : { kind: source.kind };
+        }
+      }
+      return declaration;
+    });
+}
+
+/** `frozenDeclarations` of `AgentService`: spread in, omitted when the version declares none. */
+function frozenSeedDeclarations(declarations: readonly SeedVariableDeclaration[]): { variables?: SeedVariableDeclaration[] } {
+  return declarations.length > 0 ? { variables: declarations.map((declaration) => ({ ...declaration })) } : {};
 }
 
 export type SeedResolvedPrompt =
-  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string; variables?: SeedVariableDeclaration[] }
   | { source: 'inline'; content: string }
   | { source: 'composite'; content: string; join: string; fragments: SeedResolvedPromptFragment[] }
   | null;
@@ -1331,9 +1382,15 @@ export interface SeedAgentsClient {
       content: string | null;
       approvedVersionNumber: number | null;
       currentVersionNumber: number | null;
+      /** TASK-1036 OD-10 — the declarations column (`Json?`); optional so a narrow fake may omit it. */
+      variables?: unknown;
     } | null>;
   };
-  promptVersion: { findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null } | null> };
+  promptVersion: {
+    findFirst(args: {
+      where: { promptTemplateId: string; versionNumber: number };
+    }): Promise<{ content: string | null; variables?: unknown } | null>;
+  };
   agent: {
     findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
     create(args: { data: unknown }): Promise<unknown>;
@@ -1357,13 +1414,19 @@ async function resolveTemplateBinding(
   client: SeedAgentsClient,
   templateId: string,
   pinned: number | null,
-): Promise<{ ok: true; promptVersionNumber: number; content: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; promptVersionNumber: number; content: string; declarations: SeedVariableDeclaration[] } | { ok: false; reason: string }> {
   const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
   if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
   if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
   const versionNumber = pinned ?? template.approvedVersionNumber ?? template.currentVersionNumber ?? 1;
   const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
-  return { ok: true, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' };
+  return {
+    ok: true,
+    promptVersionNumber: versionNumber,
+    content: version?.content ?? template.content ?? '',
+    // OD-10 — the version's own declarations, else the template's (`AgentService.resolveTemplateBinding`'s read).
+    declarations: parseSeedVariableDeclarations(version?.variables ?? template.variables),
+  };
 }
 
 /**
@@ -1420,6 +1483,7 @@ async function resolveCompositePrompt(
       promptVersionNumber: outcome.promptVersionNumber,
       content: outcome.content,
       when,
+      ...frozenSeedDeclarations(outcome.declarations),
     });
   }
 
@@ -1465,6 +1529,7 @@ async function resolvePrompt(
       promptTemplateId: templateId,
       promptVersionNumber: outcome.promptVersionNumber,
       content: outcome.content,
+      ...frozenSeedDeclarations(outcome.declarations),
     },
   };
 }
