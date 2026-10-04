@@ -47,8 +47,15 @@ export class WorkflowSandboxRunController {
   @ApiOperation({ summary: 'Start a sandbox run of the CURRENT graph of :definitionId — DRAFT or published, never writes external artifacts.' })
   @ApiParam({ name: 'definitionId' })
   @ApiResponse({ status: 202, type: SandboxRunResponse })
-  @ApiResponse({ status: 400, description: 'The graph cannot be compiled (engine gate).' })
-  @ApiResponse({ status: 404, description: 'Unknown or cross-tenant definitionId, or (when fixtureId is given) a cross-tenant fixtureId.' })
+  @ApiResponse({
+    status: 400,
+    description: 'The graph cannot be compiled (engine gate), or an attachment is outside the MIME allow-list (`SANDBOX_ATTACHMENT_MIME_UNSUPPORTED`).',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Unknown or cross-tenant definitionId, fixtureId, attachment mediaId or recording sttSessionId.',
+  })
+  @ApiResponse({ status: 409, description: '`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session belongs to a clinical consultation.' })
   async start(@Param('definitionId') definitionId: string, @Body() dto: StartSandboxRunRequest): Promise<SandboxRunResponse> {
     return this.workflowSandboxRunService.startRun(definitionId, dto);
   }
