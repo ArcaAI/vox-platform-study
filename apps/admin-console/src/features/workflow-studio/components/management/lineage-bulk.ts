@@ -35,6 +35,25 @@ export const BULK_ACTION_LABEL: Record<BulkAction, string> = {
   delete: 'Delete all versions',
 };
 
+/**
+ * What a bulk verb will do to each selected lineage, in the per-version Activate / Deprecate
+ * dialogs' own words (`@/shared/versioning/lifecycle-dialogs`) — one line per lineage, including
+ * the ones that will be skipped, so nothing in the run is a surprise.
+ */
+export function bulkConsequences(action: Extract<BulkAction, 'publish' | 'unpublish'>, lineages: readonly WorkflowLineage[]): string[] {
+  return lineages.map((lineage) => {
+    if (action === 'publish') {
+      const draft = lineage.draft;
+      if (!draft || draft.status !== 'VALIDATED') return `“${lineage.name}”: skipped — no VALIDATED draft to publish.`;
+      return lineage.active
+        ? `“${lineage.name}”: publish v${draft.versionNumber} and make it the active version; v${lineage.active.versionNumber} stops serving (it stays published and can be activated again).`
+        : `“${lineage.name}”: publish v${draft.versionNumber} and make it the active version — the first this workflow will serve.`;
+    }
+    if (!lineage.active) return `“${lineage.name}”: skipped — no active version to unpublish.`;
+    return `“${lineage.name}”: v${lineage.active.versionNumber} is deprecated, so the slug ${lineage.slug} will serve nothing and its assignments point at nothing.`;
+  });
+}
+
 export function initialItems(lineages: readonly WorkflowLineage[]): BulkItem[] {
   return lineages.map((lineage) => ({ slug: lineage.slug, name: lineage.name, status: 'pending' as const }));
 }
