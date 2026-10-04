@@ -18,7 +18,8 @@ import { REGISTRY } from '../../../lib/__tests__/registry-fixture';
 import { TestTab, useNodeLastRuns } from '../test-tab';
 
 type CanvasProps = {
-  nodes: Array<{ id: string; label: string; runState?: string; runDurationMs?: number; problem?: { severity: string; messages: string[] } }>;
+  nodes: Array<{ id: string; label: string; runState?: string; runDurationMs?: number; runWarnings?: number; problem?: { severity: string; messages: string[] } }>;
+  edges: Array<{ id: string; runState?: string }>;
   onSelect?: (nodeId: string | null) => void;
 };
 const captured: CanvasProps[] = [];
@@ -267,6 +268,9 @@ describe('TestTab — a live run', () => {
     expect(canvasNode('asr1')).toMatchObject({ runState: 'ok', runDurationMs: 1200 });
     expect(canvasNode('w')?.runState).toBe('running');
     expect(canvasNode('w')?.problem?.messages.join(' ')).toMatch(/This run: 1 warning/);
+    // F2: the canvas owns the run overlay — warning count on the node, run state on the links.
+    expect(canvasNode('w')?.runWarnings).toBe(1);
+    expect(latestCanvas().edges.map((edge) => [edge.id, edge.runState])).toEqual([['e1', undefined], ['e2', 'active']]);
     expect(within(statusBar()).getByText('Running')).toBeTruthy();
     expect(within(statusBar()).getByText('run-1')).toBeTruthy();
   });

@@ -114,7 +114,7 @@ import {
 } from '../store';
 import type { WorkflowDefinition, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
 import { InspectorPanel, type InspectorTab } from './inspector';
-import { ComposerCanvas, useComposerAgents } from './canvas';
+import { ComposerCanvas, runOverlayFromLastRuns, useComposerAgents } from './canvas';
 import { PromptBindingsRail } from './prompt-bindings';
 import { PaletteRail } from './palette';
 import { ValidationRail, publishBlockedReason, useFocusNode } from './validation';
@@ -270,6 +270,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const draftFrom = useCreateDraftFrom();
   /** TASK-1036 OD-17 — the latest Test run per node (lane C3), for the inspector's Last run tab and the picker's samples. */
   const lastRunByNode = useNodeLastRuns(definition.id);
+  /** The latest Test run laid over the Composer: each step's state and the links that carried data. */
+  const runOverlay = useMemo(() => runOverlayFromLastRuns(edges, lastRunByNode), [edges, lastRunByNode]);
   /** The composer's agent resolver — the SAME cached read `ComposerCanvas` types ports with. */
   const { agents } = useComposerAgents();
   // TASK-965 WS-1 (WF-1, WF-26) — validate and publish go through the studio's TanStack mutations,
@@ -745,15 +747,14 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       return;
     }
     const { nodes: imported, edges: importedEdges, settings: importedSettings } = fromWorkflowGraph(parsed.graph);
+    // TASK-1036 §3.5 — a file that carries `settings` brings them (an export → import round trip
+    // is lossless); a file without them leaves the workflow's own settings alone rather than
+    // silently clearing its connections. Graph and settings land in ONE undo step.
     storeApi.getState().replaceGraph(
       imported.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       importedEdges,
+      importedSettings,
     );
-    // TASK-1036 §3.5 — a file that carries `settings` brings them (an export → import round trip
-    // is lossless); a file without them leaves the workflow's own settings alone rather than
-    // silently clearing its connections. `replaceGraph` takes no settings, so this is a second,
-    // separately undoable step.
-    if (importedSettings !== undefined) storeApi.getState().setSettings(importedSettings);
     void layoutClusteredGraph(imported, importedEdges).then((positions) => {
       if (!positions) return;
       for (const node of imported) {
@@ -1042,6 +1043,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                 descriptorByType={descriptorByType}
                 readOnly={readOnly}
                 findings={findings}
+                runStates={runOverlay.runStates}
+                edgeRunStates={runOverlay.edgeRunStates}
                 selectedNodeIds={selectedNodeIds}
                 onSelectionChange={handleSelectionChange}
                 fitViewKey={fitViewKey}
@@ -1117,7 +1120,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         {visitedTabs.has('integration') ? (
           <TabsContent value="integration" forceMount hidden={tab !== 'integration'} className={TAB_PANEL_CLASS}>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <IntegrationTab definitionId={definition.id} />
+              <IntegrationTab definitionId={definition.id} unsavedChanges={dirty || metadataDirty} />
             </div>
           </TabsContent>
         ) : null}

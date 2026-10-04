@@ -218,6 +218,23 @@ describe('IntegrationTab — lifecycle', () => {
   });
 });
 
+describe('IntegrationTab — unsaved changes (F2)', () => {
+  it('says it is showing the saved version when the editor buffer has unsaved changes', () => {
+    renderWithProviders(<IntegrationTab definitionId="def-1" unsavedChanges />);
+    expect(screen.getByRole('status', { name: '' }).textContent).toBe('Showing the saved version — save to update.');
+  });
+
+  it('says nothing when the buffer is saved', () => {
+    renderWithProviders(<IntegrationTab definitionId="def-1" />);
+    expect(screen.queryByText(/showing the saved version/i)).toBeNull();
+  });
+
+  it('has no axe violations with the notice up', async () => {
+    const { container } = renderWithProviders(<IntegrationTab definitionId="def-1" unsavedChanges />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
 describe('IntegrationTab — Connect follows the effective settings', () => {
   function connectionItem(name: RegExp): HTMLElement {
     const connect = screen.getByRole('heading', { name: '2. Connect' }).closest('li')!;

@@ -71,8 +71,12 @@ export interface GraphState extends GraphSnapshot {
 
 export interface GraphActions {
   hydrate: (nodes: GraphStoreNode[], edges: GraphStoreEdge[], settings?: WorkflowSettings) => void;
-  /** An AUTHORED wholesale replacement (JSON import, TASK-864 B1): undoable and dirty, unlike `hydrate`. */
-  replaceGraph: (nodes: GraphStoreNode[], edges: GraphStoreEdge[]) => void;
+  /**
+   * An AUTHORED wholesale replacement (JSON import, TASK-864 B1): undoable and dirty, unlike `hydrate`.
+   * `settings`, when given, replace `graph.settings` in the SAME undo step (an import is one edit);
+   * `undefined` leaves the workflow's own settings alone.
+   */
+  replaceGraph: (nodes: GraphStoreNode[], edges: GraphStoreEdge[], settings?: WorkflowSettings) => void;
   /** Pre-places every `mandatory`-classed descriptor into a fresh graph (README Task 12: "pre-
    *  placed into a new definition's graph by the store's `initializeGraph` action"). Non-
    *  mandatory descriptors are ignored — they come from the palette rail on demand. */
@@ -252,9 +256,9 @@ export function createGraphStore(): GraphStoreApi {
         });
       },
 
-      replaceGraph: (nodes, edges) => {
+      replaceGraph: (nodes, edges, settings) => {
         snapshotForUndo();
-        set((state) => ({ nodes, edges, selectedNodeId: null, ...dirtied(state) }));
+        set((state) => ({ nodes, edges, ...(settings !== undefined ? { settings } : {}), selectedNodeId: null, ...dirtied(state) }));
       },
 
       initializeGraph: (descriptors) => {
