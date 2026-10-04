@@ -14,7 +14,6 @@ import { ClsService } from 'nestjs-cls';
 import type WebSocket from 'ws';
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
-import { logWsFailure } from './ws-failure-log';
 import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
 import { terminalCheckIntervalMs } from '../workflows/run-stream-delivery';
 import { deliverRunEvents, parseClientCursor, resolveRunProtocol, toWsFrame } from '../workflows/run-protocol-delivery';

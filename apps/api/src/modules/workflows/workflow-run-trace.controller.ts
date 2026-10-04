@@ -75,7 +75,7 @@ export class WorkflowRunTraceController {
     @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
   ): Promise<void> {
     const tenantId = this.resolveWorkingTenantId();
-    await this.traceAccess.assertCanTrace({ user: this.cls.get('user'), serviceAccount: this.cls.get('serviceAccount' as never), tenantId });
+    await this.traceAccess.assertCanTrace({ user: this.cls.get('user'), serviceAccount: this.cls.get('serviceAccount'), tenantId });
     // v2 only: an explicit selection must be `2` (400 otherwise); no selection means `2`.
     resolveRunProtocol({ header: protocolHeader, query: protocol });
 
