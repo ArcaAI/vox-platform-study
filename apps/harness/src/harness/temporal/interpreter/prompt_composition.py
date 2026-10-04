@@ -54,6 +54,7 @@ from typing import Any
 
 from harness.temporal.interpreter.expressions import evaluate_condition
 from harness.temporal.interpreter.templating import (
+    PromptVariableUnresolved,
     render_template,
     resolve_template_path,
     template_references,
@@ -283,6 +284,7 @@ def build_prompt_scope(
     vars: Mapping[str, Any] | None = None,  # noqa: A002 - the scope root is named `vars`
     nodes: Mapping[str, Any] | None = None,
     template_ref: str | None = None,
+    variable_declarations: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """The ONE render scope. Mirrors ``buildPromptScope`` in ``@arcaai/workflow-contract``.
 
@@ -311,17 +313,56 @@ def build_prompt_scope(
             scope[name] = dict(root)
 
     declared = variables if isinstance(variables, Mapping) else {}
-    resolved = {
-        name: _resolve_binding(
-            binding,
-            scope,
-            template_ref if template_ref is not None else f"instruction.variables.{name}",
-        )
-        for name, binding in declared.items()
-    }
+    # TASK-1036 OD-10 — only when the caller opts in; `None` keeps every pre-1036 byte.
+    fallbacks = (
+        _nullable_declarations(variable_declarations)
+        if isinstance(variable_declarations, (list, tuple))
+        else None
+    )
+    resolved: dict[str, Any] = {}
+    for name, binding in declared.items():
+        ref = template_ref if template_ref is not None else f"instruction.variables.{name}"
+        if fallbacks is None or name not in fallbacks:
+            resolved[name] = _resolve_binding(binding, scope, ref)
+            continue
+        try:
+            resolved[name] = _resolve_binding(binding, scope, ref)
+        except PromptVariableUnresolved:
+            # A declared variable with a fallback absorbs an unresolved `{path}`; anything else
+            # (a syntax error, a required variable) still propagates by name.
+            resolved[name] = _ABSENT
+    if fallbacks is not None:
+        for name, fallback in fallbacks.items():
+            if name in scope:
+                continue
+            value = resolved.get(name, _ABSENT)
+            if value is _ABSENT or value is None:
+                resolved[name] = fallback
+        # An absorbed binding with no fallback stays ABSENT (not a key holding nothing).
+        resolved = {name: value for name, value in resolved.items() if value is not _ABSENT}
     scope.update(resolved)
     scope["variables"] = resolved
     return scope
+
+
+#: Internal "absent" marker for OD-10's fill: distinct from `None`, which is a JSON value.
+_ABSENT = object()
+
+
+def _nullable_declarations(declarations: Sequence[Any]) -> dict[str, str]:
+    """OD-10 — each declared name's fallback when absent: its `default`, else `""` when it is
+    `required: false`. A required declaration with no default has NO fallback (and is omitted),
+    which keeps "a missing required variable fails by name" true. Mirrors `nullableDeclarations`.
+    """
+    fallbacks: dict[str, str] = {}
+    for declaration in declarations:
+        if not isinstance(declaration, Mapping) or not isinstance(declaration.get("name"), str):
+            continue
+        if isinstance(declaration.get("default"), str):
+            fallbacks[declaration["name"]] = declaration["default"]
+        elif declaration.get("required") is False:
+            fallbacks[declaration["name"]] = ""
+    return fallbacks
 
 
 def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:

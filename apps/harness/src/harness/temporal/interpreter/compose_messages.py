@@ -128,6 +128,11 @@ def platform_rules() -> str:
     return _PLATFORM_RULES
 
 
+#: TASK-1036 OD-10 — content a `drop_empty_blocks` compose treats as empty. The class is spelled
+#: out (as for the markers) so it matches exactly what the TypeScript `BLANK_CONTENT` matches.
+_BLANK_CONTENT = re.compile(r"^[ \t\r\n]*$")
+
+
 def output_language_step(language_name: str) -> str:
     """The output-language step: one fixed sentence naming the language."""
     return DEFAULT_OUTPUT_LANGUAGE_STEP_TEMPLATE.format(language_name=language_name)
@@ -201,6 +206,7 @@ def compose_messages(
     output_contract: str | None = None,
     data_blocks: Sequence[Any] | None = None,
     template_ref: str | None = None,
+    drop_empty_blocks: bool = False,
 ) -> ComposedMessages:
     """Compose the system and user messages. Raises ``ComposeDataBlockKeyError``,
     ``PromptVariableUnresolved`` (every missing
@@ -228,6 +234,9 @@ def compose_messages(
             raise ComposeDataBlockKeyError(key)
         content = _block_field(block, "content")
         if not _non_empty(content):
+            continue
+        if drop_empty_blocks and _BLANK_CONTENT.fullmatch(content):
+            # TASK-1036 OD-10 — opt-in: spaces/tabs/CR/LF only is empty too.
             continue
         kept, chars, truncated = _fit_to_budget(
             content, _block_field(block, "maxChars", "max_chars")
