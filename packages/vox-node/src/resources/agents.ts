@@ -10,6 +10,11 @@
  * GET  /api/v1/agents/{slug}                          -> get()
  * POST /api/v1/agents/{slug}/invocations?mode=blocking -> invoke()
  * POST /api/v1/agents/{slug}/invocations?mode=stream   -> invokeAndStream()
+ * POST /api/v1/agents/{slug}/runs                      -> run()        (a RunHandle — TASK-1039)
+ * GET  /api/v1/agents/{slug}/runs/{runId}              -> RunHandle.wait({ poll: true })
+ * GET  /api/v1/agents/{slug}/runs/{runId}/events       -> RunHandle.events() / .text()
+ * GET  /api/v1/agents/{slug}/runs/{runId}/result       -> RunHandle.result()
+ * POST /api/v1/agents/{slug}/runs/{runId}/cancel       -> RunHandle.cancel()
  * POST /api/v1/agents/{slug}/speech                    -> synthesize()
  * POST /api/v1/agents/{slug}/transcriptions            -> transcribe({ mediaId })
  * POST /api/v1/audio/transcription-jobs/transcribe     -> transcribe({ file })
@@ -35,6 +40,7 @@
 
 import { TranscriptionJobTimeoutError } from '../core/errors';
 import { generateUuidV7 } from '../core/idempotency';
+import { RunHandle, type RunHandleTuning } from '../core/run-handle';
 import { parseSseStream } from '../core/sse';
 import { subscribeToSse } from '../core/sse-subscription';
 import type { StreamHandle, StreamHandlers, SubscribeOptions } from '../core/sse-subscription';
@@ -52,7 +58,7 @@ import type {
   TranscriptionJobHandle,
   TranscriptionJobStatus,
 } from '../types/agent';
-import type { StartRunOptions } from './workflows';
+import type { RunStartOptions, StartRunOptions } from './workflows';
 
 /**
  * Every gateway route this plane calls, in `route-manifest.json`'s own spelling.
@@ -63,6 +69,12 @@ export const AGENT_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string }>
   { method: 'GET', path: '/api/v1/agents' },
   { method: 'GET', path: '/api/v1/agents/{slug}' },
   { method: 'POST', path: '/api/v1/agents/{slug}/invocations' },
+  // TASK-1039 — the agent RUN resource (TASK-1038 OD-26) that `run()` / `RunHandle` call.
+  { method: 'POST', path: '/api/v1/agents/{slug}/runs' },
+  { method: 'GET', path: '/api/v1/agents/{slug}/runs/{runId}' },
+  { method: 'GET', path: '/api/v1/agents/{slug}/runs/{runId}/events' },
+  { method: 'GET', path: '/api/v1/agents/{slug}/runs/{runId}/result' },
+  { method: 'POST', path: '/api/v1/agents/{slug}/runs/{runId}/cancel' },
   { method: 'POST', path: '/api/v1/agents/{slug}/speech' },
   { method: 'POST', path: '/api/v1/agents/{slug}/transcriptions' },
   // TASK-983 — the FILE half of `transcribe()`. It is not an `/agents/*` route: uploading audio
@@ -212,6 +224,54 @@ export class AgentsResource {
   }
 
   /**
+   * `POST /api/v1/agents/{slug}/runs` — start an agent RUN and get a {@link RunHandle} (TASK-1039).
+   * The same body, validation and metering as {@link invoke}, but the run is asynchronous and
+   * addressable: stream its text, follow its events, poll it, read its result, cancel it.
+   *
+   * `input` is the agent's invocation body, FLAT (`{ text, context?, variables? }`) — not wrapped in
+   * `{ input }`. An agent run has one step, `nodeId: 'agent'`. Applies to TEXT_GENERATION and
+   * NAMED_ENTITY_RECOGNITION agents; the others have their own routes (`synthesize`, `transcribe`).
+   *
+   * An `Idempotency-Key` is sent on every start: the same key with the same body joins the run it
+   * started; the same key with a DIFFERENT body is a 409.
+   *
+   * ```ts
+   * const run = await hope.agents.run('scribe', { text: transcript });
+   * for await (const chunk of run.text()) process.stdout.write(chunk);
+   * const { text } = (await run.result()) ?? {};
+   * ```
+   */
+  async run<TInput extends object = Record<string, unknown>, TOutput = unknown>(
+    slug: string,
+    input: TInput,
+    options: RunStartOptions = {},
+  ): Promise<RunHandle<TOutput>> {
+    const key = options.idempotencyKey ?? generateUuidV7();
+    const started = await this.transport.request<{ runId: string; status: string }>({
+      method: 'POST',
+      path: `${agentPath(slug)}/runs`,
+      body: input,
+      headers: { 'Idempotency-Key': key },
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      hasIdempotencyKey: true,
+    });
+    return new RunHandle<TOutput>({
+      transport: this.transport,
+      kind: 'agent',
+      slug,
+      runId: started.runId,
+      maxReconnects: options.maxReconnects,
+      reconnectDelayMs: options.reconnectDelayMs,
+    });
+  }
+
+  /** A {@link RunHandle} for an agent run that is already going. Makes no request. */
+  attach<TOutput = unknown>(slug: string, runId: string, tuning: RunHandleTuning = {}): RunHandle<TOutput> {
+    return new RunHandle<TOutput>({ transport: this.transport, kind: 'agent', slug, runId, ...tuning });
+  }
+
+  /**
    * `POST /api/v1/agents/{slug}/invocations?mode=stream` — run the agent and
    * read its event stream on the SAME response. Frames share the workflow-run
    * envelope; the last one carries the output in `payload`.
@@ -220,6 +280,8 @@ export class AgentsResource {
    * resume against, so a dropped connection ends the iteration. Re-invoke with
    * the same `idempotencyKey` to join the in-flight invocation rather than
    * start a second one.
+   *
+   * @deprecated Superseded by {@link run}: `RunHandle.events()` / `.text()` resume by `seq` (this cannot resume at all) and speak protocol v2. Not removed in 5.x.
    */
   async *invokeAndStream(
     slug: string,

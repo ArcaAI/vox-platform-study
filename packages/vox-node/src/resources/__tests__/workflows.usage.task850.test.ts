@@ -170,7 +170,7 @@ describe('the README example', () => {
   it('the reserved-key refusal is synchronous, so it is caught at the call site', async () => {
     const hope = new HopeClient({ baseUrl: 'http://localhost:8868', apiKey: 'k', fetch: stub([() => json(HANDLE, 202)]) });
 
-    const error: unknown = await hope.workflows.run('visit-summary', { input: { consultationId: 'con-1' } }).catch((e: unknown) => e);
+    const error: unknown = await hope.workflows.start('visit-summary', { input: { consultationId: 'con-1' } }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ReservedRunIdentityError);
     // The message TEACHES the fix rather than just refusing.

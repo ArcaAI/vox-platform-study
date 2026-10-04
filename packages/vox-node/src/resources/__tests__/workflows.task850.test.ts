@@ -94,7 +94,7 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   it('starts a run at POST /api/v1/workflows/{slug}/runs and returns the 202 handle', async () => {
     const { fetch, calls } = stubFetch([() => json(HANDLE, 202)]);
 
-    const handle = await client(fetch).workflows.run('visit-summary', { input: { note: 'hello' } });
+    const handle = await client(fetch).workflows.start('visit-summary', { input: { note: 'hello' } });
 
     expect(calls[0]!.url).toBe('http://localhost:8868/api/v1/workflows/visit-summary/runs');
     expect(calls[0]!.init.method).toBe('POST');
@@ -105,7 +105,7 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   it('sends the caller Idempotency-Key as a HEADER, and surfaces already_running', async () => {
     const { fetch, calls } = stubFetch([() => json({ ...HANDLE, status: 'already_running' }, 202)]);
 
-    const handle = await client(fetch).workflows.run('visit-summary', { input: {} }, { idempotencyKey: 'retry-key-1' });
+    const handle = await client(fetch).workflows.start('visit-summary', { input: {} }, { idempotencyKey: 'retry-key-1' });
 
     expect(new Headers(calls[0]!.init.headers).get('Idempotency-Key')).toBe('retry-key-1');
     expect(handle.status).toBe('already_running');
@@ -114,7 +114,7 @@ describe('WorkflowsResource — the unbound invocation plane', () => {
   it('mints an Idempotency-Key when asked, so a retry cannot double-bill by accident', async () => {
     const { fetch, calls } = stubFetch([() => json(HANDLE, 202)]);
 
-    await client(fetch).workflows.run('visit-summary', { input: {} }, { idempotent: true });
+    await client(fetch).workflows.start('visit-summary', { input: {} }, { idempotent: true });
 
     const key = new Headers(calls[0]!.init.headers).get('Idempotency-Key');
     expect(key).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -180,7 +180,7 @@ describe('Reserved run-identity keys are refused BEFORE the request leaves the S
     const { fetch, calls } = stubFetch([() => json(HANDLE, 202)]);
 
     const error = await client(fetch)
-      .workflows.run('visit-summary', { input: { [key]: 'x' } })
+      .workflows.start('visit-summary', { input: { [key]: 'x' } })
       .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ReservedRunIdentityError);
@@ -193,7 +193,7 @@ describe('Reserved run-identity keys are refused BEFORE the request leaves the S
     const { fetch } = stubFetch([() => json(HANDLE, 202)]);
 
     const error = await client(fetch)
-      .workflows.run('s', { input: { consultationId: 'c', userId: 'u', note: 'kept' } })
+      .workflows.start('s', { input: { consultationId: 'c', userId: 'u', note: 'kept' } })
       .catch((e: unknown) => e);
 
     expect((error as ReservedRunIdentityError).keys).toEqual(['consultationId', 'userId']);
