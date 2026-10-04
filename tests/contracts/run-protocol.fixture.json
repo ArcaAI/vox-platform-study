@@ -195,21 +195,75 @@
           "layers": [
             {
               "name": "platformRules",
+              "chars": 480
+            },
+            {
+              "name": "instruction",
+              "chars": 1360
+            },
+            {
+              "name": "outputLanguage",
+              "chars": 120
+            },
+            {
+              "name": "data",
+              "chars": 3600
+            }
+          ],
+          "charsTotal": 5560,
+          "selected": [
+            "base",
+            "revisit"
+          ],
+          "excluded": [
+            {
+              "key": "pediatric",
+              "reason": "condition_false"
+            }
+          ],
+          "blocks": [
+            {
+              "key": "transcript",
+              "chars": 3600,
+              "truncated": false
+            }
+          ],
+          "composedPromptId": "01928f3e-7b1a-7c3d-9e2f-0a1b2c3d4e60"
+        }
+      }
+    },
+    {
+      "name": "prompt.composed-with-token-counts",
+      "event": {
+        "seq": 7,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "prompt.composed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "layers": [
+            {
+              "name": "platformRules",
+              "chars": 480,
               "tokens": 120
             },
             {
               "name": "instruction",
+              "chars": 1360,
               "tokens": 340
             },
             {
               "name": "outputLanguage",
+              "chars": 120,
               "tokens": 30
             },
             {
               "name": "data",
+              "chars": 3600,
               "tokens": 900
             }
           ],
+          "charsTotal": 5560,
           "tokensTotal": 1390,
           "selected": [
             "base",
@@ -880,7 +934,7 @@
         "nodeId": "n1",
         "data": {
           "layers": [],
-          "tokensTotal": 0,
+          "charsTotal": 0,
           "selected": [],
           "excluded": [],
           "blocks": [],

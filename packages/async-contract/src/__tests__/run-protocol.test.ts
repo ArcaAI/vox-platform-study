@@ -452,3 +452,27 @@ describe('per-node outputs on the ADMIN trace (F2 fix 5)', () => {
     expect(runEventProblems(resync({ text: 'Subjective: ' })).join('\n')).toContain('outputs.text');
   });
 });
+
+describe('prompt.composed — characters always, tokens only when a tokenizer exists (F2 fix 6)', () => {
+  const composed = (data: Record<string, unknown>): unknown => ({
+    seq: 7,
+    runId: 'r',
+    type: 'prompt.composed',
+    ts: '2026-10-04T10:00:00Z',
+    nodeId: 'n_note',
+    data: { selected: [], excluded: [], blocks: [], ...data },
+  });
+
+  it('the harness (no tokenizer) sends layer and total characters only', () => {
+    expect(runEventProblems(composed({ layers: [{ name: 'instruction', chars: 1200 }], charsTotal: 1200 }))).toEqual([]);
+  });
+
+  it('token counts are optional extras, per layer and in total', () => {
+    expect(runEventProblems(composed({ layers: [{ name: 'instruction', chars: 1200, tokens: 300 }], charsTotal: 1200, tokensTotal: 300 }))).toEqual([]);
+  });
+
+  it('characters stay required — per layer and in total', () => {
+    expect(runEventProblems(composed({ layers: [{ name: 'instruction', tokens: 300 }], charsTotal: 0 })).join('\n')).toContain('layers[0].chars is required');
+    expect(runEventProblems(composed({ layers: [] })).join('\n')).toContain('charsTotal is required');
+  });
+});

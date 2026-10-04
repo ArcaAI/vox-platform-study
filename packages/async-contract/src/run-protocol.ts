@@ -335,13 +335,20 @@ export interface RunEventDataMap {
     readonly speaker?: string;
     readonly language?: string;
   };
-  /** Layers and token counts ONLY — the composed content is read through the Prompt Inspector (`composedPromptId`). */
+  /**
+   * Layers and their SIZES only — the composed content is read through the Prompt Inspector
+   * (`composedPromptId`). Characters are always counted; tokens only where the producer has a
+   * tokenizer for the model (the harness has none), so `tokens` / `tokensTotal` are optional and a
+   * consumer never estimates them from `chars`.
+   */
   'prompt.composed': {
     readonly layers: ReadonlyArray<{
       readonly name: 'platformRules' | 'instruction' | 'outputLanguage' | 'outputContract' | 'data';
-      readonly tokens: number;
+      readonly chars: number;
+      readonly tokens?: number;
     }>;
-    readonly tokensTotal: number;
+    readonly charsTotal: number;
+    readonly tokensTotal?: number;
     readonly selected: readonly string[];
     readonly excluded: ReadonlyArray<{ readonly key: string; readonly reason: 'condition_false' | 'condition_error' }>;
     readonly blocks: ReadonlyArray<{ readonly key: string; readonly chars: number; readonly truncated: boolean }>;
@@ -561,11 +568,13 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
               type: 'string',
               enum: Object.freeze(['platformRules', 'instruction', 'outputLanguage', 'outputContract', 'data']),
             }),
+            chars: INT0,
             tokens: INT0,
           },
-          ['name', 'tokens'],
+          ['name', 'chars'],
         ),
       }),
+      charsTotal: INT0,
       tokensTotal: INT0,
       selected: STRINGS,
       excluded: Object.freeze({
@@ -578,7 +587,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
       blocks: Object.freeze({ type: 'array', items: closed({ key: STR1, chars: INT0, truncated: BOOL }, ['key', 'chars', 'truncated']) }),
       composedPromptId: STR1,
     },
-    ['layers', 'tokensTotal', 'selected', 'excluded', 'blocks'],
+    ['layers', 'charsTotal', 'selected', 'excluded', 'blocks'],
   ),
   'model.request': closed(
     {
