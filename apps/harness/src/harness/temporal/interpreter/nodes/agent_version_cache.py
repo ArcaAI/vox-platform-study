@@ -13,6 +13,14 @@ Three properties keep that safe:
   (``providerOverride`` on the agent or on a ``textPrimary`` / ``textFallback`` candidate). Those
   are rotated independently of the version, and holding one in memory past its rotation would
   spend a revoked key. An answer carrying one anywhere is returned but never stored.
+* **Nothing resolved PER CALL is ever cached** (TASK-1038 lane E3, owner rule W3 / OD-22). The
+  version pins the agent; it does not pin its document template. The gateway resolves the
+  answer's ``documentTemplate`` member to the LATEST approved template version on every call, so
+  a republished template must reach the very next run. An answer carrying a member listed in
+  :data:`PER_CALL_MEMBERS` is returned but never stored — the template is then resolved fresh by
+  the gateway on every call, exactly as for an unpinned node. (Stripping the member and serving
+  the rest from cache would need a second, template-only gateway round trip per call, which
+  saves nothing over not caching.)
 * **Bounded, with a staleness ceiling.** At most :data:`MAX_ENTRIES` entries (least recently used
   evicted first), each kept for at most :data:`TTL_SECONDS`. The version is immutable but the
   answer also carries gateway-DERIVED facts (registry rows of the models it names, the SYSTEM tail
@@ -34,6 +42,10 @@ from typing import Any
 MAX_ENTRIES = 256
 #: How long one entry is served before the gateway is asked again.
 TTL_SECONDS = 300.0
+
+#: Top-level members of a resolve answer the gateway resolves PER CALL (they float while the
+#: version is pinned). An answer carrying any of them is never cached.
+PER_CALL_MEMBERS: tuple[str, ...] = ("documentTemplate",)
 
 _Key = tuple[str, str, int]
 _ENTRIES: OrderedDict[_Key, tuple[float, dict[str, Any]]] = OrderedDict()
@@ -65,8 +77,13 @@ def get(tenant_id: str, slug: str, version_number: int) -> dict[str, Any] | None
     return copy.deepcopy(answer)
 
 
+def carries_per_call_member(answer: dict[str, Any]) -> bool:
+    """Whether a resolve answer holds a member resolved per call (pure)."""
+    return any(answer.get(member) is not None for member in PER_CALL_MEMBERS)
+
+
 def put(tenant_id: str, slug: str, version_number: int, answer: dict[str, Any]) -> None:
-    if carries_credential(answer):
+    if carries_credential(answer) or carries_per_call_member(answer):
         return
     key = (tenant_id, slug, version_number)
     _ENTRIES[key] = (time.monotonic(), copy.deepcopy(answer))

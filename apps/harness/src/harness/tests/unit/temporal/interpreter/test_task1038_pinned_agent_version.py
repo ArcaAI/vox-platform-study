@@ -262,3 +262,49 @@ class TestImmutableVersionCache:
             "versionNumber": agent_version_cache.MAX_ENTRIES + 9
         }
         agent_version_cache.clear()
+
+
+def _with_template(answer: dict[str, Any], version_number: int) -> dict[str, Any]:
+    """The gateway's per-call `documentTemplate` member (TASK-1036 OD-7 / OD-22): resolved to the
+    LATEST approved template version on EVERY call, so it floats while the agent stays pinned."""
+    return {
+        **answer,
+        "documentTemplate": {
+            "slug": "discharge-summary",
+            "templateId": "tpl-1",
+            "versionNumber": version_number,
+            "documentTemplateVersionId": f"tpl-1-v{version_number}",
+            "compiled": None,
+        },
+    }
+
+
+class TestFloatingDocumentTemplateIsNeverCached:
+    """TASK-1038 lane E3 (W3 / OD-22) — a pinned agent's answer may be cached, but the document
+    template it carries is resolved PER CALL and must reach the very next run after a republish.
+    Before: the whole answer — template included — was served from the cache for up to 300 s."""
+
+    @pytest.mark.asyncio
+    async def test_a_republished_template_reaches_the_next_pinned_run(self, gateway, ran):
+        gateway.versions[2] = _with_template(_answer(2, "v2 prompt (frozen)"), 1)
+        await core.interpreter_core_agent(_payload(versionNumber=2))
+        # The template is republished; the AGENT version is unchanged.
+        gateway.versions[2] = _with_template(_answer(2, "v2 prompt (frozen)"), 2)
+        await core.interpreter_core_agent(_payload(versionNumber=2))
+
+        assert len(gateway.version_calls) == 2
+        assert [r.version_number for r in ran] == [2, 2]
+
+    def test_the_cache_never_holds_a_per_call_member(self):
+        agent_version_cache.clear()
+        agent_version_cache.put(_TENANT, "s", 2, _with_template(_answer(2, "p"), 1))
+
+        assert agent_version_cache.get(_TENANT, "s", 2) is None
+        agent_version_cache.clear()
+
+    def test_an_answer_without_a_template_is_still_cached(self):
+        agent_version_cache.clear()
+        agent_version_cache.put(_TENANT, "s", 2, _answer(2, "p"))
+
+        assert agent_version_cache.get(_TENANT, "s", 2) == _answer(2, "p")
+        agent_version_cache.clear()
