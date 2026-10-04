@@ -856,6 +856,42 @@ Package builds pass (contracts, domains, ui, applications), and api / console / 
 
 After batch 2: the C7 label sweep (haiku), then wave D review, then the single orchestrator gate.
 
+### 6.9 Wave C batch 2: merged (2026-10-05)
+
+**Lane heads:**
+
+| Lane | Head | Summary |
+|---|---|---|
+| C6 | `bb5a9e49e` | Derive v2 UI with stale marking; TagsField lower-case |
+| C2c | `e6827a272` | ComposerCanvas mounted; `graph.settings` persisted; presets; edge pane; `lastRunByNode`; Edit-as-new-draft via `POST :id/draft` |
+| C4 | `48fdb8186` | Integration tab in five steps; snippets on the 5.0 API; agent-run snippets |
+| B7 | `37cbc8d59` | `GET admin/agents/:slug/versions/:n/usage`; socket ticket gated by settings; seeded agent declarations; draft-bench declarations; vox-node 5.0 docs |
+| S2 | `deba0d1d9` | `useRun`, `useRunAudio`, normaliser, G6 fix, `@arcaai/types` `resolvedPrompt.variables` |
+| C3 | `7596584ef` | Test tab (§10.2): fold over v2 events, time travel, admin trace stream, recording, `useNodeLastRuns` |
+
+**Integration:** `e343b1bb7` regenerated the five artifacts. Contracts, ui, types and applications build; api, admin-console, vox and vox-node type-check clean; seeds and env are stable.
+
+**Gaps found by the lanes, sent to batch 3:**
+- No agent-run stream ticket.
+- No tenant media upload route, so the Test tab's Attach is disabled.
+- A TEXT `message` may be rejected by the trigger payload schema.
+- Canvas run state was a scoped CSS workaround.
+- The composer's "Add a step" button overlaps the palette pane.
+- Importing a graph with settings takes two undo steps.
+- The Composer has no run overlay.
+- The Integration tab has no unsaved-changes notice.
+- Some "Hope Prompt" labels and the Postman collection are not updated.
+
+**Open for the owner:** no business-plane route binds a live recording to a standalone API workflow run (only consultation-bound runs and the admin sandbox can take audio).
+
+### 6.10 Wave C batch 3: final fixes, launched from `e343b1bb7`
+
+| Lane | Tier | Scope |
+|---|---|---|
+| F1 FINAL-BACKEND | opus | Agent stream ticket; tenant media upload `POST /api/v1/media`; context-schema payload shapes for TEXT and media kinds |
+| F2 FINAL-UI | sonnet | First-class canvas run state (replacing C3's CSS); "Add a step" overlap; `replaceGraph` with settings; Composer run overlay; Test-tab Attach via the media route; Integration-tab unsaved notice |
+| C7 LABEL-SWEEP | haiku | Remaining "Hope Prompt" labels and their tests; Postman collection on the 5.0 flow |
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
