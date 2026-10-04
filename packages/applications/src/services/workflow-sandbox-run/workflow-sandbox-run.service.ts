@@ -26,6 +26,7 @@ import { interpreterSessionId, IWorkflowRunService } from '../workflow-run';
 import { SandboxRunCancelResponse, SandboxRunResponse, SandboxRunStatusResponse, StartSandboxRunRequest } from './dto';
 import { IWorkflowSandboxRunService } from './IWorkflowSandboxRunService';
 import { WorkflowSandboxRunDtoMapper } from './workflow-sandbox-run.dto.mapper';
+import { sandboxRunPayload, type SandboxMediaReference } from './sandbox-input-shape';
 
 /** Self-hosted MinIO bucket for the compiled-config claim-check — mirrors
  *  `WorkflowExposureService`'s `DEFAULT_CLAIM_CHECK_BUCKET`, itself mirroring the harness's own
@@ -72,6 +73,9 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
         )
       : undefined;
     const recordingJob = dto.recording ? await this.resolveRecordingSession(tenantId, dto.recording.sttSessionId) : undefined;
+    // TASK-1038 (F1) — attachments and the recording go where the INPUT SHAPE declares them (a
+    // 400 when it declares nowhere), still BEFORE anything is written.
+    const payload = sandboxRunPayload(compiled.compiledConfig, basePayload, attachments, dto.recording);
 
     if (!this.s3Service) {
       throw new ArgumentInvalidException('Sandbox runs are unavailable: no claim-check storage backend is configured.');
@@ -88,11 +92,6 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     const subject: StartWorkflowRunSubject | undefined = recordingJob
       ? { consultationId: await this.bindSandboxConsultation(tenantId, definitionId, runId, recordingJob), userId: this.requestUserId ?? undefined }
       : undefined;
-    const payload: Record<string, unknown> = {
-      ...basePayload,
-      ...(attachments ? { attachments } : {}),
-      ...(dto.recording ? { recording: { sttSessionId: dto.recording.sttSessionId } } : {}),
-    };
 
     // Same ordering discipline as WorkflowExposureService.invoke: the ownership-anchor row is
     // written BEFORE the dispatcher call, so a run the dispatcher then fails to start is a
@@ -191,9 +190,9 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
   private async resolveAttachments(
     tenantId: string,
     mediaIds: string[],
-  ): Promise<Array<{ mediaId: string; mime: string; name: string; size: number }>> {
+  ): Promise<SandboxMediaReference[]> {
     if (!this.mediaRepository) throw new ArgumentInvalidException('Sandbox attachments are unavailable: no media repository is configured.');
-    const out: Array<{ mediaId: string; mime: string; name: string; size: number }> = [];
+    const out: SandboxMediaReference[] = [];
     for (const mediaId of mediaIds) {
       const media = await this.mediaRepository.findByIdOrNull(mediaId);
       if (!media || media.tenantId !== tenantId) throw new NotFoundException(`Media '${mediaId}' not found.`);

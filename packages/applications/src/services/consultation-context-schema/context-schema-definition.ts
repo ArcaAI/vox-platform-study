@@ -845,9 +845,12 @@ function constraintProblems(constraints: unknown, at: string, primitive?: unknow
  *  - one property per declared KIND, keyed by its `key`;
  *  - a `STRUCTURED` kind contributes its own `fields` schema verbatim — it is already an
  *    authorable JSON Schema, validated at publish;
- *  - every other primitive contributes `{ type: 'object' }`, an open reference STUB: the
- *    platform decides that substrate's shape (a media reference, a transcript), so the
- *    schema declares that the name EXISTS without pretending to know its fields;
+ *  - every other primitive contributes the shape the PLATFORM decides for that substrate
+ *    ({@link kindPayloadSchema}, TASK-1038 F1): a `TEXT` kind is a string or its legacy object
+ *    form; a `DOCUMENT` / `IMAGE` kind (and a `blob` `STREAM_AUDIO`) is a closed media reference
+ *    ({@link mediaReferenceSchema}) whose `mime` is limited to the kind's declared types; a
+ *    streamed `STREAM_AUDIO` is an open object naming its STT session. A `MANY` kind also takes a
+ *    list. These used to be `{ type: 'object' }` stubs, which refused `{ message: "hello" }`;
  *  - `required: true` kinds are listed in `required`, and the key is omitted entirely when
  *    no kind declares itself required (an empty `required: []` is noise in a checksummed,
  *    frozen artifact);
@@ -868,7 +871,7 @@ export function payloadSchemaFromDefinition(definition: unknown): Record<string,
   if (isPlainObject(definition) && Array.isArray(definition.kinds)) {
     for (const kind of definition.kinds) {
       if (!isPlainObject(kind) || typeof kind.key !== 'string' || kind.key.length === 0) continue;
-      properties[kind.key] = kind.primitive === 'STRUCTURED' && isPlainObject(kind.fields) ? kind.fields : { type: 'object' };
+      properties[kind.key] = kindPayloadSchema(kind);
       if (kind.required === true) required.push(kind.key);
     }
   }
@@ -879,6 +882,85 @@ export function payloadSchemaFromDefinition(definition: unknown): Record<string,
     properties,
     ...(required.length > 0 ? { required } : {}),
   };
+}
+
+/**
+ * TASK-1038 (F1) — a reference to a tenant media object (`POST /media` answers `{ mediaId, mime,
+ * sizeBytes, sha256 }`; the sandbox forwards `{ mediaId, mime, name, size }`). CLOSED: a run never
+ * carries bytes or a storage URI, only the reference. `mime` is limited to `mimeTypes` (normalised,
+ * {@link normalizeContextMimeType}) when the kind declares them, else any non-empty string.
+ */
+export function mediaReferenceSchema(mimeTypes?: readonly unknown[]): Record<string, unknown> {
+  const declared = Array.isArray(mimeTypes)
+    ? [...new Set(mimeTypes.filter((entry): entry is string => typeof entry === 'string').map(normalizeContextMimeType))]
+    : [];
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      mediaId: { type: 'string', minLength: 1 },
+      mime: declared.length > 0 ? { type: 'string', enum: declared } : { type: 'string', minLength: 1 },
+      name: { type: 'string' },
+      size: { type: 'integer', minimum: 0 },
+    },
+    required: ['mediaId', 'mime'],
+  };
+}
+
+/** TASK-1038 (F1) — `true` when `schema` is a {@link mediaReferenceSchema} (a slot a media reference goes in). */
+export function isMediaReferenceSchema(schema: unknown): boolean {
+  return (
+    isPlainObject(schema) &&
+    schema.additionalProperties === false &&
+    isPlainObject(schema.properties) &&
+    isPlainObject(schema.properties.mediaId) &&
+    Array.isArray(schema.required) &&
+    schema.required.includes('mediaId')
+  );
+}
+
+/** TASK-1038 (F1) — the open object a streamed `STREAM_AUDIO` kind derives to; `sttSessionId` names the session. */
+export const STREAM_AUDIO_PAYLOAD_SCHEMA: Readonly<Record<string, unknown>> = Object.freeze({
+  type: 'object',
+  properties: { sttSessionId: { type: 'string', minLength: 1 } },
+});
+
+/** A `MANY` kind takes its item alone, or a list of items. */
+function oneOrMany(item: Record<string, unknown>, cardinality: unknown): Record<string, unknown> {
+  return cardinality === 'MANY' ? { anyOf: [item, { type: 'array', items: item }] } : item;
+}
+
+/**
+ * TASK-1038 (F1) — the payload schema ONE declared kind contributes. Total, like its caller.
+ *
+ * `TEXT` keeps accepting any object (its legacy form, `{ text }` on the consultation transcript)
+ * beside the string, so no payload that passed before is refused now; `DOCUMENT` / `IMAGE` narrow
+ * from "any object" to the reference they always meant. `anyOf`, never `oneOf`: the subset gate
+ * refuses an undiscriminated `oneOf`, and the branches here never overlap anyway.
+ */
+function kindPayloadSchema(kind: Record<string, unknown>): Record<string, unknown> {
+  switch (kind.primitive) {
+    case 'STRUCTURED':
+      return isPlainObject(kind.fields) ? kind.fields : { type: 'object' };
+    case 'TEXT':
+      return kind.cardinality === 'MANY'
+        ? { anyOf: [{ type: 'string' }, { type: 'object' }, { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'object' }] } }] }
+        : { anyOf: [{ type: 'string' }, { type: 'object' }] };
+    case 'DOCUMENT':
+    case 'IMAGE':
+      return oneOrMany(mediaReferenceSchema(constraintMimeTypes(kind)), kind.cardinality);
+    case 'STREAM_AUDIO':
+      return effectiveAudioDelivery(kind, 'input') === 'blob'
+        ? oneOrMany(mediaReferenceSchema(constraintMimeTypes(kind)), kind.cardinality)
+        : { ...STREAM_AUDIO_PAYLOAD_SCHEMA, properties: { ...(STREAM_AUDIO_PAYLOAD_SCHEMA.properties as Record<string, unknown>) } };
+    default:
+      return { type: 'object' };
+  }
+}
+
+function constraintMimeTypes(kind: Record<string, unknown>): unknown[] | undefined {
+  const constraints = kind.constraints;
+  return isPlainObject(constraints) && Array.isArray(constraints.mimeTypes) ? constraints.mimeTypes : undefined;
 }
 
 /**
