@@ -6,11 +6,13 @@
  * Input shape with `message`, Attach for its file kinds, JSON for any other declared kind — and the
  * run controls: Run / Stop, Pause / Play, Step, Reset and playback speed.
  */
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { Button, CodeEditor, Label, Spinner, Switch, Textarea, ToggleGroup, ToggleGroupItem } from '@arcaai/ui';
-import { IconPaperclip, IconPlayerPauseFilled, IconPlayerPlayFilled, IconPlayerStopFilled, IconPlayerTrackNextFilled, IconRefresh } from '@tabler/icons-react';
+import { IconPaperclip, IconPlayerPauseFilled, IconPlayerPlayFilled, IconPlayerStopFilled, IconPlayerTrackNextFilled, IconRefresh, IconX } from '@tabler/icons-react';
+import { formatBytes } from '@/shared/format';
 import type { SandboxRecordingStatus } from '@/shared/sandbox/api/use-sandbox-recording';
 import type { TestInputPlan } from './lib/test-inputs';
+import type { AttachmentItem } from './use-attachments';
 import type { PlaybackSpeed } from './use-test-run';
 import { Panel } from './panel';
 
@@ -26,6 +28,8 @@ export interface TestInputPanelProps {
   onChange: (next: TestInputState) => void;
   /** A problem with the input that blocks Run (shown under the controls). */
   inputProblem: string | null;
+  /** Files attached to the run (uploaded first; only ready ones ride it). */
+  attachments: { items: AttachmentItem[]; uploading: boolean; onAdd: (files: File[]) => void; onRemove: (key: string) => void };
   recorder: { status: SandboxRecordingStatus; error: string | null; levels: number[]; onStop: () => void };
   running: boolean;
   starting: boolean;
@@ -64,6 +68,7 @@ export function TestInputPanel(props: TestInputPanelProps) {
   const messageId = useId();
   const recordId = useId();
   const jsonId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recording = recorder.status === 'recording' || recorder.status === 'starting' || recorder.status === 'stopping';
   const nothingToShow = !plan.record && !plan.message && !plan.attach && plan.extraKinds.length === 0;
 
@@ -76,7 +81,7 @@ export function TestInputPanel(props: TestInputPanelProps) {
             Stop run
           </Button>
         ) : (
-          <Button type="button" onClick={props.onRun} disabled={props.starting || props.inputProblem !== null}>
+          <Button type="button" onClick={props.onRun} disabled={props.starting || props.inputProblem !== null || props.attachments.uploading}>
             {props.starting ? <Spinner /> : <IconPlayerPlayFilled aria-hidden="true" />}
             Run test
           </Button>
@@ -127,6 +132,11 @@ export function TestInputPanel(props: TestInputPanelProps) {
             ? 'Pause freezes the view while the run keeps going.'
             : 'Pause, Step and Reset become available once the run has events.'}
       </p>
+      {props.attachments.uploading ? (
+        <p role="status" className="text-muted-foreground text-xs">
+          Waiting for the attachments to finish uploading.
+        </p>
+      ) : null}
       {props.inputProblem ? (
         <p role="alert" className="text-destructive text-sm">
           {props.inputProblem}
@@ -170,16 +180,48 @@ export function TestInputPanel(props: TestInputPanelProps) {
       {plan.attach ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" disabled aria-describedby={`${jsonId}-attach`}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              tabIndex={-1}
+              aria-label="Choose files to attach"
+              accept={plan.attach.mimeTypes.join(',') || undefined}
+              onChange={(event) => {
+                props.attachments.onAdd(Array.from(event.target.files ?? []));
+                // Clear the field so choosing the same file again fires a change.
+                event.target.value = '';
+              }}
+            />
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} aria-describedby={`${jsonId}-attach`}>
               <IconPaperclip aria-hidden="true" />
               Attach files
             </Button>
             <span className="text-muted-foreground text-xs">{plan.attach.mimeTypes.length > 0 ? plan.attach.mimeTypes.join(', ') : 'Any allowed type'}</span>
           </div>
-          <Reason>{plan.attach.reason}</Reason>
           <p id={`${jsonId}-attach`} className="text-muted-foreground text-xs">
-            Attaching files to a test run is not available yet: the console has no upload route for tenant media.
+            {plan.attach.reason}
           </p>
+          {props.attachments.items.length > 0 ? (
+            <ul aria-label="Attached files" className="flex flex-col gap-1">
+              {props.attachments.items.map((item) => (
+                <li key={item.key} aria-label={item.name} className="flex items-center gap-2 rounded-md border px-2 py-1 text-xs">
+                  <IconPaperclip aria-hidden="true" className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate font-medium" title={item.name}>
+                    {item.name}
+                  </span>
+                  <span className="text-muted-foreground shrink-0 tabular-nums">{formatBytes(item.sizeBytes)}</span>
+                  {item.status === 'uploading' ? <span className="text-muted-foreground shrink-0">Uploading…</span> : null}
+                  {item.status === 'ready' ? <span className="text-success-strong shrink-0">Attached</span> : null}
+                  {item.error ? <span className="text-destructive min-w-0 shrink">{item.error}</span> : null}
+                  <Button type="button" variant="ghost" size="icon-xs" aria-label={`Remove ${item.name}`} onClick={() => props.attachments.onRemove(item.key)}>
+                    <IconX aria-hidden="true" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 

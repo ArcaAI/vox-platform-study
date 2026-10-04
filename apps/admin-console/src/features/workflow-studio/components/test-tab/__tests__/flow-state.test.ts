@@ -41,8 +41,9 @@ describe('flowRunStates', () => {
   it('marks every step: untouched steps wait, the live one runs, finished ones carry their duration', () => {
     const states = flowRunStates(NODES, running());
     expect(states.get('start')).toEqual({ state: 'ok', durationMs: 5 });
-    expect(states.get('asr')).toEqual({ state: 'ok', durationMs: 1200 });
-    expect(states.get('note')).toEqual({ state: 'running' });
+    // F2: a step's run warnings ride the overlay too, so the canvas counts them on the node.
+    expect(states.get('asr')).toEqual({ state: 'ok', durationMs: 1200, warnings: 1 });
+    expect(states.get('note')).toEqual({ state: 'running', warnings: 1 });
     expect(states.get('end')).toEqual({ state: 'pending' });
   });
 });

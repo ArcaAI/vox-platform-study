@@ -97,8 +97,11 @@ function emit(type: string, data: Record<string, unknown>, nodeId?: string, atMs
   });
 }
 
-let runBodies: unknown[] = [];
+let runBodies: Array<Record<string, unknown>> = [];
 let cancelled = 0;
+/** TASK-1036 F2 — what the fake `POST /api/hope/media` saw, and how it answers (a test may flip `mediaStatus`). */
+let mediaUploads: Array<{ name: string; type: string; size: number }> = [];
+let mediaStatus = 201;
 
 beforeAll(() => {
   Element.prototype.scrollIntoView ??= function scrollIntoView() {};
@@ -110,6 +113,8 @@ beforeEach(() => {
   seq = 0;
   runBodies = [];
   cancelled = 0;
+  mediaUploads = [];
+  mediaStatus = 201;
   recorder.status = 'idle';
   recorder.sessionId = null;
   recorder.levels = [];
@@ -128,6 +133,12 @@ beforeEach(() => {
       if (method === 'POST' && path === '/api/hope/admin/workflow-definitions/def-1/sandbox-runs/run-1/cancel') {
         cancelled += 1;
         return Response.json({ runId: 'run-1', status: 'CANCELED' });
+      }
+      if (method === 'POST' && path === '/api/hope/media') {
+        const file = (init?.body as FormData).get('file') as File;
+        mediaUploads.push({ name: file.name, type: file.type, size: file.size });
+        if (mediaStatus !== 201) return Response.json({ message: 'File type not allowed.' }, { status: mediaStatus });
+        return Response.json({ mediaId: `m-${mediaUploads.length}`, mime: file.type, sizeBytes: file.size, sha256: 'abc' }, { status: 201 });
       }
       if (method === 'POST' && path === '/api/auth/stream-ticket') return Response.json({ ticket: 'tkt', expiresAt: Date.now() + 30_000, scope: 'x' });
       return Response.json([]);
@@ -236,7 +247,7 @@ describe('TestTab — before a run', () => {
     expect(screen.getByRole('switch', { name: 'Record from the microphone' })).toBeTruthy();
     expect(screen.getByText('Shown because “Transcribe” is a speech-to-text step.')).toBeTruthy();
     const attach = screen.getByRole('button', { name: 'Attach files' });
-    expect(attach.hasAttribute('disabled')).toBe(true);
+    expect(attach.hasAttribute('disabled')).toBe(false);
     expect(screen.getByText(/Shown because the Input shape accepts Documents/)).toBeTruthy();
     expect(screen.getByText(/Press Run test to start/)).toBeTruthy();
     expect(within(statusBar()).getByText('Not started')).toBeTruthy();
@@ -244,6 +255,87 @@ describe('TestTab — before a run', () => {
 
   it('has no axe violations', async () => {
     const { container } = mount();
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+function pdf(name = 'discharge.pdf', size = 2048): File {
+  return new File([new Uint8Array(size)], name, { type: 'application/pdf' });
+}
+const fileInput = () => document.querySelector('input[type="file"]') as HTMLInputElement;
+function attach(...files: File[]) {
+  fireEvent.change(fileInput(), { target: { files } });
+}
+
+describe('TestTab — Attach (F2)', () => {
+  it('uploads a chosen file through POST /media, shows a chip with name and size, and sends its mediaId with the run', async () => {
+    mount();
+    attach(pdf('discharge.pdf', 2048));
+    const chip = await screen.findByRole('listitem', { name: /discharge\.pdf/ });
+    await waitFor(() => expect(within(chip).queryByText('Uploading…')).toBeNull());
+    expect(within(chip).getByText('discharge.pdf')).toBeTruthy();
+    expect(within(chip).getByText('2 KB')).toBeTruthy();
+    expect(mediaUploads).toEqual([{ name: 'discharge.pdf', type: 'application/pdf', size: 2048 }]);
+
+    await startRun();
+    expect(runBodies).toEqual([{ input: { message: 'Chest pain since Tuesday.' }, attachments: [{ mediaId: 'm-1' }] }]);
+  });
+
+  it('removes a chip, and the run no longer carries that file', async () => {
+    mount();
+    attach(pdf('a.pdf'), pdf('b.pdf'));
+    await screen.findByRole('listitem', { name: /b\.pdf/ });
+    await waitFor(() => expect(mediaUploads).toHaveLength(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove a.pdf' }));
+    expect(screen.queryByRole('listitem', { name: /a\.pdf/ })).toBeNull();
+
+    await startRun();
+    expect(runBodies[0]?.attachments).toEqual([{ mediaId: 'm-2' }]);
+  });
+
+  it('refuses a file type the Input shape does not accept, without uploading it', async () => {
+    mount();
+    attach(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    const chip = await screen.findByRole('listitem', { name: /notes\.txt/ });
+    expect(within(chip).getByText(/not an accepted type/i)).toBeTruthy();
+    expect(mediaUploads).toHaveLength(0);
+    await startRun();
+    expect(runBodies[0]).not.toHaveProperty('attachments');
+  });
+
+  it('shows the gateway’s reason when an upload fails, and leaves that file out of the run', async () => {
+    mediaStatus = 415;
+    mount();
+    attach(pdf('scan.pdf'));
+    const chip = await screen.findByRole('listitem', { name: /scan\.pdf/ });
+    await waitFor(() => expect(within(chip).getByText('File type not allowed.')).toBeTruthy());
+    await startRun();
+    expect(runBodies[0]).not.toHaveProperty('attachments');
+  });
+
+  it('holds Run while a file is still uploading, saying why', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const real = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (new URL(String(input), 'http://test.local').pathname === '/api/hope/media') await gate;
+      return real(input, init);
+    }));
+    mount();
+    attach(pdf());
+    expect((await screen.findByRole('button', { name: 'Run test' })).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/waiting for the attachments to finish uploading/i)).toBeTruthy();
+    release();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Run test' }).hasAttribute('disabled')).toBe(false));
+  });
+
+  it('has no axe violations with chips on screen', async () => {
+    const { container } = mount();
+    attach(pdf());
+    await screen.findByRole('listitem', { name: /discharge\.pdf/ });
+    await waitFor(() => expect(mediaUploads).toHaveLength(1));
     expect(await axe(container)).toHaveNoViolations();
   });
 });

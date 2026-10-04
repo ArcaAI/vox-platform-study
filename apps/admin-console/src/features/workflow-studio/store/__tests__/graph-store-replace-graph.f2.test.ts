@@ -3,10 +3,11 @@
  * `graph.settings` is ONE undo step (it used to be two: replaceGraph, then setSettings).
  */
 import { describe, expect, it } from 'vitest';
+import type { WorkflowSettings } from '@arcaai/workflow-contract';
 import { createGraphStore } from '../create-graph-store';
 
-const OLD_SETTINGS = { connections: ['api'], sources: ['consultation'] };
-const NEW_SETTINGS = { connections: ['api', 'sse'], sources: [] };
+const OLD_SETTINGS: WorkflowSettings = { connections: ['api'], sources: ['consultation'] };
+const NEW_SETTINGS: WorkflowSettings = { connections: ['api', 'sse'], sources: [] };
 const IMPORTED = [{ id: 'n1', type: 'core.agent', position: { x: 0, y: 0 }, safetyClasses: [] as readonly string[], config: {} }];
 
 describe('replaceGraph with settings', () => {

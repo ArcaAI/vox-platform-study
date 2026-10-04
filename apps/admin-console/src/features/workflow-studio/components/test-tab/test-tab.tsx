@@ -40,6 +40,7 @@ import { RunStatusBar } from './run-status-bar';
 import { StepPanel, type StepPanelNode } from './step-panel';
 import { TestFlow } from './test-flow';
 import { TestInputPanel, type TestInputState } from './test-input-panel';
+import { useAttachments } from './use-attachments';
 import { useTestRun } from './use-test-run';
 
 export interface TestTabProps {
@@ -47,6 +48,7 @@ export interface TestTabProps {
 }
 
 const TERMINAL: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
+const NO_MIME_TYPES: readonly string[] = [];
 const AGENT_NODE_TYPE = 'core.agent';
 const TEXT_TASK = 'TEXT_GENERATION';
 
@@ -101,6 +103,8 @@ function TestSurface({ definitionId }: TestTabProps) {
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
 
   const plan = useMemo(() => planTestInputs({ nodes, agentOptions, contextSchema: composer?.contextSchema }), [nodes, agentOptions, composer?.contextSchema]);
+  const attachments = useAttachments(plan.attach?.mimeTypes ?? NO_MIME_TYPES);
+  const clearAttachments = attachments.clear;
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const taskBySlug = useMemo(() => new Map(agentOptions.map((agent) => [agent.slug, agent.task])), [agentOptions]);
   const { view, live, events } = controller;
@@ -187,6 +191,8 @@ function TestSurface({ definitionId }: TestTabProps) {
     const payload: Record<string, unknown> = { ...(extra.value ?? {}) };
     if (plan.message && input.message.trim().length > 0) payload.message = input.message;
     const body: StartSandboxRunBody = Object.keys(payload).length > 0 ? { input: payload } : {};
+    // Files were uploaded when attached; the run names them by id.
+    if (plan.attach && attachments.mediaIds.length > 0) body.attachments = attachments.mediaIds.map((mediaId) => ({ mediaId }));
 
     let sttSessionId: string | null = null;
     if (input.record && plan.record && tenantId) {
@@ -203,7 +209,7 @@ function TestSurface({ definitionId }: TestTabProps) {
       toast.error(errorMessage(cause, 'The test run could not start.'));
       if (sttSessionId) void recorder.stop();
     }
-  }, [controller, extra.value, input.message, input.record, plan.message, plan.record, recorder, tenantId]);
+  }, [attachments.mediaIds, controller, extra.value, input.message, input.record, plan.attach, plan.message, plan.record, recorder, tenantId]);
 
   // The run ended: release the microphone.
   useEffect(() => {
@@ -223,10 +229,11 @@ function TestSurface({ definitionId }: TestTabProps) {
     if (running) void controller.cancel().catch(() => {});
     if (recorder.status === 'recording') void recorder.stop();
     controller.reset();
+    clearAttachments();
     setSentInput(null);
     setRecordedRunId(null);
     setSelectedEventIndex(null);
-  }, [controller, recorder, running]);
+  }, [clearAttachments, controller, recorder, running]);
 
   const selectEvent = useCallback(
     (index: number | null) => {
@@ -296,6 +303,7 @@ function TestSurface({ definitionId }: TestTabProps) {
             value={input}
             onChange={setInput}
             inputProblem={extra.problem ?? recordUnavailable}
+            attachments={{ items: attachments.items, uploading: attachments.uploading, onAdd: attachments.add, onRemove: attachments.remove }}
             recorder={{ status: recorder.status, error: recorder.error, levels: recorder.levels, onStop: () => void recorder.stop() }}
             running={running}
             starting={controller.starting || recorder.status === 'starting'}

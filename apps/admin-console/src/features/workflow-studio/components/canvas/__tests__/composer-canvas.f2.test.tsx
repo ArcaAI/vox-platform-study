@@ -62,11 +62,11 @@ describe('ComposerCanvas — run overlay (F2)', () => {
   it('hands the canvas each node’s run warnings and each link’s run state', () => {
     mount(
       {
-        runStates: new Map([
-          ['a', { state: 'ok' as const, durationMs: 10, warnings: 2 }],
-          ['b', { state: 'running' as const }],
+        runStates: new Map<string, { state?: 'ok' | 'running'; durationMs?: number; warnings?: number }>([
+          ['a', { state: 'ok', durationMs: 10, warnings: 2 }],
+          ['b', { state: 'running' }],
         ]),
-        edgeRunStates: new Map([['e1', 'active' as const]]),
+        edgeRunStates: new Map<string, 'active'>([['e1', 'active']]),
       },
       [node('a', 'core.data'), node('b', 'core.data')],
       [{ id: 'e1', source: 'a', sourceHandle: 'next', target: 'b', targetHandle: 'after' }],

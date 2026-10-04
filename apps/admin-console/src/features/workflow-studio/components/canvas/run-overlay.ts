@@ -41,10 +41,11 @@ const LAST_RUN_DONE: ReadonlySet<string> = new Set(['SUCCEEDED', 'DEGRADED', 'SK
 /** The Composer's overlay from the latest Test run's per-step feed (`useNodeLastRuns`). */
 export function runOverlayFromLastRuns(
   edges: ReadonlyArray<{ id: string; source: string; target: string }>,
-  lastRuns: Readonly<Record<string, NodeLastRunData>>,
+  lastRuns: Readonly<Record<string, NodeLastRunData | null>>,
 ): { runStates: Map<string, RunOverlayEntry>; edgeRunStates: Map<string, Exclude<WorkflowCanvasEdgeRunState, 'idle'>> } {
   const runStates = new Map<string, RunOverlayEntry>();
   for (const [nodeId, run] of Object.entries(lastRuns)) {
+    if (!run) continue;
     const state = LAST_RUN_STATE[run.status];
     if (!state) continue;
     runStates.set(nodeId, { state, ...(run.durationMs !== null && run.status !== 'RUNNING' ? { durationMs: run.durationMs } : {}) });
