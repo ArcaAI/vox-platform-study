@@ -6,7 +6,7 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@arcaai/ui/components/shadcn/command';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { TAG_MAX_COUNT, validateTag } from './tag-grammar';
+import { normalizeTag, TAG_MAX_COUNT, validateTag } from './tag-grammar';
 import { useTagSuggestions } from './use-tag-suggestions';
 
 export interface TagsFieldProps {
@@ -36,7 +36,8 @@ const SUGGESTION_DEBOUNCE_MS = 300;
  * Keyboard: type; Enter adds what you typed; ArrowDown/ArrowUp walk the suggestions and Enter
  * adds the highlighted one; a comma commits (a comma-separated paste adds several); Backspace on
  * an empty draft removes the last chip; Escape closes the list. A tag that breaks the grammar is
- * refused with the rule spelled out under the field — never silently rewritten.
+ * refused with the rule spelled out under the field. Input is trimmed and lower-cased before it is
+ * validated (the gateway does the same), so `Pre-Summary` is added as `pre-summary`.
  */
 export function TagsField({
   id,
@@ -68,7 +69,8 @@ export function TagsField({
   const suggestions = (suggestionsQuery.data ?? []).filter((suggestion) => !value.includes(suggestion.tag));
 
   const trimmedDraft = draft.trim();
-  const liveError = trimmedDraft ? validate(trimmedDraft) : null;
+  // Validate what the server will store (trimmed, lower-case), not the raw keystrokes.
+  const liveError = trimmedDraft ? validate(normalizeTag(trimmedDraft)) : null;
   const error = liveError ?? attemptError;
 
   /** Adds every acceptable tag in `raw`; returns what could not be added (invalid ones, to keep in the draft). */
@@ -76,18 +78,19 @@ export function TagsField({
     const next = [...value];
     const rejected: string[] = [];
     let notice: string | null = null;
-    for (const tag of raw
+    for (const original of raw
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean)) {
+      const tag = normalizeTag(original);
       const problem = validate(tag);
       if (problem) {
-        rejected.push(tag);
+        rejected.push(original);
       } else if (next.includes(tag)) {
         notice = `"${tag}" is already added.`;
       } else if (next.length >= TAG_MAX_COUNT) {
         notice = `At most ${TAG_MAX_COUNT} tags.`;
-        rejected.push(tag);
+        rejected.push(original);
       } else {
         next.push(tag);
       }

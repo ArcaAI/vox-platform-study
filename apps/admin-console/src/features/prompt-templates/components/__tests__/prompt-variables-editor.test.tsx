@@ -2,8 +2,9 @@
  * The typed prompt-variable declarations repeater (TASK-890 §3.6) shared by
  * `CreateTemplateForm`/`EditTemplateForm` — round-trips a declared variable
  * through the create/update request body, and "Derive from content" reads
- * every `{{path}}` reference via `templateReferences` and adds one
- * declaration per ROOT name (`{{a.b}}` derives `a`, not `a.b`).
+ * the shared `deriveVariableDeclarations` and adds one declaration per
+ * ROOT name (`{{a.b}}` derives `a`, not `a.b`). Derive v2 specifics live in
+ * `derive-variables-v2.task1036.test.tsx`.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
@@ -86,14 +87,14 @@ describe('PromptVariablesEditor — create form', () => {
     expect(post?.body).toMatchObject({ variables: [{ name: 'topic', type: 'string', required: false }] });
   });
 
-  it('"Derive from content" adds the ROOT name for a dotted reference, with a hint noting the full path', () => {
+  it('"Derive from content" adds the ROOT name for a dotted reference', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Age: {{trigger.patient.age}}');
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Age: {{patient.age}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
-    expect(screen.getByDisplayValue('trigger')).toBeTruthy();
-    expect(screen.getByDisplayValue('Referenced as {{trigger.patient.age}}')).toBeTruthy();
+    expect(screen.getByDisplayValue('patient')).toBeTruthy();
+    expect(screen.queryByDisplayValue('patient.age')).toBeNull();
   });
 
   it('"Derive from content" never adds a duplicate for a name already declared', () => {
@@ -127,7 +128,7 @@ describe('PromptVariablesEditor — create form', () => {
     setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'x');
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
-    fireEvent.click(screen.getByRole('button', { name: /remove/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^remove topic$/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /create template/i }));
 
@@ -140,6 +141,7 @@ describe('PromptVariablesEditor — create form', () => {
 describe('PromptVariablesEditor — edit form', () => {
   it('initializes from declaredVariables and PATCHes the edited array', async () => {
     const existing = template({
+      content: 'Summarize {{topic}}',
       declaredVariables: [{ name: 'topic', type: 'string', required: true }],
     });
     const calls = stubFetch((call) => {

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { templateReferences } from '@arcaai/workflow-contract';
-import { IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
+import { deriveVariableDeclarations } from '@arcaai/workflow-contract';
+import { IconEraser, IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
+import { cn } from '@arcaai/ui';
+import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -12,6 +14,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import { TemplateField, templateSyntaxLint, variableNamePaths, withPlatformPaths } from '@/shared/template-editor';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { TagsField } from '@/shared/tags-field';
 import { useCreateTemplate, useDepartments, useUpdateTemplate } from '../api/hooks';
@@ -26,12 +29,13 @@ const VARIABLE_TYPE_OPTIONS: { value: PromptVariableType; label: string }[] = [
 ];
 
 /**
- * The variable-declarations repeater (TASK-890 §3.6) — shared by the create
- * and edit forms. "Derive from content" reads every `{{path}}` reference in
- * the template body via `templateReferences` (`@arcaai/workflow-contract`,
- * the SAME parser the publish gate and the render engine use) and adds one
- * declaration per ROOT name not already declared — `{{a.b}}` derives `a`, not
- * `a.b`, with a hint noting the fuller path it was referenced by.
+ * The variable-declarations repeater (TASK-890 §3.6, "Derive v2" TASK-1036 §3.1) — shared by the
+ * create and edit forms. "Derive from content" calls `deriveVariableDeclarations`
+ * (`@arcaai/workflow-contract`), the SAME function the server runs on create/update, so the list
+ * shown here is the list stored: one declaration per ROOT name (`{{a.b}}` declares `a`, as JSON),
+ * existing declarations kept verbatim, and namespace roots (`trigger`, `context`, …) and platform
+ * variables never offered. A declaration the content no longer references is shown STALE and is
+ * only removed after the author confirms ("Remove stale").
  */
 function PromptVariablesEditor({
   variables,
@@ -42,6 +46,14 @@ function PromptVariablesEditor({
   onChange: (next: PromptVariableDeclaration[]) => void;
   content: string;
 }) {
+  const [confirmingStale, setConfirmingStale] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  // A row the author has not named yet is not "stale" — it is unfinished.
+  const stale = useMemo(
+    () => new Set(deriveVariableDeclarations(content, variables).stale.filter((name) => name !== '')),
+    [content, variables],
+  );
+
   function updateAt(index: number, patch: Partial<PromptVariableDeclaration>) {
     onChange(variables.map((variable, i) => (i === index ? { ...variable, ...patch } : variable)));
   }
@@ -55,52 +67,67 @@ function PromptVariablesEditor({
   }
 
   function deriveFromContent() {
-    let refs: ReturnType<typeof templateReferences>;
-    try {
-      refs = templateReferences(content);
-    } catch {
-      // A syntax error in the content is reported by the publish gate, not
-      // this best-effort authoring helper — just derive nothing.
-      return;
-    }
-    const known = new Set(variables.map((variable) => variable.name));
-    const derived: PromptVariableDeclaration[] = [];
-    for (const ref of refs) {
-      const root = ref.path.split('.')[0];
-      if (known.has(root)) continue;
-      known.add(root);
-      derived.push({
-        name: root,
-        type: 'string',
-        required: !ref.hasDefault,
-        ...(ref.path !== root ? { description: `Referenced as {{${ref.path}}}` } : {}),
-      });
-    }
-    if (derived.length > 0) onChange([...variables, ...derived]);
+    const result = deriveVariableDeclarations(content, variables);
+    if (result.added.length > 0) onChange(result.declarations);
+    const count = result.added.length;
+    setAnnouncement(count === 0 ? 'No new variables found.' : `Added ${count} ${count === 1 ? 'variable' : 'variables'}: ${result.added.join(', ')}.`);
+  }
+
+  function removeStale() {
+    onChange(variables.filter((variable) => !stale.has(variable.name)));
+    setAnnouncement(`Removed ${stale.size} stale ${stale.size === 1 ? 'variable' : 'variables'}.`);
+    setConfirmingStale(false);
   }
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">Variables</span>
-        <Button type="button" variant="outline" size="sm" onClick={deriveFromContent}>
-          <IconWand aria-hidden />
-          Derive from content
-        </Button>
+        <div className="flex items-center gap-2">
+          {stale.size > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingStale(true)}>
+              <IconEraser aria-hidden />
+              Remove stale ({stale.size})
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" onClick={deriveFromContent}>
+            <IconWand aria-hidden />
+            Derive from content
+          </Button>
+        </div>
       </div>
+      <p className="text-muted-foreground text-xs">
+        Optional variables render empty when no value is provided. Required variables must be supplied, or the prompt fails by name.
+      </p>
+      <p role="status" className="text-muted-foreground text-xs empty:hidden">
+        {announcement}
+      </p>
+      <ConfirmDialog
+        open={confirmingStale}
+        onOpenChange={setConfirmingStale}
+        title="Remove stale variables?"
+        description={`These declarations are no longer referenced by the prompt content: ${[...stale].join(', ')}.`}
+        confirmLabel="Remove stale variables"
+        onConfirm={removeStale}
+      />
       {variables.length === 0 ? <p className="text-muted-foreground text-xs">No declared variables yet.</p> : null}
       {variables.map((variable, index) => (
         <div key={index} className="grid grid-cols-1 items-end gap-2 rounded-md border p-2 sm:grid-cols-12">
           <div className="flex flex-col gap-1 sm:col-span-3">
             <Label htmlFor={`variable-name-${index}`} className="text-xs">
               Name
+              {stale.has(variable.name) ? (
+                <Badge variant="outline" className="ml-1.5 text-[10px]">
+                  no longer used
+                </Badge>
+              ) : null}
             </Label>
             <Input
               id={`variable-name-${index}`}
               value={variable.name}
               onChange={(event) => updateAt(index, { name: event.target.value })}
               placeholder="topic"
-              className="font-mono text-xs"
+              className={cn('font-mono text-xs', stale.has(variable.name) && 'text-muted-foreground line-through')}
               autoComplete="off"
             />
           </div>
