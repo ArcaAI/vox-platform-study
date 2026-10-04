@@ -170,7 +170,7 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     const compiled = await publish({
       fragments: [
         { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
-        { key: 'revisit', promptTemplateId: 'tpl-revisit', when: "has(context.visit_type) && context.visit_type == 'revisit'" },
+        { key: 'revisit', promptTemplateId: 'tpl-revisit', promptVersionNumber: 5, when: "has(context.visit_type) && context.visit_type == 'revisit'" },
         { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'has(context.patient_age) && context.patient_age < 18' },
       ],
     });
@@ -198,7 +198,7 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     putTemplate('tpl-a', 'A');
     const compiled = await publish({
       fragments: [
-        { key: 'frag_a', promptTemplateId: 'tpl-a' },
+        { key: 'frag_a', promptTemplateId: 'tpl-a', promptVersionNumber: 1 },
         { key: 'frag_b', systemPrompt: 'B' },
         { key: 'frag_c', systemPrompt: 'C', when: 'true' },
       ],
@@ -206,7 +206,10 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     expect((compiled.resolvedPrompt as { content: string }).content).toBe('A\n\nB');
   });
 
-  it('follows the pin rule per fragment: explicit pin, else approved, else current', async () => {
+  // TASK-1036 W3 — publish now REFUSES an unpinned fragment (`PROMPT_VERSION_UNPINNED`,
+  // `agent.prompt-pin.task1036.test.ts`); the bind stamps the approved version instead. What this
+  // still pins is that every fragment resolves at its OWN pin, independently of its neighbours.
+  it('resolves every fragment at its own pin', async () => {
     putTemplate('tpl-pinned', 'v-approved', { approvedVersionNumber: 4 });
     putVersion('tpl-pinned', 2, 'v2');
     putTemplate('tpl-current', 'from-current', { approvedVersionNumber: null, currentVersionNumber: 7 });
@@ -215,8 +218,8 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     const compiled = await publish({
       fragments: [
         { key: 'pinned', promptTemplateId: 'tpl-pinned', promptVersionNumber: 2 },
-        { key: 'approved', promptTemplateId: 'tpl-pinned' },
-        { key: 'current', promptTemplateId: 'tpl-current' },
+        { key: 'approved', promptTemplateId: 'tpl-pinned', promptVersionNumber: 4 },
+        { key: 'current', promptTemplateId: 'tpl-current', promptVersionNumber: 7 },
       ],
     });
 
@@ -232,8 +235,8 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     putTemplate('tpl-extra', 'Extra');
     const listing = (when: string | undefined) => ({
       fragments: [
-        { key: 'base', promptTemplateId: 'tpl-base' },
-        { key: 'extra', promptTemplateId: 'tpl-extra', ...(when === undefined ? {} : { when }) },
+        { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
+        { key: 'extra', promptTemplateId: 'tpl-extra', promptVersionNumber: 1, ...(when === undefined ? {} : { when }) },
       ],
     });
 
@@ -308,8 +311,8 @@ describe('publish reports a broken fragment BY PATH (§4.1)', () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(
       agent({
         fragments: [
-          { key: 'base', promptTemplateId: 'tpl-base' },
-          { key: 'gone', promptTemplateId: 'tpl-gone', when: 'true' },
+          { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
+          { key: 'gone', promptTemplateId: 'tpl-gone', promptVersionNumber: 1, when: 'true' },
         ],
       }),
     );

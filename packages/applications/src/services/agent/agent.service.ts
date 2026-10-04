@@ -445,7 +445,9 @@ export class AgentService extends BaseService implements IAgentService {
     const model = await this.loadModelOrThrow(dto.modelId, tenantId);
     const fallbackModels = await this.loadFallbackModelsOrThrow(dto.fallbackModelIds ?? [], tenantId);
 
-    const view = this.viewOf(dto.task, dto);
+    // TASK-1036 W3 — a library prompt bound without a pin gets the template's approved version.
+    const instruction = await this.stampPromptPins(dto.instruction);
+    const view = this.viewOf(dto.task, { ...dto, instruction });
     const findings = this.structuralFindings(view, model, fallbackModels);
     this.throwIfBlocking(findings, 'The agent configuration is not valid.');
 
@@ -461,7 +463,7 @@ export class AgentService extends BaseService implements IAgentService {
         modelId: dto.modelId,
         contextSchemaId: dto.contextSchemaId ?? null,
         contextSchemaVersionNumber: dto.contextSchemaVersionNumber ?? null,
-        instruction: (dto.instruction ?? null) as JsonValue | null,
+        instruction: (instruction ?? null) as JsonValue | null,
         parameters: (stripRetiredAgentGuardrailOptOut(dto.parameters) ?? null) as JsonValue | null,
         inputSchema: (dto.inputSchema ?? null) as JsonValue | null,
         outputSchema: (dto.outputSchema ?? null) as JsonValue | null,
@@ -507,7 +509,7 @@ export class AgentService extends BaseService implements IAgentService {
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
     if (dto.contextSchemaId !== undefined) entity.contextSchemaId = dto.contextSchemaId;
     if (dto.contextSchemaVersionNumber !== undefined) entity.contextSchemaVersionNumber = dto.contextSchemaVersionNumber;
-    if (dto.instruction !== undefined) entity.instruction = dto.instruction as JsonValue;
+    if (dto.instruction !== undefined) entity.instruction = (await this.stampPromptPins(dto.instruction)) as JsonValue;
     if (parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(parameters) as JsonValue;
     if (dto.inputSchema !== undefined) entity.inputSchema = dto.inputSchema as JsonValue;
     if (dto.outputSchema !== undefined) entity.outputSchema = dto.outputSchema as JsonValue;
@@ -773,7 +775,7 @@ export class AgentService extends BaseService implements IAgentService {
       }
     }
 
-    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity);
+    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity, 'draft');
     // The same refusal publish makes, with the same shape the console already renders. Nothing
     // is persisted: a test must not move a draft's status or overwrite its stored report.
     this.throwIfBlocking(report.findings, 'The agent cannot be tested.');
@@ -1346,7 +1348,8 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     const warnings = [...(payload.notes ?? [])];
-    const instruction = await this.instructionForBundleImport(payload, tenantId);
+    // TASK-1036 W3 — a re-resolved template drops the source's pin; stamp this tenant's approved one.
+    const instruction = (await this.stampPromptPins(await this.instructionForBundleImport(payload, tenantId))) as Record<string, unknown> | null;
     await this.assertToolsVisible(payload.tools ?? null, tenantId);
 
     const slug = dto.slug ?? payload.slug;
@@ -1457,6 +1460,52 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     return { sourceSlug: source.slug, sourceVersionNumber: source.versionNumber, targets: results };
+  }
+
+  /**
+   * TASK-1036 W3 — binding a library prompt STAMPS its current approved version.
+   *
+   * The publish gate refuses an unpinned binding (`PROMPT_VERSION_UNPINNED`), and authors should
+   * never meet that in the normal flow, so the bind itself writes the pin: top-level
+   * `promptVersionNumber` for the single-template form, and per fragment for a composite. A pin
+   * the author chose is kept (they may change it; re-binding without one re-stamps, so it can
+   * never be CLEARED). A template that is invisible or not APPROVED is left unpinned: nothing is
+   * auto-approved (D-7), and publish then names the real reason (`TEMPLATE_NOT_APPROVED`).
+   *
+   * Returns the input untouched when there is nothing to stamp, otherwise a shallow copy — the
+   * caller's DTO is never mutated.
+   */
+  private async stampPromptPins<T>(instruction: T): Promise<T> {
+    const record = asRecord(instruction);
+    if (!record) return instruction;
+    if (Array.isArray(record.fragments)) {
+      let changed = false;
+      const fragments: unknown[] = [];
+      for (const fragment of record.fragments) {
+        const entry = asRecord(fragment);
+        const version = entry ? await this.pinFor(entry) : null;
+        if (entry && version !== null) {
+          fragments.push({ ...entry, promptVersionNumber: version });
+          changed = true;
+        } else {
+          fragments.push(fragment);
+        }
+      }
+      return (changed ? { ...record, fragments } : instruction) as T;
+    }
+    const version = await this.pinFor(record);
+    return (version === null ? instruction : { ...record, promptVersionNumber: version }) as T;
+  }
+
+  /** The approved version to stamp on one binding, or `null` when it needs none (or none can be honestly chosen). */
+  private async pinFor(binding: Record<string, unknown>): Promise<number | null> {
+    const templateId = binding.promptTemplateId;
+    if (typeof templateId !== 'string' || templateId.length === 0 || binding.promptVersionNumber !== undefined) return null;
+    if (!this.promptTemplateRepository) return null;
+    const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
+    if (!template || template.status !== 'APPROVED') return null;
+    const version = template.approvedVersionNumber ?? template.currentVersionNumber ?? null;
+    return typeof version === 'number' && Number.isInteger(version) && version >= 1 ? version : null;
   }
 
   /**
@@ -1856,7 +1905,12 @@ export class AgentService extends BaseService implements IAgentService {
   // Findings — the ONE place that decides publishability
   // ============================================================
 
-  private async collectFindings(entity: AgentEntity): Promise<{
+  private async collectFindings(
+    entity: AgentEntity,
+    // TASK-1036 W3 — `publish` for the validate/publish gate (refuses an unpinned library prompt,
+    // `PROMPT_VERSION_UNPINNED`); `draft` for the test bench, which compiles a draft as it stands.
+    phase: 'draft' | 'publish' = 'publish',
+  ): Promise<{
     report: AgentValidationReport;
     model: AiModelEntity | null;
     fallbackModels: AiModelEntity[];
@@ -1897,6 +1951,7 @@ export class AgentService extends BaseService implements IAgentService {
         model ?? undefined,
         fallbackModels,
         model ? this.capabilitiesOf(model) : undefined,
+        phase,
       ),
     );
 
@@ -2233,11 +2288,13 @@ export class AgentService extends BaseService implements IAgentService {
     model?: AiModelEntity,
     fallbackModels: AiModelEntity[] = [],
     capabilities?: AgentProviderCapabilities,
+    phase: 'draft' | 'publish' = 'draft',
   ): AgentFinding[] {
     const findings: AgentFinding[] = agentConfigProblems(view, {
       model: model ? toModelView(model) : undefined,
       fallbackModels: fallbackModels.map(toModelView),
       capabilities,
+      phase,
     }).map((problem) => ({ ...problem, code: codeForConfigProblem(problem) }));
 
     const parameters = asRecord(view.parameters);
