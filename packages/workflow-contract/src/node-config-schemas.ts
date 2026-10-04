@@ -1644,6 +1644,82 @@ export const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
  */
 export const GRAPH_BOUNDARY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.output']);
 
+// =============================================================================================
+// TASK-1036 (OD-20, OD-29) — the two AUTHORING keys every core node offers: `label` and `inputs`
+// =============================================================================================
+
+/** The longest node label (OD-20). */
+export const NODE_LABEL_MAX_LENGTH = 80;
+
+/**
+ * OD-20 — a node's display name. References are SHOWN by label and STORED by node id, so renaming
+ * a step never breaks a binding (`bindings.ts`, `binding-source-paths.ts`). Optional: absent, the
+ * id is shown.
+ */
+const NODE_LABEL_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength: NODE_LABEL_MAX_LENGTH,
+  summary: 'The name of this step on the canvas.',
+  description: 'Shown wherever this step is referenced. References are stored by node id, so renaming a step never breaks one.',
+});
+
+/**
+ * OD-29 — ONE binding: exactly one of `{ from }`, `{ value }`, `{ template }`, each closed. The
+ * compiled-only `{ firstOf }` (the legacy fan-in translation) is deliberately NOT authorable.
+ * Exported for `bindings.ts`, which re-exports it beside the TypeScript type.
+ */
+export const BINDING_JSON_SCHEMA: NodeConfigSchema = Object.freeze({
+  summary: 'Where this input comes from.',
+  description:
+    '`{ from: <path> }` reads `context.*`, `consultation.*`, `nodes.<id>.outputs.*`, `vars.*` or `run.*`; `{ value }` is a literal; `{ template }` is text with `{{ … }}` references.',
+  anyOf: Object.freeze([
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['from']),
+      properties: Object.freeze({
+        from: Object.freeze({ type: 'string', minLength: 1, maxLength: 512 }),
+        at: Object.freeze({
+          type: 'string',
+          enum: Object.freeze(['nodeStart', 'runStart']),
+          summary: 'When consultation data is read: at this step or at the run start.',
+          description: 'When a `consultation.*` value is read: at this step`s start (default) or once at run start.',
+        }),
+      }),
+    }),
+    Object.freeze({ type: 'object', additionalProperties: false, required: Object.freeze(['value']), properties: Object.freeze({ value: Object.freeze({}) }) }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['template']),
+      properties: Object.freeze({ template: Object.freeze({ type: 'string', maxLength: 8000 }) }),
+    }),
+  ]),
+});
+
+const NODE_INPUTS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: BINDING_JSON_SCHEMA,
+  summary: "Where each of this step's inputs comes from.",
+  description:
+    'One binding per declared input (the node`s I/O contract). An input bound here takes this value; a data edge into the same input is then ordering only. Absent, the step`s data edges supply its inputs.',
+});
+
+/** The node types that take NO `inputs`: the entry point has no inputs, a note is a comment. */
+const NODES_WITHOUT_INPUTS: ReadonlySet<string> = new Set(['core.trigger', 'core.note']);
+
+/** `label` on every core node, `inputs` on every one that has inputs. Node schemas only — never an action's sub-config. */
+function withAuthoringProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
+  if (!key.startsWith('core.')) return schema;
+  const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
+  const additions: Record<string, NodeConfigSchema> = {};
+  if (declared.label === undefined) additions.label = NODE_LABEL_PROPERTY;
+  if (declared.inputs === undefined && !NODES_WITHOUT_INPUTS.has(key)) additions.inputs = NODE_INPUTS_PROPERTY;
+  if (Object.keys(additions).length === 0) return schema;
+  return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, ...additions }) });
+}
+
 function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
   if (RUNTIME_PROPERTY_EXCLUSIONS.has(key)) return schema;
   const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
@@ -1659,7 +1735,9 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  * `GET /admin/workflow-nodes` serves, and what the Studio inspector compiles into fields.
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
-  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
+  Object.fromEntries(
+    Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withAuthoringProperties(key, withRuntimeProperties(key, schema))]),
+  ),
 );
 
 /**
