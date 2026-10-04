@@ -29,6 +29,7 @@ import {
   buildPortableBundle,
   canonicalJson,
   compile,
+  effectiveSettings,
   hasBlockingFindings,
   hyperparameterCapabilityProblems,
   nodeInfo as registryNodeInfo,
@@ -42,6 +43,7 @@ import {
   workflowNodeClassLookup,
 } from '@arcaai/workflow-contract';
 import type {
+  AgentIOResolver,
   CompiledWorkflowConfig,
   CompilerContext,
   PortableBundleTenantKind,
@@ -209,21 +211,23 @@ const DOCUMENT_TEMPLATE_ID_KEY = 'documentTemplateId';
 const DOCUMENT_VERSION_NUMBER_KEY = 'documentVersionNumber';
 
 /**
- * TASK-890 §3.4 — the graph's one mandatory entry node, where a workflow's context-schema
- * REFERENCE is authored. Named here for the reason the two keys above are: this file reads raw
- * node config, and a re-typed string literal is how two sides of a contract drift apart.
- */
-const TRIGGER_NODE_TYPE = 'core.trigger';
-
-/**
  * What `resolveTriggerContextSchema` answers. `undefined` (the whole value) means "nothing to
  * resolve" and is NOT the same as `{ failure }`, which means "a reference was authored and it
  * does not resolve in this tenant" — the first skips the publish check, the second IS the check.
  */
 type TriggerContextSchemaResolution =
   | undefined
-  | { resolved: ResolvedTriggerContextSchema; failure?: undefined }
-  | { resolved?: undefined; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
+  | {
+      resolved: ResolvedTriggerContextSchema;
+      /**
+       * TASK-1036 contract freeze — the resolved version's raw `definition` (its `kinds`), for the
+       * publish gate's WF-SET-003/004. Best-effort: absent when it could not be read, and the gate
+       * then checks only the agent-derived implications. Never frozen into the artifact.
+       */
+      definition?: unknown;
+      failure?: undefined;
+    }
+  | { resolved?: undefined; definition?: undefined; failure: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND' };
 
 /** A plain object, or `undefined`. Local to the context-schema reference read below. */
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -231,22 +235,38 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * The context-schema REFERENCE a graph runs against: `graph.settings.contextSchema` when valid
+ * settings declare one, else the trigger's own (TASK-1036 D-4 — settings first, the trigger as the
+ * one-release fallback; `effectiveSettings` owns the rule, the compiler freezes the same answer).
+ * `null` for an inline schema or none at all.
+ */
+function authoredContextSchemaReference(graph: WorkflowGraph): { contextSchemaId: string; versionNumber: number | null } | null {
+  const setting = effectiveSettings(graph).contextSchema;
+  if (setting === null || !('contextSchemaId' in setting) || setting.contextSchemaId.length === 0) return null;
+  return setting;
+}
+
+/**
  * Did the AUTHOR ask the trigger to follow the tenant's pin?
  *
- * A trigger that names a schema id with no `versionNumber` means "whatever this tenant has
+ * A reference that names a schema id with no `versionNumber` means "whatever this tenant has
  * pinned"; one that names a version keeps it. `resolveTriggerContextSchema` answers with a
  * concrete version number in BOTH cases — the resolution is the same, the intent is not — so
- * this reads the authored graph, which is the only place the intent survives.
+ * this reads the authored graph (settings first, then the trigger), which is the only place the
+ * intent survives.
  *
- * Total: a graph with no trigger, no reference, or an unreadable config answers `false`, which is
- * also what the caller stamps whenever there is no binding at all.
+ * Total: a graph with no reference, or an unreadable config answers `false`, which is also what
+ * the caller stamps whenever there is no binding at all.
  */
 function authoredTriggerFollowsLatest(graph: WorkflowGraph): boolean {
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-  const trigger = nodes.find((node) => node.type === TRIGGER_NODE_TYPE);
-  const reference = asRecord(asRecord(trigger?.config)?.contextSchema);
-  if (typeof reference?.contextSchemaId !== 'string' || reference.contextSchemaId.length === 0) return false;
-  return reference.versionNumber == null;
+  const reference = authoredContextSchemaReference(graph);
+  return reference !== null && reference.versionNumber === null;
+}
+
+/** The agent views the publish gate loaded, as the compiler's `AgentIOResolver` (task + output schema by slug). */
+function agentIOResolverOf(views: Readonly<Record<string, PublishAgentView>> | undefined): AgentIOResolver | undefined {
+  if (views === undefined) return undefined;
+  return Object.fromEntries(Object.entries(views).map(([slug, view]) => [slug, { task: view.task, outputSchema: view.outputSchema }]));
 }
 
 /**
@@ -1616,11 +1636,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // authoring feedback, and refusing a draft for a problem publish will refuse anyway would
     // just move the same wall earlier in the author's day.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema);
+    const agents = await this.publishAgentViews(graph);
+    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema, agents);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     // Same bindings publish() will stamp — a validate() that compiled against different
     // policyBindings would greenlight an artifact the publish() then produces differently.
-    const compileResult = compile(graph, this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema));
+    const compileResult = compile(
+      graph,
+      this.buildCompilerContext(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema, agents),
+    );
     // TASK-890 — a blocking PUBLISH finding also keeps the row a DRAFT. VALIDATED means
     // "publishable", and promoting a graph that `publish()` would then 400 on hands the console a
     // status it cannot act on. `validate()` still never THROWS — recording without refusing is
@@ -1762,7 +1786,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // (`GUARDRAIL_OPTED_OUT` for a disabled mandatory node, and `PROMPT_VARIABLE_UNDECLARED`
     // during the OD-C ramp) are recorded and never block.
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema);
+    const agents = await this.publishAgentViews(graph);
+    const publishGate = await this.graphPublishFindings(graph, entity.tenantId, triggerContextSchema, agents);
     const report: WorkflowValidationReport = this.mergePublishGate(baseReport, publishGate);
     if (hasBlockingFindings(publishGate)) {
       throw new BadRequestException({
@@ -1789,7 +1814,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
     // records WHICH schema version it was built against instead of a hardcoded null.
-    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema);
+    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema, agents);
 
     // The binding, stamped onto COLUMNS from the SAME resolution the compiler just froze into
     // `compiledConfig`. It is not a second resolution — `triggerContextSchema` is the one above —
@@ -1882,6 +1907,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       graph,
       await this.resolveContextSchemaVersionId(),
       await this.resolveTriggerContextSchema(graph),
+      await this.publishAgentViews(graph),
     );
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
@@ -2303,9 +2329,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private async graphPublishFindings(
     graph: WorkflowGraph,
     tenantId: string,
-    triggerContextSchema?: TriggerContextSchemaResolution,
+    triggerContextSchema: TriggerContextSchemaResolution,
+    agents: Record<string, PublishAgentView> | undefined,
   ): Promise<WorkflowFinding[]> {
-    const agents = await this.publishAgentViews(graph);
     const contractFindings = publishFindings(graph, {
       schemaValueProblems: jsonSchemaValueProblems,
       templateReferenceSeverity: PROMPT_VARIABLE_UNDECLARED_SEVERITY,
@@ -2317,6 +2343,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         : triggerContextSchema.failure !== undefined
           ? { triggerContextSchema: null, triggerContextSchemaFailure: triggerContextSchema.failure }
           : { triggerContextSchema: triggerContextSchema.resolved?.payloadSchema ?? null }),
+      // TASK-1036 contract freeze — the Input shape's definition, so WF-SET-003/004 run.
+      ...(triggerContextSchema?.definition === undefined ? {} : { contextSchemaDefinition: triggerContextSchema.definition }),
     });
     // TASK-1002 (OD-2, OD-5) — the rules that need each `core.agent` node's TASK and output
     // schema: one speech-to-text agent per graph, and a `core.output` fed the fields it requires.
@@ -2542,20 +2570,23 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private async resolveTriggerContextSchema(graph: WorkflowGraph): Promise<TriggerContextSchemaResolution> {
     if (!this.contextSchemaService) return undefined;
 
-    const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-    const trigger = nodes.find((node) => node.type === TRIGGER_NODE_TYPE);
-    const contextSchema = asRecord(trigger?.config)?.contextSchema;
-    const reference = asRecord(contextSchema);
-    const schemaId = typeof reference?.contextSchemaId === 'string' ? reference.contextSchemaId : '';
+    // TASK-1036 contract freeze — SETTINGS first, the trigger's own reference as the fallback:
+    // the compiler freezes `graph.settings.contextSchema` onto the trigger, so resolving the
+    // trigger's reference instead would pair the settings' schema id with another schema's
+    // `resolved` payload.
     // An INLINE schema is already the definition — there is nothing to look up, and the
     // compiler leaves it exactly as authored.
-    if (schemaId.length === 0) return undefined;
+    const reference = authoredContextSchemaReference(graph);
+    if (reference === null) return undefined;
 
-    const versionNumber = typeof reference?.versionNumber === 'number' ? reference.versionNumber : undefined;
+    const schemaId = reference.contextSchemaId;
+    const versionNumber = reference.versionNumber ?? undefined;
     const resolution = await this.contextSchemaService.resolveReference(schemaId, versionNumber);
     if (resolution.outcome === 'failed') return { failure: resolution.failure };
+    const definition = await this.contextSchemaDefinitionOf(resolution.schemaId, resolution.versionNumber);
 
     return {
+      ...(definition === undefined ? {} : { definition }),
       resolved: {
         schemaId: resolution.schemaId,
         versionNumber: resolution.versionNumber,
@@ -2580,6 +2611,28 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /**
+   * TASK-1036 contract freeze — the raw `definition` of the context-schema version a reference
+   * resolved to, for the publish gate's WF-SET-003/004 (stream audio ⇒ socket; an upload ⇒ api).
+   *
+   * Read through `listVersions` (tenant-scoped, the same ownership rule `resolveReference` just
+   * passed) because the resolution result deliberately carries only DERIVED artefacts. Best-effort:
+   * a failure degrades to "the definition-derived implications were not checked" — the state every
+   * publish was in before — never to a refusal caused by this read.
+   */
+  private async contextSchemaDefinitionOf(schemaId: string, versionNumber: number): Promise<unknown> {
+    try {
+      const versions = await this.contextSchemaService?.listVersions(schemaId);
+      return versions?.find((version) => version.versionNumber === versionNumber)?.definition;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Context schema definition lookup failed; the Input-shape settings implications are skipped for this graph',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * The report a DRAFT write stores: the rule catalogue's verdict with the publish gate's
    * findings merged in, recorded and NEVER refusing. Refuses (400) only a shape-broken graph.
    *
@@ -2599,7 +2652,8 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       throw new BadRequestException({ message: invalidMessage, findings: baseReport.findings });
     }
     const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    return this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
+    const agents = await this.publishAgentViews(graph);
+    return this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema, agents));
   }
 
   /**
@@ -2641,6 +2695,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     graph: WorkflowGraph,
     contextSchemaVersionId: string | null,
     triggerContextSchema?: TriggerContextSchemaResolution,
+    agentViews?: Record<string, PublishAgentView>,
   ): CompilerContext {
     const promptTemplateRefs = collectPromptBindings(graph)
       .filter((binding) => binding.pinnedVersionNumber !== null)
@@ -2689,6 +2744,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       // Only a RESOLVED reference is frozen. An unresolvable one never reaches compile: it is
       // a blocking publish finding first.
       ...(triggerContextSchema?.resolved ? { triggerContextSchema: triggerContextSchema.resolved } : {}),
+      // TASK-1036 contract freeze — the same agent views the publish gate checked against, so the
+      // legacy edge translation names an NER / TTS agent's input `text`, not the default `message`.
+      // The Input shape's raw definition has no compiler slot: the compiler freezes the DERIVED
+      // payload (`triggerContextSchema` above), and the definition feeds only the publish gate.
+      ...(agentViews === undefined ? {} : { agents: agentIOResolverOf(agentViews) }),
       nodeInfo: registryNodeInfo,
     };
   }
@@ -2700,8 +2760,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     graph: WorkflowGraph,
     contextSchemaVersionId: string | null,
     triggerContextSchema?: TriggerContextSchemaResolution,
+    agentViews?: Record<string, PublishAgentView>,
   ): CompiledWorkflowConfig {
-    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema));
+    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema, agentViews));
     if ('findings' in result) {
       throw new BadRequestException({ message: 'The workflow graph could not be compiled.', findings: result.findings satisfies WorkflowFinding[] });
     }
