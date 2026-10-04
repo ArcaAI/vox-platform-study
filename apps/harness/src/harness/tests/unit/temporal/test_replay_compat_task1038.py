@@ -56,6 +56,12 @@ INTERPRETER_FAMILY_FIXTURES = (
     "interpreter_task1038_timed_out_history",
     "interpreter_task1038_cancelled_history",
     "interpreter_task1038_loop_ref_history",
+    # TASK-1036 / TASK-1038 wave B (lane B1) — forward guards of `task-1038-run-protocol-v2`,
+    # `task-1036-bindings` and `task-1036-consultation-reads`
+    # (`_capture_task1038_replay_fixtures.py --task1036`, recorded on the post-change definition).
+    "interpreter_task1036_contract_history",
+    "interpreter_task1036_loop_history",
+    "loop_workflow_task1036_bindings_history",
 )
 
 
@@ -115,6 +121,20 @@ class TestTask1038EraFixtures:
     @pytest.mark.asyncio
     async def test_a_loop_over_a_reference_replays(self):
         await _replayer().replay_workflow(_history("interpreter_task1038_loop_ref_history"))
+
+
+class TestWaveBDataContractFixtures:
+    """Run protocol v2 + bindings + declared consultation reads (run start AND node start), a
+    review fed by a binding, an End-wired node; and a loop body bound to the current item."""
+
+    @pytest.mark.asyncio
+    async def test_a_v2_bindings_and_reads_run_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1036_contract_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_loop_body_bound_to_its_item_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1036_loop_history"))
+        await _replayer().replay_workflow(_history("loop_workflow_task1036_bindings_history"))
 
 
 class TestEveryInterpreterFamilyFixture:
