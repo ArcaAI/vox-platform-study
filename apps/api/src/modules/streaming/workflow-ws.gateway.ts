@@ -1,18 +1,27 @@
-import { IConfigService, IOriginRegistry, IWorkflowExposureService } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken, parseAsyncEnvelope } from '@arcaai/async-contract';
-import { Inject, Logger, Optional, type OnModuleDestroy } from '@nestjs/common';
+import {
+  IOriginRegistry,
+  IWorkflowExposureService,
+  TenantSettingsService,
+  WORKFLOW_RUNS_DEFAULTS,
+  WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY,
+  WorkflowRunStatusResponse,
+} from '@arcaai/applications';
+import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken } from '@arcaai/async-contract';
+import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
-import Redis from 'ioredis';
 import { ClsService } from 'nestjs-cls';
 import type WebSocket from 'ws';
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { logWsFailure } from './ws-failure-log';
+import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
+import { parseRunStreamEntry, terminalCheckIntervalMs } from '../workflows/run-stream-delivery';
 import {
   RUN_EVENT_TRANSPORT,
   WORKFLOW_RUN_COMPLETED,
   buildWorkflowRunEventEnvelope,
+  compareStreamIds,
   isTerminalRunStatus,
   runEventStreamKey,
 } from '../workflows/workflow-run-event';
@@ -24,6 +33,8 @@ export const WORKFLOW_WS_GENERIC_AUTH_REASON = 'Authentication failed';
 export const WORKFLOW_RUN_TICKET_NAMESPACE = 'workflow_run';
 const BLOCK_MS = 15_000;
 const HEARTBEAT_MS = 15_000;
+/** How often a paused (backpressured) socket's `bufferedAmount` is re-read — a local property, not I/O. */
+const DRAIN_CHECK_MS = 25;
 
 /**
  * `WorkflowWsGateway` — TASK-864 §3.4, the `socket` publish protocol:
@@ -45,27 +56,30 @@ const HEARTBEAT_MS = 15_000;
  * Query parameters rather than the ticket's `/ws/workflows/{slug}/runs/{runId}` path shape:
  * the `ws` adapter matches a gateway's `path` EXACTLY, so a per-run path cannot be routed to
  * one gateway. Recorded as a deviation from the ticket's URL wording; the contract is the same.
+ *
+ * TASK-1038 — parity with the SSE route, on the same shared `RunEventStreamHub` (R-1):
+ * - G11: a `lastEventId` the producer's MAXLEN trim already evicted is answered with a resync
+ *   snapshot (no `id`), then the retained events — the socket used to resume from the surviving
+ *   tail silently, handing the client a hole it could not see.
+ * - R-9: while the client's unsent buffer is above `workflowRuns.wsMaxBufferedBytes` the gateway
+ *   sends nothing and asks the hub for nothing; the events wait in the stream, not in memory.
+ * - R-2: an idle socket re-checks the run every `workflowRuns.streamTerminalCheckSeconds` and
+ *   closes with a terminal snapshot when the completion event was lost.
  */
 @WebSocketGateway({ path: '/ws/workflows' })
-export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
+export class WorkflowWsGateway implements OnGatewayConnection {
   private readonly logger = new Logger(WorkflowWsGateway.name);
-  private redis: Redis | null = null;
-  private redisUnavailable = false;
 
   constructor(
     private readonly streamTicketService: StreamTicketService,
     @Inject(IWorkflowExposureService) private readonly workflowExposureService: IWorkflowExposureService,
     private readonly cls: ClsService,
-    @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // TASK-1038 — the shared multiplexed reader (from the @Global() `WorkflowRunCompletionModule`).
+    // Absent or unconfigured ⇒ snapshot then 1011, exactly as an unconfigured Redis always did.
+    @Optional() private readonly hub?: RunEventStreamHub,
     @Optional() @Inject(IOriginRegistry) private readonly originRegistry?: IOriginRegistry,
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {}
-
-  async onModuleDestroy(): Promise<void> {
-    if (this.redis) {
-      await this.redis.quit().catch(() => {});
-      this.redis = null;
-    }
-  }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
     const reject = (message: string): void => {
@@ -89,99 +103,184 @@ export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
     if (!stored) return reject('invalid stream ticket');
     if (stored.scope !== `${WORKFLOW_RUN_TICKET_NAMESPACE}:${runId}`) return reject('ticket scope mismatch');
     if (!stored.tenantId) return reject('ticket carries no tenant');
+    const tenantId = stored.tenantId;
 
     // Ownership + snapshot, under the ticket's tenant. `getRunStatus` is the SSE route's own
     // pre-stream check: a foreign or unknown run is a NotFoundException here.
-    let snapshot;
-    try {
-      snapshot = await this.cls.run(async () => {
-        this.cls.set('tenantId', stored.tenantId as string);
-        this.cls.set('user', { id: stored.userId, tenantId: stored.tenantId, roles: [] });
+    const readStatus = (): Promise<WorkflowRunStatusResponse> =>
+      this.cls.run(async () => {
+        this.cls.set('tenantId', tenantId);
+        this.cls.set('user', { id: stored.userId, tenantId, roles: [] });
         return this.workflowExposureService.getRunStatus(slug, runId);
       });
+    let snapshot: WorkflowRunStatusResponse;
+    try {
+      snapshot = await readStatus();
     } catch (err) {
       // The close stays generic (no enumeration signal); the reason does not
       // vanish — a 404 is the expected case, anything else is worth seeing.
       this.logger.warn({
         message: 'workflow WS run lookup failed',
         runId,
-        tenantId: stored.tenantId,
+        tenantId,
         errorName: err instanceof Error ? err.name : typeof err,
       });
       return reject('run not found for this ticket');
     }
 
-    this.send(client, {
-      event: isTerminalRunStatus(snapshot.status) ? WORKFLOW_RUN_COMPLETED : 'workflow.run.progress',
-      data: buildWorkflowRunEventEnvelope(stored.tenantId, snapshot),
-    });
+    this.sendSnapshot(client, tenantId, snapshot);
     if (isTerminalRunStatus(snapshot.status)) {
       client.close(1000, 'run completed');
       return;
     }
 
-    const redis = this.reader();
-    if (redis === null) {
+    const hub = this.hub;
+    if (!hub?.available()) {
       // No push transport: the snapshot above is honest and the client can reconnect.
       client.close(1011, 'stream transport unavailable');
       return;
     }
 
-    let open = true;
-    client.on('close', () => {
-      open = false;
-    });
+    const closed = new AbortController();
+    client.on('close', () => closed.abort());
     const heartbeat = setInterval(() => {
-      if (open && client.readyState === client.OPEN) client.ping();
+      if (!closed.signal.aborted && client.readyState === client.OPEN) client.ping();
     }, HEARTBEAT_MS);
 
     try {
-      await this.forward(redis, client, runId, lastEventId, () => open);
+      await this.forward(hub, client, runId, tenantId, lastEventId, readStatus, closed.signal);
     } finally {
       clearInterval(heartbeat);
-      if (open && client.readyState === client.OPEN) client.close(1000, 'run completed');
+      if (!closed.signal.aborted && client.readyState === client.OPEN) client.close(1000, 'run completed');
     }
   }
 
-  /** The same cursor/resume/terminal contract as `WorkflowStreamService.consume`. */
-  private async forward(redis: Redis, client: WebSocket, runId: string, lastEventId: string | undefined, isOpen: () => boolean): Promise<void> {
+  /** The same cursor/resume/gap/terminal contract as `WorkflowStreamService.consume`. */
+  private async forward(
+    hub: RunEventStreamHub,
+    client: WebSocket,
+    runId: string,
+    tenantId: string,
+    lastEventId: string | undefined,
+    readStatus: () => Promise<WorkflowRunStatusResponse>,
+    closed: AbortSignal,
+  ): Promise<void> {
     const streamKey = runEventStreamKey(runId);
     const decoded = lastEventId ? decodeResumeToken(lastEventId) : null;
     let cursor = decoded && decoded.transport === RUN_EVENT_TRANSPORT ? decoded.cursor : RESUME_FROM_BEGINNING;
-    while (isOpen()) {
-      let entries: [string, string[]][];
+
+    // G11 — the client's position was evicted by the producer's MAXLEN trim. Same conservative
+    // test as SSE (oldest retained id newer than the cursor), same honest answer: a resync
+    // snapshot, then everything still retained.
+    if (cursor !== RESUME_FROM_BEGINNING && (await this.hasTrimmedGap(hub, streamKey, cursor))) {
+      const resync = await readStatus().catch(() => null);
+      if (resync) {
+        this.sendSnapshot(client, tenantId, resync);
+        if (isTerminalRunStatus(resync.status)) return;
+      }
+      cursor = RESUME_FROM_BEGINNING;
+    }
+
+    const maxBuffered = this.maxBufferedBytes();
+    const checkEveryMs = terminalCheckIntervalMs(this.settings);
+    let lastStatusCheck = Date.now();
+
+    while (!closed.aborted) {
+      // R-9 — a client that is behind gets no new read until it catches up.
+      if (!(await this.awaitBufferBelow(client, maxBuffered, closed))) return;
+      let entries;
       try {
-        const result = await redis.xread('COUNT', 200, 'BLOCK', BLOCK_MS, 'STREAMS', streamKey, cursor);
-        if (!result) continue;
-        entries = result[0][1] as [string, string[]][];
+        entries = await hub.read(streamKey, cursor, { timeoutMs: Math.min(BLOCK_MS, checkEveryMs), signal: closed });
       } catch (err) {
         logWsFailure(this.logger, { message: 'workflow WS read failed — closing', level: 'warn', runId, closeCode: 1000 }, err);
         return;
       }
-      for (const [entryId, fields] of entries) {
-        cursor = entryId;
-        const envelope = this.parse(fields);
-        if (envelope === null || !isOpen()) continue;
-        this.send(client, { event: envelope.type, id: encodeResumeToken(RUN_EVENT_TRANSPORT, entryId), data: envelope });
-        if (envelope.type === WORKFLOW_RUN_COMPLETED) return;
+
+      if (entries.length === 0) {
+        if (closed.aborted || Date.now() - lastStatusCheck < checkEveryMs) continue;
+        lastStatusCheck = Date.now();
+        // R-2 — the terminal fallback, as on SSE.
+        const status = await readStatus().catch(() => null);
+        if (!status || !isTerminalRunStatus(status.status)) continue;
+        const tail = await hub.readNow(streamKey, cursor).catch(() => []);
+        entries = tail;
+        if (!(await this.deliver(hub, client, runId, entries, closed, maxBuffered, (id) => (cursor = id)))) {
+          this.logger.warn({ message: 'Run ended without a completion event reaching its stream — closing with a terminal snapshot', runId });
+          this.sendSnapshot(client, tenantId, status);
+          void hub.expireAfterTerminal(runId);
+        }
+        return;
+      }
+
+      if (await this.deliver(hub, client, runId, entries, closed, maxBuffered, (id) => (cursor = id))) return;
+    }
+  }
+
+  /** Send a batch; `true` once the completion event went out (the stream is done). */
+  private async deliver(
+    hub: RunEventStreamHub,
+    client: WebSocket,
+    runId: string,
+    entries: { id: string; fields: string[] }[],
+    closed: AbortSignal,
+    maxBuffered: number,
+    advance: (id: string) => void,
+  ): Promise<boolean> {
+    for (const entry of entries) {
+      advance(entry.id);
+      const envelope = parseRunStreamEntry(entry.fields);
+      if (envelope === null) continue;
+      if (!(await this.awaitBufferBelow(client, maxBuffered, closed))) return true;
+      this.send(client, { event: envelope.type, id: encodeResumeToken(RUN_EVENT_TRANSPORT, entry.id), data: envelope });
+      if (envelope.type === WORKFLOW_RUN_COMPLETED) {
+        void hub.expireAfterTerminal(runId);
+        return true;
       }
     }
+    return false;
+  }
+
+  /**
+   * R-9 — wait until the socket's unsent buffer is at or below `max`. `ws` exposes no `drain`
+   * event on the socket object, so this re-reads the local `bufferedAmount` property on a short
+   * timer — no I/O, and only while the client is actually behind. `false` when the client left.
+   */
+  private async awaitBufferBelow(client: WebSocket, max: number, closed: AbortSignal): Promise<boolean> {
+    while ((client.bufferedAmount ?? 0) > max) {
+      if (closed.aborted || client.readyState !== client.OPEN) return false;
+      await new Promise((resolve) => setTimeout(resolve, DRAIN_CHECK_MS));
+    }
+    return !closed.aborted;
+  }
+
+  private async hasTrimmedGap(hub: RunEventStreamHub, streamKey: string, cursor: string): Promise<boolean> {
+    try {
+      const oldest = await hub.oldestEntryId(streamKey);
+      return oldest !== null && compareStreamIds(oldest, cursor) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private maxBufferedBytes(): number {
+    try {
+      const value = this.settings?.resolvePlatform<number>(WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY).value;
+      return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : WORKFLOW_RUNS_DEFAULTS.wsMaxBufferedBytes;
+    } catch {
+      return WORKFLOW_RUNS_DEFAULTS.wsMaxBufferedBytes;
+    }
+  }
+
+  /** A snapshot frame — no `id`: a snapshot is not a stream position (the SSE rule). */
+  private sendSnapshot(client: WebSocket, tenantId: string, status: WorkflowRunStatusResponse): void {
+    this.send(client, {
+      event: isTerminalRunStatus(status.status) ? WORKFLOW_RUN_COMPLETED : 'workflow.run.progress',
+      data: buildWorkflowRunEventEnvelope(tenantId, status),
+    });
   }
 
   private send(client: WebSocket, frame: { event: string; id?: string; data: unknown }): void {
     if (client.readyState === client.OPEN) client.send(JSON.stringify(frame));
-  }
-
-  private parse(fields: string[]): ReturnType<typeof parseAsyncEnvelope> {
-    for (let i = 0; i < fields.length; i += 2) {
-      if (fields[i] !== 'data') continue;
-      try {
-        return parseAsyncEnvelope(JSON.parse(fields[i + 1]));
-      } catch {
-        return null;
-      }
-    }
-    return null;
   }
 
   /** Mirrors `SttWsGateway.isOriginAllowed`: enforcement off → allow; no registry → fail CLOSED;
@@ -195,17 +294,5 @@ export class WorkflowWsGateway implements OnGatewayConnection, OnModuleDestroy {
     } catch {
       return false;
     }
-  }
-
-  private reader(): Redis | null {
-    if (this.redis) return this.redis;
-    if (this.redisUnavailable) return null;
-    if (!this.configService?.isRedisConfigured()) {
-      this.redisUnavailable = true;
-      return null;
-    }
-    const config = this.configService.getRedisConfig();
-    this.redis = new Redis({ host: config.host, port: config.port, password: config.password, maxRetriesPerRequest: null, lazyConnect: false });
-    return this.redis;
   }
 }
