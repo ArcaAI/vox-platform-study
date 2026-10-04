@@ -592,9 +592,11 @@ async def capture_task1036_era(out_dir: Path) -> None:
         timeout=3600,
     )
     review["bindings"] = {"in": {"from": "nodes.n_note.outputs.text"}}
+    consultation_trigger = h.trigger()
+    consultation_trigger["config"] = {"kinds": ["consultation", "api"]}
     contract = h.body(
         [
-            {"stageIndex": 0, "nodes": [h.trigger()]},
+            {"stageIndex": 0, "nodes": [consultation_trigger]},
             {
                 "stageIndex": 1,
                 "nodes": [

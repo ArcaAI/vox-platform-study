@@ -186,3 +186,26 @@ class TestDelivery:
         assert end_wired_fields(None, [("n_final", "text"), ("n_gate", None)]) == {
             "n_final": {"text"}
         }
+
+
+class TestEffectiveSettings:
+    """TASK-1036 §3.5 / D-4 — the compiled `settings`, else the legacy trigger `kinds` / output
+    `protocols` (one release). Pinned to `workflow-settings.fixture.json`'s `effective` cases.
+    Nothing in the harness GATES on them; the walk reads `sources` only."""
+
+    @pytest.mark.parametrize(
+        "entry", _fixture("workflow-settings.fixture.json")["effective"], ids=lambda e: e["name"]
+    )
+    def test_matches_the_contract(self, entry: dict[str, Any]) -> None:
+        from harness.temporal.interpreter.data_contract import effective_settings
+
+        graph = entry["graph"]
+        nodes = [(n.get("type"), n.get("config") or {}) for n in graph.get("nodes") or []]
+        settings = graph.get("settings")
+        expected = entry["expected"]
+        got = effective_settings(nodes, settings)
+        assert got == {
+            "connections": expected["connections"],
+            "sources": expected["sources"],
+            "origin": expected["origin"],
+        }

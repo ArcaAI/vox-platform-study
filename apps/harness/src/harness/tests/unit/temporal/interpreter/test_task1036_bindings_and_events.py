@@ -72,6 +72,13 @@ def api(monkeypatch: pytest.MonkeyPatch) -> Any:
     return install
 
 
+def _consultation_trigger() -> dict[str, Any]:
+    """A trigger whose (legacy) kinds SOURCE the run from a consultation (settings `sources`)."""
+    node = h.trigger()
+    node["config"] = {"kinds": ["consultation", "api"]}
+    return node
+
+
 def _with(node: dict[str, Any], **extra: Any) -> dict[str, Any]:
     return {**node, **extra}
 
@@ -139,7 +146,7 @@ class TestConsultationDeclaredReads:
     async def test_a_node_start_read_feeds_the_binding_and_is_traced(self, stream, api) -> None:
         fake = api({"consultation.patient.age": 41})
         graph = _graph(
-            [h.trigger()],
+            [_consultation_trigger()],
             [
                 _with(
                     h.agent("n_b", _stub="echo"),
@@ -166,7 +173,7 @@ class TestConsultationDeclaredReads:
     async def test_a_run_start_read_is_taken_once_before_the_walk(self, stream, api) -> None:
         fake = api({"consultation.visitType": "revisit"})
         graph = _graph(
-            [h.trigger()],
+            [_consultation_trigger()],
             [
                 _with(
                     h.agent("n_b", _stub="echo"),
@@ -189,7 +196,7 @@ class TestConsultationDeclaredReads:
 
         api(ApiClientError("apps/api read failed: 400", status_code=400))
         graph = _graph(
-            [h.trigger()],
+            [_consultation_trigger()],
             [
                 _with(
                     h.agent("n_b", _stub="echo"),
@@ -351,3 +358,24 @@ class TestLoopBodies:
         assert h.SEEN["n_body"].bound_inputs["message"] == "second"
         assert h.SEEN["n_body"].event_scope == "iter:1"
         assert h.SEEN["n_body"].protocol == 2
+
+
+class TestReadsNeedAConsultationSource:
+    @pytest.mark.asyncio
+    async def test_a_workflow_not_sourced_from_a_consultation_reads_nothing(
+        self, stream, api
+    ) -> None:
+        fake = api({"consultation.patient.age": 41})
+        graph = _graph(
+            [h.trigger()],  # kinds: ["api"] — no `consultation` source
+            [
+                _with(
+                    h.agent("n_b", _stub="echo"),
+                    bindings={"age": {"from": "consultation.patient.age"}},
+                    consultationReads=[{"path": "consultation.patient.age", "at": "nodeStart"}],
+                )
+            ],
+        )
+        await h.run_graph(graph, subject=RunSubject(consultationId=_CONSULTATION))
+        assert fake.calls == []
+        assert "age" not in h.SEEN["n_b"].bound_inputs

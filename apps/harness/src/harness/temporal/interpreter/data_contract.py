@@ -493,3 +493,85 @@ def end_wired_fields(
         if key is not None:
             wired.setdefault(node_id, set()).add(key)
     return wired
+
+
+# ---------------------------------------------------------------------------------------------
+# Workflow settings (TASK-1036 §3.5, D-4): compiled `settings`, else the legacy trigger/output
+# ---------------------------------------------------------------------------------------------
+
+WORKFLOW_CONNECTIONS = ("api", "webhook", "sse", "socket")
+WORKFLOW_SOURCES = ("consultation", "schedule")
+_LEGACY_PROTOCOL_CONNECTION = {"http": "api", "http-sse": "sse", "socket": "socket"}
+
+
+def _valid_enum_list(value: Any, allowed: tuple[str, ...]) -> bool:
+    return (
+        isinstance(value, list)
+        and all(isinstance(v, str) and v in allowed for v in value)
+        and len(set(value)) == len(value)
+    )
+
+
+def _valid_context_schema(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    if ("contextSchemaId" in value) == ("inline" in value):
+        return False
+    if "inline" in value:
+        return set(value) == {"inline"} and isinstance(value["inline"], Mapping)
+    version = value.get("versionNumber")
+    version_ok = version is None or (
+        isinstance(version, int) and not isinstance(version, bool) and version >= 1
+    )
+    return (
+        set(value) <= {"contextSchemaId", "versionNumber"}
+        and isinstance(value.get("contextSchemaId"), str)
+        and len(value["contextSchemaId"]) > 0
+        and version_ok
+    )
+
+
+def _valid_settings(raw: Any) -> bool:
+    return (
+        isinstance(raw, Mapping)
+        and set(raw) <= {"connections", "sources", "contextSchema"}
+        and _valid_enum_list(raw.get("connections"), WORKFLOW_CONNECTIONS)
+        and _valid_enum_list(raw.get("sources"), WORKFLOW_SOURCES)
+        and ("contextSchema" not in raw or _valid_context_schema(raw["contextSchema"]))
+    )
+
+
+def effective_settings(
+    nodes: Iterable[tuple[Any, Mapping[str, Any]]], settings: Any = None
+) -> dict[str, Any]:
+    """``{connections, sources, origin}`` — the compiled/authored ``settings`` when present and
+    valid, else derived from the legacy trigger ``kinds`` and output ``protocols`` (one release,
+    D-4). Mirrors ``effectiveSettings`` (without the context schema, which the harness never
+    reads here). Nothing in the harness GATES on a connection — exposure is the gateway's."""
+    if settings is not None and _valid_settings(settings):
+        return {
+            "connections": [c for c in WORKFLOW_CONNECTIONS if c in settings["connections"]],
+            "sources": [s for s in WORKFLOW_SOURCES if s in settings["sources"]],
+            "origin": "settings",
+        }
+    node_list = list(nodes)
+    trigger = next((c for t, c in node_list if t == "core.trigger"), None)
+    output = next((c for t, c in node_list if t == "core.output"), None)
+    raw_kinds = (trigger or {}).get("kinds")
+    kinds = [k for k in raw_kinds if isinstance(k, str)] if isinstance(raw_kinds, list) else []
+    if output is None:
+        protocols: list[Any] = []
+    elif isinstance(output.get("protocols"), list):
+        protocols = output["protocols"]
+    else:
+        protocols = ["http-sse"]
+    connected = set(kinds) | {
+        _LEGACY_PROTOCOL_CONNECTION[p]
+        for p in protocols
+        if isinstance(p, str) and p in _LEGACY_PROTOCOL_CONNECTION
+    }
+    return {
+        "connections": [c for c in WORKFLOW_CONNECTIONS if c in connected],
+        "sources": [s for s in WORKFLOW_SOURCES if s in kinds],
+        "origin": "legacy",
+    }

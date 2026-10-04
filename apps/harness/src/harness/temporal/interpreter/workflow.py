@@ -47,6 +47,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.data_contract import (
         ROUTER_NODE_TYPES,
         BindingScope,
+        effective_settings,
         end_wired_fields,
         resolve_bindings,
     )
@@ -633,6 +634,7 @@ class WorkflowInterpreter:
         #: Run-start declared reads, by node id, and the node a failed one fails.
         self._run_start_reads: dict[str, dict[str, Any]] = {}
         self._run_start_read_failures: dict[str, str] = {}
+        self._sources: list[str] = []
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -679,6 +681,12 @@ class WorkflowInterpreter:
 
         self._config_slug = config.slug
         self._config_version = config.version_number
+        # TASK-1036 §3.5 — the run's SOURCES: the compiled settings, else the legacy trigger
+        # `kinds` (one release). Read, never gated on: exposure is the gateway's concern.
+        self._sources = effective_settings(
+            [(node.type, node.config) for stage in config.stages for node in stage.nodes],
+            config.settings.model_dump() if config.settings is not None else None,
+        )["sources"]
         # TASK-1038 R6 — run protocol v2, decided once for the whole run (see the marker).
         self._v2 = workflow.patched(_PROTOCOL_V2_PATCH)
         if self._v2:
@@ -1603,8 +1611,10 @@ class WorkflowInterpreter:
         self, inp: InterpreterInput, node_id: str, paths: list[str], snapshot: str
     ) -> ConsultationReadResult:
         consultation_id = _consultation_id_of(inp)
-        if consultation_id is None or not paths:
-            # Nothing to read against: the bindings resolve to nothing and are reported.
+        if consultation_id is None or not paths or "consultation" not in self._sources:
+            # Nothing to read against (no consultation, or a workflow its settings do not source
+            # from one — publish refuses that graph, this is the defensive half): the bindings
+            # resolve to nothing and are reported.
             return ConsultationReadResult(ok=True)
         try:
             result: ConsultationReadResult = await workflow.execute_activity(
