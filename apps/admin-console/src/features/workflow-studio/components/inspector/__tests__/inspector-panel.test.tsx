@@ -292,7 +292,8 @@ describe('InspectorPanel — tabs (TASK-893 B4)', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByRole('tab', { name: 'Config' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /^Problems/ })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Run' })).toBeTruthy();
+    // TASK-1036 — the Run tab moved to the Studio's Test tab; Last run replaces it (OD-17).
+    expect(screen.getByRole('tab', { name: 'Last run' })).toBeTruthy();
   });
 
   it('clicking a tab reports the change — the panel does not manage its own tab state', () => {
@@ -320,9 +321,9 @@ describe('InspectorPanel — tabs (TASK-893 B4)', () => {
     expect(screen.queryByText('Problems here')).toBeNull();
   });
 
-  it('renders runSlot only while the Run tab is active', () => {
-    renderWithProviders(<InspectorPanel tab="run" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} runSlot={<p>Run panel here</p>} />);
-    expect(screen.getByText('Run panel here')).toBeTruthy();
+  it('renders the Last run panel only while the Last run tab is active', () => {
+    renderWithProviders(<InspectorPanel tab="lastRun" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    expect(screen.getByText(/no test run yet/i)).toBeTruthy();
   });
 
   it('shows a count badge on the Problems tab when there are problems', () => {

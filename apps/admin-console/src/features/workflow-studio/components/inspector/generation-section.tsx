@@ -6,9 +6,11 @@
  * no temperature). Written as this node's overrides (`overrides.generation.*`); every other knob
  * is platform-managed and never rendered here.
  */
+import { useQuery } from '@tanstack/react-query';
 import { Field, FieldDescription, FieldLabel, Input } from '@arcaai/ui';
 import type { ModelCapabilities } from '@arcaai/workflow-contract';
-import { generationFields } from '../../lib/generation-model';
+import { getJson } from '@/shared/api';
+import { generationFields, modelCapabilitiesOf } from '../../lib/generation-model';
 import { getAtPath, setAtPath } from './field-path';
 
 export interface GenerationSectionProps {
@@ -83,4 +85,24 @@ export function GenerationSection({ idPrefix, task, capabilities, modelName, con
       </p>
     </section>
   );
+}
+
+/**
+ * The capabilities of the model an agent runs on, read from the tenant model catalogue (the same
+ * query and cache key `useModelCatalogue()` uses). Disabled = no request. `null` until known —
+ * which hides every capability-gated knob (fail closed).
+ */
+export function useAgentModelCapabilities(
+  agent: { modelSlug?: string | null; modelId?: string | null } | undefined,
+  enabled: boolean,
+): { capabilities: ModelCapabilities | null; modelName: string | null } {
+  const query = useQuery({
+    queryKey: ['catalog', 'model-catalogue', {}],
+    queryFn: () => getJson<{ models: Array<{ id: string; slug: string; name: string }> }>('admin/ai-models/catalogue'),
+    enabled: enabled && agent !== undefined,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const row = (query.data?.models ?? []).find((model) => (agent?.modelSlug && model.slug === agent.modelSlug) || (agent?.modelId && model.id === agent.modelId));
+  return { capabilities: modelCapabilitiesOf(row ?? null), modelName: row?.name ?? agent?.modelSlug ?? null };
 }
