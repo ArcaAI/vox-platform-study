@@ -28,12 +28,16 @@
  *    byte-identical (and so its checksum still verifies).
  */
 import { createHash } from 'node:crypto';
+import { compiledBindings, type CompiledBinding } from './bindings';
 import { canonicalJson } from './canonical-json';
+import { nodeConsultationReads, type ConsultationRead } from './consultation-read-schema';
 import { topologicalLevels } from './graph-algorithms';
 import { stripRetiredGraphGuardrailOptOuts } from './retired-guardrail-optout';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from './graph-model';
+import type { AgentIOResolver } from './node-io';
 import { internalErrorFinding } from './report';
 import type { WorkflowFinding } from './report';
+import { effectiveSettings, graphSettingsOf, workflowSettingsProblems, type WorkflowConnection, type WorkflowSource } from './workflow-settings';
 
 export type CompiledGuardrailProfile = 'STANDARD' | 'STRICT' | 'RELAXED';
 
@@ -67,6 +71,23 @@ export interface CompiledNode {
   emitsTrajectory: true;
   /** TASK-864 — present only when the node sits behind at least one branch handle. */
   branchGuards?: CompiledBranchGuard[];
+  /**
+   * TASK-1036 §9.2 — this node's inputs by NodeIO name: its authored `inputs`, over the
+   * bindings its legacy data edges imply (`bindings.ts`). Emitted only under
+   * `CompilerContext.emitDataContract`, and omitted when the node binds nothing.
+   */
+  bindings?: Record<string, CompiledBinding>;
+  /**
+   * TASK-1036 §9.3 — the `consultation.*` paths this node reads, and when (declared reads: the
+   * harness fetches exactly these). Emitted only under `emitDataContract`; omitted when empty.
+   */
+  consultationReads?: ConsultationRead[];
+}
+
+/** TASK-1036 §3.5 — the settings a published workflow runs under (`effectiveSettings`). */
+export interface CompiledWorkflowSettings {
+  connections: WorkflowConnection[];
+  sources: WorkflowSource[];
 }
 
 export interface CompiledStage {
@@ -252,6 +273,8 @@ export interface CompiledWorkflowConfig {
   caps: CompiledCaps;
   /** TASK-864 — present only when the graph contains at least one `core.loop`. Sorted by `nodeId`. */
   loops?: CompiledLoop[];
+  /** TASK-1036 §3.5 — present only under `CompilerContext.emitDataContract`. */
+  settings?: CompiledWorkflowSettings;
   checksum: string;
 }
 
@@ -287,6 +310,19 @@ export interface CompilerContext {
   /** Fixed timestamp for deterministic tests; defaults to `new Date().toISOString()`. */
   compiledAt?: string;
   nodeInfo(type: string): CompilerNodeInfo | undefined;
+  /**
+   * TASK-1036 — emit the data contract: per-node `bindings` and `consultationReads`, and the
+   * top-level `settings`. OFF by default, so every artifact stays byte-identical (and every
+   * stored checksum verifies) until the interpreter's `compiled_config` model — which forbids
+   * unknown keys — mirrors the shape (lane B1). The caller turns it on with that release.
+   */
+  emitDataContract?: boolean;
+  /**
+   * TASK-1036 §9.1 — what the caller resolved about each referenced agent (task, output schema),
+   * by slug. The legacy translation needs the task to name an agent's `in` port (`message` for
+   * text generation, `text` for speech and entity recognition).
+   */
+  agents?: AgentIOResolver;
 }
 
 export type CompileResult = { config: CompiledWorkflowConfig } | { findings: WorkflowFinding[] };
@@ -336,14 +372,23 @@ function isBranchEdge(edge: WorkflowGraphEdge, nodesById: Map<string, WorkflowGr
   return !NON_BRANCH_OUTPUTS.has(edge.fromPort);
 }
 
+/** TASK-1036 — what the data contract adds to each node, precomputed once per graph. */
+interface DataContractExtras {
+  readonly bindings: Readonly<Record<string, Record<string, CompiledBinding>>>;
+  readonly settingsContextSchema: Record<string, unknown> | null;
+}
+
 function compileNode(
   node: WorkflowGraphNode,
   incoming: readonly WorkflowGraphEdge[],
   nodesById: Map<string, WorkflowGraphNode>,
   ctx: CompilerContext,
   activity: string,
+  extras: DataContractExtras,
 ): CompiledNode {
-  const config = compiledConfigFor(node, ctx);
+  const config = compiledConfigFor(node, ctx, extras.settingsContextSchema);
+  const bindings = ctx.emitDataContract === true ? extras.bindings[node.id] : undefined;
+  const consultationReads = ctx.emitDataContract === true ? nodeConsultationReads(node.config) : [];
   const requestedTimeout =
     typeof config.timeoutSeconds === 'number' ? config.timeoutSeconds : (ctx.nodeInfo(node.type)?.defaultTimeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS);
   const requestedRetry = typeof config.retry === 'object' && config.retry !== null ? (config.retry as Partial<CompiledRetryPolicy>) : {};
@@ -378,6 +423,8 @@ function compileNode(
     emitsTrajectory: true,
     // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
     ...(branchGuards.length > 0 ? { branchGuards } : {}),
+    ...(bindings !== undefined ? { bindings } : {}),
+    ...(consultationReads.length > 0 ? { consultationReads } : {}),
   };
 }
 
@@ -411,9 +458,18 @@ function compileNode(
  * property of the version the workflow was PUBLISHED against. Omitted when the resolution
  * declares none, so nothing that compiled before this ticket moves.
  */
-function compiledConfigFor(node: WorkflowGraphNode, ctx: CompilerContext): Record<string, unknown> {
-  const config = node.config ?? {};
-  if (node.type !== TRIGGER_NODE_TYPE) return config;
+function compiledConfigFor(
+  node: WorkflowGraphNode,
+  ctx: CompilerContext,
+  settingsContextSchema: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const authoredConfig = node.config ?? {};
+  if (node.type !== TRIGGER_NODE_TYPE) return authoredConfig;
+
+  // TASK-1036 §3.5 — a context schema DECLARED in `graph.settings` is the trigger's: settings are
+  // read first (D-4). Frozen onto the compiled trigger so the interpreter validates the run against
+  // it exactly as it does a trigger-authored one. A graph without settings is untouched.
+  const config = settingsContextSchema === null ? authoredConfig : { ...authoredConfig, contextSchema: settingsContextSchema };
 
   const resolved = ctx.triggerContextSchema;
   if (resolved === undefined || resolved === null) return config;
@@ -467,6 +523,7 @@ function compileScope(
   bodiesByLoop: Map<string, WorkflowGraphNode[]>,
   allEdges: readonly WorkflowGraphEdge[],
   ctx: CompilerContext,
+  extras: DataContractExtras,
 ): ScopeResult {
   const scopeIds = new Set(scope.nodes.map((node) => node.id));
   // Topological ordering considers only edges BETWEEN scope members; an `each` edge from the
@@ -499,7 +556,7 @@ function compileScope(
       const node = allNodesById.get(id) as WorkflowGraphNode;
       const info = ctx.nodeInfo(node.type) as CompilerNodeInfo;
       const incoming = scope.edges.filter((edge) => edge.to === node.id);
-      nodes.push(compileNode(node, incoming, allNodesById, ctx, info.activity));
+      nodes.push(compileNode(node, incoming, allNodesById, ctx, info.activity, extras));
 
       if (hasClass(ctx, node.type, LOOP_CLASS)) {
         const body = bodiesByLoop.get(node.id) ?? [];
@@ -508,7 +565,7 @@ function compileScope(
           (edge) =>
             (bodyIds.has(edge.from) && bodyIds.has(edge.to)) || (edge.from === node.id && edge.fromPort === LOOP_EACH_PORT && bodyIds.has(edge.to)),
         );
-        const compiledBody = compileScope({ nodes: body, edges: bodyEdges }, allNodesById, bodiesByLoop, allEdges, ctx);
+        const compiledBody = compileScope({ nodes: body, edges: bodyEdges }, allNodesById, bodiesByLoop, allEdges, ctx, extras);
         if ('findings' in compiledBody) return compiledBody;
         loops.push({ nodeId: node.id, body: { stages: compiledBody.stages } }, ...compiledBody.loops);
       }
@@ -570,7 +627,11 @@ export function compile(authored: WorkflowGraph, ctx: CompilerContext): CompileR
     const topLevelIds = new Set(topLevel.map((node) => node.id));
     const topLevelEdges = edges.filter((edge) => topLevelIds.has(edge.from) && topLevelIds.has(edge.to));
 
-    const compiled = compileScope({ nodes: topLevel, edges: topLevelEdges }, nodesById, bodiesByLoop, edges, ctx);
+    const extras: DataContractExtras = {
+      bindings: ctx.emitDataContract === true ? compiledBindings({ ...graph, nodes, edges }, ctx.agents) : {},
+      settingsContextSchema: settingsContextSchemaForTrigger(graph),
+    };
+    const compiled = compileScope({ nodes: topLevel, edges: topLevelEdges }, nodesById, bodiesByLoop, edges, ctx, extras);
     if ('findings' in compiled) return compiled;
 
     const loops = compiled.loops.slice().sort((a, b) => a.nodeId.localeCompare(b.nodeId));
@@ -613,6 +674,7 @@ export function compile(authored: WorkflowGraph, ctx: CompilerContext): CompileR
       caps: ctx.caps,
       // Omitted when empty — see the module docstring (byte-identical legacy artifacts).
       ...(loops.length > 0 ? { loops } : {}),
+      ...(ctx.emitDataContract === true ? { settings: compiledSettings(graph) } : {}),
     };
 
     const checksum = sha256Hex(canonicalJson(withoutChecksum));
@@ -621,6 +683,28 @@ export function compile(authored: WorkflowGraph, ctx: CompilerContext): CompileR
   } catch (error) {
     return { findings: [internalErrorFinding('WF-COMPILE', 'structural', error)] };
   }
+}
+
+/** TASK-1036 §3.5 — the effective connections and sources (settings first, legacy keys for one release). */
+function compiledSettings(graph: WorkflowGraph): CompiledWorkflowSettings {
+  const settings = effectiveSettings(graph);
+  return { connections: settings.connections, sources: settings.sources };
+}
+
+/**
+ * TASK-1036 §3.5 — the context schema DECLARED in valid `graph.settings`, in the trigger's own
+ * config shape (`{ contextSchemaId[, versionNumber] }` or `{ inline }`), or `null` when settings
+ * declare none. A `versionNumber: null` (follow latest) is the trigger's ABSENT `versionNumber`.
+ */
+function settingsContextSchemaForTrigger(graph: WorkflowGraph): Record<string, unknown> | null {
+  const declared = graphSettingsOf(graph);
+  if (declared === undefined || workflowSettingsProblems(declared).length > 0) return null;
+  const contextSchema = (declared as { contextSchema?: Record<string, unknown> }).contextSchema;
+  if (contextSchema === undefined) return null;
+  if ('inline' in contextSchema) return { inline: contextSchema.inline };
+  return typeof contextSchema.versionNumber === 'number'
+    ? { contextSchemaId: contextSchema.contextSchemaId, versionNumber: contextSchema.versionNumber }
+    : { contextSchemaId: contextSchema.contextSchemaId };
 }
 
 // A minimal dependency-free sha256 would be a lot of code to hand-roll and re-verify; Node's

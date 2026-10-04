@@ -445,25 +445,24 @@ describe('core.* summary copy (TASK-893 B2)', () => {
 });
 
 /**
- * TASK-893 integration — a secondary input binding is an EDGE, never config.
+ * TASK-893 integration, REVISED by TASK-1036 OD-29 — data moves by BINDINGS.
  *
- * Lane B originally declared a permissive `inputs` property on ten core.* schemas so that
- * `config.inputs.<portName> = { fromNodeId }` would survive `additionalProperties: false`. That
- * config surface is now removed, because the harness interpreter never reads it:
- * `_resolve_bound_inputs` (`apps/harness/.../interpreter/workflow.py`) iterates `node.inputs` —
- * "the compiler-derived edge bindings" — and threads data purely from EDGES. A config-shaped
- * binding would have validated, rendered as bound, and delivered nothing to the run.
- *
- * The inspector's picker therefore writes a real typed edge (`fromPort` -> `toPort: <portName>`);
- * only the CANVAS treatment changed, in that the editor does not draw those edges. This test
- * pins the removal so the dead surface cannot quietly come back — re-adding it would also punch
- * a permissive `object` hole through a deliberate `additionalProperties: false`.
+ * TASK-893 removed a permissive `config.inputs.<portName> = { fromNodeId }` surface because the
+ * harness never read it: a config-shaped binding validated, rendered as bound, and delivered
+ * nothing. OD-29 (owner-approved, 2026-10-04) brings `inputs` back as a TYPED contract instead:
+ * one closed binding per declared NodeIO input (`{ from } | { value } | { template }`,
+ * `BINDING_JSON_SCHEMA`), checked at publish (`bindings.ts`) and compiled into per-node
+ * `bindings` the interpreter resolves (lane B1). The old `{ fromNodeId }` shape stays refused,
+ * so the dead surface TASK-893 removed cannot come back under its old name.
  */
-describe('secondary inputs are edges, not config (TASK-893 integration)', () => {
-  it.each(CORE_NODE_TYPES)('%s declares no `inputs` config property', (type) => {
-    const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, unknown> | undefined;
-    expect(properties?.inputs).toBeUndefined();
-  });
+describe('inputs are typed bindings, never the old config-shaped edge (TASK-893 -> TASK-1036 OD-29)', () => {
+  it.each(CORE_NODE_TYPES.filter((type) => type !== 'core.trigger' && type !== 'core.note'))(
+    '%s declares `inputs` as a map of typed bindings',
+    (type) => {
+      const properties = NODE_CONFIG_SCHEMAS[type].properties as Record<string, { additionalProperties?: unknown }> | undefined;
+      expect(properties?.inputs?.additionalProperties).toBeDefined();
+    },
+  );
 
   it('and a config-shaped binding is refused, which is what keeps the lie impossible', () => {
     const config = { agentRef: { slug: 'demo-agent' }, inputs: { context: { fromNodeId: 'trigger-1' } } };

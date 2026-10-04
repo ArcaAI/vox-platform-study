@@ -1,0 +1,3483 @@
+{
+  "_comment": "TASK-1036 §9.2 — the CROSS-LANGUAGE fixture for bindings (@arcaai/workflow-contract `bindings.ts`; Python mirror: lane B1). Each case: a graph, the agent resolutions, optional context payload schema / sources, the compiled bindings (the legacy edge translation included) and the binding issues (code, severity, node, input, pointer; messages are prose and not compared). Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts.",
+  "cases": [
+    {
+      "name": "legacy-seeded-consultation-shape",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy-router-branches-carry-no-data",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_visit",
+            "type": "core.condition",
+            "config": {
+              "branches": [
+                {
+                  "key": "new_visit",
+                  "when": "true"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_a",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_b",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_fin",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-out-n_visit-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_visit",
+            "toPort": "in"
+          },
+          {
+            "id": "n_visit-new_visit-n_a-after",
+            "from": "n_visit",
+            "fromPort": "new_visit",
+            "to": "n_a",
+            "toPort": "after"
+          },
+          {
+            "id": "n_visit-else-n_b-after",
+            "from": "n_visit",
+            "fromPort": "else",
+            "to": "n_b",
+            "toPort": "after"
+          },
+          {
+            "id": "n_a-out-n_fin-in",
+            "from": "n_a",
+            "fromPort": "out",
+            "to": "n_fin",
+            "toPort": "in"
+          },
+          {
+            "id": "n_b-out-n_fin-in",
+            "from": "n_b",
+            "fromPort": "out",
+            "to": "n_fin",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_visit": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_fin": {
+            "message": {
+              "firstOf": ["nodes.n_b.outputs.text", "nodes.n_a.outputs.text"]
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_fin",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "message",
+            "path": "/inputs/message"
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy-agent-in-port-by-task",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_tts",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "tts"
+              }
+            }
+          },
+          {
+            "id": "n_unknown",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "not-resolved"
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_gen-out-n_tts-in",
+            "from": "n_gen",
+            "fromPort": "out",
+            "to": "n_tts",
+            "toPort": "in"
+          },
+          {
+            "id": "n_gen-out-n_unknown-in",
+            "from": "n_gen",
+            "fromPort": "out",
+            "to": "n_unknown",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_tts": {
+            "text": {
+              "from": "nodes.n_gen.outputs.text"
+            }
+          },
+          "n_unknown": {
+            "message": {
+              "from": "nodes.n_gen.outputs.text"
+            }
+          }
+        },
+        "issues": []
+      }
+    },
+    {
+      "name": "authored-correct",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-supersedes-edge",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              },
+              "inputs": {
+                "text": {
+                  "from": "nodes.n_asr.outputs.transcript"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "from": "nodes.n_asr.outputs.transcript"
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": []
+      }
+    },
+    {
+      "name": "authored-fan-in-error",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              },
+              "inputs": {}
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "ERROR",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-not-ancestor",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_summary",
+            "code": "BINDING_NOT_ANCESTOR",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message/from"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-type-converted",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "value": 42
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "value": 42
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_finalize",
+            "code": "BINDING_TYPE_CONVERTED",
+            "severity": "INFO",
+            "input": "message",
+            "path": "/inputs/message/value"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-type-mismatch",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_tts",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "tts"
+              }
+            }
+          },
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_tts.outputs.audio"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_tts-next-n_gen-after",
+            "from": "n_tts",
+            "fromPort": "next",
+            "to": "n_gen",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_gen": {
+            "message": {
+              "from": "nodes.n_tts.outputs.audio"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_gen",
+            "code": "BINDING_TYPE_MISMATCH",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message/from"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-required-unbound",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_gen-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_gen",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_gen": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_gen",
+            "code": "REQUIRED_INPUT_UNBOUND",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-unknown-input",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                },
+                "prompt": {
+                  "value": "x"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            },
+            "prompt": {
+              "value": "x"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_finalize",
+            "code": "BINDING_UNKNOWN_INPUT",
+            "severity": "ERROR",
+            "input": "prompt",
+            "path": "/inputs/prompt"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-unknown-root",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "from": "trigger.context.x"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "trigger.context.x"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_finalize",
+            "code": "BINDING_UNKNOWN_PATH",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message/from"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-unknown-output-field",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.entities"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.entities"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_finalize",
+            "code": "BINDING_UNKNOWN_PATH",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message/from"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-structured-subfield",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"],
+              "inputs": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data.case_note"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "nodes.n_summary.outputs.text"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data.case_note"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-template",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "template": "Summary: {{nodes.n_summary.outputs.text}} at {{run.startedAt}}"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "template": "Summary: {{nodes.n_summary.outputs.text}} at {{run.startedAt}}"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-context-path-checked",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api"]
+            }
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_transcript",
+            "type": "core.data",
+            "config": {
+              "mappings": [
+                {
+                  "from": "in.transcript.text",
+                  "to": "text"
+                }
+              ]
+            }
+          },
+          {
+            "id": "n_ner",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "ner"
+              }
+            }
+          },
+          {
+            "id": "n_summary",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_finalize",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "finalize"
+              },
+              "inputs": {
+                "message": {
+                  "from": "context.patient.weight"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_review",
+            "type": "core.humanReview",
+            "config": {
+              "reviewType": "x"
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_asr-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_asr",
+            "toPort": "after"
+          },
+          {
+            "id": "n_asr-transcript-n_ner-in",
+            "from": "n_asr",
+            "fromPort": "transcript",
+            "to": "n_ner",
+            "toPort": "in"
+          },
+          {
+            "id": "n_trigger-out-n_summary-context",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "context"
+          },
+          {
+            "id": "n_ner-out-n_summary-in",
+            "from": "n_ner",
+            "fromPort": "out",
+            "to": "n_summary",
+            "toPort": "in"
+          },
+          {
+            "id": "n_summary-out-n_finalize-in",
+            "from": "n_summary",
+            "fromPort": "out",
+            "to": "n_finalize",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-out-n_review-in",
+            "from": "n_finalize",
+            "fromPort": "out",
+            "to": "n_review",
+            "toPort": "in"
+          },
+          {
+            "id": "n_finalize-data-n_output-in",
+            "from": "n_finalize",
+            "fromPort": "data",
+            "to": "n_output",
+            "toPort": "in"
+          },
+          {
+            "id": "n_review-next-n_output-after",
+            "from": "n_review",
+            "fromPort": "next",
+            "to": "n_output",
+            "toPort": "after"
+          },
+          {
+            "id": "n_trigger-out-n_transcript-in",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_transcript",
+            "toPort": "in"
+          },
+          {
+            "id": "n_transcript-text-n_ner-in",
+            "from": "n_transcript",
+            "fromPort": "text",
+            "to": "n_ner",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "contextPayloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "patient": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "age": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_transcript": {
+            "in": {
+              "from": "nodes.n_trigger.outputs.context"
+            }
+          },
+          "n_ner": {
+            "text": {
+              "firstOf": ["nodes.n_transcript.outputs.text", "nodes.n_asr.outputs.transcript"]
+            }
+          },
+          "n_summary": {
+            "context": {
+              "from": "nodes.n_trigger.outputs.context"
+            },
+            "message": {
+              "from": "nodes.n_ner.outputs.text"
+            }
+          },
+          "n_finalize": {
+            "message": {
+              "from": "context.patient.weight"
+            }
+          },
+          "n_review": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.text"
+            }
+          },
+          "n_output": {
+            "in": {
+              "from": "nodes.n_finalize.outputs.data"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_ner",
+            "code": "INPUT_MULTIPLE_PRODUCERS",
+            "severity": "WARNING",
+            "input": "text",
+            "path": "/inputs/text"
+          },
+          {
+            "nodeId": "n_finalize",
+            "code": "BINDING_UNKNOWN_PATH",
+            "severity": "ERROR",
+            "input": "message",
+            "path": "/inputs/message/from"
+          }
+        ]
+      }
+    },
+    {
+      "name": "consultation-scope-unavailable",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "consultation.transcript.text",
+                  "at": "runStart"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_gen-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_gen",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_gen": {
+            "message": {
+              "from": "consultation.transcript.text",
+              "at": "runStart"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_gen",
+            "code": "CONSULTATION_SCOPE_UNAVAILABLE",
+            "severity": "ERROR",
+            "input": null,
+            "path": "/inputs"
+          }
+        ]
+      }
+    },
+    {
+      "name": "consultation-scope-available-via-sources",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_gen",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "consultation.transcript.text"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_trigger-next-n_gen-after",
+            "from": "n_trigger",
+            "fromPort": "next",
+            "to": "n_gen",
+            "toPort": "after"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "sources": ["consultation"],
+      "expected": {
+        "compiledBindings": {
+          "n_gen": {
+            "message": {
+              "from": "consultation.transcript.text"
+            }
+          }
+        },
+        "issues": []
+      }
+    },
+    {
+      "name": "prompt-variable-nodes-not-a-wildcard",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_a",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          },
+          {
+            "id": "n_b",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "overrides": {
+                "promptVariables": {
+                  "later": "{{nodes.n_c.outputs.text}}",
+                  "legacy": "{{nodes.n_a.text}}"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_c",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "n_a-out-n_b-in",
+            "from": "n_a",
+            "fromPort": "out",
+            "to": "n_b",
+            "toPort": "in"
+          },
+          {
+            "id": "n_b-out-n_c-in",
+            "from": "n_b",
+            "fromPort": "out",
+            "to": "n_c",
+            "toPort": "in"
+          }
+        ]
+      },
+      "agents": {
+        "asr": {
+          "task": "SPEECH_TO_TEXT"
+        },
+        "ner": {
+          "task": "NAMED_ENTITY_RECOGNITION"
+        },
+        "gen": {
+          "task": "TEXT_GENERATION"
+        },
+        "finalize": {
+          "task": "TEXT_GENERATION",
+          "outputSchema": {
+            "type": "object",
+            "required": ["case_note"],
+            "properties": {
+              "case_note": {
+                "type": "string"
+              },
+              "redactions": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "tts": {
+          "task": "TEXT_TO_SPEECH"
+        }
+      },
+      "expected": {
+        "compiledBindings": {
+          "n_b": {
+            "message": {
+              "from": "nodes.n_a.outputs.text"
+            }
+          },
+          "n_c": {
+            "message": {
+              "from": "nodes.n_b.outputs.text"
+            }
+          }
+        },
+        "issues": [
+          {
+            "nodeId": "n_b",
+            "code": "BINDING_NOT_ANCESTOR",
+            "severity": "ERROR",
+            "input": null,
+            "path": "/overrides/promptVariables/later"
+          }
+        ]
+      }
+    }
+  ]
+}
