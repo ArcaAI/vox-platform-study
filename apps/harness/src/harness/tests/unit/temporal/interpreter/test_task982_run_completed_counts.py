@@ -4,12 +4,14 @@ Three layers, narrowest first:
 
 1. `_settled_node_counts` (workflow.py) — a PURE function over already-settled `StageResult`s,
    unit-tested directly with no Temporal machinery at all.
-2. `_envelope_for` (activities.py) — the activity-side camelCase mapping, unit-tested directly
-   against a `RunEventBatch`/`RunEventSpec`, again with no Temporal machinery.
+2. TASK-1038 R6 — the harness now writes run protocol v2 ONLY, and v2's terminal events are
+   CLOSED shapes with no count fields. The counts are therefore DERIVED by whoever needs them
+   (lane B3a's legacy-frame derivation, the governing-run summary) by folding the run's
+   `node.completed` / `node.failed` events — which carry exactly one settled status per node.
+   The activity-side `RunEventSpec` still carries them (the workflow's own fact), and the
+   end-to-end tests below prove the fold gives the same four numbers.
 3. An end-to-end run through the real `WorkflowInterpreter` in Temporal's time-skipping test
-   environment (the same harness `test_task849_control_mirror.py` uses), asserting the terminal
-   `workflow.run.completed` event's payload carries the four counts for a mixed
-   SUCCEEDED/DEGRADED/SKIPPED/FAILED graph.
+   environment, for a mixed SUCCEEDED/DEGRADED/SKIPPED/FAILED graph.
 """
 
 from __future__ import annotations
@@ -25,17 +27,13 @@ from temporalio.worker import Worker
 
 from harness.temporal.claim_check import _MEMORY_STORE, store_blob
 from harness.temporal.interpreter import activities as interpreter_activities
-from harness.temporal.interpreter.activities import (
-    INTERPRETER_ACTIVITIES,
-    _envelope_for,
-    interpreter_noop,
-)
+from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES, interpreter_noop
 from harness.temporal.interpreter.compiled_config import canonical_json
-from harness.temporal.interpreter.models import NodeResult, RunEventBatch, RunEventSpec, StageResult
+from harness.temporal.interpreter.models import NodeResult, StageResult
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
-from harness.temporal.interpreter.run_events import EVENT_RUN_COMPLETED, run_event_stream_key
 from harness.temporal.interpreter.workflow import WorkflowInterpreter, _settled_node_counts
 from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
+from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
 
 pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
@@ -92,48 +90,15 @@ class TestSettledNodeCounts:
         assert _settled_node_counts(stages) == (2, 0, 0, 0)
 
 
-class TestEnvelopeForCarriesTheCounts:
-    """`_envelope_for` (activities.py) — the camelCase mapping, no Temporal."""
-
-    def _batch(self, spec: RunEventSpec) -> RunEventBatch:
-        return RunEventBatch(run_id="run-1", tenant_id=TENANT, events=[spec])
-
-    def test_every_count_present_maps_to_its_camelcase_key(self):
-        spec = RunEventSpec(
-            event_type=EVENT_RUN_COMPLETED,
-            status="COMPLETED",
-            node_count=5,
-            failed_node_count=0,
-            degraded_node_count=2,
-            skipped_node_count=1,
-        )
-        envelope = _envelope_for(self._batch(spec), spec)
-
-        assert envelope.payload["nodeCount"] == 5
-        assert envelope.payload["failedNodeCount"] == 0
-        assert envelope.payload["degradedNodeCount"] == 2
-        assert envelope.payload["skippedNodeCount"] == 1
-        assert envelope.payload["status"] == "COMPLETED"
-
-    def test_absent_counts_are_omitted_from_the_payload_not_sent_as_null(self):
-        """A replaying pre-TASK-982 history constructs a `RunEventSpec` with all four `None` —
-        the payload must stay byte-identical to what that era's envelope looked like."""
-        spec = RunEventSpec(event_type=EVENT_RUN_COMPLETED, status="FAILED")
-        envelope = _envelope_for(self._batch(spec), spec)
-
-        assert "nodeCount" not in envelope.payload
-        assert "failedNodeCount" not in envelope.payload
-        assert "degradedNodeCount" not in envelope.payload
-        assert "skippedNodeCount" not in envelope.payload
-        assert envelope.payload["status"] == "FAILED"
-
-    def test_zero_is_a_real_value_not_treated_as_absent(self):
-        """`is not None` is the guard `_envelope_for` uses — a zero failed-node count must reach
-        the payload, not be dropped as falsy."""
-        spec = RunEventSpec(event_type=EVENT_RUN_COMPLETED, status="COMPLETED", failed_node_count=0)
-        envelope = _envelope_for(self._batch(spec), spec)
-
-        assert envelope.payload["failedNodeCount"] == 0
+def _folded_counts(events: list[dict]) -> dict[str, int]:
+    """The four TASK-982 counts, folded from the run's v2 node events (what B3a derives)."""
+    settled = [e for e in events if e["type"] in ("node.completed", "node.failed")]
+    return {
+        "nodeCount": len(settled),
+        "failedNodeCount": sum(1 for e in settled if e["type"] == "node.failed"),
+        "degradedNodeCount": sum(1 for e in settled if e["data"].get("status") == "DEGRADED"),
+        "skippedNodeCount": sum(1 for e in settled if e["data"].get("status") == "SKIPPED"),
+    }
 
 
 def _node(node_id: str, *, activity: str = "interpreter.noop", config: dict | None = None) -> dict:
@@ -175,20 +140,9 @@ def _body(stages: list[dict]) -> dict:
     }
 
 
-class FakeRedisStream:
-    def __init__(self) -> None:
-        self.by_key: dict[str, list[dict]] = {}
-        self._seq = 0
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self._seq += 1
-        self.by_key.setdefault(key, []).append(json.loads(fields["data"]))
-        return f"{self._seq}-0"
-
-
 @pytest.fixture
 def fake_stream(monkeypatch):
-    redis = FakeRedisStream()
+    redis = FakeRunStreamRedis()
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", redis, raising=False)
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
     return redis
@@ -242,12 +196,11 @@ class TestRunCompletedCountsEndToEnd:
         )
         assert result.status == "SUCCEEDED"
 
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        completed = next(e for e in events if e["type"] == EVENT_RUN_COMPLETED)
-        assert completed["payload"]["nodeCount"] == 2
-        assert completed["payload"]["failedNodeCount"] == 0
-        assert completed["payload"]["degradedNodeCount"] == 0
-        assert completed["payload"]["skippedNodeCount"] == 0
+        counts = _folded_counts(fake_stream.events(run_id))
+        assert counts["nodeCount"] == 2
+        assert counts["failedNodeCount"] == 0
+        assert counts["degradedNodeCount"] == 0
+        assert counts["skippedNodeCount"] == 0
 
     @pytest.mark.asyncio
     async def test_a_degraded_and_a_skipped_node_both_count_in_the_terminal_event(
@@ -269,12 +222,11 @@ class TestRunCompletedCountsEndToEnd:
         )
         assert result.status == "DEGRADED"
 
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        completed = next(e for e in events if e["type"] == EVENT_RUN_COMPLETED)
-        assert completed["payload"]["nodeCount"] == 3
-        assert completed["payload"]["failedNodeCount"] == 0
-        assert completed["payload"]["degradedNodeCount"] == 1
-        assert completed["payload"]["skippedNodeCount"] == 1
+        counts = _folded_counts(fake_stream.events(run_id))
+        assert counts["nodeCount"] == 3
+        assert counts["failedNodeCount"] == 0
+        assert counts["degradedNodeCount"] == 1
+        assert counts["skippedNodeCount"] == 1
 
     @pytest.mark.asyncio
     async def test_a_critical_node_failing_still_counts_every_settled_node_in_that_stage(
@@ -305,9 +257,8 @@ class TestRunCompletedCountsEndToEnd:
         )
         assert result.status == "FAILED"
 
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        completed = next(e for e in events if e["type"] == EVENT_RUN_COMPLETED)
-        assert completed["payload"]["nodeCount"] == 2
-        assert completed["payload"]["failedNodeCount"] == 1
-        assert completed["payload"]["degradedNodeCount"] == 0
-        assert completed["payload"]["skippedNodeCount"] == 0
+        counts = _folded_counts(fake_stream.events(run_id))
+        assert counts["nodeCount"] == 2
+        assert counts["failedNodeCount"] == 1
+        assert counts["degradedNodeCount"] == 0
+        assert counts["skippedNodeCount"] == 0

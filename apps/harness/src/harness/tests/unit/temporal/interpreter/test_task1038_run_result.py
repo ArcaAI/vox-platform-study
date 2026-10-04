@@ -24,24 +24,15 @@ import pytest
 
 from harness.temporal.claim_check import _MEMORY_STORE
 from harness.temporal.interpreter import activities as interpreter_activities
-from harness.temporal.interpreter.run_events import EVENT_RUN_COMPLETED
 from harness.tests.unit.temporal.interpreter import _task1038_harness as h
+from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
 
 pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
 
-class _FakeStream:
-    def __init__(self) -> None:
-        self.events: list[dict] = []
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self.events.append(json.loads(fields["data"]))
-        return f"{len(self.events)}-0"
-
-
 @pytest.fixture
 def stream(monkeypatch):
-    fake = _FakeStream()
+    fake = FakeRunStreamRedis()
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", fake, raising=False)
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
     h.reset()
@@ -49,9 +40,9 @@ def stream(monkeypatch):
     h.reset()
 
 
-def _completed(stream: _FakeStream) -> dict:
-    (event,) = [e for e in stream.events if e["type"] == EVENT_RUN_COMPLETED]
-    return event["payload"]
+def _completed(stream: FakeRunStreamRedis) -> dict:
+    """The terminal run event's data (TASK-1038 R6: a run-protocol v2 `run.*` event)."""
+    return stream.terminal()["data"]
 
 
 def _graph(text_bytes: int | None, *, outputs: int = 1) -> dict:

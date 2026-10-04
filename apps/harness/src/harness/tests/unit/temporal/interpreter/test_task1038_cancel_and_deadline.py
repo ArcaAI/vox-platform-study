@@ -16,7 +16,6 @@ compute and are not charged to the budget; they carry their own bounds.
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from datetime import timedelta
 
@@ -25,10 +24,10 @@ from temporalio.api.enums.v1 import EventType
 
 from harness.temporal.interpreter import activities as interpreter_activities
 from harness.temporal.interpreter.models import CancelSignal, LiveOutputsRequest, LiveOutputsResult
-from harness.temporal.interpreter.run_events import EVENT_RUN_COMPLETED
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal._temporal_sync import await_history_event
 from harness.tests.unit.temporal.interpreter import _task1038_harness as h
+from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
 
 pytestmark = pytest.mark.usefixtures("interpreter_scaffolding")
 
@@ -38,18 +37,9 @@ _FAST_HEARTBEATS = {
 }
 
 
-class _FakeStream:
-    def __init__(self) -> None:
-        self.events: list[dict] = []
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self.events.append(json.loads(fields["data"]))
-        return f"{len(self.events)}-0"
-
-
 @pytest.fixture(autouse=True)
 def stream(monkeypatch):
-    fake = _FakeStream()
+    fake = FakeRunStreamRedis()
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", fake, raising=False)
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
     h.reset()
@@ -57,9 +47,10 @@ def stream(monkeypatch):
     h.reset()
 
 
-def _completed_status(stream: _FakeStream) -> str:
-    (event,) = [e for e in stream.events if e["type"] == EVENT_RUN_COMPLETED]
-    return event["payload"]["status"]
+def _completed_status(stream: FakeRunStreamRedis) -> str:
+    """`<terminal type>:<status>` of the run-protocol v2 terminal event (TASK-1038 R6)."""
+    event = stream.terminal()
+    return f"{event['type']}:{event['data']['status']}"
 
 
 def _sleeping_graph(seconds: float, *, max_total: int = 3600) -> dict:
@@ -131,7 +122,7 @@ class TestCancelStopsInFlightWork:
         assert nodes["n_slow"].reason == "cancelled"
         # The next stage never started.
         assert "n_after" not in nodes
-        assert _completed_status(stream) == "CANCELLED"
+        assert _completed_status(stream) == "run.cancelled:CANCELED"
 
     @pytest.mark.asyncio
     async def test_the_cancellation_reaches_the_activity_itself(self, stream):
@@ -203,7 +194,7 @@ class TestRunDeadline:
         assert nodes["n_slow"].status == "FAILED"
         assert nodes["n_slow"].reason == "run_timed_out"
         assert "n_after" not in nodes
-        assert _completed_status(stream) == "TIMED_OUT"
+        assert _completed_status(stream) == "run.failed:TIMED_OUT"
 
     @pytest.mark.asyncio
     async def test_the_timed_out_state_is_what_the_state_query_reports(self, stream):

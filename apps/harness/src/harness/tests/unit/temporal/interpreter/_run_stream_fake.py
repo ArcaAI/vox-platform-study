@@ -75,6 +75,22 @@ class FakeRunStreamRedis:
             out.append(parsed["event"])
         return out
 
+    def all_events(self) -> list[dict[str, Any]]:
+        """Every stored event of every run, in append order per run (one run per test, usually)."""
+        out: list[dict[str, Any]] = []
+        for key in self.streams:
+            out.extend(self.events(key.split(":")[2]))
+        return out
+
+    def terminal(self) -> dict[str, Any]:
+        """The ONE terminal event (`run.completed` / `run.failed` / `run.cancelled`) stored."""
+        (event,) = [
+            e
+            for e in self.all_events()
+            if e["type"] in ("run.completed", "run.failed", "run.cancelled")
+        ]
+        return event
+
 
 class ExplodingRunStreamRedis:
     """Every append fails — the mirror must never fail a run."""

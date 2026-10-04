@@ -27,15 +27,13 @@ from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES, inte
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import InterpreterInput
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
-from harness.temporal.interpreter.run_events import (
-    EVENT_NODE_COMPLETED,
-    EVENT_NODE_FAILED,
-    EVENT_NODE_STARTED,
-    EVENT_RUN_COMPLETED,
-    run_event_stream_key,
-)
+from harness.temporal.interpreter.run_protocol import run_event_problems
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.tests.unit.temporal.conftest import SCAFFOLD_ACTIVITIES
+from harness.tests.unit.temporal.interpreter._run_stream_fake import (
+    ExplodingRunStreamRedis,
+    FakeRunStreamRedis,
+)
 
 #: TASK-893 — this suite drives the interpreter through the retired `noop`/`passthrough` seed
 #: types, which now exist only as test scaffolding (see `../conftest.py`).
@@ -45,21 +43,10 @@ _BUCKET = "harness-claim-check"
 TENANT = "22222222-2222-2222-2222-222222222222"
 
 
-class FakeRedisStream:
-    def __init__(self) -> None:
-        self.by_key: dict[str, list[dict]] = {}
-        self._seq = 0
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self._seq += 1
-        self.by_key.setdefault(key, []).append(json.loads(fields["data"]))
-        return f"{self._seq}-0"
-
-
 @pytest.fixture
 def fake_stream(monkeypatch):
     """Install a fake Redis in the emit activity's process-wide producer slot."""
-    redis = FakeRedisStream()
+    redis = FakeRunStreamRedis()
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS", redis, raising=False)
     monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
     return redis
@@ -148,22 +135,26 @@ class TestTheRunPushesItsOwnProgress:
         )
         assert result.status == "SUCCEEDED"
 
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
+        # TASK-1038 R6 — run protocol v2: `run.started` first, one contiguous `seq`.
+        events = fake_stream.events(run_id)
         assert [e["type"] for e in events] == [
-            EVENT_NODE_STARTED,
-            EVENT_NODE_COMPLETED,
-            EVENT_NODE_STARTED,
-            EVENT_NODE_COMPLETED,
-            EVENT_RUN_COMPLETED,
+            "run.started",
+            "node.started",
+            "node.completed",
+            "node.started",
+            "node.completed",
+            "run.completed",
         ]
-        assert events[-1]["payload"]["status"] == "SUCCEEDED"
+        assert [e["seq"] for e in events] == [1, 2, 3, 4, 5, 6]
+        assert events[-1]["data"]["status"] == "COMPLETED"
 
     @pytest.mark.asyncio
-    async def test_every_emitted_event_carries_the_run_as_its_correlation_id(self, fake_stream):
+    async def test_every_emitted_event_is_a_valid_v2_event_of_this_run(self, fake_stream):
         run_id, _ = await _run(_body([{"stageIndex": 0, "nodes": [_node("n1")]}]))
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        assert {e["correlationId"] for e in events} == {run_id}
-        assert {e["tenantId"] for e in events} == {TENANT}
+        events = fake_stream.events(run_id)
+        assert {e["runId"] for e in events} == {run_id}
+        for event in events:
+            assert run_event_problems(event) == [], event
 
     @pytest.mark.asyncio
     async def test_a_critical_node_failing_emits_node_failed_with_its_reason(
@@ -199,16 +190,18 @@ class TestTheRunPushesItsOwnProgress:
             )
         )
         assert result.status == "FAILED"
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        failed = [e for e in events if e["type"] == EVENT_NODE_FAILED]
+        events = fake_stream.events(run_id)
+        failed = [e for e in events if e["type"] == "node.failed"]
         assert len(failed) == 1
-        assert failed[0]["payload"]["nodeId"] == "bad"
-        # F13 — the reason NAMES the cause; a bare `activity_error` said only that
-        # something failed, which is how two live blockers stayed invisible.
-        assert failed[0]["payload"]["reason"] == (
+        assert failed[0]["nodeId"] == "bad"
+        # F13 — the reason NAMES the cause; under v2 it rides as the admin-only `detail`
+        # beside a fixed-label code (a business caller never sees the free text).
+        assert failed[0]["data"]["error"]["detail"] == (
             "activity_error: RuntimeError: interpreter.noop: simulated failure for node bad"
         )
-        assert events[-1]["payload"]["status"] == "FAILED"
+        assert failed[0]["data"]["error"]["code"] == "INTERNAL_ERROR"
+        assert events[-1]["type"] == "run.failed"
+        assert events[-1]["data"]["status"] == "FAILED"
 
     @pytest.mark.asyncio
     async def test_a_degraded_node_settles_as_completed_carrying_its_real_status(self, fake_stream):
@@ -219,13 +212,13 @@ class TestTheRunPushesItsOwnProgress:
             _body([{"stageIndex": 0, "nodes": [_node("soft", config={"raise_error": True})]}])
         )
         assert result.status == "DEGRADED"
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        assert [e["type"] for e in events if e["type"] == EVENT_NODE_FAILED] == []
-        settled = next(e for e in events if e["type"] == EVENT_NODE_COMPLETED)
-        assert settled["payload"]["status"] == "DEGRADED"
-        assert settled["payload"]["reason"] == (
-            "activity_error: RuntimeError: interpreter.noop: simulated failure for node soft"
-        )
+        events = fake_stream.events(run_id)
+        assert [e["type"] for e in events if e["type"] == "node.failed"] == []
+        settled = next(e for e in events if e["type"] == "node.completed")
+        assert settled["data"]["status"] == "DEGRADED"
+        # The degrade's free-text reason stays in Temporal history (`state` query); v2's
+        # `node.completed` is a closed shape without one.
+        assert events[-1]["data"]["degraded"] is True
 
     @pytest.mark.asyncio
     async def test_a_node_the_walk_declines_is_never_announced_as_started(self, fake_stream):
@@ -245,16 +238,13 @@ class TestTheRunPushesItsOwnProgress:
                 ]
             )
         )
-        events = fake_stream.by_key[run_event_stream_key(run_id)]
-        started = [e["payload"]["nodeId"] for e in events if e["type"] == EVENT_NODE_STARTED]
+        events = fake_stream.events(run_id)
+        started = [e["nodeId"] for e in events if e["type"] == "node.started"]
         settled = {
-            e["payload"]["nodeId"]: e["payload"]
-            for e in events
-            if e["type"] in (EVENT_NODE_COMPLETED, EVENT_NODE_FAILED)
+            e["nodeId"]: e["data"] for e in events if e["type"] in ("node.completed", "node.failed")
         }
         assert started == ["live"]
         assert settled["off"]["status"] == "SKIPPED"
-        assert settled["off"]["reason"] == "disabled_by_config"
 
 
 class TestTheMirrorCannotFailTheRun:
@@ -263,12 +253,8 @@ class TestTheMirrorCannotFailTheRun:
         """The whole posture in one test. Temporal history is the record; this stream is a
         mirror, and an unreachable mirror costs a client its live push and nothing else."""
 
-        class ExplodingRedis:
-            async def xadd(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
-                raise RuntimeError("redis is down")
-
         monkeypatch.setattr(
-            interpreter_activities, "_RUN_EVENT_REDIS", ExplodingRedis(), raising=False
+            interpreter_activities, "_RUN_EVENT_REDIS", ExplodingRunStreamRedis(), raising=False
         )
         monkeypatch.setattr(interpreter_activities, "_RUN_EVENT_REDIS_BUILT", True, raising=False)
         _run_id, result = await _run(
