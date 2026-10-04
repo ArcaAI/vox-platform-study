@@ -12,6 +12,7 @@ import { InferenceReadinessServiceModule } from '../ai-readiness/inference-readi
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
 import { ContextUserIdentityServiceModule } from '../user/identity';
+import { DocumentTemplateServiceModule } from '../document-template/document-template.service.module';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
@@ -55,6 +56,11 @@ import { IAgentService } from './IAgentService';
     // `@Optional()` so a minimal fixture still constructs, and an unnamed module would
     // mean a published agent with an identity marker quietly answering 503 in production.
     ContextUserIdentityServiceModule,
+    // TASK-1036 OD-7 / OD-22 — `AgentResolverService` resolves the agent's document template to
+    // its LATEST servable version on every resolve. Named for the same reason as the modules
+    // above: the injection is `@Optional()`, and an unnamed module would quietly serve the
+    // platform shape for every agent that names a template.
+    DocumentTemplateServiceModule,
   ],
   providers: [
     AgentService,

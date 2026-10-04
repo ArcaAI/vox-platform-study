@@ -62,6 +62,8 @@ export class AgentDtoMapper {
       // decision. Only the ADMIN projection carries it; the business-plane summary below never
       // describes a hidden agent because it is never returned one.
       hidden: isPlatformHiddenAgentSlug(entity.slug),
+      // TASK-1036 OD-1 — informational: guardrails cannot be turned off for an agent (TASK-1035 OD-1).
+      guardrails: 'always_on',
       tags: entity.tags ?? [],
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),

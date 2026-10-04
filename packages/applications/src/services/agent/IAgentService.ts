@@ -4,6 +4,7 @@ import {
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
+  AgentTagSuggestionResponse,
   AgentTestAckResponse,
   AgentTestResultResponse,
   CloneAgentRequest,
@@ -35,6 +36,8 @@ export interface IAgentService {
    * stays the per-VERSION read the Versions tab needs.
    */
   listLineages(query: ListAgentLineagesQuery): Promise<PaginatedAgentLineageResponse>;
+  /** TASK-1036 R1 — distinct tags over the caller tenant's agents, per lineage, lower-cased, ranked. */
+  listTagSuggestions(query: { q?: string; limit?: number }): Promise<AgentTagSuggestionResponse[]>;
   /** A row visible to the tenant (own or SYSTEM); anything else is 404. */
   getById(id: string): Promise<AgentResponse>;
   listVersions(id: string): Promise<AgentResponse[]>;

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiDeploymentKind, AiModelAvailability, AiTaskKind, ModelTaskType, ResourceStatusType } from '@arcaai/domains';
 import type { AiModelAsrProfile } from '@arcaai/types';
+import type { ModelCapabilities } from '@arcaai/workflow-contract';
 import { MODEL_READINESS_STATES } from '../../ai-readiness/inference-readiness.types';
 import type { ModelReadiness } from '../../ai-readiness/inference-readiness.types';
 import type { ProviderClass, ProviderGroup } from '../../ai-provider-connection/constants';
@@ -77,6 +78,12 @@ export class CatalogueProviderResponse {
   modelCount: number;
 }
 
+/**
+ * TASK-1036 W2 — the contract's `ModelCapabilities` plus the two pre-1036 authoring facts
+ * (`supportsSsml`, `contextLength`), each present only when the row declares it.
+ */
+export type CatalogueModelCapabilities = ModelCapabilities & { supportsSsml?: boolean; contextLength?: number };
+
 /** One picker MODEL entry. Deliberately narrower than `ModelResponse` — see the mapper. */
 export class CatalogueModelResponse {
   @ApiProperty() id: string;
@@ -94,8 +101,21 @@ export class CatalogueModelResponse {
   @ApiProperty({ description: 'Last OBSERVED serving readiness.', enum: MODEL_READINESS_STATES }) readiness: ModelReadiness;
   @ApiProperty({ description: 'When that observation was taken ("at that point of time").', nullable: true }) readinessCheckedAt: Date | null;
   @ApiProperty({ description: 'Non-secret detail behind the readiness verdict.', nullable: true }) readinessDetail: string | null;
-  @ApiProperty({ description: 'What the model accepts, for the authoring form.', type: Object })
-  capabilities: { supportedGenerationParams?: string[]; supportsSsml?: boolean; contextLength?: number };
+  @ApiProperty({
+    description:
+      'What the model accepts, for the authoring form — the `ModelCapabilities` of `@arcaai/workflow-contract` (TASK-1036 W2), read from ' +
+      '`_metadata.capabilities`. Every flag is present: an undeclared flag is `false` / `[]`. `reasoning` is present only when declared. ' +
+      'The editor hides a section the model does not support (tools and attachments stay hidden until built, OD-16).',
+    type: Object,
+    example: {
+      supportsTools: false,
+      supportsVision: false,
+      supportsAttachments: false,
+      voices: [],
+      supportedGenerationParams: ['temperature', 'maxTokens'],
+    },
+  })
+  capabilities: CatalogueModelCapabilities;
   @ApiProperty({
     description:
       'Parsed `AUTOMATIC_SPEECH_RECOGNITION` decode profile (`_metadata.asr`, TASK-934) — window geometry, decode thresholds, ' +

@@ -12,6 +12,7 @@ import {
   composeMessages,
   outputSchemaResponseFormat,
   platformRules,
+  readTextAgentMessage,
   unresolvedPromptVariables,
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
@@ -175,6 +176,25 @@ function computeDevice(value: unknown): ComputeDevice | null {
  * client, never a credential of its own). TTS and batch ASR are PREPARED here and executed by
  * the gateway's existing speech proxy / transcription-job path.
  */
+/**
+ * TASK-1036 OD-8 — a TEXT_GENERATION agent published BEFORE `message` existed froze the old
+ * default `inputSchema` (`{ text, variables }`, closed), so a caller sending the new name would be
+ * refused by a schema that predates it. For such a schema ONLY — it names `text` and does not name
+ * `message` — a body carrying `message` (and no `text`) is validated as the `text` body it is
+ * equivalent to. An agent whose own schema declares `message` is validated verbatim: its author
+ * meant that field. The runtime reads either spelling through `readTextAgentMessage`.
+ */
+function legacyMessageAlias(resolved: ResolvedAgent, input: unknown): unknown {
+  if (resolved.task !== 'TEXT_GENERATION') return input;
+  const schema = resolved.compiledConfig.inputSchema as { properties?: Record<string, unknown> } | null | undefined;
+  const properties = schema?.properties;
+  if (!properties || !('text' in properties) || 'message' in properties) return input;
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const { message, ...rest } = input as Record<string, unknown>;
+  if (message === undefined || rest.text !== undefined) return input;
+  return { ...rest, text: message };
+}
+
 @Injectable()
 export class AgentInvocationService {
   private readonly logger = new Logger(AgentInvocationService.name);
@@ -208,7 +228,7 @@ export class AgentInvocationService {
 
   /** TIER 3 — the invocation body against the agent's declared `inputSchema`. */
   inputProblems(resolved: ResolvedAgent, input: unknown): string[] {
-    return jsonSchemaValueProblems(resolved.compiledConfig.inputSchema, input);
+    return jsonSchemaValueProblems(resolved.compiledConfig.inputSchema, legacyMessageAlias(resolved, input));
   }
 
   /**
@@ -328,7 +348,9 @@ export class AgentInvocationService {
         platformRules: platformRules(),
         resolvedPrompt: compiled.resolvedPrompt,
         scope,
-        dataBlocks: [agentInputBlock(input.text)],
+        // TASK-1036 OD-8 — `message`, else the deprecated `text` alias; neither (a `{ variables }`
+        // body) emits an empty block, so the user message is `''`.
+        dataBlocks: [agentInputBlock(readTextAgentMessage(input))],
         templateRef: `agent:${resolved.slug}`,
       });
     });
@@ -896,4 +918,3 @@ function responseFormatOf(parameters: Record<string, unknown>): Record<string, u
   }
   return {};
 }
-

@@ -52,6 +52,7 @@ import {
   canonicalJson,
   composeMessages,
   platformRules,
+  readTextAgentMessage,
   conditionRootProblems,
   isCompositeInstruction,
   mapBoundTemplateRefs,
@@ -72,9 +73,9 @@ import {
 } from '@arcaai/workflow-contract';
 import { BaseService, DEFAULT_PAGE, DEFAULT_PAGE_SIZE, withFormattedPaginatedProps } from '../../common';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
-// TASK-991 OD-3 — which agent parameters the PLATFORM owns, derived from the contract's own
-// `readOnly` annotation so the schema, this guard and the console cannot disagree.
-import { platformManagedParameterChanges } from './platform-managed-parameters';
+// TASK-991 OD-3 / TASK-1036 W2 — which agent parameters the PLATFORM owns, derived from the
+// contract's `platformManagedPaths` so the schema, this guard and the console cannot disagree.
+import { carryForwardPlatformManagedParameters, platformManagedParameterChanges } from './platform-managed-parameters';
 import { agentRequiredVariables } from './agent-required-variables';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { PolicyEngine } from '../../authorization/policy.engine';
@@ -135,6 +136,7 @@ import {
   AgentResponse,
   AgentSummaryResponse,
   AgentSyncResponse,
+  AgentTagSuggestionResponse,
   AgentTestAckResponse,
   AgentTestResultResponse,
   CloneAgentRequest,
@@ -153,6 +155,10 @@ import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
 
 const AGENT_FILTER_MODEL = 'Agent';
+
+/** TASK-1036 R1 — the tag autocomplete's page size, the prompt-template route's numbers. */
+const TAG_SUGGESTION_DEFAULT_LIMIT = 20;
+const TAG_SUGGESTION_MAX_LIMIT = 100;
 
 /** TASK-965 — what a lineage nothing assigns reports; the console renders it as the "Unassigned" warning. */
 const NO_ASSIGNMENT: AgentLineageAssignmentResponse = { tenantDefault: false, departmentCount: 0, selectorCount: 0 };
@@ -345,6 +351,35 @@ export class AgentService extends BaseService implements IAgentService {
     });
   }
 
+  /**
+   * TASK-1036 R1 — tag autocomplete for the agent editor, mirroring the prompt-template route.
+   *
+   * The caller tenant's OWN agents only (`findAllForTenant`; SYSTEM rows are never suggested), each
+   * tag normalised to lower case (Q16) and counted per LINEAGE — an agent with four versions is one
+   * agent carrying the tag, not four. Ranked by count (desc) then alphabetically; `q` is a
+   * case-insensitive substring; `limit` 20 by default, capped at 100.
+   */
+  async listTagSuggestions(query: { q?: string; limit?: number }): Promise<AgentTagSuggestionResponse[]> {
+    const tenantId = this.requireTenant();
+    const limit = query.limit && query.limit > 0 ? Math.min(Math.floor(query.limit), TAG_SUGGESTION_MAX_LIMIT) : TAG_SUGGESTION_DEFAULT_LIMIT;
+    const needle = query.q?.trim().toLowerCase();
+    const rows = await this.agentRepository.findAllForTenant(tenantId);
+    const slugsByTag = new Map<string, Set<string>>();
+    for (const row of rows) {
+      for (const raw of row.tags ?? []) {
+        const tag = raw.trim().toLowerCase();
+        if (tag.length === 0 || (needle && !tag.includes(needle))) continue;
+        const slugs = slugsByTag.get(tag) ?? new Set<string>();
+        slugs.add(row.slug);
+        slugsByTag.set(tag, slugs);
+      }
+    }
+    return [...slugsByTag.entries()]
+      .map(([tag, slugs]) => ({ tag, count: slugs.size }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+      .slice(0, limit);
+  }
+
   async getById(id: string): Promise<AgentResponse> {
     const entity = await this.loadVisible(id);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id });
@@ -389,7 +424,12 @@ export class AgentService extends BaseService implements IAgentService {
       try {
         const outcome = await this.contextSchemas.resolveReference(definition.contextSchemaId, definition.contextSchemaVersionNumber ?? null);
         if (outcome.outcome === 'failed') continue;
-        return { schemaId: outcome.schemaId, versionNumber: outcome.versionNumber, versionId: outcome.versionId, payloadSchema: outcome.payloadSchema };
+        return {
+          schemaId: outcome.schemaId,
+          versionNumber: outcome.versionNumber,
+          versionId: outcome.versionId,
+          payloadSchema: outcome.payloadSchema,
+        };
       } catch {
         continue;
       }
@@ -440,10 +480,14 @@ export class AgentService extends BaseService implements IAgentService {
   async create(dto: CreateAgentRequest): Promise<AgentResponse> {
     const tenantId = this.requireTenant();
     this.assertTagGrammar(dto.tags);
+    // TASK-1036 W2 — before any read, so a refused create touches nothing.
+    this.guardPlatformManagedParameters(dto.task, dto.parameters, undefined);
     const model = await this.loadModelOrThrow(dto.modelId, tenantId);
     const fallbackModels = await this.loadFallbackModelsOrThrow(dto.fallbackModelIds ?? [], tenantId);
 
-    const view = this.viewOf(dto.task, dto);
+    // TASK-1036 W3 — a library prompt bound without a pin gets the template's approved version.
+    const instruction = await this.stampPromptPins(dto.instruction);
+    const view = this.viewOf(dto.task, { ...dto, instruction });
     const findings = this.structuralFindings(view, model, fallbackModels);
     this.throwIfBlocking(findings, 'The agent configuration is not valid.');
 
@@ -459,7 +503,7 @@ export class AgentService extends BaseService implements IAgentService {
         modelId: dto.modelId,
         contextSchemaId: dto.contextSchemaId ?? null,
         contextSchemaVersionNumber: dto.contextSchemaVersionNumber ?? null,
-        instruction: (dto.instruction ?? null) as JsonValue | null,
+        instruction: (instruction ?? null) as JsonValue | null,
         parameters: (stripRetiredAgentGuardrailOptOut(dto.parameters) ?? null) as JsonValue | null,
         inputSchema: (dto.inputSchema ?? null) as JsonValue | null,
         outputSchema: (dto.outputSchema ?? null) as JsonValue | null,
@@ -488,7 +532,7 @@ export class AgentService extends BaseService implements IAgentService {
     // TASK-991 OD-3 — after `loadOwned` (existence first, privilege second: a gate whose answer
     // varies by ROW must never become an existence oracle) and before any field is applied, so a
     // refused write leaves the entity exactly as it was loaded.
-    this.assertPlatformManagedParametersUnchanged(entity, dto);
+    const parameters = this.guardPlatformManagedParameters(entity.task, dto.parameters, entity.parameters);
 
     const model = await this.loadModelOrThrow(dto.modelId ?? entity.modelId, entity.tenantId);
     const currentFallbacks = await this.fallbackRepository.findByAgentId(entity.id);
@@ -505,8 +549,8 @@ export class AgentService extends BaseService implements IAgentService {
     if (dto.modelId !== undefined) entity.modelId = dto.modelId;
     if (dto.contextSchemaId !== undefined) entity.contextSchemaId = dto.contextSchemaId;
     if (dto.contextSchemaVersionNumber !== undefined) entity.contextSchemaVersionNumber = dto.contextSchemaVersionNumber;
-    if (dto.instruction !== undefined) entity.instruction = dto.instruction as JsonValue;
-    if (dto.parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(dto.parameters) as JsonValue;
+    if (dto.instruction !== undefined) entity.instruction = (await this.stampPromptPins(dto.instruction)) as JsonValue;
+    if (parameters !== undefined) entity.parameters = stripRetiredAgentGuardrailOptOut(parameters) as JsonValue;
     if (dto.inputSchema !== undefined) entity.inputSchema = dto.inputSchema as JsonValue;
     if (dto.outputSchema !== undefined) entity.outputSchema = dto.outputSchema as JsonValue;
     if (dto.tools !== undefined) entity.tools = dto.tools as JsonValue;
@@ -771,7 +815,7 @@ export class AgentService extends BaseService implements IAgentService {
       }
     }
 
-    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity);
+    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity, 'draft');
     // The same refusal publish makes, with the same shape the console already renders. Nothing
     // is persisted: a test must not move a draft's status or overwrite its stored report.
     this.throwIfBlocking(report.findings, 'The agent cannot be tested.');
@@ -808,7 +852,9 @@ export class AgentService extends BaseService implements IAgentService {
     }
     // The ONE composer — the same `composeMessages` call the invocation route makes, so the bench
     // shows exactly the system + user messages production sends (platform rules included).
-    const inputText = typeof dto.input?.text === 'string' ? this.render(dto.input.text, scope, 'input.text') : '';
+    // TASK-1036 OD-8 — `message`, else the deprecated `text` alias (the invocation route's read).
+    const turn = readTextAgentMessage(dto.input);
+    const inputText = turn !== undefined ? this.render(turn, scope, typeof dto.input?.message === 'string' ? 'input.message' : 'input.text') : '';
     const composed = this.renderMapped(() =>
       composeMessages({
         platformRules: platformRules(),
@@ -860,7 +906,7 @@ export class AgentService extends BaseService implements IAgentService {
       // noise as a defect in their agent. A DRY run with no `input.text` is fine — it still shows
       // the assembled system prompt and the resolved target.
       throw new BadRequestException({
-        message: 'A live agent test needs something to run on: supply `input.text`. (A dry run does not.)',
+        message: 'A live agent test needs something to run on: supply `input.message`. (A dry run does not.)',
         code: 'TEST_INPUT_REQUIRED',
       });
     }
@@ -1344,11 +1390,14 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     const warnings = [...(payload.notes ?? [])];
-    const instruction = await this.instructionForBundleImport(payload, tenantId);
+    // TASK-1036 W3 — a re-resolved template drops the source's pin; stamp this tenant's approved one.
+    const instruction = (await this.stampPromptPins(await this.instructionForBundleImport(payload, tenantId))) as Record<string, unknown> | null;
     await this.assertToolsVisible(payload.tools ?? null, tenantId);
 
     const slug = dto.slug ?? payload.slug;
     this.assertTagGrammar(payload.tags);
+    // TASK-1036 W2 — a bundle is a tenant WRITE like any other: it may not carry platform-managed values.
+    this.guardPlatformManagedParameters(payload.task as AgentTask, payload.parameters ?? undefined, undefined);
 
     const view = this.viewOf(payload.task as AgentTask, { ...payload, instruction });
     const model = await this.loadModelOrThrow(modelId as string, tenantId);
@@ -1456,33 +1505,83 @@ export class AgentService extends BaseService implements IAgentService {
   }
 
   /**
-   * TASK-991 (owner decision OD-3, 2026-09-19) — the PLATFORM-MANAGED parameter lock.
+   * TASK-1036 W3 — binding a library prompt STAMPS its current approved version.
    *
-   * The speaker-embedding model is fixed for every tenant: a voice profile is an embedding in ONE
-   * model's vector space, so re-pointing an agent at another `SPEAKER_EMBEDDING` row raises no
-   * error anywhere — it just silently stops diarization recognising anyone the tenant enrolled.
-   * Which paths are locked is declared by the CONTRACT (`readOnly: true` on the property), not by
-   * a list here; see `platform-managed-parameters.ts`.
+   * The publish gate refuses an unpinned binding (`PROMPT_VERSION_UNPINNED`), and authors should
+   * never meet that in the normal flow, so the bind itself writes the pin: top-level
+   * `promptVersionNumber` for the single-template form, and per fragment for a composite. A pin
+   * the author chose is kept (they may change it; re-binding without one re-stamps, so it can
+   * never be CLEARED). A template that is invisible or not APPROVED is left unpinned: nothing is
+   * auto-approved (D-7), and publish then names the real reason (`TEMPLATE_NOT_APPROVED`).
+   *
+   * Returns the input untouched when there is nothing to stamp, otherwise a shallow copy — the
+   * caller's DTO is never mutated.
+   */
+  private async stampPromptPins<T>(instruction: T): Promise<T> {
+    const record = asRecord(instruction);
+    if (!record) return instruction;
+    if (Array.isArray(record.fragments)) {
+      let changed = false;
+      const fragments: unknown[] = [];
+      for (const fragment of record.fragments) {
+        const entry = asRecord(fragment);
+        const version = entry ? await this.pinFor(entry) : null;
+        if (entry && version !== null) {
+          fragments.push({ ...entry, promptVersionNumber: version });
+          changed = true;
+        } else {
+          fragments.push(fragment);
+        }
+      }
+      return (changed ? { ...record, fragments } : instruction) as T;
+    }
+    const version = await this.pinFor(record);
+    return (version === null ? instruction : { ...record, promptVersionNumber: version }) as T;
+  }
+
+  /** The approved version to stamp on one binding, or `null` when it needs none (or none can be honestly chosen). */
+  private async pinFor(binding: Record<string, unknown>): Promise<number | null> {
+    const templateId = binding.promptTemplateId;
+    if (typeof templateId !== 'string' || templateId.length === 0 || binding.promptVersionNumber !== undefined) return null;
+    if (!this.promptTemplateRepository) return null;
+    // swallow-ok: stamping is a convenience; an unreadable template is left unpinned and the publish gate re-reads it and refuses with the real reason.
+    const template = await this.promptTemplateRepository.findById(templateId).catch(() => null);
+    if (!template || template.status !== 'APPROVED') return null;
+    const version = template.approvedVersionNumber ?? template.currentVersionNumber ?? null;
+    return typeof version === 'number' && Number.isInteger(version) && version >= 1 ? version : null;
+  }
+
+  /**
+   * TASK-991 (OD-3) generalised by TASK-1036 W2 / OD-11 — the PLATFORM-MANAGED parameter lock.
+   *
+   * WHICH paths: the contract's `platformManagedPaths(task)` — every parameter leaf outside the
+   * tenant-editable set (temperature, max tokens and the §8.6 task switches), plus TASK-991's
+   * `readOnly` speaker-embedding slug. See `platform-managed-parameters.ts`.
    *
    * REFUSED, never ignored. Dropping the value on the floor and saving the rest is how an admin
    * concludes the field is broken and files a bug against the wrong thing; a 403 naming the path
-   * says who owns it and where it is changed.
+   * says who owns it.
    *
-   * THE ONE EXEMPTION is a super administrator writing the SYSTEM-tier agent — the tier OD-3 puts
-   * the value in ("a PLATFORM admin owns it at the SYSTEM tier, so it is changed by editing a
-   * value, not by shipping a release"). Deliberately narrower than `isSuperAdmin` alone: a
-   * platform admin acting inside a CUSTOMER tenant is still editing that tenant's cloned agent,
-   * and one tenant's profiles break exactly the same way whoever typed the change.
+   * WHO is exempt: a SUPER_ADMIN, in ANY tenant (OD-11 replaced TASK-991's SYSTEM-only exemption).
+   * Their write is taken exactly as written — removing a value is theirs to do.
+   *
+   * EXISTING VALUES are left untouched: a path the tenant OMITS keeps its stored value
+   * (`carryForwardPlatformManagedParameters`), a path sent back unchanged passes, and only an
+   * actual change — a new value, or an explicit `null` over a stored one — is refused. `current`
+   * is `undefined` on create and import, so there any platform-managed value at all is a change.
+   *
+   * Returns the parameters to persist (the carried-forward copy for a tenant, `next` otherwise).
    */
-  private assertPlatformManagedParametersUnchanged(entity: AgentEntity, dto: UpdateAgentRequest): void {
-    if (dto.parameters === undefined) return;
-    if (entity.tenantId === SYSTEM_TENANT_ID && isSuperAdmin(this.requestUser)) return;
-    const paths = platformManagedParameterChanges(entity.task, dto.parameters, entity.parameters);
-    if (paths.length === 0) return;
+  private guardPlatformManagedParameters(task: AgentTask, next: unknown, current: unknown): unknown {
+    if (next === undefined) return undefined;
+    if (isSuperAdmin(this.requestUser)) return next;
+    const merged = carryForwardPlatformManagedParameters(task, next, current);
+    const paths = platformManagedParameterChanges(task, merged, current);
+    if (paths.length === 0) return merged;
     throw new ForbiddenException({
       message:
-        `This agent parameter is managed by the platform and is the same for every tenant: ${paths.join(', ')}. ` +
-        'A platform administrator changes it once, on the SYSTEM-tier agent; send the stored value back unchanged, or omit it.',
+        `These agent parameters are managed by the platform: ${paths.join(', ')}. ` +
+        'They come from the model defaults a platform administrator maintains; send the stored value back unchanged, or omit it.',
       code: 'AGENT_PARAMETER_PLATFORM_MANAGED',
       paths,
     });
@@ -1849,7 +1948,12 @@ export class AgentService extends BaseService implements IAgentService {
   // Findings — the ONE place that decides publishability
   // ============================================================
 
-  private async collectFindings(entity: AgentEntity): Promise<{
+  private async collectFindings(
+    entity: AgentEntity,
+    // TASK-1036 W3 — `publish` for the validate/publish gate (refuses an unpinned library prompt,
+    // `PROMPT_VERSION_UNPINNED`); `draft` for the test bench, which compiles a draft as it stands.
+    phase: 'draft' | 'publish' = 'publish',
+  ): Promise<{
     report: AgentValidationReport;
     model: AiModelEntity | null;
     fallbackModels: AiModelEntity[];
@@ -1890,6 +1994,7 @@ export class AgentService extends BaseService implements IAgentService {
         model ?? undefined,
         fallbackModels,
         model ? this.capabilitiesOf(model) : undefined,
+        phase,
       ),
     );
 
@@ -2226,11 +2331,13 @@ export class AgentService extends BaseService implements IAgentService {
     model?: AiModelEntity,
     fallbackModels: AiModelEntity[] = [],
     capabilities?: AgentProviderCapabilities,
+    phase: 'draft' | 'publish' = 'draft',
   ): AgentFinding[] {
     const findings: AgentFinding[] = agentConfigProblems(view, {
       model: model ? toModelView(model) : undefined,
       fallbackModels: fallbackModels.map(toModelView),
       capabilities,
+      phase,
     }).map((problem) => ({ ...problem, code: codeForConfigProblem(problem) }));
 
     const parameters = asRecord(view.parameters);

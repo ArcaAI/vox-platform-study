@@ -97,6 +97,13 @@ export class AgentResponse {
    * keep it out of tenant-facing pickers.
    */
   @ApiProperty({ description: 'Platform-owned agent: never cloned, listed, invoked or assignable on the business plane.' }) hidden!: boolean;
+  @ApiProperty({
+    description:
+      'TASK-1036 OD-1 — guardrails are ALWAYS ON for every agent (TASK-1035 OD-1): the inbound screen inspects the external data blocks, ' +
+      'the outbound screen the response. Read-only and informational; there is no setting behind it.',
+    enum: ['always_on'],
+  })
+  guardrails!: 'always_on';
   @ApiProperty({ type: [String] }) tags!: string[];
   @ApiProperty({ description: 'ISO timestamp' }) createdAt!: string;
   @ApiProperty({ description: 'ISO timestamp' }) updatedAt!: string;
