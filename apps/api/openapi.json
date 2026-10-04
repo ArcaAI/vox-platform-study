@@ -57654,10 +57654,10 @@
             "description": "The graph cannot be compiled (engine gate), or an attachment is outside the MIME allow-list (`SANDBOX_ATTACHMENT_MIME_UNSUPPORTED`)."
           },
           "404": {
-            "description": "Unknown or cross-tenant definitionId, fixtureId, attachment mediaId or recording sttSessionId."
+            "description": "Unknown or cross-tenant definitionId, fixtureId or attachment mediaId; or a recording sttSessionId that is unknown, of another tenant, or not created by the caller."
           },
           "409": {
-            "description": "`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session belongs to a clinical consultation."
+            "description": "`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session is bound to a clinical consultation or to another workflow’s sandbox; `SANDBOX_RECORDING_NOT_LIVE` — the session has ended."
           }
         },
         "security": [
@@ -59127,7 +59127,7 @@
     },
     "/api/v1/admin/workflow-runs/{runId}/trace/stream": {
       "get": {
-        "description": "Run protocol v2 only: every frame is one `{ seq, runId, type, ts, nodeId?, data }` envelope (`event:` = type, `id:` = seq), including the admin-audience debug events (input.validated, data.bound, binding.warning, consultation.read, transcript.*, prompt.composed, model.request, guardrail.*, output.validated) and `output.data` with `visibility: admin`. Resume with `Last-Event-ID: <seq>` or `?after=<seq>`. Loss is signalled with `run.resync`. Super administrators and tenant administrators of the working tenant only; patient data is shown and the read is audited. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=` (scope `workflow_run:<runId>`).",
+        "description": "Run protocol v2 only: every frame is one `{ seq, runId, type, ts, nodeId?, data }` envelope (`event:` = type, `id:` = seq), including the admin-audience debug events (input.validated, data.bound, binding.warning, consultation.read, transcript.*, prompt.composed, model.request, guardrail.*, output.validated) and `output.data` with `visibility: admin`. Resume with `Last-Event-ID: <seq>` or `?after=<seq>`. Loss is signalled with `run.resync`. Super administrators and tenant administrators of the working tenant only; patient data is shown and the read is audited. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=` (scope `workflow_run_trace:<runId>`, minted only by `POST /auth/stream-ticket`; a `workflow_run:` ticket is refused).",
         "operationId": "WorkflowRunTraceController_streamTrace",
         "parameters": [
           {
@@ -59804,7 +59804,7 @@
     },
     "/api/v1/agents/{slug}/runs/{runId}/cancel": {
       "post": {
-        "description": "A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call already in flight is not interrupted — its output is discarded, and it is still metered because it was spent.",
+        "description": "A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call in flight is aborted; whatever the provider already spent is still metered.",
         "operationId": "AgentController_cancelRun",
         "parameters": [
           {
@@ -68677,7 +68677,7 @@
     },
     "/api/v1/workflows/{slug}/runs": {
       "post": {
-        "description": "The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. **Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; `blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as `GET :slug/runs/:runId/stream`. **Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. **Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation graph is not invocable here, and consultation identity is never accepted in the request body.",
+        "description": "The handler every non-clinical invocation surface converges on — REST, webhook relay, `@arcaai/vox` and `@arcaai/vox-node`. **Response mode** is chosen with `?mode=`: `async` (default) answers 202 with `runId` + `statusUrl` + `streamUrl`; `blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as `GET :slug/runs/:runId/stream`. **Idempotency**: send `Idempotency-Key` and a retry with the same body JOINS the existing run instead of starting (and billing) a second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. The same key with a different body is 409 `IDEMPOTENCY_KEY_REUSED`. **Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation graph is not invocable here, and consultation identity is never accepted in the request body.",
         "operationId": "WorkflowsController_startRun",
         "parameters": [
           {
@@ -68703,7 +68703,7 @@
             }
           },
           {
-            "description": "Retry-safe key. The same value joins the existing run.",
+            "description": "Retry-safe key. The same value and body joins the existing run.",
             "in": "header",
             "name": "Idempotency-Key",
             "required": false,
@@ -68769,7 +68769,7 @@
             "description": "Unknown, unpublished, cross-tenant, or non-exposable slug. Also the answer when a service-account caller supplies a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act (`USER_IDENTITY_NOT_USABLE`)."
           },
           "409": {
-            "description": "The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a STANDALONE run only — a consultation-bound run takes its clinician from the consultation row."
+            "description": "The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a STANDALONE run only — a consultation-bound run takes its clinician from the consultation row. `IDEMPOTENCY_KEY_REUSED` — the `Idempotency-Key` already started a run with a different body."
           },
           "429": {
             "description": "monthlyWorkflowInvocations quota exhausted."
@@ -69193,7 +69193,7 @@
             "description": ""
           },
           "400": {
-            "description": "Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), or a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`)."
+            "description": "Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`), or `MODE_UNSUPPORTED` — a `?ticket=` request for a workflow whose settings do not enable the `sse` connection."
           },
           "404": {
             "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
@@ -69243,7 +69243,7 @@
             "description": "The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one."
           },
           "400": {
-            "description": "MODE_UNSUPPORTED — the workflow’s settings do not enable the `socket` connection (use SSE)."
+            "description": "MODE_UNSUPPORTED — the workflow’s settings enable neither the `sse` nor the `socket` connection."
           },
           "401": {
             "description": "No caller identity to bind the ticket to."

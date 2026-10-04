@@ -131,7 +131,7 @@ describe('fix 4 — the executor hands the model call an AbortSignal', () => {
     const { controller, invocation } = make();
     await controller.startRun('scribe', { message: 'x' }, undefined);
     await flush();
-    const options = invocation.invokeText.mock.calls.at(-1)?.[4] as { signal?: AbortSignal } | undefined;
+    const options = (invocation.invokeText.mock.calls.at(-1) as unknown[] | undefined)?.[4] as { signal?: AbortSignal } | undefined;
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 

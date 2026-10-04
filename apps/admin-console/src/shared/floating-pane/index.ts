@@ -1,2 +1,2 @@
-export { FloatingPane, floatingPaneStorageKey } from './floating-pane';
-export type { FloatingPaneDock, FloatingPaneProps } from './floating-pane';
+export { FloatingPane, floatingPaneStorageKey, paneFootprint } from './floating-pane';
+export type { FloatingPaneDock, FloatingPaneFootprint, FloatingPaneProps } from './floating-pane';

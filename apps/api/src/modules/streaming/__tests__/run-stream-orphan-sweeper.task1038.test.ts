@@ -52,7 +52,7 @@ describe('RunStreamOrphanSweeper.sweepOrphans', () => {
 
     const outcome = await sweeper.sweepOrphans();
 
-    expect(hub.expireAfterTerminal.mock.calls.map((call) => call[0]).sort()).toEqual(['done', 'gone', 'stale']);
+    expect(hub.expireAfterTerminal.mock.calls.map((call) => (call as unknown[])[0]).sort()).toEqual(['done', 'gone', 'stale']);
     expect(outcome).toEqual({ scanned: 5, closed: 3 });
     // The SCAN walked to the end of the keyspace.
     expect(hub.scanRunEventKeys).toHaveBeenCalledTimes(2);

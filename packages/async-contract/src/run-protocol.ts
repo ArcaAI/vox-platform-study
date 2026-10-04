@@ -289,7 +289,15 @@ export function runErrorMessage(code: string): string {
 /** `run.completed.data.result` — EXACTLY these two shapes (lanes A1/A2). */
 export type RunResult =
   | { readonly kind: 'inline'; readonly value: unknown }
-  | { readonly kind: 'ref'; readonly bucket: string; readonly key: string; readonly sizeBytes: number; readonly sha256: string };
+  | {
+      readonly kind: 'ref';
+      readonly bucket: string;
+      readonly key: string;
+      readonly sizeBytes: number;
+      readonly sha256: string;
+      /** TASK-1038 E3: the object key lives under `<tenantId>/`; the gateway asserts it before signing. */
+      readonly tenantPrefixed?: boolean;
+    };
 
 /** The persisted run status vocabulary (`GoverningRunSummary.status`). */
 export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
@@ -505,7 +513,7 @@ const RESULT: RunEventDataSchema = Object.freeze({
   anyOf: Object.freeze([
     closed({ kind: Object.freeze({ const: 'inline' }), value: ANY }, ['kind', 'value']),
     closed(
-      { kind: Object.freeze({ const: 'ref' }), bucket: STR1, key: Object.freeze({ type: 'string', minLength: 1 }), sizeBytes: INT0, sha256: SHA256 },
+      { kind: Object.freeze({ const: 'ref' }), bucket: STR1, key: Object.freeze({ type: 'string', minLength: 1 }), sizeBytes: INT0, sha256: SHA256, tenantPrefixed: Object.freeze({ type: 'boolean' }) },
       ['kind', 'bucket', 'key', 'sizeBytes', 'sha256'],
     ),
   ]),

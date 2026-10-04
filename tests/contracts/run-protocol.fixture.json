@@ -667,6 +667,32 @@
       }
     },
     {
+      "name": "run.completed-with-tenant-prefixed-result-ref",
+      "event": {
+        "seq": 119,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 10,
+            "out": 20
+          },
+          "degraded": true,
+          "result": {
+            "kind": "ref",
+            "bucket": "harness-claim-check",
+            "key": "t1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sizeBytes": 183402,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tenantPrefixed": true
+          }
+        }
+      }
+    },
+    {
       "name": "run.completed-without-result",
       "event": {
         "seq": 19,

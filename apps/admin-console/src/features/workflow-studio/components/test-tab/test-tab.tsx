@@ -29,7 +29,7 @@ import { useLatestSandboxRun } from '@/shared/sandbox/api/latest-run';
 import type { StartSandboxRunBody } from '@/shared/sandbox/api/types';
 import { useSandboxRecording } from '@/shared/sandbox/api/use-sandbox-recording';
 import { nodeDisplayName } from '../../lib/node-identity';
-import { selectSelectedNodeId, useGraphStore, useGraphStoreApi, useOptionalGraphStoreApi } from '../../store';
+import { selectHidePhi, selectSelectedNodeId, useGraphStore, useGraphStoreApi, useOptionalGraphStoreApi } from '../../store';
 import type { NodeLastRun } from '../inspector/last-run-tab';
 import { useComposerData } from '../canvas';
 import { EventsPanel } from './events-panel';
@@ -99,7 +99,9 @@ function TestSurface({ definitionId }: TestTabProps) {
   const [input, setInput] = useState<TestInputState>({ message: '', extraJson: '{}', record: false });
   const [sentInput, setSentInput] = useState<Record<string, unknown> | null>(null);
   const [recordedRunId, setRecordedRunId] = useState<string | null>(null);
-  const [hidePhi, setHidePhi] = useState(false);
+  // One studio-wide "Hide PHI" switch (TASK-1036 E4a): the Test tab and the Composer share the store's state.
+  const hidePhi = useGraphStore(selectHidePhi);
+  const setHidePhi = useCallback((hide: boolean) => storeApi.getState().setHidePhi(hide), [storeApi]);
   const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
 
   const plan = useMemo(() => planTestInputs({ nodes, agentOptions, contextSchema: composer?.contextSchema }), [nodes, agentOptions, composer?.contextSchema]);

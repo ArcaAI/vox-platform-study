@@ -39,7 +39,8 @@ export function runTraceStreamPath(runId: string): string {
 }
 
 export function runTraceStreamScope(runId: string): string {
-  return `workflow_run:${runId}`;
+  // TASK-1038 E2: the admin trace has its own JWT-only ticket namespace (never `workflow_run`).
+  return `workflow_run_trace:${runId}`;
 }
 
 function traceUrl(runId: string, after: number, ticket: string): string {
