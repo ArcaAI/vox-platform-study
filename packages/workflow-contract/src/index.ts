@@ -467,7 +467,7 @@ export type {
   BindingSourceItem,
   BindingSourceOptions,
 } from './binding-source-paths';
-export { NODE_LABEL_MAX_LENGTH, BINDING_JSON_SCHEMA } from './node-config-schemas';
+export { NODE_LABEL_MAX_LENGTH, BINDING_JSON_SCHEMA, BINDING_FIRST_OF_MAX_PATHS } from './node-config-schemas';
 export { DATA_CONTRACT_RULES } from './rule-catalogue';
 export type { DataContractRule } from './rule-catalogue';
 export type { CompiledWorkflowSettings } from './compiler';

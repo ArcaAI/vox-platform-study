@@ -166,10 +166,12 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
       'versionNumber',
       'parentVersionId',
       'publishedAt',
+      'status',
+      'deprecatedAt',
     ],
     immutableWhen: PUBLISHED_OR_DEPRECATED,
     notes:
-      'workflow_definition_immutability_guard (latest body: the context-schema binding migration). Soft-delete retire allowed; hard DELETE of a published row is refused.',
+      'workflow_definition_immutability_guard (latest body: the TASK-1036 freeze-deprecated migration). Soft-delete retire allowed; hard DELETE of a published row is refused. `status` / `deprecatedAt` are trigger-frozen only on a DEPRECATED row (a DEPRECATED version is terminal); the registry keeps them for every PUBLISHED or DEPRECATED live row — deliberately conservative: a restore never rewinds the lifecycle of a frozen version (activation is the ACTIVE_SLUG_SLOT, handled separately).',
   }),
   rec('WorkflowAssignment', 'CONFIG_CONTENT', true),
   rec('WorkflowTestFixture', 'CONFIG_CONTENT', true),
