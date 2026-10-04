@@ -151,6 +151,28 @@ export interface AgentCompiledPromptFragment {
   promptVersionNumber?: number;
   content: string;
   when: string | null;
+  /**
+   * TASK-1039 — the template version's variable DECLARATIONS, frozen beside its content at publish
+   * (a `template` fragment only). ADDITIVE-OPTIONAL: absent on an artifact frozen before the field existed.
+   */
+  variables?: AgentPromptVariableDeclaration[];
+}
+
+/**
+ * TASK-1039 — one prompt variable DECLARATION, as `PromptVersion.variables` stores it and as the
+ * published agent now carries it on `resolvedPrompt`. The shape mirrors `PromptVariableDeclaration`
+ * in `@arcaai/workflow-contract` (this package cannot import it); a client reads it to build an
+ * input form — which variable is required, which is optional (renders empty), what it defaults to.
+ */
+export interface AgentPromptVariableDeclaration {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+  required: boolean;
+  /** Used when the variable is absent, whatever `required` says. */
+  default?: string;
+  description?: string;
+  /** Where a value comes from when the caller sends none: a `context` path, or a `static` value. */
+  source?: { kind: 'context' | 'static'; path?: string };
 }
 
 /**
@@ -199,7 +221,18 @@ export interface AgentCompiledConfig {
    * `tests/contracts/prompt-composition.fixture.json`.
    */
   resolvedPrompt:
-    | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+    | {
+        source: 'template';
+        promptTemplateId: string;
+        promptVersionNumber: number;
+        content: string;
+        /**
+         * TASK-1039 — the pinned version's variable declarations, frozen at publish. ADDITIVE-OPTIONAL:
+         * absent on an artifact frozen before the field existed. (A `composite` prompt carries them per
+         * fragment — see {@link AgentCompiledPromptFragment.variables}.)
+         */
+        variables?: AgentPromptVariableDeclaration[];
+      }
     | { source: 'inline'; content: string }
     | { source: 'composite'; content: string; join: string; fragments: AgentCompiledPromptFragment[] }
     | null;
