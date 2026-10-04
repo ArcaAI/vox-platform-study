@@ -367,8 +367,12 @@ The tier and effort then live in files instead of memory. New agent files load o
    - lockfile and dependency changes (TASK-1037 is upgrading Prisma in parallel, so no lane bumps a dependency).
 
    A lane that needs SQL writes it to `docs/implementation/<ticket>/sql/` and the orchestrator applies it through the shadow-DB recipe.
-3. **TDD.** A RED test first for every behaviour in the brief. The lane runs **only its own test files**, per the owner rule (no package-wide gates before the full merge). Python lanes run `~/miniconda3/envs/arcaenv/bin/python -m pytest <files>`, because `conda run` is broken in the sandbox.
-4. **Harness changes** go behind a `workflow.patched("task-1038-<name>")` (or `task-1036-…`) gate, and the missing replay fixtures are captured **before** `workflows.py` changes.
+3. **TDD, and no gates in lanes (owner rule, re-stated 2026-10-04).** A RED test first for every behaviour in the brief.
+   - A lane runs **only the test files it creates or changes**.
+   - A lane **never** runs gating tests: no package-wide or directory suite, no replay-compat suite, no whole-package typecheck, lint or build, no e2e.
+   - Python lanes run `~/miniconda3/envs/arcaenv/bin/python -m pytest <their files>`, because `conda run` is broken in the sandbox.
+   - The orchestrator runs every gate **once**, after the last wave has merged into `dev-2.2`. Between waves it only does integration work (contract builds, barrels, type-checking what it edited).
+4. **Harness changes** go behind `workflow.patched("task-1038-<name>")` (or `task-1036-…`). A lane may **capture** replay fixtures for its new paths. **Running** the replay suites belongs to the orchestrator's final gate.
 5. **Commit in the worktree** with a ticket-prefixed message. Do not merge, push or rebase onto another lane.
 6. **Return contract.** The report is data for the orchestrator:
    - branch and head SHA;
@@ -1144,3 +1148,4 @@ The data each event needs:
 | 2026-10-04 | Round 3 (§9): standard NodeIO contract, field bindings, the four context scopes (`context` / `consultation` / `nodes` / `vars`+`run`), and OD-29..34. The `PLATFORM_CONTEXT_VARIABLES` flattening was checked in code (`platform-context-variables.ts:42-52`). |
 | 2026-10-04 | §10 UX specification (composer suggestions, test-time visibility, the debug event list) plus a clickable prototype artifact with Composer and Test screens. |
 | 2026-10-04 | **Owner approved** the plan, every recommendation, W1–W6, the ticket split and the prototype. §4 rewritten as the final decision register. §5 rewritten as the cross-ticket programme (TASK-1036/1038/1039, with 1040 separate): agent tier map, lane rules, waves A–D with file ownership, a 16.8M-token budget, and the verification list. OD-15 moved into scope (C3), because the approved prototype makes microphone input and attachments first-class. TASK-1037 was already taken by a parallel Prisma-8 session, so the split tickets are 1038–1040. Status → In Progress. |
+| 2026-10-04 | **Owner correction:** lanes must not run any gating test. Briefs for A1 and B1 (replay-compat), B5 ("all seed tests green") and the B4 follow-up (full `apps/text` suite) violated this. All running lanes were told to stop broad runs and keep to their own test files. §5.3 rules 3–4 were rewritten. The orchestrator's gate pass runs once, after the complete merge. Earlier lane-reported suite counts stay recorded as lane data, not as gate evidence. |
