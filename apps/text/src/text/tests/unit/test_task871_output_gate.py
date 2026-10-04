@@ -494,7 +494,8 @@ class TestNonStreamingPath:
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "ok"
         assert "patient note" in kwargs["source_context"]
-        assert "be brief" in kwargs["source_context"]
+        # TASK-1036 OD-1: the source is the context (user message), not the system prompt.
+        assert "be brief" not in kwargs["source_context"]
         assert kwargs["tenant_id"] == "tenant-42"
 
     @pytest.mark.asyncio
@@ -630,7 +631,7 @@ class TestStreamingProducer:
         # The gate saw everything the consumer saw: reasoning AND content, assembled.
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "think\n\nhello world"
-        assert "p" in kwargs["source_context"] and "s" in kwargs["source_context"]
+        assert kwargs["source_context"] == "p"
         assert kwargs["tenant_id"] == "tenant-rej"
 
         chunks = _appended_chunks(mock_task_manager)
