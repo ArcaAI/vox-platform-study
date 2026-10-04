@@ -20,6 +20,7 @@ from harness.core.provider_credentials import (
     ProviderCredential,
     to_provider_overrides,
 )
+from harness.temporal import http_pool
 from harness.temporal.claim_check import ClaimCheckRef
 
 
@@ -329,11 +330,11 @@ class TextClient:
         headers["X-Tenant-Id"] = tenant_id.strip()
         headers.update(outbound_context_headers())
 
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
 
             async def _send() -> httpx.Response:
                 try:
-                    resp = await client.post(url, json=body, headers=headers)
+                    resp = await client.post(url, json=body, headers=headers, timeout=self._timeout)
                 except _POST_SEND_ERRORS as exc:
                     # The prompt reached Text (bytes sent) but the response was
                     # lost. The model MAY have run — do NOT let the governor re-POST it.

@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.provider_credentials import ProviderCredential
 from harness.sensors.base import NEREntity, normalize_text
+from harness.temporal import http_pool
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
     CaptureFeedbackResponse,
@@ -419,10 +420,13 @@ class ApiClient:
     async def _post(
         self, path: str, body: dict[str, Any], *, idempotency_key: str | None = None
     ) -> dict[str, Any]:
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
                 resp = await client.post(
-                    self._url(path), json=body, headers=self._headers(idempotency_key)
+                    self._url(path),
+                    json=body,
+                    headers=self._headers(idempotency_key),
+                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
@@ -435,9 +439,11 @@ class ApiClient:
         headers = self._headers()
         if tenant_id:
             headers["X-Tenant-Id"] = tenant_id
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
-                resp = await client.get(self._url(path), params=params, headers=headers)
+                resp = await client.get(
+                    self._url(path), params=params, headers=headers, timeout=self._timeout
+                )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise _api_error(path, exc) from exc
@@ -518,9 +524,9 @@ class ApiClient:
         params: dict[str, Any] = {"service": "harness", "tenantId": tenant_id, "agentSlug": slug}
         headers = {**self._headers(), "X-Tenant-Id": tenant_id}
         url = f"{self._base_url}/api/v1/internal/agents/resolve"
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
-                resp = await client.get(url, params=params, headers=headers)
+                resp = await client.get(url, params=params, headers=headers, timeout=self._timeout)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise _api_error("/internal/agents/resolve", exc) from exc
@@ -537,10 +543,14 @@ class ApiClient:
         """
         headers = {**self._headers(), "X-Tenant-Id": tenant_id}
         url = f"{self._base_url}/api/v1/internal/composed-prompts"
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+        async with http_pool.borrow(self._transport, self._timeout) as client:
             try:
                 resp = await client.post(
-                    url, params={"service": "harness"}, json=body, headers=headers
+                    url,
+                    params={"service": "harness"},
+                    json=body,
+                    headers=headers,
+                    timeout=self._timeout,
                 )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
