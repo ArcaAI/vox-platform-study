@@ -148,7 +148,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         # TASK-1038 R-3 — the payload ceiling the walk enforces on itself, resolved HERE because
         # the deterministic workflow body cannot read settings.
         limits=RunLimits(
-            activity_input_max_bytes=settings.claim_check.activity_input_max_bytes,
+            activityInputMaxBytes=settings.claim_check.activity_input_max_bytes,
         ),
     )
     # TASK-1038 D-B — the Temporal backstop. `None` (no timeout) when it cannot be computed

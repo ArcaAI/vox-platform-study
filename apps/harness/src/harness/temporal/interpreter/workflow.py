@@ -14,7 +14,7 @@ effect goes through ``workflow.execute_activity``.
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from temporalio import workflow
@@ -497,10 +497,10 @@ class WorkflowInterpreter:
         self._bounded = False
         self._timed_out = False
         self._budget_seconds: float | None = None
-        self._clock_started: Any = None
+        self._clock_started: datetime | None = None
         self._paused_seconds = 0.0
         self._pause_depth = 0
-        self._pause_started: Any = None
+        self._pause_started: datetime | None = None
         self._deadline_task: asyncio.Future[None] | None = None
 
     def _next_seq(self) -> int:
@@ -777,11 +777,11 @@ class WorkflowInterpreter:
 
     def _remaining_budget(self) -> float:
         """Compute seconds left (pure): budget minus elapsed workflow time minus paused time."""
-        if self._budget_seconds is None:
+        if self._budget_seconds is None or self._clock_started is None:
             return float("inf")
         now = workflow.now()
         paused = self._paused_seconds
-        if self._pause_depth:
+        if self._pause_depth and self._pause_started is not None:
             paused += (now - self._pause_started).total_seconds()
         elapsed = (now - self._clock_started).total_seconds() - paused
         return self._budget_seconds - elapsed
