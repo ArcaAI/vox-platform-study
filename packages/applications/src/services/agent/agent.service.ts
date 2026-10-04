@@ -59,6 +59,7 @@ import {
   portableBundleProblems,
   readPromptFragments,
   renderTemplate,
+  resolvedPromptVariableDeclarations,
   staticProjection,
   unresolvedPromptVariables,
   templateReferenceProblems,
@@ -842,7 +843,7 @@ export class AgentService extends BaseService implements IAgentService {
 
     // Built through the same failure mapping as the render below: a `{ path }` binding resolves
     // through the grammar, so an unresolvable one is a 400 naming the path, not a 500.
-    const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema));
+    const scope = this.renderMapped(() => this.testScope(entity, dto, contextSchema, compiled.resolvedPrompt));
     // TASK-947 — the SAME composition the invocation route runs, so what the bench shows is
     // what production sends: a composite is SELECTED and joined here, never served as its static
     // projection (which would show an author the base prompt and hide the branch they came to test).
@@ -973,7 +974,12 @@ export class AgentService extends BaseService implements IAgentService {
    * traversal: one grammar, one resolution, one set of edge cases (own properties only, `null`
    * is missing, non-strings canonically serialised).
    */
-  private testScope(entity: AgentEntity, dto: TestAgentRequest, contextSchema: AgentCompiledContextSchema | null): Record<string, unknown> {
+  private testScope(
+    entity: AgentEntity,
+    dto: TestAgentRequest,
+    contextSchema: AgentCompiledContextSchema | null,
+    resolvedPrompt: ResolvedPrompt,
+  ): Record<string, unknown> {
     const context = dto.context ?? {};
     this.assertContextConforms(context, contextSchema);
     // The SHARED builder, not a bench-local copy: the whole value of a draft test is that what
@@ -987,6 +993,9 @@ export class AgentService extends BaseService implements IAgentService {
       input: dto.input ?? {},
       variables: { ...asRecord(asRecord(entity.instruction)?.variables), ...(dto.variables ?? {}) },
       templateRef: `agent:${entity.slug}`,
+      // TASK-1036 OD-10 — the SAME frozen declarations the invocation route reads, so the bench
+      // renders an absent OPTIONAL variable empty exactly as production does.
+      variableDeclarations: resolvedPromptVariableDeclarations(resolvedPrompt),
     });
   }
 
