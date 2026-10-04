@@ -655,6 +655,7 @@ class WorkflowInterpreter:
                     event_type=EVENT_RUN_COMPLETED,
                     status=status,
                     reason=self._run_failure_reason,
+                    result_outputs=self._result_outputs(),
                     node_count=node_count,
                     failed_node_count=failed_node_count,
                     degraded_node_count=degraded_node_count,
@@ -662,6 +663,22 @@ class WorkflowInterpreter:
                 )
             ],
         )
+
+    def _result_outputs(self) -> dict[str, dict[str, Any]] | None:
+        """TASK-1038 D-I — what every ``core.output`` node published, by node id (pure).
+
+        Read from the walk's own output cache, so a ``core.output`` that FAILED (and stored
+        nothing) contributes nothing, and a DEGRADED one that published a mismatching payload
+        (``onSchemaViolation: degrade``) does — the run's status says which it was. ``None`` when
+        no output node published anything: the completed event then carries no ``result``.
+        """
+        published = {
+            node_id: output
+            for node_id, output in self._node_outputs.items()
+            if self._node_types.get(node_id) == "core.output"
+            and ("payload" in output or "resultRef" in output)
+        }
+        return published or None
 
     async def _run_stage(self, stage: CompiledStage, inp: InterpreterInput) -> list[NodeResult]:
         """All-settled join: every node's own coroutine catches its own ACTIVITY exceptions

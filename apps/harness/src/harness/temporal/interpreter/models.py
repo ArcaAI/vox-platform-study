@@ -466,6 +466,12 @@ class RunEventSpec(BaseModel):
     failed_node_count: int | None = None
     degraded_node_count: int | None = None
     skipped_node_count: int | None = None
+    #: TASK-1038 D-I — for `workflow.run.completed` only: what each `core.output` node published
+    #: (`{nodeId: output}`), from which the emit activity builds the event's `result` (inline, or
+    #: a claim-check reference). Additive-optional on an ACTIVITY INPUT, like the counts above;
+    #: `None` (every replayed pre-TASK-1038 history, and every run with no output) emits no
+    #: `result` at all.
+    result_outputs: dict[str, dict[str, Any]] | None = None
 
 
 class RunEventBatch(BaseModel):

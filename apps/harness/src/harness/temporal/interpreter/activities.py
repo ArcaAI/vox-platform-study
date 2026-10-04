@@ -560,6 +560,48 @@ def _envelope_for(batch: RunEventBatch, spec: RunEventSpec) -> Any:
     )
 
 
+async def _run_result(outputs: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """TASK-1038 D-I — the completed event's ``result``: inline, or a claim-check reference.
+
+    The value is the ``core.output`` node's published ``payload`` (or its own ``resultRef``);
+    with several output nodes, a map keyed by node id. At most
+    ``HARNESS_CLAIM_CHECK_RESULT_INLINE_MAX_BYTES`` serialized travels inline; anything larger
+    travels as ``{kind: "ref", bucket, key, sizeBytes, sha256}`` — an object already in the
+    claim-check store (re-used when the result is exactly one stored value) or written now.
+    """
+    values: dict[str, Any] = {}
+    for node_id, output in outputs.items():
+        if "payload" in output:
+            values[node_id] = output["payload"]
+        elif isinstance(output.get("resultRef"), dict):
+            values[node_id] = payload_refs.make_marker(output["resultRef"])
+    if not values:
+        return None
+    value: Any = next(iter(values.values())) if len(values) == 1 else values
+    settings = get_settings().claim_check
+    limit = settings.result_inline_max_bytes
+    if payload_refs.is_marker(value):
+        ref = ClaimCheckRef.model_validate(value[payload_refs.MARKER_KEY])
+        if ref.size > limit:
+            return _result_ref(ref)
+    resolved = await _resolve_references(value, {})
+    serialized = _dumps(resolved)
+    if len(serialized.encode("utf-8")) <= limit:
+        return {"kind": "inline", "value": resolved}
+    store, location = await open_store(settings)
+    return _result_ref(await store_blob(serialized, store=store, bucket=location.bucket))
+
+
+def _result_ref(ref: ClaimCheckRef) -> dict[str, Any]:
+    return {
+        "kind": "ref",
+        "bucket": ref.bucket,
+        "key": ref.key,
+        "sizeBytes": ref.size,
+        "sha256": ref.sha256,
+    }
+
+
 @activity.defn(name="interpreter.emit_run_events")
 async def emit_run_events(batch: RunEventBatch) -> int:
     """Mirror one stage boundary's control events onto the run's Redis Stream.
@@ -578,7 +620,19 @@ async def emit_run_events(batch: RunEventBatch) -> int:
     envelopes = []
     for spec in batch.events:
         try:
-            envelopes.append(_envelope_for(batch, spec))
+            envelope = _envelope_for(batch, spec)
+            if spec.result_outputs:
+                try:
+                    result = await _run_result(spec.result_outputs)
+                except Exception as exc:  # noqa: BLE001 — a result read never drops the event
+                    activity.logger.warning(
+                        "harness.run_events.result_unavailable "
+                        f"run_id={batch.run_id} error={exc}"
+                    )
+                    result = None
+                if result is not None:
+                    envelope.payload["result"] = result
+            envelopes.append(envelope)
         except Exception as exc:  # noqa: BLE001 — see the docstring: this never raises
             activity.logger.warning(
                 "harness.run_events.envelope_rejected "
