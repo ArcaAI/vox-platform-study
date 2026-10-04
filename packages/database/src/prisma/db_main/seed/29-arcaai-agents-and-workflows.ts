@@ -204,11 +204,11 @@ export const ARCAAI_DEPARTMENT_AGENT_SPECS: SeedAgentSpec[] = ARCAAI_DEPARTMENT_
      *  - the policy fragment is a POINTER to ONE shared row
      *    (`ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID`), not 22 inlined copies, so the admin edits
      *    one template;
-     *  - it carries NO `promptVersionNumber`. A pin would freeze all 22 agents on today's body
-     *    and forfeit that single-point edit. The clinical fragment KEEPS its pin — the agent's
-     *    pin outranking the template's `approvedVersionNumber` is what makes
-     *    `ARCAAI_CLINICAL_APPROVED_VERSION` a one-constant corpus rollback, and this ticket does
-     *    not change that.
+     *  - it is PINNED (TASK-1036 W3: a published agent pins every library prompt it binds, and
+     *    the publish gate refuses `PROMPT_VERSION_UNPINNED`) to
+     *    `ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER`, the version the seed itself creates for
+     *    the row. The clinical fragment is pinned to `ARCAAI_CLINICAL_APPROVED_VERSION`, which is
+     *    what makes a corpus rollback one constant.
      *
      * ORDER matters: the policy is LAST, because the nearest instruction to the generation point
      * is the one a model honours most reliably, and the whole job of this fragment is to win.
