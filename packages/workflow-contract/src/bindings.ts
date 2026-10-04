@@ -70,6 +70,26 @@ export { BINDING_JSON_SCHEMA };
 // Shape
 // =============================================================================================
 
+/**
+ * The five roots a binding path may start at. Runtime semantics the harness resolver (lane B1)
+ * implements, stated here so both runtimes read one contract:
+ *
+ *  - `context.*` — the run input, validated against the workflow's context schema. The eleven
+ *    flat platform names (`context.safe_age`, `context.dna_style_text`, … —
+ *    `PLATFORM_CONTEXT_ALIASES`) are NOT resolved by the binding resolver: for this release they
+ *    keep riding the LEGACY GATEWAY INJECTION into the run context, exactly as before, and the
+ *    Studio offers their `consultation.*` paths instead. They retire with the deprecation register.
+ *  - `consultation.*` — the platform read schema, read at node start unless the binding says
+ *    `at: 'runStart'` (OD-30). Available in BINDINGS and TEMPLATES only: a CEL expression
+ *    (`core.condition` `when`, a guard) cannot read `consultation.*` this release — there it is an
+ *    unknown root.
+ *  - `nodes.<id>.outputs.<field>` — an ANCESTOR's declared output. Inside a loop body,
+ *    `nodes.<loop>.outputs.item` is the CURRENT iteration's item (the loop's `each` handle feeds the
+ *    body, so the loop is an ancestor of every body step it reaches); `result` is what the loop
+ *    collected, read after it.
+ *  - `vars.*` — a key an ANCESTOR `core.variable` step declares.
+ *  - `run.*` — run identity (`RUN_SCOPE_FIELDS`).
+ */
 export const BINDING_ROOTS = Object.freeze(['context', 'consultation', 'nodes', 'vars', 'run'] as const);
 export type BindingRoot = (typeof BINDING_ROOTS)[number];
 
@@ -116,7 +136,13 @@ export function isBinding(value: unknown): value is Binding {
   return false;
 }
 
-/** The run-identity fields `run.*` offers. Fixed by the platform; never PHI. */
+/**
+ * The run-identity fields `run.*` offers. Fixed by the platform; never PHI.
+ *
+ * Replay-safe by construction: the harness resolves them from workflow state, never from the
+ * wall clock — `run.now` is `workflow.now()` (Temporal's deterministic time, taken when the step
+ * starts) and `run.startedAt` the run's own start, so a replay renders the same value.
+ */
 export const RUN_SCOPE_FIELDS: Readonly<Record<string, { readonly type: IoType; readonly description: string }>> = Object.freeze({
   id: Object.freeze({ type: 'text', description: 'This run`s id.' }),
   tenantId: Object.freeze({ type: 'text', description: 'The tenant the run belongs to.' }),

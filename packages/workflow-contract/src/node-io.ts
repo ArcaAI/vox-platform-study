@@ -356,6 +356,8 @@ export const NODE_IO: Readonly<Record<string, NodeIO>> = Object.freeze({
       input: output('any', 'The router`s input, carried through to the branch taken (OD-19).'),
     },
   ),
+  // Inside the loop body, `nodes.<loop>.outputs.item` is the CURRENT iteration's item (the body is
+  // entered through the loop's `each` handle); `result` is what the loop collected, read after it.
   'core.loop': io(
     { in: input('any', false, 'The list to iterate.') },
     { item: output('any', 'The current item, inside the loop body.'), result: output('json', 'What the loop collected when it finished.') },
