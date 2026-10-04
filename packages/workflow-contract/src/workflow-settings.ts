@@ -26,7 +26,9 @@
  * ## Implications (WF-SET-001..004)
  *
  * `sse` ⇒ `api`; `socket` ⇒ `api`; an ASR / TTS agent node or a STREAM audio kind ⇒ `socket`;
- * BLOB audio or an attachment ⇒ `api`. The settings dialog applies the same list live (a locked
+ * BLOB audio or an attachment ⇒ `api`. Exemption (contract freeze): an ASR node does NOT force
+ * `socket` when `sources` includes `consultation` — its audio arrives on the consultation SESSION
+ * socket, not on the workflow's run socket. A TTS node and a STREAM audio kind keep the rule. The settings dialog applies the same list live (a locked
  * checkbox with its reason) — `settingsImplications` is the one derivation both read.
  *
  * Mirrored in Python (lane B1) against `tests/contracts/workflow-settings.fixture.json`.
@@ -238,10 +240,12 @@ function isAttachmentKind(kind: Record<string, unknown>): boolean {
  */
 export function settingsImplications(
   graph: Pick<WorkflowGraph, 'nodes'>,
-  settings: Pick<WorkflowSettings, 'connections'>,
+  settings: Pick<WorkflowSettings, 'connections'> & { readonly sources?: readonly WorkflowSource[] },
   ctx: SettingsImplicationContext = {},
 ): SettingsImplication[] {
   const has = new Set<string>(settings.connections);
+  // A consultation-sourced run receives its audio on the consultation session socket.
+  const consultationAudio = (settings.sources ?? []).includes('consultation');
   const found: SettingsImplication[] = [];
 
   if (has.has('sse') && !has.has('api')) {
@@ -266,6 +270,7 @@ export function settingsImplications(
       if (node?.type !== 'core.agent') continue;
       const task = agentTaskOf(asObject(node.config), ctx.agents);
       if (task !== 'SPEECH_TO_TEXT' && task !== 'TEXT_TO_SPEECH') continue;
+      if (task === 'SPEECH_TO_TEXT' && consultationAudio) continue;
       found.push({
         ruleId: 'WF-SET-003',
         requires: 'socket',
