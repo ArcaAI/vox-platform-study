@@ -56,6 +56,35 @@ export class FakeWorkflowRunRepository {
     return this.toEntity(next);
   }
 
+  /**
+   * TASK-1038 E2 (fix 4) — the stale-agent-run sweep's read: `{ kind, status, startedAt: { lt } }`
+   * (top level or inside `AND`), ordered by `startedAt` then `id`, bounded by `limit`. Anything else
+   * in `where` is refused loudly rather than silently ignored.
+   */
+  async findAll(params: { where?: Record<string, unknown>; limit?: number } = {}): Promise<WorkflowRunEntity[]> {
+    const clauses: Record<string, unknown>[] = [];
+    const where = params.where ?? {};
+    for (const [key, value] of Object.entries(where)) {
+      if (key === 'AND') clauses.push(...(value as Record<string, unknown>[]));
+      else clauses.push({ [key]: value });
+    }
+    const matches = (row: Record<string, unknown>): boolean =>
+      clauses.every((clause) =>
+        Object.entries(clause).every(([column, condition]) => {
+          if (column === 'startedAt' && condition && typeof condition === 'object' && 'lt' in (condition as object)) {
+            return (row.startedAt as Date).getTime() < ((condition as { lt: Date }).lt as Date).getTime();
+          }
+          if (column === 'kind' || column === 'status' || column === 'tenantId') return row[column] === condition;
+          throw new Error(`FakeWorkflowRunRepository.findAll: unsupported where clause '${column}'`);
+        }),
+      );
+    return [...this.rows.values()]
+      .filter(matches)
+      .sort((a, b) => (a.startedAt as Date).getTime() - (b.startedAt as Date).getTime() || String(a.id).localeCompare(String(b.id)))
+      .slice(0, params.limit ?? Number.POSITIVE_INFINITY)
+      .map((row) => this.toEntity(row));
+  }
+
   /** The one stored row of a run (tests read the raw columns). */
   rowOf(runId: string): Record<string, unknown> | undefined {
     return [...this.rows.values()].find((row) => row.runId === runId);

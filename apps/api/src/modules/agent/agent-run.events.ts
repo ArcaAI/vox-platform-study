@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { RUN_APPEND_LUA, RUN_EVENTS_KEY, RUN_SEQ_KEY, buildRunAppend, type RunAppendInput } from '@arcaai/async-contract';
+import { RUN_APPEND_LUA, RUN_DEDUPE_KEY, RUN_EVENTS_KEY, RUN_SEQ_KEY, buildRunAppend, type RunAppendInput } from '@arcaai/async-contract';
 
 /**
  * TASK-1038 OD-26 — the agent run's EVENT STREAM, and nothing else, in Redis.
@@ -34,6 +34,9 @@ const OLDEST_LUA = "local rows = redis.call('XRANGE', KEYS[1], '-', '+', 'COUNT'
 const TAIL_PAGE_LUA = "return redis.call('XREVRANGE', KEYS[1], ARGV[1], '-', 'COUNT', tonumber(ARGV[2]))";
 
 const SCAN_PAGE = 200;
+
+/** §6.1 terminal backstop: `EXPIRE <key> <retention> NX` on all three keys, closing the stream. */
+const CLOSE_LUA = "for i = 1, #KEYS do redis.call('EXPIRE', KEYS[i], ARGV[1], 'NX') end return 1";
 
 function fieldValue(fields: readonly string[], name: string): string | undefined {
   for (let i = 0; i + 1 < fields.length; i += 2) if (fields[i] === name) return fields[i + 1];
@@ -80,6 +83,23 @@ export class AgentRunEventStream {
     if (!Array.isArray(reply) || !Array.isArray(reply[1])) return null;
     const parsed = Number(fieldValue(reply[1] as string[], 'seq'));
     return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  /** TASK-1038 E2 (fix 8) — the `type` of the newest retained entry, `null` when nothing is retained. */
+  async newestType(runId: string): Promise<string | null> {
+    const reply = await this.client().eval(TAIL_PAGE_LUA, 1, RUN_EVENTS_KEY(runId), '+', 1);
+    const rows = Array.isArray(reply) ? (reply as [string, string[]][]) : [];
+    return rows.length > 0 ? (fieldValue(rows[0][1], 'type') ?? null) : null;
+  }
+
+  /**
+   * TASK-1038 E2 (fix 8) — protocol v2 §6.1 terminal backstop: the run is terminal in the read
+   * model but no terminal event reached its stream, so CLOSE the stream (the same expiry on all
+   * three keys, `NX` so a terminal append's own clock is never moved). A late terminal event is
+   * then refused (`RUN_STREAM_CLOSED`) and the read model serves the terminal state.
+   */
+  async closeAfterTerminal(runId: string, retentionSeconds: number): Promise<void> {
+    await this.client().eval(CLOSE_LUA, 3, RUN_SEQ_KEY(runId), RUN_EVENTS_KEY(runId), RUN_DEDUPE_KEY(runId), retentionSeconds);
   }
 
   /**
