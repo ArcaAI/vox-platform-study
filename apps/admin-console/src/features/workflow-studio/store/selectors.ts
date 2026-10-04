@@ -22,6 +22,8 @@ export const selectCanDiscard = (state: GraphStore): boolean => state.dirty && s
 
 export const selectSelectedEdgeId = (state: GraphStore) => state.selectedEdgeId;
 export const selectSettings = (state: GraphStore) => state.settings;
+/** TASK-1036 R-C #7 — the studio's "Hide PHI" switch. */
+export const selectHidePhi = (state: GraphStore): boolean => state.hidePhi;
 
 export function selectSelectedEdge(state: GraphStore): GraphStoreEdge | null {
   return state.edges.find((edge) => edge.id === state.selectedEdgeId) ?? null;

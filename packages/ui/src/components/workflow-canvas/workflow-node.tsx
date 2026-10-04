@@ -61,6 +61,27 @@ function portTitle(port: WorkflowCanvasPort): string {
   return `${port.label} · ${port.type}${port.required ? ' · required' : ''}`;
 }
 
+/**
+ * TASK-1036 R-C #8 — the type, SAID beside the port: number, boolean and date share a colour and a
+ * round shape, so without words the three are indistinguishable. Short on purpose (a node is
+ * narrow); the full type stays in the tooltip and in the screen-reader text.
+ */
+const PORT_TYPE_SHORT: Record<string, string> = {
+  text: 'text',
+  number: 'num',
+  boolean: 'bool',
+  date: 'date',
+  json: 'data',
+  audio: 'audio',
+  file: 'file',
+  document: 'doc',
+  any: 'any',
+};
+export function portTypeShort(type: string): string {
+  if (type.startsWith('list<')) return 'list';
+  return PORT_TYPE_SHORT[type] ?? type;
+}
+
 function PortRows({ ports, kind }: { ports: readonly WorkflowCanvasPort[]; kind: 'target' | 'source' }) {
   const target = kind === 'target';
   return (
@@ -85,6 +106,9 @@ function PortRows({ ports, kind }: { ports: readonly WorkflowCanvasPort[]; kind:
             {port.label}
             {port.required ? <span aria-hidden> *</span> : null}
             <span className="sr-only">{` ${target ? 'input' : 'output'}, ${port.type}${port.required ? ', required' : ''}`}</span>
+          </span>
+          <span aria-hidden data-slot="workflow-port-type" className="text-muted-foreground font-mono text-[10px]">
+            {portTypeShort(port.type)}
           </span>
         </div>
       ))}
@@ -157,6 +181,15 @@ function formatRunDuration(ms: number): string | null {
   return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
 }
 
+/** TASK-1036 R-C #10 — the spec's words (§10.2): the Test tab's legend says the same. */
+const RUN_STATE_LABEL: Record<WorkflowCanvasRunState, string> = {
+  pending: 'Waiting',
+  running: 'Running',
+  ok: 'Done',
+  failed: 'Failed',
+  skipped: 'Skipped',
+};
+
 /** The sandbox's per-node verdict, in the node header (TASK-893 §3.6). Text first, colour second. */
 function RunChip({ runState, runDurationMs, runWarnings }: { runState: WorkflowCanvasRunState; runDurationMs?: number; runWarnings?: number }) {
   const duration = runDurationMs === undefined ? null : formatRunDuration(runDurationMs);
@@ -164,7 +197,7 @@ function RunChip({ runState, runDurationMs, runWarnings }: { runState: WorkflowC
   return (
     <Badge variant={RUN_STATE_VARIANT[runState]} data-run-state={runState} className={cn('gap-1 px-1.5 text-[11px]', RUN_STATE_CLASS[runState])}>
       <span className="sr-only">Run state: </span>
-      <span>{runState}</span>
+      <span>{RUN_STATE_LABEL[runState] ?? runState}</span>
       {duration ? <span className="tabular-nums opacity-80">{duration}</span> : null}
       {warnings ? <span className="text-warning-strong">{warnings}</span> : null}
     </Badge>

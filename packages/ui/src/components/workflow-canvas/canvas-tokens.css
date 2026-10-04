@@ -38,7 +38,8 @@
   --workflow-canvas-port-boolean: var(--info, var(--primary));
   --workflow-canvas-port-date: var(--info, var(--primary));
   --workflow-canvas-port-json: var(--ai, var(--muted-foreground));
-  --workflow-canvas-port-list: var(--warning, var(--muted-foreground));
+  /* R-C #8 — the STRONG token: base --warning is 2.96:1 on the card, under the 3:1 non-text floor. */
+  --workflow-canvas-port-list: var(--warning-strong, var(--warning, var(--muted-foreground)));
   --workflow-canvas-port-audio: var(--success, var(--muted-foreground));
   --workflow-canvas-port-file: var(--success, var(--muted-foreground));
   --workflow-canvas-port-any: var(--muted-foreground);

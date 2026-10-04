@@ -3,6 +3,8 @@
 import {
   autocompletion,
   closeBrackets,
+  closeCompletion,
+  completionStatus,
   pickedCompletion,
   type Completion,
   type CompletionContext,
@@ -10,7 +12,7 @@ import {
 } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, Prec, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { EditorView, keymap, placeholder as placeholderExtension } from '@codemirror/view';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
@@ -36,6 +38,12 @@ import { cn } from '@/lib/utils';
  * option stays visible, says why, and inserts nothing); `sample` shows what the last run held. In
  * template mode, `/` at the start of a word opens the same list (`slashCommand`), and
  * `editorRef.insertAtCursor` lets an outside "+ Insert field" button write at the cursor.
+ *
+ * TASK-1036 R-C — `/` is ordinary punctuation in clinical text ("and/or", "BP 120/80"), so it
+ * opens the list only before a LETTER (or on an explicit Ctrl/Cmd-Space), and Enter on a `/` list
+ * the author has not navigated is a NEWLINE: nothing is picked until an arrow key moves through
+ * the list (`slashGuard`). A `{{` list keeps Enter-to-pick — the braces are the explicit request.
+ * Each row carries `cm-scope-<scope>`, which the theme colours with the four scope tokens.
  *
  * Keyboard: Ctrl/Cmd-Space opens completion explicitly, arrows + Enter pick,
  * Escape closes. Tab is NOT bound — it moves focus out of the editor, so the
@@ -150,7 +158,9 @@ function pathOption(entry: VariablePath, apply?: Completion['apply'], sections?:
     boost: boostOf(entry),
     variablePath: entry,
     ...(section ? { section } : {}),
-    ...(entry.disabledReason ? { class: 'cm-completion-disabled' } : {}),
+    ...(entry.disabledReason || entry.scope
+      ? { class: [entry.scope ? `cm-scope-${entry.scope}` : null, entry.disabledReason ? 'cm-completion-disabled' : null].filter(Boolean).join(' ') }
+      : {}),
     ...(resolvedApply ? { apply: resolvedApply } : entry.label ? { apply: entry.path } : {}),
   };
 }
@@ -194,13 +204,20 @@ export function templateCompletionSource(getPaths: () => readonly VariablePath[]
   };
 }
 
+/** `/` at the start of a word followed by a letter — the only typed shape that opens the `/` list. */
+const SLASH_TYPED = /(?:^|\s)\/[A-Za-z][^\s/{}]*$/;
+/** Any `/query` at the start of a word — what an EXPLICIT request (Ctrl/Cmd-Space) may complete. */
+const SLASH_ANY = /(?:^|\s)\/[^\s/{}]*$/;
+
 /**
  * TASK-1036 — `/` at the start of a word (Dify-style). The match starts AT the slash so the whole
- * `/query` is replaced by the placeholder; `and/or` never opens it.
+ * `/query` is replaced by the placeholder; `and/or` never opens it. R-C: typing opens it only
+ * when a LETTER follows the slash ("BP /80", "Plan /" stay plain text); an explicit request
+ * (Ctrl/Cmd-Space) still opens it right after a bare slash.
  */
 export function slashCompletionSource(getPaths: () => readonly VariablePath[]): SyncCompletionSource {
   return (context: CompletionContext): CompletionResult | null => {
-    const match = context.matchBefore(/(?:^|\s)\/[^\s/{}]*$/);
+    const match = context.matchBefore(context.explicit ? SLASH_ANY : SLASH_TYPED);
     if (!match) return null;
     const slash = match.from + match.text.indexOf('/');
     const options = rankedOptions(getPaths(), (entry) => (view: EditorView, completion: Completion, _from: number, to: number) => {
@@ -231,6 +248,58 @@ export function celCompletionSource(getPaths: () => readonly VariablePath[]): Sy
     const typed = match[1] as string;
     return { from: context.pos - typed.length, options: rankedOptions(getPaths()), validFor: /^[\w.]*$/ };
   };
+}
+
+/** Set when an arrow key has moved through the open list; cleared whenever the list closes. */
+const setListNavigated = StateEffect.define<boolean>();
+const listNavigated = StateField.define<boolean>({
+  create: () => false,
+  update(value, transaction) {
+    for (const effect of transaction.effects) if (effect.is(setListNavigated)) return effect.value;
+    return completionStatus(transaction.state) === null ? false : value;
+  },
+});
+
+/** The open list was opened by `/` (not `{{`) and the author has not moved through it yet. */
+function slashListPending(state: EditorState): boolean {
+  if (completionStatus(state) !== 'active' || state.field(listNavigated, false)) return false;
+  const head = state.selection.main.head;
+  const line = state.doc.lineAt(head);
+  const before = line.text.slice(0, head - line.from);
+  return SLASH_ANY.test(before) && !/\{\{[^}]*$/.test(before);
+}
+
+/**
+ * R-C #6 — Enter on an un-navigated `/` list closes it and falls through to the newline the
+ * author was typing; the arrow keys record that the list was navigated (and then fall through to
+ * the completion keymap, which moves the selection). Placed AHEAD of `autocompletion()` so it runs
+ * before the completion keymap at the same precedence. `cm-slash-pending` drops the highlight
+ * from the pre-selected row so nothing LOOKS chosen while Enter would not choose it.
+ */
+function slashGuard(): Extension {
+  const markNavigated = (view: EditorView) => {
+    if (completionStatus(view.state) === 'active' && !view.state.field(listNavigated, false)) view.dispatch({ effects: setListNavigated.of(true) });
+    return false;
+  };
+  return [
+    listNavigated,
+    Prec.highest(
+      keymap.of([
+        {
+          key: 'Enter',
+          run: (view) => {
+            if (slashListPending(view.state)) closeCompletion(view);
+            return false;
+          },
+        },
+        { key: 'ArrowDown', run: markNavigated },
+        { key: 'ArrowUp', run: markNavigated },
+        { key: 'PageDown', run: markNavigated },
+        { key: 'PageUp', run: markNavigated },
+      ]),
+    ),
+    EditorView.editorAttributes.of((view) => (slashListPending(view.state) ? { class: 'cm-slash-pending' } : null)),
+  ];
 }
 
 const BADGE = 'inline-flex items-center rounded-sm border px-1 text-[10px] leading-4 font-medium';
@@ -308,6 +377,18 @@ function editorTheme(minLines: number): Extension {
       padding: '0.25rem 0.5rem',
     },
     '.cm-completion-disabled': { opacity: '0.6' },
+    // TASK-1036 R-C — the four scope colours (§10.1 "Colour encodes scope everywhere"), tokens only.
+    // The row's text and badges still SAY the scope, so the bar is never the only signal.
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li[class*="cm-scope-"]': { borderLeft: '3px solid transparent' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li.cm-scope-steps': { borderLeftColor: 'var(--primary)' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li.cm-scope-context': { borderLeftColor: 'var(--success)' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li.cm-scope-consultation': { borderLeftColor: 'var(--ai)' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li.cm-scope-run': { borderLeftColor: 'var(--warning-strong, var(--warning))' },
+    // R-C #6 — while Enter would insert a newline, no row is drawn as chosen.
+    '&.cm-slash-pending .cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+      backgroundColor: 'transparent',
+      color: 'inherit',
+    },
     '.cm-completionInfo': { padding: '0.375rem 0.5rem', maxWidth: '20rem' },
     // Wavy underlines from tokens instead of CodeMirror's fixed-colour SVG.
     '.cm-lintRange': { backgroundImage: 'none', textDecorationLine: 'underline', textDecorationStyle: 'wavy', textUnderlineOffset: '3px' },
@@ -434,6 +515,8 @@ export function TemplateEditor({
           closeBrackets(),
           EditorView.lineWrapping,
           keymap.of([...defaultKeymap, ...historyKeymap]),
+          // Ahead of the completion compartment: same precedence, so order decides (R-C #6).
+          slashGuard(),
           compartments.completion.of(completionExtension),
           compartments.editable.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           compartments.attributes.of(EditorView.contentAttributes.of(attributes)),

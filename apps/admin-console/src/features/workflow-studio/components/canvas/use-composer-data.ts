@@ -36,6 +36,8 @@ export interface ComposerData {
   contextSchema: unknown;
   contextSchemaName: string | null;
   contextSchemaVersion: number | null;
+  /** TASK-1036 R-C #7 — the studio's "Hide PHI" switch (view state in the store). */
+  hidePhi: boolean;
 }
 
 /** The agents as the composer types them. `outputSchema` rides on `GET admin/agents` (`AgentResponse`). */
@@ -55,6 +57,7 @@ export function useComposerData(): ComposerData | null {
   const nodes = useOptionalGraphStore((state) => state.nodes, NO_NODES);
   const edges = useOptionalGraphStore((state) => state.edges, NO_EDGES);
   const settings = useOptionalGraphStore((state) => state.settings, undefined);
+  const hidePhi = useOptionalGraphStore((state) => state.hidePhi, false);
   const { agents, agentOptions } = useComposerAgents(storeApi !== null);
 
   const schemaSetting = useMemo(() => settingsDraftOf(nodes, settings).contextSchema, [nodes, settings]);
@@ -74,5 +77,6 @@ export function useComposerData(): ComposerData | null {
     contextSchema: inline ?? definition.definition ?? undefined,
     contextSchemaName: reference ? ((catalog.data ?? []).find((schema) => schema.id === reference.contextSchemaId)?.name ?? null) : null,
     contextSchemaVersion: reference ? (reference.versionNumber ?? null) : null,
+    hidePhi,
   };
 }

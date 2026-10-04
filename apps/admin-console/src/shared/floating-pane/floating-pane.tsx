@@ -23,6 +23,16 @@
  *    element into view is not an option; getting out of the way is.
  *  - **Stacked below `md`.** Under the `md` breakpoint the pane is a static section in normal flow
  *    (no overlap is possible on a phone), and the geometry below only applies at `md` and up.
+ *  - **Never stranded off the stage** (TASK-1036 R-C #4). The saved x / y / width are CLAMPED to
+ *    the stage on mount and whenever it resizes, and the width is capped at a share of the stage
+ *    (`MAX_STAGE_SHARE`), so a layout saved on a wide monitor cannot hide a pane, or the canvas,
+ *    on a laptop. The clamp is display-only: the saved preference is left alone, so the author's
+ *    own layout comes back on a bigger window. "Reset layout" restores the defaults, and a
+ *    double-click on the header snaps the pane back to its edge.
+ *  - **Reports its footprint** (R-C #1): `onFootprintChange` hears how far the pane reaches in
+ *    from the stage's left / right edge, so the canvas can keep its zoom controls, minimap and
+ *    fit clear of it. A collapsed pane, an unmounted one and the stacked (below `md`) layout report
+ *    none.
  *
  * Geometry reaches CSS through custom properties (`--fp-x`, …), because the numbers are runtime
  * values; the Tailwind classes that consume them are written out LITERALLY (v4 scans source text).
@@ -31,13 +41,15 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
-import { IconChevronDown, IconChevronUp, IconGripVertical, IconLayoutSidebar, IconLayoutSidebarRight, IconX } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronUp, IconGripVertical, IconLayoutSidebar, IconLayoutSidebarRight, IconRestore, IconX } from '@tabler/icons-react';
 import { Button, cn } from '@arcaai/ui';
 
 export type FloatingPaneDock = 'left' | 'right';
@@ -46,6 +58,22 @@ export type FloatingPaneDock = 'left' | 'right';
 const STEP = 16;
 const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 420;
+/** The gap a docked pane keeps from the stage edge (`md:top-3` / `md:left-3` / `md:right-3`). */
+const DOCK_MARGIN = 12;
+/** The widest a pane may be, as a share of the stage — two panes must still leave the canvas room. */
+const MAX_STAGE_SHARE = 0.45;
+/** How much of a pane's header must stay on the stage vertically. */
+const HEADER_KEEP = 40;
+/** The `md` breakpoint: below it the pane is a stacked section and floats over nothing. */
+const OVERLAY_QUERY = '(min-width: 768px)';
+
+/** How far a pane reaches in from the stage's left and right edges, in px. */
+export interface FloatingPaneFootprint {
+  left: number;
+  right: number;
+}
+
+const NO_FOOTPRINT: FloatingPaneFootprint = { left: 0, right: 0 };
 
 interface PaneState {
   dock: FloatingPaneDock | null;
@@ -88,6 +116,51 @@ function writeStored(id: string, state: PaneState): void {
   }
 }
 
+interface StageSize {
+  width: number;
+  height: number;
+}
+
+/**
+ * R-C #4 — the geometry the pane is DRAWN with: the saved state, pulled onto the stage and with
+ * its width capped. A stage that has not been measured (0 × 0: before layout, or a test with no
+ * layout engine) clamps nothing.
+ */
+export function clampPaneGeometry<T extends Pick<PaneState, 'x' | 'y' | 'width' | 'height'>>(state: T, stage: StageSize, bounds: { minWidth: number; minHeight: number }): T {
+  if (stage.width <= 0 || stage.height <= 0) return state;
+  const maxWidth = Math.max(bounds.minWidth, Math.floor(stage.width * MAX_STAGE_SHARE));
+  const width = Math.min(Math.max(bounds.minWidth, state.width), maxWidth);
+  const x = Math.min(Math.max(0, state.x), Math.max(0, stage.width - width));
+  const y = Math.min(Math.max(0, state.y), Math.max(0, stage.height - HEADER_KEEP));
+  const height = Math.min(Math.max(bounds.minHeight, state.height), Math.max(bounds.minHeight, stage.height - y));
+  if (width === state.width && x === state.x && y === state.y && height === state.height) return state;
+  return { ...state, width, x, y, height };
+}
+
+/** R-C #1 — the band of the stage a pane covers, measured in from the edge it sits against. */
+export function paneFootprint(geometry: Pick<PaneState, 'dock' | 'x' | 'width'>, stage: StageSize): FloatingPaneFootprint {
+  if (geometry.dock === 'left') return { left: DOCK_MARGIN + geometry.width, right: 0 };
+  if (geometry.dock === 'right') return { left: 0, right: DOCK_MARGIN + geometry.width };
+  if (stage.width <= 0) return NO_FOOTPRINT;
+  const centre = geometry.x + geometry.width / 2;
+  return centre < stage.width / 2 ? { left: geometry.x + geometry.width, right: 0 } : { left: 0, right: Math.max(0, stage.width - geometry.x) };
+}
+
+function subscribeOverlay(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => undefined;
+  const query = window.matchMedia(OVERLAY_QUERY);
+  query.addEventListener?.('change', onChange);
+  return () => query.removeEventListener?.('change', onChange);
+}
+function readOverlay(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+  return window.matchMedia(OVERLAY_QUERY).matches;
+}
+/** Whether the pane floats (md and up) — only then does it cover any of the stage. */
+function useFloats(): boolean {
+  return useSyncExternalStore(subscribeOverlay, readOverlay, () => true);
+}
+
 function overlaps(a: DOMRect, b: DOMRect): boolean {
   if (a.width === 0 || a.height === 0 || b.width === 0 || b.height === 0) return false;
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -116,6 +189,11 @@ export interface FloatingPaneProps {
   bodyScroll?: boolean;
   /** Extra controls rendered in the header, before the pane's own. */
   headerActions?: ReactNode;
+  /**
+   * R-C #1 — hears how far the pane reaches in from the stage's left / right edge (a collapsed,
+   * stacked or unmounted pane reports `{ left: 0, right: 0 }`). Pass a STABLE callback.
+   */
+  onFootprintChange?: (footprint: FloatingPaneFootprint) => void;
   className?: string;
 }
 
@@ -134,11 +212,12 @@ export function FloatingPane({
   keepMounted = false,
   bodyScroll = true,
   headerActions,
+  onFootprintChange,
   className,
 }: FloatingPaneProps) {
   const headingId = useId();
   const paneRef = useRef<HTMLElement>(null);
-  const [state, setState] = useState<PaneState>(() => ({
+  const [savedState, setState] = useState<PaneState>(() => ({
     dock: defaultDock,
     x: defaultPosition.x,
     y: defaultPosition.y,
@@ -148,6 +227,28 @@ export function FloatingPane({
     ...(typeof window === 'undefined' ? null : readStored(id)),
   }));
   const [yielding, setYielding] = useState(false);
+
+  // --- the stage, measured (R-C #4) -----------------------------------------------------------
+  const [stage, setStage] = useState<StageSize>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const element = paneRef.current?.parentElement;
+    if (!element) return undefined;
+    const measure = () => {
+      const next = { width: element.clientWidth, height: element.clientHeight };
+      setStage((previous) => (previous.width === next.width && previous.height === next.height ? previous : next));
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+  /** What is DRAWN and what every gesture starts from: the saved state, clamped to the stage. */
+  const state = clampPaneGeometry(savedState, stage, { minWidth, minHeight });
+  const maxWidth = stage.width > 0 ? Math.max(minWidth, Math.floor(stage.width * MAX_STAGE_SHARE)) : 1600;
 
   const commit = useCallback(
     (patch: Partial<PaneState>) => {
@@ -162,15 +263,15 @@ export function FloatingPane({
 
   /** The stage this pane floats over — its positioned parent. Sizes are 0 where layout does not exist (jsdom). */
   const stageSize = useCallback(() => {
-    const stage = paneRef.current?.parentElement;
-    return { width: stage?.clientWidth ?? 0, height: stage?.clientHeight ?? 0 };
+    const element = paneRef.current?.parentElement;
+    return { width: element?.clientWidth ?? 0, height: element?.clientHeight ?? 0 };
   }, []);
 
   const clampPosition = useCallback(
     (x: number, y: number, width: number) => {
       const stage = stageSize();
       const maxX = stage.width > 0 ? Math.max(0, stage.width - width) : Number.POSITIVE_INFINITY;
-      const maxY = stage.height > 0 ? Math.max(0, stage.height - 40) : Number.POSITIVE_INFINITY;
+      const maxY = stage.height > 0 ? Math.max(0, stage.height - HEADER_KEEP) : Number.POSITIVE_INFINITY;
       return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
     },
     [stageSize],
@@ -180,7 +281,7 @@ export function FloatingPane({
   const currentOrigin = useCallback((): { x: number; y: number } => {
     if (state.dock === null) return { x: state.x, y: state.y };
     const stage = stageSize();
-    return { x: state.dock === 'right' ? Math.max(0, stage.width - state.width - 12) : 12, y: 12 };
+    return { x: state.dock === 'right' ? Math.max(0, stage.width - state.width - DOCK_MARGIN) : DOCK_MARGIN, y: DOCK_MARGIN };
   }, [state, stageSize]);
 
   const moveBy = useCallback(
@@ -199,11 +300,11 @@ export function FloatingPane({
   const resizeBy = useCallback(
     (dw: number, dh: number) => {
       commit({
-        width: Math.max(minWidth, state.width + dw),
+        width: Math.min(maxWidth, Math.max(minWidth, state.width + dw)),
         height: state.dock === null ? Math.max(minHeight, state.height + dh) : state.height,
       });
     },
-    [commit, minHeight, minWidth, state.dock, state.height, state.width],
+    [commit, maxWidth, minHeight, minWidth, state.dock, state.height, state.width],
   );
 
   // --- keyboard -------------------------------------------------------------------------------
@@ -246,7 +347,7 @@ export function FloatingPane({
         latest = { dock: null, x: next.x, y: next.y };
       } else {
         latest = {
-          width: Math.max(minWidth, base.width + (growsRight ? dx : -dx)),
+          width: Math.min(maxWidth, Math.max(minWidth, base.width + (growsRight ? dx : -dx))),
           ...(base.dock === null ? { height: Math.max(minHeight, base.height + dy) } : null),
         };
       }
@@ -259,7 +360,7 @@ export function FloatingPane({
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [clampPosition, commit, currentOrigin, minHeight, minWidth, state]);
+  }, [clampPosition, commit, currentOrigin, maxWidth, minHeight, minWidth, state]);
 
   // --- WCAG 2.4.11: never cover the focused element -------------------------------------------
   useEffect(() => {
@@ -285,10 +386,36 @@ export function FloatingPane({
     };
   }, []);
 
+  // --- R-C #1: the footprint, for the canvas ---------------------------------------------------
+  // Read off the SAVED collapse, not `yielding`: a pane that steps aside for a focused element must
+  // not move the canvas chrome out from under that same focus.
+  const floats = useFloats();
+  const footprint = !floats || state.collapsed ? NO_FOOTPRINT : paneFootprint(state, stage);
+  const footprintLeft = footprint.left;
+  const footprintRight = footprint.right;
+  useEffect(() => {
+    onFootprintChange?.({ left: footprintLeft, right: footprintRight });
+  }, [onFootprintChange, footprintLeft, footprintRight]);
+  useEffect(() => {
+    if (!onFootprintChange) return undefined;
+    return () => onFootprintChange(NO_FOOTPRINT);
+  }, [onFootprintChange]);
+
+  // --- R-C #4: reset and snap ------------------------------------------------------------------
+  const snapSide = defaultDock ?? 'right';
+  function resetLayout() {
+    setYielding(false);
+    commit({ dock: defaultDock, x: defaultPosition.x, y: defaultPosition.y, width: defaultWidth, height: defaultHeight, collapsed: false });
+  }
+  function onHeaderDoubleClick(event: React.MouseEvent<HTMLElement>) {
+    // A double-click that lands on a header control is that control's, not a snap.
+    if (event.target instanceof Element && event.target.closest('button')) return;
+    commit({ dock: snapSide });
+  }
+
   const collapsed = state.collapsed || yielding;
   const geometry = { '--fp-x': `${state.x}px`, '--fp-y': `${state.y}px`, '--fp-w': `${state.width}px`, '--fp-h': `${state.height}px` } as React.CSSProperties;
-  const SnapIcon = (defaultDock ?? 'right') === 'left' ? IconLayoutSidebar : IconLayoutSidebarRight;
-  const snapSide = defaultDock ?? 'right';
+  const SnapIcon = snapSide === 'left' ? IconLayoutSidebar : IconLayoutSidebarRight;
 
   return (
     <section
@@ -316,7 +443,8 @@ export function FloatingPane({
         className,
       )}
     >
-      <header className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5">
+      {/* Double-click snaps home (R-C #4) — a pointer shortcut; the Snap button is the named path. */}
+      <header className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5" onDoubleClick={onHeaderDoubleClick}>
         <Button
           type="button"
           variant="ghost"
@@ -342,6 +470,9 @@ export function FloatingPane({
           onClick={() => commit({ dock: snapSide })}
         >
           <SnapIcon aria-hidden="true" />
+        </Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Reset ${title} layout`} title="Reset position and size" onClick={resetLayout}>
+          <IconRestore aria-hidden="true" />
         </Button>
         <Button
           type="button"
@@ -375,7 +506,7 @@ export function FloatingPane({
           aria-label={`Resize ${title}`}
           aria-valuenow={state.width}
           aria-valuemin={minWidth}
-          aria-valuemax={1600}
+          aria-valuemax={maxWidth}
           tabIndex={0}
           title={`Drag, or use the arrow keys, to resize ${title}`}
           onPointerDown={(event) => startDrag(event, 'resize')}

@@ -83,18 +83,20 @@ describe('ComposerCanvas — run overlay (F2)', () => {
 });
 
 describe('ComposerCanvas — “Add a step” placement (F2)', () => {
+  // R-C #1 — the button sits in a band spanning the free strip between the panes; its placement is
+  // the band's justification (centre by default), not a corner of the whole canvas.
+  const band = () => screen.getByRole('button', { name: /add a step/i }).closest('[data-slot="composer-add-step"]') as HTMLElement;
+
   it('does not sit in the top-left corner the floating palette docks in, and stays reachable', () => {
     mount({}, []);
-    const button = screen.getByRole('button', { name: /add a step/i });
-    expect(button.className).not.toMatch(/(^|\s)left-2(\s|$)/);
-    expect(button.className).toContain('left-1/2');
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(band().className).not.toContain('justify-start');
+    expect(band().className).toContain('justify-center');
+    expect((screen.getByRole('button', { name: /add a step/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('accepts a placement so a host can move it away from its own panes', () => {
     mount({ addStepPlacement: 'top-right' }, []);
-    const button = screen.getByRole('button', { name: /add a step/i });
-    expect(button.className).toContain('right-2');
-    expect(button.className).not.toContain('left-1/2');
+    expect(band().className).toContain('justify-end');
+    expect(band().className).not.toContain('justify-center');
   });
 });

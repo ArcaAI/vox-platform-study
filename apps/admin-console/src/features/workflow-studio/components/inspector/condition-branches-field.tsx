@@ -129,6 +129,7 @@ function BranchEditor({
           <CelExpressionField
             id={`${idPrefix}-branch-${index}-when`}
             label={`Condition for ${branch.key}`}
+            groups={groups}
             value={branch.when}
             onChange={(when) => {
               setSeenWhen(when);

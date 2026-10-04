@@ -7,6 +7,7 @@ export type {
   WorkflowCanvasBranch,
   WorkflowCanvasEdge,
   WorkflowCanvasEdgeRunState,
+  WorkflowCanvasInsets,
   WorkflowCanvasNodeProblem,
   WorkflowCanvasNodeRendererProps,
   WorkflowCanvasNodeTypes,

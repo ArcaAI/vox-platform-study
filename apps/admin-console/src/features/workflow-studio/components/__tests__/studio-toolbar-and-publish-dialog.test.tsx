@@ -26,7 +26,6 @@ function toolbarProps(overrides: Partial<StudioToolbarProps> = {}): StudioToolba
     onRedo: vi.fn(),
     problemCount: 0,
     onOpenProblems: vi.fn(),
-    onOpenTest: vi.fn(),
     ...overrides,
   };
 }
@@ -113,17 +112,28 @@ describe('StudioToolbar — rail openers', () => {
     expect(onOpenProblems).toHaveBeenCalledTimes(1);
   });
 
-  it('switches to the Test tab instead of linking out to the Workbench (OD-3)', () => {
-    const onOpenTest = vi.fn();
-    render(<StudioToolbar {...toolbarProps({ onOpenTest })} />);
+  it('carries no Test button — the Test TAB is the one way in (TASK-1036 R-C #13)', () => {
+    render(<StudioToolbar {...toolbarProps()} />);
     expect(screen.queryByRole('link', { name: /workbench/i })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
-    expect(onOpenTest).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /^test$/i })).toBeNull();
+  });
+});
+
+describe('StudioToolbar — Hide PHI (TASK-1036 R-C #7)', () => {
+  it('is a pressed / not-pressed toggle that reports the new state', () => {
+    const onHidePhiChange = vi.fn();
+    const { rerender } = render(<StudioToolbar {...toolbarProps({ hidePhi: false, onHidePhiChange })} />);
+    const toggle = screen.getByRole('button', { name: /hide phi/i });
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle);
+    expect(onHidePhiChange).toHaveBeenCalledWith(true);
+    rerender(<StudioToolbar {...toolbarProps({ hidePhi: true, onHidePhiChange })} />);
+    expect(screen.getByRole('button', { name: /hide phi/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('offers Test on a read-only (published) version too — running a graph is a read', () => {
-    render(<StudioToolbar {...toolbarProps({ readOnly: true })} />);
-    expect(screen.getByRole('button', { name: /^test$/i })).toBeTruthy();
+  it('is offered on a read-only version too — a published graph has test runs to look at', () => {
+    render(<StudioToolbar {...toolbarProps({ readOnly: true, hidePhi: false, onHidePhiChange: vi.fn() })} />);
+    expect(screen.getByRole('button', { name: /hide phi/i })).toBeTruthy();
   });
 });
 
