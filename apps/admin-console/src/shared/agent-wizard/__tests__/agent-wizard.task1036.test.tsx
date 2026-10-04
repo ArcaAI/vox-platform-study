@@ -43,7 +43,7 @@ const TEMPLATE = { id: 'tpl-1', name: 'SOAP note', status: 'APPROVED', category:
 
 interface Call { method: string; url: string; body: unknown }
 let calls: Call[];
-let publishResponse: () => Response;
+let publishResponse: () => Response | Promise<Response>;
 
 beforeEach(() => {
   calls = [];
@@ -186,3 +186,79 @@ describe('AgentWizard create mode', () => {
     expect(await screen.findByRole('dialog', { name: 'New agent' })).toBeTruthy();
   });
 });
+
+describe('AgentWizard — E4b close, discard and announcements', () => {
+  it('cannot be closed while publishing: Escape does nothing and the close control states why', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    publishResponse = async () => {
+      await gate;
+      return Response.json(agent({ id: 'a-v3', versionNumber: 3, status: 'PUBLISHED', isActive: false }));
+    };
+    const onOpenChange = vi.fn();
+    renderWithProviders(<AgentWizard open onOpenChange={onOpenChange} onCreated={() => undefined} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
+    const wizard = await openEditor();
+    for (let index = 0; index < 3; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
+    fireEvent.click(await within(wizard).findByRole('button', { name: 'Publish new version' }));
+
+    await screen.findByText(/Close — unavailable: .*publish/i);
+    fireEvent.keyDown(wizard, { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(screen.queryByText(/Close — unavailable/i)).toBeNull());
+  });
+
+  it('asks before discarding a wizard with unsaved answers, and closes only on the explicit Discard', async () => {
+    const onOpenChange = vi.fn();
+    renderWithProviders(<AgentWizard open onOpenChange={onOpenChange} onCreated={() => undefined} />);
+    const wizard = await screen.findByRole('dialog', { name: 'New agent' });
+    fireEvent.change((wizard.querySelector('#agent-name') as HTMLInputElement), { target: { value: 'Triage helper' } });
+
+    fireEvent.keyDown(wizard, { key: 'Escape' });
+    const ask = await screen.findByRole('alertdialog');
+    expect(ask.textContent).toMatch(/discard/i);
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    fireEvent.click(within(ask).getByRole('button', { name: /keep editing|cancel/i }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'New agent' }), { key: 'Escape' });
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /^discard/i }));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
+  it('closes straight away when nothing was entered', async () => {
+    const onOpenChange = vi.fn();
+    renderWithProviders(<AgentWizard open onOpenChange={onOpenChange} onCreated={() => undefined} />);
+    const wizard = await screen.findByRole('dialog', { name: 'New agent' });
+    fireEvent.keyDown(wizard, { key: 'Escape' });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('says why Next is disabled, and stops saying it once the step is complete', async () => {
+    renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} />);
+    const wizard = await screen.findByRole('dialog', { name: 'New agent' });
+    const next = within(wizard).getByRole('button', { name: 'Next' }) as HTMLButtonElement;
+    expect(next.disabled).toBe(true);
+    const reason = within(wizard).getByText(/enter a name and a valid slug/i);
+    expect(next.getAttribute('aria-describedby')).toBe(reason.id);
+    fireEvent.change((wizard.querySelector('#agent-name') as HTMLInputElement), { target: { value: 'Triage helper' } });
+    expect(next.disabled).toBe(false);
+    expect(within(wizard).queryByText(/enter a name and a valid slug/i)).toBeNull();
+  });
+
+  it('announces each step change politely', async () => {
+    renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} />);
+    const wizard = await screen.findByRole('dialog', { name: 'New agent' });
+    fireEvent.change((wizard.querySelector('#agent-name') as HTMLInputElement), { target: { value: 'Triage helper' } });
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' }));
+    const live = within(wizard).getAllByRole('status').find((element) => /Step 2 of 6: Model/.test(element.textContent ?? ''));
+    expect(live).toBeTruthy();
+    expect(live!.getAttribute('aria-live')).toBe('polite');
+  });
+});
+

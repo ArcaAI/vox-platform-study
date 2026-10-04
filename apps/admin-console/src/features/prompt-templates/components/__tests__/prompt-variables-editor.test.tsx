@@ -80,7 +80,7 @@ describe('PromptVariablesEditor — create form', () => {
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
@@ -130,7 +130,7 @@ describe('PromptVariablesEditor — create form', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
     fireEvent.click(screen.getByRole('button', { name: /^remove topic$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
@@ -184,5 +184,16 @@ describe('PromptVariablesEditor — accessibility', () => {
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     expect(await axe(container)).toHaveNoViolations();
     document.documentElement.classList.remove('dark');
+  });
+});
+
+describe('PromptVariablesEditor — announcement region (E4b)', () => {
+  it('keeps its polite status region in the accessibility tree when empty (sr-only, never display:none)', () => {
+    renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
+    const region = screen.getByText(/Optional variables render empty/).nextElementSibling as HTMLElement;
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.textContent).toBe('');
+    expect(region.className).toContain('sr-only');
+    expect(region.className).not.toMatch(/(^|\s)(empty:)?hidden(\s|$)/);
   });
 });

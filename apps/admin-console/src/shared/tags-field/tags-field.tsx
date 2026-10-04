@@ -57,6 +57,10 @@ export function TagsField({
   // takes the highlighted suggestion; otherwise Enter takes the typed text.
   const navigated = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chipsRef = useRef<HTMLUListElement>(null);
+  // Where focus goes once a removal has re-rendered the chips: the chip that took the removed one's
+  // place, else the one before it, else the input — a focused button that vanishes drops focus to <body>.
+  const focusAfterRemove = useRef<number | null>(null);
 
   // Debounced (300ms, house value) so a burst of keystrokes is one request.
   const [debouncedDraft, setDebouncedDraft] = useState('');
@@ -64,6 +68,20 @@ export function TagsField({
     const timer = setTimeout(() => setDebouncedDraft(draft), SUGGESTION_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [draft]);
+
+  useEffect(() => {
+    const index = focusAfterRemove.current;
+    if (index === null) return;
+    focusAfterRemove.current = null;
+    const buttons = chipsRef.current?.querySelectorAll<HTMLButtonElement>('button[data-tag-remove]');
+    const target = buttons && buttons.length > 0 ? buttons[Math.min(index, buttons.length - 1)] : inputRef.current;
+    target?.focus();
+  }, [value]);
+
+  function removeTag(tag: string): void {
+    focusAfterRemove.current = value.indexOf(tag);
+    onChange(value.filter((entry) => entry !== tag));
+  }
 
   const suggestionsQuery = useTagSuggestions(debouncedDraft, open, suggestionsPath);
   const suggestions = (suggestionsQuery.data ?? []).filter((suggestion) => !value.includes(suggestion.tag));
@@ -157,7 +175,7 @@ export function TagsField({
         {label}
       </Label>
       {value.length > 0 ? (
-        <ul className="flex flex-wrap items-center gap-1.5" aria-label={`${label} added`}>
+        <ul ref={chipsRef} className="flex flex-wrap items-center gap-1.5" aria-label={`${label} added`}>
           {value.map((tag) => (
             <li key={tag}>
               <Badge variant="outline" className="rounded-full py-0.5 pr-1 font-mono text-[11px]">
@@ -165,8 +183,10 @@ export function TagsField({
                 <button
                   type="button"
                   aria-label={`Remove tag ${tag}`}
-                  className="text-muted-foreground hover:text-foreground focus-visible:ring-ring ml-1 cursor-pointer rounded-full focus-visible:ring-2"
-                  onClick={() => onChange(value.filter((entry) => entry !== tag))}
+                  data-tag-remove=""
+                  // size-6 = 24×24 px (WCAG 2.5.8); the negative margins keep the chip's own height.
+                  className="text-muted-foreground hover:text-foreground focus-visible:ring-ring -my-1 -mr-1 ml-0.5 inline-flex size-6 cursor-pointer items-center justify-center rounded-full focus-visible:ring-2"
+                  onClick={() => removeTag(tag)}
                 >
                   <IconX aria-hidden className="size-3" />
                 </button>

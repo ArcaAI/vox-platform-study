@@ -504,3 +504,52 @@ describe('TestTab — recording', () => {
     expect(runBodies[0]).toEqual({ recording: { sttSessionId: 'stt-9' } });
   });
 });
+
+describe('TestTab — E4b: time-travel visibility and announcements', () => {
+  it('keeps the Flow column sticky at xl, so the time-travelled flow stays beside the event that was clicked', async () => {
+    mount();
+    const column = document.querySelector('[data-slot="test-flow-column"]') as HTMLElement;
+    expect(column).toBeTruthy();
+    expect(column.className).toContain('xl:sticky');
+    expect(column.className).toContain('xl:top-0');
+    expect(within(column).getByRole('heading', { name: 'Flow' })).toBeTruthy();
+  });
+
+  it('puts Back to live in the sticky status bar while time-travelling, and returns to live from there', async () => {
+    mount();
+    await startRun();
+    playScenario();
+    expect(within(statusBar()).queryByRole('button', { name: 'Back to live' })).toBeNull();
+    const events = screen.getByRole('region', { name: /Events/ });
+    fireEvent.click(within(events).getByRole('button', { name: /^#3 / }));
+
+    const back = within(statusBar()).getByRole('button', { name: 'Back to live' });
+    expect(within(statusBar()).getByText(/event #3/i)).toBeTruthy();
+    fireEvent.click(back);
+    expect(canvasNode('w')?.runState).toBe('running');
+    expect(within(statusBar()).queryByRole('button', { name: 'Back to live' })).toBeNull();
+  });
+
+  it('announces run status changes through a polite live region', async () => {
+    mount();
+    await startRun();
+    emit('run.started', { kind: 'workflow', slug: 'scribe', versionNumber: 7 });
+    const region = within(statusBar()).getByText(/Run status: Running/);
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('announces an attachment refusal and an upload failure through a polite live region', async () => {
+    mount();
+    attach(new File(['x'], 'notes.txt', { type: 'text/plain' }));
+    await screen.findByRole('listitem', { name: /notes\.txt/ });
+    const announcer = () => document.querySelector('[data-slot="attachment-announcer"]') as HTMLElement;
+    expect(announcer().getAttribute('aria-live')).toBe('polite');
+    expect(announcer().getAttribute('role')).toBe('status');
+    expect(announcer().textContent).toMatch(/notes\.txt: not an accepted type/i);
+
+    mediaStatus = 415;
+    attach(pdf('scan.pdf'));
+    await waitFor(() => expect(announcer().textContent).toMatch(/scan\.pdf: File type not allowed\./));
+  });
+});

@@ -355,7 +355,7 @@ function AgentsBody() {
         }
         footer={
           <StatusFooter
-            start={lineagesQuery.data ? `${formatNumber(rows.length)} of ${formatNumber(total)} agents` : 'Loading…'}
+            start={lineagesQuery.data ? `${formatNumber(rows.length)} of ${formatNumber(total)} agents` : <Skeleton className="h-3 w-32" />}
             end={ENDPOINT_HINT}
           />
         }

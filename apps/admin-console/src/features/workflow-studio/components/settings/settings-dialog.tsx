@@ -29,6 +29,7 @@ import {
   FieldSet,
   Label,
 } from '@arcaai/ui';
+import { toast } from 'sonner';
 import { IconLock } from '@tabler/icons-react';
 import { WORKFLOW_SOURCES, type WorkflowConnection, type WorkflowContextSchemaSetting, type WorkflowSource } from '@arcaai/workflow-contract';
 import { useContextSchemaDefinition } from '@/shared/catalog';
@@ -91,7 +92,14 @@ export function SettingsDialog({ open, onOpenChange, readOnly }: SettingsDialogP
 
   const save = () => {
     if (!composer || readOnly) return;
-    composer.storeApi.getState().setSettings(toWorkflowSettings(withImpliedConnections(draft, nodes, ctx)));
+    try {
+      composer.storeApi.getState().setSettings(toWorkflowSettings(withImpliedConnections(draft, nodes, ctx)));
+    } catch {
+      // Stay open: the author's edits are still in the dialog.
+      toast.error('Could not save the workflow settings.');
+      return;
+    }
+    toast.success('Workflow settings saved — they are written with the graph on the next Save.');
     onOpenChange(false);
   };
 

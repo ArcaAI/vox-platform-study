@@ -76,7 +76,8 @@ export function BulkRunDialog({ run, onClose }: { run: BulkRun | null; onClose: 
                 : `${failed} of ${items.length} failed.`
               : `Processing ${Math.min(settled + 1, items.length)} of ${items.length}…`}
           </p>
-          <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto" aria-label="Per-workflow results">
+          {/* tabIndex: a scrollable region must be keyboard-reachable on its own (WCAG 2.1.1). */}
+          <ul tabIndex={0} className="focus-visible:ring-ring flex max-h-72 flex-col gap-2 overflow-y-auto rounded-md focus-visible:ring-2" aria-label="Per-workflow results">
             {items.map((item) => (
               <li key={item.slug} className="flex flex-col gap-0.5 rounded-md border p-2">
                 <span className="flex flex-wrap items-baseline gap-2">
@@ -88,8 +89,13 @@ export function BulkRunDialog({ run, onClose }: { run: BulkRun | null; onClose: 
             ))}
           </ul>
         </div>
-        <DialogFooter>
-          <Button onClick={onClose} disabled={!run?.finished}>
+        <DialogFooter className="items-center">
+          {run && !run.finished ? (
+            <p id="bulk-run-close-reason" className="text-muted-foreground text-xs sm:mr-auto">
+              Close is unavailable while the run is in progress.
+            </p>
+          ) : null}
+          <Button onClick={onClose} disabled={!run?.finished} aria-describedby={run && !run.finished ? 'bulk-run-close-reason' : undefined}>
             {run?.finished ? 'Close' : 'Working…'}
           </Button>
         </DialogFooter>

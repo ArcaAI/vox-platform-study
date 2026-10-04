@@ -10,7 +10,10 @@ import { useEffect, type ReactNode } from 'react';
 import { renderWithProviders } from '@/test/render';
 import { GraphStoreProvider, useGraphStoreApi } from '../../../store';
 import type { GraphStoreNode } from '../../../store/types';
+import { toast } from 'sonner';
 import { SettingsDialog } from '../settings-dialog';
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock('../../../api/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/hooks')>();
@@ -91,3 +94,27 @@ describe('SettingsDialog', () => {
     expect(await axe(screen.getByRole('dialog'), { rules: { 'color-contrast': { enabled: false } } })).toHaveNoViolations();
   });
 });
+
+describe('SettingsDialog — Save feedback (E4b)', () => {
+  it('toasts success after saving into the graph', () => {
+    vi.mocked(toast.success).mockClear();
+    mount();
+    fireEvent.click(checkbox(/^webhook/i));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/workflow settings saved/i));
+  });
+
+  it('toasts the failure, keeps the dialog open and writes nothing when the store refuses the settings', () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.success).mockClear();
+    const { onOpenChange } = mount();
+    vi.spyOn(holder.api!.getState(), 'setSettings').mockImplementation(() => {
+      throw new Error('refused');
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/could not save the workflow settings/i));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+});
+

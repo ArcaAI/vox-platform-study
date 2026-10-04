@@ -89,11 +89,13 @@ describe('WorkflowManagementScreen — lineage list', () => {
     stubFetch();
     renderWithProviders(<WorkflowManagementScreen />);
 
-    fireEvent.click(await screen.findByText('Discharge summary'));
+    // Clicked on the slug cell: the name itself is a real link now (E4b) and navigates on its own.
+    await screen.findByText('Discharge summary');
+    fireEvent.click(screen.getByText('discharge'));
     expect(push).toHaveBeenLastCalledWith('/workflow-studio/d-v2');
-    fireEvent.click(screen.getByText('Ward triage'));
+    fireEvent.click(screen.getByText('triage'));
     expect(push).toHaveBeenLastCalledWith('/workflow-studio/t-v1');
-    fireEvent.click(screen.getByText('Old flow'));
+    fireEvent.click(screen.getByText('old-flow'));
     expect(await screen.findByRole('dialog')).toBeTruthy();
     expect(push).toHaveBeenCalledTimes(2);
   });
@@ -209,6 +211,7 @@ describe('bulk bar — client-side per item with per-item results (D-2)', () => 
     const bar = await selectRows(0, 1);
     expect(within(bar).getByText('2 selected')).toBeTruthy();
     fireEvent.click(within(bar).getByRole('button', { name: /unpublish/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /^unpublish/i }));
     const results = await screen.findByRole('dialog', { name: /unpublish/i });
     await within(results).findByText(/no active version/i);
     expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/deprecate')).map(urlPath)).toEqual(['/d-v2/deprecate']);
@@ -220,6 +223,7 @@ describe('bulk bar — client-side per item with per-item results (D-2)', () => 
     renderWithProviders(<WorkflowManagementScreen />);
     const bar = await selectRows(0, 1);
     fireEvent.click(within(bar).getByRole('button', { name: /^publish/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /^publish/i }));
     const results = await screen.findByRole('dialog', { name: /publish/i });
     await within(results).findByText(/no validated draft/i);
     expect(calls.filter((c) => c.method === 'POST' && c.url.endsWith('/publish')).map(urlPath)).toEqual(['/d-v3/publish']);
@@ -233,6 +237,7 @@ describe('bulk bar — client-side per item with per-item results (D-2)', () => 
     renderWithProviders(<WorkflowManagementScreen />);
     const bar = await selectRows(0, 1);
     fireEvent.click(within(bar).getByRole('button', { name: /export/i }));
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /download 2 files/i }));
     await waitFor(() => expect(created).toHaveLength(2));
     expect(calls.filter((c) => c.method === 'GET' && c.url.endsWith('/export')).map(urlPath).sort()).toEqual(['/d-v2/export', '/t-v1/export']);
     click.mockRestore();

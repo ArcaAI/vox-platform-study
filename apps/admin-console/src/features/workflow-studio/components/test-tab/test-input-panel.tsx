@@ -203,6 +203,10 @@ export function TestInputPanel(props: TestInputPanelProps) {
           <p id={`${jsonId}-attach`} className="text-muted-foreground text-xs">
             {plan.attach.reason}
           </p>
+          {/* A refusal or upload failure appears inside a chip; this region says it aloud without moving focus. */}
+          <p data-slot="attachment-announcer" role="status" aria-live="polite" className="sr-only">
+            {props.attachments.items.flatMap((item) => (item.error ? [`${item.name}: ${item.error}`] : [])).join(' ')}
+          </p>
           {props.attachments.items.length > 0 ? (
             <ul aria-label="Attached files" className="flex flex-col gap-1">
               {props.attachments.items.map((item) => (

@@ -14,6 +14,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
 import { useContextSchemaOptions } from '@/shared/catalog';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { usePromptTemplateQuickView } from '@/shared/prompt-picker';
 import { TagsField } from '@/shared/tags-field';
@@ -148,6 +149,13 @@ export function buildCreateRequest(state: WizardState): CreateAgentRequest {
   };
 }
 
+/** Why the Next button is disabled on `step` — the visible reason beside it (rule 11 §5). */
+const NEXT_BLOCKED_REASON: Partial<Record<Step, string>> = {
+  Task: 'Enter a name and a valid slug (2–80 lowercase letters, digits, "-" or "_") to continue.',
+  Model: 'Pick a model to continue.',
+  Instruction: 'Choose a prompt, or write an instruction, to continue.',
+};
+
 function stringField(instruction: Record<string, unknown> | null, key: string): string {
   const value = instruction?.[key];
   return typeof value === 'string' ? value : '';
@@ -281,6 +289,10 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
   const editing = base !== null;
   const STEPS: readonly Step[] = editing ? (EDIT_STEPS as readonly Step[]) : CREATE_STEPS;
   const [step, setStep] = useState<Step>(STEPS[0]);
+  // Said aloud on a step change (polite); empty until the first change so opening the drawer is not announced twice.
+  const [stepAnnouncement, setStepAnnouncement] = useState('');
+  // `savedDraft`: a draft row already exists server-side (a refused publish leaves one), which changes what discarding means.
+  const [confirmDiscard, setConfirmDiscard] = useState<{ savedDraft: boolean } | null>(null);
   const [state, setState] = useState<WizardState>(() => (base ? stateFromAgent(base) : INITIAL));
   const [outcome, setOutcome] = useState<{ agent: Agent; findings: AgentFinding[] } | null>(null);
   // The draft this run has already written. A publish refused for a stated reason leaves it
@@ -323,9 +335,15 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
     Review: true,
   };
 
+  function goTo(next: Step) {
+    setStep(next);
+    setStepAnnouncement(`Step ${STEPS.indexOf(next) + 1} of ${STEPS.length}: ${next}`);
+  }
+
   function reset() {
     setState(base ? stateFromAgent(base) : INITIAL);
     setStep(STEPS[0]);
+    setStepAnnouncement('');
     setOutcome(null);
     draftRef.current = null;
   }
@@ -384,340 +402,389 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
 
   const busy = create.isPending || branch.isPending || update.isPending || publish.isPending;
   const title = editing ? `Edit agent — ${base.name}` : 'New agent';
+  // Anything the author changed since opening: closing would throw it away, so it is asked first.
+  const dirty = stableKey(state) !== stableKey(base ? stateFromAgent(base) : INITIAL);
+  const nextBlockedReason = !canAdvance[step] ? NEXT_BLOCKED_REASON[step] : undefined;
+
+  function requestClose(next: boolean) {
+    if (next) {
+      onOpenChange(true);
+      return;
+    }
+    if (busy) return; // the drawer's own exits are blocked too; this covers any other caller
+    if (dirty) {
+      setConfirmDiscard({ savedDraft: draftRef.current !== null });
+      return;
+    }
+    reset();
+    onOpenChange(false);
+  }
 
   return (
-    <DetailDrawer
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-      size="lg"
-      title={title}
-      meta={
-        <ol className="flex flex-wrap items-center gap-2 text-xs" aria-label="Steps">
-          {STEPS.map((name, index) => (
-            <li
-              key={name}
-              aria-current={name === step ? 'step' : undefined}
-              className={name === step ? 'font-medium' : index < stepIndex ? '' : 'text-muted-foreground'}
-            >
-              {index + 1}. {name}
-            </li>
-          ))}
-        </ol>
-      }
-      footer={
-        <div className="flex w-full items-center justify-between gap-2">
-          <Button type="button" variant="outline" disabled={stepIndex === 0 || busy} onClick={() => setStep(STEPS[stepIndex - 1])}>
-            Back
-          </Button>
-          {step !== 'Review' ? (
-            <Button type="button" disabled={!canAdvance[step] || busy} onClick={() => setStep(STEPS[stepIndex + 1])}>
-              Next
+    <>
+      <DetailDrawer
+        open={open}
+        onOpenChange={requestClose}
+        closeBlockedReason={busy ? (publish.isPending ? 'the agent is being published' : 'the agent is being saved') : undefined}
+        size="lg"
+        title={title}
+        meta={
+          <ol className="flex flex-wrap items-center gap-2 text-xs" aria-label="Steps">
+            {STEPS.map((name, index) => (
+              <li
+                key={name}
+                aria-current={name === step ? 'step' : undefined}
+                className={name === step ? 'font-medium' : index < stepIndex ? '' : 'text-muted-foreground'}
+              >
+                {index + 1}. {name}
+              </li>
+            ))}
+          </ol>
+        }
+        footer={
+          <div className="flex w-full items-center justify-between gap-2">
+            <Button type="button" variant="outline" disabled={stepIndex === 0 || busy} onClick={() => goTo(STEPS[stepIndex - 1])}>
+              Back
             </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(false)}>
-                {busy && !publish.isPending ? <Spinner /> : null}
-                {editing ? 'Save draft' : 'Create draft'}
-              </Button>
-              <Button type="button" disabled={busy} onClick={() => void submit(true)}>
-                {publish.isPending ? <Spinner /> : null}
-                {editing ? 'Publish new version' : 'Create & publish'}
-              </Button>
-            </div>
-          )}
-        </div>
-      }
-    >
-      {step === 'Task' ? (
-        <div className="flex flex-col gap-4">
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium">
-              Task <span aria-hidden>*</span>
-            </legend>
-            <RadioGroup
-              value={state.task}
-              onValueChange={(task) =>
-                patch({
-                  task: task as AgentTask,
-                  modelId: '',
-                  fallbackModelIds: [],
-                  binding: NO_INSTRUCTION,
-                  parameters: {},
-                  inputSchema: null,
-                  outputSchema: null,
-                })
-              }
-            >
-              {AGENT_TASKS.map((task) => (
-                <div key={task} className="flex items-center gap-2">
-                  <RadioGroupItem id={`task-${task}`} value={task} />
-                  <Label htmlFor={`task-${task}`}>{AGENT_TASK_LABEL[task]}</Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </fieldset>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-name">
-              Name <span aria-hidden>*</span>
-            </Label>
-            <Input
-              id="agent-name"
-              value={state.name}
-              required
-              onChange={(event) => patch({ name: event.target.value, ...(state.slugTouched ? {} : { slug: slugify(event.target.value) }) })}
-            />
+            {step !== 'Review' ? (
+              <div className="flex items-center gap-3">
+                {nextBlockedReason ? (
+                  <p id="agent-wizard-next-reason" className="text-muted-foreground text-xs">
+                    {nextBlockedReason}
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  disabled={!canAdvance[step] || busy}
+                  aria-describedby={nextBlockedReason ? 'agent-wizard-next-reason' : undefined}
+                  onClick={() => goTo(STEPS[stepIndex + 1])}
+                >
+                  Next
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" disabled={busy} onClick={() => void submit(false)}>
+                  {busy && !publish.isPending ? <Spinner /> : null}
+                  {editing ? 'Save draft' : 'Create draft'}
+                </Button>
+                <Button type="button" disabled={busy} onClick={() => void submit(true)}>
+                  {publish.isPending ? <Spinner /> : null}
+                  {editing ? 'Publish new version' : 'Create & publish'}
+                </Button>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-slug">
-              Slug <span aria-hidden>*</span>
-            </Label>
-            <Input
-              id="agent-slug"
-              value={state.slug}
-              required
-              className="font-mono"
-              pattern="^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$"
-              onChange={(event) => patch({ slug: event.target.value, slugTouched: true })}
-            />
-            <p className="text-muted-foreground text-xs">
-              Lineage key: 2–80 lowercase alphanumerics, `-` or `_`. Every version of this agent shares it.
-            </p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-description">Description</Label>
-            <Textarea id="agent-description" rows={3} value={state.description} onChange={(event) => patch({ description: event.target.value })} />
-          </div>
-          {state.task === 'TEXT_GENERATION' ? (
-            <ContextSchemaField
-              idPrefix="agent"
-              value={state.binding}
-              onChange={(next) => patch({ binding: { ...state.binding, ...next } })}
-              options={contextSchemas.options}
-              isLoading={contextSchemas.isLoading}
-            />
-          ) : null}
-        </div>
-      ) : null}
-
-      {step === 'Model' ? (
-        <div className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
-            Pick a provider, then a model of this task. Publish fails closed when the model is unusable.
-          </p>
-          <ModelPicker
-            task={state.task}
-            value={state.modelId}
-            onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })}
-          />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
-            <Select
-              value=""
-              onValueChange={(modelId) =>
-                patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })
-              }
-            >
-              <SelectTrigger id="agent-fallbacks">
-                <SelectValue placeholder="Add a fallback" />
-              </SelectTrigger>
-              <SelectContent>
-                {/*
-                  TASK-958 D-10 — the CONNECTION, not just the model name. Two
-                  accounts of one vendor declaring the same wire model produce
-                  two rows called "GPT-5.4 mini"; which key each spends is the
-                  only thing that differs, and it is the point of a fallback.
-                */}
-                {fallbackCandidates.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {fallbackModelOptionLabel(model, catalogue.providers)}
-                  </SelectItem>
+        }
+      >
+        <p role="status" aria-live="polite" className="sr-only">
+          {stepAnnouncement}
+        </p>
+        {step === 'Task' ? (
+          <div className="flex flex-col gap-4">
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">
+                Task <span aria-hidden>*</span>
+              </legend>
+              <RadioGroup
+                value={state.task}
+                onValueChange={(task) =>
+                  patch({
+                    task: task as AgentTask,
+                    modelId: '',
+                    fallbackModelIds: [],
+                    binding: NO_INSTRUCTION,
+                    parameters: {},
+                    inputSchema: null,
+                    outputSchema: null,
+                  })
+                }
+              >
+                {AGENT_TASKS.map((task) => (
+                  <div key={task} className="flex items-center gap-2">
+                    <RadioGroupItem id={`task-${task}`} value={task} />
+                    <Label htmlFor={`task-${task}`}>{AGENT_TASK_LABEL[task]}</Label>
+                  </div>
                 ))}
-              </SelectContent>
-            </Select>
-            {state.fallbackModelIds.length ? (
-              <ol className="flex flex-wrap gap-2">
-                {state.fallbackModelIds.map((id, index) => {
-                  const model = catalogue.models.find((candidate) => candidate.id === id);
-                  return (
-                    <li key={id}>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        aria-label={`Remove fallback ${model?.name ?? id}`}
-                        onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}
-                      >
-                        {index + 1}. {model?.name ?? id} ×
-                      </Button>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {step === 'Instruction' ? (
-        <div className="flex flex-col gap-4">
-          {state.task === 'TEXT_GENERATION' ? (
-            <InstructionBindingForm simple value={state.binding} onChange={(binding) => patch({ binding })} hideContextSchema={!editing} />
-          ) : state.task === 'SPEECH_TO_TEXT' ? (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="agent-initial-prompt">Initial prompt</Label>
-                <Textarea
-                  id="agent-initial-prompt"
-                  rows={3}
-                  maxLength={1000}
-                  value={state.initialPrompt}
-                  onChange={(event) => patch({ initialPrompt: event.target.value })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="agent-hotwords">Hotwords</Label>
-                <Input
-                  id="agent-hotwords"
-                  placeholder="comma-separated"
-                  value={state.hotwords}
-                  onChange={(event) => patch({ hotwords: event.target.value })}
-                />
-              </div>
-            </>
-          ) : state.task === 'NAMED_ENTITY_RECOGNITION' ? (
+              </RadioGroup>
+            </fieldset>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="agent-labels">Entity labels</Label>
-              <Input id="agent-labels" placeholder="comma-separated" value={state.labels} onChange={(event) => patch({ labels: event.target.value })} />
+              <Label htmlFor="agent-name">
+                Name <span aria-hidden>*</span>
+              </Label>
+              <Input
+                id="agent-name"
+                value={state.name}
+                required
+                onChange={(event) => patch({ name: event.target.value, ...(state.slugTouched ? {} : { slug: slugify(event.target.value) }) })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="agent-slug">
+                Slug <span aria-hidden>*</span>
+              </Label>
+              <Input
+                id="agent-slug"
+                value={state.slug}
+                required
+                className="font-mono"
+                pattern="^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$"
+                onChange={(event) => patch({ slug: event.target.value, slugTouched: true })}
+              />
               <p className="text-muted-foreground text-xs">
-                What to extract. Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set and ignores this.
+                Lineage key: 2–80 lowercase alphanumerics, `-` or `_`. Every version of this agent shares it.
               </p>
             </div>
-          ) : (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="agent-description">Description</Label>
+              <Textarea id="agent-description" rows={3} value={state.description} onChange={(event) => patch({ description: event.target.value })} />
+            </div>
+            {state.task === 'TEXT_GENERATION' ? (
+              <ContextSchemaField
+                idPrefix="agent"
+                value={state.binding}
+                onChange={(next) => patch({ binding: { ...state.binding, ...next } })}
+                options={contextSchemas.options}
+                isLoading={contextSchemas.isLoading}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
+        {step === 'Model' ? (
+          <div className="flex flex-col gap-4">
             <p className="text-muted-foreground text-sm">
-              A text-to-speech agent carries no instruction — the voice is a parameter on the next step.
+              Pick a provider, then a model of this task. Publish fails closed when the model is unusable.
             </p>
-          )}
-        </div>
-      ) : null}
+            <ModelPicker
+              task={state.task}
+              value={state.modelId}
+              onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })}
+            />
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
+              <Select
+                value=""
+                onValueChange={(modelId) =>
+                  patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })
+                }
+              >
+                <SelectTrigger id="agent-fallbacks">
+                  <SelectValue placeholder="Add a fallback" />
+                </SelectTrigger>
+                <SelectContent>
+                  {/*
+                    TASK-958 D-10 — the CONNECTION, not just the model name. Two
+                    accounts of one vendor declaring the same wire model produce
+                    two rows called "GPT-5.4 mini"; which key each spends is the
+                    only thing that differs, and it is the point of a fallback.
+                  */}
+                  {fallbackCandidates.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {fallbackModelOptionLabel(model, catalogue.providers)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {state.fallbackModelIds.length ? (
+                <ol className="flex flex-wrap gap-2">
+                  {state.fallbackModelIds.map((id, index) => {
+                    const model = catalogue.models.find((candidate) => candidate.id === id);
+                    return (
+                      <li key={id}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          aria-label={`Remove fallback ${model?.name ?? id}`}
+                          onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}
+                        >
+                          {index + 1}. {model?.name ?? id} ×
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
-      {step === 'Settings' ? (
-        <div className="flex flex-col gap-6">
-          <AgentSimpleParameters
-            task={state.task}
-            modelId={state.modelId}
-            value={state.parameters}
-            onChange={(parameters) => patch({ parameters })}
-            documentTemplateSlug={state.documentTemplateSlug ?? null}
-            onDocumentTemplateChange={(documentTemplateSlug) => patch({ documentTemplateSlug })}
-          />
-          <TagsField
-            id="agent-tags"
-            value={state.tags ?? []}
-            onChange={(tags) => patch({ tags })}
-            suggestionsPath="admin/agents/tags"
-            validate={validateAgentTag}
-            description={TAG_GRAMMAR_HINT}
-          />
-        </div>
-      ) : null}
-
-      {step === 'Input / Output contract' ? (
-        <div className="flex flex-col gap-4">
-          <p className="text-muted-foreground text-sm">
-            The JSON shape this agent accepts and returns. Leave either empty to use the task default shown as placeholder.
-          </p>
-          <JsonField
-            label="Input schema"
-            value={state.inputSchema}
-            onChange={(inputSchema) => patch({ inputSchema })}
-            placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)}
-          />
-          <JsonField
-            label="Output schema"
-            value={state.outputSchema}
-            onChange={(outputSchema) => patch({ outputSchema })}
-            placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)}
-          />
-        </div>
-      ) : null}
-
-      {step === 'Review' ? (
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-muted-foreground">Task</dt>
-          <dd>{AGENT_TASK_LABEL[state.task]}</dd>
-          <dt className="text-muted-foreground">Name</dt>
-          <dd>{state.name}</dd>
-          <dt className="text-muted-foreground">Slug</dt>
-          <dd className="font-mono">{state.slug}</dd>
-          <dt className="text-muted-foreground">Model</dt>
-          <dd className="font-mono">{catalogue.models.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
-          <dt className="text-muted-foreground">Fallbacks</dt>
-          <dd className="font-mono">
-            {state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}
-          </dd>
-          <dt className="text-muted-foreground">Instruction</dt>
-          <dd>
-            {state.task === 'TEXT_GENERATION'
-              ? state.binding.mode === 'template'
-                ? (boundTemplate.data?.name ?? state.binding.promptTemplateId ?? '—')
-                : state.binding.mode === 'inline'
-                  ? `${state.binding.systemPrompt.slice(0, 80)}${state.binding.systemPrompt.length > 80 ? '…' : ''}`
-                  : `${state.binding.fragments.length} fragment(s): ${state.binding.fragments.map((fragment) => fragment.key || '(no key)').join(', ')}`
-              : state.task === 'SPEECH_TO_TEXT'
-                ? state.initialPrompt || state.hotwords
-                  ? 'Initial prompt / hotwords'
-                  : '—'
-                : state.task === 'NAMED_ENTITY_RECOGNITION'
-                  ? state.labels || '— (the checkpoint’s own labels)'
-                  : 'None'}
-          </dd>
-          <dt className="text-muted-foreground">Context schema</dt>
-          <dd>
-            {state.task === 'TEXT_GENERATION' && state.binding.contextSchemaId
-              ? (contextSchemas.options.find((option) => option.value === state.binding.contextSchemaId)?.label ?? state.binding.contextSchemaId)
-              : '—'}
-          </dd>
-          {state.task === 'TEXT_GENERATION' ? (
-            <>
-              <dt className="text-muted-foreground">Document template</dt>
-              <dd>{state.documentTemplateSlug ? `${state.documentTemplateSlug} (latest approved)` : 'Platform layout'}</dd>
-            </>
-          ) : null}
-          <dt className="text-muted-foreground">Settings</dt>
-          <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
-          <dt className="text-muted-foreground">Tags</dt>
-          <dd className="font-mono text-xs">{state.tags?.length ? state.tags.join(', ') : '—'}</dd>
-          <dt className="text-muted-foreground">Input / Output contract</dt>
-          <dd>{state.inputSchema || state.outputSchema ? 'custom' : 'task defaults'}</dd>
-        </dl>
-      ) : null}
-      {step === 'Review' && editing ? (
-        <p className="text-muted-foreground mt-4 text-sm">
-          Publishing creates a new version of {state.slug}. The active version does not change; only the step that opened this editor moves to the new version.
-        </p>
-      ) : null}
-      {step === 'Review' && outcome ? (
-        <Alert variant="destructive" className="mt-4" role="alert">
-          <AlertTitle>Kept as draft v{outcome.agent.versionNumber} — not published</AlertTitle>
-          <AlertDescription>
-            {outcome.findings.length > 0 ? (
-              <ul className="flex list-disc flex-col gap-1 pl-4">
-                {outcome.findings.map((finding, index) => (
-                  <li key={`${finding.code}-${index}`}>
-                    <span className="font-mono">{finding.code}</span> — {finding.message}
-                  </li>
-                ))}
-              </ul>
+        {step === 'Instruction' ? (
+          <div className="flex flex-col gap-4">
+            {state.task === 'TEXT_GENERATION' ? (
+              <InstructionBindingForm simple value={state.binding} onChange={(binding) => patch({ binding })} hideContextSchema={!editing} />
+            ) : state.task === 'SPEECH_TO_TEXT' ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="agent-initial-prompt">Initial prompt</Label>
+                  <Textarea
+                    id="agent-initial-prompt"
+                    rows={3}
+                    maxLength={1000}
+                    value={state.initialPrompt}
+                    onChange={(event) => patch({ initialPrompt: event.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="agent-hotwords">Hotwords</Label>
+                  <Input
+                    id="agent-hotwords"
+                    placeholder="comma-separated"
+                    value={state.hotwords}
+                    onChange={(event) => patch({ hotwords: event.target.value })}
+                  />
+                </div>
+              </>
+            ) : state.task === 'NAMED_ENTITY_RECOGNITION' ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="agent-labels">Entity labels</Label>
+                <Input id="agent-labels" placeholder="comma-separated" value={state.labels} onChange={(event) => patch({ labels: event.target.value })} />
+                <p className="text-muted-foreground text-xs">
+                  What to extract. Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set and ignores this.
+                </p>
+              </div>
             ) : (
-              'The gateway refused to publish this draft.'
+              <p className="text-muted-foreground text-sm">
+                A text-to-speech agent carries no instruction — the voice is a parameter on the next step.
+              </p>
             )}
-            <span className="mt-2 block">Fix the cause (for example, approve the prompt on Hope Prompts) and publish again. Nothing was approved for you.</span>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-    </DetailDrawer>
+          </div>
+        ) : null}
+
+        {step === 'Settings' ? (
+          <div className="flex flex-col gap-6">
+            <AgentSimpleParameters
+              task={state.task}
+              modelId={state.modelId}
+              value={state.parameters}
+              onChange={(parameters) => patch({ parameters })}
+              documentTemplateSlug={state.documentTemplateSlug ?? null}
+              onDocumentTemplateChange={(documentTemplateSlug) => patch({ documentTemplateSlug })}
+            />
+            <TagsField
+              id="agent-tags"
+              value={state.tags ?? []}
+              onChange={(tags) => patch({ tags })}
+              suggestionsPath="admin/agents/tags"
+              validate={validateAgentTag}
+              description={TAG_GRAMMAR_HINT}
+            />
+          </div>
+        ) : null}
+
+        {step === 'Input / Output contract' ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-muted-foreground text-sm">
+              The JSON shape this agent accepts and returns. Leave either empty to use the task default shown as placeholder.
+            </p>
+            <JsonField
+              label="Input schema"
+              value={state.inputSchema}
+              onChange={(inputSchema) => patch({ inputSchema })}
+              placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)}
+            />
+            <JsonField
+              label="Output schema"
+              value={state.outputSchema}
+              onChange={(outputSchema) => patch({ outputSchema })}
+              placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)}
+            />
+          </div>
+        ) : null}
+
+        {step === 'Review' ? (
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+            <dt className="text-muted-foreground">Task</dt>
+            <dd>{AGENT_TASK_LABEL[state.task]}</dd>
+            <dt className="text-muted-foreground">Name</dt>
+            <dd>{state.name}</dd>
+            <dt className="text-muted-foreground">Slug</dt>
+            <dd className="font-mono">{state.slug}</dd>
+            <dt className="text-muted-foreground">Model</dt>
+            <dd className="font-mono">{catalogue.models.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
+            <dt className="text-muted-foreground">Fallbacks</dt>
+            <dd className="font-mono">
+              {state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}
+            </dd>
+            <dt className="text-muted-foreground">Instruction</dt>
+            <dd>
+              {state.task === 'TEXT_GENERATION'
+                ? state.binding.mode === 'template'
+                  ? (boundTemplate.data?.name ?? state.binding.promptTemplateId ?? '—')
+                  : state.binding.mode === 'inline'
+                    ? `${state.binding.systemPrompt.slice(0, 80)}${state.binding.systemPrompt.length > 80 ? '…' : ''}`
+                    : `${state.binding.fragments.length} fragment(s): ${state.binding.fragments.map((fragment) => fragment.key || '(no key)').join(', ')}`
+                : state.task === 'SPEECH_TO_TEXT'
+                  ? state.initialPrompt || state.hotwords
+                    ? 'Initial prompt / hotwords'
+                    : '—'
+                  : state.task === 'NAMED_ENTITY_RECOGNITION'
+                    ? state.labels || '— (the checkpoint’s own labels)'
+                    : 'None'}
+            </dd>
+            <dt className="text-muted-foreground">Context schema</dt>
+            <dd>
+              {state.task === 'TEXT_GENERATION' && state.binding.contextSchemaId
+                ? (contextSchemas.options.find((option) => option.value === state.binding.contextSchemaId)?.label ?? state.binding.contextSchemaId)
+                : '—'}
+            </dd>
+            {state.task === 'TEXT_GENERATION' ? (
+              <>
+                <dt className="text-muted-foreground">Document template</dt>
+                <dd>{state.documentTemplateSlug ? `${state.documentTemplateSlug} (latest approved)` : 'Platform layout'}</dd>
+              </>
+            ) : null}
+            <dt className="text-muted-foreground">Settings</dt>
+            <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
+            <dt className="text-muted-foreground">Tags</dt>
+            <dd className="font-mono text-xs">{state.tags?.length ? state.tags.join(', ') : '—'}</dd>
+            <dt className="text-muted-foreground">Input / Output contract</dt>
+            <dd>{state.inputSchema || state.outputSchema ? 'custom' : 'task defaults'}</dd>
+          </dl>
+        ) : null}
+        {step === 'Review' && editing ? (
+          <p className="text-muted-foreground mt-4 text-sm">
+            Publishing creates a new version of {state.slug}. The active version does not change; only the step that opened this editor moves to the new version.
+          </p>
+        ) : null}
+        {step === 'Review' && outcome ? (
+          <Alert variant="destructive" className="mt-4" role="alert">
+            <AlertTitle>Kept as draft v{outcome.agent.versionNumber} — not published</AlertTitle>
+            <AlertDescription>
+              {outcome.findings.length > 0 ? (
+                <ul className="flex list-disc flex-col gap-1 pl-4">
+                  {outcome.findings.map((finding, index) => (
+                    <li key={`${finding.code}-${index}`}>
+                      <span className="font-mono">{finding.code}</span> — {finding.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                'The gateway refused to publish this draft.'
+              )}
+              <span className="mt-2 block">Fix the cause (for example, approve the prompt on Hope Prompts) and publish again. Nothing was approved for you.</span>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+      </DetailDrawer>
+      <ConfirmDialog
+        open={confirmDiscard !== null}
+        onOpenChange={(next) => !next && setConfirmDiscard(null)}
+        title="Discard this agent?"
+        description={
+          confirmDiscard?.savedDraft
+            ? 'Closing discards the answers entered since the draft was last saved. The saved draft itself is kept.'
+            : 'Closing discards everything entered in this wizard. Nothing has been saved yet.'
+        }
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={() => {
+          setConfirmDiscard(null);
+          reset();
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 }

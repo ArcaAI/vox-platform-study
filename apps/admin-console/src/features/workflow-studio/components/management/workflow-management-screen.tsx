@@ -16,6 +16,7 @@
  * (see `listWorkflowLineages`). The search is server-side over `slug`, which is fold-safe.
  */
 import { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { parseAsString, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
@@ -60,7 +61,7 @@ import type { WorkflowLineage } from '../../api/types';
 import { CloneDefinitionDialog, type CloneDefinitionSubmission } from '../clone-definition-dialog';
 import { ImportDefinitionDialog, type ImportDefinitionSubmission } from '../import-definition-dialog';
 import { BulkRunDialog, type BulkRun } from './bulk-run-dialog';
-import { BULK_ACTION_LABEL, initialItems, runBulk, type BulkAction } from './lineage-bulk';
+import { BULK_ACTION_LABEL, bulkConsequences, initialItems, runBulk, type BulkAction } from './lineage-bulk';
 import { LineageVersionsPanel, studioHref } from './lineage-versions-panel';
 
 /** Fold-safe: a slug is identical on every version of a lineage, so narrowing on it drops no version row. */
@@ -78,6 +79,39 @@ const ENDPOINT_HINT = (
 export function lineageStudioTarget(lineage: WorkflowLineage): string | null {
   const id = lineage.active?.id ?? lineage.draft?.id;
   return id ?? null;
+}
+
+/**
+ * The workflow name: a real link to the studio (keyboard- and screen-reader-reachable, openable in
+ * a new tab). The row click stays as a convenience, so the link stops its own click bubbling or the
+ * studio would be pushed twice. A workflow with nothing to open (every version deprecated) offers
+ * its versions drawer through a button instead of a link to nowhere.
+ */
+function NameCell({ lineage, onOpenVersions }: { lineage: WorkflowLineage; onOpenVersions: (slug: string) => void }) {
+  const target = lineageStudioTarget(lineage);
+  if (!target) {
+    return (
+      <button
+        type="button"
+        className="focus-visible:ring-ring truncate rounded-xs text-left font-medium underline-offset-4 hover:underline focus-visible:ring-2"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenVersions(lineage.slug);
+        }}
+      >
+        {lineage.name}
+      </button>
+    );
+  }
+  return (
+    <Link
+      href={studioHref(target)}
+      className="focus-visible:ring-ring truncate rounded-xs font-medium underline-offset-4 hover:underline focus-visible:ring-2"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {lineage.name}
+    </Link>
+  );
 }
 
 function SlugCell({ slug }: { slug: string }) {
@@ -101,6 +135,16 @@ function SlugCell({ slug }: { slug: string }) {
         <IconCopy aria-hidden className="size-3.5" />
       </Button>
     </span>
+  );
+}
+
+function ConsequenceItems({ items }: { items: string[] }) {
+  return (
+    <ul className="list-disc space-y-1 pl-5 text-sm">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
   );
 }
 
@@ -194,6 +238,8 @@ function ManagementBody() {
   const [picked, setPicked] = useState<Map<string, WorkflowLineage>>(new Map());
   const [run, setRun] = useState<BulkRun | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Publish, Unpublish and a multi-file Export ask first; everything else starts straight away.
+  const [confirming, setConfirming] = useState<'publish' | 'unpublish' | 'export' | null>(null);
   const invalidate = useInvalidateWorkflowStudioNamespace();
 
   const handleSelection = useCallback(
@@ -230,6 +276,15 @@ function ManagementBody() {
     void invalidate();
   }
 
+  /** Publish and Unpublish always ask; Export asks only when it will download more than one file. */
+  function requestBulk(action: 'publish' | 'unpublish' | 'export') {
+    if (action === 'export' && selectedLineages.length < 2) {
+      void startBulk('export');
+      return;
+    }
+    setConfirming(action);
+  }
+
   function closeRun() {
     setRun(null);
     handleSelection({});
@@ -242,15 +297,15 @@ function ManagementBody() {
       <span className="px-1 text-sm font-medium" aria-live="polite">
         {selectedLineages.length} selected
       </span>
-      <Button variant="outline" size="sm" onClick={() => void startBulk('publish')}>
+      <Button variant="outline" size="sm" onClick={() => requestBulk('publish')}>
         <IconRocket aria-hidden />
         Publish
       </Button>
-      <Button variant="outline" size="sm" onClick={() => void startBulk('unpublish')}>
+      <Button variant="outline" size="sm" onClick={() => requestBulk('unpublish')}>
         <IconArchive aria-hidden />
         Unpublish
       </Button>
-      <Button variant="outline" size="sm" onClick={() => void startBulk('export')}>
+      <Button variant="outline" size="sm" onClick={() => requestBulk('export')}>
         <IconDownload aria-hidden />
         Export
       </Button>
@@ -276,7 +331,7 @@ function ManagementBody() {
         size: 240,
         minSize: 160,
         meta: { label: 'Workflow' },
-        cell: ({ row }) => <span className="truncate font-medium">{row.original.name}</span>,
+        cell: ({ row }) => <NameCell lineage={row.original} onOpenVersions={(slug) => void setSelectedSlug(slug)} />,
       },
       {
         accessorKey: 'slug',
@@ -445,7 +500,7 @@ function ManagementBody() {
             }
           />
         }
-        footer={<StatusFooter start={lineagesQuery.data ? `${formatNumber(rows.length)} of ${formatNumber(total)} workflows` : 'Loading…'} end={ENDPOINT_HINT} />}
+        footer={<StatusFooter start={lineagesQuery.data ? `${formatNumber(rows.length)} of ${formatNumber(total)} workflows` : <Skeleton className="h-3 w-32" />} end={ENDPOINT_HINT} />}
       >
         <AdminDataGrid<WorkflowLineage>
           gridId="workflow-lineages"
@@ -565,6 +620,43 @@ function ManagementBody() {
         onConfirm={() => {
           setConfirmDelete(false);
           void startBulk('delete');
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirming === 'publish'}
+        onOpenChange={(next) => !next && setConfirming(null)}
+        title={`Publish ${selectedLineages.length} workflow${selectedLineages.length === 1 ? '' : 's'}?`}
+        description="Publishing takes each workflow's newest VALIDATED draft and makes it the version its slug serves. Nothing is deleted; a workflow with no validated draft is skipped."
+        body={<ConsequenceItems items={bulkConsequences('publish', selectedLineages)} />}
+        confirmLabel="Publish"
+        onConfirm={() => {
+          setConfirming(null);
+          void startBulk('publish');
+        }}
+      />
+      <ConfirmDialog
+        open={confirming === 'unpublish'}
+        onOpenChange={(next) => !next && setConfirming(null)}
+        title={`Unpublish ${selectedLineages.length} workflow${selectedLineages.length === 1 ? '' : 's'}?`}
+        description="Unpublishing deprecates each workflow's active version, so its slug will serve nothing until another version is published. Deprecation cannot be undone: the version and its history are kept, but it can never be activated again."
+        body={<ConsequenceItems items={bulkConsequences('unpublish', selectedLineages)} />}
+        confirmLabel="Unpublish"
+        destructive
+        onConfirm={() => {
+          setConfirming(null);
+          void startBulk('unpublish');
+        }}
+      />
+      <ConfirmDialog
+        open={confirming === 'export'}
+        onOpenChange={(next) => !next && setConfirming(null)}
+        title={`Download ${selectedLineages.length} files?`}
+        description={`Export saves one JSON bundle per workflow, so ${selectedLineages.length} files will download one after another. Your browser may ask you to allow multiple downloads.`}
+        confirmLabel={`Download ${selectedLineages.length} files`}
+        onConfirm={() => {
+          setConfirming(null);
+          void startBulk('export');
         }}
       />
 
