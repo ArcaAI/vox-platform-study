@@ -83,6 +83,7 @@ export const WORKFLOW_PUBLISH_FINDING_CODES = Object.freeze([
   'REQUIRED_INPUT_UNBOUND',
   'INPUT_MULTIPLE_PRODUCERS',
   'CONSULTATION_SCOPE_UNAVAILABLE',
+  'AGENT_NOTHING_BOUND',
   // TASK-1036 §3.5 — workflow settings (`workflow-settings.ts`); the four implications carry WF-SET rule ids.
   'SETTINGS_INVALID',
   'SETTINGS_SSE_REQUIRES_API',

@@ -1,4 +1,4 @@
-import { computeDefinitionChecksum } from './context-schema-definition';
+import { computeDefinitionChecksum, effectiveAudioDelivery } from './context-schema-definition';
 
 /**
  * Classify a candidate definition against the currently
@@ -103,6 +103,8 @@ export function classifyDefinitionChange(previous: unknown, next: unknown): Defi
     }
     if (before.primitive !== after.primitive) {
       breakingChanges.push(`output \`${key}\`: primitive changed from ${String(before.primitive)} to ${String(after.primitive)}`);
+    } else {
+      breakingChanges.push(...deliveryBreakingChanges(`output \`${key}\``, before, after, 'output'));
     }
     breakingChanges.push(...fieldsBreakingChanges(`output \`${key}\``, before.fields, after.fields));
   }
@@ -124,6 +126,10 @@ function kindBreakingChanges(key: string, before: Record<string, unknown>, after
     }
   }
 
+  if (before.primitive === after.primitive) {
+    changes.push(...deliveryBreakingChanges(label, before, after, 'input'));
+  }
+
   // Making a previously optional kind mandatory invalidates every client that
   // does not send it. The reverse (true -> false) is a relaxation.
   if (before.required !== true && after.required === true) {
@@ -132,6 +138,20 @@ function kindBreakingChanges(key: string, before: Record<string, unknown>, after
 
   changes.push(...fieldsBreakingChanges(label, before.fields, after.fields));
   return changes;
+}
+
+/**
+ * TASK-1036 contract freeze — how a `STREAM_AUDIO` declaration MOVES is part of the contract a
+ * client was built against: a `stream` kind is fed over a live socket, a `blob` one by uploading a
+ * media object (and a workflow's connections were derived from it — WF-SET-003/004). A change of
+ * the RESOLVED delivery, either direction, is therefore breaking. Spelling out the delivery the
+ * declaration already resolved to (absent → its default) is not. Only reached when the primitive
+ * is unchanged — a primitive change is already breaking on its own.
+ */
+function deliveryBreakingChanges(label: string, before: Record<string, unknown>, after: Record<string, unknown>, side: 'input' | 'output'): string[] {
+  const was = effectiveAudioDelivery(before, side);
+  const now = effectiveAudioDelivery(after, side);
+  return was !== now ? [`${label}: delivery changed from ${String(was)} to ${String(now)}`] : [];
 }
 
 function fieldsBreakingChanges(label: string, before: unknown, after: unknown): string[] {

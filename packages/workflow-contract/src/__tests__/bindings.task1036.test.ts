@@ -67,6 +67,7 @@ describe('the binding shape', () => {
     [{ value: 'en' }],
     [{ value: null }],
     [{ template: 'Hi {{context.name}}' }],
+    [{ firstOf: ['nodes.a.outputs.text', 'context.note'] }],
   ])('accepts %j', (binding) => {
     expect(isBinding(binding)).toBe(true);
     expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '')).toEqual([]);
@@ -80,6 +81,12 @@ describe('the binding shape', () => {
     [{ from: 'a', at: 'later' }],
     [{ from: 'a', extra: 1 }],
     ['nodes.a.outputs.text'],
+    [{ firstOf: ['nodes.a.outputs.text'] }],
+    [{ firstOf: [] }],
+    [{ firstOf: ['a', ''] }],
+    [{ firstOf: ['a', 7] }],
+    [{ firstOf: ['a', 'b'], at: 'runStart' }],
+    [{ firstOf: 'a' }],
   ])('refuses %j', (binding) => {
     expect(isBinding(binding)).toBe(false);
     expect(jsonSchemaValueProblems(BINDING_JSON_SCHEMA, binding, '').length).toBeGreaterThan(0);
@@ -192,15 +199,24 @@ describe('bindingIssues — authored inputs', () => {
   it('REQUIRED_INPUT_UNBOUND: a required input with neither a binding nor a data edge', () => {
     const graph: WorkflowGraph = {
       version: 1,
+      nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_ner', 'ner', { inputs: {} })],
+      edges: [e('n_trigger', 'next', 'n_ner', 'after')],
+    };
+    const issues = bindingIssues(graph, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_ner:REQUIRED_INPUT_UNBOUND']);
+    expect(issues[0]?.input).toBe('text');
+  });
+
+  it('a text agent`s `message` is OPTIONAL: binding only `context` is complete', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
       nodes: [
         { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
         agent('n_gen', 'summary', { inputs: { context: { from: 'nodes.n_trigger.outputs.context' } } }),
       ],
       edges: [e('n_trigger', 'next', 'n_gen', 'after')],
     };
-    const issues = bindingIssues(graph, { agents: AGENTS });
-    expect(codes(issues, 'ERROR')).toEqual(['n_gen:REQUIRED_INPUT_UNBOUND']);
-    expect(issues[0]?.input).toBe('message');
+    expect(codes(bindingIssues(graph, { agents: AGENTS }))).toEqual([]);
   });
 
   it('INPUT_MULTIPLE_PRODUCERS: on a node that declares inputs, two data edges into one unbound input is an ERROR', () => {
@@ -316,5 +332,148 @@ describe('prompt-variable templates: `nodes.*` is no longer a wildcard (D-G)', (
     expect(codes(bindingIssues(build('{{nodes.n_a.outputs.nope}}'), { agents: AGENTS }), 'ERROR')).toEqual(['n_b:BINDING_UNKNOWN_PATH']);
     expect(codes(bindingIssues(build('{{nodes.n_a.outputs.text}}'), { agents: AGENTS }), 'ERROR')).toEqual([]);
     expect(codes(bindingIssues(build('{{nodes.n_a.text}}'), { agents: AGENTS }), 'ERROR')).toEqual([]);
+  });
+});
+
+describe('authored `firstOf` — a deliberate ordered coalesce is not fan-in (OD-18 amended)', () => {
+  function withInputs(nodeId: string, inputs: Record<string, unknown>, graph = seededShape()): WorkflowGraph {
+    const node = graph.nodes.find((candidate) => candidate.id === nodeId) as WorkflowGraphNode;
+    node.config = { ...node.config, inputs };
+    return graph;
+  }
+
+  it('is accepted when every path is an ancestor of a fitting type, and compiles verbatim', () => {
+    // The REVERSE of the legacy translation's order, so the authored binding is visibly the one compiled.
+    const firstOf = { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_transcript.outputs.text'] };
+    const graph = withInputs('n_ner', { text: firstOf });
+    expect(codes(bindingIssues(graph, { agents: AGENTS }))).toEqual([]);
+    expect(compiledBindings(graph, AGENTS).n_ner).toEqual({ text: firstOf });
+  });
+
+  it('checks each path for ancestry, pointing at the offending entry', () => {
+    const graph = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_finalize.outputs.text'] } });
+    const issues = bindingIssues(graph, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_ner:BINDING_NOT_ANCESTOR']);
+    expect(issues.find((issue) => issue.code === 'BINDING_NOT_ANCESTOR')?.path).toBe('/inputs/text/firstOf/1');
+  });
+
+  it('checks each path for type, and for being a known path at all', () => {
+    const mismatch = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nodes.n_trigger.outputs.context'] } });
+    expect(codes(bindingIssues(mismatch, { agents: AGENTS }), 'INFO')).toEqual(['n_ner:BINDING_TYPE_CONVERTED']);
+    const audio: WorkflowGraph = {
+      version: 1,
+      nodes: [
+        agent('n_tts', 'tts'),
+        agent('n_gen', 'summary'),
+        agent('n_x', 'summary', { inputs: { message: { firstOf: ['nodes.n_gen.outputs.text', 'nodes.n_tts.outputs.audio'] } } }),
+      ],
+      edges: [e('n_tts', 'next', 'n_gen', 'after'), e('n_gen', 'next', 'n_x', 'after')],
+    };
+    const issues = bindingIssues(audio, { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_x:BINDING_TYPE_MISMATCH']);
+    expect(issues.find((issue) => issue.code === 'BINDING_TYPE_MISMATCH')?.path).toBe('/inputs/message/firstOf/1');
+    const unknown = withInputs('n_ner', { text: { firstOf: ['nodes.n_asr.outputs.transcript', 'nope.x'] } });
+    expect(codes(bindingIssues(unknown, { agents: AGENTS }), 'ERROR')).toEqual(['n_ner:BINDING_UNKNOWN_PATH']);
+  });
+
+  it('a consultation.* path inside firstOf is a declared read, and needs the consultation source', () => {
+    const graph: WorkflowGraph = {
+      version: 1,
+      nodes: [
+        { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+        agent('n_gen', 'summary', { inputs: { message: { firstOf: ['context.note', 'consultation.transcript.text'] } } }),
+      ],
+      edges: [e('n_trigger', 'next', 'n_gen', 'after')],
+    };
+    expect(codes(bindingIssues(graph, { agents: AGENTS }), 'ERROR')).toEqual(['n_gen:CONSULTATION_SCOPE_UNAVAILABLE']);
+    expect(codes(bindingIssues(graph, { agents: AGENTS, sources: ['consultation'] }), 'ERROR')).toEqual([]);
+  });
+
+  it('INPUT_MULTIPLE_PRODUCERS on an authored node still errors, and suggests binding as firstOf', () => {
+    const issues = bindingIssues(withInputs('n_ner', {}), { agents: AGENTS });
+    const fanIn = issues.find((issue) => issue.code === 'INPUT_MULTIPLE_PRODUCERS');
+    expect(fanIn?.severity).toBe('ERROR');
+    expect(fanIn?.message).toContain('firstOf');
+  });
+});
+
+describe('AGENT_NOTHING_BOUND — a text agent with nothing to work on (WARNING)', () => {
+  const build = (genConfig: Record<string, unknown>, edges: WorkflowGraphEdge[] = [e('n_trigger', 'next', 'n_gen', 'after')]): WorkflowGraph => ({
+    version: 1,
+    nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_gen', 'summary', genConfig)],
+    edges,
+  });
+
+  it('warns when no message, no context and no prompt variable is bound — legacy or authored', () => {
+    for (const config of [{}, { inputs: {} }, { overrides: { promptVariables: {} } }]) {
+      const issues = bindingIssues(build(config), { agents: AGENTS });
+      expect(codes(issues), JSON.stringify(config)).toEqual(['n_gen:AGENT_NOTHING_BOUND']);
+      expect(issues[0]).toMatchObject({ severity: 'WARNING', path: '/inputs' });
+    }
+  });
+
+  it('is silent when any one of the three is bound: an authored input, a data edge, or a prompt variable', () => {
+    expect(codes(bindingIssues(build({ inputs: { message: { value: 'Hi' } } }), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({ inputs: { context: { from: 'nodes.n_trigger.outputs.context' } } }), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({}, [e('n_trigger', 'out', 'n_gen', 'context')]), { agents: AGENTS }))).toEqual([]);
+    expect(codes(bindingIssues(build({ overrides: { promptVariables: { tone: 'brief' } } }), { agents: AGENTS }))).toEqual([]);
+  });
+
+  it('only judges a node whose agent is KNOWN to be a text agent', () => {
+    expect(codes(bindingIssues(build({}), {}))).toEqual([]);
+    const tts: WorkflowGraph = { version: 1, nodes: [agent('n_tts', 'tts')], edges: [] };
+    expect(codes(bindingIssues(tts, { agents: AGENTS }))).toEqual([]);
+  });
+});
+
+describe('picker / binding hygiene (contract freeze)', () => {
+  const varsGraph = (wired: boolean): WorkflowGraph => ({
+    version: 1,
+    nodes: [
+      { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+      { id: 'n_vars', type: 'core.variable', config: { variables: [{ key: 'tone', schema: { type: 'string' } }] } },
+      agent('n_gen', 'summary', { inputs: { message: { from: 'vars.tone' } } }),
+    ],
+    edges: wired
+      ? [e('n_trigger', 'next', 'n_vars', 'after'), e('n_vars', 'next', 'n_gen', 'after')]
+      : [e('n_trigger', 'next', 'n_gen', 'after'), e('n_trigger', 'next', 'n_vars', 'after')],
+  });
+
+  it('`vars.*` resolves only from an ANCESTOR `core.variable` step', () => {
+    expect(codes(bindingIssues(varsGraph(true), { agents: AGENTS }))).toEqual([]);
+    const issues = bindingIssues(varsGraph(false), { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_gen:BINDING_NOT_ANCESTOR']);
+    expect(issues.find((issue) => issue.code === 'BINDING_NOT_ANCESTOR')?.message).toContain('n_vars');
+  });
+
+  it('`context.<path>` walks strictly where the payload schema declares properties', () => {
+    const payload = {
+      type: 'object',
+      properties: {
+        patient: { type: 'object', properties: { age: { type: 'integer' } } },
+        extras: { type: 'object', additionalProperties: true, properties: { a: { type: 'string' } } },
+        free: { type: 'object' },
+      },
+    };
+    const check = (path: string) =>
+      codes(
+        bindingIssues(
+          {
+            version: 1,
+            nodes: [
+              { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+              agent('n_gen', 'summary', { inputs: { message: { from: path } } }),
+            ],
+            edges: [e('n_trigger', 'next', 'n_gen', 'after')],
+          },
+          { agents: AGENTS, contextPayloadSchema: payload },
+        ),
+        'ERROR',
+      );
+    expect(check('context.patient.age')).toEqual([]);
+    expect(check('context.patient.weight')).toEqual(['n_gen:BINDING_UNKNOWN_PATH']);
+    expect(check('context.nope')).toEqual(['n_gen:BINDING_UNKNOWN_PATH']);
+    expect(check('context.extras.anything')).toEqual([]);
+    expect(check('context.free.anything')).toEqual([]);
   });
 });

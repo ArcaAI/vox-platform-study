@@ -64,7 +64,8 @@ describe('node `inputs` (OD-29)', () => {
     expect(problems('core.agent', { ...base, inputs: { message: { from: 'nodes.n_a.outputs.text' }, context: { value: { a: 1 } } } })).toEqual([]);
     expect(problems('core.agent', { ...base, inputs: { message: { template: 'Hi {{context.name}}' } } })).toEqual([]);
     expect(problems('core.agent', { ...base, inputs: { message: 'nodes.n_a.outputs.text' } }).length).toBeGreaterThan(0);
-    expect(problems('core.agent', { ...base, inputs: { message: { firstOf: ['a', 'b'] } } }).length).toBeGreaterThan(0);
+    expect(problems('core.agent', { ...base, inputs: { message: { firstOf: ['context.a', 'context.b'] } } })).toEqual([]);
+    expect(problems('core.agent', { ...base, inputs: { message: { firstOf: ['context.a'] } } }).length).toBeGreaterThan(0);
     expect(problems('core.trigger', { kinds: ['api'], inputs: {} }).length).toBeGreaterThan(0);
   });
 });

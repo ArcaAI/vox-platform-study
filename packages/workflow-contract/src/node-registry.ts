@@ -505,14 +505,80 @@ export function nodeInfo(nodeType: string): CompilerNodeInfo | undefined {
 export const workflowNodeClassLookup: WorkflowNodeClassLookup = { classesOf, paletteOf };
 
 /**
- * sha256 of the registry, descriptors sorted by `key` before hashing ( finding #7:
- * "descriptor array order must also be stable or every deploy looks like a registry bump and
- * flags every published definition NEEDS_REVIEW"). A definition's stamped `registryChecksum`
- * is compared against this at read time to trigger `NEEDS_REVIEW` re-validation.
+ * The config paths a graph MUST supply for a node type: the schema's top-level `required` keys,
+ * and — recursively — the `required` keys of each required property that is itself an object
+ * schema. An OPTIONAL property contributes nothing, however deep its own `required` list goes,
+ * which is what keeps an additive optional knob out of `registryChecksum`. Sorted.
  */
-export function registryChecksum(): string {
-  const sorted = Object.values(WORKFLOW_NODE_REGISTRY)
+function requiredConfigPaths(schema: NodeConfigSchema | undefined, prefix = ''): string[] {
+  const object = schema as { required?: unknown; properties?: Record<string, NodeConfigSchema> } | undefined;
+  const required = Array.isArray(object?.required) ? object.required.filter((key): key is string => typeof key === 'string') : [];
+  const paths: string[] = [];
+  for (const key of required) {
+    const path = prefix === '' ? key : `${prefix}.${key}`;
+    paths.push(path, ...requiredConfigPaths(object?.properties?.[key], path));
+  }
+  return paths.sort();
+}
+
+/** A port's semantic fields — what an edge or the interpreter's input binding reads. */
+function portSurface(port: WorkflowPortDescriptor): Record<string, unknown> {
+  return {
+    name: port.name,
+    primitive: port.primitive,
+    required: port.required,
+    multiple: port.multiple,
+    ...(port.outputKey === undefined ? {} : { outputKey: port.outputKey }),
+  };
+}
+
+/**
+ * TASK-1036 contract freeze — ONE descriptor's SEMANTIC surface: everything a published graph
+ * depends on, and nothing cosmetic. In: the key, `implemented`, activity, classes, ports, the
+ * default budget and attempts, the REQUIRED config paths, and the code-owned dispatch / safety
+ * properties (`lane`, `trigger`, `critical`, `externalWrite`, `idempotent`, `requires`,
+ * `entitlementKey`, `schemaVersion`). Out: descriptions, summaries, every OPTIONAL config
+ * property (`label`, `inputs`, a new knob), `paletteKey`, `deprecated` / `replacedBy`.
+ */
+function semanticSurface(descriptor: WorkflowNodeDescriptor): Record<string, unknown> {
+  return {
+    key: descriptor.key,
+    implemented: descriptor.implemented,
+    activityName: descriptor.activityName,
+    classes: [...descriptor.classes],
+    inputs: (descriptor.inputs ?? []).map(portSurface),
+    outputs: (descriptor.outputs ?? []).map(portSurface),
+    defaultTimeoutSeconds: descriptor.defaultTimeoutSeconds,
+    defaultMaxAttempts: descriptor.defaultMaxAttempts,
+    requiredConfig: requiredConfigPaths(descriptor.configSchema),
+    lane: descriptor.lane,
+    trigger: descriptor.trigger,
+    critical: descriptor.critical,
+    externalWrite: descriptor.externalWrite,
+    idempotent: descriptor.idempotent,
+    requires: [...descriptor.requires],
+    entitlementKey: descriptor.entitlementKey,
+    schemaVersion: descriptor.schemaVersion,
+  };
+}
+
+/**
+ * sha256 over the registry's SEMANTIC surface (`semanticSurface`), descriptors sorted by `key`
+ * before hashing (finding #7: "descriptor array order must also be stable or every deploy looks
+ * like a registry bump and flags every published definition NEEDS_REVIEW"). A definition's
+ * stamped `registryChecksum` is compared against this at read time to trigger `NEEDS_REVIEW`
+ * re-validation.
+ *
+ * TASK-1036 contract freeze: it hashed the WHOLE descriptor until now, config schemas included,
+ * so a purely additive OPTIONAL config property or a reworded description moved it and flagged
+ * every published workflow for review. It now moves only when a node key, its classes, activity,
+ * ports, `implemented`, default budget, a REQUIRED config path or a dispatch / safety property
+ * moves. `registry` defaults to the live one; tests pass a mutated copy.
+ */
+export function registryChecksum(registry: Readonly<Record<string, WorkflowNodeDescriptor>> = WORKFLOW_NODE_REGISTRY): string {
+  const sorted = Object.values(registry)
     .slice()
-    .sort((a, b) => a.key.localeCompare(b.key));
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map(semanticSurface);
   return createHash('sha256').update(canonicalJson(sorted)).digest('hex');
 }

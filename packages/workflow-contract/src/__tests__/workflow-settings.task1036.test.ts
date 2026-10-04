@@ -134,6 +134,27 @@ describe('settingsImplications — WF-SET-001..004', () => {
     expect(settingsImplications(graph, settings(['api', 'socket']), { agents })).toEqual([]);
   });
 
+  it('WF-SET-003: an ASR node in a CONSULTATION-sourced workflow does not need socket (audio rides the consultation session socket)', () => {
+    const graph = graphWith(undefined, [
+      { id: 'n_asr', type: 'core.agent', config: { agentRef: { slug: 'asr' } } },
+      { id: 'n_tts', type: 'core.agent', config: { agentRef: { slug: 'tts' } } },
+    ]);
+    const agents = { asr: { task: 'SPEECH_TO_TEXT' as const }, tts: { task: 'TEXT_TO_SPEECH' as const } };
+    const consultation: WorkflowSettings = { connections: ['api'], sources: ['consultation'] };
+    // The ASR node is exempt; the TTS node still speaks to a caller over the socket.
+    expect(settingsImplications(graph, consultation, { agents }).map((entry) => entry.nodeId)).toEqual(['n_tts']);
+    // An API- / webhook-sourced workflow keeps the rule for both.
+    expect(settingsImplications(graph, { connections: ['api', 'webhook'], sources: [] }, { agents }).map((entry) => entry.nodeId)).toEqual([
+      'n_asr',
+      'n_tts',
+    ]);
+    // A STREAM audio kind in the Input shape still needs the socket, consultation or not.
+    const definition = { schemaVersion: '1.0', kinds: [{ key: 'audio_stream', primitive: 'STREAM_AUDIO' }] };
+    expect(settingsImplications(graphWith(undefined), consultation, { contextSchemaDefinition: definition }).map((entry) => entry.ruleId)).toEqual([
+      'WF-SET-003',
+    ]);
+  });
+
   it('WF-SET-003: a stream audio kind in the Input shape needs socket', () => {
     const definition = { schemaVersion: '1.0', kinds: [{ key: 'audio_stream', primitive: 'STREAM_AUDIO' }] };
     expect(

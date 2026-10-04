@@ -11,6 +11,7 @@
  * | `{ from: <path> }` | `nodes.transcribe.outputs.transcript`, `context.patient.age`, `consultation.notes.preSummary` |
  * | `{ value: <literal> }` | `{ value: "en" }` |
  * | `{ template: <text> }` | `"Summarise: {{nodes.transcribe.outputs.transcript}}"` |
+ * | `{ firstOf: [<path>, …] }` | `{ firstOf: ["nodes.edit.outputs.text", "nodes.draft.outputs.text"] }` — the first that has a value |
  *
  * A path starts at one of five roots: `context.*` (the run input, typed by the context schema),
  * `consultation.*` (the platform read schema, `consultation-read-schema.ts`), `nodes.<id>.outputs.*`
@@ -27,10 +28,12 @@
  * `edgeImpliedBindings` translates each data edge into `nodes.<from>.outputs.<outputKey>` — the
  * exact runtime key the interpreter threads today (`_resolve_bound_inputs`) — under the target's
  * NodeIO input name. Fan-in (several producers into one input, D-E) is today LAST-WRITE-WINS in
- * `(toPort, fromNodeId)` order; the translation states the same rule explicitly as a COMPILED-only
+ * `(toPort, fromNodeId)` order; the translation states the same rule explicitly as
  * `{ firstOf: [...] }` (first path that produced a value, latest producer first), and publish flags
  * it (`INPUT_MULTIPLE_PRODUCERS`: a WARNING on a legacy node, an ERROR once the node declares
- * inputs — OD-18 refuses fan-in into a single-value input; a Merge step combines values).
+ * inputs — OD-18 refuses UNDECLARED fan-in into a single-value input). The author resolves it by
+ * binding one producer, by binding an explicit `firstOf` (an ordered coalesce is a deliberate
+ * choice, not fan-in — OD-18 as amended by the contract freeze), or with a Merge step.
  *
  * ## Publish rules (`bindingIssues`)
  *
@@ -49,13 +52,14 @@
  * | `REQUIRED_INPUT_UNBOUND` | ERROR | a required input has neither a binding nor a data edge |
  * | `INPUT_MULTIPLE_PRODUCERS` | ERROR / WARNING | several data edges feed one unbound input |
  * | `CONSULTATION_SCOPE_UNAVAILABLE` | ERROR | a node reads `consultation.*` and `sources` lacks `consultation` |
+ * | `AGENT_NOTHING_BOUND` | WARNING | a KNOWN text agent has no `message`, no `context` and no prompt variable (legacy or authored) |
  *
  * Mirrored in Python (lane B1) against `tests/contracts/bindings.fixture.json`.
  */
 import { CONSULTATION_ROOT, consultationPathInfo, nodeConsultationReads, type ConsultationReadAt } from './consultation-read-schema';
 import { resolveInputPort, resolveOutputPort } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
-import { BINDING_JSON_SCHEMA } from './node-config-schemas';
+import { BINDING_FIRST_OF_MAX_PATHS, BINDING_JSON_SCHEMA } from './node-config-schemas';
 import { agentTaskOf, ioTypeOfJsonSchema, nodeIOFor, typeFits, type AgentIOResolver, type IoType, type NodeIO, type PhiClass } from './node-io';
 import { templateReferences } from './template';
 import { effectiveSettings, type WorkflowSource } from './workflow-settings';
@@ -66,32 +70,64 @@ export { BINDING_JSON_SCHEMA };
 // Shape
 // =============================================================================================
 
+/**
+ * The five roots a binding path may start at. Runtime semantics the harness resolver (lane B1)
+ * implements, stated here so both runtimes read one contract:
+ *
+ *  - `context.*` — the run input, validated against the workflow's context schema. The eleven
+ *    flat platform names (`context.safe_age`, `context.dna_style_text`, … —
+ *    `PLATFORM_CONTEXT_ALIASES`) are NOT resolved by the binding resolver: for this release they
+ *    keep riding the LEGACY GATEWAY INJECTION into the run context, exactly as before, and the
+ *    Studio offers their `consultation.*` paths instead. They retire with the deprecation register.
+ *  - `consultation.*` — the platform read schema, read at node start unless the binding says
+ *    `at: 'runStart'` (OD-30). Available in BINDINGS and TEMPLATES only: a CEL expression
+ *    (`core.condition` `when`, a guard) cannot read `consultation.*` this release — there it is an
+ *    unknown root.
+ *  - `nodes.<id>.outputs.<field>` — an ANCESTOR's declared output. Inside a loop body,
+ *    `nodes.<loop>.outputs.item` is the CURRENT iteration's item (the loop's `each` handle feeds the
+ *    body, so the loop is an ancestor of every body step it reaches); `result` is what the loop
+ *    collected, read after it.
+ *  - `vars.*` — a key an ANCESTOR `core.variable` step declares.
+ *  - `run.*` — run identity (`RUN_SCOPE_FIELDS`).
+ */
 export const BINDING_ROOTS = Object.freeze(['context', 'consultation', 'nodes', 'vars', 'run'] as const);
 export type BindingRoot = (typeof BINDING_ROOTS)[number];
 
 export type FromBinding = { readonly from: string; readonly at?: ConsultationReadAt };
 export type ValueBinding = { readonly value: unknown };
 export type TemplateBinding = { readonly template: string };
-export type Binding = FromBinding | ValueBinding | TemplateBinding;
-
 /**
- * COMPILED-ONLY: the first of these paths that produced a value. Emitted only by the legacy
- * translation of a fan-in, never authored (`BINDING_JSON_SCHEMA` refuses it on a node).
+ * An ORDERED COALESCE: the first of these paths that has a value (two or more, each read like a
+ * `from`). AUTHORABLE since the TASK-1036 contract freeze — a deliberate coalesce is not fan-in
+ * (OD-18 amended) — and also what the legacy translation of a fan-in compiles to. Every path is
+ * ancestor- and type-checked at publish exactly like a `from`. A value is "present" when the path
+ * resolved to something other than `undefined` / `null` (the B1 resolver's rule).
  */
 export type FirstOfBinding = { readonly firstOf: readonly string[] };
-export type CompiledBinding = Binding | FirstOfBinding;
+export type Binding = FromBinding | ValueBinding | TemplateBinding | FirstOfBinding;
+/** What `compiledBindings` emits — the authored shapes, unchanged. Kept as a name for the compiled artifact. */
+export type CompiledBinding = Binding;
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-/** Whether `value` is an authored binding — exactly one of the three closed shapes. */
+/** Whether `value` is an authored binding — exactly one of the four closed shapes. */
 export function isBinding(value: unknown): value is Binding {
   const object = asObject(value);
   if (object === undefined) return false;
   const keys = Object.keys(object);
   if (keys.length === 1 && keys[0] === 'value') return true;
   if (keys.length === 1 && keys[0] === 'template') return typeof object.template === 'string';
+  if (keys.length === 1 && keys[0] === 'firstOf') {
+    const paths = object.firstOf;
+    return (
+      Array.isArray(paths) &&
+      paths.length >= 2 &&
+      paths.length <= BINDING_FIRST_OF_MAX_PATHS &&
+      paths.every((path) => typeof path === 'string' && path.length > 0)
+    );
+  }
   if (keys.includes('from')) {
     if (typeof object.from !== 'string' || object.from.length === 0) return false;
     if (!keys.every((key) => key === 'from' || key === 'at')) return false;
@@ -100,7 +136,13 @@ export function isBinding(value: unknown): value is Binding {
   return false;
 }
 
-/** The run-identity fields `run.*` offers. Fixed by the platform; never PHI. */
+/**
+ * The run-identity fields `run.*` offers. Fixed by the platform; never PHI.
+ *
+ * Replay-safe by construction: the harness resolves them from workflow state, never from the
+ * wall clock — `run.now` is `workflow.now()` (Temporal's deterministic time, taken when the step
+ * starts) and `run.startedAt` the run's own start, so a replay renders the same value.
+ */
 export const RUN_SCOPE_FIELDS: Readonly<Record<string, { readonly type: IoType; readonly description: string }>> = Object.freeze({
   id: Object.freeze({ type: 'text', description: 'This run`s id.' }),
   tenantId: Object.freeze({ type: 'text', description: 'The tenant the run belongs to.' }),
@@ -248,7 +290,8 @@ export type BindingIssueCode =
   | 'BINDING_UNKNOWN_INPUT'
   | 'REQUIRED_INPUT_UNBOUND'
   | 'INPUT_MULTIPLE_PRODUCERS'
-  | 'CONSULTATION_SCOPE_UNAVAILABLE';
+  | 'CONSULTATION_SCOPE_UNAVAILABLE'
+  | 'AGENT_NOTHING_BOUND';
 
 export interface BindingIssue {
   readonly code: BindingIssueCode;
@@ -268,8 +311,23 @@ export interface ResolvedSource {
 
 type Resolution = { readonly ok: ResolvedSource } | { readonly code: 'BINDING_UNKNOWN_PATH' | 'BINDING_NOT_ANCESTOR'; readonly message: string };
 
-/** Walks declared `properties`. `strict`: an undeclared field is unknown unless the object explicitly admits more. */
-function walkSchema(schema: unknown, segments: readonly string[], strict: boolean): { schema: Record<string, unknown> } | 'unknown' | 'open' {
+/**
+ * How strictly `walkSchema` treats a field a level does not declare:
+ *
+ *  - `strict`   — unknown, unless the level explicitly admits more (`additionalProperties: true` or a schema);
+ *  - `declared` — `strict` at a level that DECLARES `properties`, open at one that declares none
+ *    (an undescribed object is free-form). The `context.*` rule: a payload schema that names its
+ *    fields is held to them, so a typo is caught at publish rather than resolving to nothing at run time;
+ *  - `lenient`  — unknown only where the level declares `properties` AND closes itself (`additionalProperties: false`).
+ */
+type SchemaWalk = 'strict' | 'declared' | 'lenient';
+
+function admitsMore(level: Record<string, unknown>): boolean {
+  return level.additionalProperties === true || asObject(level.additionalProperties) !== undefined;
+}
+
+/** Walks declared `properties` (see `SchemaWalk` for what an undeclared field is). */
+function walkSchema(schema: unknown, segments: readonly string[], walk: SchemaWalk): { schema: Record<string, unknown> } | 'unknown' | 'open' {
   let current = asObject(schema);
   for (const segment of segments) {
     if (current === undefined) return 'open';
@@ -278,7 +336,9 @@ function walkSchema(schema: unknown, segments: readonly string[], strict: boolea
       current = asObject(properties[segment]);
       continue;
     }
-    if (strict) return current.additionalProperties === true || asObject(current.additionalProperties) !== undefined ? 'open' : 'unknown';
+    if (walk === 'strict') return admitsMore(current) ? 'open' : 'unknown';
+    if (walk === 'declared')
+      return properties === undefined ? (current.additionalProperties === false ? 'unknown' : 'open') : admitsMore(current) ? 'open' : 'unknown';
     return properties !== undefined && current.additionalProperties === false ? 'unknown' : 'open';
   }
   return current === undefined ? 'open' : { schema: current };
@@ -288,8 +348,15 @@ interface ResolveScope {
   readonly graph: WorkflowGraph;
   readonly nodesById: ReadonlyMap<string, WorkflowGraphNode>;
   readonly ancestors: ReadonlySet<string>;
-  readonly vars: ReadonlyMap<string, IoType>;
+  /** Every `core.variable` declaration in the graph; only those of an ANCESTOR resolve. */
+  readonly vars: ReadonlyMap<string, DeclaredVar>;
   readonly ctx: BindingIssueContext;
+}
+
+interface DeclaredVar {
+  readonly type: IoType;
+  /** The `core.variable` steps that declare the key. */
+  readonly nodeIds: readonly string[];
 }
 
 function label(node: WorkflowGraphNode): string {
@@ -299,11 +366,11 @@ function label(node: WorkflowGraphNode): string {
 
 function resolveContextPath(segments: readonly string[], payloadSchema: unknown, path: string): Resolution {
   if (asObject(payloadSchema) === undefined) return { ok: { type: segments.length === 0 ? 'json' : 'any', phiClass: null } };
-  let walked = walkSchema(payloadSchema, segments, false);
+  let walked = walkSchema(payloadSchema, segments, 'declared');
   // The sole-kind collapse: a definition whose only kind is `context` is read as that kind.
   const properties = asObject(asObject(payloadSchema)?.properties);
   if (walked === 'unknown' && properties !== undefined && Object.keys(properties).length === 1 && properties.context !== undefined) {
-    walked = walkSchema(properties.context, segments, false);
+    walked = walkSchema(properties.context, segments, 'declared');
   }
   if (walked === 'unknown') return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\` is not declared by this workflow's context schema.` };
   return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: null } };
@@ -336,7 +403,7 @@ function resolveNodePath(segments: readonly string[], scope: ResolveScope, path:
   }
   if (rest.length === 0) return { ok: { type: declared.type, phiClass: declared.phiClass ?? null } };
   if (declared.schema !== undefined) {
-    const walked = walkSchema(declared.schema, rest, true);
+    const walked = walkSchema(declared.schema, rest, 'strict');
     if (walked === 'unknown')
       return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: \`${rest.join('.')}\` is not a field of ${label(producer)}'s \`${field}\`.` };
     return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: declared.phiClass ?? null } };
@@ -360,9 +427,17 @@ function resolvePath(path: string, scope: ResolveScope): Resolution {
       return resolveNodePath(rest, scope, path);
     case 'vars': {
       const key = rest[0];
-      const type = key === undefined ? undefined : scope.vars.get(key);
-      if (type === undefined) return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
-      return { ok: { type: rest.length > 1 ? 'any' : type, phiClass: null } };
+      const declared = key === undefined ? undefined : scope.vars.get(key);
+      if (declared === undefined)
+        return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
+      if (!declared.nodeIds.some((id) => scope.ancestors.has(id))) {
+        const setters = declared.nodeIds.map((id) => scope.nodesById.get(id)).filter((node): node is WorkflowGraphNode => node !== undefined);
+        return {
+          code: 'BINDING_NOT_ANCESTOR',
+          message: `\`${path}\` is set by ${setters.map(label).join(', ')}, which does not run before this step. Connect it upstream first.`,
+        };
+      }
+      return { ok: { type: rest.length > 1 ? 'any' : declared.type, phiClass: null } };
     }
     case 'run': {
       const field = rest.length === 1 ? RUN_SCOPE_FIELDS[rest[0] as string] : undefined;
@@ -392,15 +467,18 @@ function literalType(value: unknown): IoType {
   return 'json';
 }
 
-function declaredVars(nodes: readonly WorkflowGraphNode[]): Map<string, IoType> {
-  const vars = new Map<string, IoType>();
+function declaredVars(nodes: readonly WorkflowGraphNode[]): Map<string, DeclaredVar> {
+  const vars = new Map<string, DeclaredVar>();
   for (const node of nodes) {
     if (node.type !== 'core.variable') continue;
     const declared = asObject(node.config)?.variables;
     for (const entry of Array.isArray(declared) ? declared : []) {
       const variable = asObject(entry);
       if (typeof variable?.key !== 'string') continue;
-      vars.set(variable.key, variable.schema === undefined ? 'any' : ioTypeOfJsonSchema(variable.schema));
+      const type = variable.schema === undefined ? 'any' : ioTypeOfJsonSchema(variable.schema);
+      const previous = vars.get(variable.key);
+      // The LAST declaration's type wins, as the runtime's merge does; every setter is recorded.
+      vars.set(variable.key, { type, nodeIds: [...(previous?.nodeIds ?? []), node.id] });
     }
   }
   return vars;
@@ -414,7 +492,7 @@ function scopeFor(
   graph: WorkflowGraph,
   nodeId: string,
   nodesById: ReadonlyMap<string, WorkflowGraphNode>,
-  vars: ReadonlyMap<string, IoType>,
+  vars: ReadonlyMap<string, DeclaredVar>,
   ctx: BindingIssueContext,
 ): ResolveScope {
   return { graph, nodesById, ancestors: edgeAncestors(graph, nodeId), vars, ctx };
@@ -484,6 +562,17 @@ function checkAuthoredNode(
         continue;
       }
       checkType(issues, node, name, `${pointer}/from`, target, resolved.ok.type, `\`${binding.from}\``);
+    } else if ('firstOf' in binding) {
+      // Each path is checked exactly like a `from`, at its own pointer.
+      binding.firstOf.forEach((path, index) => {
+        const at = `${pointer}/firstOf/${index}`;
+        const resolved = resolvePath(path, scope);
+        if ('code' in resolved) {
+          issues.push({ code: resolved.code, severity: 'ERROR', nodeId: node.id, input: name, path: at, message: resolved.message });
+          return;
+        }
+        checkType(issues, node, name, at, target, resolved.ok.type, `\`${path}\``);
+      });
     } else if ('template' in binding) {
       let broken = false;
       for (const reference of templateReferences(binding.template)) {
@@ -528,7 +617,7 @@ function checkEdgeProducers(
         `\`${name}\` of step ${label(node)} is fed by ${paths.length} steps (${paths.map((path) => `\`${path}\``).join(', ')}); only one value can arrive. ` +
         (authored === undefined
           ? 'Today the latest producer that ran wins. Bind the input explicitly, or combine the values with a Merge step.'
-          : 'Bind the input to one of them, or combine the values with a Merge step.'),
+          : `Bind the input to one of them, bind it as \`firstOf\` to take the first that has a value (\`{ "firstOf": [${paths.map((path) => `"${path}"`).join(', ')}] }\`), or combine the values with a Merge step.`),
     });
   }
 }
@@ -600,6 +689,33 @@ function checkPromptVariableNodes(issues: BindingIssue[], node: WorkflowGraphNod
 }
 
 /**
+ * A text agent's `message` is optional (it may run on its context or prompt variables alone), so
+ * an agent with NONE of the three — no `message`, no `context` (authored or by a data edge), no
+ * `overrides.promptVariables` entry — runs on its prompt with no data at all. Legal, rarely meant:
+ * a WARNING. Judged only when the agent's task is KNOWN to be text generation.
+ */
+function checkAgentNothingBound(
+  issues: BindingIssue[],
+  graph: WorkflowGraph,
+  node: WorkflowGraphNode,
+  authored: Record<string, unknown> | undefined,
+  agents?: AgentIOResolver,
+): void {
+  if (node.type !== 'core.agent' || agentTaskOf(asObject(node.config), agents) !== 'TEXT_GENERATION') return;
+  const bound = new Set([...Object.keys(authored ?? {}), ...edgeProducers(graph, node, agents).keys()]);
+  if (bound.has('message') || bound.has('context')) return;
+  const promptVariables = asObject(asObject(asObject(node.config)?.overrides)?.promptVariables);
+  if (promptVariables !== undefined && Object.keys(promptVariables).length > 0) return;
+  issues.push({
+    code: 'AGENT_NOTHING_BOUND',
+    severity: 'WARNING',
+    nodeId: node.id,
+    path: '/inputs',
+    message: `text agent step ${label(node)} has nothing to work on: bind its \`message\` or \`context\`, or set a prompt variable. As it is, it runs on its prompt alone.`,
+  });
+}
+
+/**
  * Every binding problem in the graph, ERROR / WARNING / INFO. `publishFindings` reports the ERROR
  * and WARNING ones; INFO (`BINDING_TYPE_CONVERTED`) is for the console, which shows how a value
  * converts.
@@ -621,6 +737,7 @@ export function bindingIssues(graph: WorkflowGraph, ctx: BindingIssueContext = {
     }
     checkEdgeProducers(issues, graph, node, authored, ctx.agents);
     checkPromptVariableNodes(issues, node, scope);
+    checkAgentNothingBound(issues, graph, node, authored, ctx.agents);
 
     if (!sources.has('consultation')) {
       const reads = nodeConsultationReads(asObject(node.config));

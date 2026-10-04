@@ -11,7 +11,9 @@
  *     publish gate reads, so "what the editor suggests" and "what publish accepts" agree).
  *  3. **Consultation** — the platform read schema (`consultation-read-schema.ts`). Visible but
  *     disabled, with the reason, when the workflow is not consultation-bound.
- *  4. **Run & variables** — `vars.*` declared by `core.variable` steps, then `run.*`.
+ *  4. **Run & variables** — `vars.*` declared by ANCESTOR `core.variable` steps (one that does not
+ *     run before this step is never offered, and publish refuses it — `BINDING_NOT_ANCESTOR`), then
+ *     `run.*`.
  *
  * Every item carries its type (the NodeIO vocabulary), its PHI class and a description. Given a
  * `targetType`, items are ranked match → convert → blocked within each group, the first match in
@@ -148,14 +150,17 @@ function consultationItems(available: boolean): BindingSourceItem[] {
   }));
 }
 
-function runItems(graph: WorkflowGraph): BindingSourceItem[] {
+/** `vars.*` from the `core.variable` steps that run BEFORE `nodeId` (ancestors only), then `run.*`. */
+function runItems(graph: WorkflowGraph, nodeId: string): BindingSourceItem[] {
   const items: BindingSourceItem[] = [];
-  for (const node of graph.nodes ?? []) {
+  const offered = new Set<string>();
+  for (const node of orderedAncestors(graph, nodeId)) {
     if (node?.type !== 'core.variable') continue;
     const declared = asObject(node.config)?.variables;
     for (const entry of Array.isArray(declared) ? declared : []) {
       const variable = asObject(entry);
-      if (typeof variable?.key !== 'string') continue;
+      if (typeof variable?.key !== 'string' || offered.has(variable.key)) continue;
+      offered.add(variable.key);
       items.push({
         path: `vars.${variable.key}`,
         raw: `vars.${variable.key}`,
@@ -204,6 +209,6 @@ export function bindingSourcePaths(graph: WorkflowGraph, nodeId: string, options
       ranked(consultationItems(consultationBound), options.targetType, false),
       'The consultation read schema declares no fields.',
     ),
-    group('run', ranked(runItems(graph), options.targetType, false), 'No run fields are available.'),
+    group('run', ranked(runItems(graph, nodeId), options.targetType, false), 'No run fields are available.'),
   ];
 }

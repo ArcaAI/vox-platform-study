@@ -4,7 +4,8 @@
  *  - a STREAM_AUDIO kind or output may declare `delivery: 'stream' | 'blob'`; absent, an input
  *    kind is `stream` and an output is `blob` (`effectiveAudioDelivery`);
  *  - a DOCUMENT / IMAGE kind's `constraints.mimeTypes` must be drawn from
- *    `text/plain`, `text/markdown`, `application/pdf`, `image/jpeg` (`image/jpg` normalised);
+ *    `text/plain`, `text/markdown`, `application/pdf`, `image/jpeg`, `image/png`, `image/webp`
+ *    (`image/jpg` normalised);
  *  - every SEEDED definition still validates, byte-for-byte unchanged (backward compatibility).
  */
 import { describe, expect, it } from 'vitest';
@@ -22,6 +23,7 @@ import {
   normalizeContextMimeType,
   payloadSchemaFromDefinition,
 } from '../context-schema-definition';
+import { classifyDefinitionChange } from '../definition-diff';
 
 const kind = (overrides: Record<string, unknown>): Record<string, unknown> => ({
   key: 'k1',
@@ -86,8 +88,8 @@ describe('audio delivery (OD-6)', () => {
 });
 
 describe('attachment MIME allow-list (OD-6)', () => {
-  it('declares the four types', () => {
-    expect([...CONTEXT_ATTACHMENT_MIME_TYPES]).toEqual(['text/plain', 'text/markdown', 'application/pdf', 'image/jpeg']);
+  it('declares the six types (PNG and WebP images since the contract freeze)', () => {
+    expect([...CONTEXT_ATTACHMENT_MIME_TYPES]).toEqual(['text/plain', 'text/markdown', 'application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
   });
 
   it('normalises image/jpg and case', () => {
@@ -100,16 +102,19 @@ describe('attachment MIME allow-list (OD-6)', () => {
     const constraints = { mimeTypes: ['application/pdf', 'image/jpg', 'TEXT/PLAIN', 'text/markdown'], maxBytes: 1000 };
     expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'DOCUMENT', cardinality: 'MANY', constraints })]))).toEqual([]);
     expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'IMAGE', constraints: { mimeTypes: ['image/jpeg'] } })]))).toEqual([]);
+    expect(
+      contextSchemaDefinitionProblems(definition([kind({ primitive: 'IMAGE', constraints: { mimeTypes: ['image/png', 'IMAGE/WEBP'] } })])),
+    ).toEqual([]);
   });
 
   it('refuses anything outside it, naming the value', () => {
     expect(
       contextSchemaDefinitionProblems(definition([kind({ primitive: 'DOCUMENT', constraints: { mimeTypes: ['application/msword'] } })])),
     ).toEqual([
-      'definition.kinds[0].constraints.mimeTypes[0] `application/msword` is not an allowed attachment type (text/plain | text/markdown | application/pdf | image/jpeg)',
+      'definition.kinds[0].constraints.mimeTypes[0] `application/msword` is not an allowed attachment type (text/plain | text/markdown | application/pdf | image/jpeg | image/png | image/webp)',
     ]);
-    expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'IMAGE', constraints: { mimeTypes: ['image/png'] } })]))).toEqual([
-      'definition.kinds[0].constraints.mimeTypes[0] `image/png` is not an allowed attachment type (text/plain | text/markdown | application/pdf | image/jpeg)',
+    expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'IMAGE', constraints: { mimeTypes: ['image/gif'] } })]))).toEqual([
+      'definition.kinds[0].constraints.mimeTypes[0] `image/gif` is not an allowed attachment type (text/plain | text/markdown | application/pdf | image/jpeg | image/png | image/webp)',
     ]);
   });
 
@@ -136,5 +141,37 @@ describe('backward compatibility — every seeded definition still validates unc
     const audio = (seededDefinition.kinds as Array<Record<string, unknown>>).filter((entry) => entry.primitive === 'STREAM_AUDIO');
     expect(audio.length).toBeGreaterThan(0);
     for (const entry of audio) expect(effectiveAudioDelivery(entry, 'input')).toBe('stream');
+  });
+});
+
+describe('audio `delivery` change is BREAKING (contract freeze)', () => {
+  const output = (overrides: Record<string, unknown>) => ({ key: 'reply_audio', label: 'Reply', primitive: 'STREAM_AUDIO', ...overrides });
+
+  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['stream -> blob (explicit)', { delivery: 'stream' }, { delivery: 'blob' }],
+    ['blob -> stream (explicit)', { delivery: 'blob' }, { delivery: 'stream' }],
+    ['default stream -> blob', {}, { delivery: 'blob' }],
+    ['blob -> default stream', { delivery: 'blob' }, {}],
+  ])('on an input kind: %s', (_what, before, after) => {
+    const result = classifyDefinitionChange(definition([kind(before)]), definition([kind(after)]));
+    expect(result.classification).toBe('BREAKING');
+    expect(result.breakingChanges.join('\n')).toContain('delivery');
+  });
+
+  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ['blob -> stream (explicit)', { delivery: 'blob' }, { delivery: 'stream' }],
+    ['default blob -> stream', {}, { delivery: 'stream' }],
+    ['stream -> default blob', { delivery: 'stream' }, {}],
+  ])('on an output: %s', (_what, before, after) => {
+    const result = classifyDefinitionChange(definition([kind({})], [output(before)]), definition([kind({})], [output(after)]));
+    expect(result.classification).toBe('BREAKING');
+    expect(result.breakingChanges.join('\n')).toContain('delivery');
+  });
+
+  it('spelling out the delivery a declaration already resolved to is NOT breaking', () => {
+    expect(classifyDefinitionChange(definition([kind({})]), definition([kind({ delivery: 'stream' })])).classification).toBe('ADDITIVE');
+    expect(
+      classifyDefinitionChange(definition([kind({})], [output({})]), definition([kind({})], [output({ delivery: 'blob' })])).classification,
+    ).toBe('ADDITIVE');
   });
 });

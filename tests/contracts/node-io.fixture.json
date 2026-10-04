@@ -271,7 +271,7 @@
         "inputs": {
           "message": {
             "type": "text",
-            "required": true,
+            "required": false,
             "description": "The text the agent works on: the user turn, or the document to operate on."
           },
           "context": {
@@ -308,7 +308,7 @@
         "inputs": {
           "message": {
             "type": "text",
-            "required": true,
+            "required": false,
             "description": "The text the agent works on: the user turn, or the document to operate on."
           },
           "context": {
