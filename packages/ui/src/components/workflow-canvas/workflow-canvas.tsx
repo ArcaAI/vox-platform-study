@@ -161,7 +161,7 @@ function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean, selected: boolean
     // A binding is edited where it is bound (the consumer's inspector field), never deleted from
     // the canvas — the Delete key and the hover-X both stay off it.
     deletable: !readOnly && kind !== 'binding',
-    data: { kind },
+    data: { kind, runState: edge.runState ?? 'idle' },
   };
 }
 

@@ -1,19 +1,15 @@
 /**
- * The Test tab's Flow overlay (TASK-1036 §10.2): per-step run state for the composer canvas,
- * which links have carried data, and each step's run warnings.
- *
- * LINKS. `@arcaai/ui`'s `WorkflowEdge` strokes with `var(--workflow-canvas-edge)` and exposes no
- * per-edge state, so a lit link is re-coloured by overriding that token on React Flow's own edge
- * group (`.react-flow__edge[data-id]`), scoped to this canvas. The active link's dash animation
- * lives inside `@media (prefers-reduced-motion: no-preference)`, so it never runs for a viewer who
- * asked for less motion. A first-class `WorkflowCanvasEdge.runState` in `packages/ui` would
- * replace this sheet (reported to the orchestrator; `packages/ui` is outside this lane).
+ * The Test tab's Flow overlay (TASK-1036 §10.2): per-step run state for the composer canvas, which
+ * links have carried data, and each step's run warnings. The canvas draws all of it (`@arcaai/ui`
+ * `WorkflowCanvas`: node run chip + pulse, per-link `runState`), so this module only decides WHAT
+ * each step and link is.
  */
-import type { WorkflowCanvasRunState } from '@arcaai/ui/components/workflow-canvas';
+import type { WorkflowCanvasEdgeRunState, WorkflowCanvasRunState } from '@arcaai/ui/components/workflow-canvas';
 import type { NodeView, RunView } from '@/shared/sandbox/api/run-fold';
 import type { WorkflowFinding } from '../../../api/types';
+import { edgeRunStatesFrom, type RunOverlayEntry, type StepPhase } from '../../canvas/run-overlay';
 
-export type EdgeRunState = 'done' | 'active';
+export type EdgeRunState = Exclude<WorkflowCanvasEdgeRunState, 'idle'>;
 
 const CANVAS_STATE: Record<NodeView['status'], WorkflowCanvasRunState> = {
   waiting: 'pending',
@@ -26,9 +22,14 @@ const CANVAS_STATE: Record<NodeView['status'], WorkflowCanvasRunState> = {
 
 const DONE: ReadonlySet<NodeView['status']> = new Set(['completed', 'degraded', 'skipped']);
 
+function phaseOf(view: RunView, nodeId: string): StepPhase {
+  const status = view.nodes[nodeId]?.status;
+  return status === 'running' ? 'running' : status && DONE.has(status) ? 'done' : 'idle';
+}
+
 /** Per-node canvas run state. Empty before a run: the canvas then shows no run chips at all. */
-export function flowRunStates(nodes: ReadonlyArray<{ id: string }>, view: RunView): Map<string, { state: WorkflowCanvasRunState; durationMs?: number }> {
-  const states = new Map<string, { state: WorkflowCanvasRunState; durationMs?: number }>();
+export function flowRunStates(nodes: ReadonlyArray<{ id: string }>, view: RunView): Map<string, RunOverlayEntry> {
+  const states = new Map<string, RunOverlayEntry>();
   if (view.status === 'IDLE') return states;
   for (const node of nodes) {
     const run = view.nodes[node.id];
@@ -36,43 +37,19 @@ export function flowRunStates(nodes: ReadonlyArray<{ id: string }>, view: RunVie
       states.set(node.id, { state: 'pending' });
       continue;
     }
-    states.set(node.id, { state: CANVAS_STATE[run.status], ...(run.durationMs !== undefined && run.status !== 'running' ? { durationMs: run.durationMs } : {}) });
+    const warnings = nodeWarningCount(run);
+    states.set(node.id, {
+      state: CANVAS_STATE[run.status],
+      ...(run.durationMs !== undefined && run.status !== 'running' ? { durationMs: run.durationMs } : {}),
+      ...(warnings > 0 ? { warnings } : {}),
+    });
   }
   return states;
 }
 
 /** A link is `done` once its source finished, `active` while its target is the step running on that data. */
 export function edgeRunStates(edges: ReadonlyArray<{ id: string; source: string; target: string }>, view: RunView): Map<string, EdgeRunState> {
-  const states = new Map<string, EdgeRunState>();
-  for (const edge of edges) {
-    const source = view.nodes[edge.source];
-    if (!source || !DONE.has(source.status)) continue;
-    states.set(edge.id, view.nodes[edge.target]?.status === 'running' ? 'active' : 'done');
-  }
-  return states;
-}
-
-function cssString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\a ');
-}
-
-/**
- * The scoped sheet that lights the links (and pulses the running step's chip). Tokens only — never
- * a raw colour; every animation sits behind `prefers-reduced-motion: no-preference`.
- */
-export function edgeStyleSheet(scopeId: string, states: ReadonlyMap<string, EdgeRunState>, options: { pulseRunning?: boolean } = {}): string {
-  const scope = `[data-test-flow="${cssString(scopeId)}"]`;
-  const lit: string[] = [];
-  const moving: string[] = [];
-  for (const [edgeId, state] of states) {
-    const selector = `${scope} .react-flow__edge[data-id="${cssString(edgeId)}"]`;
-    lit.push(`${selector}{--workflow-canvas-edge:var(${state === 'active' ? '--primary' : '--success'});}`);
-    if (state === 'active') moving.push(`${selector} .react-flow__edge-path{stroke-dasharray:6 5;animation:test-flow-dash 0.8s linear infinite;}`);
-  }
-  if (moving.length > 0) moving.push('@keyframes test-flow-dash{to{stroke-dashoffset:-22;}}');
-  if (options.pulseRunning) moving.push(`${scope} [data-run-state="running"]{animation:test-flow-pulse 1s ease-in-out infinite;}@keyframes test-flow-pulse{50%{opacity:0.45;}}`);
-  const motion = moving.length > 0 ? `@media (prefers-reduced-motion: no-preference){${moving.join('')}}` : '';
-  return `${lit.join('')}${motion}`;
+  return edgeRunStatesFrom(edges, (nodeId) => phaseOf(view, nodeId));
 }
 
 /** How many things in this step's run deserve a look (never double-counting the producer's own count). */

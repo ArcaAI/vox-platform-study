@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { foldRunEvents } from '@/shared/sandbox/api/run-fold';
 import type { RunEvent } from '@/shared/sandbox/api/run-protocol';
-import { edgeRunStates, edgeStyleSheet, flowRunStates, runWarningFindings } from '../lib/flow-state';
+import { edgeRunStates, flowRunStates, runWarningFindings } from '../lib/flow-state';
 
 let seq = 0;
 function ev(type: RunEvent['type'], data: Record<string, unknown>, nodeId?: string): RunEvent {
@@ -41,8 +41,9 @@ describe('flowRunStates', () => {
   it('marks every step: untouched steps wait, the live one runs, finished ones carry their duration', () => {
     const states = flowRunStates(NODES, running());
     expect(states.get('start')).toEqual({ state: 'ok', durationMs: 5 });
-    expect(states.get('asr')).toEqual({ state: 'ok', durationMs: 1200 });
-    expect(states.get('note')).toEqual({ state: 'running' });
+    // F2: a step's run warnings ride the overlay too, so the canvas counts them on the node.
+    expect(states.get('asr')).toEqual({ state: 'ok', durationMs: 1200, warnings: 1 });
+    expect(states.get('note')).toEqual({ state: 'running', warnings: 1 });
     expect(states.get('end')).toEqual({ state: 'pending' });
   });
 });
@@ -53,23 +54,6 @@ describe('edgeRunStates', () => {
     expect(states.get('e1')).toBe('done');
     expect(states.get('e2')).toBe('active');
     expect(states.has('e3')).toBe(false);
-  });
-});
-
-describe('edgeStyleSheet', () => {
-  it('re-colours lit links through the canvas token and animates only without reduced motion', () => {
-    const css = edgeStyleSheet('flow-1', new Map([['e1', 'done'], ['e"2', 'active']]));
-    expect(css).toContain('[data-test-flow="flow-1"] .react-flow__edge[data-id="e1"]{--workflow-canvas-edge:var(--success);}');
-    expect(css).toContain('[data-id="e\\"2"]');
-    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\{[^}]*\[data-id="e\\"2"\] \.react-flow__edge-path\{stroke-dasharray/);
-    expect(edgeStyleSheet('flow-1', new Map())).toBe('');
-  });
-
-  it('pulses a running step’s chip, also only without reduced motion', () => {
-    const css = edgeStyleSheet('flow-1', new Map(), { pulseRunning: true });
-    expect(css).toBe(
-      '@media (prefers-reduced-motion: no-preference){[data-test-flow="flow-1"] [data-run-state="running"]{animation:test-flow-pulse 1s ease-in-out infinite;}@keyframes test-flow-pulse{50%{opacity:0.45;}}}',
-    );
   });
 });
 

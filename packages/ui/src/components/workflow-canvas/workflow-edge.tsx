@@ -61,6 +61,9 @@ function WorkflowEdge({
   // inspector field, drawn dashed and always labelled so the flow reads correctly, and never
   // deletable from the canvas — the X is not rendered at all.
   const binding = (data as { kind?: string } | undefined)?.kind === 'binding';
+  const runState = (data as { runState?: 'idle' | 'done' | 'active' } | undefined)?.runState ?? 'idle';
+  // Run overlay (TASK-1036 F2): a lit edge is recoloured through the canvas token, never a raw colour.
+  const stroke = runState === 'active' ? 'var(--workflow-canvas-edge-active)' : runState === 'done' ? 'var(--workflow-canvas-edge-done)' : 'var(--workflow-canvas-edge)';
   // Reveal state the portaled button cannot observe for itself: React Flow reports the pointer
   // entering the EDGE (`onEdgeMouseEnter`), but the button lives in the edge-label portal, so
   // moving the pointer off the path and onto the button would fire `onEdgeMouseLeave` and hide
@@ -82,9 +85,11 @@ function WorkflowEdge({
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
+        // The dash animation lives in `canvas-tokens.css` behind `prefers-reduced-motion: no-preference`.
+        className={runState === 'active' ? 'workflow-edge-active' : undefined}
         style={{
           ...style,
-          stroke: 'var(--workflow-canvas-edge)',
+          stroke,
           strokeWidth: selected ? 2 : 1.5,
           ...(binding ? { strokeDasharray: '6 4', opacity: 0.75 } : {}),
         }}

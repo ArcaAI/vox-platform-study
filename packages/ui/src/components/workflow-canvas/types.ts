@@ -43,6 +43,13 @@ export interface WorkflowCanvasPort {
 /** Per-node sandbox run state, rendered as a status chip in the node header. */
 export type WorkflowCanvasRunState = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
 
+/**
+ * Per-link run state (TASK-1036 F2): `idle` = no data has moved (the plain edge), `done` = the
+ * link carried data (recoloured through `--workflow-canvas-edge-done`), `active` = data is moving
+ * over it right now (recoloured and animated, never under `prefers-reduced-motion: reduce`).
+ */
+export type WorkflowCanvasEdgeRunState = 'idle' | 'done' | 'active';
+
 /** Rendered instead of a step number when a node is not linearly ordered. */
 export type WorkflowCanvasStepMarker = 'cycle' | 'unreachable';
 
@@ -79,6 +86,8 @@ export interface WorkflowCanvasNode {
   runState?: WorkflowCanvasRunState;
   /** Wall time of the last run of this node, rendered beside `runState`. */
   runDurationMs?: number;
+  /** How many warnings this node's run raised, spelled out beside `runState` ("2 warnings"). Zero/absent renders nothing. */
+  runWarnings?: number;
   /** `group`: a container (a `core.loop` body) that other nodes nest inside via `parentId`. */
   kind?: 'node' | 'group';
   /** The enclosing group's id — the node is drawn inside it and moves with it. */
@@ -108,6 +117,8 @@ export interface WorkflowCanvasEdge {
    * labelled so the flow stays legible, never deletable or reconnectable from the canvas.
    */
   kind?: 'wire' | 'binding';
+  /** Run overlay for this link. Absent = `idle`. */
+  runState?: WorkflowCanvasEdgeRunState;
 }
 
 export interface WorkflowCanvasNodeRendererProps {

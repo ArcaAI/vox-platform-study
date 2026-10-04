@@ -25,6 +25,8 @@
   --workflow-canvas-node-border: var(--border);
   --workflow-canvas-handle: var(--muted-foreground);
   --workflow-canvas-edge: var(--muted-foreground);
+  --workflow-canvas-edge-done: var(--success, var(--muted-foreground));
+  --workflow-canvas-edge-active: var(--primary);
   --workflow-canvas-edge-label-bg: var(--background);
   --workflow-canvas-edge-label-fg: var(--foreground);
   --workflow-canvas-handle-control: var(--primary);
@@ -145,4 +147,19 @@
 .workflow-canvas .react-flow__node:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* Run overlay (TASK-1036 F2): data moving over a link. The dash flow is decoration — state is also
+   carried by the stroke token and the node chips — so it only runs when the viewer has not asked
+   for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .workflow-canvas .react-flow__edge-path.workflow-edge-active {
+    stroke-dasharray: 6 5;
+    animation: workflow-edge-flow 0.8s linear infinite;
+  }
+  @keyframes workflow-edge-flow {
+    to {
+      stroke-dashoffset: -22;
+    }
+  }
 }

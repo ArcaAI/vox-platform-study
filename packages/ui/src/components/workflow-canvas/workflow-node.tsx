@@ -142,7 +142,8 @@ const RUN_STATE_VARIANT: Record<WorkflowCanvasRunState, 'secondary' | 'destructi
 /** Role tint only — the chip always spells its state out, so colour is decoration (rule 11 §10). */
 const RUN_STATE_CLASS: Record<WorkflowCanvasRunState, string> = {
   pending: 'text-muted-foreground',
-  running: '',
+  // `motion-safe:` = `@media (prefers-reduced-motion: no-preference)` — the pulse never runs for a viewer who asked for less motion.
+  running: 'motion-safe:animate-pulse',
   ok: 'border-success text-success-strong',
   failed: '',
   skipped: 'text-muted-foreground',
@@ -157,13 +158,15 @@ function formatRunDuration(ms: number): string | null {
 }
 
 /** The sandbox's per-node verdict, in the node header (TASK-893 §3.6). Text first, colour second. */
-function RunChip({ runState, runDurationMs }: { runState: WorkflowCanvasRunState; runDurationMs?: number }) {
+function RunChip({ runState, runDurationMs, runWarnings }: { runState: WorkflowCanvasRunState; runDurationMs?: number; runWarnings?: number }) {
   const duration = runDurationMs === undefined ? null : formatRunDuration(runDurationMs);
+  const warnings = runWarnings !== undefined && runWarnings > 0 ? `${runWarnings} warning${runWarnings === 1 ? '' : 's'}` : null;
   return (
     <Badge variant={RUN_STATE_VARIANT[runState]} data-run-state={runState} className={cn('gap-1 px-1.5 text-[11px]', RUN_STATE_CLASS[runState])}>
       <span className="sr-only">Run state: </span>
       <span>{runState}</span>
       {duration ? <span className="tabular-nums opacity-80">{duration}</span> : null}
+      {warnings ? <span className="text-warning-strong">{warnings}</span> : null}
     </Badge>
   );
 }
@@ -228,7 +231,7 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
           <span className="text-sm font-medium">{node.label}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {node.runState ? <RunChip runState={node.runState} runDurationMs={node.runDurationMs} /> : null}
+          {node.runState ? <RunChip runState={node.runState} runDurationMs={node.runDurationMs} runWarnings={node.runWarnings} /> : null}
           {!readOnly && !mandatory ? (
             <Button
               type="button"

@@ -33,6 +33,11 @@ import { ShapeTables } from './shape-tables';
 
 export interface IntegrationTabProps {
   definitionId: string;
+  /**
+   * The editor buffer has changes that are not saved. This guide is built from the SAVED
+   * definition, so the tab says so rather than letting the snippets pass for the canvas.
+   */
+  unsavedChanges?: boolean;
 }
 
 type EffectiveInput = Parameters<typeof effectiveSettings>[0];
@@ -87,7 +92,7 @@ function LoadingState() {
   );
 }
 
-export function IntegrationTab({ definitionId }: IntegrationTabProps) {
+export function IntegrationTab({ definitionId, unsavedChanges = false }: IntegrationTabProps) {
   const query = useWorkflowDefinition(definitionId);
   const definition = query.data?.data;
   const [lane, setLane] = useState<RunGuideLane>('vox-node');
@@ -142,6 +147,12 @@ export function IntegrationTab({ definitionId }: IntegrationTabProps) {
           <CopyButton value={runPath} label="Copy the run endpoint" />
         </div>
       </header>
+
+      {unsavedChanges ? (
+        <p role="status" className="border-warning/40 bg-warning/10 text-warning-strong rounded-md border px-3 py-2 text-sm">
+          Showing the saved version — save to update.
+        </p>
+      ) : null}
 
       <LifecycleBanner definition={definition} />
 

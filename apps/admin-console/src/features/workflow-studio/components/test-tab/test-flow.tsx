@@ -4,21 +4,20 @@
  * The Test tab's Flow (TASK-1036 §10.2): the composer's own canvas, read-only, with the run laid
  * over it — every step Waiting / Running / Done with its duration, its run warnings counted on the
  * node, the links that carried data lit, and the active one animated (never under
- * `prefers-reduced-motion`). Clicking a step selects it (the store's selection, shared with the
+ * `prefers-reduced-motion`; the canvas owns that). Clicking a step selects it (the store's selection, shared with the
  * Composer, so the inspector opens on the same step).
  */
-import { useId, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Badge, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Skeleton } from '@arcaai/ui';
 import { IconTopologyStar3 } from '@tabler/icons-react';
 import type { RunView } from '@/shared/sandbox/api/run-fold';
 import { useWorkflowNodeRegistry } from '../../api/hooks';
 import { selectEdges, selectNodes, useGraphStore } from '../../store';
 import { ComposerCanvas } from '../canvas';
-import { edgeRunStates, edgeStyleSheet, flowRunStates, runWarningFindings } from './lib/flow-state';
+import { edgeRunStates, flowRunStates, runWarningFindings } from './lib/flow-state';
 import { Panel } from './panel';
 
 export function TestFlow({ view }: { view: RunView }) {
-  const scopeId = useId();
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
   const registry = useWorkflowNodeRegistry();
@@ -26,7 +25,7 @@ export function TestFlow({ view }: { view: RunView }) {
 
   const runStates = useMemo(() => flowRunStates(nodes, view), [nodes, view]);
   const findings = useMemo(() => runWarningFindings(view), [view]);
-  const sheet = useMemo(() => edgeStyleSheet(scopeId, edgeRunStates(edges, view), { pulseRunning: view.activeNodeId !== null }), [scopeId, edges, view]);
+  const linkStates = useMemo(() => edgeRunStates(edges, view), [edges, view]);
 
   return (
     <Panel
@@ -48,13 +47,13 @@ export function TestFlow({ view }: { view: RunView }) {
       {registry.isLoading ? (
         <Skeleton className="h-[26rem] w-full" />
       ) : (
-        <div className="h-[26rem] min-h-0" data-test-flow={scopeId}>
-          {sheet ? <style>{sheet}</style> : null}
+        <div className="h-[26rem] min-h-0">
           <ComposerCanvas
             aria-label="Test run flow"
             descriptorByType={descriptorByType}
             readOnly
             runStates={runStates}
+            edgeRunStates={linkStates}
             findings={findings}
             emptyState={
               <Empty>

@@ -40,6 +40,7 @@ import { IconPlus } from '@tabler/icons-react';
 import {
   WorkflowCanvas,
   type WorkflowCanvasEdge,
+  type WorkflowCanvasEdgeRunState,
   type WorkflowCanvasNode,
   type WorkflowCanvasPort,
   type WorkflowCanvasRunState,
@@ -67,14 +68,27 @@ export interface ComposerCanvasProps {
   readOnly?: boolean;
   /** The latest validation report's findings (server side); merged with the composer's own. */
   findings?: readonly WorkflowFinding[];
-  /** The Test tab's per-node run overlay. */
-  runStates?: ReadonlyMap<string, { state?: WorkflowCanvasRunState; durationMs?: number }>;
+  /** The run overlay: per-node state, wall time and warning count (the Test tab's live Flow, the Composer's view of the latest run). */
+  runStates?: ReadonlyMap<string, { state?: WorkflowCanvasRunState; durationMs?: number; warnings?: number }>;
+  /** The run overlay's links: `done` carried data, `active` is moving data now. Absent = no link is lit. */
+  edgeRunStates?: ReadonlyMap<string, WorkflowCanvasEdgeRunState>;
+  /**
+   * Where "Add a step" sits. Default top-centre: the studio docks its floating palette top-left and
+   * its inspector top-right, so neither corner is free for a button that must stay reachable.
+   */
+  addStepPlacement?: 'top-left' | 'top-center' | 'top-right';
   selectedNodeIds?: readonly string[];
   onSelectionChange?: (nodeIds: string[]) => void;
   fitViewKey?: number;
   emptyState?: ReactNode;
   className?: string;
 }
+
+const ADD_STEP_PLACEMENT: Record<NonNullable<ComposerCanvasProps['addStepPlacement']>, string> = {
+  'top-left': 'top-2 left-2',
+  'top-center': 'top-2 left-1/2 -translate-x-1/2',
+  'top-right': 'top-2 right-2',
+};
 
 type MenuState =
   | { kind: 'insert'; edgeId: string; description: string }
@@ -96,6 +110,8 @@ export function ComposerCanvas({
   readOnly = false,
   findings,
   runStates,
+  edgeRunStates,
+  addStepPlacement = 'top-center',
   selectedNodeIds,
   onSelectionChange,
   fitViewKey,
@@ -303,6 +319,7 @@ export function ComposerCanvas({
           stepMarker: entry && 'marker' in entry ? entry.marker : undefined,
           runState: run?.state,
           runDurationMs: run?.durationMs,
+          ...(run?.warnings ? { runWarnings: run.warnings } : {}),
           problem: messages.length > 0 ? { severity, messages } : undefined,
         };
       }),
@@ -330,9 +347,10 @@ export function ComposerCanvas({
           ? (outputs.find((port) => port.id === portHandleId('out', mapping?.sourceField ?? ''))?.id ?? outputs[0]?.id)
           : 'out';
       const targetHandle = inputs.length > 0 ? (inputs.find((port) => port.id === portHandleId('in', mapping?.targetField ?? ''))?.id ?? inputs[0]?.id) : 'in';
-      return { id: edge.id, source: edge.source, sourceHandle, target: edge.target, targetHandle, ...(mapping ? { label: mapping.label } : {}) };
+      const runState = edgeRunStates?.get(edge.id);
+      return { id: edge.id, source: edge.source, sourceHandle, target: edge.target, targetHandle, ...(mapping ? { label: mapping.label } : {}), ...(runState ? { runState } : {}) };
     });
-  }, [edges, canvasNodes, mappings]);
+  }, [edges, canvasNodes, mappings, edgeRunStates]);
 
   const openAddMenu = () => {
     const rightmost = nodes.reduce((max, node) => Math.max(max, node.position.x), 0);
@@ -386,7 +404,7 @@ export function ComposerCanvas({
         emptyState={emptyState}
       />
       {!readOnly ? (
-        <Button type="button" size="sm" variant="secondary" className="absolute top-2 left-2 z-10 shadow-raised" onClick={openAddMenu}>
+        <Button type="button" size="sm" variant="secondary" className={`absolute z-10 shadow-raised ${ADD_STEP_PLACEMENT[addStepPlacement]}`} onClick={openAddMenu}>
           <IconPlus aria-hidden="true" />
           Add a step
         </Button>
