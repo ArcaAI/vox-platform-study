@@ -82,7 +82,13 @@ describe('TASK-1038 D-I — getRunResult', () => {
   });
 
   it('signs a short-lived GET URL for a claim-checked result, for workflowRuns.resultUrlTtlSeconds', async () => {
-    const ref = { kind: 'ref', bucket: 'tenant-1-bucket', key: 'tenant-1/runs/run-1/result.json' /* TASK-1038 E2 fix 13: tenant-prefixed */, sizeBytes: 300_000, sha256: 'f'.repeat(64) };
+    const ref = {
+      kind: 'ref',
+      bucket: 'tenant-1-bucket',
+      key: 'tenant-1/runs/run-1/result.json' /* TASK-1038 E2 fix 13: tenant-prefixed */,
+      sizeBytes: 300_000,
+      sha256: 'f'.repeat(64),
+    };
     mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: ref }));
     mockBlobStorage.presignGet.mockResolvedValue('https://minio.example/signed');
     const before = Date.now();

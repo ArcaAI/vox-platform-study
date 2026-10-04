@@ -505,7 +505,9 @@ describe('TASK-1038 E2 (fix 9, OD-21) — an explicit pin on a DEPRECATED agent 
     const written = mockRepository.update.mock.calls.find((call) => call[0] === 'def-1')?.[1] as {
       validationReport: { findings: Array<{ code?: string; severity: string; nodeId: string | null }> };
     };
-    expect(written.validationReport.findings).toContainEqual(expect.objectContaining({ code: 'AGENT_PIN_DEPRECATED', severity: 'WARNING', nodeId: 'a_pinned' }));
+    expect(written.validationReport.findings).toContainEqual(
+      expect.objectContaining({ code: 'AGENT_PIN_DEPRECATED', severity: 'WARNING', nodeId: 'a_pinned' }),
+    );
     expect(written.validationReport.findings).not.toContainEqual(expect.objectContaining({ code: 'AGENT_PIN_UNRESOLVED' }));
   });
 

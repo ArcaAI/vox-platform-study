@@ -25,7 +25,8 @@ let redis: FakeAgentRunRedis;
 let repository: FakeWorkflowRunRepository;
 const settings = {
   resolvePlatform: vi.fn((key: string) => ({
-    value: key === WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY ? CEILING_SECONDS : key === 'workflowRuns.streamTerminalCheckSeconds' ? RECHECK_SECONDS : 24,
+    value:
+      key === WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY ? CEILING_SECONDS : key === 'workflowRuns.streamTerminalCheckSeconds' ? RECHECK_SECONDS : 24,
   })),
   resolve: vi.fn(() => ({ value: 30 })),
 };
@@ -44,7 +45,15 @@ function hangingExecutor(seen: { signal?: AbortSignal }) {
 }
 
 function startInput(execute: (signal: AbortSignal) => Promise<AgentRunOutcome>) {
-  return { tenantId: TENANT, slug: 'scribe', agentVersionId: 'agent-v3', versionNumber: 3, task: 'TEXT_GENERATION' as const, body: { message: 'x' }, execute };
+  return {
+    tenantId: TENANT,
+    slug: 'scribe',
+    agentVersionId: 'agent-v3',
+    versionNumber: 3,
+    task: 'TEXT_GENERATION' as const,
+    body: { message: 'x' },
+    execute,
+  };
 }
 
 function storedTypes(runId: string): string[] {
@@ -122,7 +131,15 @@ describe('the run ceiling (workflowRuns.agentRunMaxSeconds)', () => {
 describe('sweepStaleRuns — the backstop for a row nothing is executing any more', () => {
   async function seedRunning(runId: string, startedAt: Date) {
     await repository.create(
-      WorkflowRunFactory.CreateAgentRun({ tenantId: TENANT, runId, agentSlug: 'scribe', agentVersionId: 'agent-v3', agentVersionNumber: 3, startedAt, metaData: { agentTask: 'TEXT_GENERATION' } }),
+      WorkflowRunFactory.CreateAgentRun({
+        tenantId: TENANT,
+        runId,
+        agentSlug: 'scribe',
+        agentVersionId: 'agent-v3',
+        agentVersionNumber: 3,
+        startedAt,
+        metaData: { agentTask: 'TEXT_GENERATION' },
+      }),
     );
   }
 

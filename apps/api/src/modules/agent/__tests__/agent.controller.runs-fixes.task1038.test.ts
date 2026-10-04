@@ -90,7 +90,11 @@ function make(tenantId: string = TENANT) {
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? { id: 'u1' } : undefined)) };
   const entitlementsService = { assertMeterQuota: vi.fn(async () => undefined) };
   const usageLedger = { recordUsage: vi.fn(async () => ({ written: 1 })) };
-  const runs = new AgentRunService(repository as never, redis as never, { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never);
+  const runs = new AgentRunService(
+    repository as never,
+    redis as never,
+    { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never,
+  );
   const hub = fakeHub();
   const controller = new AgentController(
     {} as never,
@@ -121,7 +125,6 @@ beforeEach(() => {
   redis = new FakeAgentRunRedis();
   repository = new FakeWorkflowRunRepository();
 });
-
 
 describe('fix 4 — the executor hands the model call an AbortSignal', () => {
   it('TEXT: invokeText receives { signal } (5th argument), not yet aborted', async () => {
@@ -199,7 +202,10 @@ describe('fix 8 — a terminal run with no terminal frame ends with a terminal r
       .map((chunk) => parseSseFrame(`${chunk}\n\n`));
     const last = frames.at(-1);
     expect(last?.kind).toBe('event');
-    const event = last?.kind === 'event' ? (last.event as { type: string; seq: number; data: { reason: string; snapshot: { status: string; lastSeq: number } } }) : null;
+    const event =
+      last?.kind === 'event'
+        ? (last.event as { type: string; seq: number; data: { reason: string; snapshot: { status: string; lastSeq: number } } })
+        : null;
     expect(event?.type).toBe('run.resync');
     expect(event?.data.reason).toBe('gap');
     expect(event?.data.snapshot.status).toBe('COMPLETED');

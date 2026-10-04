@@ -14,7 +14,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { MEDIA_UPLOAD_MAX_ATTACHMENT_SIZE_MB_KEY, MEDIA_UPLOAD_MAX_AUDIO_SIZE_MB_KEY } from '../../settings-registry/descriptors/media-upload.descriptors';
+import {
+  MEDIA_UPLOAD_MAX_ATTACHMENT_SIZE_MB_KEY,
+  MEDIA_UPLOAD_MAX_AUDIO_SIZE_MB_KEY,
+} from '../../settings-registry/descriptors/media-upload.descriptors';
 import { MEDIA_AUDIO_MIME_TYPES, MediaUploadService } from '../media-upload.service';
 
 const pad = (head: Buffer) => Buffer.concat([head, Buffer.alloc(64)]);
@@ -33,7 +36,10 @@ const media = { create: vi.fn(async (request: Record<string, unknown>) => ({ id:
 const buckets = { getBucketByPurpose: vi.fn(async () => ({ id: 'b', name: 'tenant-1-recordings' })), getBucketBySlug: vi.fn() };
 const blob = { putObject: vi.fn(), deleteObject: vi.fn() };
 const settings = {
-  resolvePlatform: vi.fn((key: string) => ({ key, value: key === MEDIA_UPLOAD_MAX_AUDIO_SIZE_MB_KEY ? 250 : key === MEDIA_UPLOAD_MAX_ATTACHMENT_SIZE_MB_KEY ? 25 : undefined })),
+  resolvePlatform: vi.fn((key: string) => ({
+    key,
+    value: key === MEDIA_UPLOAD_MAX_AUDIO_SIZE_MB_KEY ? 250 : key === MEDIA_UPLOAD_MAX_ATTACHMENT_SIZE_MB_KEY ? 25 : undefined,
+  })),
 };
 const build = () =>
   new MediaUploadService({ emit: vi.fn() } as never, cls as never, media as never, {} as never, buckets as never, blob as never, settings as never);
@@ -85,7 +91,20 @@ describe('audio content sniffing', () => {
 
   it('the allow-list is the batch-transcription list', () => {
     expect([...MEDIA_AUDIO_MIME_TYPES].sort()).toEqual(
-      ['audio/aac', 'audio/flac', 'audio/mp3', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/wave', 'audio/webm', 'audio/x-flac', 'audio/x-m4a', 'audio/x-wav'].sort(),
+      [
+        'audio/aac',
+        'audio/flac',
+        'audio/mp3',
+        'audio/mp4',
+        'audio/mpeg',
+        'audio/ogg',
+        'audio/wav',
+        'audio/wave',
+        'audio/webm',
+        'audio/x-flac',
+        'audio/x-m4a',
+        'audio/x-wav',
+      ].sort(),
     );
   });
 });

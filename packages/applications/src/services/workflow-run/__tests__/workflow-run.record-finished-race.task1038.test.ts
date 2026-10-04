@@ -44,7 +44,10 @@ class FakeRepo {
     this.beforeUpdate = null;
     hook?.();
     if (this.row.version !== expected) {
-      throw new OptimisticConcurrencyException('workflowRun', String(this.row.id), { expectedVersion: expected, currentVersion: this.row.version as number });
+      throw new OptimisticConcurrencyException('workflowRun', String(this.row.id), {
+        expectedVersion: expected,
+        currentVersion: this.row.version as number,
+      });
     }
     this.row = { ...this.row, ...this.revive(this.mapper.toPersistenceChanges(entity) as never), version: (this.row.version as number) + 1 };
     return this.entity();
@@ -61,7 +64,8 @@ class FakeRepo {
 
   private revive(data: Record<string, unknown>): Record<string, unknown> {
     const out = { ...data };
-    for (const column of ['startedAt', 'endedAt', 'createdAt', 'updatedAt']) if (typeof out[column] === 'string') out[column] = new Date(out[column] as string);
+    for (const column of ['startedAt', 'endedAt', 'createdAt', 'updatedAt'])
+      if (typeof out[column] === 'string') out[column] = new Date(out[column] as string);
     return out;
   }
 }

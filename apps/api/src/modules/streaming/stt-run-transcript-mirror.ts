@@ -141,7 +141,10 @@ export class SttRunTranscriptMirror {
   /** `workflowRuns.runStreamMaxOpenHours` (platform), failing open to its default. */
   private maxOpenHours(): number {
     try {
-      return wholeHours(this.settings?.resolvePlatform<number>(WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY).value) ?? WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours;
+      return (
+        wholeHours(this.settings?.resolvePlatform<number>(WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY).value) ??
+        WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours
+      );
     } catch {
       return WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours;
     }

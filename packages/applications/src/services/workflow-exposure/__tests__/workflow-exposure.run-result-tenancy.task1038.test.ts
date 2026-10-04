@@ -82,26 +82,34 @@ describe('getRunResult — result object tenancy', () => {
   const sha = 'f'.repeat(64);
 
   it('signs a ref whose key is under `<tenantId>/`', async () => {
-    mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: `${TENANT}/runs/run-1/result.json`, sizeBytes: 9, sha256: sha } }));
+    mockWorkflowRunService.getRun.mockResolvedValue(
+      runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: `${TENANT}/runs/run-1/result.json`, sizeBytes: 9, sha256: sha } }),
+    );
     mockBlobStorage.presignGet.mockResolvedValue('https://minio.example/signed');
     const result = await build().getRunResult('discharge_summary', 'run-1');
     expect(result).toMatchObject({ kind: 'ref', url: 'https://minio.example/signed' });
   });
 
   it('refuses (404) a key under ANOTHER tenant’s prefix and signs nothing', async () => {
-    mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: 'tenant-2/runs/x/result.json', sizeBytes: 9, sha256: sha } }));
+    mockWorkflowRunService.getRun.mockResolvedValue(
+      runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: 'tenant-2/runs/x/result.json', sizeBytes: 9, sha256: sha } }),
+    );
     await expect(build().getRunResult('discharge_summary', 'run-1')).rejects.toBeInstanceOf(NotFoundException);
     expect(mockBlobStorage.presignGet).not.toHaveBeenCalled();
   });
 
   it('refuses (404) a legacy un-prefixed key and signs nothing', async () => {
-    mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: `sha256/${sha}`, sizeBytes: 9, sha256: sha } }));
+    mockWorkflowRunService.getRun.mockResolvedValue(
+      runRow({ resultRef: { kind: 'ref', bucket: 'harness-claim-check', key: `sha256/${sha}`, sizeBytes: 9, sha256: sha } }),
+    );
     await expect(build().getRunResult('discharge_summary', 'run-1')).rejects.toBeInstanceOf(NotFoundException);
     expect(mockBlobStorage.presignGet).not.toHaveBeenCalled();
   });
 
   it('a prefix that merely STARTS with the tenant id (no separator) is not the tenant’s', async () => {
-    mockWorkflowRunService.getRun.mockResolvedValue(runRow({ resultRef: { kind: 'ref', bucket: 'b', key: `${TENANT}-evil/result.json`, sizeBytes: 9, sha256: sha } }));
+    mockWorkflowRunService.getRun.mockResolvedValue(
+      runRow({ resultRef: { kind: 'ref', bucket: 'b', key: `${TENANT}-evil/result.json`, sizeBytes: 9, sha256: sha } }),
+    );
     await expect(build().getRunResult('discharge_summary', 'run-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

@@ -22,7 +22,9 @@ type Row = { runId: string; status: string; startedAt: Date };
 function build(opts: { keys: string[]; expiring?: string[]; rows: Row[] }) {
   const hub = {
     available: vi.fn(() => true),
-    scanRunEventKeys: vi.fn(async (cursor: string) => (cursor === '0' ? { cursor: '7', keys: opts.keys.slice(0, 2) } : { cursor: '0', keys: opts.keys.slice(2) })),
+    scanRunEventKeys: vi.fn(async (cursor: string) =>
+      cursor === '0' ? { cursor: '7', keys: opts.keys.slice(0, 2) } : { cursor: '0', keys: opts.keys.slice(2) },
+    ),
     hasExpiry: vi.fn(async (key: string) => (opts.expiring ?? []).includes(key)),
     expireAfterTerminal: vi.fn(async () => undefined),
   };

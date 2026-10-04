@@ -387,10 +387,7 @@ export class AgentRunService {
     const controller = new AbortController();
     this.inFlight.set(state.runId, controller);
     // R2 — the ceiling, measured from the run's start.
-    const deadline = setTimeout(
-      () => this.abortInFlight(state.runId, 'timeout'),
-      Math.max(0, startedAt + this.maxRunSeconds() * 1000 - Date.now()),
-    );
+    const deadline = setTimeout(() => this.abortInFlight(state.runId, 'timeout'), Math.max(0, startedAt + this.maxRunSeconds() * 1000 - Date.now()));
     // R2 — a cancel decided on ANOTHER instance: re-read the row and stop when it left RUNNING.
     const recheck = setInterval(() => void this.stopIfNoLongerRunning(state), this.recheckSeconds() * 1000);
     deadline.unref?.();

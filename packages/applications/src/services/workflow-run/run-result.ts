@@ -35,7 +35,13 @@ export type PersistedRunResult = DeliveredRunResult | ExpiredRunResult;
  * is the caller's.
  */
 export function isResultKeyInTenantPrefix(tenantId: string, key: string): boolean {
-  return typeof tenantId === 'string' && tenantId.length > 0 && typeof key === 'string' && key.startsWith(`${tenantId}/`) && key.length > tenantId.length + 1;
+  return (
+    typeof tenantId === 'string' &&
+    tenantId.length > 0 &&
+    typeof key === 'string' &&
+    key.startsWith(`${tenantId}/`) &&
+    key.length > tenantId.length + 1
+  );
 }
 
 /** Structural check — a malformed value is never persisted or served as if it were a result. */

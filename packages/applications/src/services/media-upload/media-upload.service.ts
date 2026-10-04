@@ -45,7 +45,8 @@ export const MEDIA_AUDIO_MIME_TYPES: ReadonlySet<string> = new Set([
   'audio/aac',
 ]);
 
-const ascii = (b: Buffer, start: number, text: string): boolean => b.length >= start + text.length && b.subarray(start, start + text.length).toString('latin1') === text;
+const ascii = (b: Buffer, start: number, text: string): boolean =>
+  b.length >= start + text.length && b.subarray(start, start + text.length).toString('latin1') === text;
 /** RIFF/WAVE. */
 const isWave = (b: Buffer): boolean => ascii(b, 0, 'RIFF') && ascii(b, 8, 'WAVE');
 /** An ID3v2 tag, or an MPEG audio frame sync (11 set bits, a layer that is not reserved). */
@@ -200,7 +201,9 @@ export class MediaUploadService extends BaseService implements IMediaUploadServi
   private assertCategory(category: MediaUploadCategory, mime: string): void {
     // TASK-1038 E2 (fix 15) — audio is the ONE shared allow-list, not any `audio/*`.
     const allowed =
-      category === 'attachment' ? (CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(mime) : category === 'audio' && MEDIA_AUDIO_MIME_TYPES.has(mime);
+      category === 'attachment'
+        ? (CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(mime)
+        : category === 'audio' && MEDIA_AUDIO_MIME_TYPES.has(mime);
     if (!allowed) {
       throw new BadRequestException({
         code: 'MEDIA_TYPE_UNSUPPORTED',

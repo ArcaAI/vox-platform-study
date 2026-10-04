@@ -70,7 +70,17 @@ beforeEach(() => {
             ? { id, tenantId: 'tenant-2', mimeType: 'application/pdf', name: 'x.pdf', size: 10, uri: 's3://secret' }
             : null,
   );
-  jobs.findAll.mockResolvedValue([{ id: 'job-1', tenantId: 'tenant-1', streamSessionId: 'stt-1', jobType: 'STREAMING', status: 'PROCESSING', createdBy: 'admin-1', consultationId: null }]);
+  jobs.findAll.mockResolvedValue([
+    {
+      id: 'job-1',
+      tenantId: 'tenant-1',
+      streamSessionId: 'stt-1',
+      jobType: 'STREAMING',
+      status: 'PROCESSING',
+      createdBy: 'admin-1',
+      consultationId: null,
+    },
+  ]);
   jobs.update.mockImplementation(async (_id: string, e: unknown) => e);
   consultations.create.mockImplementation(async (e: { id: string }) => e);
 });
@@ -125,7 +135,11 @@ describe('sandbox recording — ownership, liveness, binding', () => {
 
   it('a session bound to ANOTHER definition’s sandbox consultation is 409 SANDBOX_RECORDING_BOUND_ELSEWHERE', async () => {
     jobs.findAll.mockResolvedValue([job({ consultationId: 'c-sbx-other' })]);
-    consultations.findByIdOrNull.mockResolvedValue({ id: 'c-sbx-other', tenantId: 'tenant-1', metadata: { sandbox: { workflowDefinitionId: 'def-OTHER' } } });
+    consultations.findByIdOrNull.mockResolvedValue({
+      id: 'c-sbx-other',
+      tenantId: 'tenant-1',
+      metadata: { sandbox: { workflowDefinitionId: 'def-OTHER' } },
+    });
     const error = await build()
       .startRun('def-1', { recording: { sttSessionId: 'stt-1' } })
       .catch((e: unknown) => e);

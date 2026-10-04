@@ -89,7 +89,11 @@ export class RunStreamOrphanSweeper {
     try {
       rows = (await this.runs!.findAll({ where: { runId } as never, limit: 1 })) as unknown as Array<{ status: unknown; startedAt: Date }>;
     } catch (error) {
-      this.logger.debug({ message: 'Run stream orphan sweep could not read the run', runId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.debug({
+        message: 'Run stream orphan sweep could not read the run',
+        runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
     const row = rows[0];

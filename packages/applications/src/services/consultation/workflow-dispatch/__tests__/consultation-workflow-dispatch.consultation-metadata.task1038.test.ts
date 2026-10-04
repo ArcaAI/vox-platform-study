@@ -32,7 +32,11 @@ function service(over: { consultation?: Record<string, unknown> } = {}) {
       findById: vi.fn(async () => structuredClone(row)),
       update: vi.fn().mockResolvedValue({}),
       updateWithVersion: vi.fn(async (_id: string, entity: Record<string, unknown>, expected: number) => {
-        if (expected !== row.version) throw new OptimisticConcurrencyException('Consultation', CONSULTATION, { expectedVersion: expected, currentVersion: row.version as number });
+        if (expected !== row.version)
+          throw new OptimisticConcurrencyException('Consultation', CONSULTATION, {
+            expectedVersion: expected,
+            currentVersion: row.version as number,
+          });
         row = { ...structuredClone(entity), version: (row.version as number) + 1 };
         return row;
       }),
@@ -60,7 +64,13 @@ function service(over: { consultation?: Record<string, unknown> } = {}) {
 describe('consultation dispatch stamps the consultation on the run row', () => {
   it('consultation open: recordRunStarted carries metaData.consultationId', async () => {
     const { svc, deps } = service();
-    await svc.dispatchForConsultation({ consultationId: CONSULTATION, tenantId: TENANT, departmentId: null, userId: 'u-1', externalPatientId: 'p-1' });
+    await svc.dispatchForConsultation({
+      consultationId: CONSULTATION,
+      tenantId: TENANT,
+      departmentId: null,
+      userId: 'u-1',
+      externalPatientId: 'p-1',
+    });
     expect(deps.workflowRunService.recordRunStarted).toHaveBeenCalledWith(expect.objectContaining({ metaData: { consultationId: CONSULTATION } }));
   });
 
@@ -71,7 +81,14 @@ describe('consultation dispatch stamps the consultation on the run row', () => {
         tenantId: TENANT,
         doctorId: 'doc-1',
         version: 4,
-        metadata: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-old', workflowDefinitionSlug: definition.slug, decidedAt: '2026-10-01T00:00:00.000Z' } },
+        metadata: {
+          governingEngine: {
+            engine: 'tenant-workflow',
+            workflowRunId: 'run-old',
+            workflowDefinitionSlug: definition.slug,
+            decidedAt: '2026-10-01T00:00:00.000Z',
+          },
+        },
       },
     });
     const result = await svc.supersedeGoverningRun({ consultationId: CONSULTATION, tenantId: TENANT, triggerId: 'trig-1' });

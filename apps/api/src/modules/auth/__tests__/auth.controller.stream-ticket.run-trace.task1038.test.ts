@@ -58,7 +58,9 @@ describe('POST /auth/stream-ticket — workflow_run_trace:<runId>', () => {
   it('mints for an admin of the working tenant once the run is proven theirs', async () => {
     const { controller, issueTicket, getRun, traceAccess } = build({});
     const issued = await controller.issueStreamTicket({ scope: 'workflow_run_trace:run-1' });
-    expect(traceAccess!.assertCanTrace).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, user: expect.objectContaining({ id: 'admin-1' }) }));
+    expect(traceAccess!.assertCanTrace).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT, user: expect.objectContaining({ id: 'admin-1' }) }),
+    );
     expect(getRun).toHaveBeenCalledWith(TENANT, 'run-1');
     expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ scope: 'workflow_run_trace:run-1', tenantId: TENANT }));
     expect(issued.scope).toBe('workflow_run_trace:run-1');
@@ -88,7 +90,9 @@ describe('POST /auth/stream-ticket — workflow_run_trace:<runId>', () => {
   });
 
   it('refuses a service-account context outright, before the admin check', async () => {
-    const { controller, issueTicket, traceAccess } = build({ cls: { user: { id: 'bound-human', tenantId: TENANT }, serviceAccount: { id: 'sa-1' } } });
+    const { controller, issueTicket, traceAccess } = build({
+      cls: { user: { id: 'bound-human', tenantId: TENANT }, serviceAccount: { id: 'sa-1' } },
+    });
     await expect(controller.issueStreamTicket({ scope: 'workflow_run_trace:run-1' })).rejects.toBeInstanceOf(ForbiddenException);
     expect(traceAccess!.assertCanTrace).not.toHaveBeenCalled();
     expect(issueTicket).not.toHaveBeenCalled();
