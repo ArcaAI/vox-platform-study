@@ -150,6 +150,8 @@ export * from './workflow-test-fixture';
 // WorkflowDefinition CRUD + compile/validate/publish lifecycle — wires
 // @arcaai/workflow-contract's compiler/validator into the application layer.
 export * from './workflow-definition';
+// TASK-1036 §9.3 / TASK-1038 — the `consultation.*` declared-read plane.
+export * from './consultation-read';
 // The DB-backed rule-set half of the validator — resolves
 // SYSTEM ∪ tenant `WorkflowInvariantRule` rows, merges them one-way-strict, and
 // evaluates a graph against the result. Total: never throws, never `ok: true`

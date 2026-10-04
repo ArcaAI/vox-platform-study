@@ -1,7 +1,20 @@
-import { Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { generateId, ResourceType, SysEventType, WorkflowTestFixtureRepository } from '@arcaai/domains';
+import {
+  ConsultationFactory,
+  ConsultationRepository,
+  generateId,
+  MediaRepository,
+  ResourceType,
+  SysEventType,
+  TranscriptionJobRepository,
+  TranscriptionJobType,
+  type TranscriptionJobEntity,
+  WorkflowTestFixtureRepository,
+} from '@arcaai/domains';
+import type { StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
+import { CONTEXT_ATTACHMENT_MIME_TYPES, normalizeContextMimeType } from '../consultation-context-schema/context-schema-definition';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { assertEqualTenants, BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -36,6 +49,12 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     @Optional() @Inject(IS3Service) private readonly s3Service?: IS3Service,
+    // TASK-1036 OD-15 — sandbox attachments (tenant media) and recordings (STT streaming sessions
+    // bound to a sandbox consultation). Trailing + @Optional() so positional fixtures keep their
+    // arity; absent, a request that uses either input is refused rather than half-served.
+    @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
+    @Optional() @Inject(TranscriptionJobRepository) private readonly transcriptionJobRepository?: TranscriptionJobRepository,
+    @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -44,7 +63,15 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     const tenantId = this.requireTenantId();
 
     const compiled = await this.workflowDefinitionService.getCompiledConfigForSandboxRun(definitionId);
-    const payload = await this.resolvePayload(tenantId, dto);
+    const basePayload = await this.resolvePayload(tenantId, dto);
+    // TASK-1036 OD-15 — every ownership check BEFORE anything is written (404-over-403).
+    const attachments = dto.attachments?.length
+      ? await this.resolveAttachments(
+          tenantId,
+          dto.attachments.map((a) => a.mediaId),
+        )
+      : undefined;
+    const recordingJob = dto.recording ? await this.resolveRecordingSession(tenantId, dto.recording.sttSessionId) : undefined;
 
     if (!this.s3Service) {
       throw new ArgumentInvalidException('Sandbox runs are unavailable: no claim-check storage backend is configured.');
@@ -55,6 +82,17 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
 
     const runId = generateId();
     const sessionId = interpreterSessionId(runId);
+
+    // A recording binds to a SANDBOX consultation the run owns: the session's own, when it is
+    // already one of this workflow's sandbox consultations, else a new one.
+    const subject: StartWorkflowRunSubject | undefined = recordingJob
+      ? { consultationId: await this.bindSandboxConsultation(tenantId, definitionId, runId, recordingJob), userId: this.requestUserId ?? undefined }
+      : undefined;
+    const payload: Record<string, unknown> = {
+      ...basePayload,
+      ...(attachments ? { attachments } : {}),
+      ...(dto.recording ? { recording: { sttSessionId: dto.recording.sttSessionId } } : {}),
+    };
 
     // Same ordering discipline as WorkflowExposureService.invoke: the ownership-anchor row is
     // written BEFORE the dispatcher call, so a run the dispatcher then fails to start is a
@@ -69,6 +107,8 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
       runId,
       trigger: 'workbench sandbox',
       isSandbox: true,
+      // The consultation this run may read (`internal/consultations/:id/read` checks it).
+      ...(subject ? { metaData: { consultationId: subject.consultationId } } : {}),
     });
 
     const started = await this.harnessGateway.startWorkflowRun({
@@ -79,11 +119,19 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
       configRef,
       sandbox: true,
       payload,
+      ...(subject ? { subject } : {}),
     });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: definitionId,
-      data: { action: 'sandboxRun', runId, fixtureId: dto.fixtureId ?? null },
+      data: {
+        action: 'sandboxRun',
+        runId,
+        fixtureId: dto.fixtureId ?? null,
+        attachmentCount: attachments?.length ?? 0,
+        sttSessionId: dto.recording?.sttSessionId ?? null,
+        consultationId: subject?.consultationId ?? null,
+      },
     });
 
     return WorkflowSandboxRunDtoMapper.toStartResponse(runId, definitionId, started.status);
@@ -136,6 +184,77 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     return fixture.input as Record<string, unknown>;
   }
 
+  /**
+   * TASK-1036 OD-15 — tenant media by reference. Unknown or foreign → 404; a MIME type outside the
+   * attachment allow-list (`CONTEXT_ATTACHMENT_MIME_TYPES`) → 400. Never the bytes or the storage URI.
+   */
+  private async resolveAttachments(
+    tenantId: string,
+    mediaIds: string[],
+  ): Promise<Array<{ mediaId: string; mime: string; name: string; size: number }>> {
+    if (!this.mediaRepository) throw new ArgumentInvalidException('Sandbox attachments are unavailable: no media repository is configured.');
+    const out: Array<{ mediaId: string; mime: string; name: string; size: number }> = [];
+    for (const mediaId of mediaIds) {
+      const media = await this.mediaRepository.findByIdOrNull(mediaId);
+      if (!media || media.tenantId !== tenantId) throw new NotFoundException(`Media '${mediaId}' not found.`);
+      const mime = normalizeContextMimeType(media.mimeType ?? '');
+      if (!(CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(mime)) {
+        throw new BadRequestException({
+          code: 'SANDBOX_ATTACHMENT_MIME_UNSUPPORTED',
+          message: `Media '${mediaId}' is ${mime || 'of no type'}; attachments must be one of ${CONTEXT_ATTACHMENT_MIME_TYPES.join(', ')}.`,
+        });
+      }
+      out.push({ mediaId, mime, name: media.name, size: media.size });
+    }
+    return out;
+  }
+
+  /** TASK-1036 OD-15 — the STT streaming session's job row, of THIS tenant (else 404). */
+  private async resolveRecordingSession(tenantId: string, sttSessionId: string): Promise<TranscriptionJobEntity> {
+    if (!this.transcriptionJobRepository || !this.consultationRepository) {
+      throw new ArgumentInvalidException('Sandbox recordings are unavailable: the STT session store is not configured.');
+    }
+    const [job] = await this.transcriptionJobRepository.findAll({
+      filters: { tenantId, streamSessionId: sttSessionId, jobType: TranscriptionJobType.STREAMING },
+    });
+    if (!job || job.tenantId !== tenantId) throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
+    if (job.consultationId) {
+      const bound = await this.consultationRepository.findByIdOrNull(job.consultationId);
+      if (!bound || bound.tenantId !== tenantId) throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
+      if (sandboxDefinitionOf(bound.metadata) === null) {
+        throw new ConflictException({
+          code: 'SANDBOX_RECORDING_BOUND_ELSEWHERE',
+          message: `STT session '${sttSessionId}' belongs to a clinical consultation; a sandbox run records on its own session.`,
+        });
+      }
+    }
+    return job;
+  }
+
+  /**
+   * The sandbox consultation a recording runs against: the one the session is already bound to (a
+   * sandbox consultation, checked above), else a new one — the requesting admin as clinician, a
+   * synthetic patient reference, `metadata.sandbox` naming the workflow and session — with the
+   * session's job row re-bound to it.
+   */
+  private async bindSandboxConsultation(tenantId: string, definitionId: string, runId: string, job: TranscriptionJobEntity): Promise<string> {
+    if (job.consultationId) return job.consultationId;
+    const doctorId = this.requestUserId;
+    if (!doctorId) throw new ArgumentInvalidException('A sandbox recording needs a signed-in user to act as the clinician.');
+    const consultation = ConsultationFactory.CreateConsultation({
+      tenantId,
+      doctorId,
+      patientId: `sandbox:${runId}`,
+      appointmentDate: new Date(),
+      metadata: { sandbox: { workflowDefinitionId: definitionId, runId, sttSessionId: job.streamSessionId ?? null } },
+      createdBy: doctorId,
+    });
+    const saved = await this.consultationRepository!.create(consultation);
+    job.consultationId = saved.id;
+    await this.transcriptionJobRepository!.update(job.id, job);
+    return saved.id;
+  }
+
   /** Cross-tenant `runId`, or a `runId` not started against `definitionId` -> 404 (never 403). */
   private async resolveOwnedRun(tenantId: string, definitionId: string, runId: string): ReturnType<IWorkflowRunService['getRun']> {
     const run = await this.workflowRunService.getRun(tenantId, runId);
@@ -164,4 +283,11 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
       // Best-effort read-model sync — the live upstream status is still returned regardless.
     }
   }
+}
+
+/** The workflow a sandbox consultation was created for, or `null` for a clinical consultation. */
+function sandboxDefinitionOf(metadata: unknown): string | null {
+  const sandbox = typeof metadata === 'object' && metadata !== null ? (metadata as Record<string, unknown>).sandbox : undefined;
+  const definitionId = typeof sandbox === 'object' && sandbox !== null ? (sandbox as Record<string, unknown>).workflowDefinitionId : undefined;
+  return typeof definitionId === 'string' && definitionId.length > 0 ? definitionId : null;
 }

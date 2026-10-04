@@ -345,8 +345,11 @@ describe('WorkflowDefinitionService', () => {
       expect(entity.registryChecksum).toBeTruthy();
       expect(entity.isActive).toBe(true);
       expect(previousActive.isActive).toBe(false);
-      // The trailing `undefined` is the optional `tx`, which only `promoteToSystem` supplies (D-4).
-      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive, undefined);
+      // TASK-1036 (R18) — the demote and the publish write share ONE transaction client.
+      const demoteTx = mockWorkflowDefinitionRepository.update.mock.calls.find((call) => call[0] === 'def-id-0')?.[2];
+      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive, demoteTx);
+      expect(demoteTx).toBeDefined();
+      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-1', entity, demoteTx);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'def-id-1' }));
       expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
     });

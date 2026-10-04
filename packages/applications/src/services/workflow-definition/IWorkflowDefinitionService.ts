@@ -105,6 +105,14 @@ export interface IWorkflowDefinitionService {
   listTemplates(): Promise<WorkflowDefinitionResponse[]>;
 
   /**
+   * TASK-1036 — tag autocomplete: distinct tags over the caller tenant's non-deleted workflow
+   * definitions, normalised to lower case, counted per LINEAGE (slug) and ranked by that count
+   * (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults
+   * to 20 and is capped at 100. Tenant-only: SYSTEM rows are never folded in.
+   */
+  listTagSuggestions(query: { q?: string; limit?: number }): Promise<WorkflowTagSuggestionResponse[]>;
+
+  /**
    * Versioned PATCH (`If-Match`/`expectedVersion`). Throws `BadRequestException` on a
    * PUBLISHED/DEPRECATED row (`assertMutable`) — those are hard-immutable by service
    * convention (`workflow-definition.prisma` A `graph` change re-runs the same
