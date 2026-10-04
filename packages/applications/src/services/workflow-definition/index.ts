@@ -11,3 +11,5 @@ export * from './node-prompt-binding';
 // what stays here is the pure row-id <-> portable-key rewrite import/export is built on.
 export * from './portable-graph';
 export * from './publish-pins';
+// TASK-1036 §3.5 — settings-gated exposure, consumed by the exposure plane (lane B3a).
+export * from './exposure-settings';
