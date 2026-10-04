@@ -299,7 +299,7 @@ describe('GovernanceTab — Eval panel', () => {
       renderWithProviders(<GovernanceTab />);
 
       // The search input renders synchronously (not gated on the list load).
-      const input = screen.getByRole('textbox', { name: 'Search templates' });
+      const input = screen.getByRole('textbox', { name: 'Search Hope Prompts' });
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       const baseline = calls.length;
 

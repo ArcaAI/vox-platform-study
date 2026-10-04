@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { PromptTemplatesScreen } from '@/features/prompt-templates/components/prompt-templates-screen';
 
-export const metadata: Metadata = { title: 'Prompt Instruction Templates' };
+export const metadata: Metadata = { title: 'Hope Prompts' };
 
 /**
  * Prompt Instruction Templates (tier 30-49) — tenant-admin

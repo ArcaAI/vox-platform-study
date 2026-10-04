@@ -243,7 +243,7 @@ describe('TenantDetailScreen', () => {
     stubDetailFetch();
     renderWithProviders(<TenantDetailScreen id="t-1" />, { searchParams: '?tab=usage' });
 
-    expect(await screen.findByText('Prompt templates')).toBeDefined();
+    expect(await screen.findByText('Hope Prompts')).toBeDefined();
     expect(screen.queryByText('Pipelines')).toBeNull();
   });
 

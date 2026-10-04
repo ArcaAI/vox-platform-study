@@ -396,7 +396,7 @@ describe('PromptTemplatesScreen', () => {
     expect(await screen.findByText('Cardiology Notes')).toBeDefined();
     expect(screen.getByText('Discharge Summary')).toBeDefined();
     expect(screen.getByText('Radiology Report')).toBeDefined();
-    expect(screen.getByText(/4 templates/)).toBeDefined();
+    expect(screen.getByText(/4 Hope Prompts/)).toBeDefined();
     expect(screen.getByText('CARD')).toBeDefined();
     expect(screen.getByText('Tenant default')).toBeDefined();
     expect(screen.getAllByText('Summary').length).toBeGreaterThanOrEqual(1);
@@ -509,11 +509,11 @@ describe('PromptTemplatesScreen', () => {
     });
     renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New Hope Prompt' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
     setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Hope Prompt' }));
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
@@ -661,14 +661,14 @@ describe('PromptTemplatesScreen', () => {
       });
       renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
 
-      fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'New Hope Prompt' }));
       const dialog = await screen.findByRole('dialog');
       fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
       setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
       const tagBox = within(dialog).getByRole('combobox', { name: 'Tags' });
       fireEvent.change(tagBox, { target: { value: 'dept:nephrology' } });
       fireEvent.keyDown(tagBox, { key: 'Enter' });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create Hope Prompt' }));
 
       await waitFor(() => {
         const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
@@ -708,7 +708,7 @@ describe('PromptTemplatesScreen', () => {
       renderWithProviders(<PromptTemplatesScreen />);
 
       await screen.findByRole('tab', { name: 'Fallbacks' });
-      expect(screen.getByRole('tab', { name: 'Templates' })).toBeDefined();
+      expect(screen.getByRole('tab', { name: 'Hope Prompts' })).toBeDefined();
       expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
     });
 

@@ -666,7 +666,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   {
     route: '/prompt-templates',
     domain: 'knowledge-agents',
-    label: 'Prompt templates',
+    label: 'Hope Prompts',
     tier: '30-49',
     icon: IconFileText,
     required: [['manage', 'PromptTemplate']],

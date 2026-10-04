@@ -981,7 +981,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
         '30-49': [
           'Quick start',
           'Agents',
-          'Prompt templates',
+          'Hope Prompts',
           'Context Schemas',
           'Document Templates',
           'Knowledge Base',
@@ -1024,7 +1024,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       tenancy: { '20-29': ['Tenant profile'], '30-49': ['Departments'] },
       'platform-ops': { '20-29': ['Settings registry', 'Settings rows & secrets'], '30-49': ['Storage browser'] },
       'ai-platform': { '20-29': ['AI models', 'AI providers'] },
-      'knowledge-agents': { '30-49': ['Prompt templates'] },
+      'knowledge-agents': { '30-49': ['Hope Prompts'] },
       'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
       playground: {
         '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],
