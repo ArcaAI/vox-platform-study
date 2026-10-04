@@ -740,6 +740,210 @@ export function parseSseFrame(frame: string): ParsedSseFrame {
 }
 
 // =============================================================================================
+// The ONE sequencer — the stored shape (F2 fix 2)
+// =============================================================================================
+
+/**
+ * Every run's events live under three keys that share the `wf:run:<runId>:` prefix. The events key
+ * is the literal the gateway (`runEventStreamKey`) and the harness (`run_event_stream_key`) already
+ * use. Not Redis-Cluster-safe as spelled (no `{hash tag}`): HOPE runs one Redis; a cluster move is a
+ * new protocol version, never a silent respelling.
+ */
+export const RUN_STREAM_KEY_PREFIX = 'wf:run:';
+/** `INCR` counter — the last `seq` assigned. Never written except by {@link RUN_APPEND_LUA}. */
+export const RUN_SEQ_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:seq`;
+/** The Redis Stream of stored events. Never `XADD`ed except by {@link RUN_APPEND_LUA}. */
+export const RUN_EVENTS_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:events`;
+/** Hash `dedupeKey → "<seq> <streamId>"`: a retried append returns the first append's position. */
+export const RUN_DEDUPE_KEY = (runId: string): string => `${RUN_STREAM_KEY_PREFIX}${runId}:dedupe`;
+
+/** `XADD … MAXLEN ~` bound — the harness' existing `RUN_EVENT_STREAM_MAX_LEN`. Trimming past a cursor is a `gap` resync. */
+export const RUN_STREAM_MAX_LEN = 10_000;
+
+/** The stored entry's field order. `nodeId` is present only when the event has one. */
+export const RUN_STREAM_FIELDS = Object.freeze(['seq', 'type', 'ts', 'nodeId', 'vis', 'body'] as const);
+
+/** The error reply of an append to a stream whose terminal clock is already running. */
+export const RUN_STREAM_CLOSED_ERROR = 'RUN_STREAM_CLOSED';
+
+/** The events that end a run: the append that stores one starts the retention clock on every key. */
+export const TERMINAL_RUN_EVENT_TYPES = Object.freeze(['run.completed', 'run.failed', 'run.cancelled'] as const);
+
+/**
+ * The append script. EVERY producer — the harness for graph events, the gateway for the events it
+ * originates (consultation transcripts, run-level events of gateway-owned runs) — appends through
+ * this script and nothing else, so one run has one sequence however many processes write to it.
+ *
+ * `KEYS`: {@link RUN_SEQ_KEY}, {@link RUN_EVENTS_KEY}, {@link RUN_DEDUPE_KEY}.
+ * `ARGV[1]` the `MAXLEN ~` bound; `ARGV[2]` retention seconds (`'0'` unless the event is
+ * terminal); `ARGV[3]` dedupe key (`''` for none); `ARGV[4..]` the field/value pairs AFTER `seq`,
+ * in {@link RUN_STREAM_FIELDS} order. Returns `{ seq, streamId, duplicate }`.
+ *
+ * 1. A dedupe hit returns the first append's position and writes nothing (an activity retry).
+ * 2. A stream whose events key already has an expiry is CLOSED (the run is terminal, or the
+ *    gateway's terminal backstop ran): the append is refused with {@link RUN_STREAM_CLOSED_ERROR}.
+ * 3. `INCR` then `XADD … MAXLEN ~ n * seq <n> …` — atomic, so stored seqs are contiguous.
+ * 4. A terminal append (`ARGV[2] > 0`) sets the SAME expiry on all three keys, so they vanish
+ *    together and a counter can never outlive its stream (or the reverse) and re-issue a `seq`.
+ *
+ * The harness loads these exact bytes from `tests/contracts/run-protocol.fixture.json`.
+ */
+export const RUN_APPEND_LUA = [
+  '-- HOPE run protocol v2: the ONE run-event sequencer (TASK-1038).',
+  '-- KEYS: [1] wf:run:<runId>:seq  [2] wf:run:<runId>:events  [3] wf:run:<runId>:dedupe',
+  "-- ARGV: [1] maxLen  [2] retention seconds ('0' = not terminal)  [3] dedupe key ('' = none)",
+  '--       [4..] field/value pairs after seq: type, ts, [nodeId], vis, body',
+  'local dedupe = ARGV[3]',
+  "if dedupe ~= '' then",
+  "  local prior = redis.call('HGET', KEYS[3], dedupe)",
+  '  if prior then',
+  "    local s, id = string.match(prior, '^(%d+) (.+)$')",
+  '    return {tonumber(s), id, 1}',
+  '  end',
+  'end',
+  "if redis.call('PTTL', KEYS[2]) >= 0 then",
+  "  return redis.error_reply('RUN_STREAM_CLOSED')",
+  'end',
+  "local seq = redis.call('INCR', KEYS[1])",
+  "local xadd = {'XADD', KEYS[2], 'MAXLEN', '~', ARGV[1], '*', 'seq', tostring(seq)}",
+  'for i = 4, #ARGV do xadd[#xadd + 1] = ARGV[i] end',
+  'local id = redis.call(unpack(xadd))',
+  "if dedupe ~= '' then redis.call('HSET', KEYS[3], dedupe, seq .. ' ' .. id) end",
+  'local ttl = tonumber(ARGV[2])',
+  'if ttl > 0 then',
+  "  for i = 1, 3 do redis.call('EXPIRE', KEYS[i], ttl) end",
+  'end',
+  'return {seq, id, 0}',
+  '',
+].join('\n');
+
+/** What a producer hands {@link buildRunAppend}: one event WITHOUT its `seq` (the script assigns it). */
+export interface RunAppendInput {
+  readonly runId: string;
+  readonly type: RunEventType;
+  readonly ts: string;
+  readonly nodeId?: string;
+  readonly data: Readonly<Record<string, unknown>>;
+  /** A key derived from intent (run, node, attempt, …) — never a clock or a UUID. A retry with the same key appends nothing. */
+  readonly dedupeKey?: string;
+  /**
+   * REQUIRED on a terminal event, refused on every other: `workflowRuns.eventRetentionHours × 3600`,
+   * resolved by the gateway and passed to the harness with the run start (gateway-resolved
+   * injection) — never a literal in the producer.
+   */
+  readonly retentionSeconds?: number;
+  /** Defaults to {@link RUN_STREAM_MAX_LEN}. */
+  readonly maxLen?: number;
+}
+
+/** `EVALSHA`/`EVAL` arguments for one append: `keys` and `args` exactly as the script reads them. */
+export interface RunAppendCommand {
+  readonly keys: readonly string[];
+  readonly args: readonly string[];
+}
+
+/** The audience of one stored event — what the `vis` field records and the public plane filters on. */
+export function runEventAudience(event: Pick<RunEventV2, 'type' | 'data'>): RunEventVisibility {
+  return RUN_EVENT_VISIBILITY[event.type];
+}
+
+/**
+ * Validate one event and build its append command. Throws {@link RunProtocolError} for a synthetic
+ * type (never stored), a non-conforming event, or a retention on the wrong kind of event.
+ */
+export function buildRunAppend(input: RunAppendInput): RunAppendCommand {
+  if (SYNTHETIC_RUN_EVENT_TYPES.includes(input.type)) throw new RunProtocolError([`${input.type} is synthetic and is never stored`]);
+  const candidate: Record<string, unknown> = { seq: 1, runId: input.runId, type: input.type, ts: input.ts };
+  if (input.nodeId !== undefined) candidate.nodeId = input.nodeId;
+  candidate.data = input.data;
+  const problems = runEventProblems(candidate);
+  const terminal = (TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(input.type);
+  const retention = input.retentionSeconds;
+  if (terminal && (retention === undefined || !Number.isSafeInteger(retention) || retention < 1)) {
+    problems.push(`retentionSeconds (a positive integer) is required on the terminal event ${input.type}`);
+  }
+  if (!terminal && retention !== undefined) problems.push(`retentionSeconds is only allowed on a terminal event (received it on ${input.type})`);
+  const maxLen = input.maxLen ?? RUN_STREAM_MAX_LEN;
+  if (!Number.isSafeInteger(maxLen) || maxLen < 1) problems.push('maxLen must be a positive integer');
+  if (input.dedupeKey !== undefined && input.dedupeKey.length === 0) problems.push('dedupeKey must be non-empty when given');
+  if (problems.length > 0) throw new RunProtocolError(problems);
+
+  const fields: string[] = ['type', input.type, 'ts', input.ts];
+  if (input.nodeId !== undefined) fields.push('nodeId', input.nodeId);
+  fields.push('vis', runEventAudience(candidate as unknown as RunEventV2), 'body', JSON.stringify(input.data));
+  return {
+    keys: [RUN_SEQ_KEY(input.runId), RUN_EVENTS_KEY(input.runId), RUN_DEDUPE_KEY(input.runId)],
+    args: [String(maxLen), String(retention ?? 0), input.dedupeKey ?? '', ...fields],
+  };
+}
+
+export type ParsedStoredRunEvent =
+  | { readonly kind: 'event'; readonly event: RunEventV2; readonly visibility: RunEventVisibility }
+  /** A pre-v2 entry (`data` = an async envelope, no `seq`): a v2 reader skips it. */
+  | { readonly kind: 'legacy' }
+  | { readonly kind: 'invalid'; readonly problems: readonly string[] };
+
+const STORED_SEQ_PATTERN = /^[1-9][0-9]*$/;
+
+/**
+ * Read one stream entry (its flat field list, as `XRANGE`/`XREAD` return it) back into the
+ * envelope. `runId` comes from the key, never from the entry. A broken entry is `invalid`, never
+ * repaired; a reader logs it and moves past it.
+ */
+export function parseStoredRunEvent(runId: string, fields: readonly string[]): ParsedStoredRunEvent {
+  const map = new Map<string, string>();
+  for (let i = 0; i + 1 < fields.length; i += 2) map.set(fields[i] as string, fields[i + 1] as string);
+  const rawSeq = map.get('seq');
+  if (rawSeq === undefined) return { kind: 'legacy' };
+  const problems: string[] = [];
+  if (!STORED_SEQ_PATTERN.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq))) problems.push(`stored seq must be a positive integer (received ${JSON.stringify(rawSeq)})`);
+  let data: unknown;
+  try {
+    data = JSON.parse(map.get('body') ?? '');
+  } catch {
+    problems.push('stored body is not JSON');
+  }
+  if (problems.length > 0) return { kind: 'invalid', problems };
+  const event: Record<string, unknown> = { seq: Number(rawSeq), runId, type: map.get('type'), ts: map.get('ts') };
+  if (map.has('nodeId')) event.nodeId = map.get('nodeId');
+  event.data = data;
+  problems.push(...runEventProblems(event));
+  if (isRunEventType(event.type) && SYNTHETIC_RUN_EVENT_TYPES.includes(event.type)) problems.push(`${event.type} is synthetic and is never stored`);
+  if (problems.length > 0) return { kind: 'invalid', problems };
+  const typed = event as unknown as RunEventV2;
+  const visibility = runEventAudience(typed);
+  if (map.get('vis') !== visibility) return { kind: 'invalid', problems: [`stored vis ${JSON.stringify(map.get('vis'))} disagrees with ${visibility}`] };
+  return { kind: 'event', event: typed, visibility };
+}
+
+export type RunResumePlan =
+  /** Replay every retained event with `seq > after` the connection may see, then continue live. */
+  | { readonly kind: 'replay'; readonly after: number }
+  /** Answer with `run.resync { reason }` and continue live from the snapshot's `lastSeq + 1`. */
+  | { readonly kind: 'resync'; readonly reason: RunResyncReason };
+
+/**
+ * Where a (re)connect resumes. The STORED stream is contiguous (one sequencer, trimmed only from
+ * the front), so the server can tell exactly whether everything after the cursor is retained:
+ *
+ * - `lastSeq` is `GET` {@link RUN_SEQ_KEY} (`null` when absent);
+ * - `oldestSeq` is the `seq` field of `XRANGE <events> - + COUNT 1` (`null` when empty or absent).
+ *
+ * For `replay`, the gateway turns `after` into an `XREAD` id: `0-0` when `after < oldestSeq`,
+ * otherwise the id of the entry whose `seq === after`, found by scanning back from the tail with
+ * `XREVRANGE <events> + - COUNT <page>` (resumes are near the tail; the scan is bounded by
+ * {@link RUN_STREAM_MAX_LEN}).
+ */
+export function planRunResume(input: { readonly after: number; readonly oldestSeq: number | null; readonly lastSeq: number | null }): RunResumePlan {
+  const { after, oldestSeq, lastSeq } = input;
+  if (lastSeq === null) return after === 0 ? { kind: 'replay', after: 0 } : { kind: 'resync', reason: 'expired' };
+  if (after > lastSeq) return { kind: 'resync', reason: 'cursor_invalid' };
+  if (oldestSeq === null) return after === lastSeq ? { kind: 'replay', after } : { kind: 'resync', reason: 'gap' };
+  if (after + 1 < oldestSeq) return { kind: 'resync', reason: 'gap' };
+  return { kind: 'replay', after };
+}
+
+// =============================================================================================
 // Resume
 // =============================================================================================
 
