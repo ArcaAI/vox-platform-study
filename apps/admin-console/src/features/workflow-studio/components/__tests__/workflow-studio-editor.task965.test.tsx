@@ -186,7 +186,7 @@ describe('WorkflowStudioEditor — validate / publish integrity (TASK-965 WS-1)'
     renderWithProviders(<WorkflowStudioEditor definition={withNode()} etag='"1"' registryNodes={[NOTE]} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Validate' }));
-    await waitFor(() => expect(screen.getByText('VALIDATED')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Validated')).toBeTruthy());
 
     moveNode();
     clickSave();
@@ -212,7 +212,7 @@ describe('WorkflowStudioEditor — validate / publish integrity (TASK-965 WS-1)'
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['workflow-studio'] })));
     await waitFor(() => expect(screen.getByText(/canvas and palette are locked/i)).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Save', hidden: true })).toBeNull();
-    expect(screen.getByText('PUBLISHED')).toBeTruthy();
+    expect(screen.getAllByText('Published').length).toBeGreaterThan(0);
   });
 
   it('withholds Publish while the buffer has unsaved changes, and says why (WF-5)', () => {
@@ -379,27 +379,27 @@ describe('WorkflowStudioEditor — 412 recovery (TASK-965 WS-1, WF-3)', () => {
   });
 });
 
-describe('WorkflowStudioEditor — the published version stays reachable (TASK-965, O-2 / WF-24)', () => {
-  it('offers Integration in the header of a PUBLISHED version and opens the endpoint panel', async () => {
-    installFetchMock((call) => {
-      if (call.method === 'GET' && call.path.endsWith('/schema')) {
-        return Response.json({ slug: 'discharge_summary', versionNumber: 1, triggerKinds: ['api'], protocols: ['http'], modes: ['async', 'blocking'] });
-      }
-      return undefined;
-    });
+describe('WorkflowStudioEditor — the published version stays reachable (TASK-965, O-2 / WF-24; TASK-1036 §3.6)', () => {
+  it('reaches the integration guide through the Integration TAB of a PUBLISHED version', async () => {
+    installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={withNode({ status: 'PUBLISHED', isActive: true })} etag='"1"' registryNodes={[NOTE]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Integration' }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Integration' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Integration' }));
 
-    const dialog = await screen.findByRole('dialog');
-    expect(await within(dialog).findByText('POST /workflows/discharge_summary/runs')).toBeTruthy();
-    expect(within(dialog).getAllByRole('group', { name: /vox-node/i })[0].textContent).toContain('discharge_summary');
+    const panel = await waitFor(() => {
+      const found = document.querySelector('[data-slot="workflow-integration-tab"]');
+      if (!found) throw new Error('integration tab not mounted');
+      return found;
+    });
+    expect(panel.getAttribute('data-definition-id')).toBe('d-1');
   });
 
-  it('does not offer Integration on a draft', () => {
+  it('no longer carries an Integration header button or dialog — it is a tab, on drafts too', () => {
     installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={withNode()} etag='"1"' registryNodes={[NOTE]} />);
     expect(screen.queryByRole('button', { name: 'Integration' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Integration' })).toBeTruthy();
   });
 });
 

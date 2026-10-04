@@ -30,7 +30,7 @@ export function DefinitionMetadataForm({ open, onOpenChange, name, description, 
       <DialogContent className={DIALOG_SIZE_CLASS.md}>
         <DialogHeader>
           <DialogTitle>Definition details</DialogTitle>
-          <DialogDescription>Name and description autosave the same way graph edits do.</DialogDescription>
+          <DialogDescription>Name and description are staged with your graph edits — press Save to write them.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <Field>

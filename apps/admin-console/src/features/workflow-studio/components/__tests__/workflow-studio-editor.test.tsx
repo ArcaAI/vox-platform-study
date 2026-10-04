@@ -240,7 +240,7 @@ describe('WorkflowStudioEditor — a read-only version is inert AND says so (TAS
     renderWithProviders(<WorkflowStudioEditor definition={definition({ status: 'PUBLISHED' })} etag='"1"' registryNodes={[NOTE]} />);
 
     // The banner is a live region and says WHY, rather than a muted sentence with no way out.
-    expect(screen.getByRole('status').textContent).toMatch(/locked/i);
+    expect(screen.getByText(/canvas and palette are locked/i).closest('[role="status"]')).toBeTruthy();
     expect(screen.getByText(/palette locked/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /edit as new draft/i })).toBeTruthy();
     // Save/Discard/Undo/Redo have nothing to act on and are not rendered at all.
@@ -443,19 +443,21 @@ describe('WorkflowStudioEditor — socket resolution on connect (TASK-893 §6.6)
  * reason rather than a silent mismatch with what is on the canvas.
  */
 describe('WorkflowStudioEditor — the inspector composition (TASK-893 §6.8)', () => {
-  it('opens the rail on Test and blocks the run while the buffer is dirty', async () => {
+  it('opens the inspector on a selection, and "Test" switches to the Test tab instead of the old Run rail', async () => {
     installFetchMock();
-    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE]} />);
+    const onUrlUpdate = vi.fn();
+    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE]} />, { onUrlUpdate });
 
-    // The rail is collapsed with nothing selected, so the canvas gets the width.
+    // The inspector pane is absent with nothing selected, so the canvas gets the width.
     expect(screen.queryByTestId('inspector-stub')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'palette add' }));
     fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
 
-    await waitFor(() => expect(screen.getByTestId('inspector-stub')).toBeTruthy());
-    expect(capturedInspectorProps?.tab).toBe('run');
-    expect(screen.getByTestId('sandbox-run-panel').getAttribute('data-blocked')).toMatch(/save your changes first/i);
+    await waitFor(() => expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get('tab')).toBe('test'));
+    // The Test tab runs the SAVED definition; the buffer is dirty, and the tab says so.
+    expect(await screen.findByText(/a test run executes the saved definition/i)).toBeTruthy();
+    expect(screen.queryByTestId('sandbox-run-panel')).toBeNull();
   });
 
   it('no longer links out to the Workbench', () => {
