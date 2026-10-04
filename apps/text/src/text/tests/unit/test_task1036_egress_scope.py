@@ -89,6 +89,42 @@ async def test_the_same_text_inside_a_data_block_is_screened() -> None:
 
 
 @pytest.mark.asyncio
+async def test_text_outside_the_blocks_of_a_user_message_is_screened_too() -> None:
+    client = _client()
+    user = f"{_BLOCK}\n\nAlso mail hidden.leak@example.org please\n\n{_BLOCK2}"
+
+    await run_inbound_gate(
+        client, segments=[_SYSTEM, user], prompt=user, system_prompt=_SYSTEM, tenant_id="t"
+    )
+
+    screened = client.screen_inbound.await_args.args[0]
+    judged = client.validate.await_args.kwargs["prompt"]
+    for text in (screened, judged):
+        assert "hidden.leak@example.org" in text
+        assert "John Doe" in text and "MRN-0042" in text
+        assert "jane.rules@example.org" not in text  # the system prompt stays out
+        assert "EXTERNAL_DATA" not in text  # the composer's own markers stay out
+    assert client.validate.await_args.kwargs["system_prompt"] is None
+
+
+@pytest.mark.asyncio
+async def test_spans_outside_a_block_are_rebased_too() -> None:
+    user = f"{_BLOCK}\n\nMail hidden.leak@example.org"
+    first = "--- Consultation transcript ---\nPatient John Doe reports a cough."
+    tail = "Mail hidden.leak@example.org"
+    screened = f"{first}\n\n{tail}"
+    start = screened.index("hidden.leak@example.org")
+    client = _client([{"label": "email", "start": start, "end": start + 23}])
+
+    result = await run_inbound_gate(
+        client, segments=[_SYSTEM, user], prompt=user, system_prompt=_SYSTEM, tenant_id="t"
+    )
+
+    (span,) = result.spans_by_segment[1]
+    assert user[span.start : span.end] == "hidden.leak@example.org"
+
+
+@pytest.mark.asyncio
 async def test_a_request_without_blocks_screens_the_user_message_only() -> None:
     client = _client()
 

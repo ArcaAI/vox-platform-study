@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["DataBlock", "external_data_blocks", "context_text"]
+__all__ = ["DataBlock", "external_data_blocks", "screened_ranges", "context_text"]
 
 #: A complete block; group 1 is everything between the start-marker line and the end marker.
 _BLOCK = re.compile(
@@ -44,6 +44,31 @@ class DataBlock:
 def external_data_blocks(text: str) -> list[DataBlock]:
     """Every complete ``EXTERNAL_DATA`` block body in ``text``, in order."""
     return [DataBlock(match.start(1), match.end(1)) for match in _BLOCK.finditer(text or "")]
+
+
+def screened_ranges(text: str) -> list[tuple[int, int]]:
+    """Every stretch of caller-supplied text in ``text``: block bodies AND text outside blocks.
+
+    Only the composer's own start and end markers are left out; blank gaps (the
+    ``\\n\\n`` between blocks) are dropped. A raw caller cannot hide content next to a
+    block, because anything outside one is screened like anything inside.
+    """
+    ranges: list[tuple[int, int]] = []
+    cursor = 0
+    for match in _BLOCK.finditer(text or ""):
+        ranges.append((cursor, match.start()))  # the gap, up to the start marker
+        ranges.append((match.start(1), match.end(1)))
+        cursor = match.end()
+    ranges.append((cursor, len(text or "")))
+    trimmed: list[tuple[int, int]] = []
+    for start, end in ranges:
+        piece = text[start:end]
+        if not piece.strip():
+            continue
+        start += len(piece) - len(piece.lstrip())
+        end -= len(piece) - len(piece.rstrip())
+        trimmed.append((start, end))
+    return trimmed
 
 
 def context_text(user_text: str) -> str:

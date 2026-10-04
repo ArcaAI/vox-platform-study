@@ -32,7 +32,7 @@ from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
 from text.models.responses import EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
-from text.services.data_blocks import context_text, external_data_blocks
+from text.services.data_blocks import context_text, screened_ranges
 from text.services.external_guardrail import GUARDRAIL_UNAVAILABLE_REASON
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
@@ -76,18 +76,16 @@ _Region = tuple[int, int, int]
 def _regions(segments: list[str], *, system_index: int | None) -> list[_Region]:
     """The stretches of ``segments`` the guardrails inspect (TASK-1036 OD-1).
 
-    Scope is the CONTEXT only: the ``EXTERNAL_DATA`` block bodies of the user-side
-    segments. A request with no blocks (a direct message) screens its user-side
-    segments whole. The system prompt (``system_index``) is never inspected.
+    Every caller-supplied user-side text: ``EXTERNAL_DATA`` block bodies AND any
+    text outside a block, minus only the composer's own markers. The system prompt
+    (``system_index``) is never inspected.
     """
-    user = [(index, text) for index, text in enumerate(segments) if index != system_index]
     regions: list[_Region] = []
-    for index, text in user:
-        blocks = external_data_blocks(text)
-        regions.extend((index, block.start, block.end) for block in blocks)
-    if regions:
-        return regions
-    return [(index, 0, len(text)) for index, text in user if text]
+    for index, text in enumerate(segments):
+        if index == system_index:
+            continue
+        regions.extend((index, start, end) for start, end in screened_ranges(text))
+    return regions
 
 
 def _combine(segments: list[str], regions: list[_Region]) -> tuple[str, list[int]]:
@@ -162,10 +160,10 @@ async def run_inbound_gate(
     """Run the inbound screen and the medical judge CONCURRENTLY; both verdicts block.
 
     ``segments`` are the texts the provider will receive (segment 0 is the system
-    prompt whenever ``system_prompt`` is not ``None``). The screen sees only the
-    CONTEXT — the ``EXTERNAL_DATA`` block bodies, or the user message(s) of a
-    request without blocks — joined, and its PII spans come back per segment. The
-    judge sees that same context and never the system prompt (TASK-1036 OD-1).
+    prompt whenever ``system_prompt`` is not ``None``). The screen sees every
+    caller-supplied user-side text — block bodies and text outside blocks, not the
+    composer's markers — joined, and its PII spans come back per segment. The
+    judge sees that same text and never the system prompt (TASK-1036 OD-1).
     A client that is not wired is only ever a process the lifespan did not build
     (the unit harness): nothing to call, no spans.
 
