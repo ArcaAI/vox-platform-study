@@ -168,3 +168,23 @@ describe('TagsField', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe('TagsField — E4b chip removal', () => {
+  it('gives the remove (×) control a pointer target of at least 24×24 px (WCAG 2.5.8)', () => {
+    stubFetch();
+    renderWithProviders(<Harness initial={['a-1']} />);
+    const remove = screen.getByRole('button', { name: 'Remove tag a-1' });
+    expect(remove.className).toMatch(/\bsize-6\b/);
+  });
+
+  it('moves focus to the next chip after removing one, to the previous when the last goes, and to the input when none are left', async () => {
+    stubFetch();
+    renderWithProviders(<Harness initial={['a-1', 'b-2', 'c-3']} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag b-2' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove tag c-3' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag c-3' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Remove tag a-1' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag a-1' }));
+    await waitFor(() => expect(document.activeElement).toBe(input()));
+  });
+});
