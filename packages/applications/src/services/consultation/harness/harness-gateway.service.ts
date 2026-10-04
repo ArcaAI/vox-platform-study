@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { resolveRunStartLimits } from '../../workflow-run/run-start-limits';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -407,6 +409,9 @@ export class HarnessGatewayService {
     // compile without a mock. When unset we send an empty token, which the
     // harness-side service-token guard rejects (fail-closed on the harness).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-1038 B3a — the run-start retention + payload limits (platform settings). Optional and
+    // trailing so positional fixtures keep compiling; absent ⇒ the descriptor defaults are sent.
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {
     this.harnessUrl = this.configService.get<string>('HARNESS_URL') ?? 'http://localhost:8866';
   }
@@ -587,6 +592,11 @@ export class HarnessGatewayService {
       // `null` on the wire and a missing key mean the same thing there, but sending the key only
       // when there IS a subject keeps a Temporal history honest about which runs were bound.
       ...(input.subject ? { subject: input.subject } : {}),
+      // TASK-1038 B3a — every start carries the event-stream retention (the TTL of the terminal
+      // append) and the payload limits, resolved here from the platform settings so no harness
+      // knob is a literal or an env var. One resolution site covers every caller (exposure plane,
+      // consultation dispatch, Workbench sandbox).
+      ...resolveRunStartLimits(this.settings),
     };
     const response = await this.httpService.axiosRef.post(url, body, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run started', runId: input.runId, status: (response.data as StartWorkflowRunResult)?.status });
