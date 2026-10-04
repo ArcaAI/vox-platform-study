@@ -37,6 +37,29 @@ from harness.temporal.interpreter.templating import (
     template_references,
 )
 
+#: The fixed run-error code a failed declared consultation read settles its node with (shared by
+#: the interpreter and, since TASK-1038 lane E3, the loop body).
+CONSULTATION_READ_FAILED = "CONSULTATION_READ_FAILED"
+
+
+def nest_consultation_paths(values: Mapping[str, Any]) -> dict[str, Any]:
+    """``{"consultation.patient.age": 41}`` → ``{"patient": {"age": 41}}`` (pure)."""
+    nested: dict[str, Any] = {}
+    for path, value in values.items():
+        parts = path.split(".")[1:]
+        if not parts:
+            continue
+        current = nested
+        for part in parts[:-1]:
+            child = current.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                current[part] = child
+            current = child
+        current[parts[-1]] = value
+    return nested
+
+
 #: The binding roots (``bindings.ts`` ``BINDING_ROOTS``).
 BINDING_ROOTS = ("context", "consultation", "nodes", "vars", "run")
 

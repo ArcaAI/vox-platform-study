@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -373,9 +374,38 @@ def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def content_key(data: bytes) -> str:
-    """The content-addressed object key: the sha256 hex of the bytes (deterministic)."""
-    return _sha256_hex(data)
+def content_key(data: bytes, *, key_prefix: str | None = None) -> str:
+    """The content-addressed object key: the sha256 hex of the bytes (deterministic).
+
+    With ``key_prefix`` (a tenant id, see :func:`tenant_key_prefix`) the key is
+    ``<prefix>/<sha256>`` — still content-addressed, now WITHIN that tenant's prefix.
+    """
+    digest = _sha256_hex(data)
+    return f"{tenant_key_prefix(key_prefix)}/{digest}" if key_prefix is not None else digest
+
+
+#: One safe object-key path segment: no ``/``, no whitespace or control characters, and not a
+#: dot-segment. A tenant id is a UUID, which this admits; anything a path could be built from
+#: is refused rather than sanitised.
+_SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
+
+
+def tenant_key_prefix(tenant_id: str) -> str:
+    """The object-key prefix for ``tenant_id`` — refusing anything that is not one safe segment.
+
+    TASK-1038 lane E3 — a RUN RESULT object is handed to the gateway, which signs a URL for it
+    and deletes it on purge; both only work when the object's tenant is legible from its key.
+    The gateway asserts ``key.startswith(f"{tenantId}/")`` before it signs, so a tenant id that
+    could smuggle a ``/`` or a dot-segment into the key must never get here. Fails LOUD
+    (:class:`ClaimCheckError`): a result is never written under a missing or malformed tenant.
+    """
+    if (
+        not isinstance(tenant_id, str)
+        or tenant_id in (".", "..")
+        or not _SAFE_SEGMENT.match(tenant_id)
+    ):
+        raise ClaimCheckError(f"claim-check tenant prefix refused: {tenant_id!r}")
+    return tenant_id
 
 
 #: The registry key that supplies the PLATFORM default for the offload threshold.
@@ -416,7 +446,12 @@ def should_offload(text: str, *, min_bytes: int) -> bool:
 
 
 async def store_bytes(
-    data: bytes, *, store: BlobStore, bucket: str, content_type: str
+    data: bytes,
+    *,
+    store: BlobStore,
+    bucket: str,
+    content_type: str,
+    key_prefix: str | None = None,
 ) -> ClaimCheckRef:
     """Write raw BYTES out-of-band and return their content-addressed claim-check ref.
 
@@ -429,8 +464,11 @@ async def store_bytes(
     artifact lands wherever the platform already puts offloaded blobs and needs no second
     lifecycle, no second bucket and no second retention rule. The only thing that varies is
     ``content_type``, which the ref already carries as a field.
+
+    ``key_prefix`` (TASK-1038 lane E3) writes under ``<tenantId>/`` — used for objects handed to
+    a CALLER (a run result). Internal node-output claim-checks omit it, as before.
     """
-    key = content_key(data)
+    key = content_key(data, key_prefix=key_prefix)
     await store.put(bucket, key, data, content_type)
     return ClaimCheckRef(
         store=store.name,
@@ -442,10 +480,16 @@ async def store_bytes(
     )
 
 
-async def store_blob(text: str, *, store: BlobStore, bucket: str) -> ClaimCheckRef:
+async def store_blob(
+    text: str, *, store: BlobStore, bucket: str, key_prefix: str | None = None
+) -> ClaimCheckRef:
     """Write ``text`` out-of-band and return its content-addressed claim-check ref."""
     return await store_bytes(
-        text.encode("utf-8"), store=store, bucket=bucket, content_type=CONTENT_TYPE
+        text.encode("utf-8"),
+        store=store,
+        bucket=bucket,
+        content_type=CONTENT_TYPE,
+        key_prefix=key_prefix,
     )
 
 

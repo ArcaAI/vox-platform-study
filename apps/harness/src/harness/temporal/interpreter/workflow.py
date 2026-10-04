@@ -14,6 +14,7 @@ effect goes through ``workflow.execute_activity``.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -45,11 +46,15 @@ with workflow.unsafe.imports_passed_through():
         core_loop_workflow_id,
     )
     from harness.temporal.interpreter.data_contract import (
+        CONSULTATION_READ_FAILED,
         ROUTER_NODE_TYPES,
         BindingScope,
         effective_settings,
         end_wired_fields,
         resolve_bindings,
+    )
+    from harness.temporal.interpreter.data_contract import (
+        nest_consultation_paths as _nest_paths,
     )
     from harness.temporal.interpreter.gate_workflow import (
         ConsultationGateWorkflow,
@@ -258,8 +263,12 @@ _CONSULTATION_READ_RETRY = RetryPolicy(
     maximum_attempts=3, non_retryable_error_types=["ApiClientError", "ValidationError"]
 )
 
-#: The fixed run-error code a failed declared read settles its node with.
-CONSULTATION_READ_FAILED = "CONSULTATION_READ_FAILED"
+# TASK-1038 lane E3 — `runStart` reads declared by LOOP-BODY nodes (`config.loops[*].body`). The
+# OD-30 walk above read `config.stages` only, so a body node's run-start reads were never taken and
+# its `consultation.*` bindings resolved to nothing. They are now read once before the walk, AFTER
+# the top-level reads, and threaded into the loop child. New `read_consultation` activities, so
+# gated — cheap operand first: consulted only for a graph whose loop bodies declare such reads.
+_LOOP_RUN_START_READS_PATCH = "task-1038-loop-run-start-reads"
 
 _CONTEXT_PATH_TIMEOUT = timedelta(seconds=60)
 _CONTEXT_PATH_RETRY = RetryPolicy(
@@ -335,22 +344,14 @@ def _delivery_plan(config: CompiledWorkflowConfig) -> dict[str, dict[str, Any]]:
     return plan
 
 
-def _nest_paths(values: dict[str, Any]) -> dict[str, Any]:
-    """``{"consultation.patient.age": 41}`` → ``{"patient": {"age": 41}}`` (pure)."""
-    nested: dict[str, Any] = {}
-    for path, value in values.items():
-        parts = path.split(".")[1:]
-        if not parts:
-            continue
-        current = nested
-        for part in parts[:-1]:
-            child = current.get(part)
-            if not isinstance(child, dict):
-                child = {}
-                current[part] = child
-            current = child
-        current[parts[-1]] = value
-    return nested
+def _run_start_pending(stages: Iterable[CompiledStage]) -> list[tuple[str, list[str]]]:
+    """`(nodeId, sorted runStart paths)` for every node in ``stages`` that declares any (pure)."""
+    return [
+        (node.node_id, sorted({r.path for r in node.consultation_reads if r.at == "runStart"}))
+        for stage in stages
+        for node in stage.nodes
+        if any(r.at == "runStart" for r in node.consultation_reads)
+    ]
 
 
 def _consultation_id_of(inp: InterpreterInput) -> str | None:
@@ -634,6 +635,9 @@ class WorkflowInterpreter:
         #: Run-start declared reads, by node id, and the node a failed one fails.
         self._run_start_reads: dict[str, dict[str, Any]] = {}
         self._run_start_read_failures: dict[str, str] = {}
+        # TASK-1038 lane E3 — loop-body nodes whose run-start reads were taken (handed to the
+        # loop child, never read by the top-level walk).
+        self._loop_body_node_ids: set[str] = set()
         self._sources: list[str] = []
 
     def _next_seq(self) -> int:
@@ -1636,14 +1640,20 @@ class WorkflowInterpreter:
 
     async def _read_run_start(self, inp: InterpreterInput, config: CompiledWorkflowConfig) -> None:
         """OD-30 — every `runStart` declared read, once, before the walk."""
-        pending = [
-            (node.node_id, sorted({r.path for r in node.consultation_reads if r.at == "runStart"}))
-            for stage in config.stages
-            for node in stage.nodes
-            if any(r.at == "runStart" for r in node.consultation_reads)
-        ]
-        if not pending or not workflow.patched(_CONSULTATION_READS_PATCH):
-            return
+        pending = _run_start_pending(config.stages)
+        if pending and workflow.patched(_CONSULTATION_READS_PATCH):
+            await self._take_run_start_reads(inp, pending)
+        # TASK-1038 lane E3 — the loop bodies' own run-start reads (see the marker's comment).
+        loop_pending = _run_start_pending(
+            stage for indexed_loop in config.loops for stage in indexed_loop.body.stages
+        )
+        if loop_pending and workflow.patched(_LOOP_RUN_START_READS_PATCH):
+            self._loop_body_node_ids.update(node_id for node_id, _paths in loop_pending)
+            await self._take_run_start_reads(inp, loop_pending)
+
+    async def _take_run_start_reads(
+        self, inp: InterpreterInput, pending: list[tuple[str, list[str]]]
+    ) -> None:
         for node_id, paths in pending:
             result = await self._read_consultation(inp, node_id, paths, "run-start")
             if result.ok:
@@ -2007,6 +2017,17 @@ class WorkflowInterpreter:
             ),
             run_context=run_context,
             protocol=2 if self._v2 else None,
+            # TASK-1038 lane E3 — empty unless `_LOOP_RUN_START_READS_PATCH` took body reads.
+            run_start_reads={
+                node_id: values
+                for node_id, values in self._run_start_reads.items()
+                if node_id in self._loop_body_node_ids
+            },
+            run_start_read_failures={
+                node_id: reason
+                for node_id, reason in self._run_start_read_failures.items()
+                if node_id in self._loop_body_node_ids
+            },
         )
         max_duration = int(loop_input.bounds.max_duration_seconds)
         try:

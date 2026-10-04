@@ -819,7 +819,9 @@ async def _append_terminal(
         data: dict[str, Any] = {"status": "COMPLETED", "durationMs": duration, "tokens": tokens}
         if spec.result_outputs:
             try:
-                result = await _run_result(spec.result_outputs, spec.result_inline_max_bytes)
+                result = await _run_result(
+                    spec.result_outputs, spec.result_inline_max_bytes, tenant_id=batch.tenant_id
+                )
             except Exception as exc:  # noqa: BLE001 — a result read never drops the event
                 activity.logger.warning(
                     f"harness.run_events.result_unavailable run_id={run_id} error={exc}"
@@ -847,15 +849,24 @@ async def _append_terminal(
 
 
 async def _run_result(
-    outputs: dict[str, dict[str, Any]], inline_max_bytes: int | None = None
+    outputs: dict[str, dict[str, Any]],
+    inline_max_bytes: int | None = None,
+    *,
+    tenant_id: str,
 ) -> dict[str, Any] | None:
     """TASK-1038 D-I — the completed event's ``result``: inline, or a claim-check reference.
 
     The value is the ``core.output`` node's published ``payload`` (or its own ``resultRef``);
     with several output nodes, a map keyed by node id. At most
     ``HARNESS_CLAIM_CHECK_RESULT_INLINE_MAX_BYTES`` serialized travels inline; anything larger
-    travels as ``{kind: "ref", bucket, key, sizeBytes, sha256}`` — an object already in the
-    claim-check store (re-used when the result is exactly one stored value) or written now.
+    travels as ``{kind: "ref", bucket, key, sizeBytes, sha256, tenantPrefixed: true}``.
+
+    TASK-1038 lane E3 (security) — the result object is a CALLER-facing object: the gateway signs
+    a URL for it and deletes it on purge, so it is always written under ``<tenantId>/`` (still
+    content-addressed within the prefix) and the ref says so with ``tenantPrefixed``. When the
+    result is exactly one value already in the store (a node-output claim-check, un-prefixed and
+    internal), its bytes are COPIED under the tenant prefix — the internal object is never handed
+    out. Content-addressed, so a retry of this activity re-writes the identical object.
     """
     values: dict[str, Any] = {}
     for node_id, output in outputs.items():
@@ -872,22 +883,29 @@ async def _run_result(
     if payload_refs.is_marker(value):
         ref = ClaimCheckRef.model_validate(value[payload_refs.MARKER_KEY])
         if ref.size > limit:
-            return _result_ref(ref)
+            # Integrity-verified read of the internal object, re-written byte-for-byte (same
+            # size and sha256) under the tenant's prefix.
+            read_store, _ = await open_store(settings, ref)
+            text = await load_blob(ref, store=read_store)
+            return await _store_result(text, settings, tenant_id)
     resolved = await _resolve_references(value, {})
     serialized = _dumps(resolved)
     if len(serialized.encode("utf-8")) <= limit:
         return {"kind": "inline", "value": resolved}
+    return await _store_result(serialized, settings, tenant_id)
+
+
+async def _store_result(text: str, settings: Any, tenant_id: str) -> dict[str, Any]:
+    """Write a run result under ``<tenantId>/`` and describe it for ``run.completed``."""
     store, location = await open_store(settings)
-    return _result_ref(await store_blob(serialized, store=store, bucket=location.bucket))
-
-
-def _result_ref(ref: ClaimCheckRef) -> dict[str, Any]:
+    ref = await store_blob(text, store=store, bucket=location.bucket, key_prefix=tenant_id)
     return {
         "kind": "ref",
         "bucket": ref.bucket,
         "key": ref.key,
         "sizeBytes": ref.size,
         "sha256": ref.sha256,
+        "tenantPrefixed": True,
     }
 
 

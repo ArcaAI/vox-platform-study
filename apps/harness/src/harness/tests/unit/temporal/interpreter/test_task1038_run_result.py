@@ -91,7 +91,7 @@ class TestRunResult:
 
         result = _completed(stream)["result"]
         assert result["kind"] == "ref"
-        assert set(result) == {"kind", "bucket", "key", "sizeBytes", "sha256"}
+        assert set(result) == {"kind", "bucket", "key", "sizeBytes", "sha256", "tenantPrefixed"}
         stored = await _MEMORY_STORE.get(result["bucket"], result["key"])
         assert json.loads(stored.decode("utf-8")) == "x" * 200_000
         assert result["sizeBytes"] == len(stored)

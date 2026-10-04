@@ -62,6 +62,10 @@ INTERPRETER_FAMILY_FIXTURES = (
     "interpreter_task1036_contract_history",
     "interpreter_task1036_loop_history",
     "loop_workflow_task1036_bindings_history",
+    # TASK-1038 lane E3 — forward guard of `task-1038-loop-run-start-reads`
+    # (`_capture_task1038_replay_fixtures.py --task1038-e3`, recorded on the post-change definition).
+    "interpreter_task1038_e3_loop_reads_history",
+    "loop_workflow_task1038_e3_reads_history",
 )
 
 

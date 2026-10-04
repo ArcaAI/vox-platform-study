@@ -52,7 +52,12 @@ from harness.temporal.workflow_ids import (
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.compiled_config import CompiledLoopBody, CompiledNode
-    from harness.temporal.interpreter.data_contract import BindingScope, resolve_bindings
+    from harness.temporal.interpreter.data_contract import (
+        CONSULTATION_READ_FAILED,
+        BindingScope,
+        nest_consultation_paths,
+        resolve_bindings,
+    )
     from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
     from harness.temporal.interpreter.models import (
         CoreLoopBounds,
@@ -321,6 +326,7 @@ class LoopWorkflow:
         node: CompiledNode,
         inp: CoreLoopInput,
         body_types: dict[str, tuple[str, dict[str, Any]]],
+        consultation: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """A body node's compiled `bindings`, resolved against the parent's run context plus this
         iteration's body outputs; the loop's `item` is the CURRENT item (pure)."""
@@ -348,6 +354,7 @@ class LoopWorkflow:
             vars=inp.run_context.get("vars") or {},
             loop_item=(inp.node_id, loop_output.get("item")),
             run_payload=inp.run_payload,
+            consultation=consultation or {},
         )
         return resolve_bindings(node.bindings or {}, scope).values
 
@@ -383,8 +390,19 @@ class LoopWorkflow:
         if inp.sandbox and spec.external_write:
             return NodeActivityResult(status="SKIPPED", reason="sandbox")
 
+        # TASK-1038 lane E3 — the node's `runStart` consultation reads, taken by the PARENT before
+        # its walk. A failed read settles the node by name without dispatching it (never on a
+        # guess). A body node result has no FAILED status, so it is DEGRADED with the same fixed
+        # code the top level uses. Both maps are empty for any loop started before that change.
+        read_failure = inp.run_start_read_failures.get(node.node_id)
+        if read_failure is not None:
+            return NodeActivityResult(
+                status="DEGRADED", reason=f"{CONSULTATION_READ_FAILED}: {read_failure}"
+            )
+        consultation = inp.run_start_reads.get(node.node_id) or {}
+
         if node.bindings is not None and workflow.patched(_BINDINGS_PATCH):
-            bound = self._resolve_node_bindings(node, inp, body_types)
+            bound = self._resolve_node_bindings(node, inp, body_types, consultation)
         else:
             bound = self._resolve_bound_inputs(node, body_types, inp.node_id)
         run_context = {
@@ -468,6 +486,9 @@ class LoopWorkflow:
                 seed_inputs=bound,
                 run_payload=inp.run_payload,
                 run_context=run_context,
+                # TASK-1038 lane E3 — a nested body's nodes' run-start reads ride down too.
+                run_start_reads=inp.run_start_reads,
+                run_start_read_failures=inp.run_start_read_failures,
             )
             try:
                 nested: CoreLoopResult = await workflow.execute_child_workflow(
@@ -504,6 +525,12 @@ class LoopWorkflow:
                     run_context=run_context,
                     protocol=2 if inp.protocol == 2 else None,
                     event_scope=f"iter:{iteration}" if inp.protocol == 2 else None,
+                    # The prompt scope's `consultation` root, as the top level hands it (v2 only).
+                    consultation=(
+                        nest_consultation_paths(consultation)
+                        if consultation and inp.protocol == 2
+                        else None
+                    ),
                 ),
                 start_to_close_timeout=timedelta(seconds=caps.clamp_timeout(node.timeout_seconds)),
                 retry_policy=RetryPolicy(

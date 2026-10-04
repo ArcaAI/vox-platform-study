@@ -162,6 +162,10 @@ _RESULT = {
                 "key": {"type": "string", "minLength": 1},
                 "sizeBytes": _INT0,
                 "sha256": _SHA256,
+                # TASK-1038 lane E3 — the object lives under `<tenantId>/` (the gateway asserts
+                # the prefix before signing and deletes by it on purge). Optional: a ref
+                # recorded before the flag existed carries none.
+                "tenantPrefixed": _BOOL,
             },
             ["kind", "bucket", "key", "sizeBytes", "sha256"],
         ),
