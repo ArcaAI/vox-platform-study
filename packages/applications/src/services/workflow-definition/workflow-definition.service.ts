@@ -120,6 +120,7 @@ import {
 import { IAiRoutingPolicyService } from '../ai-routing-policy/IAiRoutingPolicyService';
 import type { IAiRoutingPolicyService as IAiRoutingPolicyServicePort } from '../ai-routing-policy/IAiRoutingPolicyService';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
+import { seedBoundaryNodes } from './workflow-boundary-seed';
 import { WorkflowDefinitionDtoMapper } from './workflow-definition.dto.mapper';
 
 const WORKFLOW_DEFINITION_FILTER_MODEL = 'WorkflowDefinition';
@@ -509,18 +510,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     this.assertKnownPaletteKey(dto.paletteKey);
 
-    const graph = this.parseGraphOrThrow(dto.graph);
-    const baseReport = await this.validateGraph(graph, dto.paletteKey, tenantId);
-    if (reportIsShapeBroken(baseReport)) {
-      throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: baseReport.findings });
-    }
-
-    // TASK-890 — the publish gate runs here too, RECORDED and never refusing. Before this,
-    // `create` reported the catalogue's verdict alone, so a graph the very next `validate()`
-    // refused with ERRORs was stored with `ok: true` — a green draft the console could not act
-    // on. A draft is still WRITTEN: authoring feedback belongs on the report, not in a 400.
-    const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
-    const report = this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
+    // TASK-1036 W1 — a blank graph opens with its two undeletable boundary nodes already placed.
+    const graph = seedBoundaryNodes(this.parseGraphOrThrow(dto.graph));
+    // TASK-890 — the publish gate runs here too, RECORDED and never refusing (see
+    // `validatedDraftReport`). A draft is still WRITTEN: authoring feedback belongs on the
+    // report, not in a 400.
+    const report = await this.validatedDraftReport(graph, dto.paletteKey, tenantId, 'The workflow graph is not valid.');
 
     if (dto.parentVersionId) {
       const parent = await this.workflowDefinitionRepository.findById(dto.parentVersionId).catch(
@@ -542,6 +537,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // constraint.
     const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
       const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(tenantId, dto.slug, tx);
+      // TASK-1036 (R18) — a NEW version of an existing lineage is branched from a version of it
+      // (`parentVersionId`, or `createDraft`); a bare create on a taken slug used to mint N+1
+      // silently. Same check, same transaction, as `clone`'s collision guard.
+      if (maxVersionNumber > 0 && !dto.parentVersionId) {
+        throw new ConflictException({
+          message: `Slug '${dto.slug}' is already in use by this tenant. Choose another slug, or open that workflow and edit it as a new draft.`,
+          code: 'WORKFLOW_SLUG_TAKEN',
+        });
+      }
       const entity = WorkflowDefinitionFactory.CreateDefinition({
         tenantId,
         slug: dto.slug,
@@ -574,6 +578,87 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       resourceId: saved.id,
       createdAt: saved.createdAt,
       data: { slug: saved.slug, versionNumber: saved.versionNumber, paletteKey: saved.paletteKey },
+    });
+
+    return WorkflowDefinitionDtoMapper.toResponse(saved);
+  }
+
+  /**
+   * TASK-1036 (R18, §3.4) — "edit as new draft". Branches a new DRAFT version of the SAME lineage
+   * from a PUBLISHED or DEPRECATED one, server-side, so the console no longer rebuilds the body
+   * and posts it to `POST /` with a hand-set `parentVersionId`.
+   *
+   * - The source must be PUBLISHED or DEPRECATED (400 otherwise): a DRAFT/VALIDATED row is edited
+   *   in place, never branched.
+   * - One open draft per lineage: if a DRAFT or VALIDATED row of the slug exists, 409
+   *   `OPEN_DRAFT_EXISTS` carries its id so the console opens it instead of piling up drafts.
+   * - `versionNumber` = max + 1 minted on the TX client; the graph is copied from the stored row,
+   *   never taken from the caller; nothing server-owned (compiled artifact, checksums,
+   *   `publishedAt`, `isActive`) is carried over.
+   *
+   * The open-draft read is not part of the insert transaction (the repository's lineage read takes
+   * no `tx`); two concurrent drafts of one lineage are still stopped by the
+   * `(tenantId, slug, versionNumber)` unique index.
+   */
+  async createDraft(sourceId: string): Promise<WorkflowDefinitionResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException('Tenant context required');
+    }
+
+    const source = await this.workflowDefinitionRepository.findById(sourceId);
+    assertEqualTenants(source, { tenantId });
+
+    if (source.status !== WorkflowDefinitionStatus.PUBLISHED && source.status !== WorkflowDefinitionStatus.DEPRECATED) {
+      throw new BadRequestException(
+        `Only a PUBLISHED or DEPRECATED workflow version can be edited as a new draft (this one is ${source.status}). Edit a draft in place.`,
+      );
+    }
+
+    const versions = await this.workflowDefinitionRepository.findAllVersionsBySlug(tenantId, source.slug);
+    const openDraft = versions.find((v) => v.status === WorkflowDefinitionStatus.DRAFT || v.status === WorkflowDefinitionStatus.VALIDATED);
+    if (openDraft) {
+      throw new ConflictException({
+        message: `Workflow '${source.slug}' already has an open draft (version ${openDraft.versionNumber}). Continue editing it.`,
+        code: 'OPEN_DRAFT_EXISTS',
+        draftId: openDraft.id,
+      });
+    }
+
+    // Byte-for-byte the precheck `create` runs: a draft is a new row.
+    if (this.entitlements?.isEnforcementEnabled()) {
+      const currentCount = await this.workflowDefinitionRepository.count({ where: { tenantId } });
+      await this.entitlements.assertQuantityQuota(tenantId, 'maxWorkflowDefinitions', currentCount);
+    }
+
+    this.assertKnownPaletteKey(source.paletteKey);
+    const graph = this.parseGraphOrThrow(structuredClone(source.graph as unknown as Record<string, unknown>));
+    const report = await this.validatedDraftReport(graph, source.paletteKey, tenantId, 'The source workflow graph is not valid.');
+
+    const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const maxVersionNumber = await this.workflowDefinitionRepository.findMaxVersionNumber(tenantId, source.slug, tx);
+      const entity = WorkflowDefinitionFactory.CreateDefinition({
+        tenantId,
+        slug: source.slug,
+        name: source.name,
+        description: source.description ?? null,
+        paletteKey: source.paletteKey,
+        versionNumber: maxVersionNumber + 1,
+        parentVersionId: source.id,
+        graph: graph as unknown as JsonValue,
+        graphChecksum: graphChecksum(graph),
+        validationReport: report as unknown as JsonValue,
+        validatedAt: new Date(),
+        createdBy: this.requestUserId ?? undefined,
+      });
+      this.compileGraphOrThrow(entity, graph, null);
+      return this.workflowDefinitionRepository.create(entity, tx);
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceCreated, {
+      resourceId: saved.id,
+      createdAt: saved.createdAt,
+      data: { slug: saved.slug, versionNumber: saved.versionNumber, paletteKey: saved.paletteKey, draftFromId: source.id },
     });
 
     return WorkflowDefinitionDtoMapper.toResponse(saved);
@@ -627,10 +712,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // Recomputed for THIS tenant against the CURRENT registry — never copied. A report produced
     // under another tenant's invariant rules, or against an older registry, is a stale claim
     // about a graph that now lives somewhere else.
-    const report = await this.validateGraph(graph, source.paletteKey, tenantId);
-    if (reportIsShapeBroken(report)) {
-      throw new BadRequestException({ message: 'The source workflow graph is not valid.', findings: report.findings });
-    }
+    const report = await this.validatedDraftReport(graph, source.paletteKey, tenantId, 'The source workflow graph is not valid.');
 
     const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
       // The collision check IS the version mint, read from the TX client. `create` would have
@@ -868,10 +950,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       });
     }
 
-    const report = await this.validateGraph(graph, bundle.payload.paletteKey, tenantId);
-    if (reportIsShapeBroken(report)) {
-      throw new BadRequestException({ message: 'The imported workflow graph is not valid.', findings: report.findings });
-    }
+    const report = await this.validatedDraftReport(graph, bundle.payload.paletteKey, tenantId, 'The imported workflow graph is not valid.');
 
     const saved = await this.databaseService.baseClient.$transaction(async (tx) => {
       // The collision check IS the version mint, read from the TX client — `clone`'s reasoning
@@ -1456,10 +1535,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     if (rawGraph !== undefined) {
       const graph = this.parseGraphOrThrow(rawGraph);
-      const report = await this.validateGraph(graph, entity.paletteKey, entity.tenantId);
-      if (reportIsShapeBroken(report)) {
-        throw new BadRequestException({ message: 'The workflow graph is not valid.', findings: report.findings });
-      }
+      // TASK-1036 — Save records the publish gate like `create` does, so the Studio's Publish
+      // button reflects the stored report instead of an incomplete one.
+      const report = await this.validatedDraftReport(graph, entity.paletteKey, entity.tenantId, 'The workflow graph is not valid.');
       // Engine gate only — the compiled artifact is discarded and a graph edit resets the row to
       // DRAFT, so there is nothing here for a context-schema pin to be stamped onto.
       this.compileGraphOrThrow(entity, graph, null);
@@ -1473,6 +1551,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     }
 
     await this.updateEntity(entity, editableChanges);
+
+    // TASK-1036 (R18) — ANY edit sends the row back to DRAFT, not only a graph edit: a VALIDATED
+    // row renamed or re-described is no longer the row that was validated. Guarded on
+    // `hasChanges` so an empty patch stays the 400 below and writes nothing.
+    if (entity.hasChanges && entity.status !== WorkflowDefinitionStatus.DRAFT) {
+      entity.status = WorkflowDefinitionStatus.DRAFT;
+    }
 
     // OCC precondition BEFORE the no-changes short-circuit: a stale client must
     // get 412 ("you are stale, refetch"), not 400/200, even when the payload
@@ -1588,10 +1673,16 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       );
     }
 
-    const demoted = await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id);
-    entity.isActive = true;
-    entity.updatedBy = this.requestUserId ?? undefined;
-    const updated = await this.workflowDefinitionRepository.update(entity.id, entity);
+    // TASK-1036 (R18) — demote + set in ONE transaction. Two separate writes left a window with
+    // zero (or, on a failed second write, no) active version while assignments kept resolving
+    // the slug. The repository caches its database context at construction, so `tx` is passed.
+    const { demoted, updated } = await this.databaseService.baseClient.$transaction(async (tx) => {
+      const previous = await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id, tx);
+      entity.isActive = true;
+      entity.updatedBy = this.requestUserId ?? undefined;
+      const saved = await this.workflowDefinitionRepository.update(entity.id, entity, tx);
+      return { demoted: previous, updated: saved };
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
@@ -2486,6 +2577,29 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         followsLatest: authoredTriggerFollowsLatest(graph),
       },
     };
+  }
+
+  /**
+   * The report a DRAFT write stores: the rule catalogue's verdict with the publish gate's
+   * findings merged in, recorded and NEVER refusing. Refuses (400) only a shape-broken graph.
+   *
+   * ONE helper for `create`, `createDraft`, `clone`, `importDefinition` and `update`, because they
+   * used to disagree — `clone`, `import` and `update` stored the catalogue's verdict alone, so a
+   * row the next `validate()` would flag was written with `ok: true` and the Studio's Publish
+   * button lied (TASK-1036 R18, extending TASK-890's fix for `create`).
+   */
+  private async validatedDraftReport(
+    graph: WorkflowGraph,
+    paletteKey: string,
+    tenantId: string,
+    invalidMessage: string,
+  ): Promise<WorkflowValidationReport> {
+    const baseReport = await this.validateGraph(graph, paletteKey, tenantId);
+    if (reportIsShapeBroken(baseReport)) {
+      throw new BadRequestException({ message: invalidMessage, findings: baseReport.findings });
+    }
+    const triggerContextSchema = await this.resolveTriggerContextSchema(graph);
+    return this.mergePublishGate(baseReport, await this.graphPublishFindings(graph, tenantId, triggerContextSchema));
   }
 
   /**

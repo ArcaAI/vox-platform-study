@@ -154,6 +154,9 @@ describe('WorkflowDefinitionService', () => {
   describe('create', () => {
     it('mints versionNumber = max + 1 inside the transaction, creates via the factory, and broadcasts ResourceCreated', async () => {
       mockWorkflowDefinitionRepository.findMaxVersionNumber.mockResolvedValue(2);
+      // TASK-1036 — a new version of an existing slug must be branched from one (parentVersionId);
+      // a bare create on a taken slug is now 409 WORKFLOW_SLUG_TAKEN.
+      mockWorkflowDefinitionRepository.findById.mockResolvedValue(createMockEntity({ id: 'parent-1', versionNumber: 2 }));
       const saved = createMockEntity({ versionNumber: 3 });
       mockWorkflowDefinitionRepository.create.mockResolvedValue(saved);
 
@@ -162,6 +165,7 @@ describe('WorkflowDefinitionService', () => {
         name: 'Discharge Summary',
         paletteKey: 'core',
         graph: VALID_GRAPH,
+        parentVersionId: 'parent-1',
       });
 
       expect(mockWorkflowDefinitionRepository.findMaxVersionNumber).toHaveBeenCalledWith('tenant-1', 'discharge_summary', {});
