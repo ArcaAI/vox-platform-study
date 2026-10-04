@@ -19,6 +19,7 @@ import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
 import { seedConsultationNoteContextSchema } from './07e-consultation-note-context-schema';
+import { seedDefaultIoContextSchema } from './07h-default-io-context-schema';
 import { seedArcaaiTwoContextSchemas } from './07g-arcaai-two-schemas';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
@@ -215,6 +216,10 @@ export const seed = async () => {
     // DEFAULT (what makes `LoopConfigService` resolve `enabled: true` on a fresh install). ArcaAI
     // receives it through phase 26. CREATE-ONLY.
     await seedConsultationNoteContextSchema(client);
+    console.log('');
+    // TASK-1036 — the platform default I/O schema `default_io` (message + documents + images in,
+    // text out), same authoring/promotion shape, NOT a tenant default. Phase 26 clones it. CREATE-ONLY.
+    await seedDefaultIoContextSchema(client);
     console.log('');
 
     // Phase 4: Depends on Phase 3
