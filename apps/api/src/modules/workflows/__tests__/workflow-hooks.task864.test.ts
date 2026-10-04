@@ -8,6 +8,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { Reflector } from '@nestjs/core';
 import { SKIP_AUTH_KEY, terminalStatusOf } from '@arcaai/applications';
 import { WorkflowHooksController } from '../workflow-hooks.controller';
+import { RunEventStreamHub } from '../run-event-stream-hub';
 import { WorkflowRunCompletionService } from '../workflow-run-completion.service';
 import { WorkflowsController } from '../workflows.controller';
 
@@ -69,7 +70,9 @@ describe('WorkflowRunCompletionService', () => {
   it('does not attach a watcher when no push transport is configured, and never throws', () => {
     const runs = { recordRunFinished: vi.fn() };
     const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
-    const service = new WorkflowRunCompletionService(runs as never, cls as never, { isRedisConfigured: () => false } as never);
+    // TASK-1038: the push transport is the shared hub; an unconfigured one reports unavailable.
+    const hub = new RunEventStreamHub({ isRedisConfigured: () => false } as never);
+    const service = new WorkflowRunCompletionService(runs as never, cls as never, hub);
     expect(service.watch('tenant-1', 'run-1')).toBe(false);
     expect(service.activeWatchers).toBe(0);
   });
