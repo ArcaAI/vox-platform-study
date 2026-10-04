@@ -111,6 +111,18 @@ import { collectGenerationBindings, type NodeGenerationBindingRef } from './node
 import { agentGraphFindings, agentNodesNeedingFacts, agentSlugOf, type GraphAgentFacts } from './agent-graph-findings';
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import {
+  agentNodeRefs,
+  agentPinUnresolvedFinding,
+  agentPromptPins,
+  documentPinFindings,
+  pinAgentNodes,
+  pinPromptBindings,
+  unpinnedPromptTemplateIds,
+  type ResolvedAgentPin,
+} from './publish-pins';
+import { WORKFLOWS_EMIT_DATA_CONTRACT_KEY } from '../settings-registry/descriptors/workflow-definitions.descriptors';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import {
   collectPortableReferences,
   collectRowReferences,
   referenceMapKey,
@@ -378,6 +390,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // the same reason as every dependency above (positional unit fixtures); absent ⇒ the summary
     // reports no assignment, which the console renders as the "Unassigned" warning.
     @Optional() private readonly workflowAssignmentRepository?: WorkflowAssignmentRepository,
+    // TASK-1036 lane B3b — the platform setting `workflows.emitDataContract`, which turns on the
+    // compiler's data contract. TRAILING and @Optional() like everything above; absent ⇒ OFF, the
+    // byte-identical pre-contract artifact.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -1812,9 +1828,24 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       });
     }
 
+    // TASK-1036 W3 (§8.5) — freeze the agent and prompt versions this publish runs. Resolved
+    // AFTER every gate (a refused publish reads nothing more) and BEFORE compile, onto a COPY of
+    // the graph: the authored `graph` is stored as saved, the compiled artifact carries the pins.
+    const pins = await this.resolvePublishPins(graph, entity.tenantId);
+    if (pins.findings.length > 0) {
+      throw new BadRequestException({ message: 'The workflow references agent versions that cannot be pinned.', findings: pins.findings });
+    }
+
     // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
     // records WHICH schema version it was built against instead of a hardcoded null.
-    const compiled = this.compileGraphOrThrow(entity, graph, await this.resolveContextSchemaVersionId(), triggerContextSchema, agents);
+    const compiled = this.compileGraphOrThrow(
+      entity,
+      pins.graph,
+      await this.resolveContextSchemaVersionId(),
+      triggerContextSchema,
+      agents,
+      pins.agentPromptRefs,
+    );
 
     // The binding, stamped onto COLUMNS from the SAME resolution the compiler just froze into
     // `compiledConfig`. It is not a second resolution — `triggerContextSchema` is the one above —
@@ -1843,14 +1874,22 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     entity.updatedBy = this.requestUserId ?? undefined;
 
     const activate = dto.activate ?? true;
-    if (activate) {
-      entity.isActive = true;
-      await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id, tx);
-    }
 
     // Publish is not a CAS (`consultation-context-schema.service.ts`'s discipline) — an
     // unrelated concurrent metadata edit must not 412 the publish().
-    const updated = await this.workflowDefinitionRepository.update(entity.id, entity, tx);
+    //
+    // TASK-1036 (R18) — with `activate`, the demote and the publish write are ONE transaction:
+    // two writes left a window with zero active versions (or two, on a failed second write) while
+    // assignments kept resolving the slug. A caller that already holds a transaction (the
+    // promotion path) is reused rather than nested.
+    const write = async (client?: CorePrisma.TransactionClient): Promise<WorkflowDefinitionEntity> => {
+      if (activate) {
+        entity.isActive = true;
+        await this.demoteExistingActive(entity.tenantId, entity.slug, entity.id, client);
+      }
+      return this.workflowDefinitionRepository.update(entity.id, entity, client);
+    };
+    const updated = tx !== undefined || !activate ? await write(tx) : await this.databaseService.baseClient.$transaction((inner) => write(inner));
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: entity.id,
@@ -2348,7 +2387,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     });
     // TASK-1002 (OD-2, OD-5) — the rules that need each `core.agent` node's TASK and output
     // schema: one speech-to-text agent per graph, and a `core.output` fed the fields it requires.
-    return [...contractFindings, ...agentGraphFindings(graph, await this.graphAgentFacts(graph, tenantId))];
+    return [
+      ...contractFindings,
+      ...agentGraphFindings(graph, await this.graphAgentFacts(graph, tenantId)),
+      // TASK-1036 W3 — a node-level document pin is a deprecated override (WARNING, never blocks).
+      ...documentPinFindings(graph),
+    ];
   }
 
   /**
@@ -2696,10 +2740,16 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     contextSchemaVersionId: string | null,
     triggerContextSchema?: TriggerContextSchemaResolution,
     agentViews?: Record<string, PublishAgentView>,
+    agentPromptRefs: ReadonlyArray<{ nodeId: string; templateId: string; versionNumber: number }> = [],
   ): CompilerContext {
-    const promptTemplateRefs = collectPromptBindings(graph)
-      .filter((binding) => binding.pinnedVersionNumber !== null)
-      .map((binding) => ({ nodeId: binding.nodeId, templateId: binding.promptTemplateId, versionNumber: binding.pinnedVersionNumber as number }));
+    // TASK-1036 W3 — the workflow's own bindings, then the prompt each PINNED agent version runs
+    // (resolved at publish, in authored node order), so the artifact names every prompt it runs.
+    const promptTemplateRefs = [
+      ...collectPromptBindings(graph)
+        .filter((binding) => binding.pinnedVersionNumber !== null)
+        .map((binding) => ({ nodeId: binding.nodeId, templateId: binding.promptTemplateId, versionNumber: binding.pinnedVersionNumber as number })),
+      ...agentPromptRefs,
+    ];
 
     // SORTED by nodeId, unlike `promptTemplateRefs` above, which predates this and follows
     // authoring order. `compiledConfig` is checksummed over its canonical JSON (array order
@@ -2749,8 +2799,90 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
       // The Input shape's raw definition has no compiler slot: the compiler freezes the DERIVED
       // payload (`triggerContextSchema` above), and the definition feeds only the publish gate.
       ...(agentViews === undefined ? {} : { agents: agentIOResolverOf(agentViews) }),
+      // TASK-1036 lane B3b — the data contract (bindings, declared consultation reads, settings),
+      // behind the platform release switch until the interpreter mirrors the shape (lane B1).
+      emitDataContract: this.emitDataContract(),
       nodeInfo: registryNodeInfo,
     };
+  }
+
+  /**
+   * `workflows.emitDataContract` (platform tier, default OFF). A settings plane that is unwired or
+   * cannot answer means OFF: the pre-contract artifact is the one every interpreter can run.
+   */
+  private emitDataContract(): boolean {
+    if (!this.tenantSettings) return false;
+    try {
+      return this.tenantSettings.resolvePlatform<boolean>(WORKFLOWS_EMIT_DATA_CONTRACT_KEY).value === true;
+    } catch (error) {
+      this.logger.warn({
+        message: 'workflows.emitDataContract could not be read; compiling without the data contract',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  /**
+   * TASK-1036 W3 (§8.5) — the agent and prompt versions a publish freezes, applied to a COPY of
+   * the graph (see `publish-pins.ts`).
+   *
+   *  - Every `core.agent` node: an authored `versionNumber` is read BY VERSION (it must still be a
+   *    published version of this tenant); an absent one is the ACTIVE version now. Either way the
+   *    version's own prompt pin rides along as `agentPromptRefs`. A node that resolves to nothing
+   *    is a blocking `AGENT_PIN_UNRESOLVED` finding — publishing a workflow whose step cannot name
+   *    the version it runs would defeat the pin.
+   *  - Every UNPINNED workflow-level `promptTemplateId` is frozen to the template's APPROVED
+   *    version; a template never approved (or unreadable) stays unpinned rather than invented.
+   *
+   * Without the repositories (unit fixtures) nothing is resolved and the graph compiles as authored,
+   * which is the pre-W3 behaviour. A lookup FAILURE (not a miss) propagates: a publish must not
+   * silently freeze less than it claims.
+   */
+  private async resolvePublishPins(
+    graph: WorkflowGraph,
+    tenantId: string,
+  ): Promise<{ graph: WorkflowGraph; agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>; findings: WorkflowFinding[] }> {
+    let pinned = graph;
+    const findings: WorkflowFinding[] = [];
+    const agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }> = [];
+
+    if (this.agentRepository) {
+      const agentPins = new Map<string, ResolvedAgentPin>();
+      for (const ref of agentNodeRefs(graph)) {
+        const agent = await (
+          ref.versionNumber === null
+            ? this.agentRepository.findPublishedActiveBySlug(tenantId, ref.slug)
+            : this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, ref.slug, ref.versionNumber)
+        ).catch((error: unknown) => {
+          if (isNotFoundError(error)) return null;
+          throw error;
+        });
+        if (!agent) {
+          findings.push(agentPinUnresolvedFinding(ref));
+          continue;
+        }
+        const promptRefs = agentPromptPins(agent.instruction, agent.compiledConfig);
+        agentPins.set(ref.nodeId, { versionNumber: agent.versionNumber, promptRefs });
+        for (const prompt of promptRefs) agentPromptRefs.push({ nodeId: ref.nodeId, ...prompt });
+      }
+      pinned = pinAgentNodes(pinned, agentPins);
+    }
+
+    if (this.promptTemplateRepository) {
+      const approved = new Map<string, number>();
+      for (const templateId of unpinnedPromptTemplateIds(pinned)) {
+        const template = await this.promptTemplateRepository.findById(templateId).catch((error: unknown) => {
+          if (isNotFoundError(error)) return null;
+          throw error;
+        });
+        const version = template?.approvedVersionNumber;
+        if (typeof version === 'number' && Number.isInteger(version) && version >= 1) approved.set(templateId, version);
+      }
+      pinned = pinPromptBindings(pinned, approved).graph;
+    }
+
+    return { graph: pinned, agentPromptRefs, findings };
   }
 
   /** The engine gate: throws (400) if `compile()` cannot turn `graph` into a `CompiledWorkflowConfig`
@@ -2761,8 +2893,9 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     contextSchemaVersionId: string | null,
     triggerContextSchema?: TriggerContextSchemaResolution,
     agentViews?: Record<string, PublishAgentView>,
+    agentPromptRefs: ReadonlyArray<{ nodeId: string; templateId: string; versionNumber: number }> = [],
   ): CompiledWorkflowConfig {
-    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema, agentViews));
+    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema, agentViews, agentPromptRefs));
     if ('findings' in result) {
       throw new BadRequestException({ message: 'The workflow graph could not be compiled.', findings: result.findings satisfies WorkflowFinding[] });
     }

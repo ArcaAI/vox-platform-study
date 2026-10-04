@@ -10,3 +10,4 @@ export * from './node-prompt-binding';
 // TASK-889 — the portable-bundle envelope is the SHARED one (`@arcaai/workflow-contract`);
 // what stays here is the pure row-id <-> portable-key rewrite import/export is built on.
 export * from './portable-graph';
+export * from './publish-pins';
