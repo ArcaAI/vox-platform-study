@@ -15,10 +15,14 @@ const TENANT = '10000000-0000-0000-0000-000000000001';
 const SESSION = 'stt-session-1';
 const CONSULTATION = 'consultation-1';
 
-function build(options: { consultationId?: string | null; sandboxRuns?: string[]; governing?: Record<string, unknown> | null; tenantId?: string } = {}) {
+function build(
+  options: { consultationId?: string | null; sandboxRuns?: string[]; governing?: Record<string, unknown> | null; tenantId?: string } = {},
+) {
   const hub = { available: vi.fn(() => true), append: vi.fn().mockResolvedValue({ seq: 1, streamId: '1-0', duplicate: false }) };
   const jobs = {
-    findAll: vi.fn().mockResolvedValue(options.consultationId === null ? [] : [{ tenantId: TENANT, consultationId: options.consultationId ?? CONSULTATION }]),
+    findAll: vi
+      .fn()
+      .mockResolvedValue(options.consultationId === null ? [] : [{ tenantId: TENANT, consultationId: options.consultationId ?? CONSULTATION }]),
   };
   const consultations = {
     findByIdOrNull: vi.fn().mockResolvedValue({
@@ -39,7 +43,15 @@ beforeEach(() => vi.clearAllMocks());
 describe('SttRunTranscriptMirror', () => {
   it('appends a partial and a final to the running sandbox run, with no nodeId, in arrival order', async () => {
     const { mirror, hub, runs } = build({ sandboxRuns: ['run-s'] });
-    mirror.mirror(TENANT, SESSION, { type: 'transcript', isFinal: false, text: 'chest pa', utteranceIndex: 0, stableChars: 5, startTime: 0, endTime: 1 });
+    mirror.mirror(TENANT, SESSION, {
+      type: 'transcript',
+      isFinal: false,
+      text: 'chest pa',
+      utteranceIndex: 0,
+      stableChars: 5,
+      startTime: 0,
+      endTime: 1,
+    });
     mirror.mirror(TENANT, SESSION, {
       type: 'transcript',
       isFinal: true,
@@ -73,7 +85,9 @@ describe('SttRunTranscriptMirror', () => {
   });
 
   it('appends to the consultation`s governed run while it is running', async () => {
-    const { mirror, hub } = build({ governing: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-g', workflowDefinitionSlug: 'flow' } } });
+    const { mirror, hub } = build({
+      governing: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-g', workflowDefinitionSlug: 'flow' } },
+    });
     mirror.mirror(TENANT, SESSION, { type: 'transcript', isFinal: true, text: 'hello', startTime: 0, endTime: 1 });
     await mirror.idle(SESSION);
     expect(appended(hub).map((e) => e.runId)).toEqual(['run-g']);
@@ -161,7 +175,9 @@ describe('SttWsGateway hands every relayed frame to the mirror', () => {
     };
     const tickets = {
       issueTicket: vi.fn(),
-      consumeTicket: vi.fn().mockResolvedValue({ userId: 'user-1', tenantId: TENANT, scope: `stt_session:${SESSION}`, exp: Date.now() + 30_000, impersonatedBy: null }),
+      consumeTicket: vi
+        .fn()
+        .mockResolvedValue({ userId: 'user-1', tenantId: TENANT, scope: `stt_session:${SESSION}`, exp: Date.now() + 30_000, impersonatedBy: null }),
     };
     const mirror = { mirror: vi.fn(), forget: vi.fn() };
     const gateway = new SttWsGateway(

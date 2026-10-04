@@ -18,7 +18,13 @@ const config = { getConfigValue: vi.fn((key: string) => (key === 'WORKFLOW_EXPOS
 
 const STAGES = [
   { stage_index: 0, nodes: [{ node_id: 'a', node_type: 'core.trigger', status: 'COMPLETED' }] },
-  { stage_index: 1, nodes: [{ node_id: 'b', node_type: 'core.agent', status: 'DEGRADED' }, { node_id: 'c', node_type: 'core.agent', status: 'SKIPPED' }] },
+  {
+    stage_index: 1,
+    nodes: [
+      { node_id: 'b', node_type: 'core.agent', status: 'DEGRADED' },
+      { node_id: 'c', node_type: 'core.agent', status: 'SKIPPED' },
+    ],
+  },
 ];
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -49,7 +55,13 @@ beforeEach(() => {
 describe('getRunStatus — counts from the harness stages when the row has none', () => {
   it('persists and returns them, so `degraded` is true for a DEGRADED run', async () => {
     runs.getRun.mockResolvedValue(row());
-    harness.getWorkflowRun.mockResolvedValue({ runId: 'run-1', status: 'DEGRADED', stages: STAGES, startedAt: null, endedAt: '2026-10-04T10:00:00.000Z' });
+    harness.getWorkflowRun.mockResolvedValue({
+      runId: 'run-1',
+      status: 'DEGRADED',
+      stages: STAGES,
+      startedAt: null,
+      endedAt: '2026-10-04T10:00:00.000Z',
+    });
 
     const status = await service().getRunStatus('triage', 'run-1');
 

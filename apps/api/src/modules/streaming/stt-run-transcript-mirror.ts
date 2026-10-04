@@ -75,15 +75,25 @@ export class SttRunTranscriptMirror {
       }
       const runIds = tracked.runIds;
       const ts = new Date(now).toISOString();
-      tracked.chain = tracked.chain.then(async () => {
-        for (const runId of await runIds) {
-          await this.hub?.append({ runId, ts, ...event } as RunAppendInput);
-        }
-      }).catch((error: unknown) => {
-        this.logger.debug({ message: 'live transcript could not be mirrored to its run', sttSessionId, error: error instanceof Error ? error.message : String(error) });
-      });
+      tracked.chain = tracked.chain
+        .then(async () => {
+          for (const runId of await runIds) {
+            await this.hub?.append({ runId, ts, ...event } as RunAppendInput);
+          }
+        })
+        .catch((error: unknown) => {
+          this.logger.debug({
+            message: 'live transcript could not be mirrored to its run',
+            sttSessionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
     } catch (error) {
-      this.logger.debug({ message: 'live transcript mirror refused a frame', sttSessionId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.debug({
+        message: 'live transcript mirror refused a frame',
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -131,7 +141,11 @@ export class SttRunTranscriptMirror {
       }
       return runIds;
     } catch (error) {
-      this.logger.debug({ message: 'live transcript run resolution failed', sttSessionId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.debug({
+        message: 'live transcript run resolution failed',
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return [];
     }
   }

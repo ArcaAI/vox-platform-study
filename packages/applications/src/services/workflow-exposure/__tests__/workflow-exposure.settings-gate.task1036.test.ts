@@ -42,7 +42,15 @@ function definition(over: Record<string, unknown>) {
 }
 
 function service(): WorkflowExposureService {
-  return new WorkflowExposureService(definitions as never, harness as never, runs as never, config as never, eventEmitter as never, cls as never, s3 as never);
+  return new WorkflowExposureService(
+    definitions as never,
+    harness as never,
+    runs as never,
+    config as never,
+    eventEmitter as never,
+    cls as never,
+    s3 as never,
+  );
 }
 
 const refusals = () => eventEmitter.emit.mock.calls.map((call) => (call[1] as { data?: { action?: string } })?.data?.action).filter(Boolean);
@@ -58,7 +66,9 @@ const legacyClosed = { kinds: ['consultation'], protocols: ['http'] };
 
 describe('settings frozen at publish (compiledConfig.settings) gate the entry', () => {
   it('admits an api invoke the legacy trigger kinds would refuse', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: graph(legacyClosed), compiledConfig: compiled({ connections: ['api'], sources: [] }) }));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      definition({ graph: graph(legacyClosed), compiledConfig: compiled({ connections: ['api'], sources: [] }) }),
+    );
     const result = await service().invoke('triage', { input: {} }, {});
     expect(result.runId).toBeDefined();
     expect(harness.startWorkflowRun).toHaveBeenCalled();
@@ -94,7 +104,9 @@ describe('settings frozen at publish (compiledConfig.settings) gate the entry', 
   });
 
   it('mode=stream with `sse`, and mode=blocking with `api`, both start — whatever the legacy protocols say', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: graph(legacyClosed), compiledConfig: compiled({ connections: ['api', 'sse'], sources: [] }) }));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      definition({ graph: graph(legacyClosed), compiledConfig: compiled({ connections: ['api', 'sse'], sources: [] }) }),
+    );
     await service().invoke('triage', { input: {} }, { mode: 'stream' });
     expect(harness.startWorkflowRun).toHaveBeenCalledTimes(1);
   });
@@ -112,7 +124,9 @@ describe('settings frozen at publish (compiledConfig.settings) gate the entry', 
 
 describe('the graph`s own settings (a version published before the data contract)', () => {
   it('gate the entry when the compiled artifact carries none', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: graph(legacyClosed, { connections: ['api'], sources: [] }), compiledConfig: compiled() }));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      definition({ graph: graph(legacyClosed, { connections: ['api'], sources: [] }), compiledConfig: compiled() }),
+    );
     await service().invoke('triage', { input: {} }, {});
     expect(harness.startWorkflowRun).toHaveBeenCalledTimes(1);
   });
@@ -120,13 +134,17 @@ describe('the graph`s own settings (a version published before the data contract
 
 describe('legacy fallback (D-4, one release) keeps its error codes', () => {
   it('a kind the trigger does not declare is still the 404 audited as invokeRefusedByTriggerKind', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: graph({ kinds: ['consultation'], protocols: ['http'] }), compiledConfig: compiled() }));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      definition({ graph: graph({ kinds: ['consultation'], protocols: ['http'] }), compiledConfig: compiled() }),
+    );
     await expect(service().invoke('triage', { input: {} }, {})).rejects.toBeInstanceOf(NotFoundException);
     expect(refusals()).toContain('invokeRefusedByTriggerKind');
   });
 
   it('a mode the output does not publish is still the 400 naming the declared protocols', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(definition({ graph: graph({ kinds: ['api'], protocols: ['http'] }), compiledConfig: compiled() }));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      definition({ graph: graph({ kinds: ['api'], protocols: ['http'] }), compiledConfig: compiled() }),
+    );
     const error = await service()
       .invoke('triage', { input: {} }, { mode: 'stream' })
       .catch((e: unknown) => e);

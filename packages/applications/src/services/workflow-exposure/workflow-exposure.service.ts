@@ -980,7 +980,12 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     return run;
   }
 
-  private async syncTerminalStatus(tenantId: string, run: WorkflowRunResponse, upstream: GetWorkflowRunResult, counts?: SettledNodeCounts): Promise<void> {
+  private async syncTerminalStatus(
+    tenantId: string,
+    run: WorkflowRunResponse,
+    upstream: GetWorkflowRunResult,
+    counts?: SettledNodeCounts,
+  ): Promise<void> {
     // TASK-982 — fold FIRST, then check membership: `upstream.status` is the interpreter's raw
     // vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…), not the read model's, so comparing it directly
     // against `TERMINAL_RUN_STATUSES` missed every SUCCEEDED/DEGRADED/CANCELLED run.

@@ -42,7 +42,12 @@ import {
 import { collectPromptBindings } from '../../applications/src/services/workflow-definition/node-prompt-binding';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../src/prisma/db_main/seed/00-constants';
 import { NOTE_CONTEXT_SCHEMA_DEFINITION, payloadSchemaFromDefinition } from '../src/prisma/db_main/seed/07e-consultation-note-context-schema';
-import { GLOBAL_AGENT_SPECS, GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS, PLATFORM_AGENT_SPECS, type SeedAgentSpec } from '../src/prisma/db_main/seed/25-agents';
+import {
+  GLOBAL_AGENT_SPECS,
+  GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS,
+  PLATFORM_AGENT_SPECS,
+  type SeedAgentSpec,
+} from '../src/prisma/db_main/seed/25-agents';
 import { COMPILED_AT, CORE_PALETTE_KEY, WORKFLOW_LIBRARY_TARGETS, type WorkflowSeedTarget } from '../src/prisma/db_main/seed/28-workflow-library';
 import {
   ARCAAI_AGENT_SPECS,
@@ -124,12 +129,16 @@ function publishPinsFor(
   for (const ref of agentNodeRefs(target.graph as never)) {
     const found = seededAgentFor(pinTenantId, ref.slug);
     if (!found || (ref.versionNumber !== null && ref.versionNumber !== SEEDED_AGENT_VERSION)) {
-      problems.push(`pin: step \`${ref.nodeId}\` names agent \`${ref.slug}\`${ref.versionNumber === null ? '' : ` v${ref.versionNumber}`}, which tenant ${pinTenantId} does not seed`);
+      problems.push(
+        `pin: step \`${ref.nodeId}\` names agent \`${ref.slug}\`${ref.versionNumber === null ? '' : ` v${ref.versionNumber}`}, which tenant ${pinTenantId} does not seed`,
+      );
       continue;
     }
     const promptRefs = agentPromptPins(found.spec.instruction, null);
     if (found.cloned && promptRefs.length > 0) {
-      problems.push(`pin: step \`${ref.nodeId}\` runs the cloned \`${ref.slug}\`, whose prompt pins name the tenant's template clones — not derivable here`);
+      problems.push(
+        `pin: step \`${ref.nodeId}\` runs the cloned \`${ref.slug}\`, whose prompt pins name the tenant's template clones — not derivable here`,
+      );
       continue;
     }
     agents[ref.slug] = { task: found.spec.task, outputSchema: found.spec.outputSchema };

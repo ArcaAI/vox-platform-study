@@ -66,11 +66,23 @@ describe('the idle harness re-check (a lost terminal event) still records the co
     server.appendV2(ev({ type: 'node.started', nodeId: 'a', data: { kind: 'k' } }));
     server.appendV2(ev({ type: 'node.completed', nodeId: 'a', data: { status: 'COMPLETED', durationMs: 1 } }));
     server.appendV2(ev({ type: 'node.started', nodeId: 'b', data: { kind: 'k' } }));
-    server.appendV2(ev({ type: 'node.failed', nodeId: 'b', data: { durationMs: 1, error: { code: 'MODEL_ERROR', message: 'The model returned an error.' }, willRetry: true } }));
+    server.appendV2(
+      ev({
+        type: 'node.failed',
+        nodeId: 'b',
+        data: { durationMs: 1, error: { code: 'MODEL_ERROR', message: 'The model returned an error.' }, willRetry: true },
+      }),
+    );
     server.appendV2(ev({ type: 'node.started', nodeId: 'b', data: { kind: 'k', attempt: 2 } }));
     server.appendV2(ev({ type: 'node.completed', nodeId: 'b', data: { status: 'DEGRADED', durationMs: 1 } }));
     server.appendV2(ev({ type: 'node.started', nodeId: 'c', data: { kind: 'k' } }));
-    server.appendV2(ev({ type: 'node.failed', nodeId: 'c', data: { durationMs: 1, error: { code: 'MODEL_ERROR', message: 'The model returned an error.' }, willRetry: false } }));
+    server.appendV2(
+      ev({
+        type: 'node.failed',
+        nodeId: 'c',
+        data: { durationMs: 1, error: { code: 'MODEL_ERROR', message: 'The model returned an error.' }, willRetry: false },
+      }),
+    );
     // No `run.completed` — it was lost. The harness has the authoritative terminal status.
     const { service, hub, runs } = build(server, { status: 'DEGRADED', stages: [] });
     service.watch(TENANT, RUN_ID);
