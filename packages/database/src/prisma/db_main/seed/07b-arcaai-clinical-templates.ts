@@ -679,12 +679,12 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
  * ## What editing this row does — and does NOT do
  *
  * Every ArcaAI summary agent references this row as an unconditional `instruction.fragments[]`
- * POINTER (TASK-947), never an inlined copy, and WITHOUT a version pin. But PUBLISH FREEZES THE
- * TEXT: `AgentService` compiles each resolved fragment into `compiledConfig.resolvedPrompt`, and
- * the live lane serves that frozen copy. So approving a new version of this template changes NO
- * note on its own. What the unpinned pointer buys is that each agent's NEXT publish picks up the
- * newest APPROVED policy version without anyone editing its instruction — but every one of the 22
- * agents must still be branched and republished (per tenant, TASK-994) before its notes change.
+ * POINTER (TASK-947), never an inlined copy, PINNED to the version this seed creates (TASK-1036
+ * W3 — a published agent pins every library prompt it binds). PUBLISH FREEZES THE TEXT:
+ * `AgentService` compiles each resolved fragment into `compiledConfig.resolvedPrompt`, and the
+ * live lane serves that frozen copy. So approving a new version of this template changes NO note
+ * on its own: every one of the 22 agents must be branched, re-pointed at the new version and
+ * republished (per tenant, TASK-994) before its notes change.
  *
  * The lever that takes effect at RUNTIME, with no republish, is the platform-default setting — and
  * it only governs agents whose policy fragment is NOT selected.
@@ -716,6 +716,12 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap(
  * pins that the runtime's own default step carries the same two clauses.
  */
 export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0001-000000000033';
+
+/**
+ * The ONE version number the seed creates for the policy row, its `PromptVersion` snapshot and —
+ * since TASK-1036 W3 — the pin every agent fragment binding it carries.
+ */
+export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER = 1;
 
 /**
  * The fragment key every summary agent references this row under — the PLATFORM-RESERVED
@@ -755,8 +761,8 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE = {
   status: 'APPROVED' as PromptTemplateStatus,
   scope: 'TENANT_DEFAULT' as PromptTemplateScope,
   variables: null as Prisma.InputJsonValue | null,
-  currentVersionNumber: 1,
-  approvedVersionNumber: 1,
+  currentVersionNumber: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
+  approvedVersionNumber: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   departmentId: null as string | null,
   // NOT tagged `pre-summary`: `findTenantPreSummaryTemplateId` matches a TENANT_DEFAULT row by
   // that tag alone, and a second match would make which pre-summary serves an ordering accident.
@@ -768,7 +774,7 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION = {
   id: versionId(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, 1),
   tenantId: ARCAAI_TENANT_ID,
   promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
-  versionNumber: 1,
+  versionNumber: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   content: ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
   changeReason: 'Initial version — the output-language policy retired out of `operatingFrame()` into tenant-editable content (TASK-1001).',
   changedBy: SYSTEM_USER_ID,
@@ -777,10 +783,11 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION = {
 /**
  * The fragment an agent attaches to reference this row.
  *
- * NO `promptVersionNumber`: a pin would hold every agent at today's body even across a republish.
- * Unpinned, publish resolves the template's own `approvedVersionNumber`, so the next publish of each
- * agent picks up whatever version an admin last approved without anyone editing 22 instructions.
- * It is still a REPUBLISH that delivers it — publish freezes the text (see the block comment above).
+ * PINNED (TASK-1036 W3): a published agent freezes every library prompt it binds and the publish
+ * gate refuses an unpinned one (`PROMPT_VERSION_UNPINNED`). The pin is the version this seed creates
+ * for the row ({@link ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER}), so it is still ONE shared row
+ * the admin edits; a new approved version reaches a note when each agent is republished against it
+ * (publish freezes the text — see the block comment above).
  *
  * NO `when`: this is the UNCONDITIONAL policy. A conditional translate-to-X sibling is
  * deliberately NOT seeded — see the note in `29-arcaai-agents-and-workflows.ts`.
@@ -788,6 +795,7 @@ export const ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION = {
 export const arcaaiOutputLanguagePolicyFragment = () => ({
   key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
   promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  promptVersionNumber: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
 });
 
 /**
@@ -814,11 +822,14 @@ export const arcaaiOutputLanguagePolicyFragment = () => ({
  * note(s):." while the fragment was selected. `trigger.context.*` resolves on both lanes: realtime
  * publishes the kind there, and the durable interpreter nests the handoff context under it too.
  *
- * Like the language policy it is a POINTER to one shared row with no version pin, and it stays OUT
+ * Like the language policy it is a POINTER to one shared row (pinned, W3), and it stays OUT
  * of the clinical corpus (22 + 1 rows, v1/v2/v3 each). The `arcaai-same-day-return` slug is a TAG:
  * a fragment key may not contain a hyphen (`^[a-z0-9_]{2,48}$`), so the key is `same_day_return`.
  */
 export const ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID = '71000000-0000-0000-0001-000000000034';
+
+/** The ONE version number the seed creates for the row and its snapshot — and the pin on every fragment that binds it (TASK-1036 W3). */
+export const ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER = 1;
 
 /** The fragment key — `^[a-z0-9_]{2,48}$` (TASK-947). */
 export const ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY = 'same_day_return';
@@ -845,8 +856,8 @@ export const ARCAAI_SAME_DAY_RETURN_TEMPLATE = {
   status: 'APPROVED' as PromptTemplateStatus,
   scope: 'TENANT_DEFAULT' as PromptTemplateScope,
   variables: null as Prisma.InputJsonValue | null,
-  currentVersionNumber: 1,
-  approvedVersionNumber: 1,
+  currentVersionNumber: ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
+  approvedVersionNumber: ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
   departmentId: null as string | null,
   // NOT tagged `pre-summary` (see the language policy row): that tag is how the tenant pre-summary is found.
   tags: ['arcaai', 'arcaai-same-day-return', 'same-day-return', 'revisit'],
@@ -856,16 +867,17 @@ export const ARCAAI_SAME_DAY_RETURN_VERSION = {
   id: versionId(ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID, 1),
   tenantId: ARCAAI_TENANT_ID,
   promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
-  versionNumber: 1,
+  versionNumber: ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
   content: ARCAAI_SAME_DAY_RETURN_CONTENT,
   changeReason: 'Initial version — same-day return visit instruction for the revisit summary agents (TASK-1020 OD-5a).',
   changedBy: SYSTEM_USER_ID,
 };
 
-/** The fragment a REVISIT agent attaches: a pointer to the shared row, conditional, unpinned. */
+/** The fragment a REVISIT agent attaches: a pointer to the shared row, conditional, pinned (TASK-1036 W3). */
 export const arcaaiSameDayReturnFragment = () => ({
   key: ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
   promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+  promptVersionNumber: ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
   when: ARCAAI_SAME_DAY_RETURN_WHEN,
 });
 

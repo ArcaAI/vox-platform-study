@@ -2,6 +2,7 @@ import type { CorePrismaClient } from '../../../client';
 import { ResourceStatusType } from '../../../generated/core-prisma-client/client.js';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { AUDIO_AI_MODELS } from './ai-models/audio';
+import { withCapabilityMetadata } from './ai-models/capabilities';
 import { LLM_AI_MODELS } from './ai-models/llm';
 import { NLP_AI_MODELS } from './ai-models/nlp';
 import { TTS_AI_MODELS } from './ai-models/tts';
@@ -39,7 +40,7 @@ export { RETIRED_AI_MODEL_SLUGS, shouldRetireAiModelSlug, pipelineYamlReferences
  * 6 text-generation, 6 NLP, 4 TTS. Nothing else; everything the previous
  * catalogue carried beyond this is in `RETIRED_AI_MODEL_SLUGS`.
  */
-export const DEFAULT_AI_MODELS: AiModelSeed[] = [...AUDIO_AI_MODELS, ...LLM_AI_MODELS, ...NLP_AI_MODELS, ...TTS_AI_MODELS];
+export const DEFAULT_AI_MODELS: AiModelSeed[] = withCapabilityMetadata([...AUDIO_AI_MODELS, ...LLM_AI_MODELS, ...NLP_AI_MODELS, ...TTS_AI_MODELS]);
 
 /**
  * Upsert the catalogue. NOT create-only: every registry column the seed

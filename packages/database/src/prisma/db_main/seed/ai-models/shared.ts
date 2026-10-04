@@ -1,4 +1,5 @@
 import type { ResourceStatusType } from '../../../../generated/core-prisma-client/client.js';
+import type { AiModelCapabilityFlags } from './capabilities';
 import type { AiModelAsrProfile, AiModelEngineServingFacts, AiModelServingProfile } from '@arcaai/types';
 
 /**
@@ -505,7 +506,12 @@ export interface AiModelSeed {
     ttsProvider?: string;
     policy?: Record<string, string | number>;
     languages?: string[];
-    capabilities?: AiModelCapability[];
+    /**
+     * Two shapes share this key, by row: the NLP verb array (`extract_entities` / `classify_text`,
+     * the `apps/nlp` envelope) on the three guardrail / classifier checkpoints, and — from
+     * TASK-1036 — the flag descriptor (`ai-models/capabilities.ts`) on every other row.
+     */
+    capabilities?: AiModelCapability[] | AiModelCapabilityFlags;
     labelTaxonomy?: LabelTaxonomy;
     clinicalTaxonomy?: ClinicalTaxonomy;
     entailment?: EntailmentCalibration;

@@ -21,6 +21,7 @@ import {
   ARCAAI_SAME_DAY_RETURN_TEMPLATE,
   ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
   ARCAAI_SAME_DAY_RETURN_VERSION,
+  ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
 } from '../07b-arcaai-clinical-templates';
 import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from '../07g-arcaai-two-schemas';
 import { ARCAAI_DEPARTMENT_AGENT_SPECS } from '../29-arcaai-agents-and-workflows';
@@ -60,8 +61,8 @@ describe('the same-day-return fragment on the agents', () => {
       const sameDay = fragments[1]!;
       expect(sameDay.promptTemplateId, spec.slug).toBe(ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID);
       expect(sameDay.when, spec.slug).toBe(WHEN);
-      // Unpinned, like the language policy: a pointer to ONE shared row.
-      expect(sameDay, spec.slug).not.toHaveProperty('promptVersionNumber');
+      // Pinned (TASK-1036 W3) like the language policy: a pointer to ONE shared row, at the version the seed creates.
+      expect(sameDay.promptVersionNumber, spec.slug).toBe(ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER);
     }
   });
 

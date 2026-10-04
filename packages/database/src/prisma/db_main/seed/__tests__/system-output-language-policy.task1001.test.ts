@@ -10,8 +10,8 @@
  * What this file pins, in the order a reader needs it:
  *  1. the TEMPLATE rows — Global authors, SYSTEM carries the promoted copy (D-8), one text
  *     (the ArcaAI constant, not a second copy), ids that collide with nothing;
- *  2. the AGENTS — exactly the two note-writing agents carry the policy, LAST, unpinned,
- *     unconditional, pointing at their OWN tenant's row; everything else is deliberately left out;
+ *  2. the AGENTS — exactly the two note-writing agents carry the policy, LAST, PINNED to the seeded
+ *     version (TASK-1036 W3), unconditional, pointing at their OWN tenant's row; everything else is deliberately left out;
  *  3. `seedAgentSpecs` compiles the composite — including the INLINE-body fragment
  *     `casenote-finalization` now carries — and fails closed rather than publishing half a prompt;
  *  4. the seed only ever CREATES a published agent (the `agent_immutability_guard` trigger is
@@ -50,6 +50,7 @@ import {
   GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID,
   OUTPUT_LANGUAGE_POLICY_TEMPLATES,
   OUTPUT_LANGUAGE_POLICY_VERSIONS,
+  OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID,
   TEMPLATE_IDS,
   outputLanguagePolicyFragment,
@@ -240,11 +241,15 @@ describe.each(TENANTS)('%s agents', (_label, specs, policyTemplateId, generalMed
   });
 
   it.each([...OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS])(
-    '%s: two fragments, the clinical body then the policy — LAST, unpinned, unconditional, its OWN tenant`s row',
+    '%s: two fragments, the clinical body then the policy — LAST, pinned, unconditional, its OWN tenant`s row',
     (slug) => {
       const fragments = fragmentsOf(specOf(specs, slug).instruction);
       expect(fragments.map((fragment) => fragment.key)).toEqual([CLINICAL_NOTE_FRAGMENT_KEY, OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY]);
-      expect(fragments[1]).toEqual({ key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyTemplateId });
+      expect(fragments[1]).toEqual({
+        key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+        promptTemplateId: policyTemplateId,
+        promptVersionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
+      });
       expect(fragments[1]).toEqual(outputLanguagePolicyFragment(policyTemplateId));
       // No top-level binding survives beside the composite (the three forms are exclusive, and a
       // top-level pin on a composite is a publish ERROR).
@@ -533,7 +538,7 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     ]);
   });
 
-  it('both cloned note agents point at the TENANT`s ONE policy row — and the fragment stays UNPINNED', async () => {
+  it('both cloned note agents point at the TENANT`s ONE policy row — and the fragment pin is translated to the clone`s own v1', async () => {
     const { tables, client } = referenceSetClient();
     withSystemReferenceSet(tables);
     await copyPromptTemplates(client, NEW_TENANT);
@@ -550,13 +555,14 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     expect(fragmentsOf(cloned('general-medicine-summarization').instruction)).toEqual([
       // A SOURCE pin is translated to the clone's own lineage (it restarts at 1)…
       { key: CLINICAL_NOTE_FRAGMENT_KEY, promptTemplateId: gmClone.id, promptVersionNumber: 1 },
-      // …but an UNPINNED source stays unpinned: a pin here would hold the tenant's agents at v1
-      // across every republish, and the admin's edit to the one policy row would never land.
-      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyClone.id },
+      // …and so is the policy pin (TASK-1036 W3: a published agent pins every prompt it binds).
+      // The tenant's policy lineage restarts at 1, so the pin is the clone's approved version; the
+      // admin's later approved edit reaches a note when the agent is republished against it.
+      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyClone.id, promptVersionNumber: policyClone.approvedVersionNumber },
     ]);
     expect(fragmentsOf(cloned('casenote-finalization').instruction)).toEqual([
       { key: CLINICAL_NOTE_FRAGMENT_KEY, systemPrompt: CASENOTE_FINALIZATION_SYSTEM_PROMPT },
-      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyClone.id },
+      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: policyClone.id, promptVersionNumber: policyClone.approvedVersionNumber },
     ]);
     // The variable bindings travel with the composite.
     expect(Object.keys((cloned('general-medicine-summarization').instruction as any).variables).sort()).toEqual(
@@ -582,10 +588,11 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     expect(fragmentsOf(finalization.instruction)[1]).toEqual({
       key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
       promptTemplateId: SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+      promptVersionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
     });
   });
 
-  it('repointInstructionTemplates: a pin is translated, an absent pin is never invented', () => {
+  it('repointInstructionTemplates: a pin is translated to the clone`s version', () => {
     const clones = new Map([
       [SYSTEM_GENERAL_MEDICINE_SUMMARY_TEMPLATE_ID, { id: 'gm-clone', approvedVersionNumber: 1 }],
       [SYSTEM_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID, { id: 'policy-clone', approvedVersionNumber: 1 }],
@@ -593,7 +600,7 @@ describe('phase 26 carries the policy into a NEW tenant and re-points the cloned
     const instruction = specOf(PLATFORM_AGENT_SPECS, 'general-medicine-summarization').instruction;
     expect(fragmentsOf(repointInstructionTemplates(instruction, clones))).toEqual([
       { key: CLINICAL_NOTE_FRAGMENT_KEY, promptTemplateId: 'gm-clone', promptVersionNumber: 1 },
-      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: 'policy-clone' },
+      { key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: 'policy-clone', promptVersionNumber: 1 },
     ]);
   });
 });

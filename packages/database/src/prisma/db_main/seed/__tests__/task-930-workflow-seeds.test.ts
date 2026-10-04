@@ -25,6 +25,7 @@ import {
   ARCAAI_OUTPUT_LANGUAGE_POLICY_CONTENT,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
 } from '../07b-arcaai-clinical-templates';
 import { NOTE_CONTEXT_SCHEMA_DEFINITION } from '../07e-consultation-note-context-schema';
 import { GLOBAL_AGENT_SPECS, PLATFORM_AGENT_SPECS } from '../25-agents';
@@ -270,17 +271,18 @@ describe('TASK-930 §8.5 — every ArcaAI department gets one workflow and two a
    *
    * It is NOT in the clinical corpus: `ARCAAI_CLINICAL_TEMPLATES` / `_VERSIONS` are pinned at
    * 22+1 rows carrying v1/v2/v3 on every row, and the policy is one row with one version.
-   * And it pins NO version, on purpose — a pin would freeze it and forfeit the single-point
-   * editing that is the whole reason the policy is a POINTER rather than inlined into 22 agents.
+   * And it IS pinned (TASK-1036 W3: a published agent pins every library prompt it binds) — at the
+   * version the seed creates for the ONE shared row, which stays a POINTER rather than being
+   * inlined into 22 agents.
    */
-  it('the output-language policy rides as an unconditional, UNPINNED fragment on every department agent', () => {
+  it('the output-language policy rides as an unconditional, PINNED fragment on every department agent', () => {
     const departmentAgents = ARCAAI_AGENT_SPECS.filter((spec) => fragmentsOf(spec).length > 0);
     expect(departmentAgents.length, 'no agent carries the composite instruction form').toBeGreaterThan(0);
     for (const spec of departmentAgents) {
       const policy = fragmentsOf(spec).find((fragment) => fragment.key === ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
       expect(policy, `${spec.slug} lost the output-language policy fragment`).toBeDefined();
       expect(policy!.promptTemplateId).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID);
-      expect(policy!.promptVersionNumber, `${spec.slug} PINS the policy — that forfeits single-point editing`).toBeUndefined();
+      expect(policy!.promptVersionNumber, `${spec.slug} lost the policy pin (W3)`).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER);
       expect(policy!.when ?? null, `${spec.slug} made the policy conditional`).toBeNull();
       // Last, so it is the instruction nearest the generation point.
       expect(fragmentsOf(spec).at(-1)!.key).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
