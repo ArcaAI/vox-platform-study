@@ -107,7 +107,7 @@ function PromptTemplatesScreenBody() {
         tabs={
           <TabsList variant="line">
             <TabsTrigger value="fallbacks">Fallbacks</TabsTrigger>
-            <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="templates">Hope Prompts</TabsTrigger>
             {/* Ability-gated (not elevation-gated); the 403 is server-side regardless. */}
             {canGovern ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
           </TabsList>
@@ -118,7 +118,7 @@ function PromptTemplatesScreenBody() {
             meta={
               tab === 'templates' ? (
                 gridState.loaded ? (
-                  <span>{formatNumber(gridState.count)} templates</span>
+                  <span>{formatNumber(gridState.count)} Hope Prompts</span>
                 ) : (
                   <Skeleton className="h-4 w-24" />
                 )
@@ -130,7 +130,7 @@ function PromptTemplatesScreenBody() {
               tab === 'templates' ? (
                 <Button onClick={() => setCreating(true)}>
                   <IconPlus aria-hidden />
-                  New template
+                  New Hope Prompt
                 </Button>
               ) : undefined
             }

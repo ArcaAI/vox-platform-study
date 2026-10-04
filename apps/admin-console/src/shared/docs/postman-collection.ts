@@ -460,7 +460,7 @@ function buildWorkflowRunItems(input: PostmanCollectionInput): PostmanItem[] {
     name: `Start a run of ${slug} (${mode})`,
     request: {
       method: 'POST',
-      header: JSON_HEADER,
+      header: [...JSON_HEADER, { key: 'Idempotency-Key', value: '550e8400-e29b-41d4-a716-446655440000' }],
       url: buildUrl(path, [{ key: 'mode', value: mode }]),
       body,
       description: runModeDescription(mode),

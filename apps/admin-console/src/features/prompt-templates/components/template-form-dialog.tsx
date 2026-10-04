@@ -397,7 +397,7 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
         </Button>
         <Button type="submit" disabled={!name.trim() || !content || createTemplate.isPending}>
           {createTemplate.isPending ? <Spinner /> : null}
-          Create template
+          Create Hope Prompt
         </Button>
       </FormActions>
     </form>

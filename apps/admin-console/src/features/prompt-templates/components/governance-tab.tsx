@@ -70,10 +70,10 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
         <div className="relative">
           <IconSearch aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
           <Input
-            aria-label="Search templates"
+            aria-label="Search Hope Prompts"
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder={'Search templates…'}
+            placeholder={'Search Hope Prompts…'}
             className="h-8 pl-8 text-sm"
           />
         </div>
