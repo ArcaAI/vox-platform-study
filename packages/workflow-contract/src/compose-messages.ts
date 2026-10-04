@@ -91,7 +91,17 @@ export interface ComposeMessagesInput {
   readonly dataBlocks?: readonly ComposeDataBlock[];
   /** Names the instruction in errors — an agent slug, a template id. */
   readonly templateRef?: string;
+  /**
+   * TASK-1036 OD-10 — also drop a block whose content is only spaces, tabs, CR and LF (the
+   * whitespace class is spelled out, as for the markers, so the Python mirror matches the same
+   * characters). Default `false`: today's bytes, where only `null` / `''` content is skipped. A
+   * dropped block is absent from `blocks[]`, like a skipped one.
+   */
+  readonly dropEmptyBlocks?: boolean;
 }
+
+/** OD-10 — content a `dropEmptyBlocks` compose treats as empty. */
+const BLANK_CONTENT = /^[ \t\r\n]*$/;
 
 export interface ComposedDataBlock {
   readonly key: string;
@@ -162,6 +172,7 @@ export function composeMessages(input: ComposeMessagesInput): ComposedMessages {
     const key = String(block.key);
     if (!COMPOSE_DATA_BLOCK_KEY_PATTERN.test(key)) throw new ComposeDataBlockKeyError(key);
     if (!nonEmpty(block.content)) continue;
+    if (input.dropEmptyBlocks === true && BLANK_CONTENT.test(block.content)) continue;
     const fitted = fitToBudget(block.content, block.maxChars);
     const body = neutraliseMarkers(fitted.kept) + (fitted.truncated ? EXTERNAL_DATA_TRUNCATION_MARKER : '');
     wrapped.push(wrapExternalData(key, sanitiseLabel(String(block.label)), body));

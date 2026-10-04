@@ -121,8 +121,9 @@ const KIND_KEYS = [
   'externalRef',
   'materializeAs',
   'streamContext',
+  'delivery',
 ] as const;
-const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description'] as const;
+const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description', 'delivery'] as const;
 const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
 /** The only keys a `deprecated` block may carry. */
 const DEPRECATED_KEYS = ['since', 'migrateBy', 'message'] as const;
@@ -164,6 +165,45 @@ const CONTEXT_MATERIALIZE_TARGETS = ['CASE_NOTE'] as const;
  * not a role, so several kinds may each declare it.
  */
 const SINGLETON_KIND_ROLES = ['userIdentity', 'department', 'visitType', 'externalRef', 'streamContext'] as const;
+/**
+ * TASK-1036 OD-6 — how an AUDIO kind or output moves: `stream` (a live socket, the STT session
+ * protocol) or `blob` (a stored media object referenced by `mediaId`). Only a `STREAM_AUDIO`
+ * declaration may say; absent, an input kind streams and an output is a blob
+ * ({@link effectiveAudioDelivery}). "Input shape" / "Output shape" are console labels — the wire
+ * keeps `kinds` / `outputs` (OD-6).
+ */
+export const CONTEXT_AUDIO_DELIVERIES = ['stream', 'blob'] as const;
+export type ContextAudioDelivery = (typeof CONTEXT_AUDIO_DELIVERIES)[number];
+
+/**
+ * TASK-1036 OD-6 — the MIME types an ATTACHMENT (a `DOCUMENT` or `IMAGE` kind) may declare in
+ * `constraints.mimeTypes`: the types the platform can actually extract text from or show a model.
+ * `image/jpg` is accepted as the common misspelling of `image/jpeg`, and matching is
+ * case-insensitive ({@link normalizeContextMimeType}). Other primitives keep their unrestricted
+ * `mimeTypes`, exactly as before.
+ */
+export const CONTEXT_ATTACHMENT_MIME_TYPES = ['text/plain', 'text/markdown', 'application/pdf', 'image/jpeg'] as const;
+const ATTACHMENT_PRIMITIVES: readonly string[] = ['DOCUMENT', 'IMAGE'];
+
+/** Lower-cased, trimmed, `image/jpg` → `image/jpeg`. The form a MIME type is compared (and should be stored) in. */
+export function normalizeContextMimeType(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+}
+
+/**
+ * The delivery an audio declaration resolves to: its own `delivery`, else `stream` for an input
+ * kind and `blob` for an output. `null` for a declaration that is not `STREAM_AUDIO`.
+ */
+export function effectiveAudioDelivery(
+  declaration: { readonly primitive?: unknown; readonly delivery?: unknown },
+  side: 'input' | 'output',
+): ContextAudioDelivery | null {
+  if (declaration.primitive !== 'STREAM_AUDIO') return null;
+  if ((CONTEXT_AUDIO_DELIVERIES as readonly unknown[]).includes(declaration.delivery)) return declaration.delivery as ContextAudioDelivery;
+  return side === 'input' ? 'stream' : 'blob';
+}
+
 /** `YYYY-MM-DD`, deliberately loose (a calendar date, not a full timestamp). */
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -302,6 +342,8 @@ export interface ContextKindDeclaration {
    * session. Literally `true`; there is nothing else to configure.
    */
   streamContext?: true;
+  /** TASK-1036 OD-6 — `STREAM_AUDIO` only; absent ⇒ `stream` ({@link effectiveAudioDelivery}). */
+  delivery?: ContextAudioDelivery;
 }
 
 export interface ContextOutputDeclaration {
@@ -310,6 +352,8 @@ export interface ContextOutputDeclaration {
   description?: string;
   primitive: ContextPrimitive;
   fields?: Record<string, unknown>;
+  /** TASK-1036 OD-6 — `STREAM_AUDIO` only; absent ⇒ `blob` ({@link effectiveAudioDelivery}). */
+  delivery?: ContextAudioDelivery;
 }
 
 export interface ContextSchemaDefinition {
@@ -447,7 +491,11 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
   }
 
   if (kind.constraints !== undefined) {
-    problems.push(...constraintProblems(kind.constraints, `${at}.constraints`));
+    problems.push(...constraintProblems(kind.constraints, `${at}.constraints`, kind.primitive));
+  }
+
+  if (kind.delivery !== undefined) {
+    problems.push(...deliveryProblems(kind.delivery, kind.primitive, `${at}.delivery`, 'kind'));
   }
 
   if (kind.deprecated !== undefined) {
@@ -712,8 +760,19 @@ function outputProblems(output: unknown, at: string, seen: Set<string>): string[
   if (output.fields !== undefined) {
     problems.push(...authorableJsonSchemaProblems(output.fields, `${at}.fields`));
   }
+  if (output.delivery !== undefined) {
+    problems.push(...deliveryProblems(output.delivery, output.primitive, `${at}.delivery`, 'output'));
+  }
 
   return problems;
+}
+
+/** TASK-1036 OD-6 — `delivery` is one of {@link CONTEXT_AUDIO_DELIVERIES}, and only on a `STREAM_AUDIO` declaration. */
+function deliveryProblems(delivery: unknown, primitive: unknown, at: string, holder: 'kind' | 'output'): string[] {
+  if (primitive !== 'STREAM_AUDIO') {
+    return [`${at} is only allowed on a STREAM_AUDIO ${holder} (this ${holder} is \`${String(primitive)}\`)`];
+  }
+  return enumProblems(delivery, CONTEXT_AUDIO_DELIVERIES, at);
 }
 
 function keyProblems(key: unknown, at: string, seen: Set<string>): string[] {
@@ -731,7 +790,7 @@ function enumProblems(value: unknown, allowed: readonly string[], at: string): s
   return (allowed as readonly unknown[]).includes(value) ? [] : [`${at} must be one of ${allowed.join(' | ')}`];
 }
 
-function constraintProblems(constraints: unknown, at: string): string[] {
+function constraintProblems(constraints: unknown, at: string, primitive?: unknown): string[] {
   if (!isPlainObject(constraints)) {
     return [`${at} must be a JSON object when present`];
   }
@@ -744,6 +803,13 @@ function constraintProblems(constraints: unknown, at: string): string[] {
   if (constraints.mimeTypes !== undefined) {
     if (!Array.isArray(constraints.mimeTypes) || constraints.mimeTypes.some((entry) => typeof entry !== 'string')) {
       problems.push(`${at}.mimeTypes must be an array of strings`);
+    } else if (ATTACHMENT_PRIMITIVES.includes(primitive as string)) {
+      // TASK-1036 OD-6 — an attachment declares only types the platform can read.
+      (constraints.mimeTypes as string[]).forEach((entry, index) => {
+        if (!(CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(normalizeContextMimeType(entry))) {
+          problems.push(`${at}.mimeTypes[${index}] \`${entry}\` is not an allowed attachment type (${CONTEXT_ATTACHMENT_MIME_TYPES.join(' | ')})`);
+        }
+      });
     }
   }
   if (constraints.maxBytes !== undefined) {
