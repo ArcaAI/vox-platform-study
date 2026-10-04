@@ -17,6 +17,7 @@ import type {
   AgentLineageResponse,
   AgentResponse,
   AgentSyncResponse,
+  AgentTagSuggestionResponse,
   AgentTestAckResponse,
   AgentTestResultResponse,
   CloneAgentRequest,
@@ -41,7 +42,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AgentAdminController, AgentAssignmentAdminController, AgentPromoteToSystemController
- * (24 routes). Several controllers sharing one scope share one
+ * (25 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -454,6 +455,23 @@ export class AdminAgentResource extends AdminResource {
       method: 'POST',
       path: 'admin/agents/promote-to-system',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Distinct agent tags with usage counts (autocomplete)
+   *
+   * Distinct tags over the caller tenant's agents, normalised to lower case and counted per agent LINEAGE (slug), ranked by count (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.
+   *
+   * `GET /api/v1/admin/agents/tags` — `AgentAdminController.listTags`.
+   */
+  listTags(options: AdminRequestOptions & { query?: { limit?: number; q?: string } } = {}): Promise<AgentTagSuggestionResponse[]> {
+    return this.request<AgentTagSuggestionResponse[]>({
+      method: 'GET',
+      path: 'admin/agents/tags',
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

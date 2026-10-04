@@ -715,6 +715,29 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentAdminController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/tags",
+      "routePath": "/admin/agents/tags",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "AiModelAdminController",
       "handler": "fetchAll",
       "method": "GET",
@@ -11273,6 +11296,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/tags",
+      "routePath": "/admin/workflow-definitions/tags",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "fetchTemplates",
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/templates",
@@ -11538,6 +11584,27 @@
       "apiExcluded": false
     },
     {
+      "controller": "WorkflowRunTraceController",
+      "handler": "streamTrace",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-runs/{runId}/trace/stream",
+      "routePath": "/admin/workflow-runs/:runId/trace/stream",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "WorkflowTestFixtureController",
       "handler": "fetchAll",
       "method": "GET",
@@ -11698,6 +11765,106 @@
       "method": "POST",
       "path": "/api/v1/agents/{slug}/invocations",
       "routePath": "/agents/:slug/invocations",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "startRun",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs",
+      "routePath": "/agents/:slug/runs",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "getRun",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}",
+      "routePath": "/agents/:slug/runs/:runId",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "cancelRun",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/cancel",
+      "routePath": "/agents/:slug/runs/:runId/cancel",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "runEvents",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/events",
+      "routePath": "/agents/:slug/runs/:runId/events",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "getRunResult",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/result",
+      "routePath": "/agents/:slug/runs/:runId/result",
       "svcScopes": [
         "svc:agent:invocation:write"
       ],
@@ -14018,6 +14185,22 @@
       "method": "POST",
       "path": "/api/v1/internal/consent/assert",
       "routePath": "/internal/consent/assert",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "ConsultationReadInternalController",
+      "handler": "read",
+      "method": "POST",
+      "path": "/api/v1/internal/consultations/{consultationId}/read",
+      "routePath": "/internal/consultations/:consultationId/read",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

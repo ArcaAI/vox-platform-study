@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 541 component schemas the generated surface transitively
+ * Only the 545 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -200,6 +200,8 @@ export interface AgentResponse {
   /** The context schema the prompt paths are checked against — the agent`s own, or inherited from a workflow that runs it. Present on the agent DETAIL (`GET admin/agents/:id`); null when neither applies. */
   effectiveContextSchema?: AgentEffectiveContextSchemaResponse;
   fallbacks: AgentFallbackResponse[];
+  /** TASK-1036 OD-1 — guardrails are ALWAYS ON for every agent (TASK-1035 OD-1): the inbound screen inspects the external data blocks, the outbound screen the response. Read-only and informational; there is no setting behind it. */
+  guardrails: 'always_on';
   /** Platform-owned agent: never cloned, listed, invoked or assignable on the business plane. */
   hidden: boolean;
   id: string;
@@ -254,6 +256,13 @@ export interface AgentSyncTargetResponse {
   versionNumber: number;
   /** What could not be carried across (a stripped eval gate, a re-resolved template). */
   warnings?: string[];
+}
+
+export interface AgentTagSuggestionResponse {
+  /** How many of the tenant's agent LINEAGES (slugs) carry this tag. */
+  count: number;
+  /** The tag, normalised to lower case. */
+  tag: string;
 }
 
 export interface AgentTestAckResponse {
@@ -876,7 +885,7 @@ export interface CatalogueModelResponse {
   asrProfile: Record<string, unknown> | null;
   /** MEASURED presence of the weights (inventory job). */
   availability: 'UNKNOWN' | 'AVAILABLE' | 'MISSING' | 'PARTIAL' | 'NOT_APPLICABLE';
-  /** What the model accepts, for the authoring form. */
+  /** What the model accepts, for the authoring form — the `ModelCapabilities` of `@arcaai/workflow-contract` (TASK-1036 W2), read from `_metadata.capabilities`. Every flag is present: an undeclared flag is `false` / `[]`. `reasoning` is present only when declared. The editor hides a section the model does not support (tools and attachments stay hidden until built, OD-16). */
   capabilities: Record<string, unknown>;
   deploymentKind: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
   description: string | null;
@@ -6453,6 +6462,16 @@ export interface SamlProviderConfigDto {
   spEntityId: string;
 }
 
+export interface SandboxAttachmentRequest {
+  /** A Media id of the caller tenant (uploaded first). Its MIME type must be on the attachment allow-list. */
+  mediaId: string;
+}
+
+export interface SandboxRecordingRequest {
+  /** An STT streaming session id of the caller tenant (`POST …/stream/session`). */
+  sttSessionId: string;
+}
+
 export interface SandboxRunCancelResponse {
   runId: string;
   /** "cancel_requested" — the signal was sent; cancellation is not necessarily complete yet. */
@@ -6790,10 +6809,14 @@ export interface SpendStatusResponse {
 }
 
 export interface StartSandboxRunRequest {
+  /** TASK-1036 — tenant media to attach, by id. Forwarded to the run as `{ mediaId, mime, name, size }`, never as bytes. */
+  attachments?: SandboxAttachmentRequest[];
   /** A saved WorkflowTestFixture id — its `input` is used as the run payload. */
   fixtureId?: string;
   /** Inline synthetic test input, forwarded verbatim as the run payload. Wins over `fixtureId` when both are supplied. */
   input?: Record<string, unknown>;
+  /** TASK-1036 — a live STT session; the run creates a sandbox consultation, binds the session to it and runs against it. */
+  recording?: SandboxRecordingRequest;
 }
 
 export interface SuccessResponse {
@@ -9011,6 +9034,13 @@ export interface WorkflowSyncTargetResponse {
   versionNumber: number;
   /** The DRAFT definition row written in that tenant. */
   workflowDefinitionId: string;
+}
+
+export interface WorkflowTagSuggestionResponse {
+  /** How many of the tenant's workflow lineages (slugs) carry this tag. */
+  count: number;
+  /** The tag, normalised to lower case. */
+  tag: string;
 }
 
 export interface WorkflowTestFixtureResponse {

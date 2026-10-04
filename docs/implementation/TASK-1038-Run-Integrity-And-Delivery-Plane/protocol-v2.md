@@ -297,7 +297,7 @@ listed, and its message is then the fallback label.
   each fixture section, assert the same thing the TS suite asserts: the constants, `nodeScope`,
   `agentRunNodeId`, `errorMessages`, every `examples` entry valid under its `runKind`/`plane`,
   every `invalid` entry refused with its `problem`, and `sse` bytes.
-- Load the Lua from `sequencer.lua`, and never keep a second copy in the code. For each `stored`
+- **Settled by the orchestrator, 2026-10-04:** the harness keeps the Lua as a byte-for-byte constant in code, because the service image does not ship `tests/contracts/`. A parity test asserts it equals the fixture's `sequencer.lua` exactly, so the two cannot drift silently. (This replaces the earlier "load it from the fixture" wording.) For each `stored`
   entry, build the same `keys` and the same `args`. The one exception is `body`: it must be
   compact JSON (`separators=(",", ":")`, `ensure_ascii=False`) whose parsed value equals the
   fixture's, but its byte order may differ. Consumers parse `body`; they never compare its bytes.

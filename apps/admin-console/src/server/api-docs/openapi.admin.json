@@ -790,6 +790,13 @@
             },
             "type": "array"
           },
+          "guardrails": {
+            "description": "TASK-1036 OD-1 — guardrails are ALWAYS ON for every agent (TASK-1035 OD-1): the inbound screen inspects the external data blocks, the outbound screen the response. Read-only and informational; there is no setting behind it.",
+            "enum": [
+              "always_on"
+            ],
+            "type": "string"
+          },
           "hidden": {
             "description": "Platform-owned agent: never cloned, listed, invoked or assignable on the business plane.",
             "type": "boolean"
@@ -948,6 +955,7 @@
           "fallbacks",
           "resourceStatus",
           "hidden",
+          "guardrails",
           "tags",
           "createdAt",
           "updatedAt",
@@ -1075,6 +1083,25 @@
           "agentId",
           "slug",
           "versionNumber"
+        ],
+        "type": "object"
+      },
+      "AgentTagSuggestionResponse": {
+        "properties": {
+          "count": {
+            "description": "How many of the tenant's agent LINEAGES (slugs) carry this tag.",
+            "example": 3,
+            "type": "number"
+          },
+          "tag": {
+            "description": "The tag, normalised to lower case.",
+            "example": "dept:cardiology",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
         ],
         "type": "object"
       },
@@ -3457,7 +3484,17 @@
             "type": "string"
           },
           "capabilities": {
-            "description": "What the model accepts, for the authoring form.",
+            "description": "What the model accepts, for the authoring form — the `ModelCapabilities` of `@arcaai/workflow-contract` (TASK-1036 W2), read from `_metadata.capabilities`. Every flag is present: an undeclared flag is `false` / `[]`. `reasoning` is present only when declared. The editor hides a section the model does not support (tools and attachments stay hidden until built, OD-16).",
+            "example": {
+              "supportedGenerationParams": [
+                "temperature",
+                "maxTokens"
+              ],
+              "supportsAttachments": false,
+              "supportsTools": false,
+              "supportsVision": false,
+              "voices": []
+            },
             "type": "object"
           },
           "deploymentKind": {
@@ -22318,6 +22355,30 @@
         ],
         "type": "object"
       },
+      "SandboxAttachmentRequest": {
+        "properties": {
+          "mediaId": {
+            "description": "A Media id of the caller tenant (uploaded first). Its MIME type must be on the attachment allow-list.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mediaId"
+        ],
+        "type": "object"
+      },
+      "SandboxRecordingRequest": {
+        "properties": {
+          "sttSessionId": {
+            "description": "An STT streaming session id of the caller tenant (`POST …/stream/session`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sttSessionId"
+        ],
+        "type": "object"
+      },
       "SandboxRunCancelResponse": {
         "properties": {
           "runId": {
@@ -23679,6 +23740,13 @@
       },
       "StartSandboxRunRequest": {
         "properties": {
+          "attachments": {
+            "description": "TASK-1036 — tenant media to attach, by id. Forwarded to the run as `{ mediaId, mime, name, size }`, never as bytes.",
+            "items": {
+              "$ref": "#/components/schemas/SandboxAttachmentRequest"
+            },
+            "type": "array"
+          },
           "fixtureId": {
             "description": "A saved WorkflowTestFixture id — its `input` is used as the run payload.",
             "type": "string"
@@ -23688,6 +23756,14 @@
             "description": "Inline synthetic test input, forwarded verbatim as the run payload. Wins over `fixtureId` when both are supplied.",
             "example": {},
             "type": "object"
+          },
+          "recording": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SandboxRecordingRequest"
+              }
+            ],
+            "description": "TASK-1036 — a live STT session; the run creates a sandbox consultation, binds the session to it and runs against it."
           }
         },
         "type": "object"
@@ -31282,6 +31358,25 @@
         ],
         "type": "object"
       },
+      "WorkflowTagSuggestionResponse": {
+        "properties": {
+          "count": {
+            "description": "How many of the tenant's workflow lineages (slugs) carry this tag.",
+            "example": 3,
+            "type": "number"
+          },
+          "tag": {
+            "description": "The tag, normalised to lower case.",
+            "example": "cardiology",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
+        ],
+        "type": "object"
+      },
       "WorkflowTestFixtureResponse": {
         "properties": {
           "createdAt": {
@@ -32737,6 +32832,79 @@
           }
         ],
         "summary": "Promote an agent from the Global build tenant into the SYSTEM reference set",
+        "tags": [
+          "admin-agents"
+        ],
+        "x-hope-abilities": [
+          "manage:Agent"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:agent:manage"
+        ]
+      }
+    },
+    "/api/v1/admin/agents/tags": {
+      "get": {
+        "description": "Distinct tags over the caller tenant's agents, normalised to lower case and counted per agent LINEAGE (slug), ranked by count (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:agent:manage`).\n\n**Abilities** — `manage:Agent`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentAdminController_listTags",
+        "parameters": [
+          {
+            "description": "Max suggestions (default 20, max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Case-insensitive substring filter",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentTagSuggestionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Tag suggestions"
+          },
+          "400": {
+            "description": "No tenant context on the request"
+          },
+          "403": {
+            "description": "Caller lacks manage:Agent"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Distinct agent tags with usage counts (autocomplete)",
         "tags": [
           "admin-agents"
         ],
@@ -63967,6 +64135,79 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-definitions/tags": {
+      "get": {
+        "description": "Distinct tags over the caller tenant's non-deleted workflow definitions, normalised to lower case and counted per workflow (slug), ranked by that count (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowDefinitionController_listTags",
+        "parameters": [
+          {
+            "description": "Max suggestions (default 20, max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Case-insensitive substring filter",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowTagSuggestionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Tag suggestions"
+          },
+          "400": {
+            "description": "No tenant context on the request"
+          },
+          "403": {
+            "description": "Caller lacks manage:WorkflowDefinition"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Distinct workflow tags with usage counts (autocomplete)",
+        "tags": [
+          "admin-workflow-definitions"
+        ],
+        "x-hope-abilities": [
+          "manage:WorkflowDefinition"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:admin:workflow-definition:manage"
+        ]
+      }
+    },
     "/api/v1/admin/workflow-definitions/templates": {
       "get": {
         "description": "The SYSTEM tenant’s live published definitions — one row per slug. Read-only and cross-tenant BY DESIGN, bounded to exactly the SYSTEM tenant: another customer tenant’s definitions can never appear here. This is the discovery half of `POST :id/clone`; the two share one predicate, so everything listed here is clonable.\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-definition:manage`).\n\n**Abilities** — `manage:WorkflowDefinition`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -64051,10 +64292,13 @@
             "description": ""
           },
           "400": {
-            "description": "The graph cannot be compiled (engine gate)."
+            "description": "The graph cannot be compiled (engine gate), or an attachment is outside the MIME allow-list (`SANDBOX_ATTACHMENT_MIME_UNSUPPORTED`)."
           },
           "404": {
-            "description": "Unknown or cross-tenant definitionId, or (when fixtureId is given) a cross-tenant fixtureId."
+            "description": "Unknown or cross-tenant definitionId, fixtureId, attachment mediaId or recording sttSessionId."
+          },
+          "409": {
+            "description": "`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session belongs to a clinical consultation."
           }
         },
         "security": [
@@ -65906,6 +66150,93 @@
         ]
       }
     },
+    "/api/v1/admin/workflow-runs/{runId}/trace/stream": {
+      "get": {
+        "description": "Run protocol v2 only: every frame is one `{ seq, runId, type, ts, nodeId?, data }` envelope (`event:` = type, `id:` = seq), including the admin-audience debug events (input.validated, data.bound, binding.warning, consultation.read, transcript.*, prompt.composed, model.request, guardrail.*, output.validated) and `output.data` with `visibility: admin`. Resume with `Last-Event-ID: <seq>` or `?after=<seq>`. Loss is signalled with `run.resync`. Super administrators and tenant administrators of the working tenant only; patient data is shown and the read is audited. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=` (scope `workflow_run:<runId>`).\n\n**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token rejected.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowRunTraceController_streamTrace",
+        "parameters": [
+          {
+            "description": "The domain run id (sandbox or real).",
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The `seq` of the last event received. Omit on a first connect.",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resume cursor (`seq`) for a client that cannot set headers.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional; when present it must be `2`.",
+            "in": "query",
+            "name": "protocol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional; when present it must be `2`.",
+            "in": "header",
+            "name": "x-hope-run-protocol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "A protocol other than 2, or a cursor that is not a decimal seq."
+          },
+          "403": {
+            "description": "`RUN_TRACE_FORBIDDEN` — not a super administrator or a tenant administrator of this tenant; or no working tenant selected."
+          },
+          "404": {
+            "description": "Run not found for the tenant (absent or belongs to another tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "SSE: the admin trace of a run — every run protocol v2 event (debug events, all node outputs), with resume.",
+        "tags": [
+          "admin-workflow-runs"
+        ],
+        "x-hope-abilities": [
+          "read:WorkflowRun"
+        ],
+        "x-hope-api-key-scopes": [],
+        "x-hope-credentials": [
+          "user-jwt"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "admin",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": []
+      }
+    },
     "/api/v1/admin/workflow-test-fixtures": {
       "get": {
         "description": "**Credentials** — user JWT accepted; API key **rejected (403)**; service-account token accepted (scopes: `svc:admin:workflow-test-fixture:manage`).\n\n**Abilities** — `manage:WorkflowTestFixture`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -66393,7 +66724,7 @@
     },
     "/api/v1/agents/{slug}/invocations": {
       "post": {
-        "description": "The body is validated against the agent’s `inputSchema` (default: `{ text, variables? }`). `mode=blocking` answers `200 application/json`; `mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The body is validated against the agent’s `inputSchema` (default: `{ message } | { text } | { variables }` — `text` is a deprecated alias of `message`). `mode=blocking` answers `200 application/json`; `mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_invoke",
         "parameters": [
           {
@@ -66423,7 +66754,7 @@
               "schema": {
                 "additionalProperties": true,
                 "example": {
-                  "text": "Summarise the consultation note below."
+                  "message": "Summarise the consultation note below."
                 },
                 "properties": {
                   "context": {
@@ -66431,8 +66762,13 @@
                     "description": "The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.",
                     "type": "object"
                   },
+                  "message": {
+                    "description": "The user turn (TASK-1036 OD-8). Optional: a body may carry only `variables`. An agent that declares its own schema may name something else entirely.",
+                    "type": "string"
+                  },
                   "text": {
-                    "description": "The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.",
+                    "deprecated": true,
+                    "description": "DEPRECATED alias of `message`, accepted for one release. Send `message`.",
                     "type": "string"
                   },
                   "variables": {
@@ -66447,7 +66783,7 @@
               }
             }
           },
-          "description": "FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.",
+          "description": "FLAT — `{ message, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.",
           "required": true
         },
         "responses": {
@@ -66505,6 +66841,368 @@
         ]
       }
     },
+    "/api/v1/agents/{slug}/runs": {
+      "post": {
+        "description": "The same body, validation and metering as `POST /agents/{slug}/invocations` (TEXT_GENERATION and NAMED_ENTITY_RECOGNITION agents), refused BEFORE the 202 when invalid or over quota. The agent then runs in the background. `links.events` streams the run as run protocol v2 (SSE, resumable); `links.result` serves the output once it is terminal. **Idempotency**: send `Idempotency-Key` — the same key with the same body joins the run it started (same `runId`, the agent runs once); the same key with a different body is 409.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_startRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Retry-safe key. The same key + the same body joins the existing run.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "description": "The invocation body (see `POST /agents/{slug}/invocations`).",
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "`{ runId, status, links: { self, events, result, cancel } }`."
+          },
+          "400": {
+            "description": "The body does not match the agent’s inputSchema, or the agent’s task has no run form (use `/speech` or `/transcriptions`)."
+          },
+          "404": {
+            "description": "Unknown, unpublished, or another tenant’s agent — one answer."
+          },
+          "409": {
+            "description": "`IDEMPOTENCY_KEY_REUSED` — the key already started a run with a different body."
+          },
+          "429": {
+            "description": "The tenant has reached its usage allowance. Refused before anything runs."
+          },
+          "503": {
+            "description": "`AGENT_RUN_STORE_UNAVAILABLE` — the run store is not reachable."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Start an agent RUN (async): answers 202 { runId, status, links } at once; poll, read the result, or follow its events",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
+    "/api/v1/agents/{slug}/runs/{runId}": {
+      "get": {
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_getRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run: status, timings, the public error of a failed run, and its links."
+          },
+          "404": {
+            "description": "Another tenant’s run, or a runId that does not belong to this agent — one answer."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The status of one agent run",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
+    "/api/v1/agents/{slug}/runs/{runId}/cancel": {
+      "post": {
+        "description": "A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call already in flight is not interrupted — its output is discarded, and it is still metered because it was spent.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_cancelRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`{ runId, status }` after the cancel."
+          },
+          "404": {
+            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Cancel an agent run (idempotent)",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
+    "/api/v1/agents/{slug}/runs/{runId}/events": {
+      "get": {
+        "description": "Every frame is `event: <type>` / `id: <seq>` / `data: <envelope>`; the step is `nodeId: \"agent\"`. Resume with `Last-Event-ID` (or `?after=<seq>`); a cursor the server can no longer serve is answered with `run.resync` and a snapshot. The stream ends after the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_runEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocol",
+            "required": false,
+            "schema": {
+              "enum": [
+                "2"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resume after this seq (the header `Last-Event-ID` wins).",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "`text/event-stream` of run protocol v2 frames."
+          },
+          "400": {
+            "description": "An unsupported protocol, or a malformed resume cursor."
+          },
+          "404": {
+            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Follow an agent run as run protocol v2 over SSE (resumable)",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
+    "/api/v1/agents/{slug}/runs/{runId}/result": {
+      "get": {
+        "description": "Mirrors `GET /workflows/{slug}/runs/{runId}/result`: 200 with `X-Hope-Result-Kind: inline` and the agent output as the body (`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_getRunResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent output."
+          },
+          "204": {
+            "description": "The run is terminal and produced no output."
+          },
+          "404": {
+            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+          },
+          "409": {
+            "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The output a finished agent run produced",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
     "/api/v1/agents/{slug}/speech": {
       "post": {
         "description": "Body `{ text }` or `{ ssml }` (SSML only when the agent enables it). The agent’s voice/format/speed/model are applied over the tenant’s TTS configuration and BYO credentials.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
@@ -66527,6 +67225,15 @@
                   "text": "Your appointment is confirmed for Tuesday at ten."
                 },
                 "properties": {
+                  "delivery": {
+                    "default": "stream",
+                    "description": "`stream` (default): the audio, streamed. `blob` (TASK-1036): the audio is stored in the tenant’s AUDIO bucket and the answer is JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }` — `url` is a short-lived signed GET.",
+                    "enum": [
+                      "stream",
+                      "blob"
+                    ],
+                    "type": "string"
+                  },
                   "ssml": {
                     "description": "An SSML document to synthesise. Only for agents that declare SSML support.",
                     "type": "string"
@@ -66545,7 +67252,7 @@
         },
         "responses": {
           "200": {
-            "description": "audio/pcm | audio/wav | audio/mpeg, streamed."
+            "description": "audio/pcm | audio/wav | audio/mpeg, streamed — or, with `delivery: \"blob\"`, JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`."
           },
           "400": {
             "description": "Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent."
@@ -66555,6 +67262,9 @@
           },
           "404": {
             "description": "Unknown, unpublished, or another tenant’s agent."
+          },
+          "503": {
+            "description": "`TTS_BLOB_STORAGE_UNAVAILABLE` — `delivery: \"blob\"` and the tenant has no audio bucket."
           }
         },
         "security": [
@@ -67471,7 +68181,17 @@
       "post": {
         "description": "The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node of the consultation's governing workflow, else the department then tenant assignment.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TranscriptionJobController_transcribeFile",
-        "parameters": [],
+        "parameters": [
+          {
+            "description": "Retry-safe key (TASK-1038): the same key with the same upload (audio bytes + fields) returns the same job without a second upload or dispatch; a different upload under the same key is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -67498,6 +68218,9 @@
           },
           "404": {
             "description": "The named clinician is not a member of this tenant (also returned for a clinician of another tenant)."
+          },
+          "409": {
+            "description": "`IDEMPOTENCY_KEY_REUSED` — this Idempotency-Key was used with a different upload; `IDEMPOTENCY_KEY_IN_FLIGHT` — the first request is still starting."
           },
           "429": {
             "description": "The owner already holds the maximum number of in-flight batch jobs."
@@ -69406,6 +70129,22 @@
             "description": "Retry-safe key. The same value joins the existing run.",
             "in": "header",
             "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-hope-run-protocol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocol",
             "required": false,
             "schema": {
               "type": "string"
@@ -71892,6 +72631,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -72077,6 +72825,15 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409. Wins over the body field `idempotencyKey`.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -77389,6 +78146,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-hope-run-protocol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -77910,7 +78683,7 @@
             }
           },
           {
-            "description": "Opaque resume token from a previous frame’s `id`. Omit on a first connect.",
+            "description": "Resume cursor: the `seq` of the last event received (protocol v2), or a legacy opaque token (accepted for one release). Omit on a first connect.",
             "in": "header",
             "name": "Last-Event-ID",
             "required": false,
@@ -77919,9 +78692,36 @@
             }
           },
           {
-            "description": "Fallback for a client that cannot set headers. The header wins when both are present.",
+            "description": "Legacy fallback for a client that cannot set headers. The header wins when both are present.",
             "in": "query",
             "name": "lastEventId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Set to `2` to select run protocol v2. Absent = the legacy frame shapes (one release).",
+            "in": "header",
+            "name": "x-hope-run-protocol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`2` selects run protocol v2 — for clients that cannot set headers (EventSource). Any other value is a 400.",
+            "in": "query",
+            "name": "protocol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Protocol v2 resume cursor (`seq`) for a client that cannot set headers. The header wins.",
+            "in": "query",
+            "name": "after",
             "required": false,
             "schema": {
               "type": "string"
@@ -77931,6 +78731,9 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "400": {
+            "description": "Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), or a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`)."
           },
           "404": {
             "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
@@ -77994,7 +78797,7 @@
         ],
         "responses": {
           "201": {
-            "description": "The ticket, its absolute expiry, its scope, and the socket URL to open with it."
+            "description": "The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one."
           },
           "401": {
             "description": "No caller identity to bind the ticket to."

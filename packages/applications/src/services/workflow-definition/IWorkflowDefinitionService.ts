@@ -10,6 +10,7 @@ import {
   PaginatedWorkflowLineageResponse,
   PromoteWorkflowToSystemRequest,
   PromoteWorkflowToSystemResponse,
+  WorkflowTagSuggestionResponse,
   PublishWorkflowDefinitionRequest,
   SandboxCompileResult,
   SyncWorkflowDefinitionRequest,

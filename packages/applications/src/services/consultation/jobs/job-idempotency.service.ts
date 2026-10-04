@@ -55,7 +55,7 @@ export class JobIdempotencyService {
 
   /** Canonical-JSON sha256 of whatever identifies the request (key order never matters). */
   fingerprint(input: unknown): string {
-    return createHash('sha256').update(canonicalJson(input)).digest('hex');
+    return createHash('sha256').update(idempotencyCanonicalJson(input)).digest('hex');
   }
 
   redisKey(scope: IdempotencyScope): string {
@@ -145,13 +145,13 @@ function parseRecord<T>(raw: string): IdempotencyRecord<T> | null {
 }
 
 /** JSON with object keys sorted at every depth; `undefined` members are dropped, as JSON does. */
-export function canonicalJson(value: unknown): string {
+export function idempotencyCanonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return `[${value.map((item) => (item === undefined ? 'null' : canonicalJson(item))).join(',')}]`;
+  if (Array.isArray(value)) return `[${value.map((item) => (item === undefined ? 'null' : idempotencyCanonicalJson(item))).join(',')}]`;
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, member]) => member !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([name, member]) => `${JSON.stringify(name)}:${canonicalJson(member)}`).join(',')}}`;
+  return `{${entries.map(([name, member]) => `${JSON.stringify(name)}:${idempotencyCanonicalJson(member)}`).join(',')}}`;
 }
 
 function errorText(err: unknown): string {

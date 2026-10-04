@@ -399,6 +399,8 @@ test.describe(' route authorization conformance matrix', () => {
     // 39th: GET /internal/agents/{slug}/versions/{versionNumber}/resolved (AgentVersionInternalController,
     // `@Public()` + InternalServiceTokenGuard). Counted from the regenerated `route-manifest.json` = 39;
     // the `assertAll` above still proves each one is service-token-gated.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(39);
+    // TASK-1036 B3b added the 40th: POST /internal/consultations/{consultationId}/read
+    // (ConsultationReadInternalController, `@Public()` + HarnessServiceTokenGuard, X-Tenant-Id required).
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(40);
   });
 });
