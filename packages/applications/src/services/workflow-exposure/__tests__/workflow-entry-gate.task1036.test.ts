@@ -49,3 +49,30 @@ describe('WorkflowEntryGateService.assertEntryAllowed', () => {
     await expect(absent.service.assertEntryAllowed('report', 3, 'socket')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * TASK-1038 E2 (fix 1) — a stream ticket serves EITHER lane (`url` = socket, `sseUrl` = SSE), so the
+ * mint asks "does this version admit ANY of the lanes the ticket can open". Each lane is enforced
+ * where it is redeemed.
+ */
+describe('WorkflowEntryGateService.assertAnyEntryAllowed', () => {
+  it('passes for an [api, sse] workflow when either sse or socket is acceptable', async () => {
+    const { service } = make(definition({ connections: ['api', 'sse'], sources: [] }));
+    await expect(service.assertAnyEntryAllowed('report', 3, ['sse', 'socket'])).resolves.toBeUndefined();
+  });
+
+  it('passes for an [api, socket] workflow too', async () => {
+    const { service } = make(definition({ connections: ['api', 'socket'], sources: [] }));
+    await expect(service.assertAnyEntryAllowed('report', 3, ['sse', 'socket'])).resolves.toBeUndefined();
+  });
+
+  it('refuses 400 MODE_UNSUPPORTED when the workflow admits none of them', async () => {
+    const { service } = make(definition({ connections: ['api'], sources: [] }));
+    await expect(service.assertAnyEntryAllowed('report', 3, ['sse', 'socket'])).rejects.toMatchObject({ response: { code: 'MODE_UNSUPPORTED' } });
+  });
+
+  it('does not gate a legacy definition', async () => {
+    const legacy = make({ compiledConfig: null, graph: { nodes: [{ id: 'a', type: 'webhook-legacy', config: {} }] } });
+    await expect(legacy.service.assertAnyEntryAllowed('report', 3, ['sse', 'socket'])).resolves.toBeUndefined();
+  });
+});

@@ -4,10 +4,11 @@ import {
   TenantSettingsService,
   WORKFLOW_RUNS_DEFAULTS,
   WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY,
+  WorkflowEntryGateService,
   WorkflowRunStatusResponse,
 } from '@arcaai/applications';
 import { RUN_PROTOCOL_HEADER, RUN_PROTOCOL_QUERY_PARAM } from '@arcaai/async-contract';
-import { Inject, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
 import { ClsService } from 'nestjs-cls';
@@ -82,6 +83,10 @@ export class WorkflowWsGateway implements OnGatewayConnection {
     @Optional() private readonly hub?: RunEventStreamHub,
     @Optional() @Inject(IOriginRegistry) private readonly originRegistry?: IOriginRegistry,
     @Optional() private readonly settings?: TenantSettingsService,
+    // TASK-1038 E2 (fix 1) — a run ticket is minted when the workflow admits `sse` OR `socket`, so
+    // the socket lane is re-checked HERE, where the socket redeems it. Optional so the positional
+    // unit fixtures keep constructing; absent, the settings are not read.
+    @Optional() private readonly entryGate?: WorkflowEntryGateService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
@@ -141,6 +146,30 @@ export class WorkflowWsGateway implements OnGatewayConnection {
         errorName: err instanceof Error ? err.name : typeof err,
       });
       return reject('run not found for this ticket');
+    }
+
+    // TASK-1038 E2 (fix 1) — the socket lane, for the run's own workflow version, under the ticket
+    // tenant. Ownership is already proved, so the refusal may name itself (no enumeration signal).
+    if (this.entryGate) {
+      const entryGate = this.entryGate;
+      try {
+        await this.cls.run(async () => {
+          this.cls.set('tenantId', tenantId);
+          await entryGate.assertEntryAllowed(slug, snapshot.workflowVersionNumber, 'socket');
+        });
+      } catch (err) {
+        const refused = err instanceof BadRequestException;
+        this.logger.warn({
+          message: refused ? 'workflow WS refused — the socket connection is not enabled for this workflow' : 'workflow WS lane check failed',
+          runId,
+          tenantId,
+          errorName: err instanceof Error ? err.name : typeof err,
+        });
+        // A settings READ failure is not a refusal: 1011 lets the client retry.
+        if (refused) client.close(WORKFLOW_WS_CLOSE_PROTOCOL_UNSUPPORTED, 'MODE_UNSUPPORTED');
+        else client.close(1011, 'stream setup failed');
+        return;
+      }
     }
 
     const hub = this.hub;

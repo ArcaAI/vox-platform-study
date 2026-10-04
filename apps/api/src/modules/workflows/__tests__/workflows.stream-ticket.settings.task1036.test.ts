@@ -21,7 +21,7 @@ function make(over: { assertEntryAllowed?: ReturnType<typeof vi.fn>; getRunStatu
     issueTicket: vi.fn(async (input: { scope: string }) => ({ ticket: 'TICKET-abc', expiresAt: 1_700_000_030_000, scope: input.scope })),
   };
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: 'u1', tenantId: TENANT } : undefined)) };
-  const entryGate = { assertEntryAllowed: over.assertEntryAllowed ?? vi.fn(async () => undefined) };
+  const entryGate = { assertAnyEntryAllowed: over.assertEntryAllowed ?? vi.fn(async () => undefined) };
   const controller = new WorkflowsController(
     workflowExposureService as never,
     { stream: vi.fn() } as never,
@@ -33,16 +33,18 @@ function make(over: { assertEntryAllowed?: ReturnType<typeof vi.fn>; getRunStatu
   return { controller, streamTicketService, entryGate, workflowExposureService };
 }
 
-describe('stream-ticket is gated by the workflow settings (socket)', () => {
-  it('asks the gate about `socket` for the run’s own workflow version, then mints', async () => {
+describe('stream-ticket is gated by the workflow settings (sse OR socket — TASK-1038 E2 fix 1)', () => {
+  it('asks the gate whether the run’s own workflow version admits sse OR socket, then mints', async () => {
     const { controller, entryGate, streamTicketService } = make();
     const result = await controller.issueRunStreamTicket('report', RUN_ID);
-    expect(entryGate.assertEntryAllowed).toHaveBeenCalledWith('report', 3, 'socket');
+    // The ticket opens either lane (`url` socket, `sseUrl` SSE; the browser `useRun` uses SSE), so
+    // an [api, sse] workflow must still get one. Each lane is enforced again at redemption.
+    expect(entryGate.assertAnyEntryAllowed).toHaveBeenCalledWith('report', 3, ['sse', 'socket']);
     expect(result.ticket).toBe('TICKET-abc');
     expect(streamTicketService.issueTicket).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses with 400 MODE_UNSUPPORTED and mints NOTHING when the settings do not admit socket', async () => {
+  it('refuses with 400 MODE_UNSUPPORTED and mints NOTHING when the settings admit neither lane', async () => {
     const assertEntryAllowed = vi.fn(async () => {
       throw new BadRequestException({ code: 'MODE_UNSUPPORTED', message: "transport 'socket' requires the workflow to admit the 'socket' connection" });
     });
@@ -57,6 +59,6 @@ describe('stream-ticket is gated by the workflow settings (socket)', () => {
     });
     const { controller, entryGate } = make({ getRunStatus });
     await expect(controller.issueRunStreamTicket('report', RUN_ID)).rejects.toBeInstanceOf(NotFoundException);
-    expect(entryGate.assertEntryAllowed).not.toHaveBeenCalled();
+    expect(entryGate.assertAnyEntryAllowed).not.toHaveBeenCalled();
   });
 });

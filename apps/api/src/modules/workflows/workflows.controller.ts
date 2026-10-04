@@ -447,7 +447,7 @@ export class WorkflowsController {
     status: 201,
     description: 'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
   })
-  @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings do not enable the `socket` connection (use SSE).' })
+  @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings enable neither the `sse` nor the `socket` connection.' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
@@ -457,8 +457,11 @@ export class WorkflowsController {
     }
     // FIRST: 404-over-403 ownership, through the same read every other run route makes.
     const run = await this.workflowExposureService.getRunStatus(slug, runId);
-    // TASK-1036 (OD-4) — the socket lane exists only when the run's workflow settings admit it.
-    await this.entryGate?.assertEntryAllowed(slug, run.workflowVersionNumber, 'socket');
+    // TASK-1036 (OD-4), TASK-1038 E2 (fix 1) — the ticket opens EITHER lane (`url` = socket,
+    // `sseUrl` = SSE; the browser `useRun` mints it for an EventSource), so it is minted when the
+    // run's workflow version admits `sse` OR `socket`. Each lane is enforced again where the ticket
+    // is redeemed: `socket` by `WorkflowWsGateway`, `sse` by `streamRunStatus` below.
+    await this.entryGate?.assertAnyEntryAllowed(slug, run.workflowVersionNumber, ['sse', 'socket']);
 
     const user = this.cls.get('user');
     if (!user?.id) throw new UnauthorizedException('User context not available');
@@ -516,7 +519,11 @@ export class WorkflowsController {
     required: false,
     description: 'Legacy fallback for a client that cannot set headers. The header wins when both are present.',
   })
-  @ApiResponse({ status: 400, description: 'Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), or a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`).' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`), or `MODE_UNSUPPORTED` — a `?ticket=` request for a workflow whose settings do not enable the `sse` connection.',
+  })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async streamRunStatus(
     @Param('slug') slug: string,
@@ -530,7 +537,16 @@ export class WorkflowsController {
     @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
     @Query('protocol') protocol?: string,
     @Query('after') after?: string,
+    // `@Req` rather than `@Query('ticket')`: the ticket is consumed by `JwtAuthGuard`, never read
+    // here as a value — only its PRESENCE says this request redeemed a run ticket.
+    @Req() req?: { query?: Record<string, unknown> },
   ): Promise<void> {
+    // TASK-1038 E2 (fix 1) — a run ticket is minted when the workflow admits `sse` OR `socket`; the
+    // SSE lane is enforced HERE, where the SSE stream redeems it. A bearer request is unchanged.
+    if (this.entryGate && req?.query?.ticket !== undefined) {
+      const run = await this.workflowExposureService.getRunStatus(slug, runId);
+      await this.entryGate.assertEntryAllowed(slug, run.workflowVersionNumber, 'sse');
+    }
     await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader, { protocolHeader, protocol, after, legacyQuery: lastEventIdQuery });
   }
 }
