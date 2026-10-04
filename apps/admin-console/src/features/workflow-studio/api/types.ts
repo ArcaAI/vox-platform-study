@@ -477,3 +477,53 @@ export interface WorkflowRunSchema {
    *  a `?mode=` example. */
   modes: string[];
 }
+
+// ---------------------------------------------------------------------------
+// TASK-1036 §3.3 — the lineage register (`GET admin/workflow-definitions/lineages`), mirrored off
+// `WorkflowLineageResponse` (`packages/applications/.../dto/workflow-lineage.response.ts`).
+// ---------------------------------------------------------------------------
+
+export interface WorkflowLineageActive {
+  id: string;
+  versionNumber: number;
+  publishedAt: string | null;
+  publishedBy: string | null;
+  registryChecksum: string | null;
+  compiledConfigChecksum: string | null;
+}
+
+/** The newest OPEN draft (DRAFT or VALIDATED) of the lineage. */
+export interface WorkflowLineageDraft {
+  id: string;
+  versionNumber: number;
+  status: 'DRAFT' | 'VALIDATED';
+  updatedAt: string;
+}
+
+export interface WorkflowLineageAssignment {
+  tenantDefault: boolean;
+  departmentCount: number;
+  selectorCount: number;
+}
+
+export interface WorkflowLineage {
+  slug: string;
+  /** The ACTIVE version's name, or the newest version's when nothing is active. */
+  name: string;
+  paletteKey: string;
+  versionCount: number;
+  latestVersionNumber: number;
+  deprecatedCount: number;
+  active: WorkflowLineageActive | null;
+  draft: WorkflowLineageDraft | null;
+  assignment: WorkflowLineageAssignment;
+  origin: { sourceTemplateSlug: string | null; templateLocked: boolean; [key: string]: unknown };
+  tags: string[];
+  updatedAt: string;
+}
+
+/** `GET admin/workflow-definitions/tags` row. */
+export interface WorkflowTagSuggestion {
+  tag: string;
+  count: number;
+}

@@ -11,7 +11,7 @@
  */
 
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, postWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
-import type { Paginated, WithEtag } from '@/shared/api';
+import type { ListParams, Paginated, WithEtag } from '@/shared/api';
 import type {
   CloneWorkflowDefinitionRequest,
   CreateWorkflowDefinitionRequest,
@@ -28,6 +28,8 @@ import type {
   WorkflowAssignment,
   WorkflowDefinition,
   WorkflowDefinitionBundle,
+  WorkflowLineage,
+  WorkflowTagSuggestion,
   WorkflowNodeRegistry,
   AgentOption,
   ContextSchemaVersionOption,
@@ -59,6 +61,22 @@ export interface ListWorkflowDefinitionsParams {
 /** Caller-tenant scoped only — the controller reads no other filter. */
 export function listWorkflowDefinitions(params?: ListWorkflowDefinitionsParams): Promise<Paginated<WorkflowDefinition>> {
   return getJson(BASE, params);
+}
+
+export type ListWorkflowLineagesParams = ListParams & { paletteKey?: string };
+
+/**
+ * TASK-1036 §3.3 — the REGISTER: one row per slug, paginated by LINEAGE (`count` counts lineages).
+ * `search`/`searchFields`/`filters` narrow the VERSION rows before the fold, so only fold-safe
+ * predicates (a `slug` search / `slug[iequals]`) belong on the screen's facets.
+ */
+export function listWorkflowLineages(params?: ListWorkflowLineagesParams): Promise<Paginated<WorkflowLineage>> {
+  return getJson(`${BASE}/lineages`, params);
+}
+
+/** Tag autocomplete over the caller tenant's definitions, ranked by use. */
+export function listWorkflowTags(q?: string, limit?: number): Promise<WorkflowTagSuggestion[]> {
+  return getJson(`${BASE}/tags`, { q: q || undefined, limit });
 }
 
 /** Detail read keeping the ETag for the later autosave PATCH. */
@@ -110,6 +128,25 @@ export function listWorkflowTemplates(): Promise<WorkflowDefinition[]> {
  *  version" flow, Task 15). */
 export function updateWorkflowDefinition(id: string, patch: UpdateWorkflowDefinitionRequest, etag: string): Promise<WithEtag<WorkflowDefinition>> {
   return patchWithEtag(definitionPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+}
+
+/**
+ * TASK-1036 §3.4 — edit a PUBLISHED/DEPRECATED version as a NEW draft of the same lineage. When
+ * the lineage already holds an open draft the gateway answers 409 `OPEN_DRAFT_EXISTS` with
+ * `{ draftId }` in the body (`GatewayError.details`); the console opens that draft instead.
+ */
+export function createDraftFrom(id: string): Promise<WorkflowDefinition> {
+  return postJson(`${definitionPath(id)}/draft`);
+}
+
+/** Move the `isActive` pointer onto this PUBLISHED version (rollback). Not an If-Match route. */
+export function activateDefinition(id: string): Promise<WorkflowDefinition> {
+  return postJson(`${definitionPath(id)}/activate`);
+}
+
+/** Retire a PUBLISHED version (`isActive` false; it stays immutable). Deprecating the active one leaves the slug serving nothing. */
+export function deprecateDefinition(id: string): Promise<WorkflowDefinition> {
+  return postJson(`${definitionPath(id)}/deprecate`);
 }
 
 /** Soft-delete (the platform never hard-deletes). */
