@@ -89,7 +89,13 @@ describe('x-platformManaged — every parameter except the tenant-editable allow
 
   it('SPEECH_TO_TEXT locks decoding and VAD thresholds but keeps the three stage switches', () => {
     const managed = platformManagedPaths('SPEECH_TO_TEXT');
-    for (const path of ['decoding.temperature', 'decoding.maxTokens', 'decoding.beamSize', 'audioFrontEnd.vad.threshold', 'streaming.partialWindowSec']) {
+    for (const path of [
+      'decoding.temperature',
+      'decoding.maxTokens',
+      'decoding.beamSize',
+      'audioFrontEnd.vad.threshold',
+      'streaming.partialWindowSec',
+    ]) {
       expect(managed, path).toContain(path);
     }
     for (const path of ['audioFrontEnd.vad.enabled', 'audioFrontEnd.denoise.enabled', 'audioFrontEnd.diarization.enabled']) {
@@ -125,7 +131,11 @@ describe('tenantEditableParams(task, capabilities)', () => {
       'dna.enabled',
     ]);
     expect(tenantEditableParams('TEXT_GENERATION', { ...CAPS, supportedGenerationParams: ['maxTokens'] })).not.toContain('generation.temperature');
-    expect(tenantEditableParams('TEXT_GENERATION', { ...CAPS, supportedGenerationParams: [] })).toEqual(['responseFormat', 'responseSchema', 'dna.enabled']);
+    expect(tenantEditableParams('TEXT_GENERATION', { ...CAPS, supportedGenerationParams: [] })).toEqual([
+      'responseFormat',
+      'responseSchema',
+      'dna.enabled',
+    ]);
   });
 
   it('hides temperature for a reasoning model', () => {
@@ -243,7 +253,9 @@ describe('PROMPT_VERSION_UNPINNED — publish refuses an unpinned library prompt
   });
 
   it('a pinned template passes publish', () => {
-    expect(agentConfigProblems({ task: 'TEXT_GENERATION', instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 2 } }, { phase: 'publish' })).toEqual([]);
+    expect(
+      agentConfigProblems({ task: 'TEXT_GENERATION', instruction: { promptTemplateId: 'tpl-1', promptVersionNumber: 2 } }, { phase: 'publish' }),
+    ).toEqual([]);
   });
 
   it('an unpinned template FRAGMENT is refused at its own path; inline fragments need no pin', () => {

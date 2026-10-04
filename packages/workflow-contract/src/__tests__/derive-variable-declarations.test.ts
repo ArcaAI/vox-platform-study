@@ -8,11 +8,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  PROMPT_VARIABLE_NAMESPACE_ROOTS,
-  deriveVariableDeclarations,
-  type PromptVariableDeclaration,
-} from '../derive-variable-declarations';
+import { PROMPT_VARIABLE_NAMESPACE_ROOTS, deriveVariableDeclarations, type PromptVariableDeclaration } from '../derive-variable-declarations';
 
 interface DeriveCase {
   name: string;

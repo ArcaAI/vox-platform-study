@@ -67,7 +67,9 @@ export const PROMPT_VARIABLE_NAMESPACE_ROOTS: readonly string[] = Object.freeze(
   'run',
 ]);
 
-const PLATFORM_VARIABLE_NAMES: ReadonlySet<string> = new Set(PLATFORM_CONTEXT_VARIABLES.map((entry) => entry.path.slice(entry.path.indexOf('.') + 1)));
+const PLATFORM_VARIABLE_NAMES: ReadonlySet<string> = new Set(
+  PLATFORM_CONTEXT_VARIABLES.map((entry) => entry.path.slice(entry.path.indexOf('.') + 1)),
+);
 const NAMESPACE_ROOTS: ReadonlySet<string> = new Set(PROMPT_VARIABLE_NAMESPACE_ROOTS);
 
 function isDeclaration(value: unknown): value is PromptVariableDeclaration {

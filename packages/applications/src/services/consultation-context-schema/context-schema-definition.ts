@@ -807,9 +807,7 @@ function constraintProblems(constraints: unknown, at: string, primitive?: unknow
       // TASK-1036 OD-6 — an attachment declares only types the platform can read.
       (constraints.mimeTypes as string[]).forEach((entry, index) => {
         if (!(CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(normalizeContextMimeType(entry))) {
-          problems.push(
-            `${at}.mimeTypes[${index}] \`${entry}\` is not an allowed attachment type (${CONTEXT_ATTACHMENT_MIME_TYPES.join(' | ')})`,
-          );
+          problems.push(`${at}.mimeTypes[${index}] \`${entry}\` is not an allowed attachment type (${CONTEXT_ATTACHMENT_MIME_TYPES.join(' | ')})`);
         }
       });
     }

@@ -49,7 +49,9 @@ describe('audio delivery (OD-6)', () => {
     expect(contextSchemaDefinitionProblems(definition([kind({ delivery: 'stream' })]))).toEqual([]);
     expect(contextSchemaDefinitionProblems(definition([kind({ delivery: 'blob' })]))).toEqual([]);
     expect(
-      contextSchemaDefinitionProblems(definition([kind({})], [{ key: 'reply_audio', label: 'Reply', primitive: 'STREAM_AUDIO', delivery: 'stream' }])),
+      contextSchemaDefinitionProblems(
+        definition([kind({})], [{ key: 'reply_audio', label: 'Reply', primitive: 'STREAM_AUDIO', delivery: 'stream' }]),
+      ),
     ).toEqual([]);
   });
 
@@ -101,7 +103,9 @@ describe('attachment MIME allow-list (OD-6)', () => {
   });
 
   it('refuses anything outside it, naming the value', () => {
-    expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'DOCUMENT', constraints: { mimeTypes: ['application/msword'] } })]))).toEqual([
+    expect(
+      contextSchemaDefinitionProblems(definition([kind({ primitive: 'DOCUMENT', constraints: { mimeTypes: ['application/msword'] } })])),
+    ).toEqual([
       'definition.kinds[0].constraints.mimeTypes[0] `application/msword` is not an allowed attachment type (text/plain | text/markdown | application/pdf | image/jpeg)',
     ]);
     expect(contextSchemaDefinitionProblems(definition([kind({ primitive: 'IMAGE', constraints: { mimeTypes: ['image/png'] } })]))).toEqual([
