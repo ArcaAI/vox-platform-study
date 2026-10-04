@@ -31,6 +31,8 @@ import {
   buildRunAppend,
   parseStoredRunEvent,
   planRunResume,
+  runEventAudience,
+  toPublicRunEvent,
   selectRunProtocol,
   isPublicRunEvent,
   parseResumeCursor,
@@ -401,5 +403,52 @@ describe('node scoping — agent runs and session-sourced transcripts (F2 fix 4)
   it('every other node-scoped type keeps `required`, and run-level types keep `forbidden`', () => {
     const optional = Object.entries(RUN_EVENT_NODE_SCOPE).filter(([, scope]) => scope === 'optional').map(([type]) => type);
     expect(optional).toEqual(['transcript.partial', 'transcript.final']);
+  });
+});
+
+describe('per-node outputs on the ADMIN trace (F2 fix 5)', () => {
+  const base = { seq: 14, runId: 'r', ts: '2026-10-04T10:00:00Z' };
+  const adminOutput = { ...base, type: 'output.data', nodeId: 'n_entities', data: { field: 'entities', value: [], visibility: 'admin' } } as unknown as RunEventV2;
+  const publicOutput = { ...base, type: 'output.data', nodeId: 'n_end', data: { field: 'entities', value: [] } } as unknown as RunEventV2;
+
+  it('an admin-trace output.data (visibility: admin) is valid, admin-audience, and never reaches the public plane', () => {
+    expect(runEventProblems(adminOutput)).toEqual([]);
+    expect(runEventAudience(adminOutput)).toBe('admin');
+    expect(toPublicRunEvent(adminOutput)).toBeNull();
+  });
+
+  it('an output.data without visibility is the OD-24 public output, unchanged on the public plane', () => {
+    expect(runEventAudience(publicOutput)).toBe('public');
+    expect(toPublicRunEvent(publicOutput)).toEqual(publicOutput);
+  });
+
+  it('`public` is spelled by absence, never explicitly', () => {
+    const explicit = { ...publicOutput, data: { field: 'entities', value: [], visibility: 'public' } };
+    expect(runEventProblems(explicit).join('\n')).toContain('visibility');
+  });
+
+  it('every admin debug type is dropped from the public plane', () => {
+    for (const example of fixture.examples) {
+      const projected = toPublicRunEvent(example.event);
+      if (runEventAudience(example.event) === 'admin') expect(projected, example.name).toBeNull();
+      else expect(projected, example.name).not.toBeNull();
+    }
+  });
+
+  it('the stored entry records the event-level audience in `vis`', () => {
+    const command = buildRunAppend({ runId: 'r', type: 'output.data', ts: base.ts, nodeId: 'n_entities', data: { field: 'entities', value: [], visibility: 'admin' } });
+    expect(command.args[command.args.indexOf('vis') + 1]).toBe('admin');
+  });
+
+  it('run.resync snapshot outputs are keyed by nodeId, then field — two nodes may share a field name', () => {
+    const resync = (outputs: unknown): unknown => ({
+      seq: 5,
+      runId: 'r',
+      type: 'run.resync',
+      ts: base.ts,
+      data: { reason: 'gap', snapshot: { status: 'RUNNING', lastSeq: 5, nodes: {}, outputs } },
+    });
+    expect(runEventProblems(resync({ n_note: { text: 'Subjective: ' }, n_summary: { text: 'Short.' } }))).toEqual([]);
+    expect(runEventProblems(resync({ text: 'Subjective: ' })).join('\n')).toContain('outputs.text');
   });
 });

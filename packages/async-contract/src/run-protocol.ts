@@ -60,8 +60,15 @@
  *
  * - Every delta names its node AND its output field (OD-33): `output.text.delta { field, text }`,
  *   `output.audio.delta { field, chunk, format }`, `output.data { field, value }`, each with
- *   `nodeId` on the envelope. Text deltas stream from nodes wired into the End node, plus any node
- *   flagged `stream` (OD-24).
+ *   `nodeId` on the envelope. On the PUBLIC plane (OD-24) outputs come only from nodes wired into
+ *   the End node, plus any node flagged `stream`: text as deltas, other values as `output.data`.
+ * - The ADMIN trace needs every node's outputs (the Test tab). At each node's completion the
+ *   producer emits `output.data { field, value, visibility: 'admin' }` for every declared output
+ *   of that node that has not already gone out as a public `output.data` — so a streamed text
+ *   field also arrives once as its final value. Visibility is therefore EVENT-level, not only
+ *   type-level: filter with {@link runEventAudience} / {@link toPublicRunEvent}, never with the
+ *   type alone. `run.resync.snapshot.outputs` is keyed by `nodeId`, then `field`; the public
+ *   plane's snapshot carries only public outputs.
  * - `run.completed.data.result` is either `{ kind: 'inline', value }` (the result serialises to at
  *   most {@link RUN_RESULT_INLINE_MAX_BYTES}) or `{ kind: 'ref', bucket, key, sizeBytes, sha256 }`
  *   (larger; the gateway serves it through a short-lived signed URL). Absent when the run produced
@@ -197,7 +204,11 @@ export function isRunEventType(value: unknown): value is RunEventType {
   return typeof value === 'string' && (RUN_EVENT_TYPES as readonly string[]).includes(value);
 }
 
-/** `true` for the public subset; `false` for admin-debug types and anything unknown. */
+/**
+ * TYPE-level: `true` for the types that MAY reach the public plane; `false` for admin-debug types
+ * and anything unknown. A public type can still carry an admin-only instance (`output.data` with
+ * `visibility: 'admin'`), so a stream filter uses {@link runEventAudience} / {@link toPublicRunEvent}.
+ */
 export function isPublicRunEvent(type: string): boolean {
   return isRunEventType(type) && RUN_EVENT_VISIBILITY[type] === 'public';
 }
@@ -240,8 +251,12 @@ export interface RunSnapshot {
   /** The last stored `seq` the snapshot reflects; the stream continues at `lastSeq + 1`. */
   readonly lastSeq: number;
   readonly nodes: Readonly<Record<string, { readonly status: RunNodeStatus; readonly durationMs?: number }>>;
-  /** Text accumulated so far per output field (and any `output.data` value), keyed by field. */
-  readonly outputs: Readonly<Record<string, unknown>>;
+  /**
+   * Outputs so far, keyed by `nodeId`, then `field`: text accumulated from deltas, or the latest
+   * `output.data` value. Two nodes may declare the same field name; they never collide. The public
+   * plane's snapshot holds only the outputs that plane may see.
+   */
+  readonly outputs: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   readonly result?: RunResult;
 }
 
@@ -282,7 +297,12 @@ export interface RunEventDataMap {
     readonly format: 'wav' | 'mp3' | 'ogg' | 'pcm';
     readonly sampleRate?: number;
   };
-  'output.data': { readonly field: string; readonly value: unknown };
+  'output.data': {
+    readonly field: string;
+    readonly value: unknown;
+    /** `admin`: a trace-only output (fix 5) — the public plane never sees it. Absent ⇒ public. */
+    readonly visibility?: 'admin';
+  };
   ping: Record<string, never>;
   'input.validated': {
     readonly valid: boolean;
@@ -467,7 +487,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
               ['status'],
             ),
           }),
-          outputs: Object.freeze({ type: 'object', additionalProperties: ANY }),
+          outputs: Object.freeze({ type: 'object', additionalProperties: Object.freeze({ type: 'object', additionalProperties: ANY }) }),
           result: RESULT,
         },
         ['status', 'lastSeq', 'nodes', 'outputs'],
@@ -496,7 +516,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
     },
     ['field', 'chunk', 'format'],
   ),
-  'output.data': closed({ field: FIELD, value: ANY }, ['field', 'value']),
+  'output.data': closed({ field: FIELD, value: ANY, visibility: Object.freeze({ const: 'admin' }) }, ['field', 'value']),
   ping: closed({}),
   'input.validated': closed({ valid: BOOL, problems: STRINGS, schema: closed({ slug: STR1, versionNumber: INT1 }, ['slug']) }, ['valid', 'problems']),
   'data.bound': closed(
@@ -890,9 +910,23 @@ export interface RunAppendCommand {
   readonly args: readonly string[];
 }
 
-/** The audience of one stored event — what the `vis` field records and the public plane filters on. */
+/**
+ * The audience of ONE event — what the stored `vis` field records and the public plane filters
+ * on: the type's visibility, narrowed to `admin` for an admin-trace `output.data`.
+ */
 export function runEventAudience(event: Pick<RunEventV2, 'type' | 'data'>): RunEventVisibility {
+  if (event.type === 'output.data' && (event.data as { visibility?: unknown }).visibility === 'admin') return 'admin';
   return RUN_EVENT_VISIBILITY[event.type];
+}
+
+/**
+ * The event as the PUBLIC plane (business callers, the SDKs) receives it, or `null` when that
+ * plane must not receive it at all. The gateway applies this to every stored event before it
+ * writes a public frame; the admin trace sends events unchanged.
+ */
+export function toPublicRunEvent(event: RunEventV2): RunEventV2 | null {
+  if (runEventAudience(event) !== 'public') return null;
+  return event;
 }
 
 /**

@@ -411,6 +411,21 @@
       }
     },
     {
+      "name": "output.data-admin-trace-every-declared-output",
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
+        }
+      }
+    },
+    {
       "name": "node.failed",
       "event": {
         "seq": 18,
@@ -522,7 +537,9 @@
               }
             },
             "outputs": {
-              "text": "Subjective: "
+              "n_note": {
+                "text": "Subjective: "
+              }
             }
           }
         }
@@ -595,7 +612,7 @@
           "text": "No fever since Monday.",
           "utteranceIndex": 4,
           "start": 15.2,
-          "end": 17.0,
+          "end": 17,
           "language": "en"
         }
       }
@@ -912,6 +929,43 @@
           "text": "x"
         }
       }
+    },
+    {
+      "name": "output.data-visibility-public-is-spelled-by-absence",
+      "problem": "visibility",
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_end",
+        "data": {
+          "field": "entities",
+          "value": [],
+          "visibility": "public"
+        }
+      }
+    },
+    {
+      "name": "resync-outputs-not-keyed-by-node",
+      "problem": "outputs.text",
+      "event": {
+        "seq": 12,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.resync",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "reason": "gap",
+          "snapshot": {
+            "status": "RUNNING",
+            "lastSeq": 12,
+            "nodes": {},
+            "outputs": {
+              "text": "Subjective: "
+            }
+          }
+        }
+      }
     }
   ],
   "sse": [
@@ -1104,6 +1158,69 @@
           ],
           "mode": "detect",
           "latencyMs": 41
+        }
+      }
+    },
+    {
+      "name": "admin-trace-output.data",
+      "append": {
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
+        },
+        "dedupeKey": "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:output:text"
+      },
+      "command": {
+        "keys": [
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:seq",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:events",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:dedupe"
+        ],
+        "args": [
+          "10000",
+          "0",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:output:text",
+          "type",
+          "output.data",
+          "ts",
+          "2026-10-04T10:00:00.000Z",
+          "nodeId",
+          "n_note",
+          "vis",
+          "admin",
+          "body",
+          "{\"field\":\"text\",\"value\":\"Subjective: dry cough.\",\"visibility\":\"admin\"}"
+        ]
+      },
+      "entry": [
+        "seq",
+        "17",
+        "type",
+        "output.data",
+        "ts",
+        "2026-10-04T10:00:00.000Z",
+        "nodeId",
+        "n_note",
+        "vis",
+        "admin",
+        "body",
+        "{\"field\":\"text\",\"value\":\"Subjective: dry cough.\",\"visibility\":\"admin\"}"
+      ],
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
         }
       }
     },
