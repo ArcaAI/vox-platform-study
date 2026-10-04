@@ -289,3 +289,65 @@ class TestProtocolV2Emission:
         )
         assert settled["type"] == "node.completed"  # a non-critical agent degrades
         assert settled["data"]["status"] == "DEGRADED"
+
+
+class TestLoopBodies:
+    @pytest.mark.asyncio
+    async def test_a_body_binding_reads_the_current_item(self, stream) -> None:
+        from harness.tests.unit.temporal.interpreter.test_core_interpreter import _node
+
+        graph = h.body(
+            [
+                {"stageIndex": 0, "nodes": [h.trigger()]},
+                {
+                    "stageIndex": 1,
+                    "nodes": [
+                        _node(
+                            "n_loop",
+                            "core.loop",
+                            "interpreter.core_loop",
+                            config={
+                                "mode": "foreach",
+                                "over": "trigger.items",
+                                "bounds": {
+                                    "maxIterations": 5,
+                                    "maxDurationSeconds": 600,
+                                    "maxTotalTokens": 100000,
+                                },
+                                "collect": "text",
+                            },
+                            inputs=[h.edge("n_trigger", "out", "in")],
+                            timeout=3600,
+                        )
+                    ],
+                },
+            ],
+            loops=[
+                {
+                    "nodeId": "n_loop",
+                    "body": {
+                        "stages": [
+                            {
+                                "stageIndex": 0,
+                                "nodes": [
+                                    _with(
+                                        h.agent("n_body", _stub="echo"),
+                                        bindings={
+                                            "message": {"from": "nodes.n_loop.outputs.item.name"}
+                                        },
+                                    )
+                                ],
+                            }
+                        ]
+                    },
+                }
+            ],
+        )
+        result, _nodes, _ = await h.run_graph(
+            graph, payload={"items": [{"name": "first"}, {"name": "second"}]}
+        )
+        assert result.status == "SUCCEEDED"
+        # The stub records the LAST input it saw: the second iteration's item.
+        assert h.SEEN["n_body"].bound_inputs["message"] == "second"
+        assert h.SEEN["n_body"].event_scope == "iter:1"
+        assert h.SEEN["n_body"].protocol == 2

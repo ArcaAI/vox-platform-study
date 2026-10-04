@@ -874,6 +874,9 @@ class CoreLoopInput(BaseModel):
     #: template variables inside the body read it.
     run_context: dict[str, Any] = Field(default_factory=dict)
     state: CoreLoopState = Field(default_factory=CoreLoopState)
+    #: TASK-1038 R6, additive-optional: `2` when the parent run speaks protocol v2 — the body's
+    #: node activities then emit their admin events, scoped per iteration (`iter:<n>`).
+    protocol: int | None = None
 
 
 class CoreLoopResult(BaseModel):

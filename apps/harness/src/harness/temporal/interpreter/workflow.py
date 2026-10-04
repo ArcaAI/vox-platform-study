@@ -1586,21 +1586,18 @@ class WorkflowInterpreter:
         if node.type.startswith("core."):
             # Who produced what, so the activity can serve `nodes.<id>.outputs.<field>` in its
             # templates and conditions (the dual scope) without a second copy of any output.
-            fields["run_context"] = {
-                **run_context,
-                "nodeMeta": {
-                    node_id: {
-                        "type": node_type,
-                        **(
-                            {"task": self._node_tasks[node_id]}
-                            if node_id in self._node_tasks
-                            else {}
-                        ),
-                    }
-                    for node_id, node_type in self._node_types.items()
-                },
-            }
+            fields["run_context"] = {**run_context, "nodeMeta": self._node_meta()}
         return fields
+
+    def _node_meta(self) -> dict[str, dict[str, str]]:
+        """`{nodeId: {type, task?}}` — who produced what (pure)."""
+        return {
+            node_id: {
+                "type": node_type,
+                **({"task": self._node_tasks[node_id]} if node_id in self._node_tasks else {}),
+            }
+            for node_id, node_type in self._node_types.items()
+        }
 
     async def _read_consultation(
         self, inp: InterpreterInput, node_id: str, paths: list[str], snapshot: str
@@ -1977,6 +1974,8 @@ class WorkflowInterpreter:
                 )
             items = resolved
 
+        if self._v2:
+            run_context = {**run_context, "nodeMeta": self._node_meta()}
         loop_input = CoreLoopInput(
             run_id=inp.run_id,
             node_id=node.node_id,
@@ -1997,6 +1996,7 @@ class WorkflowInterpreter:
                 else inp.payload
             ),
             run_context=run_context,
+            protocol=2 if self._v2 else None,
         )
         max_duration = int(loop_input.bounds.max_duration_seconds)
         try:
