@@ -35,6 +35,11 @@
 // audio-free; core consumers use `useArca().audio`).
 export { useArcaAudio } from './hooks/useArcaAudio';
 
+// `useRunAudio` — the microphone into a run (TASK-1039). Composes `useArcaAudio` + `useRun`, so like
+// the audio facade it lives here, keeping capture code out of `core`.
+export { useRunAudio } from './hooks/useRunAudio';
+export type { UseRunAudioOptions, UseRunAudioReturn, RunAudioStartOptions } from './hooks/useRunAudio';
+
 // `useTtsPlayback` — streamed TTS audio playback (summary read-aloud).
 // Lives in the plugins entry so Web Audio / room code stays out of `core`.
 export { useTtsPlayback } from './hooks/useTtsPlayback';

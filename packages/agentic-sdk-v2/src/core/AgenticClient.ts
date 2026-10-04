@@ -484,6 +484,62 @@ export class AgenticClient {
   }
 
   /**
+   * An authenticated request whose RESPONSE is handed back unread (TASK-1039).
+   *
+   * Every other method here parses JSON, which is wrong for two reads the run plane makes:
+   * a long-lived `text/event-stream` (agent runs — the gateway mints no run-scoped ticket for
+   * them, and `EventSource` cannot set the `Authorization` / `X-API-Key` headers a `fetch` can),
+   * and the run RESULT route, whose `X-Hope-Result-Kind` header decides how its body is read and
+   * which answers `204` for "nothing delivered".
+   *
+   * Carries the same credentials as the rest of the client, and the same single 401 refresh.
+   * There is deliberately NO request timeout: a stream is meant to stay open, and the caller owns
+   * its lifetime through `signal`. A non-2xx throws an {@link AgenticError} whose `context` keeps
+   * the HTTP `status` and the gateway's machine-readable `code`.
+   */
+  async requestRaw(
+    endpoint: string,
+    options: { method?: string; headers?: Record<string, string>; signal?: AbortSignal } = {},
+    isRetry = false,
+  ): Promise<Response> {
+    this.checkRateLimit();
+    const method = options.method ?? 'GET';
+    const requestId = `req_${++this.requestCount}_${Date.now()}`;
+    const headers: Record<string, string> = { 'X-Request-ID': requestId, ...(options.headers ?? {}) };
+
+    const authToken = this.resolveAuthToken(endpoint);
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+    if (this.tenantId) headers['X-Tenant-ID'] = this.tenantId;
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${endpoint}`, { method, headers, signal: options.signal });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error;
+      throw new AgenticError('NETWORK_ERROR', 'Network error - check your connection', {
+        cause: error as Error,
+        context: { endpoint, requestId },
+      });
+    }
+
+    if (response.ok) return response;
+
+    if (response.status === 401 && !isRetry && this.onUnauthorizedHandler && !AgenticClient.shouldSkipRefresh(endpoint)) {
+      try {
+        if (await this.deduplicatedRefresh()) return this.requestRaw(endpoint, options, true);
+      } catch {
+        // Refresh failed — fall through to throw the original 401.
+      }
+    }
+
+    const errorData = await response.json().catch(() => ({}));
+    throw new AgenticError(classifyHttpError(response.status), errorData?.message || `HTTP ${response.status}: ${response.statusText}`, {
+      context: { status: response.status, endpoint, requestId, ...(typeof errorData?.code === 'string' ? { code: errorData.code } : {}) },
+    });
+  }
+
+  /**
    * GET request that returns the parsed body PLUS the `ETag` response
    * header.
    *
