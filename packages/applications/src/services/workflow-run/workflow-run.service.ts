@@ -228,6 +228,12 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     return WorkflowRunDtoMapper.toResponse(entity);
   }
 
+  async getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null> {
+    const entity = await this.findRunOrThrow(tenantId, runId);
+    const hash = entity.metaData?.requestBodyHash;
+    return typeof hash === 'string' && hash.length > 0 ? hash : null;
+  }
+
   async getRunGate(tenantId: string, runId: string): Promise<RunGateStateResponse> {
     // Tenancy FIRST, before anything is asked of the harness: a cross-tenant run id must 404
     // here, not leak the existence of another tenant's gate through a downstream error.
