@@ -395,6 +395,10 @@ test.describe(' route authorization conformance matrix', () => {
     // and TASK-1021 the 37th: GET /internal/models/{slug}/serving-spec (ModelServingInternalController),
     // `@Public()` behind InternalServiceTokenGuard like its siblings. Counted from the regenerated
     // `route-manifest.json` (isPublic && path under /api/v1/internal/) = 37.
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(37);
+    // TASK-1035 added the 38th without re-pinning (POST /internal/composed-prompts) and TASK-1038 the
+    // 39th: GET /internal/agents/{slug}/versions/{versionNumber}/resolved (AgentVersionInternalController,
+    // `@Public()` + InternalServiceTokenGuard). Counted from the regenerated `route-manifest.json` = 39;
+    // the `assertAll` above still proves each one is service-token-gated.
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(39);
   });
 });

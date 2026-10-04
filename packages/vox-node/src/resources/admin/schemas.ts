@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 540 component schemas the generated surface transitively
+ * Only the 541 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -1891,7 +1891,7 @@ export interface CreatePromptTemplateRequest {
   scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
   /** Publication status */
   status?: 'DRAFT' | 'PUBLISHED';
-  /** Tags for search/filtering */
+  /** Tags for search/filtering — lower-case `key` or `key:value`, max 24 */
   tags?: string[];
   /** Typed prompt-variable declarations */
   variables?: PromptVariableDeclarationDto[];
@@ -5454,6 +5454,13 @@ export interface PromptPreviewTokenEstimateResponse {
   user: number;
 }
 
+export interface PromptTagSuggestionResponse {
+  /** How many of the tenant's prompts carry this tag. */
+  count: number;
+  /** The tag, verbatim. */
+  tag: string;
+}
+
 export interface PromptTemplateResponse {
   /** PromptVersion number pinned at the last approval — what resolution actually serves. Null = never approved. */
   approvedVersionNumber?: number | null;
@@ -7939,7 +7946,7 @@ export interface UpdatePromptTemplateRequest {
   resourceStatus?: 'ENABLED' | 'DISABLED';
   /** Publication status */
   status?: 'DRAFT' | 'PUBLISHED';
-  /** Tags for search/filtering */
+  /** Tags for search/filtering — lower-case `key` or `key:value`, max 24 */
   tags?: string[];
   /** Typed prompt-variable declarations */
   variables?: PromptVariableDeclarationDto[];

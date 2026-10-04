@@ -7203,7 +7203,7 @@
             "type": "string"
           },
           "tags": {
-            "description": "Tags for search/filtering",
+            "description": "Tags for search/filtering — lower-case `key` or `key:value`, max 24",
             "items": {
               "type": "string"
             },
@@ -19255,6 +19255,25 @@
         ],
         "type": "object"
       },
+      "PromptTagSuggestionResponse": {
+        "properties": {
+          "count": {
+            "description": "How many of the tenant's prompts carry this tag.",
+            "example": 3,
+            "type": "number"
+          },
+          "tag": {
+            "description": "The tag, verbatim.",
+            "example": "dept:cardiology",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
+        ],
+        "type": "object"
+      },
       "PromptTemplateResponse": {
         "properties": {
           "approvedVersionNumber": {
@@ -27547,7 +27566,7 @@
             "type": "string"
           },
           "tags": {
-            "description": "Tags for search/filtering",
+            "description": "Tags for search/filtering — lower-case `key` or `key:value`, max 24",
             "items": {
               "type": "string"
             },
@@ -31023,6 +31042,33 @@
           "degradedNodeCount",
           "degraded",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResultRefResponse": {
+        "properties": {
+          "expiresAt": {
+            "description": "When `url` stops working (ISO-8601). Request the route again for a fresh one.",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 (hex) of the result object, for an integrity check after download.",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Size of the result object in bytes.",
+            "type": "number"
+          },
+          "url": {
+            "description": "A short-lived signed GET URL for the result object. Do not log or share it: it is a bearer credential until it expires.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt",
+          "sizeBytes",
+          "sha256"
         ],
         "type": "object"
       },
@@ -42761,6 +42807,89 @@
         "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": [
           "svc:workflow:run:write"
+        ]
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/result": {
+      "get": {
+        "description": "Answers once the run is terminal. The `X-Hope-Result-Kind` header says which shape the 200 carries: `inline` — the body IS the delivered JSON value; `ref` — `{ url, expiresAt, sizeBytes, sha256 }`, a signed GET URL valid until `expiresAt` (request the route again for a fresh one). 204 means the run ended and delivered nothing; 410 means it delivered a result that has passed the tenant's result retention (`workflowRuns.resultRetentionDays`). A run that is still going is a 409 carrying its current status.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:workflow:run:read`).\n\n**API key scopes** — `workflow:run:read`.\n\n**Abilities** — `read:WorkflowRun`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "WorkflowsController_getRunResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResultRefResponse"
+                }
+              }
+            },
+            "description": "`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below)."
+          },
+          "204": {
+            "description": "The run is terminal and delivered no result."
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+          },
+          "409": {
+            "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`."
+          },
+          "410": {
+            "description": "The result existed and has passed its retention window."
+          },
+          "503": {
+            "description": "A stored result exists but no object storage is configured to sign its URL."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The result a finished run delivered: the JSON value inline, or a short-lived signed URL for a large result.",
+        "tags": [
+          "workflows"
+        ],
+        "x-hope-abilities": [
+          "read:WorkflowRun"
+        ],
+        "x-hope-api-key-scopes": [
+          "workflow:run:read"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:workflow:run:read"
         ]
       }
     },

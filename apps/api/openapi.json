@@ -7203,7 +7203,7 @@
             "type": "string"
           },
           "tags": {
-            "description": "Tags for search/filtering",
+            "description": "Tags for search/filtering — lower-case `key` or `key:value`, max 24",
             "items": {
               "type": "string"
             },
@@ -19255,6 +19255,25 @@
         ],
         "type": "object"
       },
+      "PromptTagSuggestionResponse": {
+        "properties": {
+          "count": {
+            "description": "How many of the tenant's prompts carry this tag.",
+            "example": 3,
+            "type": "number"
+          },
+          "tag": {
+            "description": "The tag, verbatim.",
+            "example": "dept:cardiology",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "count"
+        ],
+        "type": "object"
+      },
       "PromptTemplateResponse": {
         "properties": {
           "approvedVersionNumber": {
@@ -27547,7 +27566,7 @@
             "type": "string"
           },
           "tags": {
-            "description": "Tags for search/filtering",
+            "description": "Tags for search/filtering — lower-case `key` or `key:value`, max 24",
             "items": {
               "type": "string"
             },
@@ -31023,6 +31042,33 @@
           "degradedNodeCount",
           "degraded",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "WorkflowRunResultRefResponse": {
+        "properties": {
+          "expiresAt": {
+            "description": "When `url` stops working (ISO-8601). Request the route again for a fresh one.",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 (hex) of the result object, for an integrity check after download.",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Size of the result object in bytes.",
+            "type": "number"
+          },
+          "url": {
+            "description": "A short-lived signed GET URL for the result object. Do not log or share it: it is a bearer credential until it expires.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt",
+          "sizeBytes",
+          "sha256"
         ],
         "type": "object"
       },
@@ -44832,6 +44878,65 @@
         ]
       }
     },
+    "/api/v1/admin/prompt-templates/tags": {
+      "get": {
+        "description": "Distinct tags over the caller tenant's non-deleted Hope Prompts, ranked by how many prompts carry them (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.",
+        "operationId": "PromptManagementController_listTags",
+        "parameters": [
+          {
+            "description": "Max suggestions (default 20, max 100)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "Case-insensitive substring filter",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PromptTagSuggestionResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Tag suggestions"
+          },
+          "400": {
+            "description": "No tenant context on the request"
+          },
+          "403": {
+            "description": "Caller lacks manage:PromptTemplate"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Distinct prompt tags with usage counts (autocomplete)",
+        "tags": [
+          "admin-prompt-templates"
+        ]
+      }
+    },
     "/api/v1/admin/prompt-templates/usage-records": {
       "get": {
         "operationId": "PromptManagementController_listUsageRecords",
@@ -56779,6 +56884,7 @@
         ]
       },
       "post": {
+        "description": "A slug this tenant already uses is rejected 409 `WORKFLOW_SLUG_TAKEN` unless `parentVersionId` names a version of that slug (prefer `POST :id/draft`, which copies the graph server-side). A graph with no nodes is created with its `core.trigger` and `core.output` boundary nodes already placed and connected.",
         "operationId": "WorkflowDefinitionController_create",
         "parameters": [],
         "requestBody": {
@@ -56806,7 +56912,7 @@
             "description": "Bad request — invalid input, or the graph fails shape/engine validation."
           },
           "409": {
-            "description": "maxWorkflowDefinitions quota exceeded."
+            "description": "maxWorkflowDefinitions quota exceeded, or `WORKFLOW_SLUG_TAKEN` — the slug already has versions and no `parentVersionId` was given."
           }
         },
         "security": [
@@ -56817,7 +56923,7 @@
             "service-account": []
           }
         ],
-        "summary": "Create a new DRAFT workflow definition version for the caller tenant",
+        "summary": "Create a new DRAFT workflow definition for the caller tenant",
         "tags": [
           "admin-workflow-definitions"
         ]
@@ -57668,6 +57774,56 @@
           }
         ],
         "summary": "Deprecate a PUBLISHED version: it stops being served (isActive false) and stays immutable",
+        "tags": [
+          "admin-workflow-definitions"
+        ]
+      }
+    },
+    "/api/v1/admin/workflow-definitions/{id}/draft": {
+      "post": {
+        "description": "Branches the next version of the SAME `(tenantId, slug)` lineage: DRAFT, inactive, `versionNumber` = max + 1, `parentVersionId` = the source. The graph is copied server-side from the stored source row (the body carries nothing), the validation report is recomputed with the publish gate, and nothing publish-owned (`compiledConfig`, checksums, `publishedAt`, `isActive`) is carried over. Consumes the `maxWorkflowDefinitions` quota exactly as create does.\n\nThe source must be PUBLISHED or DEPRECATED. A lineage holds at most one open draft: if a DRAFT or VALIDATED version of the slug already exists the call is refused 409 `OPEN_DRAFT_EXISTS` with `{ draftId }`, and the caller should open that draft instead.",
+        "operationId": "WorkflowDefinitionController_createDraft",
+        "parameters": [
+          {
+            "description": "Source WorkflowDefinition id — a PUBLISHED or DEPRECATED version of the caller’s own.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDefinitionResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "The source is a DRAFT or VALIDATED row (edit it in place), or its graph fails shape/engine validation."
+          },
+          "404": {
+            "description": "Source not found (or another tenant’s)."
+          },
+          "409": {
+            "description": "`OPEN_DRAFT_EXISTS` — the lineage already has a DRAFT or VALIDATED version (its id is in `draftId`) — or the maxWorkflowDefinitions quota is exceeded."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Edit a published (or deprecated) workflow version as a NEW draft version of the same workflow",
         "tags": [
           "admin-workflow-definitions"
         ]
@@ -67783,6 +67939,72 @@
           }
         ],
         "summary": "Cancel a run — sends the interpreter's allow-listed cancel signal, never a caller-supplied signal name.",
+        "tags": [
+          "workflows"
+        ]
+      }
+    },
+    "/api/v1/workflows/{slug}/runs/{runId}/result": {
+      "get": {
+        "description": "Answers once the run is terminal. The `X-Hope-Result-Kind` header says which shape the 200 carries: `inline` — the body IS the delivered JSON value; `ref` — `{ url, expiresAt, sizeBytes, sha256 }`, a signed GET URL valid until `expiresAt` (request the route again for a fresh one). 204 means the run ended and delivered nothing; 410 means it delivered a result that has passed the tenant's result retention (`workflowRuns.resultRetentionDays`). A run that is still going is a 409 carrying its current status.",
+        "operationId": "WorkflowsController_getRunResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunResultRefResponse"
+                }
+              }
+            },
+            "description": "`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below)."
+          },
+          "204": {
+            "description": "The run is terminal and delivered no result."
+          },
+          "404": {
+            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+          },
+          "409": {
+            "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`."
+          },
+          "410": {
+            "description": "The result existed and has passed its retention window."
+          },
+          "503": {
+            "description": "A stored result exists but no object storage is configured to sign its URL."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The result a finished run delivered: the JSON value inline, or a short-lived signed URL for a large result.",
         "tags": [
           "workflows"
         ]

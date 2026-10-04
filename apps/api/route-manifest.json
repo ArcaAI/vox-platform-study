@@ -5827,6 +5827,29 @@
     },
     {
       "controller": "PromptManagementController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/prompt-templates/tags",
+      "routePath": "/admin/prompt-templates/tags",
+      "svcScopes": [
+        "svc:admin:prompt-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "PromptTemplate"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "PromptManagementController",
       "handler": "listUsageRecords",
       "method": "GET",
       "path": "/api/v1/admin/prompt-templates/usage-records",
@@ -10974,6 +10997,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "createDraft",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/{id}/draft",
+      "routePath": "/admin/workflow-definitions/:id/draft",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "export",
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/{id}/export",
@@ -13903,6 +13949,22 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentVersionInternalController",
+      "handler": "resolveVersion",
+      "method": "GET",
+      "path": "/api/v1/internal/agents/{slug}/versions/{versionNumber}/resolved",
+      "routePath": "/internal/agents/:slug/versions/:versionNumber/resolved",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "AgentInternalController",
       "handler": "asrSpec",
       "method": "GET",
@@ -15975,6 +16037,31 @@
       "requiredPermissions": [
         [
           "update",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "getRunResult",
+      "method": "GET",
+      "path": "/api/v1/workflows/{slug}/runs/{runId}/result",
+      "routePath": "/workflows/:slug/runs/:runId/result",
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:read"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
           "WorkflowRun"
         ]
       ],

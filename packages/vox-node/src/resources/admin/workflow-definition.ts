@@ -44,7 +44,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers WorkflowAssignmentController, WorkflowDefinitionController, WorkflowSandboxRunController
- * (29 routes). Several controllers sharing one scope share one
+ * (30 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -174,7 +174,9 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
   }
 
   /**
-   * Create a new DRAFT workflow definition version for the caller tenant
+   * Create a new DRAFT workflow definition for the caller tenant
+   *
+   * A slug this tenant already uses is rejected 409 `WORKFLOW_SLUG_TAKEN` unless `parentVersionId` names a version of that slug (prefer `POST :id/draft`, which copies the graph server-side). A graph with no nodes is created with its `core.trigger` and `core.output` boundary nodes already placed and connected.
    *
    * `POST /api/v1/admin/workflow-definitions` — `WorkflowDefinitionController.create`.
    */
@@ -343,6 +345,22 @@ export class AdminWorkflowDefinitionResource extends AdminResource {
     return this.request<WorkflowDefinitionResponse>({
       method: 'POST',
       path: `admin/workflow-definitions/${encodePathSegment(String(id))}/deprecate`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Edit a published (or deprecated) workflow version as a NEW draft version of the same workflow
+   *
+   * Branches the next version of the SAME `(tenantId, slug)` lineage: DRAFT, inactive, `versionNumber` = max + 1, `parentVersionId` = the source. The graph is copied server-side from the stored source row (the body carries nothing), the validation report is recomputed with the publish gate, and nothing publish-owned (`compiledConfig`, checksums, `publishedAt`, `isActive`) is carried over. Consumes the `maxWorkflowDefinitions` quota exactly as create does. The source must be PUBLISHED or DEPRECATED. A lineage holds at most one open draft: if a DRAFT or VALIDATED version of the slug already exists the call is refused 409 `OPEN_DRAFT_EXISTS` with `{ draftId }`, and the caller should open that draft instead.
+   *
+   * `POST /api/v1/admin/workflow-definitions/{id}/draft` — `WorkflowDefinitionController.createDraft`.
+   */
+  createDraft(id: string, options: AdminRequestOptions = {}): Promise<WorkflowDefinitionResponse> {
+    return this.request<WorkflowDefinitionResponse>({
+      method: 'POST',
+      path: `admin/workflow-definitions/${encodePathSegment(String(id))}/draft`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

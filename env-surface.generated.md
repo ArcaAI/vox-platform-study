@@ -19,9 +19,9 @@ disagree with those declarations.
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 22 |
-| Python declared fields | 309 |
-| … distinct Python names (incl. aliases + `os.environ` reads) | 361 |
-| `turbo.json#globalEnv` entries | 517 |
+| Python declared fields | 312 |
+| … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
+| `turbo.json#globalEnv` entries | 520 |
 
 ## Variables — the TypeScript platform surface
 
@@ -224,11 +224,14 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_ATOMIC_FACT_N_GPU_LAYERS` | `apps/harness` | no | no | `0` | commented | — |
 | `HARNESS_ATOMIC_FACT_N_THREADS` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
+| `HARNESS_CLAIM_CHECK_ACTIVITY_INPUT_MAX_BYTES` | `apps/harness` | no | no | `1572864` | commented | — |
 | `HARNESS_CLAIM_CHECK_BUCKET` | `apps/harness` | no | no | `harness-claim-check` | commented | — |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_CLAIM_CHECK_ENDPOINT_URL` | `apps/harness` | no | no | `http://localhost:9000` | commented | — |
 | `HARNESS_CLAIM_CHECK_MIN_BYTES` | `apps/harness` | no | no | `65536` | commented | — |
+| `HARNESS_CLAIM_CHECK_NODE_OUTPUT_MIN_BYTES` | `apps/harness` | no | no | `20480` | commented | — |
 | `HARNESS_CLAIM_CHECK_REGION` | `apps/harness` | no | no | `us-east-1` | commented | — |
+| `HARNESS_CLAIM_CHECK_RESULT_INLINE_MAX_BYTES` | `apps/harness` | no | no | `65536` | commented | — |
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_CLAIM_CHECK_SECURE` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_CLAIM_CHECK_STORE` | `apps/harness` | no | no | `memory` | commented | — |
