@@ -228,6 +228,28 @@ export interface WorkflowCanvasProps {
    * stored no positions.
    */
   fitViewKey?: number;
+  /**
+   * TASK-1036 R-C — how much of the canvas, in px from each edge, something floats over (the
+   * Studio's docked palette and inspector). The zoom controls and the minimap move in by it, and
+   * `fitView` fits into the rectangle that is left, so neither the chrome nor the graph's ends sit
+   * under a pane. Absent = nothing floats over the canvas.
+   */
+  viewportInsets?: WorkflowCanvasInsets;
+  /**
+   * TASK-1036 R-C #9 — what the mouse wheel does. `scroll` zooms the canvas (React Flow's
+   * default); `modifier` lets the wheel scroll the page and zooms only with Ctrl/⌘ held (and on a
+   * trackpad pinch). Default: `modifier` for a `readOnly` canvas — one embedded in a scrolling page
+   * (the Test tab's Flow) must not trap the wheel — `scroll` otherwise.
+   */
+  wheelZoom?: 'scroll' | 'modifier';
   'aria-label': string;
   className?: string;
+}
+
+/** TASK-1036 R-C — pixels of the canvas covered from each edge. */
+export interface WorkflowCanvasInsets {
+  left?: number;
+  right?: number;
+  top?: number;
+  bottom?: number;
 }

@@ -13,7 +13,7 @@ import { WorkflowEdgeChromeProvider, XYFLOW_EDGE_TYPES } from './workflow-edge';
 import type { WorkflowEdgeChrome } from './workflow-edge';
 import { XYFLOW_NODE_TYPES, problemSummaryId } from './workflow-node';
 import type { WorkflowNodeData } from './workflow-node';
-import type { WorkflowCanvasEdge, WorkflowCanvasNode, WorkflowCanvasProps } from './types';
+import type { WorkflowCanvasEdge, WorkflowCanvasInsets, WorkflowCanvasNode, WorkflowCanvasProps } from './types';
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = React.useState(false);
@@ -209,6 +209,27 @@ function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set
   return Object.fromEntries(remaining.map((id) => [id, previous[id]]));
 }
 
+/** React Flow's own panel margin (`.react-flow__panel { margin: 15px }`). */
+const PANEL_MARGIN = 15;
+/** Room `fitView` leaves on each side of the free rectangle: the top clears the composer's "Add a step"; the left clears the zoom controls. */
+const FIT_GAP = { top: 56, left: 56, right: 32, bottom: 32 } as const;
+
+/**
+ * TASK-1036 R-C #2 — `fitView` padding that fits the graph into the rectangle the floating panes
+ * leave free. Pixel padding per side (React Flow 12 accepts `{ top, right, bottom, left }` with
+ * units); without insets the old proportional `0.2` stands.
+ */
+export function fitViewPaddingFor(insets: WorkflowCanvasInsets | undefined): number | { top: `${number}px`; right: `${number}px`; bottom: `${number}px`; left: `${number}px` } {
+  if (!insets) return 0.2;
+  const px = (value: number): `${number}px` => `${Math.max(0, Math.round(value))}px`;
+  return {
+    top: px((insets.top ?? 0) + FIT_GAP.top),
+    right: px((insets.right ?? 0) + FIT_GAP.right),
+    bottom: px((insets.bottom ?? 0) + FIT_GAP.bottom),
+    left: px((insets.left ?? 0) + FIT_GAP.left),
+  };
+}
+
 type ReactFlowProps = React.ComponentProps<typeof ReactFlow>;
 type EdgeChanges = Parameters<NonNullable<ReactFlowProps['onEdgesChange']>>[0];
 type NodeDragHandler = NonNullable<ReactFlowProps['onNodeDragStop']>;
@@ -251,10 +272,34 @@ export function WorkflowCanvas({
   emptyState,
   minimap = true,
   fitViewKey,
+  viewportInsets,
+  wheelZoom,
   className,
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const zoomOnWheel = (wheelZoom ?? (readOnly ? 'modifier' : 'scroll')) === 'scroll';
+  const insetLeft = viewportInsets?.left ?? 0;
+  const insetRight = viewportInsets?.right ?? 0;
+  const insetTop = viewportInsets?.top ?? 0;
+  const insetBottom = viewportInsets?.bottom ?? 0;
+  // Keyed on the four numbers, not the object: a consumer rebuilding an equal insets object each
+  // render must not hand React Flow a new `fitViewOptions` every time.
+  const hasInsets = viewportInsets !== undefined;
+  const fitViewOptions = React.useMemo(
+    () => ({
+      duration: reducedMotion ? 0 : 400,
+      padding: fitViewPaddingFor(hasInsets ? { left: insetLeft, right: insetRight, top: insetTop, bottom: insetBottom } : undefined),
+    }),
+    [reducedMotion, hasInsets, insetLeft, insetRight, insetTop, insetBottom],
+  );
+  // The re-fit effect below runs on `fitViewKey` alone; it reads the latest options through this.
+  const fitViewOptionsRef = React.useRef(fitViewOptions);
+  React.useEffect(() => {
+    fitViewOptionsRef.current = fitViewOptions;
+  }, [fitViewOptions]);
+  const controlsStyle = React.useMemo(() => ({ marginLeft: PANEL_MARGIN + insetLeft, marginBottom: PANEL_MARGIN + insetBottom }), [insetLeft, insetBottom]);
+  const minimapStyle = React.useMemo(() => ({ marginRight: PANEL_MARGIN + insetRight, marginBottom: PANEL_MARGIN + insetBottom }), [insetRight, insetBottom]);
   // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
   // removed nodes are pruned so a long editing session cannot grow this unboundedly.
   const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
@@ -465,8 +510,9 @@ export function WorkflowCanvas({
 
   React.useEffect(() => {
     if (fitViewKey === undefined) return;
-    instanceRef.current?.fitView({ duration: reducedMotion ? 0 : 400, padding: 0.2 });
-  }, [fitViewKey, reducedMotion]);
+    // Re-fit on the KEY only — a pane opening or resizing must not yank the viewport around.
+    void instanceRef.current?.fitView(fitViewOptionsRef.current);
+  }, [fitViewKey]);
 
   return (
     <div
@@ -483,6 +529,15 @@ export function WorkflowCanvas({
         Workflow graph editor. Press Tab to move between nodes and connections; each carries a labelled button that removes it without a drag. Adding
         and configuring nodes stay available outside the canvas.
       </span>
+      {!zoomOnWheel ? (
+        // R-C #9 — the wheel scrolls the page here; say how to zoom instead (the controls also zoom).
+        <span
+          data-slot="workflow-canvas-zoom-hint"
+          className="text-muted-foreground bg-background/90 pointer-events-none absolute top-2 right-2 z-10 rounded-sm border px-1.5 py-0.5 text-[11px]"
+        >
+          Ctrl/⌘ + scroll to zoom
+        </span>
+      ) : null}
       <WorkflowEdgeChromeProvider value={edgeChrome}>
         <ReactFlow
           nodes={xyNodes}
@@ -517,14 +572,18 @@ export function WorkflowCanvas({
           // EdgeChange, which `handleEdgesChange` turns into one `onEdgeDelete` call.
           deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
           fitView
-          fitViewOptions={{ duration: reducedMotion ? 0 : 400, padding: 0.2 }}
+          fitViewOptions={fitViewOptions}
+          // R-C #9 — `modifier`: the plain wheel reaches the page; Ctrl/⌘+wheel and a pinch still zoom.
+          zoomOnScroll={zoomOnWheel}
+          preventScrolling={zoomOnWheel}
+          zoomOnPinch
           role="application"
           aria-label={ariaLabel}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} />
-          <CanvasControls showInteractive={!readOnly} />
+          <CanvasControls showInteractive={!readOnly} fitViewOptions={fitViewOptions} style={controlsStyle} />
           {minimap && nodes.length > 0 ? (
-            <MiniMap position="bottom-right" pannable zoomable className="workflow-canvas-minimap" aria-label="Graph overview" />
+            <MiniMap position="bottom-right" pannable zoomable={zoomOnWheel} style={minimapStyle} className="workflow-canvas-minimap" aria-label="Graph overview" />
           ) : null}
         </ReactFlow>
       </WorkflowEdgeChromeProvider>
