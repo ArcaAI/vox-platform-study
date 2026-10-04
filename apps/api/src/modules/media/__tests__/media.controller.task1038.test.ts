@@ -52,10 +52,14 @@ describe('route metadata', () => {
     expect(reflector.get(SERVICE_ACCOUNT_REQUIRED_SCOPES, handler)).toEqual(['svc:media:write']);
   });
 
-  it('the scope pair is registered: media:write implies create:Media, and svc:media:write derives it', () => {
-    expect(API_KEY_SCOPE_REGISTRY['media:write']?.implies).toEqual([{ action: 'create', subject: 'Media' }]);
+  it('the scope pair is registered: media:write implies create+read:Media, and svc:media:write derives both (a service account can read back)', () => {
+    const both = [
+      { action: 'create', subject: 'Media' },
+      { action: 'read', subject: 'Media' },
+    ];
+    expect(API_KEY_SCOPE_REGISTRY['media:write']?.implies).toEqual(both);
     expect(STANDALONE_FEATURE_SVC_SCOPES).toContain('svc:media:write');
-    expect(resolveServiceAccountImpliedPermissions('svc:media:write')).toEqual([{ action: 'create', subject: 'Media' }]);
+    expect(resolveServiceAccountImpliedPermissions('svc:media:write')).toEqual(both);
   });
 
   it('the multipart interceptor is bounded by the descriptor hard ceiling, one file per request', () => {
