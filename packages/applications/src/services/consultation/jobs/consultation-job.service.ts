@@ -1,12 +1,29 @@
-import { Inject, Injectable, Logger, MessageEvent } from '@nestjs/common';
+import { Inject, Injectable, Logger, MessageEvent, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Observable, map, takeWhile } from 'rxjs';
+import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
 import { JobQueue } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
-import { GeneratePreSummaryJobPayload, ConsultationJobStatus, JobResponse, JobStatusResponse, JobStatusType } from './dto';
+import { HarnessGatewayService } from '../harness/harness-gateway.service';
+import { GeneratePreSummaryJobPayload, ConsultationJobStatus, JobResponse, JobStatusResponse } from './dto';
+import { JobIdempotencyService } from './job-idempotency.service';
+import type { IdempotencyScope } from './job-idempotency.service';
+
+/** Terminal job statuses. `CANCELED` is accepted as an alias of `CANCELLED` on read (G14). */
+const TERMINAL_JOB_STATUSES = new Set<string>(['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED']);
+/** G10 — an idle job stream sends an SSE comment this often, so a proxy never reaps it. */
+export const CONSULTATION_JOB_STREAM_KEEPALIVE_MS = 15_000;
+
+export function isTerminalJobStatus(status: string | undefined | null): boolean {
+  return typeof status === 'string' && TERMINAL_JOB_STATUSES.has(status);
+}
+
+/** The stream route a job's updates are read from (G16 — the old `/api/consultations/jobs/:id/sse` did not exist). */
+export function consultationJobStreamUrl(jobId: string): string {
+  return `/api/v1/consultations/jobs/${encodeURIComponent(jobId)}/stream`;
+}
 
 // `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
 // async generator and its NER companion) were deleted here along with
@@ -40,6 +57,12 @@ export interface IConsultationJobService {
    */
   registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string): Promise<void>;
 
+  /**
+   * TASK-1038 B3a — run a job START at most once per `Idempotency-Key` (same key + same body ⇒
+   * the same answer; a different body ⇒ 409). See `JobIdempotencyService`.
+   */
+  runIdempotent<T>(scope: IdempotencyScope, fingerprintInput: unknown, create: () => Promise<T>): Promise<{ value: T; replayed: boolean }>;
+
   getJobStatus(jobId: string): Promise<JobStatusResponse | null>;
   cancelJob(jobId: string): Promise<boolean>;
   subscribeToJobUpdates(jobId: string): Observable<MessageEvent>;
@@ -56,18 +79,26 @@ export class ConsultationJobService implements IConsultationJobService {
   private readonly JOB_TTL = 86400; // 24 hours
   private readonly JOB_KEY_PREFIX = 'consultation_job:';
   private readonly JOB_CHANNEL_PREFIX = 'consultation_job_updates:';
-  // Idempotency-Key dedupe. The key namespace is intentionally
-  // scoped by tenantId + userId so two doctors (or two tenants) cannot collide
-  // on the same UUID and leak each other's jobIds.
-  private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:';
-  private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
+  // Idempotency-Key dedupe lives in `JobIdempotencyService` (TASK-1038 B3a); its key namespace
+  // is still scoped by operation + tenantId + userId so two doctors (or two tenants) cannot
+  // collide on the same key and leak each other's jobIds.
 
   constructor(
     @InjectQueue(JobQueue.GeneratePreSummary) private preSummaryQueue: Queue,
     @Inject(IRedisCacheService) private readonly cacheService: IRedisCacheService,
     private readonly redisSubscriber: RedisSubscriberService,
+    // TASK-1038 B3a (G14) — a SUMMARY job is a harness document run; cancelling it asks the
+    // harness to cancel that workflow. Optional + trailing: absent ⇒ SUMMARY stays uncancellable.
+    @Optional() private readonly harnessGateway?: HarnessGatewayService,
   ) {
+    this.idempotency = new JobIdempotencyService(cacheService);
     this.logger.log('ConsultationJobService initialized');
+  }
+
+  private readonly idempotency: JobIdempotencyService;
+
+  runIdempotent<T>(scope: IdempotencyScope, fingerprintInput: unknown, create: () => Promise<T>): Promise<{ value: T; replayed: boolean }> {
+    return this.idempotency.run(scope, fingerprintInput, create);
   }
 
   /**
@@ -81,12 +112,25 @@ export class ConsultationJobService implements IConsultationJobService {
     callbackUrl?: string,
     idempotencyKey?: string,
   ): Promise<JobResponse> {
-    // Return the prior jobId on idempotency-key collision.
-    const prior = await this.lookupIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey);
-    if (prior) {
-      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 30 };
-    }
+    // TASK-1038 B3a — `Idempotency-Key`: the same key with the same request is the same job;
+    // a different request under the same key is a 409. A pre-TASK-1038 record (a bare job id)
+    // still replays that job.
+    const { value: jobId } = await this.idempotency.run(
+      { operation: 'pre-summary', tenantId, principalId: userId, key: idempotencyKey },
+      { consultationId, request, callbackUrl: callbackUrl ?? null },
+      () => this.enqueuePreSummaryJob(consultationId, tenantId, userId, request, callbackUrl),
+      (legacyJobId) => legacyJobId,
+    );
+    return { jobId, status: 'PENDING', sseUrl: consultationJobStreamUrl(jobId), estimatedSeconds: 30 };
+  }
 
+  private async enqueuePreSummaryJob(
+    consultationId: string,
+    tenantId: string,
+    userId: string,
+    request: GeneratePreSummaryJobPayload['request'],
+    callbackUrl?: string,
+  ): Promise<string> {
     const jobId = uuidv7();
 
     const payload: GeneratePreSummaryJobPayload = {
@@ -117,21 +161,13 @@ export class ConsultationJobService implements IConsultationJobService {
       userId,
     });
 
-    await this.recordIdempotentJobId('pre-summary', tenantId, userId, idempotencyKey, jobId);
-
     this.logger.log({
       message: 'Created pre-summary job',
       jobId,
       consultationId,
       tenantId,
     });
-
-    return {
-      jobId,
-      status: 'PENDING',
-      sseUrl: `/api/consultations/jobs/${jobId}/sse`,
-      estimatedSeconds: 30,
-    };
+    return jobId;
   }
 
   /**
@@ -168,6 +204,8 @@ export class ConsultationJobService implements IConsultationJobService {
     const status = JSON.parse(data) as ConsultationJobStatus;
     return {
       ...status,
+      // G14 — the interpreter's spelling `CANCELED` reads as the job vocabulary's `CANCELLED`.
+      status: (status.status as string) === 'CANCELED' ? 'CANCELLED' : status.status,
       createdAt: new Date(status.createdAt),
       startedAt: status.startedAt ? new Date(status.startedAt) : undefined,
       completedAt: status.completedAt ? new Date(status.completedAt) : undefined,
@@ -181,36 +219,40 @@ export class ConsultationJobService implements IConsultationJobService {
     const status = await this.getJobStatus(jobId);
     if (!status) return false;
 
-    // Can't cancel completed/failed/cancelled jobs
-    if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(status.status)) {
+    // Can't cancel a terminal job (either spelling — G14).
+    if (isTerminalJobStatus(status.status)) {
       return false;
     }
 
-    // Get the appropriate queue
-    let queue: Queue;
     switch (status.type) {
-      case 'PRE_SUMMARY':
-        queue = this.preSummaryQueue;
+      case 'PRE_SUMMARY': {
+        const job = await this.preSummaryQueue.getJob(jobId);
+        if (job) {
+          const state = await job.getState();
+          if (state === 'waiting' || state === 'delayed') {
+            await job.remove();
+          }
+        }
         break;
-      // 'SUMMARY'/'NER' job types can no longer be cancelled here:
-      // their queues (`GenerateSummary`/`ExtractNamedEntities`) and processors
-      // were deleted along with `createSummaryJob`/`createNerJob`. A stale
-      // status row of either type falls through to the default (not found).
-      // 'COMPREHENSIVE_SUMMARY' likewise: `GenerateComprehensiveSummary` and
-      // `ComprehensiveSummaryProcessor` were deleted by TASK-1006 — the
-      // comprehensive summary now runs synchronously on the agent plane, so
-      // no job of this type is ever created to cancel.
+      }
+      case 'SUMMARY': {
+        // TASK-1038 B3a (G14) — a SUMMARY job is the consultation's harness DOCUMENT workflow
+        // (`NoteGenerationService`), which the harness can cancel (cooperatively). No harness, no
+        // consultation, or a refusal ⇒ not cancellable, never a fake CANCELLED.
+        if (!this.harnessGateway || !status.consultationId) return false;
+        try {
+          await this.harnessGateway.cancelDocumentWorkflow(status.consultationId, { tenantId: status.tenantId, reason: `consultation job ${jobId} cancelled` });
+        } catch (err) {
+          this.logger.warn({ message: 'Harness refused to cancel the summary job', jobId, error: err instanceof Error ? err.message : String(err) });
+          return false;
+        }
+        break;
+      }
+      // 'NER' job types can no longer be cancelled here: their queue and processor were deleted
+      // along with `createNerJob`. A stale status row of that type falls through (not found).
+      // 'COMPREHENSIVE_SUMMARY' likewise (TASK-1006): no job of this type is ever created.
       default:
         return false;
-    }
-
-    // Try to remove from queue
-    const job = await queue.getJob(jobId);
-    if (job) {
-      const state = await job.getState();
-      if (state === 'waiting' || state === 'delayed') {
-        await job.remove();
-      }
     }
 
     // Update status
@@ -231,13 +273,17 @@ export class ConsultationJobService implements IConsultationJobService {
   /**
    * Subscribe to real-time job updates via Redis Pub/Sub.
    *
-   * Returns an Observable<MessageEvent> suitable for NestJS @Sse endpoints.
-   * Checks current job status first — if already terminal, emits the final
-   * status and completes immediately. Otherwise, subscribes to the Redis
-   * channel `consultation_job_updates:{jobId}` and streams updates until
-   * a terminal state (COMPLETED, FAILED, CANCELLED) is received.
+   * Returns an Observable<MessageEvent> suitable for NestJS @Sse endpoints. Emits the current
+   * status at once; if it is terminal the stream completes. Otherwise it subscribes to
+   * `consultation_job_updates:{jobId}` and streams updates until a terminal status.
    *
-   * Replaces the previous polling-based SSE implementation.
+   * TASK-1038 B3a:
+   * - G6 — every frame is NAMED: `status` for each update, preceded by `progress` while the job
+   *   runs and by `result` when it completes. Every frame's data is the FULL job status, so the
+   *   browser hook's named listeners and a name-agnostic parser read the same objects.
+   * - G10 — the status is re-read AFTER the SUBSCRIBE: a terminal update published between the
+   *   first read and the subscription used to be lost, leaving the stream open forever. An idle
+   *   stream sends an SSE comment every 15 s.
    */
   subscribeToJobUpdates(jobId: string): Observable<MessageEvent> {
     const channel = `${this.JOB_CHANNEL_PREFIX}${jobId}`;
@@ -246,7 +292,33 @@ export class ConsultationJobService implements IConsultationJobService {
       // Track inner subscription so we can tear it down when the
       // outer Observable is unsubscribed (e.g. client disconnects).
       let innerSubscription: { unsubscribe(): void } | null = null;
+      let keepalive: ReturnType<typeof setInterval> | null = null;
       let cancelled = false;
+      let done = false;
+      let last: string | null = null;
+
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        if (keepalive) clearInterval(keepalive);
+        innerSubscription?.unsubscribe();
+        subscriber.complete();
+      };
+
+      const emit = (raw: JobStatusResponse | Record<string, unknown>): void => {
+        if (done) return;
+        const update = raw as Record<string, unknown>;
+        const normalized = update.status === 'CANCELED' ? { ...update, status: 'CANCELLED' } : update;
+        const data = JSON.stringify(normalized);
+        last = data;
+        if (normalized.status === 'RUNNING' && typeof normalized.progress === 'number') subscriber.next({ type: 'progress', data } as MessageEvent);
+        if (normalized.status === 'COMPLETED') subscriber.next({ type: 'result', data } as MessageEvent);
+        subscriber.next({ type: 'status', data } as MessageEvent);
+        if (isTerminalJobStatus(normalized.status as string)) {
+          this.logger.log({ message: 'Job stream ending — terminal state', jobId, status: normalized.status });
+          finish();
+        }
+      };
 
       this.getJobStatus(jobId)
         .then(async (currentStatus) => {
@@ -255,69 +327,44 @@ export class ConsultationJobService implements IConsultationJobService {
             subscriber.next({
               data: JSON.stringify({ error: 'Job not found', jobId }),
             } as MessageEvent);
-            subscriber.complete();
+            finish();
             return;
           }
 
-          const terminalStatuses: JobStatusType[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
+          // The current status at once (and the end, when it is already terminal).
+          emit(currentStatus);
+          if (done || cancelled) return;
 
-          // Job already in terminal state — emit final status and complete
-          if (terminalStatuses.includes(currentStatus.status)) {
-            this.logger.log({
-              message: 'Job already in terminal state — emitting final status',
-              jobId,
-              status: currentStatus.status,
-            });
-            subscriber.next({
-              data: JSON.stringify(currentStatus),
-            } as MessageEvent);
-            subscriber.complete();
-            return;
-          }
-
-          // Emit current status immediately so the client sees something right away
-          subscriber.next({
-            data: JSON.stringify(currentStatus),
-          } as MessageEvent);
-
-          // Subscribe to Redis channel for real-time updates
           const redisMessages$ = await this.redisSubscriber.subscribeToChannel(channel);
-
-          const sseStream$ = redisMessages$.pipe(
-            map((rawMessage: string): MessageEvent => {
+          // Teardown may have run while the SUBSCRIBE was in flight — create nothing then.
+          if (cancelled) return;
+          innerSubscription = redisMessages$.subscribe({
+            next: (rawMessage: string) => {
               try {
-                const parsed = JSON.parse(rawMessage) as JobStatusResponse;
-                return { data: JSON.stringify(parsed) } as MessageEvent;
+                emit(JSON.parse(rawMessage) as JobStatusResponse);
               } catch {
-                return { data: rawMessage } as MessageEvent;
+                if (!done) subscriber.next({ type: 'status', data: rawMessage } as MessageEvent);
               }
-            }),
-            takeWhile((event: MessageEvent) => {
-              try {
-                const data = JSON.parse(event.data as string);
-                const isTerminal = terminalStatuses.includes(data.status);
-                if (isTerminal) {
-                  this.logger.log({
-                    message: 'SSE stream ending — job reached terminal state',
-                    jobId,
-                    status: data.status,
-                  });
-                }
-                return !isTerminal;
-              } catch {
-                return true;
-              }
-            }, true), // Include the terminal event
-          );
-
-          innerSubscription = sseStream$.subscribe({
-            next: (event) => subscriber.next(event),
+            },
             error: (err) => subscriber.error(err),
-            complete: () => subscriber.complete(),
+            complete: () => finish(),
           });
-          // Teardown may have run while the status read / SUBSCRIBE were in
-          // flight — release what we just created or the refcount leaks.
-          if (cancelled) innerSubscription.unsubscribe();
+          if (cancelled) {
+            innerSubscription.unsubscribe();
+            return;
+          }
+
+          // G10 — close the window between the first read and the SUBSCRIBE.
+          const afterSubscribe = await this.getJobStatus(jobId);
+          if (afterSubscribe && !done && JSON.stringify(afterSubscribe) !== last) {
+            const changed = afterSubscribe.status !== currentStatus.status || afterSubscribe.progress !== currentStatus.progress;
+            if (changed || isTerminalJobStatus(afterSubscribe.status)) emit(afterSubscribe);
+          }
+          if (!done && !cancelled) {
+            keepalive = setInterval(() => {
+              if (!done) subscriber.next({ comment: 'keepalive' } as unknown as MessageEvent);
+            }, CONSULTATION_JOB_STREAM_KEEPALIVE_MS);
+          }
         })
         .catch((error) => {
           this.logger.error({
@@ -328,7 +375,7 @@ export class ConsultationJobService implements IConsultationJobService {
           subscriber.next({
             data: JSON.stringify({ error: 'Failed to subscribe to job updates', jobId }),
           } as MessageEvent);
-          subscriber.complete();
+          finish();
         });
 
       // Teardown: when the outer Observable is unsubscribed, release the inner
@@ -337,6 +384,7 @@ export class ConsultationJobService implements IConsultationJobService {
       // per-channel Subject and starves every other viewer of the same job.
       return () => {
         cancelled = true;
+        if (keepalive) clearInterval(keepalive);
         innerSubscription?.unsubscribe();
       };
     });
@@ -350,75 +398,14 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * Build the Redis key for an Idempotency-Key. Scoped by
-   * job type, tenantId, and userId so two doctors or two tenants cannot
-   * collide on the same UUID and inadvertently reuse each other's jobIds.
-   */
-  private buildIdempotencyRedisKey(jobType: string, tenantId: string, userId: string, idempotencyKey: string): string {
-    return `${this.IDEMPOTENCY_KEY_PREFIX}${jobType}:${tenantId}:${userId}:${idempotencyKey}`;
-  }
-
-  /**
-   * Look up a prior jobId for this Idempotency-Key. Returns
-   * `null` when no key was provided or when no prior call exists; callers
-   * proceed to create a new job in that case.
-   */
-  private async lookupIdempotentJobId(jobType: string, tenantId: string, userId: string, idempotencyKey?: string): Promise<string | null> {
-    if (!idempotencyKey) return null;
-    try {
-      const cached = await this.cacheService.get(this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey));
-      if (cached && cached.length > 0) {
-        this.logger.log({
-          message: 'Idempotency hit — returning prior jobId',
-          jobType,
-          tenantId,
-          userId,
-          idempotencyKey,
-          priorJobId: cached,
-        });
-        return cached;
-      }
-    } catch (err) {
-      // Best-effort dedupe — never block the caller on a Redis miss.
-      this.logger.warn({
-        message: 'Idempotency lookup failed — falling through to job creation',
-        jobType,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return null;
-  }
-
-  /**
-   * Persist the newly-created jobId under the Idempotency-Key
-   * with a 24h TTL. No-op when no key is supplied.
-   */
-  private async recordIdempotentJobId(
-    jobType: string,
-    tenantId: string,
-    userId: string,
-    idempotencyKey: string | undefined,
-    jobId: string,
-  ): Promise<void> {
-    if (!idempotencyKey) return;
-    try {
-      await this.cacheService.setex(this.buildIdempotencyRedisKey(jobType, tenantId, userId, idempotencyKey), this.IDEMPOTENCY_TTL, jobId);
-    } catch (err) {
-      this.logger.warn({
-        message: 'Idempotency recording failed — duplicate POSTs may create duplicate jobs',
-        jobType,
-        jobId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-
-  /**
    * Update job status and publish notification
    */
   private async updateJobStatus(jobId: string, update: Partial<ConsultationJobStatus>): Promise<void> {
     const current = await this.getJobStatus(jobId);
     if (!current) return;
+    // A terminal job is final: a late progress/failure/completion never revives a CANCELLED job
+    // (G14 — a cancelled harness run may still report back).
+    if (isTerminalJobStatus(current.status)) return;
 
     const updated: ConsultationJobStatus = {
       ...current,

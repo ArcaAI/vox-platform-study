@@ -1,7 +1,17 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { IConfigService, TenantSettingsService, WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY } from '@arcaai/applications';
+import {
+  RUN_APPEND_LUA,
+  RUN_DEDUPE_KEY,
+  RUN_EVENTS_KEY,
+  RUN_SEQ_KEY,
+  RUN_STREAM_CLOSED_ERROR,
+  TERMINAL_RUN_EVENT_TYPES,
+  buildRunAppend,
+} from '@arcaai/async-contract';
+import type { RunAppendInput } from '@arcaai/async-contract';
 import Redis from 'ioredis';
-import { compareStreamIds, runEventStreamKey } from './workflow-run-event';
+import { compareStreamIds } from './workflow-run-event';
 
 /** One entry of a run's event stream: Redis' own id and the raw field list. */
 export interface RunStreamEntry {
@@ -24,6 +34,12 @@ export interface RunStreamReadOptions {
 export interface RunStreamConnection {
   xread(...args: (string | number)[]): Promise<unknown>;
   xrange(key: string, start: string, end: string, countWord: 'COUNT', count: number): Promise<unknown>;
+  /** TASK-1038 B3a — the resume helpers read backwards from the tail. */
+  xrevrange(key: string, end: string, start: string, countWord: 'COUNT', count: number): Promise<unknown>;
+  /** TASK-1038 B3a — `GET wf:run:<runId>:seq`. */
+  get(key: string): Promise<string | null>;
+  /** TASK-1038 B3a — the ONE sequencer, `RUN_APPEND_LUA`. */
+  eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown>;
   expire(key: string, seconds: number, mode: 'NX'): Promise<unknown>;
   client(subcommand: string, ...args: (string | number)[]): Promise<unknown>;
   quit(): Promise<unknown>;
@@ -41,6 +57,14 @@ export const RUN_STREAM_HUB_BLOCK_MS = 5_000;
 /** Backoff after a failed `XREAD`: doubles from the floor up to the cap, reset on success. */
 export const RUN_STREAM_HUB_BACKOFF_FLOOR_MS = 100;
 export const RUN_STREAM_HUB_BACKOFF_CAP_MS = 5_000;
+/** Entries scanned per `XREVRANGE` page when a seq cursor is mapped to a stream id. */
+export const RUN_STREAM_HUB_SCAN_PAGE = 200;
+/** What a gateway-originated append answers: the script's `[seq, streamId, duplicate]`. */
+export interface RunAppendResult {
+  seq: number;
+  streamId: string;
+  duplicate: boolean;
+}
 /** `CLIENT UNBLOCK` can race the `XREAD` it targets onto the server; retry a few times. */
 const WAKE_ATTEMPTS = 5;
 const WAKE_RETRY_MS = 5;
@@ -183,18 +207,103 @@ export class RunEventStreamHub implements OnModuleDestroy {
    * later. `NX`: the FIRST observer of the terminal state sets the clock and every later one
    * (a reconnecting client, the watcher, a status read) leaves it alone, so watching a finished
    * run never extends its retention. Best-effort: a failure here costs retention, never delivery.
+   *
+   * TASK-1038 B3a (deliverable 5) — the backstop covers ALL THREE keys of the run (`seq`,
+   * `events`, `dedupe`, protocol-v2.md §6.1), so a counter can never outlive its stream and hand
+   * out a `seq` a second time, and the stream is CLOSED: a terminal event that arrives after the
+   * backstop ran is refused by the sequencer and the read model serves the terminal state.
    */
   async expireAfterTerminal(runId: string): Promise<void> {
     if (!this.available()) return;
-    const hours = this.eventRetentionHours();
+    const seconds = this.eventRetentionHours() * 3600;
     try {
-      await this.controlConnection().expire(runEventStreamKey(runId), hours * 3600, 'NX');
+      const control = this.controlConnection();
+      await Promise.all([RUN_SEQ_KEY(runId), RUN_EVENTS_KEY(runId), RUN_DEDUPE_KEY(runId)].map((key) => control.expire(key, seconds, 'NX')));
     } catch (err) {
       this.logger.warn({
         message: 'run event stream TTL could not be set',
         runId,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  /**
+   * TASK-1038 B3a — append ONE gateway-originated run event through the sequencer
+   * (`RUN_APPEND_LUA`, protocol-v2.md §6.1), on the CONTROL connection: the blocking reader is
+   * never used for a write, and no producer `XADD`s or `INCR`s the run's keys directly.
+   *
+   * A terminal event carries `retentionSeconds`; when the caller omits it the hub resolves it from
+   * `workflowRuns.eventRetentionHours` (never a literal). A non-conforming event throws
+   * `RunProtocolError` — that is a programming error in the caller. Everything else is a
+   * BEST-EFFORT MIRROR (§6.1): no transport, a Redis error or `RUN_STREAM_CLOSED` is logged and
+   * answered `null`, and never fails the run that produced the event.
+   */
+  async append(input: RunAppendInput): Promise<RunAppendResult | null> {
+    const terminal = (TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(input.type);
+    const command = buildRunAppend(
+      terminal && input.retentionSeconds === undefined ? { ...input, retentionSeconds: this.eventRetentionHours() * 3600 } : input,
+    );
+    if (!this.available()) return null;
+    try {
+      const reply = (await this.controlConnection().eval(RUN_APPEND_LUA, command.keys.length, ...command.keys, ...command.args)) as [
+        number | string,
+        string,
+        number | string,
+      ];
+      return { seq: Number(reply[0]), streamId: String(reply[1]), duplicate: Number(reply[2]) === 1 };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn({
+        message: message.includes(RUN_STREAM_CLOSED_ERROR)
+          ? 'run event refused — the run stream is closed (terminal)'
+          : 'run event could not be appended — the stream is a best-effort mirror',
+        runId: input.runId,
+        type: input.type,
+        error: message,
+      });
+      return null;
+    }
+  }
+
+  /** `GET wf:run:<runId>:seq` — the last `seq` assigned, or `null` when the run has none (yet, or any more). */
+  async lastSeq(runId: string): Promise<number | null> {
+    const raw = await this.controlConnection().get(RUN_SEQ_KEY(runId));
+    if (raw === null || raw === undefined) return null;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+
+  /** The oldest RETAINED entry of `key`, or `null` when nothing is retained. */
+  async oldestEntry(key: string): Promise<RunStreamEntry | null> {
+    const rows = (await this.controlConnection().xrange(key, '-', '+', 'COUNT', 1)) as [string, string[]][] | null;
+    return rows && rows.length > 0 ? { id: rows[0][0], fields: rows[0][1] } : null;
+  }
+
+  /** The newest entry of `key`, or `null` when nothing is retained. */
+  async newestEntry(key: string): Promise<RunStreamEntry | null> {
+    const rows = (await this.controlConnection().xrevrange(key, '+', '-', 'COUNT', 1)) as [string, string[]][] | null;
+    return rows && rows.length > 0 ? { id: rows[0][0], fields: rows[0][1] } : null;
+  }
+
+  /**
+   * The stream id of the entry whose stored `seq` is `seq`, scanning BACK from the tail in
+   * `XREVRANGE` pages (resumes are near the tail; `MAXLEN` bounds the scan — protocol-v2.md
+   * §6.2 step 3). `null` when no retained entry carries it.
+   */
+  async entryIdForSeq(key: string, seq: number): Promise<string | null> {
+    const control = this.controlConnection();
+    let end = '+';
+    for (;;) {
+      const rows = ((await control.xrevrange(key, end, '-', 'COUNT', RUN_STREAM_HUB_SCAN_PAGE)) as [string, string[]][] | null) ?? [];
+      for (const [id, fields] of rows) {
+        const stored = storedSeqOf(fields);
+        if (stored === seq) return id;
+        // Stored seqs are contiguous and only trimmed from the front: past it, it is not retained.
+        if (stored !== null && stored < seq) return null;
+      }
+      if (rows.length < RUN_STREAM_HUB_SCAN_PAGE) return null;
+      end = `(${rows[rows.length - 1][0]}`;
     }
   }
 
@@ -360,6 +469,16 @@ export class RunEventStreamHub implements OnModuleDestroy {
     }
     return connection as unknown as RunStreamConnection;
   }
+}
+
+/** The `seq` field of a stored entry, or `null` for a legacy (pre-v2) entry. */
+export function storedSeqOf(fields: readonly string[]): number | null {
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    if (fields[i] !== 'seq') continue;
+    const value = Number(fields[i + 1]);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  return null;
 }
 
 /** `XREAD`'s reply → key → entries. */

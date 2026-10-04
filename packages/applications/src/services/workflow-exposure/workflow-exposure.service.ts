@@ -364,7 +364,15 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // different reasons (human caller · consultation-bound run · schema declares no identity
       // field) and none of them is a fact about this run worth storing. An absent key is the one
       // honest spelling of all three.
-      metaData: actingUserId ? { actingUserId } : undefined,
+      //
+      // TASK-1038 B3a — a CONSULTATION-BOUND run also stamps the server-resolved consultation id
+      // (`subject.consultationId`, from the request PATH — never `input`): the internal
+      // consultation-read route admits an exposure-plane run only when its row names the
+      // consultation it was bound to.
+      metaData:
+        actingUserId || subject?.consultationId
+          ? { ...(actingUserId ? { actingUserId } : {}), ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}) }
+          : undefined,
     });
 
     const started = await this.harnessGateway.startWorkflowRun({

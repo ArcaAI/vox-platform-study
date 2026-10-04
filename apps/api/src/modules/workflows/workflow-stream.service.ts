@@ -1,19 +1,27 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { IWorkflowExposureService, TenantSettingsService, WorkflowRunStatusResponse } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken } from '@arcaai/async-contract';
+import { RESUME_FROM_BEGINNING, toSseFrame } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import type { Response } from 'express';
 import { RunEventStreamHub } from './run-event-stream-hub';
-import { parseRunStreamEntry, terminalCheckIntervalMs, writeWithBackpressure } from './run-stream-delivery';
-import {
-  RUN_EVENT_TRANSPORT,
-  WORKFLOW_RUN_COMPLETED,
-  buildWorkflowRunEventEnvelope,
-  compareStreamIds,
-  formatSseFrame,
-  isTerminalRunStatus,
-  runEventStreamKey,
-} from './workflow-run-event';
+import { terminalCheckIntervalMs, writeWithBackpressure } from './run-stream-delivery';
+import { deliverRunEvents, parseClientCursor, resolveRunProtocol, terminalOutcomeOf } from './run-protocol-delivery';
+import type { ClientCursor, RunPlane, RunProtocolVersion } from './run-protocol-delivery';
+import { formatSseFrame, isTerminalRunStatus, runEventStreamKey } from './workflow-run-event';
+
+/** TASK-1038 B3a — the stream request's protocol selection and cursor inputs (all optional). */
+export interface RunStreamRequestOptions {
+  /** `?protocol=` */
+  protocol?: string;
+  /** `x-hope-run-protocol` */
+  protocolHeader?: string;
+  /** `?after=<seq>` */
+  after?: string;
+  /** The legacy `?lastEventId=` query fallback. */
+  legacyQuery?: string;
+  /** Test/caller seam: abandon the stream. */
+  signal?: AbortSignal;
+}
 
 /** How long a single read waits for new entries before looping. NOT a poll interval — the read
  *  RETURNS THE INSTANT the harness appends, so this is only the ceiling on how long the loop
@@ -81,12 +89,75 @@ export class WorkflowStreamService {
     @Optional() private readonly settings?: TenantSettingsService,
   ) {}
 
-  async stream(slug: string, runId: string, res: Response, lastEventId?: string): Promise<void> {
+  /**
+   * `GET /workflows/:slug/runs/:runId/stream` — the BUSINESS plane (TASK-1038 B3a: protocol v2
+   * when selected, the legacy shapes derived from v2 otherwise; the public event subset only).
+   */
+  async stream(slug: string, runId: string, res: Response, lastEventId?: string, options: RunStreamRequestOptions = {}): Promise<void> {
+    // Pure request validation first: a 400 never costs a status read.
+    const protocol = resolveRunProtocol({ header: options.protocolHeader, query: options.protocol });
+    const cursor = parseClientCursor({ lastEventId, after: options.after, legacyQuery: options.legacyQuery }, protocol);
     // Pre-stream ownership check BEFORE any header is written — a 404 here is a normal HTTP
     // response, not a leaked 200 stream (the exact race `TenantOwnedResourceSseGuard`'s own doc
     // names for a bare @Sse() handler; this hand-rolled handler avoids it by construction,
     // since nothing is written until this resolves).
     const first = await this.workflowExposureService.getRunStatus(slug, runId);
+    await this.deliver({
+      runId,
+      res,
+      plane: 'public',
+      protocol,
+      cursor,
+      initialStatus: first,
+      // swallow-ok: a failed re-read means "ask again next interval", never a terminal status.
+      readStatus: () => this.workflowExposureService.getRunStatus(slug, runId).catch(() => null),
+      signal: options.signal,
+    });
+  }
+
+  /**
+   * Stream ANY run the caller already proved it may read — the admin trace (`plane: 'admin'`,
+   * every stored event, §5) and the business plane share this. `readStatus` is both the
+   * ownership check (it must throw `NotFoundException` for a foreign run) and the R-2 re-read.
+   */
+  async streamRun(input: {
+    runId: string;
+    res: Response;
+    plane: RunPlane;
+    protocol?: string;
+    protocolHeader?: string;
+    lastEventId?: string;
+    after?: string;
+    readStatus: () => Promise<WorkflowRunStatusResponse>;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const protocol = resolveRunProtocol({ header: input.protocolHeader, query: input.protocol });
+    const cursor = parseClientCursor({ lastEventId: input.lastEventId, after: input.after }, protocol);
+    const first = await input.readStatus();
+    await this.deliver({
+      runId: input.runId,
+      res: input.res,
+      plane: input.plane,
+      protocol,
+      cursor,
+      initialStatus: first,
+      // swallow-ok: a failed re-read means "ask again next interval", never a terminal status.
+      readStatus: () => input.readStatus().catch(() => null),
+      signal: input.signal,
+    });
+  }
+
+  private async deliver(input: {
+    runId: string;
+    res: Response;
+    plane: RunPlane;
+    protocol: RunProtocolVersion;
+    cursor: ClientCursor;
+    initialStatus: WorkflowRunStatusResponse;
+    readStatus: () => Promise<WorkflowRunStatusResponse | null>;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const { res } = input;
     const tenantId = this.clsService.get('tenantId') as string;
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -95,130 +166,46 @@ export class WorkflowStreamService {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    this.writeSnapshot(res, tenantId, first);
-    if (isTerminalRunStatus(first.status)) {
-      res.end();
-      return;
-    }
-
-    if (!this.hub?.available()) {
-      // No push transport. Ending is the honest answer: the snapshot above is real and the
-      // client can reconnect. Hanging on a stream that can never deliver would be worse.
-      this.logger.warn({ message: 'Redis unavailable — workflow run stream ends after snapshot', runId });
-      res.end();
-      return;
-    }
-
     const closed = new AbortController();
-    const heartbeatTimer = setInterval(() => {
-      if (!res.writableEnded) res.write(':keepalive\n\n');
-    }, WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS);
+    const onAbort = (): void => closed.abort();
+    input.signal?.addEventListener('abort', onAbort, { once: true });
+    // Legacy keeps its SSE comment heartbeat; v2 keeps alive with `ping` events (§6.3).
+    const heartbeatTimer =
+      input.protocol === 'legacy'
+        ? setInterval(() => {
+            if (!res.writableEnded) res.write(':keepalive\n\n');
+          }, WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS)
+        : null;
     const end = (): void => {
-      clearInterval(heartbeatTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      input.signal?.removeEventListener('abort', onAbort);
       if (!closed.signal.aborted) closed.abort();
       if (!res.writableEnded) res.end();
     };
     res.on('close', end);
 
     try {
-      await this.consume(this.hub, slug, runId, res, tenantId, lastEventId, closed.signal);
+      await deliverRunEvents({
+        hub: this.hub,
+        runId: input.runId,
+        tenantId,
+        plane: input.plane,
+        protocol: input.protocol,
+        cursor: input.cursor,
+        initialStatus: input.initialStatus,
+        readStatus: input.readStatus,
+        signal: closed.signal,
+        terminalCheckMs: terminalCheckIntervalMs(this.settings),
+        blockMs: WORKFLOW_STREAM_BLOCK_MS,
+        heartbeatMs: WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS,
+        logger: this.logger,
+        sink: {
+          v2: (event) => writeWithBackpressure(res, toSseFrame(event), closed.signal),
+          legacy: (envelope, resumeToken) => writeWithBackpressure(res, formatSseFrame(envelope, resumeToken), closed.signal),
+        },
+      });
     } finally {
       end();
-    }
-  }
-
-  /**
-   * Read the run's stream until it terminates, the client disconnects, or the response ends.
-   *
-   * The cursor starts at the resume token's own position, or at the beginning of the retained
-   * stream on a first connect. Starting at the BEGINNING (rather than at `$`) is deliberate:
-   * a client that connects a moment after a node completed must still learn that it did, and
-   * re-delivering an event the snapshot already reflected is harmless precisely because every
-   * envelope's `idempotencyKey` is derived from intent (async-contract) — which is what
-   * makes the duplicate collapsible rather than a second, contradictory fact.
-   */
-  private async consume(
-    hub: RunEventStreamHub,
-    slug: string,
-    runId: string,
-    res: Response,
-    tenantId: string,
-    lastEventId: string | undefined,
-    closed: AbortSignal,
-  ): Promise<void> {
-    const streamKey = runEventStreamKey(runId);
-    let cursor = this.resolveCursor(lastEventId);
-
-    if (cursor !== RESUME_FROM_BEGINNING && (await this.hasTrimmedGap(hub, streamKey, cursor))) {
-      // The client's position was evicted by the producer's MAXLEN trim. There is no gap-fill
-      // available, so tell it the current truth instead of silently skipping the hole.
-      const resync = await this.workflowExposureService.getRunStatus(slug, runId);
-      this.writeSnapshot(res, tenantId, resync);
-      if (isTerminalRunStatus(resync.status)) return;
-      cursor = RESUME_FROM_BEGINNING;
-    }
-
-    const checkEveryMs = terminalCheckIntervalMs(this.settings);
-    let lastStatusCheck = Date.now();
-
-    while (!closed.aborted && !res.writableEnded) {
-      let entries;
-      try {
-        entries = await hub.read(streamKey, cursor, { timeoutMs: Math.min(WORKFLOW_STREAM_BLOCK_MS, checkEveryMs), signal: closed });
-      } catch (err) {
-        // Never forward the raw error to the client (it may echo transport-internal detail) —
-        // just end the stream, mirroring the SSE proxy exemplar's own posture. The client
-        // reconnects with its last `id:` and loses nothing.
-        this.logger.warn({
-          message: 'Workflow run stream read failed — ending stream',
-          runId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-
-      if (entries.length === 0) {
-        if (closed.aborted || res.writableEnded) return;
-        if (Date.now() - lastStatusCheck < checkEveryMs) continue;
-        lastStatusCheck = Date.now();
-        // R-2 — the terminal fallback. Without it a lost `workflow.run.completed` left this
-        // stream open forever, heartbeating over a run that had already ended.
-        // swallow-ok: the terminal re-check is a fallback; a failed read just waits for the next interval.
-        const status = await this.workflowExposureService.getRunStatus(slug, runId).catch(() => null);
-        if (!status || !isTerminalRunStatus(status.status)) continue;
-        // Deliver whatever IS retained first, so the close never overtakes a real event.
-        // swallow-ok: an unreadable tail still closes with the terminal snapshot, which is the truth the client needs.
-        const tail = await hub.readNow(streamKey, cursor).catch(() => []);
-        for (const entry of tail) {
-          cursor = entry.id;
-          const envelope = parseRunStreamEntry(entry.fields);
-          if (envelope === null) continue;
-          if (!(await writeWithBackpressure(res, formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entry.id)), closed))) return;
-          if (envelope.type === WORKFLOW_RUN_COMPLETED) {
-            void hub.expireAfterTerminal(runId);
-            return;
-          }
-        }
-        this.logger.warn({ message: 'Run ended without a completion event reaching its stream — closing with a terminal snapshot', runId });
-        this.writeSnapshot(res, tenantId, status);
-        void hub.expireAfterTerminal(runId);
-        return;
-      }
-
-      for (const entry of entries) {
-        cursor = entry.id;
-        const envelope = parseRunStreamEntry(entry.fields);
-        if (envelope === null) continue;
-        // The `id:` line is the RESUME TOKEN, not the envelope's own identity: it is what the
-        // browser echoes back as `Last-Event-ID`, and only a transport-assigned cursor can
-        // actually resume.
-        const frame = formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entry.id));
-        if (!(await writeWithBackpressure(res, frame, closed))) return;
-        if (envelope.type === WORKFLOW_RUN_COMPLETED) {
-          void hub.expireAfterTerminal(runId);
-          return;
-        }
-      }
     }
   }
 
@@ -278,8 +265,8 @@ export class WorkflowStreamService {
 
       for (const entry of entries) {
         cursor = entry.id;
-        const envelope = parseRunStreamEntry(entry.fields);
-        if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
+        // A v2 terminal event (`run.completed|failed|cancelled`) or a pre-v2 `workflow.run.completed`.
+        if (terminalOutcomeOf(runId, entry.fields) === null) continue;
         void hub.expireAfterTerminal(runId);
         // The producer says it is done; re-read the authoritative status so the caller gets the
         // same shape (and the same `resultRef`) the async and streaming paths return.
@@ -301,47 +288,6 @@ export class WorkflowStreamService {
     // where the run finished between the final wait expiring and this line.
     const final = await this.workflowExposureService.getRunStatus(slug, runId);
     return isTerminalRunStatus(final.status) ? final : null;
-  }
-
-  /** `Last-Event-ID` -> a Redis stream cursor, or "from the beginning" when absent/unusable. */
-  private resolveCursor(lastEventId: string | undefined): string {
-    if (!lastEventId) return RESUME_FROM_BEGINNING;
-    const decoded = decodeResumeToken(lastEventId);
-    if (decoded === null || decoded.transport !== RUN_EVENT_TRANSPORT) {
-      // A malformed or foreign-transport token is a client error, not a reason to fail the
-      // request: resync from the beginning of what is retained rather than 400 a reconnect.
-      return RESUME_FROM_BEGINNING;
-    }
-    return decoded.cursor;
-  }
-
-  /**
-   * Has the producer's `MAXLEN` trim already evicted the client's position?
-   *
-   * Redis will not say so — an `XREAD` from an evicted id returns the surviving tail with no
-   * error — so this compares the cursor against the OLDEST RETAINED entry.
-   *
-   * The comparison is deliberately CONSERVATIVE: any oldest-retained id newer than the cursor
-   * counts as a gap, because Redis cannot distinguish "the next entry" from "what survived the
-   * trim". A false positive costs one extra snapshot read; a false negative silently drops
-   * clinical events a client believes it received. In practice it almost never fires — the
-   * cursor names an entry the client was just delivered, so that entry is normally still
-   * retained and the oldest id is at or before it.
-   */
-  private async hasTrimmedGap(hub: RunEventStreamHub, streamKey: string, cursor: string): Promise<boolean> {
-    try {
-      const oldest = await hub.oldestEntryId(streamKey);
-      if (oldest === null) return false; // Nothing retained yet: no gap, just no data.
-      return compareStreamIds(oldest, cursor) > 0;
-    } catch {
-      return false;
-    }
-  }
-
-  private writeSnapshot(res: Response, tenantId: string, status: Parameters<typeof buildWorkflowRunEventEnvelope>[1]): void {
-    if (res.writableEnded) return;
-    // No `id:` — see the class doc, step 1.
-    res.write(formatSseFrame(buildWorkflowRunEventEnvelope(tenantId, status)));
   }
 }
 

@@ -4,6 +4,7 @@ import { ConsultationWorkflowRunsController } from './consultation-workflow-runs
 import { WorkflowHooksController } from './workflow-hooks.controller';
 import { WorkflowRunCompletionModule } from './workflow-run-completion.module';
 import { WorkflowsController } from './workflows.controller';
+import { WorkflowRunTraceController } from './workflow-run-trace.controller';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
@@ -28,7 +29,8 @@ import { WorkflowStreamService } from './workflow-stream.service';
   // `@arcaai/applications`, which cannot import this app — can attach a watcher through the
   // `IWorkflowRunCompletionPort` token. Re-exported here so this module's existing consumers
   // keep resolving it exactly as before.
-  controllers: [WorkflowsController, ConsultationWorkflowRunsController, WorkflowHooksController],
+  // TASK-1038 B3a — `WorkflowRunTraceController`: the console's live admin trace of a run.
+  controllers: [WorkflowsController, ConsultationWorkflowRunsController, WorkflowHooksController, WorkflowRunTraceController],
   // TASK-1038 — `RunEventStreamHub` reaches `WorkflowStreamService` from the @Global()
   // `WorkflowRunCompletionModule`; `TenantSettingsService` supplies the delivery-plane knobs.
   providers: [WorkflowStreamService, TenantSettingsService],

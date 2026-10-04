@@ -10,6 +10,12 @@ export const WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY = 'workflowRuns.resultReten
 export const WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY = 'workflowRuns.streamTerminalCheckSeconds';
 export const WORKFLOW_RUNS_WS_MAX_BUFFERED_BYTES_KEY = 'workflowRuns.wsMaxBufferedBytes';
 export const WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY = 'workflowRuns.resultUrlTtlSeconds';
+// TASK-1038 B3a — the payload-size limits the gateway resolves and hands the harness with every
+// run start (`limits` on `POST /workflow-runs:start`; lane B1 reads exactly these names). They
+// replace the A1-era `HARNESS_CLAIM_CHECK_*` env knobs under the owner's config rule.
+export const WORKFLOW_RUNS_NODE_OUTPUT_CLAIM_CHECK_MIN_BYTES_KEY = 'workflowRuns.nodeOutputClaimCheckMinBytes';
+export const WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY = 'workflowRuns.resultInlineMaxBytes';
+export const WORKFLOW_RUNS_ACTIVITY_INPUT_MAX_BYTES_KEY = 'workflowRuns.activityInputMaxBytes';
 
 export const WORKFLOW_RUNS_DEFAULTS = {
   /** OD-25: run events expire 24 h after the run is terminal. */
@@ -22,6 +28,12 @@ export const WORKFLOW_RUNS_DEFAULTS = {
   wsMaxBufferedBytes: 1024 * 1024,
   /** Lifetime of the signed URL `GET …/runs/:runId/result` hands out for a claim-checked result. */
   resultUrlTtlSeconds: 300,
+  /** A node output larger than this (serialized) is claim-checked instead of travelling inline (R-3). */
+  nodeOutputClaimCheckMinBytes: 20 * 1024,
+  /** A delivered result at most this large rides inline on `run.completed`; larger is a `ref` (D-I). */
+  resultInlineMaxBytes: 64 * 1024,
+  /** An activity input over this many bytes fails the run with `PAYLOAD_TOO_LARGE` (below Temporal's 2 MB blob limit). */
+  activityInputMaxBytes: 1536 * 1024,
 } as const;
 
 function wholeNumberBetween(min: number, max: number): (value: unknown) => string | undefined {
@@ -96,5 +108,38 @@ export const WORKFLOW_RUNS_SETTINGS: SettingDescriptor[] = [
     description: 'Lifetime of the short-lived signed URL returned for a claim-checked (large) workflow result.',
     default: WORKFLOW_RUNS_DEFAULTS.resultUrlTtlSeconds,
     validate: wholeNumberBetween(30, 3600),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_NODE_OUTPUT_CLAIM_CHECK_MIN_BYTES_KEY,
+    maxScope: 'system',
+    globalOnly: true,
+    label: 'Node output claim-check threshold (bytes)',
+    description:
+      'A workflow node output larger than this many bytes (serialized) is stored in the claim-check bucket and passed by reference, keeping Temporal history small. Sent to the harness with every run start.',
+    default: WORKFLOW_RUNS_DEFAULTS.nodeOutputClaimCheckMinBytes,
+    validate: wholeNumberBetween(1024, 1024 * 1024),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY,
+    maxScope: 'system',
+    globalOnly: true,
+    label: 'Inline run result ceiling (bytes)',
+    description:
+      'A delivered workflow result at most this many bytes rides inline on the run-completed event; a larger one is claim-checked and read through a signed URL. Never above the run protocol`s 64 KiB inline rule.',
+    default: WORKFLOW_RUNS_DEFAULTS.resultInlineMaxBytes,
+    validate: wholeNumberBetween(1024, 64 * 1024),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_ACTIVITY_INPUT_MAX_BYTES_KEY,
+    maxScope: 'system',
+    globalOnly: true,
+    label: 'Activity input ceiling (bytes)',
+    description:
+      'The largest input (serialized) a workflow step may hand a Temporal activity; a larger one fails the run by name (PAYLOAD_TOO_LARGE) instead of stalling it. Kept below Temporal`s 2 MB payload limit.',
+    default: WORKFLOW_RUNS_DEFAULTS.activityInputMaxBytes,
+    validate: wholeNumberBetween(64 * 1024, 2 * 1000 * 1000),
   },
 ];

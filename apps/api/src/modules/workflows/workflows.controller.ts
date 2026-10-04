@@ -33,6 +33,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { RUN_PROTOCOL_HEADER } from '@arcaai/async-contract';
 import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
@@ -41,6 +42,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { deliverRun } from './deliver-run';
+import { resolveRunProtocol } from './run-protocol-delivery';
 import { WorkflowRunCompletionService } from './workflow-run-completion.service';
 import { WorkflowStreamService } from './workflow-stream.service';
 
@@ -60,6 +62,13 @@ export interface WorkflowRunStreamTicketResponse {
   scope: string;
   /** The socket to open with it, query string already built and encoded. */
   url: string;
+  /**
+   * TASK-1038 B3a (G12) — the SSE stream to open with the SAME ticket instead (protocol v2
+   * selected), for a browser app on an API key: `EventSource` cannot send `X-API-Key`, and the
+   * route's `@StreamScope('workflow_run', runId)` accepts this ticket. The ticket is single-use:
+   * open ONE of `url` / `sseUrl`.
+   */
+  sseUrl: string;
 }
 
 /**
@@ -168,14 +177,18 @@ export class WorkflowsController {
     @Res({ passthrough: true }) res: Response,
     @Query('mode') mode?: WorkflowRunResponseMode,
     @Headers('Idempotency-Key') idempotencyKey?: string,
+    @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
+    @Query('protocol') protocol?: string,
   ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
+    // TASK-1038 B3a — an unsupported protocol is a 400 BEFORE a run is started (and billed).
+    if (mode === 'stream') resolveRunProtocol({ header: protocolHeader, query: protocol });
     // TASK-864 §3.4: `mode` reaches the service so it can be bounded by the definition's Output
     // protocols BEFORE a run starts (400 naming the declared protocols), rather than starting a
     // run and then failing to deliver it the way the caller asked.
     const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id, mode });
     // TASK-864 (G9): the terminal status is recorded by a background watcher, not by a reader.
     this.runCompletion?.watch(req.user?.tenantId ?? req.tenantId ?? '', started.runId);
-    return deliverRun(this.workflowStreamService, slug, started, res, mode);
+    return deliverRun(this.workflowStreamService, slug, started, res, mode, { protocolHeader, protocol });
   }
 
   @Post(':slug/invoke')
@@ -426,7 +439,10 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
-  @ApiResponse({ status: 201, description: 'The ticket, its absolute expiry, its scope, and the socket URL to open with it.' })
+  @ApiResponse({
+    status: 201,
+    description: 'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
+  })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
@@ -453,7 +469,14 @@ export class WorkflowsController {
     });
 
     const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
-    return { ticket: issued.ticket, expiresAt: issued.expiresAt, scope: issued.scope, url: `/ws/workflows?${query.toString()}` };
+    const sseQuery = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+      url: `/ws/workflows?${query.toString()}`,
+      sseUrl: `/api/v1/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/stream?${sseQuery.toString()}`,
+    };
   }
 
   @Get(':slug/runs/:runId/stream')
@@ -473,23 +496,34 @@ export class WorkflowsController {
   // Both of these are OPTIONAL by construction — a first connect sends neither — and documenting
   // a resume cursor as mandatory would tell a client to invent one, which is the exact thing
   // async-contract forbids.
-  @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'Opaque resume token from a previous frame’s `id`. Omit on a first connect.' })
+  @ApiHeader({
+    name: 'Last-Event-ID',
+    required: false,
+    description: 'Resume cursor: the `seq` of the last event received (protocol v2), or a legacy opaque token (accepted for one release). Omit on a first connect.',
+  })
+  @ApiHeader({ name: RUN_PROTOCOL_HEADER, required: false, description: 'Set to `2` to select run protocol v2. Absent = the legacy frame shapes (one release).' })
+  @ApiQuery({ name: 'protocol', required: false, description: '`2` selects run protocol v2 — for clients that cannot set headers (EventSource). Any other value is a 400.' })
+  @ApiQuery({ name: 'after', required: false, description: 'Protocol v2 resume cursor (`seq`) for a client that cannot set headers. The header wins.' })
   @ApiQuery({
     name: 'lastEventId',
     required: false,
-    description: 'Fallback for a client that cannot set headers. The header wins when both are present.',
+    description: 'Legacy fallback for a client that cannot set headers. The header wins when both are present.',
   })
+  @ApiResponse({ status: 400, description: 'Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), or a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`).' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async streamRunStatus(
     @Param('slug') slug: string,
     @Param('runId') runId: string,
     @Res() res: Response,
-    // The SSE spec sends this header on reconnect by itself; the query parameter is the manual
-    // escape hatch for a client that cannot set headers (the same fallback `apps/text`'s stream
-    // endpoint offers). NEVER a JWT — this is a stream cursor, not a credential.
+    // The SSE spec sends this header on reconnect by itself; the query parameters are the manual
+    // escape hatch for a client that cannot set headers. NEVER a JWT — this is a stream cursor,
+    // not a credential.
     @Headers('Last-Event-ID') lastEventIdHeader?: string,
     @Query('lastEventId') lastEventIdQuery?: string,
+    @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
+    @Query('protocol') protocol?: string,
+    @Query('after') after?: string,
   ): Promise<void> {
-    await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader ?? lastEventIdQuery);
+    await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader, { protocolHeader, protocol, after, legacyQuery: lastEventIdQuery });
   }
 }

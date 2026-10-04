@@ -13,6 +13,8 @@
  *   another, exactly as the hub's wake-up does.
  * - **`XRANGE` (oldest retained), a MAXLEN-style trim, `EXPIRE … NX`.**
  */
+import { RUN_APPEND_LUA, RUN_STREAM_CLOSED_ERROR, buildRunAppend } from '@arcaai/async-contract';
+import type { RunAppendInput } from '@arcaai/async-contract';
 import { compareStreamIds } from '../workflow-run-event';
 
 type Entry = [string, string[]];
@@ -20,6 +22,10 @@ type Entry = [string, string[]];
 export class FakeRedisServer {
   readonly streams = new Map<string, Entry[]>();
   readonly ttls = new Map<string, number>();
+  /** String keys (`wf:run:<runId>:seq`). */
+  readonly strings = new Map<string, string>();
+  /** Hash keys (`wf:run:<runId>:dedupe`). */
+  readonly hashes = new Map<string, Map<string, string>>();
   readonly connections: FakeRedisConnection[] = [];
   private sequence = 0;
   private nextClientId = 100;
@@ -37,6 +43,42 @@ export class FakeRedisServer {
 
   appendEnvelope(key: string, envelope: Record<string, unknown>): string {
     return this.append(key, ['data', JSON.stringify(envelope)]);
+  }
+
+  /**
+   * TASK-1038 B3a — what `RUN_APPEND_LUA` does, in JS (the fake cannot run Lua). Mirrors the
+   * script step for step: dedupe hit → the first position; a stream whose events key has an
+   * expiry is CLOSED; INCR + XADD; dedupe record; a terminal append expires all three keys.
+   */
+  runAppendScript(keys: readonly string[], args: readonly string[]): [number, string, number] {
+    const [seqKey, eventsKey, dedupeKey] = keys;
+    const [, retention, dedupe, ...fields] = args;
+    if (dedupe !== '') {
+      const prior = this.hashes.get(dedupeKey)?.get(dedupe);
+      if (prior) {
+        const [s, id] = prior.split(' ');
+        return [Number(s), id, 1];
+      }
+    }
+    if (this.ttls.has(eventsKey)) throw new Error(RUN_STREAM_CLOSED_ERROR);
+    const seq = Number(this.strings.get(seqKey) ?? '0') + 1;
+    this.strings.set(seqKey, String(seq));
+    const id = this.append(eventsKey, ['seq', String(seq), ...fields]);
+    if (dedupe !== '') {
+      const hash = this.hashes.get(dedupeKey) ?? new Map<string, string>();
+      hash.set(dedupe, `${seq} ${id}`);
+      this.hashes.set(dedupeKey, hash);
+    }
+    const ttl = Number(retention);
+    if (ttl > 0) for (const key of keys) this.ttls.set(key, ttl);
+    return [seq, id, 0];
+  }
+
+  /** Append one protocol-v2 event exactly as a producer would (through the sequencer). */
+  appendV2(input: RunAppendInput): { seq: number; id: string } {
+    const command = buildRunAppend(input);
+    const [seq, id] = this.runAppendScript(command.keys, command.args);
+    return { seq, id };
   }
 
   trimThrough(key: string, throughId: string): void {
@@ -156,9 +198,31 @@ export class FakeRedisConnection {
     return this.run('xrange', async () => (this.server.streams.get(key) ?? []).slice(0, count ?? Infinity));
   }
 
+  get(key: string): Promise<string | null> {
+    return this.run('get', async () => this.server.strings.get(key) ?? null);
+  }
+
+  xrevrange(key: string, _max: string, _min: string, _countWord?: string, count?: number): Promise<Entry[]> {
+    return this.run('xrevrange', async () => {
+      const all = [...(this.server.streams.get(key) ?? [])].reverse();
+      // `_max` may be an exclusive id `(<id>` — the hub pages backwards with it.
+      const from = _max.startsWith('(') ? _max.slice(1) : null;
+      const page = from === null ? all : all.filter(([id]) => compareStreamIds(id, from) < 0);
+      return page.slice(0, count ?? Infinity);
+    });
+  }
+
+  eval(script: string, numKeys: number, ...rest: (string | number)[]): Promise<unknown> {
+    return this.run('eval', async () => {
+      if (script !== RUN_APPEND_LUA) throw new Error('the fake only runs RUN_APPEND_LUA');
+      const values = rest.map(String);
+      return this.server.runAppendScript(values.slice(0, numKeys), values.slice(numKeys));
+    });
+  }
+
   expire(key: string, seconds: number, mode?: string): Promise<number> {
     return this.run('expire', async () => {
-      if (!this.server.streams.has(key)) return 0;
+      if (!this.server.streams.has(key) && !this.server.strings.has(key) && !this.server.hashes.has(key)) return 0;
       if (mode === 'NX' && this.server.ttls.has(key)) return 0;
       this.server.ttls.set(key, Number(seconds));
       return 1;

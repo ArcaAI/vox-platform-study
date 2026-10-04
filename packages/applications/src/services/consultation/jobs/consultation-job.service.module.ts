@@ -7,6 +7,7 @@ import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { ConsultationJobService, IConsultationJobService } from './consultation-job.service';
+import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { PreSummaryProcessor } from './processors/pre-summary.processor';
 import { ConsultationEventHandler } from '../events/consultation-event.handler';
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
@@ -62,6 +63,8 @@ import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.modul
     ConsultationWorkflowDispatchServiceModule,
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
+    // TASK-1038 B3a (G14) — `HarnessGatewayService.cancelDocumentWorkflow` cancels a SUMMARY job.
+    HarnessGatewayServiceModule,
     // `GenerateSummary`/`ExtractNamedEntities` (the legacy
     // signable-generator queues) were removed here along with
     // `SummaryProcessor`/`NerProcessor`. `GeneratePreSummary` survives per the R-2

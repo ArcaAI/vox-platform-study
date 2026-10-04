@@ -1,7 +1,7 @@
 import { GatewayTimeoutException } from '@nestjs/common';
 import type { WorkflowInvokeResponse, WorkflowRunResponseMode, WorkflowRunStatusResponse } from '@arcaai/applications';
 import type { Response } from 'express';
-import type { WorkflowStreamService } from './workflow-stream.service';
+import type { RunStreamRequestOptions, WorkflowStreamService } from './workflow-stream.service';
 
 /**
  * The blocking mode's hard ceiling (lane A step 7).
@@ -41,10 +41,12 @@ export async function deliverRun(
   started: WorkflowInvokeResponse,
   res: Response,
   mode: WorkflowRunResponseMode | undefined,
+  // TASK-1038 B3a — `mode=stream` honours the same protocol selection as the GET stream route.
+  streamOptions: RunStreamRequestOptions = {},
 ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
   if (mode === 'stream') {
     // `stream()` writes its own headers and ends the response, so the handler returns nothing.
-    await streamService.stream(slug, started.runId, res, undefined);
+    await streamService.stream(slug, started.runId, res, undefined, streamOptions);
     return undefined;
   }
 
