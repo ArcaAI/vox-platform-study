@@ -30,6 +30,7 @@ import { AdminTranscriptionJobController } from './admin-transcription-job.contr
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 import { TextGenerationAdminController } from './text-generation-admin.controller';
 import { TextProxyController } from './text-proxy.controller';
+import { SttRunTranscriptMirror } from './stt-run-transcript-mirror';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 import { WorkflowWsGateway } from './workflow-ws.gateway';
@@ -128,7 +129,9 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.
-  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway],
+  // TASK-1036 (lane B6b) — `SttRunTranscriptMirror` reaches `RunEventStreamHub` through the @Global()
+  // `WorkflowRunCompletionModule`, and the three repositories through `CoreDatabaseModule`.
+  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway, SttRunTranscriptMirror],
   exports: [SttWsGateway, WorkflowWsGateway],
 })
 export class StreamingModule {}
