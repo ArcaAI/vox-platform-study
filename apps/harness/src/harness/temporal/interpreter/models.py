@@ -206,6 +206,21 @@ def sanitize_run_payload(
     return clean
 
 
+class RunLimits(BaseModel):
+    """TASK-1038 R-3 — the size ceilings a run enforces on its own activity traffic.
+
+    Values come from ``ClaimCheckConfig`` (``HARNESS_CLAIM_CHECK_*``), the same mechanism as the
+    claim-check offload threshold, and are carried on the run's INPUT so the deterministic workflow
+    reads them without any I/O.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    #: The pre-flight guard: an activity input larger than this fails the run by name
+    #: (``PAYLOAD_TOO_LARGE``) instead of wedging on Temporal's own payload-size refusal.
+    activity_input_max_bytes: int = Field(alias="activityInputMaxBytes", gt=0)
+
+
 class InterpreterInput(BaseModel):
     """WorkflowInterpreter's ``@workflow.run`` input.
 
@@ -238,6 +253,11 @@ class InterpreterInput(BaseModel):
     # gap, not this ticket's fix (a different, actively-reviewed ticket's files) — recorded here
     # so the gap is traceable, not silently papered over.
     payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-1038 R-3, additive-optional. The payload ceilings the workflow enforces on itself,
+    # resolved from settings by the dispatcher BEFORE the start (the workflow body cannot read
+    # settings). Absent on every run started before TASK-1038 — and on those the walk behaves
+    # exactly as it did, which is what keeps their replay byte-identical.
+    limits: RunLimits | None = None
 
 
 class InterpreterResult(BaseModel):

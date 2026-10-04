@@ -175,6 +175,38 @@ _LIVE_HANDOFF_PATCH = "task-932-live-handoff"
 # review never consults the marker and never records one.
 _REVIEW_SKIP_PATCH = "task-946-review-skip-empty-payload"
 
+# TASK-1038 R-5 — the node retry policy honours the COMPILED backoff and names the failures a
+# retry cannot fix. A retry policy is an activity OPTION (the recorded command sequence does not
+# change), but it changes how often a refused call is re-sent, so it is a behaviour change and
+# rides behind its own marker like every other one. A history recorded before it keeps the old
+# attempts-only policy on replay.
+_RETRY_PATCH = "task-1038-node-retry-policy"
+
+#: Failure TYPES no retry can change, matched by Temporal on the failure's recorded type — the
+#: exception's class name, or an ``ApplicationError``'s ``type``. Retrying them re-sends the
+#: identical input to get the identical refusal, spending the node's whole timeout budget on it.
+#:
+#: * ``ApiClientError`` — a gateway 4xx other than 408/429 (``services/api_client.py`` already
+#:   classifies those two as retryable ``ApiServiceError``).
+#: * ``ValidationError`` — a pydantic schema/validation failure (input or answer shape).
+#: * ``ContextSchemaViolation`` / ``OutputSchemaViolation`` — ``core.trigger`` / ``core.output``
+#:   refusing a payload against the graph's declared schema.
+#: * ``ClaimCheckIntegrityError`` — a stored blob whose hash does not match its reference.
+#: * ``PAYLOAD_TOO_LARGE`` — an activity input or result above the safe Temporal payload size.
+NON_RETRYABLE_NODE_ERROR_TYPES: tuple[str, ...] = (
+    "ApiClientError",
+    "ValidationError",
+    "ContextSchemaViolation",
+    "OutputSchemaViolation",
+    "ClaimCheckIntegrityError",
+    "PAYLOAD_TOO_LARGE",
+)
+
+# TASK-1038 D-H — a DEGRADED node's OUTPUT is kept. Storing it changes what every downstream node
+# binds, and through `_is_empty_review_payload` whether a review child is started at all, so it
+# is gated. The cheap operand (the degraded result CARRIES an output) is checked first.
+_KEEP_DEGRADED_PATCH = "task-1038-keep-degraded-output"
+
 #: How long the walk parks between two handoff reads. A timer plus one short activity per
 #: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
 #: ceiling, and the finalize starts within one interval of the clinician pressing stop.
@@ -290,6 +322,25 @@ def _activity_error_reason(error: BaseException) -> str:
     if len(reason) <= _ACTIVITY_REASON_MAX_CHARS:
         return reason
     return reason[: _ACTIVITY_REASON_MAX_CHARS - 3] + "..."
+
+
+def _node_retry_policy(node: CompiledNode, max_attempts: int) -> RetryPolicy:
+    """TASK-1038 R-5 — the retry policy a node's activity is scheduled with (pure).
+
+    Honours the COMPILED backoff (``retry.initialIntervalSeconds`` / ``retry.backoffCoefficient``,
+    already clamped by the TypeScript compiler) and names the deterministic failures that must not
+    be retried (:data:`NON_RETRYABLE_NODE_ERROR_TYPES`). A value Temporal would reject (a
+    non-positive interval, a coefficient below 1) falls back to Temporal's own default for that
+    field rather than failing the workflow task.
+    """
+    initial = node.retry.initial_interval_seconds
+    coefficient = node.retry.backoff_coefficient
+    return RetryPolicy(
+        maximum_attempts=max_attempts,
+        initial_interval=timedelta(seconds=initial) if initial > 0 else timedelta(seconds=1),
+        backoff_coefficient=coefficient if coefficient >= 1 else 2.0,
+        non_retryable_error_types=list(NON_RETRYABLE_NODE_ERROR_TYPES),
+    )
 
 
 def _is_empty_review_payload(payload: dict[str, Any]) -> bool:
@@ -918,12 +969,17 @@ class WorkflowInterpreter:
             run_context=self._run_context() if node.type.startswith("core.") else {},
         )
 
+        retry_policy = (
+            _node_retry_policy(node, max_attempts)
+            if workflow.patched(_RETRY_PATCH)
+            else RetryPolicy(maximum_attempts=max_attempts)
+        )
         try:
             result: NodeActivityResult = await workflow.execute_activity(
                 spec.activity,
                 activity_input,
                 start_to_close_timeout=timedelta(seconds=timeout_seconds),
-                retry_policy=RetryPolicy(maximum_attempts=max_attempts),
+                retry_policy=retry_policy,
             )
         except ActivityError as exc:
             # Timeout OR an application-raised exception both surface here identically
@@ -945,11 +1001,21 @@ class WorkflowInterpreter:
             return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
         if result.status == "DEGRADED":
             promoted_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
+            reason = result.reason or "activity_error"
+            if result.output is not None and workflow.patched(_KEEP_DEGRADED_PATCH):
+                # TASK-1038 D-H — the work this node DID produce (a generated, billed note whose
+                # persist then failed; a result that missed its schema) is kept, marked, so the
+                # review and the output downstream can still use it. `_degraded` is a reserved
+                # key: a downstream binding reads one named key and never sees it.
+                self._node_outputs[node.node_id] = {
+                    **result.output,
+                    "_degraded": {"reason": reason},
+                }
             return NodeResult(
                 node_id=node.node_id,
                 node_type=node.type,
                 status=promoted_status,
-                reason=result.reason or "activity_error",
+                reason=reason,
             )
         # result.status == "SKIPPED" (the activity itself declined, e.g. a future
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.

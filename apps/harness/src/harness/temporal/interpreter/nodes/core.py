@@ -105,6 +105,19 @@ from harness.temporal.interpreter.templating import PromptVariableUnresolved
 _LOGGER = structlog.get_logger(__name__)
 
 
+class ContextSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run payload does not match the trigger's declared context schema.
+
+    A NAMED type so the interpreter's retry policy can list it as non-retryable (Temporal matches
+    on the failure type, i.e. this class name): the same payload is refused on every attempt.
+    """
+
+
+class OutputSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run result does not match ``core.output``'s declared schema. Named
+    for the same reason as :class:`ContextSchemaViolation`."""
+
+
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
     config = getattr(payload, "config", None)
     return config if isinstance(config, dict) else {}
@@ -277,7 +290,7 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
     violation = _schema_violation(declared, _authored_context(context))
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
-        raise RuntimeError(
+        raise ContextSchemaViolation(
             f"core.trigger: run payload violates the declared context schema: {violation}"
         )
     await record_and_flush(payload, status=STATUS_OK, started=started)
@@ -2144,7 +2157,7 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
         mode = config.get("onSchemaViolation") or "fail"
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         if mode == "fail":
-            raise RuntimeError(
+            raise OutputSchemaViolation(
                 f"core.output: result violates the declared output schema: {violation}"
             )
         return NodeActivityResult(

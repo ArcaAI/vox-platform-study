@@ -8,7 +8,7 @@ Every activity here follows the same posture as ``harness.temporal.activities``:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from temporalio import activity
@@ -139,6 +139,24 @@ async def interpreter_core_end(payload: NodeActivityInput) -> NodeActivityResult
     started = _now()
     await _record_and_flush(payload, status=STATUS_OK, started=started)
     return NodeActivityResult(status="SUCCEEDED")
+
+
+NodeActivityFn = Callable[[NodeActivityInput], Awaitable[NodeActivityResult]]
+
+
+def node_activity_envelope(fn: NodeActivityFn) -> NodeActivityFn:
+    """TASK-1038 — the envelope every interpreter NODE activity runs inside.
+
+    Returns a plain async function (no ``@activity.defn``) with the node activity's own signature,
+    so the caller registers it under whatever name it chooses.
+    """
+
+    async def _enveloped(payload: NodeActivityInput) -> NodeActivityResult:
+        return await fn(payload)
+
+    _enveloped.__name__ = getattr(fn, "__name__", "node_activity")
+    _enveloped.__qualname__ = getattr(fn, "__qualname__", _enveloped.__name__)
+    return _enveloped
 
 
 #: The activity callables the seventeen catalogue actions run, derived FROM the catalogue rather
