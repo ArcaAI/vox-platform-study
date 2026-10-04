@@ -313,21 +313,42 @@ def _refuse_oversized_result(payload: NodeActivityInput, result: NodeActivityRes
         )
 
 
+#: TASK-1038 R-4 — how often a running node activity heartbeats. A cancellation the workflow
+#: requests reaches an activity ONLY on a heartbeat response, so without these a cancelled run's
+#: LLM call ran to completion on the worker. The SDK throttles the actual RPCs (to its
+#: `default_heartbeat_throttle_interval`, 30 s, when no heartbeat timeout is set), which bounds
+#: how late the cancellation lands; no `heartbeat_timeout` is scheduled, so a slow beat can
+#: never fail a node.
+_HEARTBEAT_INTERVAL_SECONDS = 5.0
+
+
+async def _heartbeat_forever() -> None:
+    while True:
+        activity.heartbeat()
+        await asyncio.sleep(_HEARTBEAT_INTERVAL_SECONDS)
+
+
 def node_activity_envelope(fn: NodeActivityFn) -> NodeActivityFn:
     """TASK-1038 — the envelope every interpreter NODE activity runs inside.
 
     On the way in, every claim-check reference in the input is dereferenced (R-3), so the node's
     own code never sees one; on the way out, a large output is offloaded and an output Temporal
-    would refuse fails by name. Returns a plain async function (no ``@activity.defn``) with the
+    would refuse fails by name. Throughout, it heartbeats (R-4), which is how a cancellation the
+    workflow requests reaches the node's own task. Returns a plain async function (no ``@activity.defn``) with the
     node activity's own signature, so the caller registers it under the name it chooses.
     """
 
     async def _enveloped(payload: NodeActivityInput) -> NodeActivityResult:
-        hydrated = await hydrate_node_input(payload)
-        result = await fn(hydrated)
-        result = await offload_node_output(hydrated, result)
-        _refuse_oversized_result(hydrated, result)
-        return result
+        heartbeat = asyncio.ensure_future(_heartbeat_forever()) if activity.in_activity() else None
+        try:
+            hydrated = await hydrate_node_input(payload)
+            result = await fn(hydrated)
+            result = await offload_node_output(hydrated, result)
+            _refuse_oversized_result(hydrated, result)
+            return result
+        finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
 
     _enveloped.__name__ = getattr(fn, "__name__", "node_activity")
     _enveloped.__qualname__ = getattr(fn, "__qualname__", _enveloped.__name__)

@@ -23,7 +23,10 @@ NodeStatus = Literal["SUCCEEDED", "DEGRADED", "SKIPPED", "FAILED"]
 # ---------------------------------------------------------------------------
 # Run-level terminal states (contracts/execution-semantics.md)
 # ---------------------------------------------------------------------------
-RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED"]
+# TASK-1038 D-B — `TIMED_OUT`: the walk spent its `caps.maxTotalSeconds` compute budget and the
+# stage in flight was interrupted. Distinct from FAILED (nothing refused the work; it ran out of
+# time) and from CANCELLED (nobody asked it to stop).
+RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED", "TIMED_OUT"]
 
 
 class NodeActivityInput(BaseModel):

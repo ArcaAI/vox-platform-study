@@ -227,6 +227,20 @@ _CONTEXT_PATH_RETRY = RetryPolicy(
     maximum_attempts=3, non_retryable_error_types=["ClaimCheckIntegrityError"]
 )
 
+# TASK-1038 R-4 — cancel stops IN-FLIGHT work. The `cancel` signal used to set a flag the walk
+# read only BETWEEN stages: a running node (an LLM generation, a review child parked for an hour)
+# kept running while the run already read as cancelled. Under this marker a stage is a RACE between
+# its nodes settling and the run being cancelled (or timing out, below): the losers' activities
+# and children are cancelled. Racing adds a `wait_condition` and, on interruption, cancel
+# commands, so it is gated — decided ONCE per run, at its start, so one run never mixes the two
+# shapes.
+_CANCEL_PATCH = "task-1038-cancel-in-flight"
+
+# TASK-1038 D-B — the run's compute budget (`caps.maxTotalSeconds`, clamped tighten-only) as a
+# deadline the walk enforces on itself: a timer the stage race watches. A new command (the timer),
+# so gated, and decided once per run like the cancel race.
+_DEADLINE_PATCH = "task-1038-run-deadline"
+
 #: How long the walk parks between two handoff reads. A timer plus one short activity per
 #: interval: a 30-minute consultation costs ~120 polls, well inside Temporal's 51,200-event
 #: ceiling, and the finalize starts within one interval of the clinician pressing stop.
@@ -476,6 +490,18 @@ class WorkflowInterpreter:
         # TASK-1038 R-3 — whether the trigger published the run payload unchanged (decided once,
         # the first time an input is built after the trigger ran). Pure derived state.
         self._trigger_is_payload: bool | None = None
+        # TASK-1038 R-4 / D-B — the bounded walk. `_bounded` is decided once, at the run's start
+        # (`_CANCEL_PATCH`); the deadline fields are set only when `_DEADLINE_PATCH` is. The
+        # budget clock is paused across DURABLE waits on a clinician (live handoff, review, gate),
+        # which are not compute and carry bounds of their own. All workflow time.
+        self._bounded = False
+        self._timed_out = False
+        self._budget_seconds: float | None = None
+        self._clock_started: Any = None
+        self._paused_seconds = 0.0
+        self._pause_depth = 0
+        self._pause_started: Any = None
+        self._deadline_task: asyncio.Future[None] | None = None
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -515,11 +541,16 @@ class WorkflowInterpreter:
         for indexed_loop in config.loops:
             self._loops_by_id[indexed_loop.node_id] = indexed_loop.body.model_dump(by_alias=True)
 
+        # TASK-1038 R-4 / D-B — decided once, here, for the whole run.
+        self._bounded = workflow.patched(_CANCEL_PATCH)
+        if workflow.patched(_DEADLINE_PATCH):
+            self._start_deadline(caps.run_budget_seconds(config.caps.max_total_seconds))
+
         run_failed = False
         run_degraded = False
 
         for stage in config.stages:
-            if self._cancelled:
+            if self._cancelled or self._timed_out:
                 break
             # TASK-932 R-16a — the LIVE HANDOFF, once, immediately before the first stage that
             # consumes a live-owned node's output. Placed here rather than at the top of `run`
@@ -548,7 +579,8 @@ class WorkflowInterpreter:
         # it runs here, after the walk, which is also what the graph means: `WF-CONS-004` makes
         # the gate terminal for everything except the palette-agnostic `core.end` marker.
         # Skipped when a critical node already failed: there is nothing to sign off.
-        if config.gates and workflow.patched(_GATE_PATCH):
+        interrupted = self._bounded and (self._cancelled or self._timed_out)
+        if config.gates and not interrupted and workflow.patched(_GATE_PATCH):
             gate_result = await self._run_gate(config.gates[0], inp, blocked=run_failed)
             self._stages.append(StageResult(stage_index=len(self._stages), nodes=[gate_result]))
             if gate_result.status == "FAILED":
@@ -556,9 +588,14 @@ class WorkflowInterpreter:
             elif gate_result.status in ("DEGRADED", "SKIPPED"):
                 run_degraded = True
 
+        if self._deadline_task is not None and not self._deadline_task.done():
+            self._deadline_task.cancel()
+
         status: RunStatus
         if self._cancelled:
             status = "CANCELLED"
+        elif self._timed_out:
+            status = "TIMED_OUT"
         elif run_failed:
             status = "FAILED"
         elif run_degraded:
@@ -690,11 +727,120 @@ class WorkflowInterpreter:
         not declare. That is a CONTRACT violation rather than a node outcome — there is no honest
         value to thread and no retry that would change it — so it fails the run loudly instead of
         being flattened into a per-node ``DEGRADED``."""
-        return list(
-            await asyncio.gather(
-                *(self._dispatch_node(node, inp, stage.stage_index) for node in stage.nodes)
+        if not self._bounded:
+            return list(
+                await asyncio.gather(
+                    *(self._dispatch_node(node, inp, stage.stage_index) for node in stage.nodes)
+                )
             )
+        # TASK-1038 R-4 / D-B — the stage RACES the run being cancelled or timing out. The nodes
+        # still run concurrently and the join is still all-settled; what changes is that a cancel
+        # or the deadline no longer waits for the slowest node to finish on its own.
+        tasks = [
+            asyncio.ensure_future(self._dispatch_node(node, inp, stage.stage_index))
+            for node in stage.nodes
+        ]
+        await workflow.wait_condition(
+            lambda: all(task.done() for task in tasks) or self._cancelled or self._timed_out
         )
+        pending = [not task.done() for task in tasks]
+        for task, was_pending in zip(tasks, pending, strict=True):
+            if was_pending:
+                task.cancel()
+        results: list[NodeResult] = []
+        for node, task, was_pending in zip(stage.nodes, tasks, pending, strict=True):
+            try:
+                settled = await task
+            except asyncio.CancelledError:
+                settled = None
+            # A node interrupted mid-flight is reported as INTERRUPTED whatever its coroutine
+            # made of the cancellation (a child's cancellation may surface as its own error).
+            results.append(self._interrupted(node) if was_pending or settled is None else settled)
+        return results
+
+    def _interrupted(self, node: CompiledNode) -> NodeResult:
+        """The settled record of a node a cancel or the deadline interrupted (pure)."""
+        if self._cancelled:
+            return NodeResult(
+                node_id=node.node_id, node_type=node.type, status="SKIPPED", reason="cancelled"
+            )
+        return NodeResult(
+            node_id=node.node_id, node_type=node.type, status="FAILED", reason="run_timed_out"
+        )
+
+    # TASK-1038 D-B — the run deadline.
+
+    def _start_deadline(self, budget_seconds: int) -> None:
+        self._budget_seconds = float(budget_seconds)
+        self._clock_started = workflow.now()
+        self._deadline_task = asyncio.ensure_future(self._watch_deadline())
+
+    def _remaining_budget(self) -> float:
+        """Compute seconds left (pure): budget minus elapsed workflow time minus paused time."""
+        if self._budget_seconds is None:
+            return float("inf")
+        now = workflow.now()
+        paused = self._paused_seconds
+        if self._pause_depth:
+            paused += (now - self._pause_started).total_seconds()
+        elapsed = (now - self._clock_started).total_seconds() - paused
+        return self._budget_seconds - elapsed
+
+    async def _watch_deadline(self) -> None:
+        """One timer at a time, until the budget is spent.
+
+        While the clock is PAUSED (a durable wait on a clinician) no timer runs at all — the
+        watch parks on the pause ending — so a two-hour consultation or an hour-long review costs
+        one cancelled timer, not one re-armed timer per remaining-budget interval.
+        """
+        while True:
+            if self._pause_depth:
+                await workflow.wait_condition(lambda: self._pause_depth == 0)
+                continue
+            remaining = self._remaining_budget()
+            if remaining <= 0:
+                self._timed_out = True
+                return
+            try:
+                await workflow.wait_condition(
+                    lambda: self._pause_depth > 0, timeout=timedelta(seconds=remaining)
+                )
+            except TimeoutError:
+                continue
+
+    def _pause_clock(self) -> None:
+        """Enter a durable wait on a clinician: the budget stops being charged. A no-op on a run
+        without a deadline (every run recorded before `_DEADLINE_PATCH`)."""
+        if self._budget_seconds is None:
+            return
+        if self._pause_depth == 0:
+            self._pause_started = workflow.now()
+        self._pause_depth += 1
+
+    def _resume_clock(self) -> None:
+        if self._budget_seconds is None:
+            return
+        self._pause_depth -= 1
+        if self._pause_depth == 0 and self._pause_started is not None:
+            self._paused_seconds += (workflow.now() - self._pause_started).total_seconds()
+            self._pause_started = None
+
+    async def _await_cancellable(self, awaitable: Any) -> tuple[bool, Any]:
+        """``(interrupted, result)`` — await ``awaitable`` unless the run is cancelled first.
+
+        For the waits OUTSIDE a stage race (the HITL gate). The deadline does not apply: the gate
+        is a durable wait on a clinician with its own SLA ladder.
+        """
+        task = asyncio.ensure_future(awaitable)
+        await workflow.wait_condition(lambda: task.done() or self._cancelled)
+        if task.done():
+            return False, task.result()
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 — however it surfaced
+            pass
+        return True, None
 
     def _resolve_bound_inputs(self, node: CompiledNode) -> dict[str, Any]:
         """Thread completed predecessors' outputs into this node's input, via `node.inputs`
@@ -845,6 +991,15 @@ class WorkflowInterpreter:
                 }
             ),
         )
+        # TASK-1038 D-B — parked on a clinician, not computing: the budget clock stops.
+        self._pause_clock()
+        try:
+            await self._poll_live_outputs(request)
+        finally:
+            self._resume_clock()
+
+    async def _poll_live_outputs(self, request: LiveOutputsRequest) -> None:
+        """The handoff poll loop itself (see `_await_live_outputs`)."""
         deadline = workflow.now() + _LIVE_HANDOFF_MAX_WAIT
         while not self._cancelled:
             try:
@@ -867,7 +1022,16 @@ class WorkflowInterpreter:
                 return
             if workflow.now() >= deadline:
                 return
-            await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
+            if self._bounded:
+                # TASK-1038 R-4 — a cancel ends the wait NOW, not at the next poll.
+                try:
+                    await workflow.wait_condition(
+                        lambda: self._cancelled, timeout=_LIVE_HANDOFF_POLL_INTERVAL
+                    )
+                except TimeoutError:
+                    pass
+            else:
+                await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
 
     def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
         """Every reason this walk declines a node BEFORE dispatching anything (pure).
@@ -1346,6 +1510,8 @@ class WorkflowInterpreter:
                 doctor_id=_run_doctor_id(inp),
             ),
         )
+        # TASK-1038 D-B — a review is a durable wait on a clinician: not charged to the budget.
+        self._pause_clock()
         try:
             result: ReviewGateResult = await workflow.execute_child_workflow(
                 ReviewGateWorkflow.run,
@@ -1359,6 +1525,8 @@ class WorkflowInterpreter:
                 status="DEGRADED",
                 reason="review_unavailable",
             )
+        finally:
+            self._resume_clock()
 
         self._node_outputs[node.node_id] = {"decision": result.model_dump()}
         self._taken_handles[node.node_id] = {result.outcome}
@@ -1546,14 +1714,28 @@ class WorkflowInterpreter:
             ),
         )
 
+        gate_child = workflow.execute_child_workflow(
+            ConsultationGateWorkflow.run,
+            gate_input,
+            # Deterministic, derived from the parent's run id — never `uuid4()` inside a
+            # workflow body. Same task queue by inheritance (worker.py hosts both types).
+            id=gate_workflow_id(inp.run_id),
+        )
+        result: ConsultationGateResult
+        self._pause_clock()
         try:
-            result: ConsultationGateResult = await workflow.execute_child_workflow(
-                ConsultationGateWorkflow.run,
-                gate_input,
-                # Deterministic, derived from the parent's run id — never `uuid4()` inside a
-                # workflow body. Same task queue by inheritance (worker.py hosts both types).
-                id=gate_workflow_id(inp.run_id),
-            )
+            if self._bounded:
+                # TASK-1038 R-4 — a cancel stops the wait on the clinician too.
+                interrupted, result = await self._await_cancellable(gate_child)
+                if interrupted:
+                    return NodeResult(
+                        node_id=gate.node_id,
+                        node_type=node_type,
+                        status="SKIPPED",
+                        reason="cancelled",
+                    )
+            else:
+                result = await gate_child
         except Exception:  # noqa: BLE001 — ChildWorkflowError and cancellation both land here
             # A gate that could not run is NOT an approval. `critical: true` promotes this to a
             # run-level FAILED, which is the only safe reading.
@@ -1563,6 +1745,8 @@ class WorkflowInterpreter:
                 status="FAILED",
                 reason="gate_unavailable",
             )
+        finally:
+            self._resume_clock()
 
         if result.approved:
             self._node_outputs[gate.node_id] = {

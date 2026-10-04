@@ -177,6 +177,7 @@ async def run_graph(
     activities: list[Any] | None = None,
     during: Any = None,
     run_id: str | None = None,
+    worker_options: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any], Any]:
     """Run to completion. ``during(env, handle)`` runs once the workflow has started (signals).
 
@@ -193,6 +194,7 @@ async def run_graph(
             task_queue=tq,
             workflows=WORKFLOWS,
             activities=activities if activities is not None else ACTIVITIES,
+            **(worker_options or {}),
         ):
             handle: WorkflowHandle = await env.client.start_workflow(
                 WorkflowInterpreter.run,
