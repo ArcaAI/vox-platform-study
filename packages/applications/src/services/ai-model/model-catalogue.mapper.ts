@@ -28,15 +28,28 @@ function asPlainObject(value: unknown): Record<string, unknown> | undefined {
 function capabilitiesOf(entity: AiModelEntity): CatalogueModelResponse['capabilities'] {
   const meta = asPlainObject(entity.metaData) ?? {};
   const caps = asPlainObject(meta.capabilities) ?? meta;
-  const params = Array.isArray(caps.supportedGenerationParams) ? (caps.supportedGenerationParams as string[]) : undefined;
+  const params = Array.isArray(caps.supportedGenerationParams)
+    ? (caps.supportedGenerationParams as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+    : [];
   const ssml = typeof caps.supportsSsml === 'boolean' ? caps.supportsSsml : undefined;
   // The declared context window (owner directive 2026-09-18). A positive integer or nothing:
   // a 0/negative/NaN value is a mis-seeded row, and surfacing it would hand a caller a budget
   // that can only produce an empty prompt.
   const rawContext = caps.contextLength;
   const contextLength = typeof rawContext === 'number' && Number.isInteger(rawContext) && rawContext > 0 ? rawContext : undefined;
+  // TASK-1036 W2 / OD-16 — the contract's `ModelCapabilities`. Every flag is PRESENT on the wire:
+  // an absent (or mistyped) flag is `false` / `[]`, so the editor never has to re-decide what
+  // "unknown" means. `reasoning` is the one optional member — absent means "not a reasoning model".
+  const voices = Array.isArray(caps.voices)
+    ? (caps.voices as unknown[]).filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : [];
   return {
-    ...(params ? { supportedGenerationParams: params } : {}),
+    supportsTools: caps.supportsTools === true,
+    supportsVision: caps.supportsVision === true,
+    supportsAttachments: caps.supportsAttachments === true,
+    voices,
+    supportedGenerationParams: params,
+    ...(typeof caps.reasoning === 'boolean' ? { reasoning: caps.reasoning } : {}),
     ...(ssml !== undefined ? { supportsSsml: ssml } : {}),
     ...(contextLength !== undefined ? { contextLength } : {}),
   };
