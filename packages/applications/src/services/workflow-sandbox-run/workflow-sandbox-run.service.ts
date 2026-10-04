@@ -65,7 +65,12 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     const compiled = await this.workflowDefinitionService.getCompiledConfigForSandboxRun(definitionId);
     const basePayload = await this.resolvePayload(tenantId, dto);
     // TASK-1036 OD-15 — every ownership check BEFORE anything is written (404-over-403).
-    const attachments = dto.attachments?.length ? await this.resolveAttachments(tenantId, dto.attachments.map((a) => a.mediaId)) : undefined;
+    const attachments = dto.attachments?.length
+      ? await this.resolveAttachments(
+          tenantId,
+          dto.attachments.map((a) => a.mediaId),
+        )
+      : undefined;
     const recordingJob = dto.recording ? await this.resolveRecordingSession(tenantId, dto.recording.sttSessionId) : undefined;
 
     if (!this.s3Service) {
@@ -183,7 +188,10 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
    * TASK-1036 OD-15 — tenant media by reference. Unknown or foreign → 404; a MIME type outside the
    * attachment allow-list (`CONTEXT_ATTACHMENT_MIME_TYPES`) → 400. Never the bytes or the storage URI.
    */
-  private async resolveAttachments(tenantId: string, mediaIds: string[]): Promise<Array<{ mediaId: string; mime: string; name: string; size: number }>> {
+  private async resolveAttachments(
+    tenantId: string,
+    mediaIds: string[],
+  ): Promise<Array<{ mediaId: string; mime: string; name: string; size: number }>> {
     if (!this.mediaRepository) throw new ArgumentInvalidException('Sandbox attachments are unavailable: no media repository is configured.');
     const out: Array<{ mediaId: string; mime: string; name: string; size: number }> = [];
     for (const mediaId of mediaIds) {
@@ -206,7 +214,9 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     if (!this.transcriptionJobRepository || !this.consultationRepository) {
       throw new ArgumentInvalidException('Sandbox recordings are unavailable: the STT session store is not configured.');
     }
-    const [job] = await this.transcriptionJobRepository.findAll({ filters: { tenantId, streamSessionId: sttSessionId, jobType: TranscriptionJobType.STREAMING } });
+    const [job] = await this.transcriptionJobRepository.findAll({
+      filters: { tenantId, streamSessionId: sttSessionId, jobType: TranscriptionJobType.STREAMING },
+    });
     if (!job || job.tenantId !== tenantId) throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
     if (job.consultationId) {
       const bound = await this.consultationRepository.findByIdOrNull(job.consultationId);
@@ -227,12 +237,7 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
    * synthetic patient reference, `metadata.sandbox` naming the workflow and session — with the
    * session's job row re-bound to it.
    */
-  private async bindSandboxConsultation(
-    tenantId: string,
-    definitionId: string,
-    runId: string,
-    job: TranscriptionJobEntity,
-  ): Promise<string> {
+  private async bindSandboxConsultation(tenantId: string, definitionId: string, runId: string, job: TranscriptionJobEntity): Promise<string> {
     if (job.consultationId) return job.consultationId;
     const doctorId = this.requestUserId;
     if (!doctorId) throw new ArgumentInvalidException('A sandbox recording needs a signed-in user to act as the clinician.');

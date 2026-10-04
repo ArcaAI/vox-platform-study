@@ -48,7 +48,9 @@ const startCall = () => harness.startWorkflowRun.mock.calls[0]?.[0] as Record<st
 
 beforeEach(() => {
   vi.clearAllMocks();
-  cls.get.mockImplementation((key: string) => (key === 'tenantId' ? 'tenant-1' : key === 'user' ? { id: 'admin-1', roles: ['TENANT_ADMIN'] } : undefined));
+  cls.get.mockImplementation((key: string) =>
+    key === 'tenantId' ? 'tenant-1' : key === 'user' ? { id: 'admin-1', roles: ['TENANT_ADMIN'] } : undefined,
+  );
   definitions.getCompiledConfigForSandboxRun.mockResolvedValue({
     compiledConfig: { formatVersion: 1, stages: [], gates: [] },
     workflowVersionId: 'def-1',

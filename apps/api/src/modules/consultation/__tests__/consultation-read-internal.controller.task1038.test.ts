@@ -14,9 +14,15 @@ import { ConsultationReadInternalController, ConsultationReadRequestDto } from '
 import { HarnessServiceTokenGuard } from '../harness-service-token.guard';
 
 function makeController() {
-  const service = { read: vi.fn().mockResolvedValue({ values: { 'consultation.patient.age': 54 }, readAt: '2026-10-04T00:00:00.000Z', schemaVersion: 1 }) };
+  const service = {
+    read: vi.fn().mockResolvedValue({ values: { 'consultation.patient.age': 54 }, readAt: '2026-10-04T00:00:00.000Z', schemaVersion: 1 }),
+  };
   const store = new Map<string, unknown>();
-  const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn((k: string, v: unknown) => store.set(k, v)), get: vi.fn((k: string) => store.get(k)) };
+  const cls = {
+    run: vi.fn((fn: () => unknown) => fn()),
+    set: vi.fn((k: string, v: unknown) => store.set(k, v)),
+    get: vi.fn((k: string) => store.get(k)),
+  };
   return { controller: new ConsultationReadInternalController(service as never, cls as never), service, cls };
 }
 
@@ -33,13 +39,21 @@ describe('ConsultationReadInternalController', () => {
     const result = await controller.read('c-1', { runId: 'run-1', nodeId: 'gen', paths: ['consultation.patient.age'] }, 'tenant-1');
 
     expect(cls.set).toHaveBeenCalledWith('tenantId', 'tenant-1');
-    expect(service.read).toHaveBeenCalledWith({ tenantId: 'tenant-1', consultationId: 'c-1', runId: 'run-1', nodeId: 'gen', paths: ['consultation.patient.age'] });
+    expect(service.read).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      consultationId: 'c-1',
+      runId: 'run-1',
+      nodeId: 'gen',
+      paths: ['consultation.patient.age'],
+    });
     expect(result).toEqual({ values: { 'consultation.patient.age': 54 }, readAt: '2026-10-04T00:00:00.000Z', schemaVersion: 1 });
   });
 
   it('400 without X-Tenant-Id', async () => {
     const { controller, service } = makeController();
-    await expect(controller.read('c-1', { runId: 'r', nodeId: 'n', paths: ['consultation.id'] }, undefined)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(controller.read('c-1', { runId: 'r', nodeId: 'n', paths: ['consultation.id'] }, undefined)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
     expect(service.read).not.toHaveBeenCalled();
   });
 

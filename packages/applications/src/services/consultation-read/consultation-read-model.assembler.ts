@@ -71,7 +71,8 @@ export class ConsultationReadModelAssembler {
     const want = (root: string): boolean => roots.has(root);
 
     if (want('id')) model.id = consultation.id;
-    if (want('visitType')) model.visitType = resolveVisitTypeKey(DEFAULT_VISIT_TYPE_SERVICE, tenantId, consultation.metadata, consultation.parentConsultationId);
+    if (want('visitType'))
+      model.visitType = resolveVisitTypeKey(DEFAULT_VISIT_TYPE_SERVICE, tenantId, consultation.metadata, consultation.parentConsultationId);
     if (want('language')) model.language = readSpokenLanguageMode(consultation);
     if (want('outputLanguage')) {
       const language = await resolvePlatformOutputLanguage(this.effectiveSettings, tenantId, this.logger);
@@ -173,7 +174,10 @@ export class ConsultationReadModelAssembler {
     const preSummaries = (await this.contextItemRepository.findPreSummaries(consultation.id)).filter(
       (item) => asObject(item.metaData)?.subType !== LIVE_SOAP_SNAPSHOT_SUBTYPE,
     );
-    const newest = preSummaries.reduce<ContextItemEntity | null>((latest, item) => (!latest || item.createdAt > latest.createdAt ? item : latest), null);
+    const newest = preSummaries.reduce<ContextItemEntity | null>(
+      (latest, item) => (!latest || item.createdAt > latest.createdAt ? item : latest),
+      null,
+    );
     const preSummary = newest ? ((await decrypt(newest))?.trim() ?? null) : null;
     const summary = await selectAuthoritativeNoteText(this.contextItemRepository, consultation.id);
     return { preSummary: preSummary || null, summary: summary ?? null };
@@ -265,7 +269,9 @@ const VITAL_FIELDS: ReadonlyArray<{ key: keyof ClientVitalsPayload; name: string
 ];
 
 /** The client's single `vitals` payload as the read schema's list of readings. */
-export function vitalsListOf(vitals: ClientVitalsPayload | undefined): Array<{ name: string; value: string; unit: string; measuredAt: string | null }> {
+export function vitalsListOf(
+  vitals: ClientVitalsPayload | undefined,
+): Array<{ name: string; value: string; unit: string; measuredAt: string | null }> {
   if (!vitals) return [];
   const measuredAt = typeof vitals.recordedAt === 'string' ? vitals.recordedAt : null;
   return VITAL_FIELDS.flatMap(({ key, name, unit }) => {

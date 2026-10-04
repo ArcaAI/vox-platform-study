@@ -2879,7 +2879,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private async resolvePublishPins(
     graph: WorkflowGraph,
     tenantId: string,
-  ): Promise<{ graph: WorkflowGraph; agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>; findings: WorkflowFinding[] }> {
+  ): Promise<{
+    graph: WorkflowGraph;
+    agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
+    findings: WorkflowFinding[];
+  }> {
     let pinned = graph;
     const findings: WorkflowFinding[] = [];
     const agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }> = [];
@@ -2932,7 +2936,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     agentViews?: Record<string, PublishAgentView>,
     agentPromptRefs: ReadonlyArray<{ nodeId: string; templateId: string; versionNumber: number }> = [],
   ): CompiledWorkflowConfig {
-    const result = compile(graph, this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema, agentViews, agentPromptRefs));
+    const result = compile(
+      graph,
+      this.buildCompilerContext(entity, graph, contextSchemaVersionId, triggerContextSchema, agentViews, agentPromptRefs),
+    );
     if ('findings' in result) {
       throw new BadRequestException({ message: 'The workflow graph could not be compiled.', findings: result.findings satisfies WorkflowFinding[] });
     }

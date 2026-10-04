@@ -25,7 +25,14 @@ const graphReadingAge = {
   version: 1,
   nodes: [
     { id: 't1', type: 'core.trigger', config: { kinds: ['consultation'] } },
-    { id: 'gen', type: 'core.agent', config: { agentRef: { slug: 's' }, inputs: { age: { from: 'consultation.patient.age' }, note: { from: 'consultation.notes', at: 'runStart' } } } },
+    {
+      id: 'gen',
+      type: 'core.agent',
+      config: {
+        agentRef: { slug: 's' },
+        inputs: { age: { from: 'consultation.patient.age' }, note: { from: 'consultation.notes', at: 'runStart' } },
+      },
+    },
   ],
   edges: [],
 };
@@ -90,7 +97,12 @@ describe('pure access helpers', () => {
   it('declaredReadsForNode reads compiled consultationReads, including loop bodies', () => {
     const compiled = {
       stages: [],
-      loops: [{ nodeId: 'loop', body: { stages: [{ stageIndex: 0, nodes: [{ nodeId: 'inner', consultationReads: [{ path: 'consultation.items', at: 'nodeStart' }] }] }] } }],
+      loops: [
+        {
+          nodeId: 'loop',
+          body: { stages: [{ stageIndex: 0, nodes: [{ nodeId: 'inner', consultationReads: [{ path: 'consultation.items', at: 'nodeStart' }] }] }] },
+        },
+      ],
       settings: { connections: [], sources: [] },
     };
     expect(declaredReadsForNode(compiled, null, 'inner')).toEqual(['consultation.items']);
@@ -148,7 +160,7 @@ describe('ConsultationReadService.read', () => {
       .read(request(['consultation.transcript.text']))
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BadRequestException);
-    expect(((error as BadRequestException).getResponse() as { code: string; paths: string[] })).toMatchObject({
+    expect((error as BadRequestException).getResponse() as { code: string; paths: string[] }).toMatchObject({
       code: 'CONSULTATION_READ_UNDECLARED',
       paths: ['consultation.transcript.text'],
     });
@@ -170,13 +182,19 @@ describe('ConsultationReadService.read', () => {
   });
 
   it('404 when the run is not this consultation`s run', async () => {
-    mocks.consultations.findByIdOrNull.mockResolvedValue({ id: CONSULTATION, tenantId: TENANT, metadata: { governingEngine: { workflowRunId: 'other', workflowDefinitionSlug: 's' } } });
+    mocks.consultations.findByIdOrNull.mockResolvedValue({
+      id: CONSULTATION,
+      tenantId: TENANT,
+      metadata: { governingEngine: { workflowRunId: 'other', workflowDefinitionSlug: 's' } },
+    });
     await expect(makeService().read(request(['consultation.patient.age']))).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('a run that records its consultation in its own metadata (sandbox / exposure) is accepted', async () => {
     mocks.consultations.findByIdOrNull.mockResolvedValue({ id: CONSULTATION, tenantId: TENANT, metadata: null });
-    mocks.runs.findAll.mockResolvedValue([{ id: 'row-1', tenantId: TENANT, runId: RUN, workflowVersionId: VERSION, metaData: { consultationId: CONSULTATION } }]);
+    mocks.runs.findAll.mockResolvedValue([
+      { id: 'row-1', tenantId: TENANT, runId: RUN, workflowVersionId: VERSION, metaData: { consultationId: CONSULTATION } },
+    ]);
     await expect(makeService().read(request(['consultation.patient.age']))).resolves.toBeDefined();
   });
 
@@ -199,7 +217,13 @@ describe('ConsultationReadService.read', () => {
 
     const viewed = mocks.events.emit.mock.calls.find((call) => call[0] === SysEventType.ResourceViewed)?.[1] as Record<string, unknown>;
     expect(viewed).toMatchObject({ resourceId: CONSULTATION, forceAuditLog: true });
-    expect(viewed.data).toMatchObject({ action: 'consultationDeclaredRead', runId: RUN, nodeId: 'gen', paths: ['consultation.patient.age'], phiPathCount: 1 });
+    expect(viewed.data).toMatchObject({
+      action: 'consultationDeclaredRead',
+      runId: RUN,
+      nodeId: 'gen',
+      paths: ['consultation.patient.age'],
+      phiPathCount: 1,
+    });
     expect(JSON.stringify(viewed)).not.toContain('54');
   });
 });

@@ -7,7 +7,17 @@ import { ContextItemType } from '@arcaai/domains';
 import { ConsultationReadModelAssembler, itemKindOf, patientOf, vitalsListOf } from '../consultation-read-model.assembler';
 
 const at = (iso: string) => new Date(iso);
-const item = (overrides: Record<string, unknown>) => ({ id: 'i', type: ContextItemType.CASE_NOTE, kindKey: null, metaData: null, mediaId: null, createdAt: at('2026-10-01T10:00:00Z'), content: 'x', encryptedContent: null, ...overrides });
+const item = (overrides: Record<string, unknown>) => ({
+  id: 'i',
+  type: ContextItemType.CASE_NOTE,
+  kindKey: null,
+  metaData: null,
+  mediaId: null,
+  createdAt: at('2026-10-01T10:00:00Z'),
+  content: 'x',
+  encryptedContent: null,
+  ...overrides,
+});
 
 const contextItems = {
   findTranscripts: vi.fn(),
@@ -66,12 +76,21 @@ beforeEach(() => {
   media.findByIdOrNull.mockResolvedValue({ id: 'm1', mimeType: 'application/pdf', name: 'cbc.pdf', size: 1024 });
   departments.findByIdOrNull.mockResolvedValue({ id: 'dep-1', code: 'GM', name: 'General Medicine' });
   dna.findLatestForDoctor.mockResolvedValue({ id: 'r1' });
-  dna.decryptFieldsFromEntity.mockResolvedValue({ styleText: '  Concise.  ', redactionRules: { rules: [{ type: 'rewrite', match: 'literal', pattern: 'pt', replacement: 'patient' }] } });
+  dna.decryptFieldsFromEntity.mockResolvedValue({
+    styleText: '  Concise.  ',
+    redactionRules: { rules: [{ type: 'rewrite', match: 'literal', pattern: 'pt', replacement: 'patient' }] },
+  });
   resolver.resolveDoctorDnaPreference.mockResolvedValue({ enabled: null, version: 0 });
   contextItems.findPreSummaries.mockResolvedValue([
     item({ id: 'p1', type: ContextItemType.PRE_SUMMARY, content: 'old pre', createdAt: at('2026-10-01T09:00:00Z') }),
     item({ id: 'p2', type: ContextItemType.PRE_SUMMARY, content: 'new pre', createdAt: at('2026-10-01T09:30:00Z') }),
-    item({ id: 'p3', type: ContextItemType.PRE_SUMMARY, content: 'live', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: at('2026-10-01T11:00:00Z') }),
+    item({
+      id: 'p3',
+      type: ContextItemType.PRE_SUMMARY,
+      content: 'live',
+      metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+      createdAt: at('2026-10-01T11:00:00Z'),
+    }),
   ]);
   contextItems.findByType.mockImplementation(async (_id: string, type: ContextItemType) =>
     type === ContextItemType.RAW_SUMMARY ? [{ content: 'The running note', createdAt: at('2026-10-01T10:00:00Z') }] : [],
@@ -144,7 +163,9 @@ describe('ConsultationReadModelAssembler', () => {
       dna: { style: 'Concise.', rules: expect.stringContaining('patient') },
     });
     resolver.resolveDoctorDnaPreference.mockResolvedValue({ enabled: false, version: 1 });
-    expect((await makeAssembler().assemble(consultation as never, 't-1', new Set(['clinician']))).clinician).toEqual({ dna: { style: null, rules: null } });
+    expect((await makeAssembler().assemble(consultation as never, 't-1', new Set(['clinician']))).clinician).toEqual({
+      dna: { style: null, rules: null },
+    });
   });
 
   it('vitals, testResults and previousVisits in the read schema`s list shapes', async () => {

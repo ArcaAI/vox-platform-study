@@ -49,7 +49,8 @@ export class WorkflowSandboxRunController {
   @ApiResponse({ status: 202, type: SandboxRunResponse })
   @ApiResponse({
     status: 400,
-    description: 'The graph cannot be compiled (engine gate), or an attachment is outside the MIME allow-list (`SANDBOX_ATTACHMENT_MIME_UNSUPPORTED`).',
+    description:
+      'The graph cannot be compiled (engine gate), or an attachment is outside the MIME allow-list (`SANDBOX_ATTACHMENT_MIME_UNSUPPORTED`).',
   })
   @ApiResponse({
     status: 404,

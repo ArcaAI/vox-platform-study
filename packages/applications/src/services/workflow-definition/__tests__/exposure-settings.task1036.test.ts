@@ -25,7 +25,10 @@ const compiledFrom = (graph: ReturnType<typeof legacyGraph>, settings?: unknown)
 describe('effectiveExposureSettings', () => {
   it('a compiled config with `settings` wins over everything else', () => {
     const graph = { ...legacyGraph(['api'], ['http']), settings: { connections: ['api', 'sse', 'socket'], sources: [] } };
-    const result = effectiveExposureSettings({ compiledConfig: compiledFrom(legacyGraph(['api']), { connections: ['webhook'], sources: ['schedule'] }), graph });
+    const result = effectiveExposureSettings({
+      compiledConfig: compiledFrom(legacyGraph(['api']), { connections: ['webhook'], sources: ['schedule'] }),
+      graph,
+    });
     expect(result).toEqual({ connections: ['webhook'], sources: ['schedule'], origin: 'compiled' });
   });
 

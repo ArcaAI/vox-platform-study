@@ -141,7 +141,9 @@ function makeService(opts: { settings?: boolean; agents?: boolean; prompts?: boo
 }
 
 function publishedConfig(): CompiledWorkflowConfig {
-  const written = mockRepository.update.mock.calls.map((call) => call[1] as { id: string; compiledConfig?: unknown }).find((row) => row.id === 'def-1');
+  const written = mockRepository.update.mock.calls
+    .map((call) => call[1] as { id: string; compiledConfig?: unknown })
+    .find((row) => row.id === 'def-1');
   return written?.compiledConfig as CompiledWorkflowConfig;
 }
 
@@ -175,7 +177,12 @@ beforeEach(() => {
   mockAgentRepository.findPublishedVisibleBySlugVersion.mockImplementation(async (_tenant: string, slug: string, version: number) =>
     slug === 'coder' && version === 2
       ? // the instruction names no version; the agent's compiled prompt froze 3 at ITS publish
-        agentRow('coder', 2, { promptTemplateId: PROMPT_B }, { resolvedPrompt: { source: 'template', promptTemplateId: PROMPT_B, promptVersionNumber: 3 } })
+        agentRow(
+          'coder',
+          2,
+          { promptTemplateId: PROMPT_B },
+          { resolvedPrompt: { source: 'template', promptTemplateId: PROMPT_B, promptVersionNumber: 3 } },
+        )
       : null,
   );
   mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, approvedVersionNumber: id === PROMPT_A ? 9 : null }));
@@ -421,7 +428,9 @@ describe('data contract follows the platform setting `workflows.emitDataContract
 describe('R18 — publish with activate demotes and writes in ONE transaction', () => {
   it('passes the same tx to the demote and to the publish write', async () => {
     mockRepository.findById.mockResolvedValue(entity(graph()));
-    mockRepository.findPublishedBySlug.mockResolvedValue(entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }));
+    mockRepository.findPublishedBySlug.mockResolvedValue(
+      entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }),
+    );
 
     await makeService().publish('def-1', { activate: true });
 
@@ -436,7 +445,9 @@ describe('R18 — publish with activate demotes and writes in ONE transaction', 
 
   it('a failed publish write rolls the demote back (both inside the callback)', async () => {
     mockRepository.findById.mockResolvedValue(entity(graph()));
-    mockRepository.findPublishedBySlug.mockResolvedValue(entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }));
+    mockRepository.findPublishedBySlug.mockResolvedValue(
+      entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }),
+    );
     const order: string[] = [];
     mockDatabaseService.baseClient.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => {
       order.push('begin');
@@ -466,7 +477,9 @@ describe('R18 — publish with activate demotes and writes in ONE transaction', 
     // publishEntity is private; the promotion path hands it a tx. Reached through the cast.
     const service = makeService() as unknown as { publishEntity: (e: unknown, dto: unknown, tx?: unknown) => Promise<unknown> };
     const OUTER = { __outer: true };
-    mockRepository.findPublishedBySlug.mockResolvedValue(entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }));
+    mockRepository.findPublishedBySlug.mockResolvedValue(
+      entity(graph(), { id: 'old-1', status: WorkflowDefinitionStatus.PUBLISHED, isActive: true }),
+    );
 
     await service.publishEntity(entity(graph()), { activate: true }, OUTER);
 
