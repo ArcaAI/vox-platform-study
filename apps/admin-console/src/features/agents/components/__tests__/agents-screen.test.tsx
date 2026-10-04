@@ -416,7 +416,7 @@ describe('AgentsScreen', () => {
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 4 E2B/ }));
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Instruction
 
-    fireEvent.click(await screen.findByLabelText('Prompt template'));
+    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP/ }));
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Parameters
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Input / Output contract

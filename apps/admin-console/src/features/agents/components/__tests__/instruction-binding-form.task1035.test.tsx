@@ -129,7 +129,7 @@ describe('InstructionBindingForm — schema-aware editing', () => {
   it('a context-path binding is edited in a TemplateEditor and writes { path }', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Host initial={{ ...BASE, mode: 'template', promptTemplateId: null }} onChange={onChange} />);
-    fireEvent.click(await screen.findByLabelText('Prompt template'));
+    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     fireEvent.click(await screen.findByLabelText('patientAge binding kind'));
     fireEvent.click(await screen.findByRole('option', { name: 'Context path' }));

@@ -142,7 +142,7 @@ describe('AgentLineageDrawer — the Draft tab (TASK-890, on the TASK-965 lineag
     fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Draft' }), { button: 0 });
     fireEvent.click(await screen.findByRole('button', { name: 'Edit draft' }));
     expect(screen.getByLabelText('Model')).toBeTruthy();
-    expect(await screen.findByLabelText('Prompt template')).toBeTruthy();
+    expect(await screen.findByLabelText('Hope Prompt')).toBeTruthy();
     expect(screen.getByLabelText('Tags')).toBeTruthy();
   });
 

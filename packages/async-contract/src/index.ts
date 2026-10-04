@@ -18,3 +18,43 @@ export { encodeResumeToken, decodeResumeToken, RESUME_FROM_BEGINNING } from './r
 
 export { assertAsyncConformance } from './conformance/index';
 export type { AsyncProducerUnderTest } from './conformance/index';
+
+// ── TASK-1038: run protocol v2 (one envelope for SSE and WS; public + admin-debug events) ──
+export {
+  RUN_PROTOCOL_VERSION,
+  RUN_PROTOCOL_HEADER,
+  RUN_RESULT_INLINE_MAX_BYTES,
+  PUBLIC_RUN_EVENT_TYPES,
+  ADMIN_RUN_EVENT_TYPES,
+  RUN_EVENT_TYPES,
+  RUN_EVENT_VISIBILITY,
+  RUN_EVENT_NODE_SCOPE,
+  SYNTHETIC_RUN_EVENT_TYPES,
+  RUN_EVENT_DATA_SCHEMAS,
+  isRunEventType,
+  isPublicRunEvent,
+  runEventProblems,
+  parseRunEvent,
+  toSseFrame,
+  parseSseFrame,
+  parseResumeCursor,
+  RunProtocolError,
+} from './run-protocol';
+export type {
+  RunEventV2,
+  RunEventType,
+  PublicRunEventType,
+  AdminRunEventType,
+  RunEventVisibility,
+  RunEventDataMap,
+  RunEventDataSchema,
+  RunResult,
+  RunTokens,
+  RunError,
+  RunStatus,
+  RunNodeStatus,
+  RunSnapshot,
+  PhiClass,
+  GuardrailEventData,
+  ParsedSseFrame,
+} from './run-protocol';

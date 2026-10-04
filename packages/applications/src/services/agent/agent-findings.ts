@@ -14,6 +14,8 @@ export type AgentFindingCode =
   | 'TEMPLATE_NOT_APPROVED'
   | 'TEMPLATE_VERSION_NOT_FOUND'
   | 'CAPABILITY'
+  // TASK-1036 W3: a bound prompt template must carry an explicit version at publish.
+  | 'PROMPT_VERSION_UNPINNED'
   // TASK-890 §3.5 — the codes an agent shares with the workflow publish gate
   // (`WORKFLOW_PUBLISH_FINDING_CODES`). ONE vocabulary across both surfaces, so a console renders
   // the same fix for the same problem whether it was found on a graph node or on an agent.

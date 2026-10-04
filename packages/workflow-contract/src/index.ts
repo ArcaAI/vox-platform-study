@@ -355,3 +355,119 @@ export type {
   PortableBundleSource,
   PortableBundleTenantKind,
 } from './portable-bundle';
+
+// ── TASK-1036 C0b: agent schema (W2/W3/OD-7/OD-8), derive v2, nullable prompt variables ──
+export {
+  PLATFORM_MANAGED_KEYWORD,
+  TENANT_EDITABLE_PARAMETER_PATHS,
+  platformManagedPaths,
+  tenantEditableParams,
+  readTextAgentMessage,
+} from './agent-schemas';
+export type { ModelCapabilities } from './agent-schemas';
+export { deriveVariableDeclarations, PROMPT_VARIABLE_NAMESPACE_ROOTS } from './derive-variable-declarations';
+export type {
+  PromptVariableDeclaration,
+  PromptVariableType,
+  DerivedVariableDeclarations,
+} from './derive-variable-declarations';
+export type { PromptScopeVariableDeclaration } from './prompt-scope';
+
+// ── TASK-1036 C0a: NodeIO, bindings, workflow settings, consultation read schema, picker sources ──
+export {
+  IO_BASE_TYPES,
+  IO_ELEMENT_TYPES,
+  IO_REFERENCE_TYPES,
+  NODE_IO,
+  isIoType,
+  typeFits,
+  ioTypeOfJsonSchema,
+  ioTypeOfVariableType,
+  agentNodeIO,
+  actionNodeIO,
+  agentTaskOf,
+  nodeIOFor,
+} from './node-io';
+export type {
+  IoBaseType,
+  IoType,
+  TypeFit,
+  PhiClass,
+  NodeIO,
+  NodeIOInput,
+  NodeIOOutput,
+  AgentIOResolution,
+  AgentIOResolver,
+  NodeResultArtifact,
+  NodeResultEnvelope,
+} from './node-io';
+export {
+  BINDING_ROOTS,
+  RUN_SCOPE_FIELDS,
+  isBinding,
+  edgeAncestors,
+  legacyInputName,
+  edgeImpliedBindings,
+  compiledBindings,
+  bindingIssues,
+  resolveBindingSource,
+} from './bindings';
+export type {
+  Binding,
+  FromBinding,
+  ValueBinding,
+  TemplateBinding,
+  FirstOfBinding,
+  CompiledBinding,
+  BindingRoot,
+  BindingIssue,
+  BindingIssueCode,
+  BindingIssueContext,
+  ResolvedSource,
+} from './bindings';
+export {
+  WORKFLOW_CONNECTIONS,
+  WORKFLOW_SOURCES,
+  graphSettingsOf,
+  workflowSettingsProblems,
+  effectiveSettings,
+  settingsImplications,
+} from './workflow-settings';
+export type {
+  WorkflowConnection,
+  WorkflowSource,
+  WorkflowContextSchemaSetting,
+  WorkflowSettings,
+  EffectiveWorkflowSettings,
+  WorkflowGraphWithSettings,
+  WorkflowSettingsRuleId,
+  SettingsImplication,
+  SettingsImplicationContext,
+} from './workflow-settings';
+export {
+  CONSULTATION_READ_SCHEMA_V1,
+  CONSULTATION_READ_SCHEMA_VERSION,
+  CONSULTATION_ROOT,
+  consultationPathInfo,
+  consultationReadPaths,
+  nodeConsultationReads,
+  declaredConsultationReads,
+  PLATFORM_CONTEXT_ALIASES,
+} from './consultation-read-schema';
+export type {
+  ConsultationPathInfo,
+  ConsultationRead,
+  ConsultationReadAt,
+  PlatformContextAlias,
+} from './consultation-read-schema';
+export { bindingSourcePaths } from './binding-source-paths';
+export type {
+  BindingSourceGroup,
+  BindingSourceGroupKey,
+  BindingSourceItem,
+  BindingSourceOptions,
+} from './binding-source-paths';
+export { NODE_LABEL_MAX_LENGTH, BINDING_JSON_SCHEMA } from './node-config-schemas';
+export { DATA_CONTRACT_RULES } from './rule-catalogue';
+export type { DataContractRule } from './rule-catalogue';
+export type { CompiledWorkflowSettings } from './compiler';

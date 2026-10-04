@@ -1,6 +1,6 @@
 {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT BY HAND. Produced by `pnpm env:python-surface` from the services' pydantic-settings declarations plus an AST scan of non-pydantic reads. `pnpm env:python-surface --check` fails when it is stale; `pnpm env:sync` consumes it to generate every apps/<svc>/.env.sample, turbo.json#globalEnv and the docs table.",
-  "distinctNames": 361,
+  "distinctNames": 364,
   "services": {
     "guardrail": {
       "port": 8863,
@@ -321,6 +321,18 @@
           "description": ""
         },
         {
+          "name": "HARNESS_CLAIM_CHECK_ACTIVITY_INPUT_MAX_BYTES",
+          "aliases": [],
+          "class": "ClaimCheckConfig",
+          "field": "activity_input_max_bytes",
+          "prefix": "HARNESS_CLAIM_CHECK_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 1572864,
+          "description": "TASK-1038 R-3 \u2014 the pre-flight guard: an interpreter activity input (or node result) larger than this fails the run by name (`PAYLOAD_TOO_LARGE`) instead of meeting Temporal's own ~2 MB payload refusal, which wedges the workflow task in a retry loop. Headroom below 2 MiB for the envelope Temporal adds."
+        },
+        {
           "name": "HARNESS_CLAIM_CHECK_BUCKET",
           "aliases": [],
           "class": "ClaimCheckConfig",
@@ -369,6 +381,18 @@
           "description": "Blobs at/above this many utf-8 BYTES are offloaded; below it they stay inline."
         },
         {
+          "name": "HARNESS_CLAIM_CHECK_NODE_OUTPUT_MIN_BYTES",
+          "aliases": [],
+          "class": "ClaimCheckConfig",
+          "field": "node_output_min_bytes",
+          "prefix": "HARNESS_CLAIM_CHECK_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 20480,
+          "description": "TASK-1038 R-3 \u2014 the WORKFLOW INTERPRETER's three payload ceilings, on the same mechanism. A node output whose serialized size reaches this is stored out of band and replaced by a claim-check reference, dereferenced inside the consuming activity (never in the workflow). Tighter than `min_bytes` on purpose: every interpreter node output is ALSO copied into every later `core.*` activity input through the run context, so a 60 KiB note that stays inline costs 60 KiB per later node, not once."
+        },
+        {
           "name": "HARNESS_CLAIM_CHECK_REGION",
           "aliases": [],
           "class": "ClaimCheckConfig",
@@ -379,6 +403,18 @@
           "dataType": "string",
           "default": "us-east-1",
           "description": ""
+        },
+        {
+          "name": "HARNESS_CLAIM_CHECK_RESULT_INLINE_MAX_BYTES",
+          "aliases": [],
+          "class": "ClaimCheckConfig",
+          "field": "result_inline_max_bytes",
+          "prefix": "HARNESS_CLAIM_CHECK_",
+          "required": false,
+          "secret": false,
+          "dataType": "number",
+          "default": 65536,
+          "description": "TASK-1038 D-I \u2014 the largest run result `workflow.run.completed` carries INLINE; a larger one rides as a claim-check reference the gateway turns into a signed URL."
         },
         {
           "name": "HARNESS_CLAIM_CHECK_SECRET_KEY",
