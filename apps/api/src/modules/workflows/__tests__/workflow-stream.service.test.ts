@@ -13,11 +13,13 @@
  * entry, `XREAD` honouring an exclusive cursor. A mock that just returned canned rows could not
  * express a trim, which is the case the contract's fourth step exists for.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { decodeResumeToken, encodeResumeToken } from '@arcaai/async-contract';
 import { WorkflowStreamService, WORKFLOW_STREAM_BLOCK_MS, WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS, compareStreamIds } from '../workflow-stream.service';
 import { RUN_EVENT_TRANSPORT, runEventStreamKey } from '../workflow-run-event';
+import { RunEventStreamHub } from '../run-event-stream-hub';
+import { FakeRedisConnection, FakeRedisServer } from './fake-redis-streams';
 
 function makeRunning(overrides: Record<string, unknown> = {}) {
   return { runId: 'run-1', slug: 'discharge_summary', workflowVersionNumber: 1, status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00.000Z', endedAt: null, ...overrides };
@@ -37,43 +39,24 @@ function envelope(type: string, payload: Record<string, unknown> = {}) {
   };
 }
 
-/** An in-memory Redis Stream: append, read-after-cursor, oldest-retained, and a trim. */
+/**
+ * An in-memory Redis Stream for ONE run, on top of the shared TASK-1038 fake server (which
+ * models a socket's one-command-at-a-time serialisation and a multi-key blocking XREAD). Every
+ * read goes through the real `RunEventStreamHub`, so the consume loop under test is the
+ * service's own, unmodified.
+ */
 class FakeStreamRedis {
-  private entries: [string, string[]][] = [];
-  private sequence = 0;
+  readonly server = new FakeRedisServer();
+  private readonly key = runEventStreamKey('run-1');
 
   append(type: string, payload: Record<string, unknown> = {}): string {
-    this.sequence += 1;
-    const id = `${this.sequence}-0`;
-    this.entries.push([id, ['data', JSON.stringify(envelope(type, payload))]]);
-    return id;
+    return this.server.append(this.key, ['data', JSON.stringify(envelope(type, payload))]);
   }
 
   /** Evict everything at or before `throughId` — what the producer's MAXLEN bound does. */
   trimThrough(throughId: string): void {
-    this.entries = this.entries.filter(([id]) => compareStreamIds(id, throughId) > 0);
+    this.server.trimThrough(this.key, throughId);
   }
-
-  async xrange(_key: string, _min: string, _max: string, _count: string, _n: number) {
-    return this.entries.length === 0 ? [] : [this.entries[0]];
-  }
-
-  /** Honours `BLOCK` rather than returning `null` instantly — a fake that returns immediately
-   *  turns the service's read loop into a busy spin, which is a property of the FAKE, not of
-   *  the code under test. */
-  async xread(...args: unknown[]) {
-    const blockMs = args[3] as number;
-    const key = args[5] as string;
-    const cursor = args[6] as string;
-    const after = this.entries.filter(([id]) => compareStreamIds(id, cursor) > 0);
-    if (after.length === 0) {
-      await new Promise((resolve) => setTimeout(resolve, blockMs));
-      return null; // BLOCK expired with nothing new.
-    }
-    return [[key, after]];
-  }
-
-  async quit() {}
 }
 
 function makeRes() {
@@ -81,7 +64,11 @@ function makeRes() {
   return {
     setHeader: vi.fn(),
     flushHeaders: vi.fn(),
-    write: vi.fn(),
+    write: vi.fn((_chunk?: string) => true),
+    once: vi.fn((event: string, cb: () => void) => {
+      (listeners[event] ??= []).push(cb);
+    }),
+    off: vi.fn(),
     end: vi.fn(function (this: { writableEnded: boolean }) {
       this.writableEnded = true;
     }),
@@ -98,12 +85,13 @@ function makeRes() {
 function makeService(getRunStatus: ReturnType<typeof vi.fn>, redis: FakeStreamRedis | null) {
   const cls = { get: vi.fn(() => 'tenant-1') };
   const config = { isRedisConfigured: () => redis !== null, getRedisConfig: () => ({ host: 'h', port: 1 }) };
-  const service = new WorkflowStreamService({ getRunStatus } as never, cls as never, config as never);
-  // Substitute the reader connection rather than a real socket. The consume loop under test is
-  // the service's own, unmodified.
-  (service as unknown as { readerRedis: unknown }).readerRedis = redis;
-  return service;
+  const hub = new RunEventStreamHub(config as never);
+  if (redis) hub.connectionFactory = () => redis.server.connection() as never;
+  return new WorkflowStreamService({ getRunStatus } as never, cls as never, hub);
 }
+
+/** Every XREAD issued on any connection of the fake server. */
+const xreadSpy = () => vi.spyOn(FakeRedisConnection.prototype, 'xread');
 
 /** Every `data:` line written, parsed back into an envelope. */
 function framesOf(res: ReturnType<typeof makeRes>) {
@@ -120,6 +108,9 @@ function framesOf(res: ReturnType<typeof makeRes>) {
 describe('WorkflowStreamService', () => {
   beforeEach(() => {
     vi.useRealTimers();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('runs the ownership check BEFORE writing any header — a 404 never leaks a 200 stream', async () => {
@@ -151,7 +142,7 @@ describe('WorkflowStreamService', () => {
   it('ends immediately on a terminal first snapshot — the stream is never opened', async () => {
     const getRunStatus = vi.fn().mockResolvedValue(makeRunning({ status: 'COMPLETED' }));
     const redis = new FakeStreamRedis();
-    const xread = vi.spyOn(redis, 'xread');
+    const xread = xreadSpy();
     const service = makeService(getRunStatus, redis);
     const res = makeRes();
 
@@ -202,7 +193,7 @@ describe('WorkflowStreamService', () => {
       expect(runEventStreamKey('run-1')).toBe('wf:run:run-1:events');
       const redis = new FakeStreamRedis();
       redis.append('workflow.run.completed', { status: 'SUCCEEDED' });
-      const xread = vi.spyOn(redis, 'xread');
+      const xread = xreadSpy();
       const service = makeService(vi.fn().mockResolvedValue(makeRunning()), redis);
 
       await service.stream('discharge_summary', 'run-1', makeRes() as never);
@@ -322,7 +313,7 @@ describe('WorkflowStreamService', () => {
 
     it('ends the stream without forwarding the raw error when the read fails', async () => {
       const redis = new FakeStreamRedis();
-      vi.spyOn(redis, 'xread').mockRejectedValue(new Error('stream no longer resolvable'));
+      xreadSpy().mockRejectedValue(new Error('stream no longer resolvable'));
       const service = makeService(vi.fn().mockResolvedValue(makeRunning()), redis);
       const res = makeRes();
 
@@ -356,7 +347,7 @@ describe('WorkflowStreamService', () => {
     it('client close tears the consume loop down', async () => {
       vi.useFakeTimers();
       const redis = new FakeStreamRedis();
-      const xread = vi.spyOn(redis, 'xread');
+      const xread = xreadSpy();
       const service = makeService(vi.fn().mockResolvedValue(makeRunning()), redis);
       const res = makeRes();
 

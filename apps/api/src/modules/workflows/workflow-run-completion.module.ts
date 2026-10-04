@@ -1,5 +1,13 @@
 import { Global, Module } from '@nestjs/common';
-import { CommonServiceModule, HarnessInternalServiceModule, IWorkflowRunCompletionPort, WorkflowRunServiceModule } from '@arcaai/applications';
+import {
+  CommonServiceModule,
+  HarnessGatewayServiceModule,
+  HarnessInternalServiceModule,
+  IWorkflowRunCompletionPort,
+  TenantSettingsService,
+  WorkflowRunServiceModule,
+} from '@arcaai/applications';
+import { RunEventStreamHub } from './run-event-stream-hub';
 import { WorkflowRunCompletionService } from './workflow-run-completion.service';
 
 /**
@@ -19,11 +27,22 @@ import { WorkflowRunCompletionService } from './workflow-run-completion.service'
  * `HarnessInternalServiceModule` supplies the consultation lifecycle's writer for OD-4
  * (`failGovernedRun`). It is `@Optional()` in the service, so a context without it degrades to
  * recording the run's terminal status only.
+ *
+ * TASK-1038 — this module also owns the process-wide `RunEventStreamHub` (R-1: ONE multiplexed
+ * reader for every run stream) and exports it, so the SSE service (`WorkflowsModule`) and the
+ * WebSocket gateway (`StreamingModule`) share the very instance the watcher reads through — one
+ * blocking connection per process, not one per consumer. `HarnessGatewayServiceModule` supplies
+ * the watcher's idle re-check (R-2); `TenantSettingsService` the delivery-plane knobs.
  */
 @Global()
 @Module({
-  imports: [CommonServiceModule, WorkflowRunServiceModule, HarnessInternalServiceModule],
-  providers: [WorkflowRunCompletionService, { provide: IWorkflowRunCompletionPort, useExisting: WorkflowRunCompletionService }],
-  exports: [WorkflowRunCompletionService, IWorkflowRunCompletionPort],
+  imports: [CommonServiceModule, WorkflowRunServiceModule, HarnessInternalServiceModule, HarnessGatewayServiceModule],
+  providers: [
+    TenantSettingsService,
+    RunEventStreamHub,
+    WorkflowRunCompletionService,
+    { provide: IWorkflowRunCompletionPort, useExisting: WorkflowRunCompletionService },
+  ],
+  exports: [WorkflowRunCompletionService, IWorkflowRunCompletionPort, RunEventStreamHub],
 })
 export class WorkflowRunCompletionModule {}

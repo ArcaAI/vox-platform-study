@@ -28,7 +28,7 @@ function build() {
   const service = new WorkflowRunCompletionService(
     runs as never,
     cls as never,
-    { isRedisConfigured: () => false } as never,
+    undefined,
     harnessInternal as never,
   );
   return { service, runs, harnessInternal };
@@ -98,7 +98,7 @@ describe('a COMPLETED consultation run reaches the governing-engine marker', () 
   it('works against a gateway with no harness-internal plane wired', async () => {
     const runs = { recordRunFinished: vi.fn().mockResolvedValue({}) };
     const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
-    const service = new WorkflowRunCompletionService(runs as never, cls as never, { isRedisConfigured: () => false } as never, undefined);
+    const service = new WorkflowRunCompletionService(runs as never, cls as never, undefined, undefined);
 
     await expect(service.recordTerminal(TENANT, RUN_ID, 'COMPLETED', 'SUCCEEDED', ENDED_AT, CONSULTATION)).resolves.toBeUndefined();
   });

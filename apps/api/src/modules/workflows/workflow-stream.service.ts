@@ -1,19 +1,21 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
-import { IConfigService, IWorkflowExposureService, WorkflowRunStatusResponse } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken, parseAsyncEnvelope } from '@arcaai/async-contract';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { IWorkflowExposureService, TenantSettingsService, WorkflowRunStatusResponse } from '@arcaai/applications';
+import { RESUME_FROM_BEGINNING, decodeResumeToken, encodeResumeToken } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
-import Redis from 'ioredis';
 import type { Response } from 'express';
+import { RunEventStreamHub } from './run-event-stream-hub';
+import { parseRunStreamEntry, terminalCheckIntervalMs, writeWithBackpressure } from './run-stream-delivery';
 import {
   RUN_EVENT_TRANSPORT,
   WORKFLOW_RUN_COMPLETED,
   buildWorkflowRunEventEnvelope,
+  compareStreamIds,
   formatSseFrame,
   isTerminalRunStatus,
   runEventStreamKey,
 } from './workflow-run-event';
 
-/** How long a single blocking `XREAD` parks before looping. NOT a poll interval — the read
+/** How long a single read waits for new entries before looping. NOT a poll interval — the read
  *  RETURNS THE INSTANT the harness appends, so this is only the ceiling on how long the loop
  *  waits before re-checking its own liveness (client closed, response ended). */
 export const WORKFLOW_STREAM_BLOCK_MS = 15_000;
@@ -21,9 +23,6 @@ export const WORKFLOW_STREAM_BLOCK_MS = 15_000;
 /** SSE heartbeat cadence — mirrors `TextProxyController`'s own `SSE_HEARTBEAT_INTERVAL_MS`, so
  *  an idle connection is never mistaken for a dead one by an intermediate proxy/load balancer. */
 export const WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS = 15_000;
-
-/** Entries pulled per `XREAD`. Bounded so one very chatty run cannot monopolise the loop. */
-const WORKFLOW_STREAM_READ_COUNT = 200;
 
 /**
  * `WorkflowStreamService` — the gateway-side half of `GET /workflows/:slug/runs/:runId/stream`.
@@ -61,25 +60,26 @@ const WORKFLOW_STREAM_READ_COUNT = 200;
  *
  * Redis being unreachable is not fatal here either: the snapshot is still written and the
  * stream ends. The client sees a truthful terminal-or-current state rather than a hang.
+ *
+ * **TASK-1038.** Reads go through the process-wide `RunEventStreamHub` (one multiplexed `XREAD`,
+ * R-1) instead of a per-service connection every stream queued on. An idle stream re-reads the
+ * run's status every `workflowRuns.streamTerminalCheckSeconds` and closes with a terminal
+ * snapshot when the run already ended but its completion event never arrived (R-2). Every frame
+ * honours the socket's backpressure (R-9). Observing the terminal event starts the stream's
+ * retention clock (`workflowRuns.eventRetentionHours`, OD-25).
  */
 @Injectable()
-export class WorkflowStreamService implements OnModuleDestroy {
+export class WorkflowStreamService {
   private readonly logger = new Logger(WorkflowStreamService.name);
-  private readerRedis: Redis | null = null;
-  private redisUnavailable = false;
 
   constructor(
     @Inject(IWorkflowExposureService) private readonly workflowExposureService: IWorkflowExposureService,
     private readonly clsService: ClsService,
-    @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // TASK-1038 — the ONE multiplexed reader. `@Optional()` so a Nest context without it (or
+    // without Redis) degrades to snapshot-only, exactly as an unconfigured Redis always did.
+    @Optional() private readonly hub?: RunEventStreamHub,
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {}
-
-  async onModuleDestroy(): Promise<void> {
-    if (this.readerRedis) {
-      await this.readerRedis.quit().catch(() => {});
-      this.readerRedis = null;
-    }
-  }
 
   async stream(slug: string, runId: string, res: Response, lastEventId?: string): Promise<void> {
     // Pre-stream ownership check BEFORE any header is written — a 404 here is a normal HTTP
@@ -101,8 +101,7 @@ export class WorkflowStreamService implements OnModuleDestroy {
       return;
     }
 
-    const redis = this.reader();
-    if (redis === null) {
+    if (!this.hub?.available()) {
       // No push transport. Ending is the honest answer: the snapshot above is real and the
       // client can reconnect. Hanging on a stream that can never deliver would be worse.
       this.logger.warn({ message: 'Redis unavailable — workflow run stream ends after snapshot', runId });
@@ -110,22 +109,22 @@ export class WorkflowStreamService implements OnModuleDestroy {
       return;
     }
 
-    const state = { ended: false };
-    const end = (): void => {
-      if (state.ended) return;
-      state.ended = true;
-      clearInterval(heartbeatTimer);
-      if (!res.writableEnded) res.end();
-    };
-
+    const closed = new AbortController();
     const heartbeatTimer = setInterval(() => {
       if (!res.writableEnded) res.write(':keepalive\n\n');
     }, WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS);
-
+    const end = (): void => {
+      clearInterval(heartbeatTimer);
+      if (!closed.signal.aborted) closed.abort();
+      if (!res.writableEnded) res.end();
+    };
     res.on('close', end);
 
-    await this.consume(redis, slug, runId, res, tenantId, lastEventId, state);
-    end();
+    try {
+      await this.consume(this.hub, slug, runId, res, tenantId, lastEventId, closed.signal);
+    } finally {
+      end();
+    }
   }
 
   /**
@@ -139,18 +138,18 @@ export class WorkflowStreamService implements OnModuleDestroy {
    * makes the duplicate collapsible rather than a second, contradictory fact.
    */
   private async consume(
-    redis: Redis,
+    hub: RunEventStreamHub,
     slug: string,
     runId: string,
     res: Response,
     tenantId: string,
     lastEventId: string | undefined,
-    state: { ended: boolean },
+    closed: AbortSignal,
   ): Promise<void> {
     const streamKey = runEventStreamKey(runId);
     let cursor = this.resolveCursor(lastEventId);
 
-    if (cursor !== RESUME_FROM_BEGINNING && (await this.hasTrimmedGap(redis, streamKey, cursor))) {
+    if (cursor !== RESUME_FROM_BEGINNING && (await this.hasTrimmedGap(hub, streamKey, cursor))) {
       // The client's position was evicted by the producer's MAXLEN trim. There is no gap-fill
       // available, so tell it the current truth instead of silently skipping the hole.
       const resync = await this.workflowExposureService.getRunStatus(slug, runId);
@@ -159,15 +158,17 @@ export class WorkflowStreamService implements OnModuleDestroy {
       cursor = RESUME_FROM_BEGINNING;
     }
 
-    while (!state.ended && !res.writableEnded) {
-      let entries: [string, string[]][];
+    const checkEveryMs = terminalCheckIntervalMs(this.settings);
+    let lastStatusCheck = Date.now();
+
+    while (!closed.aborted && !res.writableEnded) {
+      let entries;
       try {
-        const result = await redis.xread('COUNT', WORKFLOW_STREAM_READ_COUNT, 'BLOCK', WORKFLOW_STREAM_BLOCK_MS, 'STREAMS', streamKey, cursor);
-        if (!result) continue; // BLOCK expired with nothing new — loop and re-check liveness.
-        entries = result[0][1] as [string, string[]][];
+        entries = await hub.read(streamKey, cursor, { timeoutMs: Math.min(WORKFLOW_STREAM_BLOCK_MS, checkEveryMs), signal: closed });
       } catch (err) {
         // Never forward the raw error to the client (it may echo transport-internal detail) —
-        // just end the stream, mirroring the SSE proxy exemplar's own posture.
+        // just end the stream, mirroring the SSE proxy exemplar's own posture. The client
+        // reconnects with its last `id:` and loses nothing.
         this.logger.warn({
           message: 'Workflow run stream read failed — ending stream',
           runId,
@@ -176,16 +177,45 @@ export class WorkflowStreamService implements OnModuleDestroy {
         return;
       }
 
-      for (const [entryId, fields] of entries) {
-        cursor = entryId;
-        const envelope = this.parseEntry(fields);
+      if (entries.length === 0) {
+        if (closed.aborted || res.writableEnded) return;
+        if (Date.now() - lastStatusCheck < checkEveryMs) continue;
+        lastStatusCheck = Date.now();
+        // R-2 — the terminal fallback. Without it a lost `workflow.run.completed` left this
+        // stream open forever, heartbeating over a run that had already ended.
+        const status = await this.workflowExposureService.getRunStatus(slug, runId).catch(() => null);
+        if (!status || !isTerminalRunStatus(status.status)) continue;
+        // Deliver whatever IS retained first, so the close never overtakes a real event.
+        const tail = await hub.readNow(streamKey, cursor).catch(() => []);
+        for (const entry of tail) {
+          cursor = entry.id;
+          const envelope = parseRunStreamEntry(entry.fields);
+          if (envelope === null) continue;
+          if (!(await writeWithBackpressure(res, formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entry.id)), closed))) return;
+          if (envelope.type === WORKFLOW_RUN_COMPLETED) {
+            void hub.expireAfterTerminal(runId);
+            return;
+          }
+        }
+        this.logger.warn({ message: 'Run ended without a completion event reaching its stream — closing with a terminal snapshot', runId });
+        this.writeSnapshot(res, tenantId, status);
+        void hub.expireAfterTerminal(runId);
+        return;
+      }
+
+      for (const entry of entries) {
+        cursor = entry.id;
+        const envelope = parseRunStreamEntry(entry.fields);
         if (envelope === null) continue;
-        if (res.writableEnded) return;
         // The `id:` line is the RESUME TOKEN, not the envelope's own identity: it is what the
         // browser echoes back as `Last-Event-ID`, and only a transport-assigned cursor can
         // actually resume.
-        res.write(formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entryId)));
-        if (envelope.type === WORKFLOW_RUN_COMPLETED) return;
+        const frame = formatSseFrame(envelope, encodeResumeToken(RUN_EVENT_TRANSPORT, entry.id));
+        if (!(await writeWithBackpressure(res, frame, closed))) return;
+        if (envelope.type === WORKFLOW_RUN_COMPLETED) {
+          void hub.expireAfterTerminal(runId);
+          return;
+        }
       }
     }
   }
@@ -199,11 +229,11 @@ export class WorkflowStreamService implements OnModuleDestroy {
    * still going, and the caller can still reach it through `statusUrl` / `streamUrl`.
    *
    * **This is the SAME transport the SSE path reads, not a second one.** Blocking mode is the
-   * streaming mode with the frames thrown away — one `XREAD` loop, one producer, one terminal
-   * definition (`WORKFLOW_RUN_COMPLETED`, cross-checked against the status snapshot). Polling
-   * `getRunStatus` on a timer here would have been a second progress mechanism with its own
-   * latency and its own idea of "finished"; lane A deleted exactly that from the SSE
-   * path and this must not reintroduce it (F-21).
+   * streaming mode with the frames thrown away — one reader, one producer, one terminal
+   * definition (`WORKFLOW_RUN_COMPLETED`, cross-checked against the status snapshot). The only
+   * status re-read is the R-2 terminal fallback, at the platform's terminal-check cadence and
+   * only while the stream is idle — it exists for a completion event that was lost, not as a
+   * second progress mechanism (F-21).
    *
    * **A client disconnect does not reach this method.** It has no `Response` and registers no
    * `close` handler: the run's lifetime is Temporal's, and abandoning the HTTP request abandons
@@ -220,21 +250,21 @@ export class WorkflowStreamService implements OnModuleDestroy {
     const snapshot = await this.workflowExposureService.getRunStatus(slug, runId);
     if (isTerminalRunStatus(snapshot.status)) return snapshot;
 
-    const redis = this.reader();
+    const hub = this.hub;
     // No push transport: the honest answer is "I cannot tell you here". A 504 pointing at the
     // status URL beats silently polling, and beats claiming a completion nothing observed.
-    if (redis === null) return null;
+    if (!hub?.available()) return null;
 
     const streamKey = runEventStreamKey(runId);
+    const checkEveryMs = terminalCheckIntervalMs(this.settings);
+    let lastStatusCheck = Date.now();
     let cursor = RESUME_FROM_BEGINNING;
 
     while (Date.now() < deadline) {
-      const block = Math.min(WORKFLOW_STREAM_BLOCK_MS, Math.max(1, deadline - Date.now()));
-      let entries: [string, string[]][];
+      const wait = Math.max(1, Math.min(WORKFLOW_STREAM_BLOCK_MS, checkEveryMs, deadline - Date.now()));
+      let entries;
       try {
-        const result = await redis.xread('COUNT', WORKFLOW_STREAM_READ_COUNT, 'BLOCK', block, 'STREAMS', streamKey, cursor);
-        if (!result) continue; // BLOCK expired with nothing new — re-check the deadline.
-        entries = result[0][1] as [string, string[]][];
+        entries = await hub.read(streamKey, cursor, { timeoutMs: wait });
       } catch (err) {
         this.logger.warn({
           message: 'Workflow run blocking wait read failed — falling back to the status read',
@@ -244,18 +274,28 @@ export class WorkflowStreamService implements OnModuleDestroy {
         break;
       }
 
-      for (const [entryId, fields] of entries) {
-        cursor = entryId;
-        const envelope = this.parseEntry(fields);
+      for (const entry of entries) {
+        cursor = entry.id;
+        const envelope = parseRunStreamEntry(entry.fields);
         if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
+        void hub.expireAfterTerminal(runId);
         // The producer says it is done; re-read the authoritative status so the caller gets the
         // same shape (and the same `resultRef`) the async and streaming paths return.
         return this.workflowExposureService.getRunStatus(slug, runId);
       }
+
+      if (entries.length === 0 && Date.now() - lastStatusCheck >= checkEveryMs) {
+        lastStatusCheck = Date.now();
+        const status = await this.workflowExposureService.getRunStatus(slug, runId).catch(() => null);
+        if (status && isTerminalRunStatus(status.status)) {
+          void hub.expireAfterTerminal(runId);
+          return status;
+        }
+      }
     }
 
     // Deadline reached, or the transport failed. One last authoritative read closes the race
-    // where the run finished between the final BLOCK expiring and this line.
+    // where the run finished between the final wait expiring and this line.
     const final = await this.workflowExposureService.getRunStatus(slug, runId);
     return isTerminalRunStatus(final.status) ? final : null;
   }
@@ -285,49 +325,14 @@ export class WorkflowStreamService implements OnModuleDestroy {
    * cursor names an entry the client was just delivered, so that entry is normally still
    * retained and the oldest id is at or before it.
    */
-  private async hasTrimmedGap(redis: Redis, streamKey: string, cursor: string): Promise<boolean> {
+  private async hasTrimmedGap(hub: RunEventStreamHub, streamKey: string, cursor: string): Promise<boolean> {
     try {
-      const oldest = await redis.xrange(streamKey, '-', '+', 'COUNT', 1);
-      if (oldest.length === 0) return false; // Nothing retained yet: no gap, just no data.
-      return compareStreamIds(oldest[0][0], cursor) > 0;
+      const oldest = await hub.oldestEntryId(streamKey);
+      if (oldest === null) return false; // Nothing retained yet: no gap, just no data.
+      return compareStreamIds(oldest, cursor) > 0;
     } catch {
       return false;
     }
-  }
-
-  private parseEntry(fields: string[]): ReturnType<typeof parseAsyncEnvelope> {
-    for (let i = 0; i < fields.length; i += 2) {
-      if (fields[i] !== 'data') continue;
-      try {
-        // Refuse-if-unknown: an entry this gateway does not understand is skipped, never
-        // best-effort forwarded to a client that would understand it even less.
-        return parseAsyncEnvelope(JSON.parse(fields[i + 1]));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
-
-  private reader(): Redis | null {
-    if (this.readerRedis) return this.readerRedis;
-    if (this.redisUnavailable) return null;
-    if (!this.configService?.isRedisConfigured()) {
-      this.redisUnavailable = true;
-      return null;
-    }
-    const config = this.configService.getRedisConfig();
-    // A DEDICATED connection, like `TextStreamConsumerService`'s: a blocking `XREAD` occupies
-    // its connection for the whole BLOCK window, so sharing the cache client would stall every
-    // other consumer behind it.
-    this.readerRedis = new Redis({
-      host: config.host,
-      port: config.port,
-      password: config.password,
-      maxRetriesPerRequest: null,
-      lazyConnect: false,
-    });
-    return this.readerRedis;
   }
 
   private writeSnapshot(res: Response, tenantId: string, status: Parameters<typeof buildWorkflowRunEventEnvelope>[1]): void {
@@ -337,16 +342,5 @@ export class WorkflowStreamService implements OnModuleDestroy {
   }
 }
 
-/**
- * Order two Redis stream ids (`<ms>-<seq>`). Returns 1 / 0 / -1 like a comparator.
- *
- * String comparison is WRONG here and quietly so: `"10-0" < "9-0"` lexically, so a stream that
- * crosses a digit boundary would report a phantom gap. Both halves are compared numerically.
- */
-export function compareStreamIds(left: string, right: string): number {
-  const [leftMs, leftSeq] = left.split('-').map((part) => Number(part));
-  const [rightMs, rightSeq] = right.split('-').map((part) => Number(part));
-  if (leftMs !== rightMs) return leftMs > rightMs ? 1 : -1;
-  if (leftSeq !== rightSeq) return leftSeq > rightSeq ? 1 : -1;
-  return 0;
-}
+/** Moved to `workflow-run-event.ts` (TASK-1038) so the stream hub can share it; re-exported here for existing importers. */
+export { compareStreamIds } from './workflow-run-event';

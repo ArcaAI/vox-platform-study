@@ -26,7 +26,7 @@ function build() {
   const service = new WorkflowRunCompletionService(
     runs as never,
     cls as never,
-    { isRedisConfigured: () => false } as never,
+    undefined,
     harnessInternal as never,
   );
   return { service, runs, harnessInternal };
