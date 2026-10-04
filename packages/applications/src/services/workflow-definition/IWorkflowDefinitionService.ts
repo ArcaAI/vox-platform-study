@@ -61,6 +61,14 @@ export interface IWorkflowDefinitionService {
   create(dto: CreateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse>;
 
   /**
+   * TASK-1036 (R18) — "edit as new draft": branch a new DRAFT version of the SAME lineage from a
+   * PUBLISHED or DEPRECATED version, copying its graph server-side and setting `parentVersionId`.
+   * 400 for a DRAFT/VALIDATED source; 409 `OPEN_DRAFT_EXISTS` (with `draftId`) when the lineage
+   * already has an open DRAFT or VALIDATED row; 404 for another tenant's id.
+   */
+  createDraft(sourceId: string): Promise<WorkflowDefinitionResponse>;
+
+  /**
    * seed a NEW workflow (new `(tenantId, slug)` lineage, `versionNumber` 1, DRAFT)
    * from an existing definition's graph.
    *

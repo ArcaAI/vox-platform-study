@@ -74,10 +74,20 @@ export class WorkflowDefinitionController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new DRAFT workflow definition version for the caller tenant' })
+  @ApiOperation({
+    summary: 'Create a new DRAFT workflow definition for the caller tenant',
+    description:
+      'A slug this tenant already uses is rejected 409 `WORKFLOW_SLUG_TAKEN` unless `parentVersionId` names a version of ' +
+      'that slug (prefer `POST :id/draft`, which copies the graph server-side). A graph with no nodes is created with ' +
+      'its `core.trigger` and `core.output` boundary nodes already placed and connected.',
+  })
   @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
   @ApiResponse({ status: 400, description: 'Bad request — invalid input, or the graph fails shape/engine validation.' })
-  @ApiResponse({ status: 409, description: 'maxWorkflowDefinitions quota exceeded.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'maxWorkflowDefinitions quota exceeded, or `WORKFLOW_SLUG_TAKEN` — the slug already has versions and no `parentVersionId` was given.',
+  })
   async create(@Body() request: CreateWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.create(request);
   }
@@ -327,6 +337,32 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 409, description: 'targetSlug is already in use by this tenant, or the maxWorkflowDefinitions quota is exceeded.' })
   async clone(@Param('id') id: string, @Body() request: CloneWorkflowDefinitionRequest): Promise<WorkflowDefinitionResponse> {
     return this.workflowDefinitionService.clone(id, request);
+  }
+
+  @Post(':id/draft')
+  @ApiOperation({
+    summary: 'Edit a published (or deprecated) workflow version as a NEW draft version of the same workflow',
+    description:
+      'Branches the next version of the SAME `(tenantId, slug)` lineage: DRAFT, inactive, `versionNumber` = max + 1, ' +
+      '`parentVersionId` = the source. The graph is copied server-side from the stored source row (the body carries ' +
+      'nothing), the validation report is recomputed with the publish gate, and nothing publish-owned ' +
+      '(`compiledConfig`, checksums, `publishedAt`, `isActive`) is carried over. Consumes the `maxWorkflowDefinitions` ' +
+      'quota exactly as create does.\n\n' +
+      'The source must be PUBLISHED or DEPRECATED. A lineage holds at most one open draft: if a DRAFT or VALIDATED ' +
+      'version of the slug already exists the call is refused 409 `OPEN_DRAFT_EXISTS` with `{ draftId }`, and the caller ' +
+      'should open that draft instead.',
+  })
+  @ApiParam({ name: 'id', description: 'Source WorkflowDefinition id — a PUBLISHED or DEPRECATED version of the caller’s own.' })
+  @ApiResponse({ status: 201, type: WorkflowDefinitionResponse })
+  @ApiResponse({ status: 400, description: 'The source is a DRAFT or VALIDATED row (edit it in place), or its graph fails shape/engine validation.' })
+  @ApiResponse({ status: 404, description: 'Source not found (or another tenant’s).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`OPEN_DRAFT_EXISTS` — the lineage already has a DRAFT or VALIDATED version (its id is in `draftId`) — or the maxWorkflowDefinitions quota is exceeded.',
+  })
+  async createDraft(@Param('id') id: string): Promise<WorkflowDefinitionResponse> {
+    return this.workflowDefinitionService.createDraft(id);
   }
 
   @Get(':id/export')
