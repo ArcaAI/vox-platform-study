@@ -204,7 +204,7 @@ export function describeEvent(event: RunEvent, labelOf: (nodeId: string) => stri
       return data.valid === true ? `${field} matches its contract` : `${field} does not match its contract: ${options.hidePhi ? MASK : String(problems[0] ?? '')}`;
     }
     default:
-      return event.type;
+      return (event as RunEvent).type;
   }
 }
 
