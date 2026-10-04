@@ -87,12 +87,6 @@ vi.mock('../../api/hooks', async (importOriginal) => {
   return { ...actual, useAgentOptions: () => ({ data: [], isLoading: false }) };
 });
 
-vi.mock('@/shared/sandbox', () => ({
-  SandboxRunPanel: () => null,
-  SandboxNodeTrace: () => null,
-  useSandboxNodeStates: () => new Map(),
-}));
-
 const SETTINGS = { connections: ['api', 'sse'], sources: ['consultation'] };
 
 function definition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
@@ -230,7 +224,7 @@ describe('WorkflowStudioEditor — graph.settings is persisted (TASK-1036 §3.5)
     fireEvent.click(screen.getByRole('button', { name: 'palette add' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patches(calls)).toHaveLength(1));
-    const savedGraph = patches(calls)[0]?.graph as WorkflowDefinition['graph'];
+    const savedGraph = patches(calls)[0]?.graph as unknown as WorkflowDefinition['graph'];
     expect((savedGraph as { settings?: unknown }).settings).toEqual(SETTINGS);
     first.unmount();
 

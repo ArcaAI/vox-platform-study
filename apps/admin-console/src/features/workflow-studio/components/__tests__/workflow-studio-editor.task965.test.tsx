@@ -53,11 +53,6 @@ vi.mock('@arcaai/ui/components/workflow-canvas', async (importOriginal) => {
 });
 vi.mock('../palette', () => ({ PaletteRail: () => <div data-testid="palette-stub" /> }));
 vi.mock('../inspector', () => ({ InspectorPanel: () => <div data-testid="inspector-stub" /> }));
-vi.mock('@/shared/sandbox', () => ({
-  SandboxRunPanel: () => <div data-testid="sandbox-run-panel" />,
-  SandboxNodeTrace: () => null,
-  useSandboxNodeStates: () => new Map(),
-}));
 // Deterministic layout: a clustered graph is spread 200px apart, anything else is left alone —
 // the same contract as the real helper, without dagre in jsdom.
 vi.mock('../../lib/ensure-canvas-layout', () => ({
@@ -440,13 +435,16 @@ describe('WorkflowStudioEditor — secondary-input bindings are drawn (TASK-965)
     },
   });
 
-  it('hands the trigger → agent context binding to the canvas as a labelled binding edge on the primary input', () => {
+  // TASK-1036 C2c — the composer canvas draws the link with WHAT IT CARRIES (`context → context`,
+  // §10.1 auto-mapping) on the trigger's typed `context` output, replacing TASK-965's dashed
+  // `kind: 'binding'` edge; the binding itself is edited in the inspector's Inputs panel.
+  it('hands the trigger → agent context binding to the canvas as a drawn, mapping-labelled link', () => {
     installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={seeded} etag='"1"' registryNodes={[TRIGGER, AGENT]} />);
 
     const edges = (capturedCanvasProps as { edges?: { id: string; kind?: string; label?: string; sourceHandle?: string; targetHandle?: string }[] } | null)?.edges ?? [];
     expect(edges).toHaveLength(1);
-    expect(edges[0]).toMatchObject({ id: 'e1', source: 'n_trigger', target: 'n_summary', kind: 'binding', label: 'context', sourceHandle: 'out', targetHandle: 'in' });
+    expect(edges[0]).toMatchObject({ id: 'e1', source: 'n_trigger', target: 'n_summary', label: 'context → context', sourceHandle: 'out:context', targetHandle: 'in' });
     expect(screen.getByText('2 nodes · 1 connection')).toBeTruthy();
   });
 
