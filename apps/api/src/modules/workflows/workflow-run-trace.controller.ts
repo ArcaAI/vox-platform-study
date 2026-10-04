@@ -1,7 +1,9 @@
 import { IActiveUserContext, IWorkflowRunService, WorkflowRunTraceAccessService, isSuperAdmin } from '@arcaai/applications';
 import type { WorkflowRunStatusResponse } from '@arcaai/applications';
 import { RUN_PROTOCOL_HEADER } from '@arcaai/async-contract';
-import { Controller, ForbiddenException, Get, Headers, Inject, Param, Query, Res } from '@nestjs/common';
+import { ResourceType, SysEventType } from '@arcaai/domains';
+import { Controller, ForbiddenException, Get, Headers, Inject, Optional, Param, Query, Res } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
@@ -39,6 +41,9 @@ export class WorkflowRunTraceController {
     private readonly traceAccess: WorkflowRunTraceAccessService,
     private readonly workflowStreamService: WorkflowStreamService,
     private readonly cls: ClsService<IActiveUserContext>,
+    // TASK-1036 (lane B6b) — the audited-view broadcast. `@Optional()`: a Nest context without the
+    // event bus still streams; the sys-event fan-out is what persists the audit row.
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   @Get(':runId/trace/stream')
@@ -78,6 +83,9 @@ export class WorkflowRunTraceController {
     await this.traceAccess.assertCanTrace({ user: this.cls.get('user'), serviceAccount: this.cls.get('serviceAccount'), tenantId });
     // v2 only: an explicit selection must be `2` (400 otherwise); no selection means `2`.
     resolveRunProtocol({ header: protocolHeader, query: protocol });
+    // The FIRST successful ownership read is the open; the stream re-reads status (R-2) without
+    // re-auditing. A 404 never reaches the audit.
+    let audited = false;
 
     await this.workflowStreamService.streamRun({
       runId,
@@ -89,6 +97,10 @@ export class WorkflowRunTraceController {
       // Ownership (404 for a foreign or unknown run) AND the R-2 terminal re-read: the run read model.
       readStatus: async (): Promise<WorkflowRunStatusResponse> => {
         const run = await this.workflowRunService.getRun(tenantId, runId);
+        if (!audited) {
+          audited = true;
+          this.auditTraceOpened(tenantId, run);
+        }
         return {
           runId: run.runId,
           slug: run.workflowSlug,
@@ -98,6 +110,30 @@ export class WorkflowRunTraceController {
           startedAt: run.startedAt,
           endedAt: run.endedAt,
         } as unknown as WorkflowRunStatusResponse;
+      },
+    });
+  }
+
+  /**
+   * TASK-1036 (lane B6b) — opening the trace is a PHI read (protocol-v2.md §5), audited like the
+   * other PHI reads: ONE `ResourceViewed` with `forceAuditLog`, naming who opened which run in which
+   * tenant. Identifiers only — never an event, an output or an error detail.
+   */
+  private auditTraceOpened(tenantId: string, run: { runId: string; workflowSlug: string; workflowVersionNumber: number; isSandbox: boolean }): void {
+    const user = this.cls.get('user');
+    this.eventEmitter?.emit(SysEventType.ResourceViewed, {
+      responsibleEntityId: user?.id,
+      resourceType: ResourceType.WorkflowRun,
+      resourceId: run.runId,
+      correlationId: this.cls.get('correlationId') ?? undefined,
+      tenantId,
+      forceAuditLog: true,
+      data: {
+        action: 'workflowRunTraceOpened',
+        runId: run.runId,
+        workflowSlug: run.workflowSlug,
+        workflowVersionNumber: run.workflowVersionNumber,
+        isSandbox: run.isSandbox,
       },
     });
   }
