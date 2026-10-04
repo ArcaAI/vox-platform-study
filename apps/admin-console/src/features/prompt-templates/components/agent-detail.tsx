@@ -140,7 +140,7 @@ export function AgentDetailDrawer({
         open={open}
         onOpenChange={onOpenChange}
         size="lg"
-        title={template ? template.name : 'Template'}
+        title={template ? template.name : 'Hope Prompt'}
         badges={
           template ? (
             <>

@@ -14,6 +14,14 @@ export const TAG_MAX_COUNT = 24;
 export const TAG_GRAMMAR_MESSAGE =
   'Use lower-case letters, digits, "-" and "_" as `key` or `key:value` (key up to 32, value up to 64 characters; "." is allowed in the value).';
 
+/**
+ * What the gateway does to a tag before it validates (TASK-1036 Q16): trim, lower-case. The field
+ * does the same first, so `Pre-Summary` is added as `pre-summary` instead of being refused.
+ */
+export function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
 /** `null` when the tag is well-formed, otherwise the message to show under the field. */
 export function validateTag(tag: string): string | null {
   return TAG_PATTERN.test(tag) ? null : `"${tag}" is not a valid tag. ${TAG_GRAMMAR_MESSAGE}`;
