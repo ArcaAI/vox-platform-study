@@ -285,8 +285,23 @@ export interface ResolvedSource {
 
 type Resolution = { readonly ok: ResolvedSource } | { readonly code: 'BINDING_UNKNOWN_PATH' | 'BINDING_NOT_ANCESTOR'; readonly message: string };
 
-/** Walks declared `properties`. `strict`: an undeclared field is unknown unless the object explicitly admits more. */
-function walkSchema(schema: unknown, segments: readonly string[], strict: boolean): { schema: Record<string, unknown> } | 'unknown' | 'open' {
+/**
+ * How strictly `walkSchema` treats a field a level does not declare:
+ *
+ *  - `strict`   — unknown, unless the level explicitly admits more (`additionalProperties: true` or a schema);
+ *  - `declared` — `strict` at a level that DECLARES `properties`, open at one that declares none
+ *    (an undescribed object is free-form). The `context.*` rule: a payload schema that names its
+ *    fields is held to them, so a typo is caught at publish rather than resolving to nothing at run time;
+ *  - `lenient`  — unknown only where the level declares `properties` AND closes itself (`additionalProperties: false`).
+ */
+type SchemaWalk = 'strict' | 'declared' | 'lenient';
+
+function admitsMore(level: Record<string, unknown>): boolean {
+  return level.additionalProperties === true || asObject(level.additionalProperties) !== undefined;
+}
+
+/** Walks declared `properties` (see `SchemaWalk` for what an undeclared field is). */
+function walkSchema(schema: unknown, segments: readonly string[], walk: SchemaWalk): { schema: Record<string, unknown> } | 'unknown' | 'open' {
   let current = asObject(schema);
   for (const segment of segments) {
     if (current === undefined) return 'open';
@@ -295,7 +310,8 @@ function walkSchema(schema: unknown, segments: readonly string[], strict: boolea
       current = asObject(properties[segment]);
       continue;
     }
-    if (strict) return current.additionalProperties === true || asObject(current.additionalProperties) !== undefined ? 'open' : 'unknown';
+    if (walk === 'strict') return admitsMore(current) ? 'open' : 'unknown';
+    if (walk === 'declared') return properties === undefined ? (current.additionalProperties === false ? 'unknown' : 'open') : admitsMore(current) ? 'open' : 'unknown';
     return properties !== undefined && current.additionalProperties === false ? 'unknown' : 'open';
   }
   return current === undefined ? 'open' : { schema: current };
@@ -305,8 +321,15 @@ interface ResolveScope {
   readonly graph: WorkflowGraph;
   readonly nodesById: ReadonlyMap<string, WorkflowGraphNode>;
   readonly ancestors: ReadonlySet<string>;
-  readonly vars: ReadonlyMap<string, IoType>;
+  /** Every `core.variable` declaration in the graph; only those of an ANCESTOR resolve. */
+  readonly vars: ReadonlyMap<string, DeclaredVar>;
   readonly ctx: BindingIssueContext;
+}
+
+interface DeclaredVar {
+  readonly type: IoType;
+  /** The `core.variable` steps that declare the key. */
+  readonly nodeIds: readonly string[];
 }
 
 function label(node: WorkflowGraphNode): string {
@@ -316,11 +339,11 @@ function label(node: WorkflowGraphNode): string {
 
 function resolveContextPath(segments: readonly string[], payloadSchema: unknown, path: string): Resolution {
   if (asObject(payloadSchema) === undefined) return { ok: { type: segments.length === 0 ? 'json' : 'any', phiClass: null } };
-  let walked = walkSchema(payloadSchema, segments, false);
+  let walked = walkSchema(payloadSchema, segments, 'declared');
   // The sole-kind collapse: a definition whose only kind is `context` is read as that kind.
   const properties = asObject(asObject(payloadSchema)?.properties);
   if (walked === 'unknown' && properties !== undefined && Object.keys(properties).length === 1 && properties.context !== undefined) {
-    walked = walkSchema(properties.context, segments, false);
+    walked = walkSchema(properties.context, segments, 'declared');
   }
   if (walked === 'unknown') return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\` is not declared by this workflow's context schema.` };
   return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: null } };
@@ -353,7 +376,7 @@ function resolveNodePath(segments: readonly string[], scope: ResolveScope, path:
   }
   if (rest.length === 0) return { ok: { type: declared.type, phiClass: declared.phiClass ?? null } };
   if (declared.schema !== undefined) {
-    const walked = walkSchema(declared.schema, rest, true);
+    const walked = walkSchema(declared.schema, rest, 'strict');
     if (walked === 'unknown')
       return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: \`${rest.join('.')}\` is not a field of ${label(producer)}'s \`${field}\`.` };
     return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: declared.phiClass ?? null } };
@@ -377,9 +400,16 @@ function resolvePath(path: string, scope: ResolveScope): Resolution {
       return resolveNodePath(rest, scope, path);
     case 'vars': {
       const key = rest[0];
-      const type = key === undefined ? undefined : scope.vars.get(key);
-      if (type === undefined) return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
-      return { ok: { type: rest.length > 1 ? 'any' : type, phiClass: null } };
+      const declared = key === undefined ? undefined : scope.vars.get(key);
+      if (declared === undefined) return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
+      if (!declared.nodeIds.some((id) => scope.ancestors.has(id))) {
+        const setters = declared.nodeIds.map((id) => scope.nodesById.get(id)).filter((node): node is WorkflowGraphNode => node !== undefined);
+        return {
+          code: 'BINDING_NOT_ANCESTOR',
+          message: `\`${path}\` is set by ${setters.map(label).join(', ')}, which does not run before this step. Connect it upstream first.`,
+        };
+      }
+      return { ok: { type: rest.length > 1 ? 'any' : declared.type, phiClass: null } };
     }
     case 'run': {
       const field = rest.length === 1 ? RUN_SCOPE_FIELDS[rest[0] as string] : undefined;
@@ -409,15 +439,18 @@ function literalType(value: unknown): IoType {
   return 'json';
 }
 
-function declaredVars(nodes: readonly WorkflowGraphNode[]): Map<string, IoType> {
-  const vars = new Map<string, IoType>();
+function declaredVars(nodes: readonly WorkflowGraphNode[]): Map<string, DeclaredVar> {
+  const vars = new Map<string, DeclaredVar>();
   for (const node of nodes) {
     if (node.type !== 'core.variable') continue;
     const declared = asObject(node.config)?.variables;
     for (const entry of Array.isArray(declared) ? declared : []) {
       const variable = asObject(entry);
       if (typeof variable?.key !== 'string') continue;
-      vars.set(variable.key, variable.schema === undefined ? 'any' : ioTypeOfJsonSchema(variable.schema));
+      const type = variable.schema === undefined ? 'any' : ioTypeOfJsonSchema(variable.schema);
+      const previous = vars.get(variable.key);
+      // The LAST declaration's type wins, as the runtime's merge does; every setter is recorded.
+      vars.set(variable.key, { type, nodeIds: [...(previous?.nodeIds ?? []), node.id] });
     }
   }
   return vars;
@@ -431,7 +464,7 @@ function scopeFor(
   graph: WorkflowGraph,
   nodeId: string,
   nodesById: ReadonlyMap<string, WorkflowGraphNode>,
-  vars: ReadonlyMap<string, IoType>,
+  vars: ReadonlyMap<string, DeclaredVar>,
   ctx: BindingIssueContext,
 ): ResolveScope {
   return { graph, nodesById, ancestors: edgeAncestors(graph, nodeId), vars, ctx };

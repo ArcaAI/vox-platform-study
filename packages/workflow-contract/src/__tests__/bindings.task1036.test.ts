@@ -425,3 +425,52 @@ describe('AGENT_NOTHING_BOUND — a text agent with nothing to work on (WARNING)
     expect(codes(bindingIssues(tts, { agents: AGENTS }))).toEqual([]);
   });
 });
+
+describe('picker / binding hygiene (contract freeze)', () => {
+  const varsGraph = (wired: boolean): WorkflowGraph => ({
+    version: 1,
+    nodes: [
+      { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+      { id: 'n_vars', type: 'core.variable', config: { variables: [{ key: 'tone', schema: { type: 'string' } }] } },
+      agent('n_gen', 'summary', { inputs: { message: { from: 'vars.tone' } } }),
+    ],
+    edges: wired
+      ? [e('n_trigger', 'next', 'n_vars', 'after'), e('n_vars', 'next', 'n_gen', 'after')]
+      : [e('n_trigger', 'next', 'n_gen', 'after'), e('n_trigger', 'next', 'n_vars', 'after')],
+  });
+
+  it('`vars.*` resolves only from an ANCESTOR `core.variable` step', () => {
+    expect(codes(bindingIssues(varsGraph(true), { agents: AGENTS }))).toEqual([]);
+    const issues = bindingIssues(varsGraph(false), { agents: AGENTS });
+    expect(codes(issues, 'ERROR')).toEqual(['n_gen:BINDING_NOT_ANCESTOR']);
+    expect(issues.find((issue) => issue.code === 'BINDING_NOT_ANCESTOR')?.message).toContain('n_vars');
+  });
+
+  it('`context.<path>` walks strictly where the payload schema declares properties', () => {
+    const payload = {
+      type: 'object',
+      properties: {
+        patient: { type: 'object', properties: { age: { type: 'integer' } } },
+        extras: { type: 'object', additionalProperties: true, properties: { a: { type: 'string' } } },
+        free: { type: 'object' },
+      },
+    };
+    const check = (path: string) =>
+      codes(
+        bindingIssues(
+          {
+            version: 1,
+            nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_gen', 'summary', { inputs: { message: { from: path } } })],
+            edges: [e('n_trigger', 'next', 'n_gen', 'after')],
+          },
+          { agents: AGENTS, contextPayloadSchema: payload },
+        ),
+        'ERROR',
+      );
+    expect(check('context.patient.age')).toEqual([]);
+    expect(check('context.patient.weight')).toEqual(['n_gen:BINDING_UNKNOWN_PATH']);
+    expect(check('context.nope')).toEqual(['n_gen:BINDING_UNKNOWN_PATH']);
+    expect(check('context.extras.anything')).toEqual([]);
+    expect(check('context.free.anything')).toEqual([]);
+  });
+});

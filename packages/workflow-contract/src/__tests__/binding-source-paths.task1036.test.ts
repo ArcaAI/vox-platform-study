@@ -113,8 +113,13 @@ describe('bindingSourcePaths', () => {
     expect(consultation.items.every((item) => item.disabledReason !== undefined && item.fit === 'blocked')).toBe(true);
   });
 
-  it('Run & variables offers the declared variables and the run fields', () => {
-    const run = group(groups, 'run');
+  it('Run & variables offers only the variables an ANCESTOR `core.variable` step declares, then the run fields', () => {
+    // `n_vars` is not wired upstream of `n_target`, so its `tone` is not available there.
+    expect(group(groups, 'run').items.some((item) => item.raw === 'vars.tone')).toBe(false);
+    const wired = graph();
+    wired.edges.push({ id: 'e7', from: 'n_trigger', fromPort: 'next', to: 'n_vars', toPort: 'after' });
+    wired.edges.push({ id: 'e8', from: 'n_vars', fromPort: 'next', to: 'n_target', toPort: 'after' });
+    const run = group(bindingSourcePaths(wired, 'n_target', { contextSchema: CONTEXT_DEFINITION, agentOutputs: AGENTS }), 'run');
     expect(run.items.map((item) => item.raw)).toEqual([
       'vars.tone',
       'run.id',
