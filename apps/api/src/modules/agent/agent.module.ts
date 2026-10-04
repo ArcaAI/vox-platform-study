@@ -8,6 +8,7 @@ import {
   MediaServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  TenantBucketServiceModule,
   TenantSettingsService,
   TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
@@ -47,6 +48,9 @@ import { AgentRunService } from './agent-run.service';
     // `TenantSettingsService` reads the A2 retention knobs from (provided LOCALLY, the
     // `WorkflowRunCompletionModule` precedent); `IRedisCacheService` is @Global.
     CommonServiceModule,
+    // TASK-1036 §3.2 — `ITenantBucketService`, the tenant AUDIO bucket a `delivery: 'blob'`
+    // synthesis is stored in (`IBlobStorageService` itself is @Global).
+    TenantBucketServiceModule,
   ],
   providers: [TenantSettingsService, AgentRunService],
   controllers: [AgentController],

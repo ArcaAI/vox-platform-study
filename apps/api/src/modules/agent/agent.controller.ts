@@ -12,14 +12,17 @@ import {
   IBillingService,
   IComputeDeviceResolver,
   IConfigService,
+  IBlobStorageService,
   IEntitlementsService,
   IMediaService,
+  ITenantBucketService,
   IUsageLedgerService,
   LlmStreamUsageCollector,
   requestedLanguageMode,
   resolveEffectiveLanguageMode,
   SecretsService,
   TranscriptionJobService,
+  TenantSettingsService,
   TranscriptionRealtimeService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
@@ -44,6 +47,7 @@ import type {
   ComputeAugmentedBatch,
   ComputeDevice,
   GuardrailDisposition,
+  IBlobStorageService as IBlobStorageServiceType,
   ResolvedAgent,
   UsageAttributes,
   UsageEventBatchInput,
@@ -95,6 +99,7 @@ import { recordUsageEmissionFailure } from '../../observability/usage-emission-m
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
 import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
 import { AgentRunService, agentRunLinks, type AgentRunOutcome } from './agent-run.service';
+import { persistSpeechBlob, type SpeechBlobFormat } from './tts-blob-delivery';
 import type { AgentRunTask } from './agent-run.store';
 import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
@@ -116,6 +121,11 @@ export interface AgentInvocationBody {
 export interface AgentSpeechBody {
   text?: string;
   ssml?: string;
+  /**
+   * TASK-1036 §3.2 — `stream` (the default: the audio itself, streamed) or `blob` (stored in the
+   * tenant bucket; the answer is `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`).
+   */
+  delivery?: 'stream' | 'blob';
 }
 
 export interface AgentTextInvocationResponse {
@@ -155,6 +165,17 @@ export interface AgentTranscriptionResponse {
 }
 
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/** The blob's format: what `apps/tts` reported, else what was asked for, else the content type. */
+function speechBlobFormat(reported: unknown, requested: unknown, contentType: string): SpeechBlobFormat {
+  const known = (value: unknown): value is SpeechBlobFormat => value === 'wav' || value === 'mp3' || value === 'pcm' || value === 'ogg';
+  if (known(reported)) return reported;
+  if (known(requested)) return requested;
+  if (contentType.includes('wav')) return 'wav';
+  if (contentType.includes('mpeg')) return 'mp3';
+  if (contentType.includes('ogg')) return 'ogg';
+  return 'pcm';
+}
 
 /** The persisted terminal statuses of a run. */
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
@@ -276,6 +297,11 @@ export class AgentController {
     // TASK-1038 R-1 — the process-wide multiplexed run-stream reader (@Global, exported by
     // `WorkflowRunCompletionModule`), read through its existing API for `…/runs/:runId/events`.
     @Optional() private readonly runEventHub?: RunEventStreamHub,
+    // TASK-1036 §3.2 — `delivery: 'blob'` on `/speech`: the tenant's AUDIO bucket, the store
+    // that writes to it (@Global), and the signed-URL lifetime (`workflowRuns.resultUrlTtlSeconds`).
+    @Optional() @Inject(ITenantBucketService) private readonly tenantBuckets?: ITenantBucketService,
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageServiceType,
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {}
 
   @Get()
@@ -898,11 +924,20 @@ export class AgentController {
       properties: {
         text: { type: 'string', description: 'Plain text to synthesise.' },
         ssml: { type: 'string', description: 'An SSML document to synthesise. Only for agents that declare SSML support.' },
+        delivery: {
+          type: 'string',
+          enum: ['stream', 'blob'],
+          default: 'stream',
+          description:
+            '`stream` (default): the audio, streamed. `blob` (TASK-1036): the audio is stored in the tenant’s AUDIO bucket and the answer is JSON ' +
+            '`{ mediaId, url, expiresAt, format, sampleRate, durationMs }` — `url` is a short-lived signed GET.',
+        },
       },
       example: { text: 'Your appointment is confirmed for Tuesday at ten.' },
     },
   })
-  @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed.' })
+  @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed — or, with `delivery: "blob"`, JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`.' })
+  @ApiResponse({ status: 503, description: '`TTS_BLOB_STORAGE_UNAVAILABLE` — `delivery: "blob"` and the tenant has no audio bucket.' })
   @ApiResponse({ status: 400, description: 'Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
   // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
@@ -913,9 +948,14 @@ export class AgentController {
     description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
   })
   async speech(@Param('slug') slug: string, @Body() body: AgentSpeechBody, @Res() res: Response): Promise<void> {
+    const delivery = body?.delivery ?? 'stream';
+    if (delivery !== 'stream' && delivery !== 'blob') {
+      throw new BadRequestException({ message: '`delivery` is `stream` (the default) or `blob`.', code: 'DELIVERY_UNSUPPORTED' });
+    }
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug });
-    const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...(body ?? {}) });
+    const { delivery: _delivery, ...speechInput } = body ?? {};
+    const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...speechInput });
 
     // The SAME resolution the speech proxy applies (`tts-tenant-config.ts`), mapped onto the
     // agent's request. Since TASK-879 the agent decides everything — voice, format, speed, model,
@@ -950,7 +990,8 @@ export class AgentController {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Accept: 'application/octet-stream, text/event-stream',
+      // A blob is the whole file, never an event stream.
+      Accept: delivery === 'blob' ? 'application/octet-stream' : 'application/octet-stream, text/event-stream',
       ...requestIdHeader(),
     };
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
@@ -979,12 +1020,6 @@ export class AgentController {
     }
 
     const contentType = (upstream.headers['content-type'] as string | undefined) ?? 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'no-store, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('X-Agent-Slug', resolved.slug);
-    res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
-    res.flushHeaders();
 
     const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
     // TASK-958 D-7 — which of the tenant's accounts of that vendor was spent. An
@@ -1079,6 +1114,52 @@ export class AgentController {
     };
 
     const stream = upstream.data;
+
+    if (delivery === 'blob') {
+      // TASK-1036 §3.2 — buffer the whole synthesis, store it in the tenant bucket, answer JSON.
+      const chunks: Buffer[] = [];
+      try {
+        await new Promise<void>((resolve, reject) => {
+          stream.on('data', (chunk: Buffer) => {
+            relayedBytes += chunk.length;
+            chunks.push(chunk);
+          });
+          stream.on('end', () => resolve());
+          stream.on('error', (err: Error) => reject(err));
+        });
+      } catch (err) {
+        this.logger.error({ message: 'Agent speech stream error', agentSlug: slug, error: err instanceof Error ? err.message : String(err) });
+        emitUsage(true);
+        throw new HttpException({ detail: 'Speech synthesis failed' }, HttpStatus.BAD_GATEWAY);
+      }
+      emitUsage(false);
+      if (!this.tenantBuckets || !this.blobStorage || !this.mediaService) {
+        throw new ServiceUnavailableException({ code: 'TTS_BLOB_STORAGE_UNAVAILABLE', message: 'Blob delivery is not configured on this gateway.' });
+      }
+      const reportedSeconds = positiveNumber(upstream.headers['x-tts-audio-seconds']);
+      const answer = await persistSpeechBlob(
+        { blobStorage: this.blobStorage, tenantBuckets: this.tenantBuckets, media: this.mediaService, settings: this.tenantSettings },
+        {
+          tenantId,
+          agentSlug: resolved.slug,
+          audio: Buffer.concat(chunks),
+          format: speechBlobFormat(upstream.headers['x-tts-audio-format'], forwardBody.response_format, contentType),
+          sampleRate: positiveNumber(upstream.headers['x-tts-sample-rate']),
+          durationMs: reportedSeconds === null ? null : Math.round(reportedSeconds * 1000),
+        },
+      );
+      res.setHeader('X-Agent-Slug', resolved.slug);
+      res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
+      res.status(HttpStatus.OK).json(answer);
+      return;
+    }
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Agent-Slug', resolved.slug);
+    res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
+    res.flushHeaders();
     stream.on('data', (chunk: Buffer) => {
       relayedBytes += chunk.length;
       res.write(chunk);
