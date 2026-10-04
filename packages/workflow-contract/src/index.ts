@@ -156,6 +156,7 @@ export {
   composePrompt,
   conditionRootProblems,
   requiredPromptVariables,
+  resolvedPromptVariableDeclarations,
   selectPromptFragments,
   staticProjection,
   unresolvedPromptVariables,

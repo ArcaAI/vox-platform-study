@@ -170,6 +170,18 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
 
+/**
+ * TASK-1036 OD-10 — a template version's variable DECLARATIONS, frozen beside its content in
+ * `compiledConfig.resolvedPrompt` (and each composite fragment) so every lane can render an absent
+ * OPTIONAL variable as `""` (`resolvedPromptVariableDeclarations` → `buildPromptScope`). Omitted
+ * when the version declares none, so an artifact with nothing to say keeps its pre-1036 bytes.
+ * Spread in, because `@arcaai/types`' `AgentCompiledConfig` (SDK lockstep, TASK-1039) does not
+ * name the optional field yet.
+ */
+function frozenDeclarations(declarations: readonly PromptVariableDeclarationDto[] | undefined): { variables?: PromptVariableDeclarationDto[] } {
+  return Array.isArray(declarations) && declarations.length > 0 ? { variables: declarations.map((declaration) => ({ ...declaration })) } : {};
+}
+
 /** Does this graph run the agent `slug` in one of its `core.agent` nodes? */
 function graphRunsAgent(graph: unknown, slug: string): boolean {
   const nodes = (graph as { nodes?: unknown } | null | undefined)?.nodes;
@@ -2613,6 +2625,7 @@ export class AgentService extends BaseService implements IAgentService {
         promptTemplateId: templateId,
         promptVersionNumber: outcome.resolved.versionNumber,
         content: outcome.resolved.content,
+        ...frozenDeclarations(outcome.resolved.declarations),
       },
       templateVariables: [{ key: null, path: 'instruction', declarations: outcome.resolved.declarations }],
     };
@@ -2673,6 +2686,7 @@ export class AgentService extends BaseService implements IAgentService {
         promptVersionNumber: outcome.resolved.versionNumber,
         content: outcome.resolved.content,
         when,
+        ...frozenDeclarations(outcome.resolved.declarations),
       });
     }
 
