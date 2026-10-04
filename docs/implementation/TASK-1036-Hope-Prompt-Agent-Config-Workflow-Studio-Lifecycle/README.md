@@ -962,6 +962,98 @@ It also verified R-A's blocker: `issueRunStreamTicket` calls `assertEntryAllowed
 | OD-36 | E1 restores screening and redaction of the system prompt, which is narrower than R7's wording "check only the context or the message response". | Keep it. Redaction must cover everything sent to a provider. Only the medical-relevance judge stays context-only. |
 | OD-37 | Add a business-plane route that binds a live recording to a standalone API workflow run? | Not now. Consultation-bound runs and the admin sandbox already take audio. |
 
+### 6.14 Wave E: merged (2026-10-05)
+
+| Lane | Head | What it fixed |
+|---|---|---|
+| E1 | `a91999883` | The egress screen and cloud pseudonymisation cover the system prompt again (PHI rendered into it is redacted on cloud and restored); caller `system_prompt` injection is screened; the medical judge stays context-only; `pii_leak` source is everything sent |
+| E3 | `1e726f781` | Run result objects are tenant-prefixed (`tenantPrefixed`); pinned-agent cache skips answers carrying a document template; loop-body run-start reads, with a patch marker and forward fixtures |
+| E2 | `d820b6371` | The 16 R-A / R-B items, with new settings `workflowRuns.agentRunMaxSeconds` and `workflowRuns.runStreamMaxOpenHours` |
+| E4a | `bb0e3f95f` | 14 Studio UX/a11y fixes |
+| E4b | `126cca3a4` | 8 console UX/a11y fixes |
+
+E2's 16 items were:
+- ticket gate by lane, and a JWT-only `workflow_run_trace` namespace;
+- dispatch stamps the consultation;
+- agent-run sweeper and abort;
+- result-write retry;
+- metering;
+- purge deletes the object;
+- agent-events backstop;
+- a deprecated authored pin is now a warning;
+- agent idempotency is checked first, and both planes answer 409 on a reused key with no foreign `runId`;
+- sandbox recording ownership;
+- result-key tenant assertion;
+- STT mirror staleness, plus an orphan-stream sweeper;
+- audio sniffing;
+- the `seed-safety` test rebuilt.
+
+**Integration `747e8cac9`:**
+- The console trace scope moved to `workflow_run_trace:<runId>`.
+- The TS run protocol and fixture accept `result.tenantPrefixed`.
+- There is now one studio-wide Hide PHI switch.
+- Merge type fixes, and OpenAPI and portal regenerated.
+
+### 6.15 Gate: one pass after the complete merge (orchestrator, 2026-10-05)
+
+**Gate run 1** (`747e8cac9`) found two kinds of failure:
+- **Integration fallout:** TS lint and type-check, Python lint and type-check (pre-existing `provider_locality` and F841 included), 8 TS unit tests, 3 UI tests, a stale-dist console batch, and harness collection.
+- **Superseded tests:** the earlier collection error hid 31 harness tests that still pinned behaviour this wave changed.
+
+All of it was fixed by lane **G1** (`77afa97ed`, 19 items plus the 31 hidden tests). Each fix is classed (a) a test updated for a deliberate decision, or (b) a code fix. Two were real regressions:
+- the SSE loop no longer stopped reading after the response ended;
+- the `provider_locality` / sequence type checks.
+
+**Gate run 2** (after merging G1), plus the orchestrator's final fixes (`f807a942f`): api prettier on files this programme touched, the UI test's `Completion` typing, and two unused test variables.
+
+| Step | Result |
+|---|---|
+| TS lint (`pnpm lint`) | 32/32 tasks successful |
+| TS type-check (`pnpm typecheck`) | rc 0 |
+| Python lint (ruff, all services and `py-*`) | rc 0 |
+| Python type-check (mypy, harness and text) | rc 0 (harness: "no issues found in 165 source files") |
+| docs, openapi, portal, `gen:admin`, `gen:model` / `entity` / `factory`, env-sync, python-surface checks | all rc 0 |
+| TS unit (root vitest, `.env.test`) | **2,132 files passed, 2 skipped; 30,632 tests passed**, 5 skipped, 9 todo. `throttle-429-logging` failed once in run 2 and passed in the re-run and in isolation, so it is flaky under load. |
+| `@arcaai/vox` | rc 0 |
+| `@arcaai/admin-console` | rc 0 |
+| `@arcaai/ui` (changed in this programme, so in scope) | rc 0 |
+| `@arcaai/vox-node` | 695 tests passed |
+| `py-workflow-contract` | rc 0 |
+| Harness pytest, including replay-compat | rc 0 (205 s) |
+| Text pytest | rc 0 (178 s) |
+
+**Pre-existing items left as they are:**
+- `black --check` flags 3 harness test files that already failed on the pre-wave base.
+- Several test files fail `prettier --check` but are lint-ignored.
+
+**E2E:**
+- The test infrastructure was brought up. `hope_test` was reset with the owner's consent (Prisma AI-agent guard) and seeded with `RUN_SEED=all`.
+- The test API boots healthy on 8968. Boot also passes the deny-by-default and scope audits for every new route.
+- `RESET_DB=false pnpm test:e2e`: **1,323 passed, 46 failed, 69 skipped, 70 did not run** (5.4 min).
+
+**E2E triage** (opus, read-only, verified by the orchestrator): **0 failures caused by this programme.**
+
+| Group | Count | Class |
+|---|---|---|
+| Specs and seed that predate earlier owner decisions | 26 | Pre-existing |
+| Cross-spec shared state, or Python services not running | 7 | Environmental |
+| `TenantLockGuard` (see below) | 1 | Pre-existing code defect |
+
+The 26 pre-existing failures break down as:
+- user create needs role + department (TASK-983): 12;
+- tenant PATCH needs body `expectedVersion`: 9;
+- model registry needs a tenant-less super admin (TASK-1019): 4;
+- 13 single-spec drifts.
+
+The orchestrator confirmed:
+- TASK-983's role requirement (`17e53c728`) is an ancestor of the programme base.
+- `git diff 45ce54bc6..HEAD` does not touch the user service, the tenant services, `tenant-lock.guard.ts` or the task-986 spec.
+- None of the programme's own e2e specs failed: `agent-run-cross-tenant`, `workflow-run-result-cross-tenant` and the regenerated `task-776-route-authz-matrix`.
+
+**The pre-existing code defect matters to this programme.** `TenantLockGuard` returns 503 `TENANT_LOCK_UNAVAILABLE` on internal routes that carry `X-Tenant-Id` while the lock cache is cold. Its tenant-scoped read runs without a CLS tenant. That path also serves the harness's new internal calls (`internal/consultations/:id/read`, `internal/agents/:slug/versions/:n/resolved`), so it is raised as a separate task before the cluster rollout. The e2e spec hygiene (S1–S8) is a separate task too.
+
+**Live proof** (200-stream load test, browser walkthrough in both themes with axe) needs the dev stack, which is not running. It waits for the owner's go-ahead.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
