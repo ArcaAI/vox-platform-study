@@ -37,6 +37,7 @@ import {
   terminalStatusOf,
   WorkflowRunResponse,
 } from '../workflow-run';
+import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
@@ -90,6 +91,34 @@ export function modeRefusal(graph: unknown, mode: WorkflowRunResponseMode | unde
   const required = mode === 'blocking' ? 'http' : 'http-sse';
   if (protocols.includes(required)) return null;
   return `mode '${mode}' requires the workflow to publish the '${required}' protocol; it declares [${protocols.join(', ')}]. Use mode=async, or one of the declared protocols.`;
+}
+
+/** TASK-982 settled-node counts (TASK-1036 B6b: derived on the status read path). */
+interface SettledNodeCounts {
+  nodeCount: number;
+  failedNodeCount: number;
+  degradedNodeCount: number;
+  skippedNodeCount: number;
+}
+
+/**
+ * The four counts from the harness state query's settled `stages` (each node `{ status }`) — the
+ * harness's own `_settled_node_counts`. `undefined` when no node settled (nothing to report, never
+ * a fabricated zero). Pure.
+ */
+export function settledNodeCountsFromStages(stages: readonly unknown[] | undefined): SettledNodeCounts | undefined {
+  const statuses: string[] = [];
+  for (const stage of stages ?? []) {
+    const nodes = (stage as { nodes?: unknown } | null)?.nodes;
+    if (!Array.isArray(nodes)) continue;
+    for (const node of nodes) {
+      const status = (node as { status?: unknown } | null)?.status;
+      if (typeof status === 'string') statuses.push(status);
+    }
+  }
+  if (statuses.length === 0) return undefined;
+  const count = (wanted: string) => statuses.filter((status) => status === wanted).length;
+  return { nodeCount: statuses.length, failedNodeCount: count('FAILED'), degradedNodeCount: count('DEGRADED'), skippedNodeCount: count('SKIPPED') };
 }
 
 /**
@@ -252,12 +281,38 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
-    // TASK-864 §3.4 — a `core` graph declares WHICH trigger kinds may start it and WHICH
-    // protocols its Output publishes. A kind the Trigger did not declare is a 404 (the same
-    // "not a product on this plane" posture as the palette boundary); a `?mode=` the Output
-    // does not publish is a 400 naming the declared protocols — the caller is authenticated
-    // and the definition is theirs, so there is nothing to hide, only something to fix.
-    if (isCoreGraph(graphOf(definition.graph))) {
+    // TASK-1036 (OD-4, lane B6b) — the workflow's SETTINGS decide which entry points it admits:
+    // frozen at publish (`compiledConfig.settings`), else the graph's own `settings`. The entry is
+    // the caller's connection (`api`, `webhook`) or the `consultation` source; `?mode=stream`
+    // additionally needs `sse`. A refused entry is the same 404 as below; a refused mode the same
+    // 400. Only a definition with NO settings falls through to the legacy checks (D-4).
+    const exposure = effectiveExposureSettings({ compiledConfig: definition.compiledConfig, graph: definition.graph });
+    if (exposure.origin !== 'legacy') {
+      const entry: WorkflowEntry = opts.trigger === 'webhook' ? 'webhook' : consultationBound ? 'consultation' : 'api';
+      if (!isWorkflowEntryAllowed(exposure, entry)) {
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+          resourceId: definition.id,
+          data: {
+            action: 'invokeRefusedByExposureSettings',
+            slug: definition.slug,
+            requiredEntry: entry,
+            connections: exposure.connections,
+            sources: exposure.sources,
+          },
+        });
+        throw new NotFoundException(`Workflow '${slug}' not found.`);
+      }
+      if (opts.mode === 'stream' && !isWorkflowEntryAllowed(exposure, 'sse')) {
+        throw new BadRequestException(
+          `mode 'stream' requires the workflow to admit the 'sse' connection; it admits [${exposure.connections.join(', ')}]. Use mode=async, or mode=blocking.`,
+        );
+      }
+    } else if (isCoreGraph(graphOf(definition.graph))) {
+      // TASK-864 §3.4 (legacy, D-4 — one release) — a `core` graph declares WHICH trigger kinds may
+      // start it and WHICH protocols its Output publishes. A kind the Trigger did not declare is a
+      // 404 (the same "not a product on this plane" posture as the palette boundary); a `?mode=`
+      // the Output does not publish is a 400 naming the declared protocols — the caller is
+      // authenticated and the definition is theirs, so there is nothing to hide, only something to fix.
       const kinds = declaredTriggerKinds(graphOf(definition.graph));
       const requiredKind = opts.trigger === 'webhook' ? 'webhook' : consultationBound ? 'consultation' : 'api';
       if (!kinds.includes(requiredKind)) {
@@ -442,9 +497,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const run = await this.resolveOwnedRun(tenantId, slug, runId);
 
     let upstream: GetWorkflowRunResult;
+    // TASK-1036 (lane B6b) — the v2 terminal event carries no node counts; when the row has none
+    // (no completion watcher recorded them) the harness's settled stages are the source.
+    let derived: SettledNodeCounts | undefined;
     try {
       upstream = await this.harnessGateway.getWorkflowRun(runId);
-      await this.syncTerminalStatus(tenantId, run, upstream);
+      if (run.nodeCount == null && terminalStatusOf(upstream.status) !== null) derived = settledNodeCountsFromStages(upstream.stages);
+      await this.syncTerminalStatus(tenantId, run, upstream, derived);
     } catch (err) {
       // TASK-1038 — the harness keeps a run only as long as Temporal does; once it has no record
       // (404) the durable read model is the answer, not a failed status read. Any OTHER failure
@@ -466,10 +525,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       run.resultRef ?? null,
       run.actingUserId ?? null,
       status,
-      run.nodeCount ?? null,
-      run.failedNodeCount ?? null,
-      run.degradedNodeCount ?? null,
-      run.skippedNodeCount ?? null,
+      run.nodeCount ?? derived?.nodeCount ?? null,
+      derived?.failedNodeCount ?? run.failedNodeCount ?? null,
+      run.degradedNodeCount ?? derived?.degradedNodeCount ?? null,
+      run.skippedNodeCount ?? derived?.skippedNodeCount ?? null,
     );
   }
 
@@ -921,7 +980,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     return run;
   }
 
-  private async syncTerminalStatus(tenantId: string, run: WorkflowRunResponse, upstream: GetWorkflowRunResult): Promise<void> {
+  private async syncTerminalStatus(tenantId: string, run: WorkflowRunResponse, upstream: GetWorkflowRunResult, counts?: SettledNodeCounts): Promise<void> {
     // TASK-982 — fold FIRST, then check membership: `upstream.status` is the interpreter's raw
     // vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…), not the read model's, so comparing it directly
     // against `TERMINAL_RUN_STATUSES` missed every SUCCEEDED/DEGRADED/CANCELLED run.
@@ -938,6 +997,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         status,
         endedAt: upstream.endedAt ? new Date(upstream.endedAt) : undefined,
         ...(result ? { resultRef: result as unknown as Record<string, unknown> } : {}),
+        ...(counts ?? {}),
       });
     } catch {
       // Best-effort read-model sync — the live upstream status is still returned to the caller
