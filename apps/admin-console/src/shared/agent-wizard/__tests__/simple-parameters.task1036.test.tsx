@@ -193,3 +193,31 @@ describe('AgentSimpleParameters — accessibility', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe('AgentSimpleParameters — E4b', () => {
+  it('opens the "Enroll voices" link in a new tab and says so to assistive tech', async () => {
+    stub({ models: [model('asr', 'AUTOMATIC_SPEECH_RECOGNITION', BASE)] });
+    renderWithProviders(<Host task="SPEECH_TO_TEXT" modelId="asr" />);
+    const link = await screen.findByRole('link', { name: /enroll voices/i });
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toMatch(/noopener/);
+    expect(link.textContent).toMatch(/opens in a new tab/i);
+  });
+
+  it('shows a Skeleton, never "Loading…" text, while the document templates load', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('document-templates')) return new Promise<Response>(() => undefined);
+        if (url.includes('auth/session')) return Response.json({ user: { id: 'u', roles: [] }, effectiveIsElevated: false, isElevated: false });
+        if (url.includes('ai-models/catalogue')) return Response.json({ providers: [], models: [model('m', 'TEXT_GENERATION', BASE)] });
+        return Response.json([]);
+      }),
+    );
+    const { container } = renderWithProviders(<Host task="TEXT_GENERATION" modelId="m" />);
+    await screen.findByText('Document template');
+    expect(screen.queryByText('Loading…')).toBeNull();
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+  });
+});

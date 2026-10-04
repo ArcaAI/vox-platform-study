@@ -151,3 +151,25 @@ describe('bulk run dialog while in flight', () => {
     await waitFor(() => expect((within(results).getByText('Close').closest('button') as HTMLButtonElement).disabled).toBe(false));
   });
 });
+
+describe('loading state (rule 10)', () => {
+  it('shows a Skeleton in the status footer, never "Loading…" text, while the register loads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const path = new URL(String(input), 'http://test.local').pathname;
+        if (path === '/api/auth/session') return Response.json(session());
+        if (path.endsWith('/lineages')) return new Promise<Response>(() => undefined);
+        return Response.json([]);
+      }),
+    );
+    renderWithProviders(<WorkflowManagementScreen />);
+    const footer = await waitFor(() => {
+      const element = document.querySelector('footer');
+      if (!element) throw new Error('no footer yet');
+      return element as HTMLElement;
+    });
+    expect(footer.textContent).not.toMatch(/loading/i);
+    expect(footer.querySelector('[data-slot="skeleton"]')).toBeTruthy();
+  });
+});

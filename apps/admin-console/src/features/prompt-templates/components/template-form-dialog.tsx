@@ -99,7 +99,7 @@ function PromptVariablesEditor({
       <p className="text-muted-foreground text-xs">
         Optional variables render empty when no value is provided. Required variables must be supplied, or the prompt fails by name.
       </p>
-      <p role="status" className="text-muted-foreground text-xs empty:hidden">
+      <p role="status" className="text-muted-foreground text-xs empty:sr-only">
         {announcement}
       </p>
       <ConfirmDialog

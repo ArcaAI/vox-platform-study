@@ -194,8 +194,8 @@ export function AgentSimpleParameters({ task, modelId, value, onChange, document
           >
             <div className="text-muted-foreground flex flex-wrap items-center gap-1 text-xs">
               <span>Speakers are matched against enrolled voice profiles; unmatched voices are labelled generically.</span>
-              <Link href={VOICE_PROFILES_HREF} className="inline-flex items-center gap-1 underline">
-                Enroll voices <IconExternalLink aria-hidden className="size-3" />
+              <Link href={VOICE_PROFILES_HREF} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                Enroll voices <span className="sr-only">(opens in a new tab)</span> <IconExternalLink aria-hidden className="size-3" />
               </Link>
             </div>
           </SwitchRow>
@@ -215,24 +215,28 @@ export function AgentSimpleParameters({ task, modelId, value, onChange, document
           {onDocumentTemplateChange ? (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={id('document-template')}>Document template</Label>
-              <Select
-                value={documentTemplateSlug ?? NO_TEMPLATE}
-                onValueChange={(next) => onDocumentTemplateChange(next === NO_TEMPLATE ? null : next)}
-                disabled={disabled || templates.isPending}
-              >
-                <SelectTrigger id={id('document-template')} className="w-full" aria-describedby={id('document-template-desc')}>
-                  <SelectValue placeholder={templates.isPending ? 'Loading…' : 'Platform layout'} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_TEMPLATE}>None — platform layout</SelectItem>
-                  {!knownTemplate && documentTemplateSlug ? <SelectItem value={documentTemplateSlug}>{documentTemplateSlug} (not available)</SelectItem> : null}
-                  {servableTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.slug}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {templates.isPending ? (
+                <Skeleton className="h-9 w-full" aria-busy="true" />
+              ) : (
+                <Select
+                  value={documentTemplateSlug ?? NO_TEMPLATE}
+                  onValueChange={(next) => onDocumentTemplateChange(next === NO_TEMPLATE ? null : next)}
+                  disabled={disabled}
+                >
+                  <SelectTrigger id={id('document-template')} className="w-full" aria-describedby={id('document-template-desc')}>
+                    <SelectValue placeholder="Platform layout" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TEMPLATE}>None — platform layout</SelectItem>
+                    {!knownTemplate && documentTemplateSlug ? <SelectItem value={documentTemplateSlug}>{documentTemplateSlug} (not available)</SelectItem> : null}
+                    {servableTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.slug}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <p id={id('document-template-desc')} className="text-muted-foreground text-xs">
                 The agent always uses the latest approved version of the template; it is never pinned.
               </p>
