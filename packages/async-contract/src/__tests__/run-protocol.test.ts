@@ -16,6 +16,8 @@ import {
   RUN_PROTOCOL_HEADER,
   RUN_PROTOCOL_VERSION,
   RUN_RESULT_INLINE_MAX_BYTES,
+  RUN_RESYNC_REASONS,
+  advanceRunCursor,
   isPublicRunEvent,
   parseResumeCursor,
   parseRunEvent,
@@ -178,5 +180,49 @@ describe('resume cursor (Last-Event-ID / ?after=)', () => {
     for (const bad of ['-1', '1.5', 'abc', '0x10', '1e3', ' 7']) {
       expect(parseResumeCursor({ after: bad }), bad).toEqual({ problems: [expect.stringContaining('cursor')] });
     }
+  });
+});
+
+describe('gap semantics — seq is monotonic but NOT contiguous for a client (F2 fix 1, fix 8)', () => {
+  const at = (seq: number, type: string, extra: Record<string, unknown> = {}): RunEventV2 =>
+    ({ seq, runId: 'r', type, ts: '2026-10-04T10:00:00Z', data: {}, ...extra }) as unknown as RunEventV2;
+  const delta = (seq: number): RunEventV2 => at(seq, 'output.text.delta', { nodeId: 'n1', data: { field: 'text', text: 'x' } });
+
+  it('a stored event after a jump in seq is delivered and moves the cursor — no loss is inferred', () => {
+    // seq 4..6 were admin events filtered off the PUBLIC plane: 3 -> 7 is normal.
+    expect(advanceRunCursor(3, delta(7))).toEqual({ cursor: 7, deliver: true, reset: false });
+  });
+
+  it('a replayed stored event at or below the cursor is a duplicate and is dropped', () => {
+    expect(advanceRunCursor(7, delta(7))).toEqual({ cursor: 7, deliver: false, reset: false });
+    expect(advanceRunCursor(7, delta(5))).toEqual({ cursor: 7, deliver: false, reset: false });
+  });
+
+  it('ping is never delivered as data and only ever moves the cursor forward', () => {
+    expect(advanceRunCursor(3, at(9, 'ping'))).toEqual({ cursor: 9, deliver: false, reset: false });
+    expect(advanceRunCursor(9, at(4, 'ping'))).toEqual({ cursor: 9, deliver: false, reset: false });
+  });
+
+  it('only the server signals loss: run.resync replaces the client state and sets the cursor to snapshot.lastSeq', () => {
+    const resync = at(15, 'run.resync', {
+      data: { reason: 'gap', snapshot: { status: 'RUNNING', lastSeq: 15, nodes: {}, outputs: {} } },
+    });
+    expect(runEventProblems(resync)).toEqual([]);
+    expect(advanceRunCursor(12, resync)).toEqual({ cursor: 15, deliver: true, reset: true });
+  });
+
+  it('run.resync reasons are the server-side loss signals', () => {
+    expect(RUN_RESYNC_REASONS).toEqual(['gap', 'expired', 'cursor_invalid', 'unavailable']);
+    const snapshot = { status: 'RUNNING', lastSeq: 2, nodes: {}, outputs: {} };
+    for (const reason of RUN_RESYNC_REASONS) {
+      expect(runEventProblems(at(2, 'run.resync', { data: { reason, snapshot } })), reason).toEqual([]);
+    }
+    expect(runEventProblems(at(2, 'run.resync', { data: { reason: 'cursor_expired', snapshot } })).join('\n')).toContain('reason');
+  });
+
+  it('the module documentation no longer tells a client that a jump in seq means it missed events', () => {
+    const source = readFileSync(join(__dirname, '../run-protocol.ts'), 'utf-8');
+    expect(source).not.toMatch(/greater than `last \+ 1` means the client missed/);
+    expect(source).toMatch(/NOT contiguous/);
   });
 });

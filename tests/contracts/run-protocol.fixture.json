@@ -503,7 +503,7 @@
         "type": "run.resync",
         "ts": "2026-10-04T10:00:00.000Z",
         "data": {
-          "reason": "cursor_expired",
+          "reason": "expired",
           "snapshot": {
             "status": "RUNNING",
             "lastSeq": 12,

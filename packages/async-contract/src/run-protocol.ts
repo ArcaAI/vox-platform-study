@@ -22,24 +22,38 @@
  *
  * ## Ordering and resume
  *
- * - `seq` is per run, starts at 1, and increases by exactly 1 per STORED event. It is the SSE
- *   `id:` line, so a browser `EventSource` (or the SDK) reconnects with `Last-Event-ID: <seq>`.
- *   A first connect may ask for `?after=<seq>` instead ({@link parseResumeCursor}: the header wins
- *   over the query, and both absent means "from the beginning", `after = 0`). The server replays
- *   every stored event with `seq > after`, then continues live. WS uses the same envelope as a
- *   JSON text frame and the same `?after=<seq>` on its URL.
- * - Two types are SYNTHETIC — emitted to one connection, never stored, never advancing `seq`:
- *   `ping` repeats the latest stored `seq` (0 before the first event) and `run.resync` carries
- *   `seq === data.snapshot.lastSeq`. A client keeps its cursor at that value; neither is a gap.
- * - A stored event whose `seq` is greater than `last + 1` means the client missed events. It
- *   reconnects with its last seq; the server answers with the missing events, or with
- *   `run.resync` when it can no longer produce them.
- * - Retention (OD-25): a run's event stream EXPIRES 24 h after the run is terminal; its status and
- *   result survive in the read model for `workflowRuns.resultRetentionDays`. A cursor that points
- *   before the oldest retained event, or at an expired stream, is answered with `run.resync`: a
- *   snapshot of the run (status, per-node status, the text accumulated per output field, and the
- *   result when terminal), after which the stream continues live from `lastSeq + 1`. A client
- *   that receives a terminal snapshot without an inline result reads `GET …/runs/:runId/result`.
+ * - `seq` is per run, starts at 1, and is assigned by ONE sequencer (the append script
+ *   {@link RUN_APPEND_LUA}): every STORED event gets the next integer, so the stored stream is
+ *   contiguous on the server. It is the SSE `id:` line, so a browser `EventSource` (or the SDK)
+ *   reconnects with `Last-Event-ID: <seq>`. A first connect may ask for `?after=<seq>` instead
+ *   ({@link parseResumeCursor}: the header wins over the query, and both absent means "from the
+ *   beginning", `after = 0`). The server replays every stored event with `seq > after` that the
+ *   connection may see, then continues live. WS uses the same envelope as a JSON text frame and
+ *   the same `?after=<seq>` on its URL.
+ * - **For a client, `seq` is monotonic but NOT contiguous.** The PUBLIC plane is filtered out of
+ *   the same stored sequence (admin debug events and admin-only outputs are dropped), so a jump
+ *   from 3 to 7 is normal. A client NEVER infers loss from a jump; it keeps the highest `seq` it
+ *   has seen as its cursor and drops anything at or below it as a replayed duplicate
+ *   ({@link advanceRunCursor}).
+ * - **Only the server signals loss**, with `run.resync { reason, snapshot }`
+ *   ({@link RUN_RESYNC_REASONS}): `gap` (events the cursor needs were trimmed from the bounded
+ *   stream), `expired` (the stream's retention elapsed), `cursor_invalid` (the cursor names a
+ *   `seq` the run never stored), `unavailable` (the event transport is down; the snapshot comes
+ *   from the read model). The server can detect every one of these exactly because the STORED
+ *   stream is contiguous. A client receiving `run.resync` REPLACES its run state with the
+ *   snapshot and sets its cursor to `seq`.
+ * - Two types are SYNTHETIC — emitted to one connection, never stored, never advancing the
+ *   sequencer: `ping` carries this connection's position (the last stored `seq` the server has
+ *   delivered OR filtered out for it; 0 before the first event), so a client may move its cursor
+ *   up to it; `run.resync` carries `seq === data.snapshot.lastSeq`, and the stream continues at
+ *   `lastSeq + 1`.
+ * - Retention (OD-25): a run's event stream EXPIRES `workflowRuns.eventRetentionHours` (24 h)
+ *   after the run is terminal; its status and result survive in the read model for
+ *   `workflowRuns.resultRetentionDays`. A cursor that points before the oldest retained event, or
+ *   at an expired stream, is answered with `run.resync`: a snapshot of the run (status, per-node
+ *   status, the outputs per node and field, and the result when terminal), after which the stream
+ *   continues live from `lastSeq + 1`. A client that receives a terminal snapshot without an
+ *   inline result reads `GET …/runs/:runId/result`.
  *
  * ## Deltas and results
  *
@@ -167,6 +181,13 @@ export type RunResult =
 /** The persisted run status vocabulary (`GoverningRunSummary.status`). */
 export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
 
+/**
+ * Why the SERVER sent `run.resync` — the only loss signal a client ever acts on (see the module
+ * doc). A client never derives one of these itself.
+ */
+export const RUN_RESYNC_REASONS = Object.freeze(['gap', 'expired', 'cursor_invalid', 'unavailable'] as const);
+export type RunResyncReason = (typeof RUN_RESYNC_REASONS)[number];
+
 export type RunNodeStatus = 'waiting' | 'running' | 'completed' | 'degraded' | 'failed' | 'skipped';
 
 export interface RunSnapshot {
@@ -199,7 +220,7 @@ export interface RunEventDataMap {
   'run.failed': { readonly status: 'FAILED' | 'TIMED_OUT'; readonly durationMs: number; readonly error: RunError; readonly tokens?: RunTokens };
   /** `CANCELED` is the persisted status spelling; the event type keeps OD-23's `run.cancelled`. */
   'run.cancelled': { readonly status: 'CANCELED'; readonly durationMs: number; readonly reason?: string };
-  'run.resync': { readonly reason: 'cursor_expired' | 'gap' | 'reconnect'; readonly snapshot: RunSnapshot };
+  'run.resync': { readonly reason: RunResyncReason; readonly snapshot: RunSnapshot };
   'node.started': { readonly kind: string; readonly label?: string; readonly attempt?: number };
   'node.completed': {
     readonly status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED';
@@ -386,7 +407,7 @@ export const RUN_EVENT_DATA_SCHEMAS: Readonly<Record<RunEventType, RunEventDataS
   'run.cancelled': closed({ status: Object.freeze({ const: 'CANCELED' }), durationMs: INT0, reason: STR }, ['status', 'durationMs']),
   'run.resync': closed(
     {
-      reason: Object.freeze({ type: 'string', enum: Object.freeze(['cursor_expired', 'gap', 'reconnect']) }),
+      reason: Object.freeze({ type: 'string', enum: RUN_RESYNC_REASONS }),
       snapshot: closed(
         {
           status: Object.freeze({ type: 'string', enum: Object.freeze(['RUNNING', 'COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']) }),
@@ -741,4 +762,31 @@ export function parseResumeCursor(input: {
     return { problems: [`resume cursor must be a non-negative decimal integer (received ${JSON.stringify(raw)})`] };
   }
   return { after: parsed };
+}
+
+/** One step of a client's cursor — what {@link advanceRunCursor} decided for one received event. */
+export interface RunCursorStep {
+  /** The cursor to keep (and to send as `Last-Event-ID` / `?after=` on the next reconnect). */
+  readonly cursor: number;
+  /** Whether the event is new to this client and must be applied. */
+  readonly deliver: boolean;
+  /** `run.resync`: discard the run state and replace it with `data.snapshot`. */
+  readonly reset: boolean;
+}
+
+/**
+ * The client side of the gap rule (fix 1). `seq` is monotonic but NOT contiguous for a client, so
+ * there is no "missed events" branch here at all:
+ *
+ * - a stored event with `seq > cursor` is delivered and becomes the cursor, however far it jumps;
+ * - a stored event with `seq <= cursor` is a replayed duplicate and is dropped;
+ * - `ping` is never delivered; it can only move the cursor forward;
+ * - `run.resync` is delivered with `reset: true` and sets the cursor to its `seq`
+ *   (`=== data.snapshot.lastSeq`), even when that is lower — the server's snapshot is the truth.
+ */
+export function advanceRunCursor(cursor: number, event: RunEventV2): RunCursorStep {
+  if (event.type === 'run.resync') return { cursor: event.seq, deliver: true, reset: true };
+  if (event.type === 'ping') return { cursor: Math.max(cursor, event.seq), deliver: false, reset: false };
+  if (event.seq <= cursor) return { cursor, deliver: false, reset: false };
+  return { cursor: event.seq, deliver: true, reset: false };
 }
