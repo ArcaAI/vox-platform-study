@@ -13,14 +13,14 @@ import {
 import type { DeliveredRunResult, IActiveUserContext } from '@arcaai/applications';
 import { RESUME_FROM_BEGINNING, parseStoredRunEvent } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
-import { runCompletedCountsFromPayload } from './run-completed-counts';
+import { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 import type { RunCompletedCounts } from './run-completed-counts';
 import { RunEventStreamHub } from './run-event-stream-hub';
 import { RunEventFold, terminalOutcomeOf } from './run-protocol-delivery';
 import { terminalCheckIntervalMs } from './run-stream-delivery';
 import { runEventStreamKey } from './workflow-run-event';
 
-export { runCompletedCountsFromPayload } from './run-completed-counts';
+export { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 export type { RunCompletedCounts } from './run-completed-counts';
 
 /** How long ONE watcher stays attached before giving up — a run's own ceiling, not a poll interval. */
@@ -162,7 +162,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
 
       if (entries.length === 0 && !signal.aborted && Date.now() - lastCheck >= checkEveryMs) {
         lastCheck = Date.now();
-        if (await this.reconcileFromHarness(hub, tenantId, runId, consultationId)) return;
+        if (await this.reconcileFromHarness(hub, tenantId, runId, consultationId, fold)) return;
       }
     }
   }
@@ -170,9 +170,19 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
   /**
    * R-2 — the terminal fallback. The run's completion event never reached its stream (or was
    * trimmed away); ask the harness. A terminal answer is recorded with what the harness knows —
-   * no counts and no result, which stay as they are rather than being invented.
+   * no result, which stays as it is rather than being invented.
+   *
+   * TASK-1036 (lane B6b) — the TASK-982 counts are no longer dropped on this path: the node events
+   * this watcher folded are the run's own record (whole-run only, `fold.counts()`); failing that,
+   * the harness state query's settled `stages` are. Neither ⇒ the columns stay untouched.
    */
-  private async reconcileFromHarness(hub: RunEventStreamHub, tenantId: string, runId: string, consultationId: string | null): Promise<boolean> {
+  private async reconcileFromHarness(
+    hub: RunEventStreamHub,
+    tenantId: string,
+    runId: string,
+    consultationId: string | null,
+    fold?: RunEventFold,
+  ): Promise<boolean> {
     if (!this.harnessGateway) return false;
     // swallow-ok: the idle re-check is a fallback; an unreachable harness means "ask again next interval", never a terminal status.
     const upstream = await this.harnessGateway.getWorkflowRun(runId).catch(() => null);
@@ -184,7 +194,9 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
       status,
     });
     void hub.expireAfterTerminal(runId);
-    await this.recordTerminal(tenantId, runId, status, String(upstream.status), upstream.endedAt ?? new Date().toISOString(), consultationId);
+    const folded = fold?.counts();
+    const counts = folded && (folded.nodeCount ?? 0) > 0 ? folded : runCompletedCountsFromStages(upstream.stages);
+    await this.recordTerminal(tenantId, runId, status, String(upstream.status), upstream.endedAt ?? new Date().toISOString(), consultationId, counts);
     return true;
   }
 
