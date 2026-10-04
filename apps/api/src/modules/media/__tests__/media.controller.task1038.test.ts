@@ -18,6 +18,7 @@ import {
   API_KEY_REQUIRED_SCOPES,
   API_KEY_SCOPE_REGISTRY,
   CONTEXT_ATTACHMENT_MIME_TYPES,
+  MEDIA_AUDIO_MIME_TYPES,
   MEDIA_UPLOAD_HARD_CEILING_MB,
   REQUIRED_PERMISSIONS_KEY,
   SERVICE_ACCOUNT_REQUIRED_SCOPES,
@@ -86,8 +87,13 @@ describe('POST /media', () => {
     }
   });
 
+  it('the controller and the service share ONE audio allow-list (TASK-1038 E2 fix 15)', () => {
+    expect([...MEDIA_AUDIO_MIME_TYPES].sort()).toEqual([...ALLOWED_AUDIO_MIMES].sort());
+  });
+
   it('400 for a type on neither list, and for no file — before the service is called', async () => {
-    for (const mime of ['application/zip', 'video/mp4', 'text/html', '']) {
+    // `audio/x-ms-wma` starts with `audio/` but is on no list (TASK-1038 E2 fix 15).
+    for (const mime of ['application/zip', 'video/mp4', 'text/html', 'audio/x-ms-wma', '']) {
       const error = await controller()
         .upload(file(mime))
         .catch((e: unknown) => e);
