@@ -36,6 +36,9 @@
  */
 import { actionDelegateOf } from './action-catalogue';
 import { agenticNodeConfigProblems } from './agentic-contract';
+import type { AgentTask } from './agent-schemas';
+import { bindingIssues, RUN_SCOPE_FIELDS, type BindingIssueCode } from './bindings';
+import { CONSULTATION_READ_SCHEMA_V1 } from './consultation-read-schema';
 import type { AgenticGraphContext } from './agentic-contract';
 import { coreNodeConfigProblems, loopBodyProblems } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
@@ -47,6 +50,8 @@ import { nodeDescriptorContractProblems, workflowEdgePortProblems } from './port
 import type { WorkflowFinding, WorkflowFindingSeverity, WorkflowRuleClass } from './report';
 import { templateReferenceProblems, templateSyntaxProblems } from './template';
 import type { DeclaredNamespaces } from './template';
+import type { AgentIOResolver } from './node-io';
+import { effectiveSettings, graphSettingsOf, settingsImplications, workflowSettingsProblems, type WorkflowSettingsRuleId } from './workflow-settings';
 
 // =============================================================================================
 // The code vocabulary (§3.5) — shared with `AgentFindingCode` in the applications layer
@@ -70,6 +75,20 @@ export const WORKFLOW_PUBLISH_FINDING_CODES = Object.freeze([
   'PROMPT_VARIABLE_UNDECLARED',
   'PROMPT_TEMPLATE_SYNTAX',
   'GUARDRAIL_OPTED_OUT',
+  // TASK-1036 §9.2 / §9.3 — bindings and the consultation scope (`bindings.ts`).
+  'BINDING_UNKNOWN_PATH',
+  'BINDING_NOT_ANCESTOR',
+  'BINDING_TYPE_MISMATCH',
+  'BINDING_UNKNOWN_INPUT',
+  'REQUIRED_INPUT_UNBOUND',
+  'INPUT_MULTIPLE_PRODUCERS',
+  'CONSULTATION_SCOPE_UNAVAILABLE',
+  // TASK-1036 §3.5 — workflow settings (`workflow-settings.ts`); the four implications carry WF-SET rule ids.
+  'SETTINGS_INVALID',
+  'SETTINGS_SSE_REQUIRES_API',
+  'SETTINGS_SOCKET_REQUIRES_API',
+  'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+  'SETTINGS_UPLOAD_REQUIRES_API',
 ] as const);
 export type WorkflowPublishFindingCode = (typeof WORKFLOW_PUBLISH_FINDING_CODES)[number];
 
@@ -129,6 +148,13 @@ export interface PublishAgentView {
   readonly contextPayloadSchema: SchemaLike | null;
   /** Per-hyper-parameter bounds a node override must sit inside (4c). Absent = unchecked. */
   readonly generationRanges?: GenerationRanges;
+  /**
+   * TASK-1036 §9.1 — the agent's TASK, which decides the node's inputs and outputs
+   * (`agentNodeIO`). Absent, the node is checked against the union of every task's sockets.
+   */
+  readonly task?: AgentTask;
+  /** TASK-1036 §9.1 — the agent's `outputSchema`: a structured one adds a typed `data` output. */
+  readonly outputSchema?: SchemaLike | null;
 }
 
 export interface PublishContext {
@@ -143,6 +169,12 @@ export interface PublishContext {
   readonly triggerContextSchema?: SchemaLike | null;
   /** Which failure `triggerContextSchema: null` was. Defaults to `CONTEXT_SCHEMA_NOT_FOUND`. */
   readonly triggerContextSchemaFailure?: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND';
+  /**
+   * TASK-1036 §3.5 — the Input shape's `ConsultationContextSchemaVersion.definition` (its `kinds`),
+   * when the caller resolved it. Read by WF-SET-003/004 (stream audio ⇒ socket; an upload ⇒ api).
+   * Absent, only the agent-derived implications are checked.
+   */
+  readonly contextSchemaDefinition?: unknown;
   /**
    * @deprecated Ignored. `PROMPT_VARIABLE_UNDECLARED` is always reported at
    * `PROMPT_VARIABLE_UNDECLARED_SEVERITY` (ERROR); the field stays optional for one release so
@@ -220,6 +252,61 @@ function schemaOfKeys(keys: readonly string[]): SchemaLike {
     additionalProperties: false,
     properties: Object.fromEntries(keys.map((key) => [key, {}])),
   };
+}
+
+/** WF-SET rule id → its publish code. */
+const SETTINGS_RULE_CODES: Readonly<Record<WorkflowSettingsRuleId, WorkflowPublishFindingCode>> = Object.freeze({
+  'WF-SET-001': 'SETTINGS_SSE_REQUIRES_API',
+  'WF-SET-002': 'SETTINGS_SOCKET_REQUIRES_API',
+  'WF-SET-003': 'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+  'WF-SET-004': 'SETTINGS_UPLOAD_REQUIRES_API',
+});
+
+/** The non-INFO binding codes, each a publish code of the same name. */
+type PublishedBindingCode = Exclude<BindingIssueCode, 'BINDING_TYPE_CONVERTED'>;
+
+/** The `run.*` root as a closed object schema, so a prompt template can reference it. */
+const RUN_ROOT_SCHEMA: SchemaLike = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.fromEntries(Object.keys(RUN_SCOPE_FIELDS).map((name) => [name, {}])),
+});
+
+/**
+ * TASK-1036 — the data-contract findings: workflow settings (§3.5), bindings and the consultation
+ * scope (§9.2, §9.3). Every new check that can REFUSE a graph runs only on what a graph AUTHORED
+ * under the new model (declared `settings`, declared `inputs`, a `consultation.*` reference); a
+ * legacy graph meets the same rules as WARNINGs for one release, so nothing that published before
+ * this ticket stops publishing.
+ */
+function dataContractFindings(graph: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+  const findings: WorkflowFinding[] = [];
+  const agents: AgentIOResolver = Object.fromEntries(
+    Object.entries(ctx.agents ?? {}).map(([slug, view]) => [slug, { task: view.task, outputSchema: view.outputSchema }]),
+  );
+
+  const declared = graphSettingsOf(graph);
+  const shape = declared === undefined ? [] : workflowSettingsProblems(declared);
+  for (const problem of shape) {
+    const pointer = problem.slice(0, problem.indexOf(':'));
+    findings.push(finding('SETTINGS_INVALID', 'schema', 'ERROR', null, problem, pointer));
+  }
+  const settings = effectiveSettings(graph);
+  if (shape.length === 0) {
+    const severity: WorkflowFindingSeverity = settings.origin === 'settings' ? 'ERROR' : 'WARNING';
+    for (const implication of settingsImplications(graph, settings, { agents, contextSchemaDefinition: ctx.contextSchemaDefinition })) {
+      findings.push({
+        ...finding(SETTINGS_RULE_CODES[implication.ruleId], 'structural', severity, implication.nodeId, implication.message, '/settings/connections'),
+        ruleId: implication.ruleId,
+      });
+    }
+  }
+
+  for (const issue of bindingIssues(graph, { agents, contextPayloadSchema: ctx.triggerContextSchema, sources: settings.sources })) {
+    if (issue.severity === 'INFO') continue;
+    findings.push(finding(issue.code as PublishedBindingCode, 'schema', issue.severity, issue.nodeId, `node \`${issue.nodeId}\`: ${issue.message}`, issue.path));
+  }
+  return findings;
 }
 
 // =============================================================================================
@@ -434,10 +521,13 @@ export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): W
         trigger: ctx.triggerContextSchema ?? null,
         context: ctx.triggerContextSchema ?? agent?.contextPayloadSchema ?? null,
         vars: varsSchema,
-        // Upstream node output ports are not resolved yet: a wildcard admits them rather than
-        // reporting every legitimate `{{nodes.x.y}}`. Narrowing it is a later ramp.
+        // `nodes.*` stays a wildcard HERE; `bindingIssues` (TASK-1036, D-G) now checks every
+        // `{{nodes.<id>…}}` against the graph — the step exists, runs earlier, outputs the field.
         nodes: null,
         input: null,
+        // TASK-1036 §9.3 — the platform read schema and the run identity are declared roots.
+        consultation: CONSULTATION_READ_SCHEMA_V1,
+        run: RUN_ROOT_SCHEMA,
       },
       variables: [...(agent?.declaredVariables ?? []), ...Object.keys(promptVariables)],
     };
@@ -460,6 +550,8 @@ export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): W
       }
     }
   }
+
+  findings.push(...dataContractFindings(graph, ctx));
 
   return findings;
 }
