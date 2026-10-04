@@ -623,6 +623,24 @@ export class HarnessGatewayService {
   }
 
   /**
+   * TASK-1038 B3a (G14) — cooperatively CANCEL a consultation's harness DOCUMENT workflow (the run
+   * behind a `SUMMARY` consultation job), through the harness admin route and the workflow's
+   * deterministic id (`harness-doc-<consultationId>`, `internal.py::_workflow_id`). Throws on any
+   * harness refusal (404 for no such workflow) — the caller then reports "not cancellable".
+   */
+  async cancelDocumentWorkflow(consultationId: string, input: { tenantId: string; reason: string }): Promise<unknown> {
+    const workflowId = `harness-doc-${consultationId}`;
+    const url = `${this.harnessUrl}/api/v1/internal/harness/workflows/${encodeURIComponent(workflowId)}/cancel`;
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { tenantId: input.tenantId, reason: input.reason },
+      { headers: await this.buildHeaders(input.tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
+    this.logger.log({ message: 'Harness document workflow cancel requested', consultationId });
+    return response.data;
+  }
+
+  /**
    * TASK-1022 L-RESUME — TERMINATE an interpreter run, non-cooperatively.
    *
    * `cancelWorkflowRun` only sets the interpreter's `_cancelled` flag, which the walk reads BETWEEN
