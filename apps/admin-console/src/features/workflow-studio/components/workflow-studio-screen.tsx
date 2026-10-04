@@ -14,8 +14,8 @@
  * `definitionId === 'new'` renders the create form: a definition must exist server-side, with a
  * `paletteKey`, before the graph editor can open — there is no local "unsaved new definition"
  * editing mode. Otherwise it fetches the definition + node registry and hands them to
- * `WorkflowStudioEditor` once both are ready; `<Skeleton>` shapes match the three-column editor
- * layout (rail · canvas · inspector) while loading (rule 10).
+ * `WorkflowStudioEditor` once both are ready; `<Skeleton>` shapes match the canvas-first editor
+ * layout (palette and inspector panes floating over the canvas) while loading (rule 10).
  *
  * No `StatusFooter` here, deliberately. The screen's real frame — `ScreenTemplate` with
  * `contentMode="fill"` and the graph's status bar — belongs to `WorkflowStudioEditor`, which this
@@ -54,15 +54,26 @@ const RESOLVER_PAGE_SIZE = 100;
 function EditorLoadingSkeleton() {
   return (
     <div aria-hidden="true">
-      <ScreenTemplate contentMode="fill" header={<Skeleton className="h-8 w-64" />}>
+      <ScreenTemplate
+        contentMode="fill"
+        header={<Skeleton className="h-14 w-full max-w-xl" />}
+        tabs={
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-24" />
+          </div>
+        }
+      >
         {/*
-          Mirrors the editor's own reflow gate AND its column widths so the skeleton has the
-          loaded shape at every zoom level, not just on a wide desktop (rule 10 §3).
+          Mirrors the Composer: a canvas that fills the region with the palette and inspector panes
+          floating over its left and right edges at `md`+, and stacked sections below it, so the
+          skeleton has the loaded shape at every zoom level (rule 10 §3).
         */}
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 [@media(min-width:64rem)_and_(min-height:32rem)]:grid-cols-[260px_minmax(0,1fr)_360px]">
-          <Skeleton className="h-40 w-full [@media(min-width:64rem)_and_(min-height:32rem)]:h-full" />
-          <Skeleton className="h-[26rem] w-full [@media(min-width:64rem)_and_(min-height:32rem)]:h-full" />
-          <Skeleton className="h-40 w-full [@media(min-width:64rem)_and_(min-height:32rem)]:h-full" />
+        <div className="relative flex min-h-0 flex-1 flex-col gap-4 md:block">
+          <Skeleton className="h-40 w-full md:absolute md:top-3 md:bottom-3 md:left-3 md:h-auto md:w-64" />
+          <Skeleton className="h-[26rem] w-full md:h-full" />
+          <Skeleton className="h-40 w-full md:absolute md:top-3 md:right-3 md:bottom-3 md:h-auto md:w-80" />
         </div>
       </ScreenTemplate>
     </div>

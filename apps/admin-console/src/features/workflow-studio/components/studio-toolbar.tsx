@@ -14,8 +14,9 @@
  * behalf. Adding is the palette's `<button>`; deleting is also the Delete key. Do not remove this
  * menu without replacing it — it is the ONLY non-drag path for "connect" and "move into a loop".
  *
- * Publish stays disabled until the SERVER report is clean (`publishBlockedReason`) — the client
- * validator is never the gate.
+ * TASK-1036 §3.6 — Validate and Publish moved to the studio header (`./header`), which owns the
+ * lifecycle strip; "Test" now switches to the Test tab (the sandbox panel it used to open in the
+ * inspector's Run tab is gone).
  */
 import {
   AlertDialog,
@@ -101,11 +102,6 @@ export interface StudioToolbarProps {
   canDiscard: boolean;
   onSave: () => void;
   onDiscard: () => void;
-  onValidate: () => void;
-  validating?: boolean;
-  onPublish: () => void;
-  publishDisabledReason: string | null;
-  publishing?: boolean;
   readOnly?: boolean;
   canUndo: boolean;
   canRedo: boolean;
@@ -114,8 +110,8 @@ export interface StudioToolbarProps {
   /** Opens the inspector's Problems tab; the count is the server report's finding total. */
   problemCount: number;
   onOpenProblems: () => void;
-  /** Opens the inspector's Run tab — the in-studio sandbox that replaced the Workbench deep link. */
-  onOpenRun: () => void;
+  /** Switches to the Test tab — the in-studio run surface that replaced the Workbench deep link. */
+  onOpenTest: () => void;
   /** TASK-864 B1 — arrange the graph (layered, left to right). Absent = no button. */
   onAutoLayout?: () => void;
   /** TASK-864 B1 — hand the caller the graph JSON to save/copy. Absent = no button. */
@@ -142,11 +138,6 @@ export function StudioToolbar({
   canDiscard,
   onSave,
   onDiscard,
-  onValidate,
-  validating,
-  onPublish,
-  publishDisabledReason,
-  publishing,
   readOnly,
   canUndo,
   canRedo,
@@ -154,7 +145,7 @@ export function StudioToolbar({
   onRedo,
   problemCount,
   onOpenProblems,
-  onOpenRun,
+  onOpenTest,
   onAutoLayout,
   onExport,
   onImport,
@@ -346,27 +337,12 @@ export function StudioToolbar({
           Problems
           {problemCount > 0 ? <Badge variant="secondary">{problemCount}</Badge> : null}
         </Button>
-        {/* TASK-893 OD-3 — testing moved INTO the studio. This opens the inspector's Run tab
-            (fixture picker + live progress + per-node overlays); it used to be a deep link out to
-            `/playground/workbench`, which is now a redirect stub back here. Offered on read-only
+        {/* TASK-1036 §3.6 — testing is its own TAB now: this switches to it. Offered on read-only
             versions too — a published graph is the one most worth running, and a run is a read. */}
-        <Button type="button" variant="outline" size="sm" onClick={onOpenRun} title="Run this workflow against a fixture in the sandbox">
+        <Button type="button" variant="outline" size="sm" onClick={onOpenTest} title="Open the Test tab to run this workflow">
           <IconFlask aria-hidden="true" />
           Test
         </Button>
-        {!readOnly ? (
-          <>
-            <Button type="button" variant="outline" size="sm" onClick={onValidate} disabled={validating}>
-              {validating ? 'Validating…' : 'Validate'}
-            </Button>
-            <span title={publishDisabledReason ?? undefined}>
-              <Button type="button" size="sm" onClick={onPublish} disabled={publishDisabledReason !== null || publishing}>
-                {publishing ? 'Publishing…' : 'Publish'}
-              </Button>
-            </span>
-            {publishDisabledReason ? <span className="text-muted-foreground text-xs">{publishDisabledReason}</span> : null}
-          </>
-        ) : null}
       </div>
     </div>
   );

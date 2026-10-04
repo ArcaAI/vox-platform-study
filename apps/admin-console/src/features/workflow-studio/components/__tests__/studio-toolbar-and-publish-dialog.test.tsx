@@ -20,16 +20,13 @@ function toolbarProps(overrides: Partial<StudioToolbarProps> = {}): StudioToolba
     canDiscard: false,
     onSave: vi.fn(),
     onDiscard: vi.fn(),
-    onValidate: vi.fn(),
-    onPublish: vi.fn(),
-    publishDisabledReason: null,
     canUndo: false,
     canRedo: false,
     onUndo: vi.fn(),
     onRedo: vi.fn(),
     problemCount: 0,
     onOpenProblems: vi.fn(),
-    onOpenRun: vi.fn(),
+    onOpenTest: vi.fn(),
     ...overrides,
   };
 }
@@ -53,16 +50,10 @@ function nodeCommands(overrides: Partial<StudioNodeCommands> = {}): StudioNodeCo
 afterEach(cleanup);
 
 describe('StudioToolbar', () => {
-  it('disables Publish with a visible reason while the report is dirty/blocked', () => {
-    render(<StudioToolbar {...toolbarProps({ publishDisabledReason: 'Run Validate before publishing.' })} />);
-    const publish = screen.getByRole('button', { name: 'Publish' }) as HTMLButtonElement;
-    expect(publish.disabled).toBe(true);
-    expect(screen.getByText('Run Validate before publishing.')).toBeTruthy();
-  });
-
-  it('enables Publish once the report is clean', () => {
-    render(<StudioToolbar {...toolbarProps({ saveState: 'saved' })} />);
-    expect((screen.getByRole('button', { name: 'Publish' }) as HTMLButtonElement).disabled).toBe(false);
+  it('carries no Validate or Publish — those moved to the studio header (TASK-1036 §3.6)', () => {
+    render(<StudioToolbar {...toolbarProps()} />);
+    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Validate' })).toBeNull();
   });
 
   it('offers no view-mode toggle — there is one canvas and no list (OD-1)', () => {
@@ -73,7 +64,7 @@ describe('StudioToolbar', () => {
 
   it('0 axe violations', async () => {
     const { container } = render(
-      <StudioToolbar {...toolbarProps({ saveState: 'conflict', canSave: true, canDiscard: true, problemCount: 3, publishDisabledReason: 'Resolve every error before publishing.', nodeCommands: nodeCommands() })} />,
+      <StudioToolbar {...toolbarProps({ saveState: 'conflict', canSave: true, canDiscard: true, problemCount: 3, nodeCommands: nodeCommands() })} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -122,16 +113,16 @@ describe('StudioToolbar — rail openers', () => {
     expect(onOpenProblems).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the Run tab in the studio instead of linking out to the Workbench (OD-3)', () => {
-    const onOpenRun = vi.fn();
-    render(<StudioToolbar {...toolbarProps({ onOpenRun })} />);
+  it('switches to the Test tab instead of linking out to the Workbench (OD-3)', () => {
+    const onOpenTest = vi.fn();
+    render(<StudioToolbar {...toolbarProps({ onOpenTest })} />);
     expect(screen.queryByRole('link', { name: /workbench/i })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
-    expect(onOpenRun).toHaveBeenCalledTimes(1);
+    expect(onOpenTest).toHaveBeenCalledTimes(1);
   });
 
   it('offers Test on a read-only (published) version too — running a graph is a read', () => {
-    render(<StudioToolbar {...toolbarProps({ readOnly: true, publishDisabledReason: 'This version is already published.' })} />);
+    render(<StudioToolbar {...toolbarProps({ readOnly: true })} />);
     expect(screen.getByRole('button', { name: /^test$/i })).toBeTruthy();
   });
 });
@@ -157,7 +148,7 @@ describe('StudioToolbar — node commands are the keyboard path (WCAG 2.5.7)', (
   });
 
   it('is not offered on a read-only version, where no mutation is possible at all', () => {
-    render(<StudioToolbar {...toolbarProps({ readOnly: true, nodeCommands: nodeCommands(), publishDisabledReason: 'This version is already published.' })} />);
+    render(<StudioToolbar {...toolbarProps({ readOnly: true, nodeCommands: nodeCommands() })} />);
     expect(screen.queryByRole('button', { name: /node actions/i })).toBeNull();
   });
 });
@@ -273,7 +264,7 @@ describe('StudioToolbar undo/redo (UX pass)', () => {
   it('hides undo/redo, Save and Discard on a read-only (published) definition', () => {
     render(
       <StudioToolbar
-        {...toolbarProps({ readOnly: true, canUndo: true, canRedo: true, canSave: true, canDiscard: true, publishDisabledReason: 'This version is already published.' })}
+        {...toolbarProps({ readOnly: true, canUndo: true, canRedo: true, canSave: true, canDiscard: true })}
       />,
     );
     expect(screen.queryByRole('button', { name: /^Undo/ })).toBeNull();
