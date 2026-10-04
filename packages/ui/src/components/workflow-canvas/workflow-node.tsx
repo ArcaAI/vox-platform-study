@@ -66,7 +66,17 @@ function portTitle(port: WorkflowCanvasPort): string {
  * round shape, so without words the three are indistinguishable. Short on purpose (a node is
  * narrow); the full type stays in the tooltip and in the screen-reader text.
  */
-const PORT_TYPE_SHORT: Record<string, string> = { text: 'text', number: 'num', boolean: 'bool', date: 'date', json: 'data', audio: 'audio', file: 'file', document: 'doc', any: 'any' };
+const PORT_TYPE_SHORT: Record<string, string> = {
+  text: 'text',
+  number: 'num',
+  boolean: 'bool',
+  date: 'date',
+  json: 'data',
+  audio: 'audio',
+  file: 'file',
+  document: 'doc',
+  any: 'any',
+};
 export function portTypeShort(type: string): string {
   if (type.startsWith('list<')) return 'list';
   return PORT_TYPE_SHORT[type] ?? type;

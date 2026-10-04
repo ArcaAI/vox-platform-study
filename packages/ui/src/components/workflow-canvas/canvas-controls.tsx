@@ -20,5 +20,13 @@ export function CanvasControls({
   /** TASK-1036 R-C #1 — margins that move the panel clear of whatever floats over the canvas. */
   style?: CSSProperties;
 }) {
-  return <Controls position="bottom-left" showInteractive={showInteractive} fitViewOptions={fitViewOptions} style={style} className="workflow-canvas-controls" />;
+  return (
+    <Controls
+      position="bottom-left"
+      showInteractive={showInteractive}
+      fitViewOptions={fitViewOptions}
+      style={style}
+      className="workflow-canvas-controls"
+    />
+  );
 }

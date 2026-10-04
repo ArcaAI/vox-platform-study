@@ -219,7 +219,9 @@ const FIT_GAP = { top: 56, left: 56, right: 32, bottom: 32 } as const;
  * leave free. Pixel padding per side (React Flow 12 accepts `{ top, right, bottom, left }` with
  * units); without insets the old proportional `0.2` stands.
  */
-export function fitViewPaddingFor(insets: WorkflowCanvasInsets | undefined): number | { top: `${number}px`; right: `${number}px`; bottom: `${number}px`; left: `${number}px` } {
+export function fitViewPaddingFor(
+  insets: WorkflowCanvasInsets | undefined,
+): number | { top: `${number}px`; right: `${number}px`; bottom: `${number}px`; left: `${number}px` } {
   if (!insets) return 0.2;
   const px = (value: number): `${number}px` => `${Math.max(0, Math.round(value))}px`;
   return {
@@ -298,8 +300,14 @@ export function WorkflowCanvas({
   React.useEffect(() => {
     fitViewOptionsRef.current = fitViewOptions;
   }, [fitViewOptions]);
-  const controlsStyle = React.useMemo(() => ({ marginLeft: PANEL_MARGIN + insetLeft, marginBottom: PANEL_MARGIN + insetBottom }), [insetLeft, insetBottom]);
-  const minimapStyle = React.useMemo(() => ({ marginRight: PANEL_MARGIN + insetRight, marginBottom: PANEL_MARGIN + insetBottom }), [insetRight, insetBottom]);
+  const controlsStyle = React.useMemo(
+    () => ({ marginLeft: PANEL_MARGIN + insetLeft, marginBottom: PANEL_MARGIN + insetBottom }),
+    [insetLeft, insetBottom],
+  );
+  const minimapStyle = React.useMemo(
+    () => ({ marginRight: PANEL_MARGIN + insetRight, marginBottom: PANEL_MARGIN + insetBottom }),
+    [insetRight, insetBottom],
+  );
   // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
   // removed nodes are pruned so a long editing session cannot grow this unboundedly.
   const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
@@ -583,7 +591,14 @@ export function WorkflowCanvas({
           <Background variant={BackgroundVariant.Dots} gap={16} />
           <CanvasControls showInteractive={!readOnly} fitViewOptions={fitViewOptions} style={controlsStyle} />
           {minimap && nodes.length > 0 ? (
-            <MiniMap position="bottom-right" pannable zoomable={zoomOnWheel} style={minimapStyle} className="workflow-canvas-minimap" aria-label="Graph overview" />
+            <MiniMap
+              position="bottom-right"
+              pannable
+              zoomable={zoomOnWheel}
+              style={minimapStyle}
+              className="workflow-canvas-minimap"
+              aria-label="Graph overview"
+            />
           ) : null}
         </ReactFlow>
       </WorkflowEdgeChromeProvider>
