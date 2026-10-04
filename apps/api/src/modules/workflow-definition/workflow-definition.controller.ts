@@ -18,6 +18,7 @@ import {
   WorkflowDefinitionBundle,
   WorkflowDefinitionResponse,
   WorkflowSyncResponse,
+  WorkflowTagSuggestionResponse,
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Optional, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiProperty } from '@nestjs/swagger';
@@ -122,6 +123,30 @@ export class WorkflowDefinitionController {
   @ApiResponse({ status: 200, type: [WorkflowDefinitionResponse] })
   async fetchTemplates(): Promise<WorkflowDefinitionResponse[]> {
     return this.workflowDefinitionService.listTemplates();
+  }
+
+  // TASK-1036 — tag autocomplete for the management screen's `TagsField`. Static path, so it is
+  // declared BEFORE the `:id` param routes. Inherits the class-level `manage:WorkflowDefinition`
+  // posture and reads ONLY the caller tenant's definitions (SYSTEM rows are never suggested).
+  @Get('tags')
+  @ApiOperation({
+    summary: 'Distinct workflow tags with usage counts (autocomplete)',
+    description:
+      "Distinct tags over the caller tenant's non-deleted workflow definitions, normalised to lower case and counted per " +
+      'workflow (slug), ranked by that count (descending) then alphabetically. `q` is a case-insensitive substring filter; ' +
+      '`limit` defaults to 20 and is capped at 100.',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Case-insensitive substring filter' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max suggestions (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Tag suggestions', type: [WorkflowTagSuggestionResponse] })
+  @ApiResponse({ status: 400, description: 'No tenant context on the request' })
+  @ApiResponse({ status: 403, description: 'Caller lacks manage:WorkflowDefinition' })
+  async listTags(@Query() queryParams: { q?: string; limit?: string }): Promise<WorkflowTagSuggestionResponse[]> {
+    const limit = Number(queryParams.limit);
+    return this.workflowDefinitionService.listTagSuggestions({
+      q: queryParams.q,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+    });
   }
 
   @Post('import')

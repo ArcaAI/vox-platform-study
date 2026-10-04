@@ -11,6 +11,7 @@ import {
   PromptTemplateRepository,
   PromptVersionFactory,
   PromptVersionRepository,
+  ResourceStatusType,
   ResourceType,
   SysEventType,
   SYSTEM_TENANT_ID,
@@ -106,6 +107,7 @@ import {
   WorkflowNodeRegistryResponse,
   WorkflowSyncResponse,
   WorkflowSyncTargetResponse,
+  WorkflowTagSuggestionResponse,
 } from './dto';
 import { collectGenerationBindings, type NodeGenerationBindingRef } from './node-generation-binding';
 import { agentGraphFindings, agentNodesNeedingFacts, agentSlugOf, type GraphAgentFacts } from './agent-graph-findings';
@@ -191,6 +193,9 @@ function asPlainObject(value: unknown): Record<string, unknown> | undefined {
  *  `WORKFLOW_NODE_REGISTRY`'s `critical`/`externalWrite` fields.
  */
 const COMPILER_VERSION = '0.1.0';
+/** TASK-1036 — tag autocomplete bounds (the prompt and agent tag routes use the same pair). */
+const TAG_SUGGESTION_DEFAULT_LIMIT = 20;
+const TAG_SUGGESTION_MAX_LIMIT = 100;
 const RULE_SET_VERSION = 1;
 const DEFAULT_CAPS = { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 };
 
@@ -1554,6 +1559,38 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   /** the SYSTEM template library, read-only. */
+  async listTagSuggestions(query: { q?: string; limit?: number }): Promise<WorkflowTagSuggestionResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant context required');
+
+    const limit = query.limit && query.limit > 0 ? Math.min(Math.floor(query.limit), TAG_SUGGESTION_MAX_LIMIT) : TAG_SUGGESTION_DEFAULT_LIMIT;
+    const needle = query.q?.trim().toLowerCase();
+
+    // Explicit caller-tenant pin on top of the tenant-scope extension: suggestions are THIS
+    // tenant's vocabulary, never the SYSTEM library's.
+    const qb = this.workflowDefinitionRepository.$();
+    qb.Where({ tenantId });
+    qb.Where({ resourceStatus: { not: ResourceStatusType.DELETED } });
+    const rows = (await qb.Select(['slug', 'tags']).ToList()) as Array<{ slug?: string | null; tags?: Array<string | null> | null }>;
+
+    // Counted per LINEAGE: every version of a slug repeats its tags, and a tag on ten versions of
+    // one workflow is one workflow's tag.
+    const slugsByTag = new Map<string, Set<string>>();
+    for (const row of rows) {
+      for (const raw of row.tags ?? []) {
+        const tag = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+        if (!tag || (needle && !tag.includes(needle))) continue;
+        const slugs = slugsByTag.get(tag) ?? new Set<string>();
+        slugs.add(row.slug ?? '');
+        slugsByTag.set(tag, slugs);
+      }
+    }
+    return [...slugsByTag.entries()]
+      .map(([tag, slugs]) => ({ tag, count: slugs.size }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+      .slice(0, limit);
+  }
+
   async listTemplates(): Promise<WorkflowDefinitionResponse[]> {
     const templates = await this.workflowDefinitionRepository.findSystemTemplates(this.databaseService.baseClient);
 

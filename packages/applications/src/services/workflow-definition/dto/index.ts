@@ -12,3 +12,4 @@ export * from './sync-workflow-definition.dto';
 export * from './promote-to-system.dto';
 export * from './list-workflow-definitions.query';
 export * from './workflow-lineage.response';
+export * from './workflow-tag-suggestion.response';
