@@ -2,6 +2,7 @@
   "$comment": "TASK-1038 R6 / TASK-1036 OD-23, OD-24, OD-33 (README §8.7, §10.3) — run protocol v2: ONE envelope `{ seq, runId, type, ts, nodeId?, data }` for SSE and WS. `visibility` is the public/admin split (business-plane callers receive only `public`), `nodeScope` says which types MUST carry `nodeId` and which must NOT. `examples` is one VALID event per type (plus a few extra shapes); every one must pass `runEventProblems` with no problem. `invalid` must each produce at least one problem whose text contains `problem`. `sse` pins the exact frame bytes (`toSseFrame`: `event:`, `id: <seq>`, `data: <compact JSON of the whole envelope>`, blank line); the JSON is compact with keys in envelope order. `run.completed.data.result` is EXACTLY `{ kind: \"inline\", value }` or `{ kind: \"ref\", bucket, key, sizeBytes, sha256 }` (lanes A1/A2). TypeScript: `packages/async-contract/src/__tests__/run-protocol.test.ts`; the Python mirror (wave B, B1) must read this file too.",
   "protocolVersion": 2,
   "header": "x-hope-run-protocol",
+  "query": "protocol",
   "inlineResultMaxBytes": 65536,
   "visibility": {
     "run.started": "public",

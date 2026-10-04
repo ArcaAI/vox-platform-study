@@ -14,6 +14,7 @@ import {
   RUN_EVENT_TYPES,
   RUN_EVENT_VISIBILITY,
   RUN_PROTOCOL_HEADER,
+  RUN_PROTOCOL_QUERY_PARAM,
   RUN_PROTOCOL_VERSION,
   RUN_RESULT_INLINE_MAX_BYTES,
   RUN_RESYNC_REASONS,
@@ -29,6 +30,7 @@ import {
   buildRunAppend,
   parseStoredRunEvent,
   planRunResume,
+  selectRunProtocol,
   isPublicRunEvent,
   parseResumeCursor,
   parseRunEvent,
@@ -41,6 +43,7 @@ import {
 interface Fixture {
   protocolVersion: number;
   header: string;
+  query: string;
   inlineResultMaxBytes: number;
   visibility: Record<string, string>;
   nodeScope: Record<string, string>;
@@ -338,5 +341,29 @@ describe('ONE sequencer — the stored shape every producer appends through (F2 
       expect(planRunResume({ after: 19, oldestSeq: null, lastSeq: 19 })).toEqual({ kind: 'replay', after: 19 });
       expect(planRunResume({ after: 12, oldestSeq: null, lastSeq: 19 })).toEqual({ kind: 'resync', reason: 'gap' });
     });
+  });
+});
+
+describe('protocol selection — header OR query, because EventSource cannot set headers (F2 fix 3)', () => {
+  it('the query parameter agrees with the fixture', () => {
+    expect(RUN_PROTOCOL_QUERY_PARAM).toBe(fixture.query);
+    expect(RUN_PROTOCOL_QUERY_PARAM).toBe('protocol');
+  });
+
+  it('`x-hope-run-protocol: 2` or `?protocol=2` selects v2; neither selects the legacy shapes', () => {
+    expect(selectRunProtocol({ header: '2' })).toEqual({ version: 2 });
+    expect(selectRunProtocol({ query: '2' })).toEqual({ version: 2 });
+    expect(selectRunProtocol({})).toEqual({ version: 'legacy' });
+    expect(selectRunProtocol({ header: '', query: null })).toEqual({ version: 'legacy' });
+  });
+
+  it('the header wins over the query', () => {
+    expect(selectRunProtocol({ header: '2', query: '9' })).toEqual({ version: 2 });
+  });
+
+  it('an unsupported version is refused, never downgraded', () => {
+    for (const bad of ['1', '3', 'v2', ' 2', 'legacy']) {
+      expect(selectRunProtocol({ query: bad }), bad).toEqual({ problems: [expect.stringContaining('protocol')] });
+    }
   });
 });

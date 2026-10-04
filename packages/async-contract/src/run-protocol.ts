@@ -9,9 +9,10 @@
  * { seq, runId, type, ts, nodeId?, data }
  * ```
  *
- * The SIX divergent frame shapes that exist today stay readable for one release behind the
- * protocol header {@link RUN_PROTOCOL_HEADER} (`2` selects this protocol); the SDKs move to it in
- * 5.0.0 (OD-23).
+ * The SIX divergent frame shapes that exist today stay readable for one release: a stream
+ * request selects this protocol with the header {@link RUN_PROTOCOL_HEADER} `: 2` or, where a
+ * header cannot be set (browser `EventSource` / `WebSocket`), the query `?protocol=2`
+ * ({@link selectRunProtocol}). The SDKs move to it in 5.0.0 (OD-23).
  *
  * ## Audiences
  *
@@ -80,6 +81,29 @@ export const RUN_PROTOCOL_VERSION = 2;
 
 /** Request header selecting the protocol (`x-hope-run-protocol: 2`); absent ⇒ the legacy shapes for one release (OD-23). */
 export const RUN_PROTOCOL_HEADER = 'x-hope-run-protocol';
+
+/**
+ * Query parameter selecting the protocol (`?protocol=2`). A browser `EventSource` cannot set a
+ * header, and neither can a browser `WebSocket`, so both stream routes accept this too
+ * ({@link selectRunProtocol}).
+ */
+export const RUN_PROTOCOL_QUERY_PARAM = 'protocol';
+
+/**
+ * Which frame shapes a stream request selected: the {@link RUN_PROTOCOL_HEADER} when present
+ * (non-empty), else the {@link RUN_PROTOCOL_QUERY_PARAM}, else `legacy` (one release, OD-23). Any
+ * value other than `"2"` is refused (the route answers 400) — never silently downgraded to the
+ * legacy shapes, which a v2 client cannot parse.
+ */
+export function selectRunProtocol(input: {
+  readonly header?: string | null;
+  readonly query?: string | null;
+}): { readonly version: typeof RUN_PROTOCOL_VERSION | 'legacy' } | { readonly problems: readonly string[] } {
+  const raw = [input.header, input.query].find((candidate) => typeof candidate === 'string' && candidate.length > 0);
+  if (raw === undefined || raw === null) return { version: 'legacy' };
+  if (raw === String(RUN_PROTOCOL_VERSION)) return { version: RUN_PROTOCOL_VERSION };
+  return { problems: [`unsupported run protocol ${JSON.stringify(raw)} (supported: ${RUN_PROTOCOL_VERSION})`] };
+}
 
 /** A result whose JSON is at most this many bytes rides inline on `run.completed`; larger is a `ref` (D-I). */
 export const RUN_RESULT_INLINE_MAX_BYTES = 64 * 1024;
