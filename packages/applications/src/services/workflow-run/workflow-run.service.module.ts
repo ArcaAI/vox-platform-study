@@ -7,6 +7,7 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
 import { WorkflowRunService } from './workflow-run.service';
 import { WorkflowRunResultRetentionService } from './workflow-run-result-retention.service';
 import { IWorkflowRunService } from './IWorkflowRunService';
+import { WorkflowRunTraceAccessService } from './run-trace-access';
 
 /**
  * WorkflowRunService DI module.
@@ -33,6 +34,8 @@ import { IWorkflowRunService } from './IWorkflowRunService';
     WorkflowRunService,
     TenantSettingsService,
     WorkflowRunResultRetentionService,
+    // TASK-1038 B3a — the admin trace's audience check.
+    WorkflowRunTraceAccessService,
     {
       provide: IWorkflowRunService,
       // useExisting, not useClass — useClass would construct a second
@@ -40,6 +43,6 @@ import { IWorkflowRunService } from './IWorkflowRunService';
       useExisting: WorkflowRunService,
     },
   ],
-  exports: [IWorkflowRunService, WorkflowRunService],
+  exports: [IWorkflowRunService, WorkflowRunService, WorkflowRunTraceAccessService],
 })
 export class WorkflowRunServiceModule {}
