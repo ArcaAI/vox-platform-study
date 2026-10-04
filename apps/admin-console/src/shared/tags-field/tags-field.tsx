@@ -18,6 +18,13 @@ export interface TagsFieldProps {
   /** Helper text under the field (replaced by the error while one is showing). */
   description?: ReactNode;
   placeholder?: string;
+  /**
+   * TASK-1036 C5 — where suggestions come from; defaults to the Hope Prompt tag route. The agent
+   * editor passes `admin/agents/tags` so it autocompletes over agent tags, not prompt tags.
+   */
+  suggestionsPath?: string;
+  /** Replaces the Hope Prompt grammar (`validateTag`) — agent tags are `key:value` only. `null` = valid. */
+  validate?: (tag: string) => string | null;
 }
 
 const SUGGESTION_DEBOUNCE_MS = 300;
@@ -31,7 +38,16 @@ const SUGGESTION_DEBOUNCE_MS = 300;
  * an empty draft removes the last chip; Escape closes the list. A tag that breaks the grammar is
  * refused with the rule spelled out under the field — never silently rewritten.
  */
-export function TagsField({ id, value, onChange, label = 'Tags', description, placeholder = 'Add a tag — e.g. dept:cardiology' }: TagsFieldProps) {
+export function TagsField({
+  id,
+  value,
+  onChange,
+  label = 'Tags',
+  description,
+  placeholder = 'Add a tag — e.g. dept:cardiology',
+  suggestionsPath,
+  validate = validateTag,
+}: TagsFieldProps) {
   const messageId = `${id}-message`;
   const [draft, setDraft] = useState('');
   const [open, setOpen] = useState(false);
@@ -48,11 +64,11 @@ export function TagsField({ id, value, onChange, label = 'Tags', description, pl
     return () => clearTimeout(timer);
   }, [draft]);
 
-  const suggestionsQuery = useTagSuggestions(debouncedDraft, open);
+  const suggestionsQuery = useTagSuggestions(debouncedDraft, open, suggestionsPath);
   const suggestions = (suggestionsQuery.data ?? []).filter((suggestion) => !value.includes(suggestion.tag));
 
   const trimmedDraft = draft.trim();
-  const liveError = trimmedDraft ? validateTag(trimmedDraft) : null;
+  const liveError = trimmedDraft ? validate(trimmedDraft) : null;
   const error = liveError ?? attemptError;
 
   /** Adds every acceptable tag in `raw`; returns what could not be added (invalid ones, to keep in the draft). */
@@ -64,7 +80,7 @@ export function TagsField({ id, value, onChange, label = 'Tags', description, pl
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean)) {
-      const problem = validateTag(tag);
+      const problem = validate(tag);
       if (problem) {
         rejected.push(tag);
       } else if (next.includes(tag)) {

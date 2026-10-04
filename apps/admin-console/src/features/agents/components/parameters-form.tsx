@@ -2,7 +2,7 @@
 
 import { useId } from 'react';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
+import { AGENT_PARAMETER_SCHEMAS, platformManagedPaths } from '@arcaai/workflow-contract';
 import { Alert, AlertDescription, AlertTitle, Field, FieldContent, FieldDescription, FieldLabel } from '@arcaai/ui';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -520,9 +520,41 @@ function asrInheritHints(profile: CatalogueAsrProfile | null): Record<string, st
  * and shows the effective value the agent would inherit for every decode field it leaves
  * unset (OD-3: agent → model profile → engine default).
  */
-export function ParametersForm({ task, value, onChange, modelId }: { task: AgentTask; value: Value; onChange: (next: Value) => void; modelId?: string }) {
+/**
+ * TASK-1036 C5 (W2) — `scope="platform"` keeps ONLY the leaves the contract marks platform-managed
+ * (and the containers that still hold one). It is the body of a super admin's collapsed "Platform
+ * tuning" section; the tenant-editable knobs are the simple editor's and never repeat here.
+ */
+function pruneToPaths(schema: Schema, keep: ReadonlySet<string>, prefix: readonly string[] = []): Schema {
+  const next: Record<string, Schema> = {};
+  for (const [name, child] of Object.entries(props(schema))) {
+    const path = [...prefix, name];
+    if (child.type === 'object' && Object.keys(props(child)).length > 0) {
+      const pruned = pruneToPaths(child, keep, path);
+      if (Object.keys(props(pruned)).length > 0) next[name] = pruned;
+    } else if (keep.has(path.join('.'))) {
+      next[name] = child;
+    }
+  }
+  return { ...schema, properties: next };
+}
+
+export function ParametersForm({
+  task,
+  value,
+  onChange,
+  modelId,
+  scope = 'all',
+}: {
+  task: AgentTask;
+  value: Value;
+  onChange: (next: Value) => void;
+  modelId?: string;
+  scope?: 'all' | 'platform';
+}) {
   const idPrefix = useId();
-  const schema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
+  const fullSchema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
+  const schema = scope === 'platform' ? pruneToPaths(fullSchema, new Set(platformManagedPaths(task))) : fullSchema;
   const isSpeechToText = task === 'SPEECH_TO_TEXT';
   const isTextGeneration = task === 'TEXT_GENERATION';
   // Called unconditionally (rules of hooks) — `task` is a prop and can change
