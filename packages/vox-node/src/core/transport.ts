@@ -79,6 +79,13 @@ export interface TransportConfig {
   maxDelayMs?: number;
   /** Injectable for tests; defaults to the global `fetch`. Never hit the real network from a unit test. */
   fetch?: typeof fetch;
+  /**
+   * The `fetch` for requests to hosts that are NOT the gateway — a signed result URL (TASK-1039).
+   * Defaults to {@link fetch}. `HopeClient` sets it to the RAW implementation: {@link fetch} may be
+   * the service-account wrapper, whose 401 recovery (re-exchange the token, retry) is a gateway
+   * concern and has no business running against an object-storage host.
+   */
+  rawFetch?: typeof fetch;
   /** Overrides the computed `arcaai/vox-node/<version>` User-Agent value. */
   userAgent?: string;
   /** Injectable RNG for `executeWithRetry`'s backoff jitter. Defaults to `Math.random`. */
@@ -201,6 +208,18 @@ export class Transport {
    */
   get defaultTimeoutMs(): number | undefined {
     return this.config.timeoutMs;
+  }
+
+  /**
+   * `fetch` a URL that is NOT the gateway — no credentials, no retry, no error mapping.
+   *
+   * For ONE caller: the signed object-storage URL a large run result is served from. It carries its
+   * own authorisation in the query string, and must never receive this client's `X-API-Key`,
+   * bearer or service-account token.
+   */
+  async fetchExternal(url: string, init: { signal?: AbortSignal } = {}): Promise<Response> {
+    const impl = this.config.rawFetch ?? this.fetchImpl;
+    return impl(url, { method: 'GET', signal: init.signal });
   }
 
   /** Perform one HTTP attempt (no retry) and return the raw `Response`. Throws {@link APIConnectionError}/{@link APITimeoutError} on a connect-phase or timeout failure. */

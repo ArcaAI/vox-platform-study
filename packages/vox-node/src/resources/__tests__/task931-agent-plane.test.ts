@@ -120,7 +120,7 @@ describe('TASK-931 — a service account reaches the workflow invocation plane',
     const hope = serviceAccountClient(fetch);
 
     await hope.workflows.list();
-    await hope.workflows.run('triage', { input: { note: 'n' } });
+    await hope.workflows.start('triage', { input: { note: 'n' } });
     await hope.workflows.getRun('triage', 'run-1');
 
     expect(calls.map((c) => c.url)).toEqual([

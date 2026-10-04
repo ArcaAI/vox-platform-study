@@ -40,7 +40,7 @@ export { SttResource } from './stt';
 export type { ContextSchemaDiscoveryOptions } from './tenants';
 export { TenantsResource } from './tenants';
 
-export type { StartRunOptions, StreamRunOptions } from './workflows';
+export type { RunStartOptions, StartRunOptions, StreamRunOptions } from './workflows';
 export { ConsultationWorkflowsResource, WORKFLOW_PLANE_ROUTES, WorkflowReviewsResource, WorkflowsResource } from './workflows';
 
 export type { InvokeAgentOptions } from './agents';

@@ -44,6 +44,7 @@ export type {
   JobRequestOptions,
   LiveSummaryHandlers,
   RecordingRequestOptions,
+  RunStartOptions,
   StartRunOptions,
   StreamRunOptions,
   SttRequestOptions,
@@ -159,11 +160,45 @@ export {
   QuotaExceededError,
   RateLimitError,
   ReservedRunIdentityError,
+  RunFailedError,
+  RunResultIntegrityError,
+  RunStreamInterruptedError,
   SocketUnavailableError,
   TranscriptionJobTimeoutError,
   VersionConflictError,
 } from './core/errors';
 export type { HopeAPIErrorInit, RateLimitErrorInit, VersionConflictErrorInit } from './core/errors';
+
+/**
+ * The run handle (TASK-1039): what `hope.workflows.run()` and `hope.agents.run()` return, and the
+ * protocol-v2 event types it yields. The handle class is exported as a VALUE so an integrator can
+ * `instanceof` it and type a field with it; its constructor is not a public entry point — obtain
+ * one from `run()` or `attach()`.
+ */
+export { RunHandle } from './core/run-handle';
+export type {
+  RunCancelOptions,
+  RunCancelResult,
+  RunEvent,
+  RunEventsOptions,
+  RunHandleTuning,
+  RunOutcome,
+  RunResultOptions,
+  RunTextOptions,
+  RunWaitOptions,
+} from './core/run-handle';
+export { RUN_PROTOCOL_VERSION } from './core/run-protocol';
+export type {
+  RunError,
+  RunEventDataMap,
+  RunEventType,
+  RunEventV2,
+  RunResult,
+  RunResyncReason,
+  RunSnapshot,
+  RunStatus,
+  RunTokens,
+} from './core/run-protocol';
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
