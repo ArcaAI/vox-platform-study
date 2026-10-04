@@ -14417,6 +14417,35 @@
         ],
         "type": "object"
       },
+      "MediaUploadResponse": {
+        "properties": {
+          "mediaId": {
+            "description": "The Media id a run references (`attachments: [{ mediaId }]`, a DOCUMENT/IMAGE kind, an audio blob kind).",
+            "type": "string"
+          },
+          "mime": {
+            "description": "The stored MIME type, normalised (lower-case; `image/jpg` → `image/jpeg`).",
+            "example": "application/pdf",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 of the stored bytes, lower-case hex.",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Size of the stored bytes.",
+            "example": 20480,
+            "type": "number"
+          }
+        },
+        "required": [
+          "mediaId",
+          "mime",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "MlflowStatusResponse": {
         "properties": {
           "baseUrl": {
@@ -67168,7 +67197,7 @@
     },
     "/api/v1/agents/{slug}/runs/{runId}/events": {
       "get": {
-        "description": "Every frame is `event: <type>` / `id: <seq>` / `data: <envelope>`; the step is `nodeId: \"agent\"`. Resume with `Last-Event-ID` (or `?after=<seq>`); a cursor the server can no longer serve is answered with `run.resync` and a snapshot. The stream ends after the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Every frame is `event: <type>` / `id: <seq>` / `data: <envelope>`; the step is `nodeId: \"agent\"`. Resume with `Last-Event-ID` (or `?after=<seq>`); a cursor the server can no longer serve is answered with `run.resync` and a snapshot. The stream ends after the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`. A client that cannot send its credential (a browser `EventSource`) opens it with a single-use `?ticket=` from `POST …/runs/{runId}/stream-ticket`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_runEvents",
         "parameters": [
           {
@@ -67300,6 +67329,77 @@
           }
         ],
         "summary": "The output a finished agent run produced",
+        "tags": [
+          "agents"
+        ],
+        "x-hope-abilities": [],
+        "x-hope-api-key-scopes": [
+          "agent:invocation:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:agent:invocation:write"
+        ]
+      }
+    },
+    "/api/v1/agents/{slug}/runs/{runId}/stream-ticket": {
+      "post": {
+        "description": "For a client that cannot send its credential on the stream request (a browser `EventSource` on an API key). The scope is derived from the path (`agent_run:<runId>`) and the run’s ownership is proved before the ticket is issued. Open the returned `sseUrl` — the ticket is consumed on first use and cannot be replayed.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "AgentController_issueRunStreamTicket",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "`{ ticket, expiresAt (epoch ms), scope, sseUrl }`. The ticket is single-use."
+          },
+          "401": {
+            "description": "No caller identity to bind the ticket to."
+          },
+          "403": {
+            "description": "Scope violation."
+          },
+          "404": {
+            "description": "Another tenant’s run, or a runId that does not belong to this agent — one answer."
+          },
+          "503": {
+            "description": "Stream tickets or the agent run store are not available on this gateway."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Mint a single-use, 30-second ticket for this agent run’s SSE stream",
         "tags": [
           "agents"
         ],
@@ -75021,6 +75121,154 @@
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
         "x-hope-service-account-scopes": []
+      }
+    },
+    "/api/v1/media": {
+      "post": {
+        "description": "Multipart, one `file`. Attachments: text/plain, text/markdown, application/pdf, image/jpeg (image/jpg), image/png, image/webp — the content must match the type. Audio: the types the batch-transcription upload accepts. The size ceilings are platform settings (`media.upload.maxAttachmentSizeMb`, `media.upload.maxAudioSizeMb`). The bytes go to the tenant’s own attachment / audio bucket. Reference the returned `mediaId` from a run.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:media:write`).\n\n**API key scopes** — `media:write`.\n\n**Abilities** — `create:Media`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "MediaController_upload",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUploadResponse"
+                }
+              }
+            },
+            "description": "`{ mediaId, mime, sizeBytes, sha256 }`."
+          },
+          "400": {
+            "description": "No file, an empty file, a type on neither allow-list (`MEDIA_TYPE_UNSUPPORTED`), or content that is not the declared type (`MEDIA_CONTENT_MISMATCH`)."
+          },
+          "403": {
+            "description": "Scope or ability violation."
+          },
+          "413": {
+            "description": "`MEDIA_TOO_LARGE` — over the configured ceiling for its category."
+          },
+          "503": {
+            "description": "`MEDIA_STORAGE_UNAVAILABLE` — the tenant has no attachment / audio bucket configured."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Upload an attachment or an audio file into the tenant's media store",
+        "tags": [
+          "storage"
+        ],
+        "x-hope-abilities": [
+          "create:Media"
+        ],
+        "x-hope-api-key-scopes": [
+          "media:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:media:write"
+        ]
+      }
+    },
+    "/api/v1/media/{mediaId}": {
+      "get": {
+        "description": "The same `{ mediaId, mime, sizeBytes, sha256 }` the upload answered. Never the bytes, a URL or the storage location.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:media:write`).\n\n**API key scopes** — `media:write`.\n\n**Abilities** — `read:Media`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "operationId": "MediaController_getReference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mediaId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUploadResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Scope or ability violation."
+          },
+          "404": {
+            "description": "Another tenant’s media, or an unknown id — one answer."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read back the reference of one media object",
+        "tags": [
+          "storage"
+        ],
+        "x-hope-abilities": [
+          "read:Media"
+        ],
+        "x-hope-api-key-scopes": [
+          "media:write"
+        ],
+        "x-hope-credentials": [
+          "user-jwt",
+          "api-key",
+          "service-account"
+        ],
+        "x-hope-permission-mode": "AND",
+        "x-hope-plane": "business",
+        "x-hope-requires-if-match": false,
+        "x-hope-service-account-scopes": [
+          "svc:media:write"
+        ]
       }
     },
     "/api/v1/prompt-templates": {

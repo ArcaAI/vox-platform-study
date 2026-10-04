@@ -375,6 +375,20 @@ function buildAgentItems(input: PostmanCollectionInput): PostmanItem[] {
           scopeLine('agentInvocations'),
       },
     });
+    items.push({
+      name: `Start an agent run of ${slug} (async)`,
+      request: {
+        method: 'POST',
+        header: [...JSON_HEADER, { key: 'Idempotency-Key', value: '550e8400-e29b-41d4-a716-446655440000' }],
+        url: buildUrl(['api', 'v1', 'agents', slug, 'runs']),
+        body,
+        description:
+          'Start the agent as a RUN (SDK 5.0 `hope.agents.run`). Returns 202 with `{ runId, status, links }`; follow it with ' +
+          '`GET agents/{slug}/runs/{runId}/events?protocol=2` (SSE, resumable by `Last-Event-ID`) and read the output from ' +
+          '`GET agents/{slug}/runs/{runId}/result`. Re-sending the same Idempotency-Key joins the same run. ' +
+          scopeLine('agentRunStart'),
+      },
+    });
   }
 
   return items;
@@ -500,6 +514,32 @@ function buildWorkflowFollowUpItems(slug: string): PostmanItem[] {
           '`Authorization` header (for example a browser `EventSource`). No request body. Returns 201 with ' +
           '`{ ticket, expiresAt, scope, url }`. ' +
           scopeLine('workflowRunStreamTicket'),
+      },
+    },
+    {
+      name: 'Follow the run (SSE, protocol v2)',
+      request: {
+        method: 'GET',
+        header: [{ key: 'x-hope-run-protocol', value: '2' }],
+        url: buildUrl([...statusPath, 'stream'], [{ key: 'protocol', value: '2' }]),
+        description:
+          'Run protocol v2 over SSE: every frame is `{ seq, runId, type, ts, nodeId?, data }` with `id: <seq>`. Resume after a ' +
+          'drop with `Last-Event-ID: <seq>` (or `?after=<seq>`); never treat a seq gap as loss — the server sends `run.resync` ' +
+          'when it is. On a command line this needs `curl -N`. ' +
+          scopeLine('workflowRunStream'),
+      },
+    },
+    {
+      name: 'Get the run result',
+      request: {
+        method: 'GET',
+        header: [],
+        url: buildUrl([...statusPath, 'result']),
+        description:
+          'The run\'s result once it has finished: 200 with the value inline (`X-Hope-Result-Kind: inline`) or a short-lived signed ' +
+          'URL `{ url, expiresAt, sizeBytes, sha256 }` (`X-Hope-Result-Kind: ref`); 204 when the run produced no output, 409 while ' +
+          'it is still running, 410 once the result has expired. ' +
+          scopeLine('workflowRunResult'),
       },
     },
   ];

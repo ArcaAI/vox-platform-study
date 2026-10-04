@@ -11904,6 +11904,26 @@
     },
     {
       "controller": "AgentController",
+      "handler": "issueRunStreamTicket",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/stream-ticket",
+      "routePath": "/agents/:slug/runs/:runId/stream-ticket",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
       "handler": "speech",
       "method": "POST",
       "path": "/api/v1/agents/{slug}/speech",
@@ -14975,6 +14995,56 @@
       "permissionMode": "AND",
       "requiresIfMatch": false,
       "apiExcluded": true
+    },
+    {
+      "controller": "MediaController",
+      "handler": "upload",
+      "method": "POST",
+      "path": "/api/v1/media",
+      "routePath": "/media",
+      "svcScopes": [
+        "svc:media:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "media:write"
+      ],
+      "requiredPermissions": [
+        [
+          "create",
+          "Media"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "MediaController",
+      "handler": "getReference",
+      "method": "GET",
+      "path": "/api/v1/media/{mediaId}",
+      "routePath": "/media/:mediaId",
+      "svcScopes": [
+        "svc:media:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "media:write"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
+          "Media"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
     },
     {
       "controller": "PromptTemplateController",
