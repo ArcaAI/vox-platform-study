@@ -218,6 +218,22 @@ describe('the realtime core.agent lane renders the agent instruction through the
     expect(headOf(calls[0]?.system_prompt, 'Ward 7')).toBe(agentSystemHead('Ward 7'));
   });
 
+  it('TASK-1036 B6b — RENDERS an override string containing `{{` against the run scope (it used to bind literally)', async () => {
+    const { service, post } = buildService(withPrompt('Lang {{lang}}', { lang: 'agent' }), {
+      overrides: { promptVariables: { lang: '{{trigger.context.language_name}}' } },
+    });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(headOf(calls[0]?.system_prompt, 'Lang English')).toBe(agentSystemHead('Lang English'));
+  });
+
+  it('TASK-1036 B6b — an override naming an unresolved path degrades the node without calling TEXT', async () => {
+    const { service, post } = buildService(withPrompt('Lang {{lang}}'), { overrides: { promptVariables: { lang: '{{trigger.context.nope}}' } } });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(calls).toHaveLength(0);
+  });
+
   it('honours `default("…")`', async () => {
     const { service, post } = buildService(withPrompt('{{absent | default("n/a")}}'));
     const { calls } = await runOneFlush(service, post);

@@ -335,13 +335,25 @@ class LivePromptUnresolvedError extends Error {
  * Throws what `buildPromptScope` throws (an unresolvable `{ path }` binding).
  */
 function livePromptScope(
-  variables: Record<string, unknown>,
+  bindings: LivePromptBindings,
   agentSlug: string,
   trigger?: Readonly<Record<string, unknown>> | null,
   contextSchema?: ResolvedTextCandidate['contextSchema'],
 ): Record<string, unknown> {
   const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
-  return buildPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+  // TASK-1036 (lane B6b) — the node's overrides travel SEPARATELY so `buildPromptScope` renders a
+  // `{{…}}` override against the run scope instead of binding it literally (node still wins).
+  return buildPromptScope({ variables: bindings.variables, overrides: bindings.overrides, trigger, context, templateRef: `agent:${agentSlug}` });
+}
+
+/** The agent's own `instruction.variables` and the node's `overrides.promptVariables`, kept apart. */
+interface LivePromptBindings {
+  readonly variables: Record<string, unknown>;
+  readonly overrides: Record<string, unknown>;
+}
+
+function livePromptBindings(instruction: Record<string, unknown>, overrides: NodeOverrides): LivePromptBindings {
+  return { variables: asRecord(instruction.variables), overrides: overrides.promptVariables };
 }
 
 /**
@@ -374,8 +386,7 @@ function outputLanguagePolicySelected(
   const fragments = Array.isArray(source.fragments) ? source.fragments : [];
   try {
     // The variables `callTextCandidate` renders with — the agent's own, the node's overrides on top.
-    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
-    const scope = livePromptScope(variables, candidate.agent.slug, trigger, candidate.contextSchema);
+    const scope = livePromptScope(livePromptBindings(instruction, overrides), candidate.agent.slug, trigger, candidate.contextSchema);
     return selectPromptFragments(fragments, scope).selected.some((fragment) => fragment.key === OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
   } catch {
     return false;
@@ -409,7 +420,7 @@ function outputLanguagePolicySelected(
  */
 function composeLiveMessages(
   resolvedPrompt: ComposableResolvedPrompt,
-  variables: Record<string, unknown>,
+  bindings: LivePromptBindings,
   agentSlug: string,
   parts: LivePromptParts,
   corrective?: string,
@@ -420,7 +431,7 @@ function composeLiveMessages(
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
-    const scope = livePromptScope(variables, agentSlug, trigger, contextSchema);
+    const scope = livePromptScope(bindings, agentSlug, trigger, contextSchema);
     return composeLivePromptParts(resolvedPrompt, scope, `agent:${agentSlug}`, parts, corrective);
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
@@ -6778,13 +6789,13 @@ return 0`;
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
     const instruction = asRecord(candidate.instruction);
-    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
+    const bindings = livePromptBindings(instruction, overrides);
     // TASK-947 §4.1 — ONE render seam for all three instruction forms. A candidate with no
     // instruction body at all serves `LIVE_DOCUMENT_SYSTEM_PROMPT`, the pre-947 case.
     const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
     const composed = composeLiveMessages(
       promptSource ?? { source: 'inline', content: LIVE_DOCUMENT_SYSTEM_PROMPT },
-      variables,
+      bindings,
       candidate.agent.slug,
       promptParts,
       corrective,

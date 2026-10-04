@@ -13,6 +13,7 @@
  * | `input.*` | — | the body validated against `inputSchema` |
  * | `vars.*` | merged `core.variable` outputs | — |
  * | `nodes.<id>.*` | prior node outputs | — |
+ * | `consultation.*` / `run.*` | the run's consultation read view / run identity (when the lane has them) | — |
  * | bare `name` | `instruction.variables`, overlaid by the node's `overrides.promptVariables` | same, overlaid by the request's `variables` |
  *
  * `context` is the canonical root and `trigger` its alias: whichever ONE of the two a caller
@@ -55,8 +56,21 @@ export interface PromptScopeParts {
   readonly input?: Readonly<Record<string, unknown>> | null;
   /** Merged `core.variable` outputs. */
   readonly vars?: Readonly<Record<string, unknown>> | null;
-  /** Prior node outputs, keyed by node id. */
+  /** Prior node outputs, keyed by node id (a v2 lane serves both `nodes.<id>.<field>` and `nodes.<id>.outputs.<field>`). */
   readonly nodes?: Readonly<Record<string, unknown>> | null;
+  /** TASK-1036 §9.3 — the run's `consultation.*` read view, when the lane has one. */
+  readonly consultation?: Readonly<Record<string, unknown>> | null;
+  /** TASK-1036 §9.3 — `run.*` (id, tenant, now), when the lane has it. */
+  readonly run?: Readonly<Record<string, unknown>> | null;
+  /**
+   * TASK-1036 (lane B6b) — the node's `overrides.promptVariables`, layered over `variables` (node
+   * wins). A string containing `{{` is RENDERED against the roots above before it is bound — the
+   * node schema promises it and the durable lane does it (`_agent_prompt_scope`, lane B1); until
+   * B6b this lane bound it LITERALLY. An unresolved path raises `PromptVariableUnresolvedError`
+   * naming the path, with `templateRef` `overrides.promptVariables.<name>`. Anything else is
+   * merged as given, exactly as before.
+   */
+  readonly overrides?: Readonly<Record<string, unknown>> | null;
   /** Names the template in a `PromptVariableUnresolved` raised while resolving a `{ path }` binding. */
   readonly templateRef?: string;
   /**
@@ -102,8 +116,13 @@ export function buildPromptScope(parts: PromptScopeParts): Record<string, unknow
   if (isRecord(parts.input)) scope.input = parts.input;
   if (isRecord(parts.vars)) scope.vars = parts.vars;
   if (isRecord(parts.nodes)) scope.nodes = parts.nodes;
+  if (isRecord(parts.consultation)) scope.consultation = parts.consultation;
+  if (isRecord(parts.run)) scope.run = parts.run;
 
-  const declared = isRecord(parts.variables) ? parts.variables : {};
+  const declared: Record<string, unknown> = {
+    ...(isRecord(parts.variables) ? parts.variables : {}),
+    ...renderOverrides(parts.overrides, scope),
+  };
   // OD-10 — only when the caller opts in; `undefined` keeps every pre-1036 byte.
   const declarations = Array.isArray(parts.variableDeclarations) ? nullableDeclarations(parts.variableDeclarations) : undefined;
   const variables: Record<string, unknown> = {};
@@ -140,6 +159,21 @@ export function buildPromptScope(parts: PromptScopeParts): Record<string, unknow
   // cannot disagree.
   scope.variables = variables;
   return scope;
+}
+
+/**
+ * The node's overrides, each `{{`-bearing string rendered against the ROOTS only (the bare names are
+ * not bound yet, so an override can never read another override — the same base scope the harness
+ * renders against).
+ */
+function renderOverrides(overrides: unknown, roots: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  if (!isRecord(overrides)) return {};
+  const rendered: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(overrides)) {
+    rendered[name] =
+      typeof value === 'string' && value.includes('{{') ? renderTemplate(value, roots, { templateRef: `overrides.promptVariables.${name}` }) : value;
+  }
+  return rendered;
 }
 
 /**
