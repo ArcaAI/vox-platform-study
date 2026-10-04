@@ -21,7 +21,7 @@ from temporalio.exceptions import ApplicationError
 
 from harness.core.config import get_settings
 from harness.core.redis_client import build_run_event_redis
-from harness.services.api_client import ApiServiceError
+from harness.services.api_client import ApiClientError, ApiServiceError
 from harness.temporal.activities import (
     STATUS_ERROR,
     STATUS_OK,
@@ -33,10 +33,13 @@ from harness.temporal.activities import (
     _TrajectoryBatch as TrajectoryBatch,  # reuse, never a second emitter (Task 7) — noqa: SLF001
 )
 from harness.temporal.claim_check import ClaimCheckRef, load_blob, open_store, store_blob
-from harness.temporal.interpreter import payload_refs
+from harness.temporal.interpreter import data_contract, node_events, payload_refs
 from harness.temporal.interpreter.action_catalogue import ACTION_CATALOGUE
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
+from harness.temporal.interpreter.data_contract import CONSULTATION_PATH_PHI
 from harness.temporal.interpreter.models import (
+    ConsultationReadRequest,
+    ConsultationReadResult,
     ContextPathRequest,
     ContextPathResult,
     EvaluateExpressionInput,
@@ -51,17 +54,16 @@ from harness.temporal.interpreter.models import (
 from harness.temporal.interpreter.nodes._shared import MISSING, resolve_dotted_path
 from harness.temporal.interpreter.nodes.core import CORE_ACTIVITIES
 from harness.temporal.interpreter.run_events import (
-    EVENT_LOOP_ITERATION,
     EVENT_NODE_COMPLETED,
     EVENT_NODE_FAILED,
     EVENT_NODE_STARTED,
+    EVENT_RUN_COMPLETED,
+    EVENT_RUN_STARTED,
     RunEventProducer,
-    build_run_event,
-    loop_iteration_key,
-    node_settled_key,
-    node_started_key,
-    run_completed_key,
+    v2_node_key,
+    v2_run_key,
 )
+from harness.temporal.interpreter.run_protocol import run_error
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; adds
@@ -274,11 +276,14 @@ async def offload_node_output(
     """
     output = result.output
     settings = get_settings().claim_check
+    # TASK-1038 — the run's own threshold when the gateway injected one (`RunLimits`); the
+    # `HARNESS_CLAIM_CHECK_NODE_OUTPUT_MIN_BYTES` setting otherwise (one-release transition).
+    min_bytes = payload.output_offload_min_bytes or settings.node_output_min_bytes
     if (
         not output
         or not settings.enabled
         or payload.node_type in _OFFLOAD_EXEMPT_NODE_TYPES
-        or _json_size(output) < settings.node_output_min_bytes
+        or _json_size(output) < min_bytes
     ):
         return result
     shaped = dict(output)
@@ -290,7 +295,7 @@ async def offload_node_output(
     store = None
     bucket = ""
     for key in sorted(sizes, key=lambda k: sizes[k], reverse=True):
-        if _json_size(shaped) < settings.node_output_min_bytes:
+        if _json_size(shaped) < min_bytes:
             break
         if sizes[key] < _OFFLOAD_MIN_VALUE_BYTES:
             break
@@ -330,6 +335,52 @@ async def _heartbeat_forever() -> None:
         await asyncio.sleep(_HEARTBEAT_INTERVAL_SECONDS)
 
 
+def _finish_bindings(payload: NodeActivityInput) -> NodeActivityInput:
+    """TASK-1036 §9.2 — finish every DEFERRED binding (its references are dereferenced by now);
+    one that resolves to nothing is dropped, so the node sees the input as unbound."""
+    if not any(data_contract.is_deferred(v) for v in payload.bound_inputs.values()):
+        return payload
+    finished: dict[str, Any] = {}
+    for name, value in payload.bound_inputs.items():
+        done = data_contract.finish_deferred(value, lambda v: v)
+        if not data_contract.is_missing(done):
+            finished[name] = done
+    return payload.model_copy(update={"bound_inputs": finished})
+
+
+def _with_io(
+    payload: NodeActivityInput, result: NodeActivityResult, started_at: Any, started: float
+) -> NodeActivityResult:
+    """TASK-1036 §9.1 — the NodeIO envelope's metadata on the result (usage, timing, artifacts).
+
+    The envelope's ``outputs`` are a projection of ``output`` and are not copied here.
+    """
+    io = dict(result.io or {})
+    usage = node_events.usage_of(result.output)
+    if usage is not None:
+        io.setdefault("usage", {**usage, "tokens": usage["in"] + usage["out"], "costUnits": 0})
+    io.setdefault(
+        "timing",
+        {
+            "startedAt": started_at.isoformat() if hasattr(started_at, "isoformat") else None,
+            "durationMs": int((time.monotonic() - started) * 1000),
+        },
+    )
+    artifacts = []
+    audio = (result.output or {}).get("audio")
+    if isinstance(audio, dict) and isinstance(audio.get("key"), str):
+        artifacts.append(
+            {
+                "kind": "audio",
+                "ref": audio["key"],
+                "mime": str(audio.get("content_type") or audio.get("contentType") or ""),
+                "size": int(audio.get("size") or 0),
+            }
+        )
+    io.setdefault("artifacts", artifacts)
+    return result.model_copy(update={"io": io})
+
+
 def node_activity_envelope(fn: NodeActivityFn) -> NodeActivityFn:
     """TASK-1038 — the envelope every interpreter NODE activity runs inside.
 
@@ -343,8 +394,22 @@ def node_activity_envelope(fn: NodeActivityFn) -> NodeActivityFn:
     async def _enveloped(payload: NodeActivityInput) -> NodeActivityResult:
         heartbeat = asyncio.ensure_future(_heartbeat_forever()) if activity.in_activity() else None
         try:
-            hydrated = await hydrate_node_input(payload)
+            started_at = _now()
+            started = time.monotonic()
+            hydrated = _finish_bindings(await hydrate_node_input(payload))
+            v2 = node_events.is_v2(hydrated)
+            attempt = node_events.attempt_of()
+            if v2:
+                await node_events.emit_prelude(
+                    run_event_producer(), hydrated, hydrated.bound_inputs, attempt
+                )
             result = await fn(hydrated)
+            if v2:
+                result = _with_io(hydrated, result, started_at, started)
+                streamed = set((result.io or {}).get("streamed") or [])
+                await node_events.emit_outputs(
+                    run_event_producer(), hydrated, result, attempt, streamed
+                )
             result = await offload_node_output(hydrated, result)
             _refuse_oversized_result(hydrated, result)
             return result
@@ -526,15 +591,74 @@ async def load_live_outputs(request: LiveOutputsRequest) -> LiveOutputsResult:
 
 
 # ---------------------------------------------------------------------------
-# Run-event mirror — the CONTROL lane's one activity.
+# TASK-1036 §9.3 — declared consultation reads (OD-30)
 # ---------------------------------------------------------------------------
 
-#: The attempt generation stamped into a node's idempotency key. The stage walk dispatches a
-#: node exactly ONCE per run; Temporal's own activity retries happen inside that single
-#: dispatch and are not a new generation, so a per-run constant is the truthful value here
-#: rather than a counter nobody increments. (Loop-body nodes DO re-run per iteration, but the
-#: stage walk never dispatches them — they carry `SKIPPED loop_body` and the loop owns them.)
-NODE_ATTEMPT_GENERATION = 1
+
+@activity.defn(name="interpreter.read_consultation")
+async def read_consultation(request: ConsultationReadRequest) -> ConsultationReadResult:
+    """Read ONE node's declared ``consultation.*`` paths through the gateway's internal route.
+
+    Least privilege by construction: only the paths the compiled workflow declared for this node
+    are asked for, tenant-checked by the gateway. The values are this activity's RESULT, so they
+    are recorded in history and a replay binds exactly what the first execution read (snapshot
+    semantics — the transcript grows during a live consultation).
+
+    A REFUSAL (a 4xx: undeclared path, another tenant's consultation) is a result, ``ok: false``,
+    never retried; a transport failure raises and Temporal retries it. On success the admin
+    ``consultation.read`` event is appended (best-effort).
+    """
+    try:
+        raw = await _api_client(get_settings()).read_consultation(
+            request.consultation_id,
+            tenant_id=request.tenant_id,
+            run_id=request.run_id,
+            node_id=request.node_id,
+            paths=list(request.paths),
+        )
+    except ApiClientError as exc:
+        # PHI-safe: ids and the status only.
+        return ConsultationReadResult(ok=False, error=f"refused ({exc.status_code})")
+    raw_values = raw.get("values") if isinstance(raw, dict) else None
+    values = {
+        path: raw_values.get(path)
+        for path in request.paths
+        if isinstance(raw_values, dict) and path in raw_values
+    }
+    result = ConsultationReadResult(
+        ok=True,
+        values=values,
+        read_at=raw.get("readAt") if isinstance(raw.get("readAt"), str) else None,
+        schema_version=(
+            raw.get("schemaVersion") if isinstance(raw.get("schemaVersion"), int) else None
+        ),
+    )
+    await run_event_producer().append(
+        run_id=request.run_id,
+        type="consultation.read",
+        node_id=request.node_id,
+        data={
+            "consultationId": request.consultation_id,
+            "snapshot": request.snapshot,
+            "fields": [
+                {
+                    "path": path,
+                    "phiClass": CONSULTATION_PATH_PHI.get(path, "PHI"),
+                    "value": values.get(path),
+                }
+                for path in request.paths
+            ],
+        },
+        dedupe_key=v2_node_key(
+            request.run_id, request.node_id, activity.info().attempt, f"read:{request.snapshot}"
+        ),
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Run-event mirror — the CONTROL lane's one activity.
+# ---------------------------------------------------------------------------
 
 _RUN_EVENT_REDIS: Any | None = None
 _RUN_EVENT_REDIS_BUILT = False
@@ -548,7 +672,7 @@ def run_event_producer() -> RunEventProducer:
 
     PUBLIC on purpose: this is the DELTA lane's entry point for any node activity that
     streams — a token stream, and (lane B) STT/TTS audio. Call
-    ``run_event_producer().emit_token_delta(...)`` from inside the activity, never from the
+    ``run_event_producer().text_delta(...)`` / ``.audio_delta(...)`` from inside the activity, never from the
     workflow body, and never route a delta through a signal or an activity-per-chunk. Signals
     land in Temporal history, whose ceiling is 51,200 events / 50 MB per run, so a long
     deliberation streamed through Temporal dies mid-flight. ``test_task849_two_lane_split.py``
@@ -561,50 +685,170 @@ def run_event_producer() -> RunEventProducer:
     return RunEventProducer(_RUN_EVENT_REDIS)
 
 
-def _envelope_for(batch: RunEventBatch, spec: RunEventSpec) -> Any:
-    """Turn one workflow-described fact into a conforming envelope ( recipes)."""
+#: The settled node status → `node.completed.status` (v2 spells success `COMPLETED`).
+_V2_NODE_STATUS = {"SUCCEEDED": "COMPLETED", "DEGRADED": "DEGRADED", "SKIPPED": "SKIPPED"}
+
+
+def run_error_code_of(reason: str | None) -> str:
+    """The fixed run-error code a free-text node/run reason maps to (pure).
+
+    The code is what a business caller sees (with its fixed label); the reason itself rides only
+    in the admin-trace ``error.detail``.
+    """
+    text = reason or ""
+    if text.startswith("PAYLOAD_TOO_LARGE"):
+        return "PAYLOAD_TOO_LARGE"
+    if text.startswith("CONSULTATION_READ_FAILED"):
+        return "CONSULTATION_READ_FAILED"
+    if text == "run_timed_out":
+        return "RUN_TIMED_OUT"
+    if "TimeoutError" in text or "timed_out" in text:
+        return "NODE_TIMED_OUT"
+    if "unresolved_input_binding" in text or "binding_unresolved" in text:
+        return "BINDING_UNRESOLVED"
+    if "prompt_variable_unresolved" in text:
+        return "PROMPT_VARIABLE_UNRESOLVED"
+    if "agent_version" in text:
+        return "AGENT_VERSION_UNAVAILABLE"
+    if "TextServiceError" in text or "text generate failed" in text:
+        return "MODEL_ERROR"
+    if "ApiServiceError" in text or "unavailable" in text:
+        return "DOWNSTREAM_UNAVAILABLE"
+    if "SchemaViolation" in text or "schema" in text:
+        return "OUTPUT_INVALID"
+    return "INTERNAL_ERROR"
+
+
+def _tokens(spec: RunEventSpec) -> dict[str, int] | None:
+    if spec.tokens_in is None and spec.tokens_out is None:
+        return None
+    return {"in": max(0, spec.tokens_in or 0), "out": max(0, spec.tokens_out or 0)}
+
+
+async def _append_spec(
+    producer: RunEventProducer, batch: RunEventBatch, spec: RunEventSpec
+) -> None:
+    """Map ONE workflow-described fact onto its run-protocol v2 event(s) and append them."""
+    run_id = batch.run_id
     node_id = spec.node_id or ""
+    duration = max(0, spec.duration_ms or 0)
+    if spec.event_type == EVENT_RUN_STARTED:
+        await producer.append(
+            run_id=run_id,
+            type="run.started",
+            data={
+                "kind": "workflow",
+                "slug": spec.slug or "workflow",
+                "versionNumber": max(1, spec.version_number or 1),
+            },
+            dedupe_key=v2_run_key(run_id, "started"),
+        )
+        return
     if spec.event_type == EVENT_NODE_STARTED:
-        key = node_started_key(batch.run_id, node_id, NODE_ATTEMPT_GENERATION)
-    elif spec.event_type in (EVENT_NODE_COMPLETED, EVENT_NODE_FAILED):
-        key = node_settled_key(batch.run_id, node_id, NODE_ATTEMPT_GENERATION)
-    elif spec.event_type == EVENT_LOOP_ITERATION:
-        key = loop_iteration_key(batch.run_id, node_id, spec.iteration or 0)
-    else:
-        key = run_completed_key(batch.run_id)
+        data: dict[str, Any] = {"kind": spec.node_type or "node", "attempt": 1}
+        if spec.label:
+            data["label"] = spec.label
+        await producer.append(
+            run_id=run_id,
+            type="node.started",
+            node_id=node_id,
+            data=data,
+            dedupe_key=v2_node_key(run_id, node_id, 1, "started"),
+        )
+        return
+    if spec.event_type in (EVENT_NODE_COMPLETED, EVENT_NODE_FAILED):
+        for field_name, value in (spec.outputs or {}).items():
+            await producer.append(
+                run_id=run_id,
+                type="output.data",
+                node_id=node_id,
+                data={"field": field_name, "value": value, "visibility": "admin"},
+                dedupe_key=v2_node_key(run_id, node_id, 1, f"output:{field_name}"),
+            )
+        settled = v2_node_key(run_id, node_id, 1, "settled")
+        if spec.event_type == EVENT_NODE_FAILED or spec.status == "FAILED":
+            await producer.append(
+                run_id=run_id,
+                type="node.failed",
+                node_id=node_id,
+                data={
+                    "durationMs": duration,
+                    "error": run_error(
+                        spec.error_code or run_error_code_of(spec.reason),
+                        node_id=node_id,
+                        detail=spec.reason,
+                    ),
+                },
+                dedupe_key=settled,
+            )
+            return
+        completed: dict[str, Any] = {
+            "status": _V2_NODE_STATUS.get(spec.status or "SUCCEEDED", "COMPLETED"),
+            "durationMs": duration,
+        }
+        tokens = _tokens(spec)
+        if tokens is not None:
+            completed["tokens"] = tokens
+        await producer.append(
+            run_id=run_id,
+            type="node.completed",
+            node_id=node_id,
+            data=completed,
+            dedupe_key=settled,
+        )
+        return
+    if spec.event_type == EVENT_RUN_COMPLETED:
+        await _append_terminal(producer, batch, spec, duration)
+        return
+    # `workflow.loop.iteration` and any other legacy-only fact have no v2 type: not stored.
 
-    payload: dict[str, Any] = {}
-    if spec.node_id is not None:
-        payload["nodeId"] = spec.node_id
-    if spec.node_type is not None:
-        payload["nodeType"] = spec.node_type
-    if spec.stage_index is not None:
-        payload["stageIndex"] = spec.stage_index
-    if spec.status is not None:
-        payload["status"] = spec.status
-    if spec.reason is not None:
-        payload["reason"] = spec.reason
-    if spec.iteration is not None:
-        payload["iteration"] = spec.iteration
-    if spec.node_count is not None:
-        payload["nodeCount"] = spec.node_count
-    if spec.failed_node_count is not None:
-        payload["failedNodeCount"] = spec.failed_node_count
-    if spec.degraded_node_count is not None:
-        payload["degradedNodeCount"] = spec.degraded_node_count
-    if spec.skipped_node_count is not None:
-        payload["skippedNodeCount"] = spec.skipped_node_count
 
-    return build_run_event(
-        tenant_id=batch.tenant_id,
-        run_id=batch.run_id,
-        event_type=spec.event_type,
-        idempotency_key=key,
-        payload=payload,
-    )
+async def _append_terminal(
+    producer: RunEventProducer, batch: RunEventBatch, spec: RunEventSpec, duration: int
+) -> None:
+    run_id = batch.run_id
+    status = spec.status or "FAILED"
+    terminal: dict[str, Any] = {
+        "dedupe_key": v2_run_key(run_id, "completed"),
+        "retention_seconds": spec.retention_seconds,
+        # A run the gateway started before it injected `retentionSeconds` (one release).
+        "allow_missing_retention": spec.retention_seconds is None,
+    }
+    tokens = _tokens(spec) or {"in": 0, "out": 0}
+    if status in ("SUCCEEDED", "DEGRADED"):
+        data: dict[str, Any] = {"status": "COMPLETED", "durationMs": duration, "tokens": tokens}
+        if spec.result_outputs:
+            try:
+                result = await _run_result(spec.result_outputs, spec.result_inline_max_bytes)
+            except Exception as exc:  # noqa: BLE001 — a result read never drops the event
+                activity.logger.warning(
+                    f"harness.run_events.result_unavailable run_id={run_id} error={exc}"
+                )
+                result = None
+            if result is not None:
+                data["result"] = result
+        if status == "DEGRADED":
+            data["degraded"] = True
+        await producer.append(run_id=run_id, type="run.completed", data=data, **terminal)
+        return
+    if status == "CANCELLED":
+        cancelled: dict[str, Any] = {"status": "CANCELED", "durationMs": duration}
+        await producer.append(run_id=run_id, type="run.cancelled", data=cancelled, **terminal)
+        return
+    timed_out = status == "TIMED_OUT"
+    code = "RUN_TIMED_OUT" if timed_out else (spec.error_code or run_error_code_of(spec.reason))
+    failed: dict[str, Any] = {
+        "status": "TIMED_OUT" if timed_out else "FAILED",
+        "durationMs": duration,
+        "error": run_error(code, detail=spec.reason),
+        "tokens": tokens,
+    }
+    await producer.append(run_id=run_id, type="run.failed", data=failed, **terminal)
 
 
-async def _run_result(outputs: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+async def _run_result(
+    outputs: dict[str, dict[str, Any]], inline_max_bytes: int | None = None
+) -> dict[str, Any] | None:
     """TASK-1038 D-I — the completed event's ``result``: inline, or a claim-check reference.
 
     The value is the ``core.output`` node's published ``payload`` (or its own ``resultRef``);
@@ -623,7 +867,8 @@ async def _run_result(outputs: dict[str, dict[str, Any]]) -> dict[str, Any] | No
         return None
     value: Any = next(iter(values.values())) if len(values) == 1 else values
     settings = get_settings().claim_check
-    limit = settings.result_inline_max_bytes
+    # TASK-1038 — the run's own ceiling when the gateway injected one; the setting otherwise.
+    limit = inline_max_bytes or settings.result_inline_max_bytes
     if payload_refs.is_marker(value):
         ref = ClaimCheckRef.model_validate(value[payload_refs.MARKER_KEY])
         if ref.size > limit:
@@ -648,41 +893,26 @@ def _result_ref(ref: ClaimCheckRef) -> dict[str, Any]:
 
 @activity.defn(name="interpreter.emit_run_events")
 async def emit_run_events(batch: RunEventBatch) -> int:
-    """Mirror one stage boundary's control events onto the run's Redis Stream.
+    """Append one stage boundary's control facts to the run's stream as run-protocol v2 events.
 
-    Returns the number actually written — 0 is a normal outcome, not a failure. This
-    activity NEVER raises: the run's durable record is Temporal history, and a mirror that
-    could fail a clinical run would have inverted which of the two lanes matters. The
-    workflow additionally catches `ActivityError` around every call, so even a scheduling
-    or timeout failure cannot reach the walk.
-
-    Envelope construction is inside the guard on purpose. `AsyncEnvelope` validates on
-    construction — a run started with a non-UUID `tenantId` (the fixture-capture scripts and
-    several older test harnesses do exactly that) raises there, and ONE malformed spec must
-    not take the rest of the batch down with it.
+    Returns the number of facts handed to the sequencer — 0 is a normal outcome. This activity
+    NEVER raises: the run's durable record is Temporal history, and a mirror that could fail a
+    clinical run would have inverted which of the two lanes matters. The workflow additionally
+    catches ``ActivityError`` around every call. Each fact is appended with a dedupe key derived
+    from its intent, so a retry of this activity writes nothing twice.
     """
-    envelopes = []
+    producer = run_event_producer()
+    handled = 0
     for spec in batch.events:
         try:
-            envelope = _envelope_for(batch, spec)
-            if spec.result_outputs:
-                try:
-                    result = await _run_result(spec.result_outputs)
-                except Exception as exc:  # noqa: BLE001 — a result read never drops the event
-                    activity.logger.warning(
-                        "harness.run_events.result_unavailable "
-                        f"run_id={batch.run_id} error={exc}"
-                    )
-                    result = None
-                if result is not None:
-                    envelope.payload["result"] = result
-            envelopes.append(envelope)
+            await _append_spec(producer, batch, spec)
+            handled += 1
         except Exception as exc:  # noqa: BLE001 — see the docstring: this never raises
             activity.logger.warning(
-                "harness.run_events.envelope_rejected "
+                "harness.run_events.event_rejected "
                 f"run_id={batch.run_id} event_type={spec.event_type} error={exc}"
             )
-    return len(await run_event_producer().emit_many(envelopes))
+    return handled
 
 
 # Registered on the worker alongside DOCUMENT_ACTIVITIES/LOOP_ACTIVITIES/
@@ -693,4 +923,5 @@ INTERPRETER_ACTIVITIES: list[Callable[..., Any]] = [
     load_live_outputs,
     resolve_context_path,
     emit_run_events,
+    read_consultation,
 ]

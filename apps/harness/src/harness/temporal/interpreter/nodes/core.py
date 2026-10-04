@@ -27,7 +27,6 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 from collections.abc import Callable
@@ -58,6 +57,7 @@ from harness.temporal.interpreter.compose_messages import (
     compose_messages,
     platform_rules,
 )
+from harness.temporal.interpreter.data_contract import outputs_view
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
@@ -100,7 +100,7 @@ from harness.temporal.interpreter.prompt_composition import (
     PromptCompositionEmpty,
     build_prompt_scope,
 )
-from harness.temporal.interpreter.templating import PromptVariableUnresolved
+from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 
 _LOGGER = structlog.get_logger(__name__)
 
@@ -123,14 +123,63 @@ def _config(payload: NodeActivityInput) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
+#: TASK-1036 §9.1 — a `core.agent`'s NodeIO inputs whose value the agent arms read as `in`:
+#: a text agent's `message`, a speech / entity agent's `text` (`bindings.legacyInputName`).
+_AGENT_PRIMARY_INPUTS = ("message", "text")
+
+
 def _bound(payload: NodeActivityInput) -> dict[str, Any]:
     bound = getattr(payload, "bound_inputs", None)
-    return bound if isinstance(bound, dict) else {}
+    if not isinstance(bound, dict):
+        return {}
+    if getattr(payload, "node_type", None) == "core.agent" and "in" not in bound:
+        # A node bound by NodeIO name (compiled `bindings`) hands its primary text over as
+        # `message` / `text`; the agent arms read the legacy port name. Same value, one place.
+        for name in _AGENT_PRIMARY_INPUTS:
+            if name in bound:
+                return {**bound, "in": bound[name]}
+    return bound
 
 
 def _run_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context `{trigger, vars, nodes}`. Under run protocol v2 (`nodeMeta` present) each
+    `nodes.<id>` also serves its NodeIO `outputs` — the dual scope, one release (TASK-1036): a
+    PROJECTION of the stored output built here, never a second copy carried in history."""
     context = getattr(payload, "run_context", None)
-    return context if isinstance(context, dict) else {}
+    if not isinstance(context, dict):
+        return {}
+    meta = context.get("nodeMeta")
+    nodes = context.get("nodes")
+    if not isinstance(meta, dict) or not isinstance(nodes, dict):
+        return context
+    served: dict[str, Any] = {}
+    for node_id, output in nodes.items():
+        raw_info = meta.get(node_id)
+        info: dict[str, Any] = raw_info if isinstance(raw_info, dict) else {}
+        if isinstance(output, dict) and "outputs" not in output:
+            view = outputs_view(str(info.get("type") or ""), output, task=info.get("task"))
+            served[node_id] = {**output, "outputs": view}
+        else:
+            served[node_id] = output
+    return {**context, "nodes": served}
+
+
+def _scope_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context plus the v2 prompt roots (`consultation`, `run`) and the marker that turns
+    on override rendering (TASK-1036). Byte-identical to `_run_context` off protocol v2."""
+    context = _run_context(payload)
+    if getattr(payload, "protocol", None) != 2:
+        return context
+    extra: dict[str, Any] = {_V2_SCOPE: True}
+    if isinstance(payload.consultation, dict):
+        extra["consultation"] = payload.consultation
+    if isinstance(payload.run_fields, dict):
+        extra["run"] = payload.run_fields
+    return {**context, **extra}
+
+
+#: Marks a scope context built under run protocol v2 (`_scope_context`).
+_V2_SCOPE = "$hopeV2Scope"
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -288,6 +337,13 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
     if not isinstance(declared, dict):
         declared = schema.get("inline") if isinstance(schema, dict) else None
     violation = _schema_violation(declared, _authored_context(context))
+    await _admin_event(
+        payload,
+        "input.validated",
+        {"valid": violation is None, "problems": [] if violation is None else [violation]},
+        "input-validated",
+        node_scoped=False,
+    )
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         raise ContextSchemaViolation(
@@ -776,13 +832,50 @@ def _agent_prompt_scope(
         context_view = unwrapped if isinstance(unwrapped, dict) else trigger_view
     vars_root = run_context.get("vars")
     nodes_root = run_context.get("nodes")
-    return build_prompt_scope(
-        variables=_agent_variables(resolved, config),
+    variables = _agent_variables(resolved, config)
+    vars_view = vars_root if isinstance(vars_root, dict) else None
+    nodes_view = nodes_root if isinstance(nodes_root, dict) else None
+    if run_context.get(_V2_SCOPE) is not True:
+        return build_prompt_scope(
+            variables=variables,
+            trigger=trigger_view,
+            context=context_view,
+            vars=vars_view,
+            nodes=nodes_view,
+        )
+    # TASK-1036 (lane B1) — under run protocol v2 the scope also carries the `consultation` and
+    # `run` roots, and an `overrides.promptVariables` string containing `{{…}}` is RENDERED
+    # against the run scope (it used to be bound LITERALLY: `{{nodes.x.text}}` reached the model
+    # as those characters). An unresolved, undefaulted path raises `PromptVariableUnresolved`
+    # naming it, exactly like the instruction's own placeholders.
+    extra_roots = {
+        name: run_context[name]
+        for name in ("consultation", "run")
+        if isinstance(run_context.get(name), dict)
+    }
+    base = {
+        **build_prompt_scope(
+            trigger=trigger_view, context=context_view, vars=vars_view, nodes=nodes_view
+        ),
+        **extra_roots,
+    }
+    overrides = config.get("overrides")
+    prompt_variables = overrides.get("promptVariables") if isinstance(overrides, dict) else None
+    for key, value in (prompt_variables or {}).items():
+        if isinstance(value, str) and "{{" in value:
+            variables[key] = render_template(
+                value, base, template_ref=f"overrides.promptVariables.{key}"
+            )
+    scope = build_prompt_scope(
+        variables=variables,
         trigger=trigger_view,
         context=context_view,
-        vars=vars_root if isinstance(vars_root, dict) else None,
-        nodes=nodes_root if isinstance(nodes_root, dict) else None,
+        vars=vars_view,
+        nodes=nodes_view,
     )
+    for name, root in extra_roots.items():
+        scope.setdefault(name, root)
+    return scope
 
 
 def _agent_resolved_prompt(resolved: ResolvedAgent) -> Any | None:
@@ -848,6 +941,9 @@ def _compose_agent_messages(
         "data_blocks": data_blocks,
         "template_ref": f"agent:{resolved.slug}",
     }
+    if run_context.get(_V2_SCOPE) is True:
+        # TASK-1036 OD-10 — under run protocol v2 a whitespace-only data block is dropped too.
+        kwargs["drop_empty_blocks"] = True
     composed = compose_messages(**kwargs)
     policy_selected = output_language_policy_selected(composed.selected)
     if policy_selected or output_language is None:
@@ -1428,7 +1524,9 @@ async def _run_text_generation(
     # activity out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation
     # that already completed. Never start a candidate whose call cannot finish in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
-    run_context = _run_context(payload)
+    run_context = _scope_context(payload)
+    # TASK-1038 R6/R8 — the admin model trace and the text deltas, under run protocol v2 only.
+    trace = _GenerationTrace(payload) if payload.protocol == 2 and payload.run_id else None
     known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
     # TASK-1001 (OD-12) — the platform-default note OUTPUT language, read ONCE for the whole walk
     # (every candidate that selects no tenant policy states the same default). Read HERE, inside
@@ -1492,6 +1590,9 @@ async def _run_text_generation(
             )
         system_prompt = composed.system
         user_prompt = composed.user
+        streaming = trace is not None and trace.streams_text
+        if trace is not None:
+            await trace.composed(composed, index)
         _LOGGER.info(
             "core.agent.output_language",
             node_id=payload.node_id,
@@ -1545,8 +1646,17 @@ async def _run_text_generation(
 
         attempt_started_at = now()
         attempt_started = perf_counter()
+        if trace is not None:
+            await trace.model_request(provider, model, index, streaming, generation)
+        call_kwargs: dict[str, Any] = {}
+        if streaming and trace is not None:
+            call_kwargs["on_delta"] = trace.delta_sink(index)
+        generate = (
+            _text_client(settings).generate_stream if streaming else _text_client(settings).generate
+        )
         try:
-            result = await _text_client(settings).generate(
+            result = await generate(
+                **call_kwargs,
                 tenant_id=payload.tenant_id,
                 prompt=user_prompt,
                 system_prompt=system_prompt or None,
@@ -1601,6 +1711,8 @@ async def _run_text_generation(
             user=user_prompt,
         )
 
+        if trace is not None:
+            await trace.guardrails(result, index)
         output: dict[str, Any] = {
             "text": result.content,
             "provider": result.provider or provider,
@@ -1676,9 +1788,13 @@ async def _run_text_generation(
                     reason=f"core.agent: {failure}",
                     output=output,
                     prompt_fragments=prompt_fragments,
+                    io=_streamed_io(streaming),
                 )
         return NodeActivityResult(
-            status="SUCCEEDED", output=output, prompt_fragments=prompt_fragments
+            status="SUCCEEDED",
+            output=output,
+            prompt_fragments=prompt_fragments,
+            io=_streamed_io(streaming),
         )
 
     if exhausted:
@@ -1709,6 +1825,188 @@ async def _run_text_generation(
         status="DEGRADED",
         reason=f"core.agent: text generate failed on every resolved candidate: {last_error}",
     )
+
+
+async def _admin_event(
+    payload: NodeActivityInput,
+    event_type: str,
+    data: dict[str, Any],
+    intent: str,
+    *,
+    node_scoped: bool = True,
+) -> None:
+    """One admin-trace event (run protocol v2 only; best-effort, never raises)."""
+    if payload.protocol != 2 or not payload.run_id:
+        return
+    from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+    from harness.temporal.interpreter.node_events import attempt_of  # noqa: PLC0415
+    from harness.temporal.interpreter.run_events import v2_node_key  # noqa: PLC0415
+
+    await run_event_producer().append(
+        run_id=payload.run_id,
+        type=event_type,
+        node_id=payload.node_id if node_scoped else None,
+        data=data,
+        dedupe_key=v2_node_key(
+            payload.run_id, payload.node_id, attempt_of(), intent, payload.event_scope or ""
+        ),
+    )
+
+
+def _streamed_io(streaming: bool) -> dict[str, Any] | None:
+    return {"streamed": ["text"]} if streaming else None
+
+
+class _GenerationTrace:
+    """TASK-1038 R6/R8 — what a text generation reports on the run stream (run protocol v2).
+
+    Admin: ``prompt.composed`` (layer SIZES only — the content is read through the Prompt
+    Inspector), ``model.request`` per candidate, ``guardrail.inbound`` / ``guardrail.outbound``
+    from the text service's report. Public: ``output.text.delta { field: 'text' }`` for a node
+    wired into End or flagged ``stream`` (OD-24), generated with ``stream: true``.
+    """
+
+    def __init__(self, payload: NodeActivityInput) -> None:
+        from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+        from harness.temporal.interpreter.node_events import attempt_of  # noqa: PLC0415
+
+        self._payload = payload
+        self._producer = run_event_producer()
+        self._attempt = attempt_of()
+        self._streamed_any = False
+        delivery = payload.delivery or {}
+        self.streams_text = delivery.get("stream") is True or "text" in (
+            delivery.get("publicFields") or []
+        )
+
+    def _key(self, intent: str) -> str:
+        from harness.temporal.interpreter.run_events import v2_node_key  # noqa: PLC0415
+
+        return v2_node_key(
+            self._payload.run_id,
+            self._payload.node_id,
+            self._attempt,
+            intent,
+            self._payload.event_scope or "",
+        )
+
+    async def _append(self, event_type: str, data: dict[str, Any], intent: str | None) -> None:
+        await self._producer.append(
+            run_id=self._payload.run_id,
+            type=event_type,
+            node_id=self._payload.node_id,
+            data=data,
+            dedupe_key=self._key(intent) if intent else None,
+        )
+
+    async def composed(self, composed: Any, index: int) -> None:
+        layers = [{"name": name, "chars": chars} for name, chars in composed.layers]
+        await self._append(
+            "prompt.composed",
+            {
+                "layers": layers,
+                "charsTotal": sum(layer["chars"] for layer in layers),
+                "selected": list(composed.selected),
+                "excluded": [
+                    {"key": exclusion.key, "reason": exclusion.reason}
+                    for exclusion in composed.excluded
+                    if exclusion.reason in ("condition_false", "condition_error")
+                ],
+                "blocks": [
+                    {"key": b.key, "chars": b.chars, "truncated": b.truncated}
+                    for b in composed.blocks
+                ],
+            },
+            f"prompt:{index}",
+        )
+
+    async def model_request(
+        self, provider: str, model: str, index: int, stream: bool, generation: dict[str, Any]
+    ) -> None:
+        parameters: dict[str, Any] = {}
+        temperature = generation.get("temperature")
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            parameters["temperature"] = max(0, temperature)
+        max_tokens = generation.get("maxTokens")
+        if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) and max_tokens >= 1:
+            parameters["maxTokens"] = max_tokens
+        data: dict[str, Any] = {
+            "provider": provider,
+            "model": model,
+            "attempt": index + 1,
+            "fallback": index > 0,
+            "stream": stream,
+        }
+        if parameters:
+            data["parameters"] = parameters
+        await self._append("model.request", data, f"model:{index}")
+
+    def delta_sink(self, index: int) -> Any:
+        """The ``on_delta`` of candidate ``index``. A fallback candidate that starts streaming
+        AFTER an earlier one already streamed partial text first re-announces the node with a
+        higher ``attempt``, so a client discards the abandoned text (protocol-v2.md §3)."""
+        restarted = [False]
+
+        async def _sink(text: str) -> None:
+            if index > 0 and self._streamed_any and not restarted[0]:
+                restarted[0] = True
+                await self._append(
+                    "node.started",
+                    {"kind": self._payload.node_type, "attempt": self._attempt + index},
+                    f"restart:{index}",
+                )
+            self._streamed_any = True
+            await self._producer.text_delta(
+                run_id=self._payload.run_id,
+                node_id=self._payload.node_id,
+                field="text",
+                text=text,
+            )
+
+        return _sink
+
+    async def guardrails(self, result: Any, index: int) -> None:
+        verdicts = getattr(result, "guardrail", None)
+        verdicts = verdicts if isinstance(verdicts, dict) else {}
+        egress = getattr(result, "egress", None)
+        inbound = _guardrail_event(verdicts.get("inbound"))
+        if inbound is None and isinstance(egress, dict):
+            raw_detected = egress.get("detected")
+            detected: dict[str, Any] = raw_detected if isinstance(raw_detected, dict) else {}
+            counts = [v for v in detected.values() if isinstance(v, int)]
+            redacted = egress.get("redacted") is True
+            inbound = {
+                "action": "REDACT" if redacted else "ALLOW",
+                "detected": sum(counts),
+                "categories": sorted(str(k) for k in detected),
+                "mode": "redact" if redacted else "detect",
+            }
+        if inbound is not None:
+            await self._append("guardrail.inbound", inbound, f"guardrail-in:{index}")
+        outbound = _guardrail_event(verdicts.get("outbound"))
+        if outbound is not None:
+            await self._append("guardrail.outbound", outbound, f"guardrail-out:{index}")
+
+
+def _guardrail_event(verdict: Any) -> dict[str, Any] | None:
+    """A text-service verdict, narrowed to `GuardrailEventData`'s closed shape; ``None`` when
+    the service reported none."""
+    if not isinstance(verdict, dict) or verdict.get("action") not in ("ALLOW", "REDACT", "BLOCK"):
+        return None
+    detected = verdict.get("detected")
+    event: dict[str, Any] = {
+        "action": verdict["action"],
+        "detected": detected if isinstance(detected, int) and detected >= 0 else 0,
+    }
+    categories = verdict.get("categories")
+    if isinstance(categories, list):
+        event["categories"] = [str(c) for c in categories]
+    if verdict.get("mode") in ("detect", "redact"):
+        event["mode"] = verdict["mode"]
+    latency = verdict.get("latencyMs")
+    if isinstance(latency, (int, float)) and not isinstance(latency, bool) and latency >= 0:
+        event["latencyMs"] = latency
+    return event
 
 
 async def _run_transcription(
@@ -1761,6 +2059,10 @@ async def _run_transcription(
         )
     )
     await record_and_flush(payload, status=STATUS_OK, started=started)
+    transcript_text = getattr(result, "transcript", None)
+    if isinstance(transcript_text, str) and transcript_text:
+        # TASK-1036 §10.3 — the transcript the harness sees, on the admin trace.
+        await _admin_event(payload, "transcript.final", {"text": transcript_text}, "transcript")
     output = {
         "transcript": getattr(result, "transcript", None),
         "jobId": result.job_id,
@@ -1774,6 +2076,33 @@ async def _run_transcription(
             output=output,
         )
     return NodeActivityResult(status="SUCCEEDED", output=output)
+
+
+#: `output.audio.delta.format` is one of four; a TTS format or content type maps onto it.
+_PROTOCOL_AUDIO_FORMATS = {
+    "wav": "wav",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "mp3": "mp3",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "ogg": "ogg",
+    "opus": "ogg",
+    "audio/ogg": "ogg",
+    "pcm": "pcm",
+    "audio/pcm": "pcm",
+    "audio/l16": "pcm",
+}
+
+
+def _protocol_audio_format(declared: Any, content_type: Any) -> str | None:
+    for candidate in (declared, content_type):
+        if isinstance(candidate, str):
+            found = _PROTOCOL_AUDIO_FORMATS.get(candidate.split(";")[0].strip().lower())
+            if found is not None:
+                return found
+    return None
 
 
 async def _run_speech(
@@ -1841,17 +2170,23 @@ async def _run_speech(
     # allowed to fail a synthesis that already succeeded, and a run with no `run_id` (the field
     # is additive-optional) simply does not stream. MEASURED by
     # `test_task849_audio_two_lane_split.py`.
-    if payload.run_id:
+    #
+    # TASK-1038 R6 — the frames are run-protocol v2 `output.audio.delta { field: 'audio' }`,
+    # appended through the ONE sequencer (no dedupe key: a retried synthesis is new audio, and the
+    # retry's `node.started` tells clients to discard). A format the protocol cannot name is not
+    # streamed — the stored `audio` reference still carries the whole result.
+    audio_format = _protocol_audio_format(params.get("format"), synthesis.content_type)
+    if payload.run_id and audio_format is not None:
         from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
 
         producer = run_event_producer()
-        for sequence, frame in enumerate(synthesis.chunks):
-            await producer.emit_token_delta(
-                tenant_id=payload.tenant_id,
+        for frame in synthesis.chunks:
+            await producer.audio_delta(
                 run_id=payload.run_id,
                 node_id=payload.node_id,
-                sequence=sequence,
-                text=base64.b64encode(frame).decode("ascii"),
+                field="audio",
+                chunk=frame,
+                audio_format=audio_format,
             )
 
     settings = get_settings()
@@ -2110,22 +2445,27 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
 
     if resolved.task == "TEXT_GENERATION":
         # TASK-876: the fallback chain rides on the resolve answer — read, never resolved here.
-        return await _run_text_generation(
+        result = await _run_text_generation(
             payload,
             resolved,
             started,
             fallback=read_text_fallback(raw),
             primary=read_text_primary(raw),
         )
-    if resolved.task == "SPEECH_TO_TEXT":
-        return await _run_transcription(payload, resolved, started)
+    elif resolved.task == "SPEECH_TO_TEXT":
+        result = await _run_transcription(payload, resolved, started)
     # TASK-930 §2.4 — an EXPLICIT arm, before the TTS fallthrough. Without it a NER agent
     # reached `_run_speech` and degraded with "the resolved TTS agent names no `voice`": a
     # complaint about a control its author never declared, for a task nobody had told the
     # switch about. Every task the mirror admits is now named here.
-    if resolved.task == "NAMED_ENTITY_RECOGNITION":
-        return await _run_ner(payload, resolved, started)
-    return await _run_speech(payload, resolved, started)
+    elif resolved.task == "NAMED_ENTITY_RECOGNITION":
+        result = await _run_ner(payload, resolved, started)
+    else:
+        result = await _run_speech(payload, resolved, started)
+    if payload.protocol != 2:
+        return result
+    # TASK-1036 §9.1 — the agent's TASK decides its NodeIO outputs (`nodes.<id>.outputs.*`).
+    return result.model_copy(update={"io": {**(result.io or {}), "task": resolved.task}})
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2153,6 +2493,16 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
     config = _config(payload)
     result = _output_payload(_bound(payload))
     violation = _schema_violation(config.get("outputSchema"), result)
+    await _admin_event(
+        payload,
+        "output.validated",
+        {
+            "valid": violation is None,
+            "problems": [] if violation is None else [violation],
+            "field": "in",
+        },
+        "output-validated",
+    )
     if violation is not None:
         mode = config.get("onSchemaViolation") or "fail"
         await record_and_flush(payload, status=STATUS_ERROR, started=started)

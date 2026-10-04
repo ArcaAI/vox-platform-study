@@ -52,6 +52,7 @@ from harness.temporal.workflow_ids import (
 with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.compiled_config import CompiledLoopBody, CompiledNode
+    from harness.temporal.interpreter.data_contract import BindingScope, resolve_bindings
     from harness.temporal.interpreter.loop_activities import loop_state_checkpoint
     from harness.temporal.interpreter.models import (
         CoreLoopBounds,
@@ -81,6 +82,12 @@ with workflow.unsafe.imports_passed_through():
         review_gate_workflow_id,
     )
     from harness.temporal.models import TrajectoryContext
+
+# TASK-1036 §9.2 — the SAME marker the interpreter uses: a body node's compiled `bindings` decide
+# what it is handed. Cheap operand first (no history recorded before the marker can carry a node
+# with `bindings`: the config loader refused every such artifact), so it is consulted only for a
+# body that uses them. Inside the body `nodes.<loop>.outputs.item` is the CURRENT item.
+_BINDINGS_PATCH = "task-1036-bindings"
 
 _CHECKPOINT_TIMEOUT = timedelta(seconds=30)
 _CHECKPOINT_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=1))
@@ -309,6 +316,41 @@ class LoopWorkflow:
             bound[binding.to_port] = upstream_output[key]
         return bound
 
+    def _resolve_node_bindings(
+        self,
+        node: CompiledNode,
+        inp: CoreLoopInput,
+        body_types: dict[str, tuple[str, dict[str, Any]]],
+    ) -> dict[str, Any]:
+        """A body node's compiled `bindings`, resolved against the parent's run context plus this
+        iteration's body outputs; the loop's `item` is the CURRENT item (pure)."""
+        outer_nodes = inp.run_context.get("nodes") or {}
+        # The outer graph's types/tasks ride on the run context's `nodeMeta` (protocol v2).
+        meta = inp.run_context.get("nodeMeta") or {}
+        node_types = {
+            node_id: str(info.get("type") or "")
+            for node_id, info in meta.items()
+            if isinstance(info, dict)
+        }
+        node_tasks = {
+            node_id: str(info["task"])
+            for node_id, info in meta.items()
+            if isinstance(info, dict) and isinstance(info.get("task"), str)
+        }
+        node_types.update({node_id: kind for node_id, (kind, _config) in body_types.items()})
+        node_types[inp.node_id] = CORE_LOOP_NODE_TYPE
+        loop_output = self._outputs.get(inp.node_id, {})
+        scope = BindingScope(
+            context=inp.run_context.get("trigger"),
+            nodes={**outer_nodes, **self._outputs},
+            node_types=node_types,
+            node_tasks=node_tasks,
+            vars=inp.run_context.get("vars") or {},
+            loop_item=(inp.node_id, loop_output.get("item")),
+            run_payload=inp.run_payload,
+        )
+        return resolve_bindings(node.bindings or {}, scope).values
+
     def _branch_skip(self, node: CompiledNode) -> bool:
         if node.branch_guards:
             if not any(
@@ -341,7 +383,10 @@ class LoopWorkflow:
         if inp.sandbox and spec.external_write:
             return NodeActivityResult(status="SKIPPED", reason="sandbox")
 
-        bound = self._resolve_bound_inputs(node, body_types, inp.node_id)
+        if node.bindings is not None and workflow.patched(_BINDINGS_PATCH):
+            bound = self._resolve_node_bindings(node, inp, body_types)
+        else:
+            bound = self._resolve_bound_inputs(node, body_types, inp.node_id)
         run_context = {
             **inp.run_context,
             "nodes": {**(inp.run_context.get("nodes") or {}), **self._outputs},
@@ -457,6 +502,8 @@ class LoopWorkflow:
                     run_payload=inp.run_payload,
                     run_id=inp.run_id,
                     run_context=run_context,
+                    protocol=2 if inp.protocol == 2 else None,
+                    event_scope=f"iter:{iteration}" if inp.protocol == 2 else None,
                 ),
                 start_to_close_timeout=timedelta(seconds=caps.clamp_timeout(node.timeout_seconds)),
                 retry_policy=RetryPolicy(

@@ -64,6 +64,34 @@ def _rpc_error_response(exc: RPCError, *, action: str) -> HTTPException:
     return HTTPException(status_code=502, detail=f"temporal error ({action}): {exc}")
 
 
+class StartRunLimits(BaseModel):
+    """``limits`` on the start body (lane B3a), every key optional."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    node_output_claim_check_min_bytes: int | None = Field(
+        default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
+    )
+    result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
+    activity_input_max_bytes: int | None = Field(default=None, alias="activityInputMaxBytes", gt=0)
+
+
+def _run_limits(settings: Settings, injected: StartRunLimits | None) -> RunLimits:
+    """The run's ceilings: the gateway's injected values, each falling back to its
+    ``HARNESS_CLAIM_CHECK_*`` setting when absent. The fallback is a ONE-RELEASE transition for a
+    gateway that does not inject them yet; after it, the settings-registry values are the only
+    source."""
+    claim_check = settings.claim_check
+    given = injected or StartRunLimits()
+    return RunLimits(
+        activityInputMaxBytes=given.activity_input_max_bytes
+        or claim_check.activity_input_max_bytes,
+        nodeOutputClaimCheckMinBytes=given.node_output_claim_check_min_bytes
+        or claim_check.node_output_min_bytes,
+        resultInlineMaxBytes=given.result_inline_max_bytes or claim_check.result_inline_max_bytes,
+    )
+
+
 class StartWorkflowRunRequest(BaseModel):
     """Body for ``POST /workflow-runs:start``.
 
@@ -90,6 +118,11 @@ class StartWorkflowRunRequest(BaseModel):
     # caller-composed `payload` cannot impersonate one. See `RunSubject` for why this is a
     # separate field rather than a convention about `payload`'s contents.
     subject: RunSubject | None = Field(default=None)
+    # TASK-1038 (lane B3a injects, lane B1 consumes): the event-stream retention and the payload
+    # ceilings, resolved by the gateway from the settings registry. Each is optional so a gateway
+    # that has not shipped the injection yet still starts runs (see `_run_limits`).
+    retention_seconds: int | None = Field(default=None, alias="retentionSeconds", gt=0)
+    limits: StartRunLimits | None = Field(default=None)
 
 
 async def _execution_timeout(
@@ -147,9 +180,8 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         subject=body.subject,
         # TASK-1038 R-3 — the payload ceiling the walk enforces on itself, resolved HERE because
         # the deterministic workflow body cannot read settings.
-        limits=RunLimits(
-            activityInputMaxBytes=settings.claim_check.activity_input_max_bytes,
-        ),
+        limits=_run_limits(settings, body.limits),
+        retention_seconds=body.retention_seconds,
     )
     # TASK-1038 D-B — the Temporal backstop. `None` (no timeout) when it cannot be computed
     # honestly; the in-workflow deadline still bounds the walk either way.

@@ -128,6 +128,11 @@ def platform_rules() -> str:
     return _PLATFORM_RULES
 
 
+#: TASK-1036 OD-10 — content a `drop_empty_blocks` compose treats as empty. The class is spelled
+#: out (as for the markers) so it matches exactly what the TypeScript `BLANK_CONTENT` matches.
+_BLANK_CONTENT = re.compile(r"^[ \t\r\n]*$")
+
+
 def output_language_step(language_name: str) -> str:
     """The output-language step: one fixed sentence naming the language."""
     return DEFAULT_OUTPUT_LANGUAGE_STEP_TEMPLATE.format(language_name=language_name)
@@ -151,6 +156,9 @@ class ComposedMessages:
     selected: list[str] = field(default_factory=list)
     excluded: list[FragmentExclusion] = field(default_factory=list)
     blocks: list[ComposedDataBlock] = field(default_factory=list)
+    #: TASK-1038 (`prompt.composed`, sizes only): each EMITTED layer's name and code points —
+    #: `platformRules` / `instruction` / `outputLanguage` / `outputContract` / `data`.
+    layers: list[tuple[str, int]] = field(default_factory=list)
 
 
 def _non_empty(value: Any) -> bool:
@@ -201,6 +209,7 @@ def compose_messages(
     output_contract: str | None = None,
     data_blocks: Sequence[Any] | None = None,
     template_ref: str | None = None,
+    drop_empty_blocks: bool = False,
 ) -> ComposedMessages:
     """Compose the system and user messages. Raises ``ComposeDataBlockKeyError``,
     ``PromptVariableUnresolved`` (every missing
@@ -215,10 +224,25 @@ def compose_messages(
     layers = [
         platform_rules,
         composed.prompt,
-        output_language_step(language_name) if _non_empty(language_name) else None,
+        (
+            output_language_step(language_name)
+            if isinstance(language_name, str) and language_name
+            else None
+        ),
         output_contract,
     ]
-    system = MESSAGE_LAYER_JOIN.join(layer for layer in layers if _non_empty(layer))
+    system = MESSAGE_LAYER_JOIN.join(
+        layer for layer in layers if isinstance(layer, str) and _non_empty(layer)
+    )
+    layer_sizes: list[tuple[str, int]] = [
+        (name, len(text))
+        for name, text in zip(
+            ("platformRules", "instruction", "outputLanguage", "outputContract"),
+            layers,
+            strict=True,
+        )
+        if isinstance(text, str) and text
+    ]
 
     wrapped: list[str] = []
     blocks: list[ComposedDataBlock] = []
@@ -229,6 +253,9 @@ def compose_messages(
         content = _block_field(block, "content")
         if not _non_empty(content):
             continue
+        if drop_empty_blocks and _BLANK_CONTENT.fullmatch(content):
+            # TASK-1036 OD-10 — opt-in: spaces/tabs/CR/LF only is empty too.
+            continue
         kept, chars, truncated = _fit_to_budget(
             content, _block_field(block, "maxChars", "max_chars")
         )
@@ -237,10 +264,14 @@ def compose_messages(
         wrapped.append(_wrap_external_data(key, label, body))
         blocks.append(ComposedDataBlock(key=key, chars=chars, truncated=truncated))
 
+    user = MESSAGE_LAYER_JOIN.join(wrapped)
+    if user:
+        layer_sizes.append(("data", len(user)))
     return ComposedMessages(
         system=system,
-        user=MESSAGE_LAYER_JOIN.join(wrapped),
+        user=user,
         selected=list(composed.selected),
         excluded=list(composed.excluded),
         blocks=blocks,
+        layers=layer_sizes,
     )

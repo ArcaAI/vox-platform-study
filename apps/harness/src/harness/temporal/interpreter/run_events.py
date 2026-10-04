@@ -1,5 +1,13 @@
 """lane A step 1 — the **Phase C** producer for workflow runs.
 
+**TASK-1038 R6 — run protocol v2.** Since this change the producer writes run-protocol v2 entries
+ONLY, every one through the single sequencer script (``run_protocol.RUN_APPEND_LUA``): a
+contiguous ``seq``, a ``body`` field (never the legacy ``data``), dedupe keys derived from intent
+and the run's retention on its terminal event. The ``EVENT_*`` names below are now the WORKFLOW's
+internal vocabulary for the facts it hands ``interpreter.emit_run_events`` (``RunEventSpec``);
+the activity maps them onto the v2 types. The text below describes the two-lane split, which
+is unchanged.
+
 shipped the envelope and the resume-token CONVENTION (Phases A/B) and
 explicitly deferred Phase C: *a reference producer wired into any service*. Until
 now nothing produced run events at all, which is why the gateway's
@@ -37,12 +45,18 @@ to this contract.
 
 from __future__ import annotations
 
-import uuid
+import base64
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from hope_async_contract import AsyncEnvelope, AsyncIdempotencyKey
+
+from harness.temporal.interpreter.run_protocol import (
+    RUN_APPEND_LUA,
+    RUN_STREAM_MAX_LEN,
+    RunProtocolError,
+    build_run_append,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -63,11 +77,6 @@ RUN_EVENT_STREAM_KEY_PREFIX = "wf:run:"
 # re-snapshotting rather than by silently losing tokens.
 RUN_EVENT_STREAM_MAX_LEN = 10_000
 
-# The transport name embedded in the opaque resume token (async-contract The
-#: consumer never parses the token; this string exists so a future transport swap is
-#: detectable rather than silently mis-read.
-RUN_EVENT_TRANSPORT = "redis-stream"
-
 
 def run_event_stream_key(run_id: str) -> str:
     """The Redis Stream key carrying one run's events (pure)."""
@@ -78,249 +87,151 @@ def run_event_stream_key(run_id: str) -> str:
 # Event types — the lane each one belongs to is stated, not implied
 # ---------------------------------------------------------------------------
 
-#: CONTROL lane (mirrored from Temporal). Two-to-five lowercase dotted segments, per
-#: the envelope's own ``type`` pattern.
+#: The facts the WORKFLOW names for ``interpreter.emit_run_events`` (``RunEventSpec.event_type``).
+#: Internal vocabulary: the activity maps each onto its run-protocol v2 type(s). Deltas never
+#: come through here — they are appended by the producing activity (``text_delta`` /
+#: ``audio_delta``), and ``test_task849_two_lane_split.py`` MEASURES that they never touch
+#: Temporal.
+EVENT_RUN_STARTED = "workflow.run.started"
 EVENT_NODE_STARTED = "workflow.node.started"
 EVENT_NODE_COMPLETED = "workflow.node.completed"
 EVENT_NODE_FAILED = "workflow.node.failed"
-EVENT_LOOP_ITERATION = "workflow.loop.iteration"
-EVENT_GUARDRAIL_VERDICT = "workflow.guardrail.verdict"
 EVENT_RUN_COMPLETED = "workflow.run.completed"
 
-#: DELTA lane. Never routed through Temporal — that is the split this module exists
-#: to enforce, and ``test_task849_two_lane_split.py`` MEASURES it rather than asserting it.
-EVENT_TOKEN_DELTA = "workflow.token.delta"
-
-CONTROL_EVENT_TYPES = frozenset(
-    {
-        EVENT_NODE_STARTED,
-        EVENT_NODE_COMPLETED,
-        EVENT_NODE_FAILED,
-        EVENT_LOOP_ITERATION,
-        EVENT_GUARDRAIL_VERDICT,
-        EVENT_RUN_COMPLETED,
-    }
-)
-
-DELTA_EVENT_TYPES = frozenset({EVENT_TOKEN_DELTA})
-
 
 # ---------------------------------------------------------------------------
-# Idempotency keys — derived from INTENT, never from chance (async-contract
+# TASK-1038 R6 — run protocol v2 dedupe keys (derived from INTENT, never a clock or a UUID)
 # ---------------------------------------------------------------------------
 
 
-def node_started_key(run_id: str, node_id: str, attempt_generation: int) -> str:
-    """``…:node:<nodeId>:<gen>:started``.
-
-    The recipe table's ``workflowNode`` key names *node completion*; "this node began"
-    is a DIFFERENT intent and needs a different key, or a consumer collapsing on the key
-    would drop the start. Still a pure function of (run, node, attempt) — never a clock,
-    never a counter, never a UUID.
-    """
-    return f"{AsyncIdempotencyKey.workflow_node(run_id, node_id, attempt_generation)}:started"
+def v2_node_key(run_id: str, node_id: str, attempt: int, intent: str, scope: str = "") -> str:
+    """``wf:run:<runId>:node:<nodeId>[:<scope>]:<attempt>:<intent>`` — ``scope`` separates the
+    iterations of a loop body (the same node runs once per iteration)."""
+    middle = f"{node_id}:{scope}" if scope else node_id
+    return f"wf:run:{run_id}:node:{middle}:{attempt}:{intent}"
 
 
-def node_settled_key(run_id: str, node_id: str, attempt_generation: int) -> str:
-    """The recipe table's ``workflowNode`` key, unchanged.
-
-    Deliberately the SAME key for the completed and failed paths — the corollary spelled
-    out in ``idempotency.py``'s header: *"the abort/failure path uses the SAME key as the
-    completion path for the same intent. Inventing an `...:aborted` suffix double-delivers."*
-    """
-    return AsyncIdempotencyKey.workflow_node(run_id, node_id, attempt_generation)
+def v2_run_key(run_id: str, intent: str) -> str:
+    """``wf:run:<runId>:<intent>`` (``started``; ``completed`` for ANY terminal event — a run ends
+    once)."""
+    return f"wf:run:{run_id}:{intent}"
 
 
-def token_delta_key(run_id: str, node_id: str, sequence: int) -> str:
-    """``wf:run:<runId>:node:<nodeId>:delta:<sequence>`` — shaped after ``textChunk``."""
-    return f"wf:run:{run_id}:node:{node_id}:delta:{sequence}"
-
-
-def loop_iteration_key(run_id: str, node_id: str, iteration: int) -> str:
-    """``wf:run:<runId>:node:<nodeId>:iter:<n>``."""
-    return f"wf:run:{run_id}:node:{node_id}:iter:{iteration}"
-
-
-def run_completed_key(run_id: str) -> str:
-    """``wf:run:<runId>:completed`` — one terminal event per run, however often it is retried."""
-    return f"wf:run:{run_id}:completed"
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
-# Envelope construction
-# ---------------------------------------------------------------------------
-
-
-def build_run_event(
-    *,
-    tenant_id: str,
-    run_id: str,
-    event_type: str,
-    idempotency_key: str,
-    payload: dict[str, Any],
-    causation_id: str | None = None,
-) -> AsyncEnvelope:
-    """One conforming async-contract envelope for a run event.
-
-    ``correlationId`` is the ``runId``: every event caused by or about the same run
-    shares it, which is what lets a debug surface join a token delta to the node that
-    produced it and to the run that contains both.
-
-    Called only from ACTIVITY code (never a workflow body) — ``uuid4`` and
-    ``datetime.now`` are both forbidden inside ``@workflow.defn``.
-    """
-    return AsyncEnvelope(
-        schema_version=1,
-        id=str(uuid.uuid4()),
-        tenant_id=tenant_id,
-        type=event_type,
-        occurred_at=datetime.now(UTC).isoformat(),
-        correlation_id=run_id,
-        causation_id=causation_id,
-        idempotency_key=idempotency_key,
-        payload=payload,
-    )
-
-
-def encode_run_event(envelope: AsyncEnvelope) -> str:
-    """Wire form of one envelope: camelCase JSON, matching the TypeScript twin exactly.
-
-    ``exclude_unset=True``, and it is not cosmetic — the same reason apps/text's
-    ``TaskManager`` uses it (``task_manager.py:192``). ``payload_ref`` was never
-    assigned, and the contract's XOR is "exactly one of the two is PRESENT", not
-    "exactly one is non-null": dumping ``payloadRef: null`` alongside ``payload``
-    produces an envelope that fails its own validator on both sides of the wire.
-    Every other field is passed explicitly to the constructor — ``causationId``
-    included, precisely so an explicit ``null`` survives this filter.
-    """
-    return envelope.model_dump_json(by_alias=True, exclude_unset=True)
-
-
-# ---------------------------------------------------------------------------
-# The producer
+# The producer — v2 only, through the ONE sequencer
 # ---------------------------------------------------------------------------
 
 
 class RunEventProducer:
-    """Writes run events onto a run's Redis Stream. Best-effort, by contract.
+    """Appends run-protocol v2 events through ``RUN_APPEND_LUA``. Best-effort, by contract.
 
-    Holds a Redis client rather than building one, so the two callers that matter —
-    the emit ACTIVITY and a node activity streaming tokens — share one connection per
-    worker process and the unit suite can hand in a fake without a server.
+    Every stored event of a run — the walk's control events, the activities' debug events, the
+    deltas — goes through the same script, so one run has one contiguous ``seq`` whichever process
+    writes it (``protocol-v2.md`` §6.1). The harness writes v2 entries ONLY; the gateway derives
+    the legacy frames for legacy-selecting clients.
+
+    Holds a Redis client rather than building one, so the emit activity and a streaming node
+    activity share one connection per worker and the unit suite can hand in a fake.
     """
 
-    def __init__(self, redis: Any | None, *, max_len: int = RUN_EVENT_STREAM_MAX_LEN) -> None:
+    def __init__(self, redis: Any | None, *, max_len: int = RUN_STREAM_MAX_LEN) -> None:
         self._redis = redis
         self._max_len = max_len
+        self._script: Any | None = None
 
-    async def emit(self, envelope: AsyncEnvelope) -> str | None:
-        """Append one envelope; return the Redis message id, or ``None`` on any failure.
+    async def append(
+        self,
+        *,
+        run_id: str,
+        type: str,  # noqa: A002 — the envelope's own field name
+        data: dict[str, Any],
+        node_id: str | None = None,
+        dedupe_key: str | None = None,
+        retention_seconds: int | None = None,
+        allow_missing_retention: bool = False,
+    ) -> int | None:
+        """Append one event; return its ``seq``, or ``None`` on any failure (never raises).
 
-        ``None`` is a supported outcome and never an exception: this stream is a mirror
-        (see the module docstring). A caller that treats ``None`` as fatal has
-        misunderstood which of the two lanes carries the durable record.
+        ``None`` is a supported outcome: the stream is a mirror of Temporal, never the record, and
+        a refused append (``RUN_STREAM_CLOSED``, a non-conforming event) is logged and swallowed.
         """
-        if self._redis is None:
+        if self._redis is None or not run_id:
             return None
-        run_id = envelope.correlation_id
         try:
-            message_id = await self._redis.xadd(
-                run_event_stream_key(run_id),
-                {"data": encode_run_event(envelope)},
-                maxlen=self._max_len,
-                approximate=True,
+            command = build_run_append(
+                run_id=run_id,
+                type=type,
+                ts=_now_iso(),
+                data=data,
+                node_id=node_id,
+                dedupe_key=dedupe_key,
+                retention_seconds=retention_seconds,
+                max_len=self._max_len,
+                allow_missing_retention=allow_missing_retention,
             )
+        except RunProtocolError as exc:
+            logger.warning(
+                "harness.run_events.event_refused",
+                run_id=run_id,
+                event_type=type,
+                problems=exc.problems,
+            )
+            return None
+        try:
+            if self._script is None:
+                self._script = self._redis.register_script(RUN_APPEND_LUA)
+            reply = await self._script(keys=command.keys, args=command.args)
         except Exception as exc:  # noqa: BLE001 — a mirror outage never fails a clinical run
             logger.warning(
-                "harness.run_events.emit_failed",
+                "harness.run_events.append_failed",
                 run_id=run_id,
-                event_type=envelope.type,
+                event_type=type,
                 error=str(exc),
-                error_type=type(exc).__name__,
+                error_type=type_name(exc),
             )
             return None
-        return message_id.decode() if isinstance(message_id, bytes) else str(message_id)
+        try:
+            return int(reply[0])
+        except (TypeError, ValueError, IndexError):
+            return None
 
-    async def emit_many(self, envelopes: list[AsyncEnvelope]) -> list[str]:
-        """Append several envelopes in order. Returns the ids that were actually written."""
-        written: list[str] = []
-        for envelope in envelopes:
-            message_id = await self.emit(envelope)
-            if message_id is not None:
-                written.append(message_id)
-        return written
-
-    async def emit_loop_iteration(
-        self,
-        *,
-        tenant_id: str,
-        run_id: str,
-        node_id: str,
-        iteration: int,
-        max_iterations: int,
-        tokens_used: int,
-        max_total_tokens: int,
-        digest: str,
-        terminated: bool,
-    ) -> str | None:
-        """One ``core.loop`` iteration, settled. The CONTROL lane's per-iteration entry point.
-
-        Called from ``interpreter.loop_state_checkpoint`` — the activity that already runs
-        exactly once per iteration — so this adds NO Temporal command and needs no
-        ``workflow.patched`` gate. The durable record of the iteration is that activity's own
-        history event plus the ``continue_as_new`` boundary; this is the live mirror the debug
-        canvas reads, exactly as the node-boundary control events are (``emit_run_events``).
-
-        **The payload is scalars only, and that is a constraint rather than a preference.** A
-        loop's carry-forward may be megabytes and may be claim-check offloaded above 256 KiB
-        (``LOOP_STATE_INLINE_LIMIT_BYTES``); embedding it here would put that blob back on the
-        wire once per iteration and defeat the offload entirely. What travels is identity
-        (``nodeId``), the drill-down's position (``iteration`` / ``maxIterations``) and the
-        STOP-RELEVANT counters — the invoice, the convergence digest, and whether the
-        orchestrator declared itself done.
-
-        ``iteration`` is ONE-BASED and names the iteration that just completed, so a client
-        renders ``3/12`` rather than ``2/12`` for the third one.
-        """
-        return await self.emit(
-            build_run_event(
-                tenant_id=tenant_id,
-                run_id=run_id,
-                event_type=EVENT_LOOP_ITERATION,
-                idempotency_key=loop_iteration_key(run_id, node_id, iteration),
-                payload={
-                    "nodeId": node_id,
-                    "iteration": iteration,
-                    "maxIterations": max_iterations,
-                    "tokensUsed": tokens_used,
-                    "maxTotalTokens": max_total_tokens,
-                    "digest": digest,
-                    "terminated": terminated,
-                },
-            )
+    async def text_delta(self, *, run_id: str, node_id: str, field: str, text: str) -> int | None:
+        """``output.text.delta`` — no dedupe key: a retried model call produces different text,
+        and the retry's ``node.started`` (attempt + 1) tells clients to discard the earlier
+        partial text."""
+        return await self.append(
+            run_id=run_id,
+            type="output.text.delta",
+            node_id=node_id,
+            data={"field": field, "text": text},
         )
 
-    async def emit_token_delta(
+    async def audio_delta(
         self,
         *,
-        tenant_id: str,
         run_id: str,
         node_id: str,
-        sequence: int,
-        text: str,
-    ) -> str | None:
-        """The DELTA lane's one entry point.
-
-        This never touches Temporal — not a signal, not an activity result, not an
-        update. That is the split, and it is why a 10 000-delta run adds no proportional
-        history (``test_task849_two_lane_split.py`` measures exactly that).
-        """
-        return await self.emit(
-            build_run_event(
-                tenant_id=tenant_id,
-                run_id=run_id,
-                event_type=EVENT_TOKEN_DELTA,
-                idempotency_key=token_delta_key(run_id, node_id, sequence),
-                payload={"nodeId": node_id, "sequence": sequence, "text": text},
-            )
+        field: str,
+        chunk: bytes,
+        audio_format: str,
+        sample_rate: int | None = None,
+    ) -> int | None:
+        """``output.audio.delta`` — the chunk base64-encoded, the format one of the protocol's."""
+        data: dict[str, Any] = {
+            "field": field,
+            "chunk": base64.b64encode(chunk).decode("ascii"),
+            "format": audio_format,
+        }
+        if sample_rate is not None:
+            data["sampleRate"] = sample_rate
+        return await self.append(
+            run_id=run_id, type="output.audio.delta", node_id=node_id, data=data
         )
+
+
+def type_name(exc: BaseException) -> str:
+    return type(exc).__name__

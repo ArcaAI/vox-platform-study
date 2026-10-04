@@ -45,9 +45,9 @@ from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.compiled_config import canonical_json
 from harness.temporal.interpreter.models import InterpreterInput
 from harness.temporal.interpreter.nodes import core as core_nodes
-from harness.temporal.interpreter.run_events import EVENT_TOKEN_DELTA, run_event_stream_key
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.models import SpeechSynthesisResult
+from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
 
 _BUCKET = "harness-claim-check"
 TENANT = "22222222-2222-2222-2222-222222222222"
@@ -71,15 +71,8 @@ def _audio(frames: int) -> list[bytes]:
     return [_frame(i) for i in range(frames)]
 
 
-class FakeRedisStream:
-    def __init__(self) -> None:
-        self.by_key: dict[str, list[dict]] = {}
-        self._seq = 0
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self._seq += 1
-        self.by_key.setdefault(key, []).append(json.loads(fields["data"]))
-        return f"{self._seq}-0"
+#: TASK-1038 R6 — the fake socket now runs the run-protocol v2 sequencer.
+FakeRedisStream = FakeRunStreamRedis
 
 
 def _decoded_history_payloads(history_json: str) -> bytes:
@@ -267,14 +260,10 @@ class TestAudioNeverEntersTemporalHistory:
         # The audio really was produced and really did travel the delta lane — without this the
         # equality below would also hold for a node that synthesised nothing.
         small_deltas = [
-            e
-            for e in small_redis.by_key[run_event_stream_key(small_run)]
-            if e["type"] == EVENT_TOKEN_DELTA
+            e for e in small_redis.events(small_run) if e["type"] == "output.audio.delta"
         ]
         large_deltas = [
-            e
-            for e in large_redis.by_key[run_event_stream_key(large_run)]
-            if e["type"] == EVENT_TOKEN_DELTA
+            e for e in large_redis.events(large_run) if e["type"] == "output.audio.delta"
         ]
         assert len(small_deltas) == SMALL_FRAMES
         assert len(large_deltas) == LARGE_FRAMES
@@ -346,15 +335,16 @@ class TestAudioNeverEntersTemporalHistory:
         run_id, observed = await _run_with(SMALL_FRAMES, redis, monkeypatch)
         assert observed["status"] == "SUCCEEDED"
 
-        events = redis.by_key[run_event_stream_key(run_id)]
+        events = redis.events(run_id)
         types = [e["type"] for e in events]
-        assert "workflow.node.started" in types
-        assert "workflow.node.completed" in types
-        assert "workflow.run.completed" in types
+        assert "node.started" in types
+        assert "node.completed" in types
+        assert "run.completed" in types
 
-        deltas = [e for e in events if e["type"] == EVENT_TOKEN_DELTA]
+        # TASK-1038 R6 — `output.audio.delta { field: 'audio', chunk, format }`, in `seq` order.
+        deltas = [e for e in events if e["type"] == "output.audio.delta"]
+        assert {(e["data"]["field"], e["data"]["format"]) for e in deltas} == {("audio", "wav")}
         rebuilt = b"".join(
-            base64.b64decode(e["payload"]["text"])
-            for e in sorted(deltas, key=lambda e: e["payload"]["sequence"])
+            base64.b64decode(e["data"]["chunk"]) for e in sorted(deltas, key=lambda e: e["seq"])
         )
         assert rebuilt == b"".join(_audio(SMALL_FRAMES))

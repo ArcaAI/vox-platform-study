@@ -13,8 +13,9 @@ is still pinned, against the live path:
 2. **The ARTIFACT is written to the claim-check store**, and the activity RESULT carries only the
    ref. Audio bytes must never reach Temporal history: the ceiling is 51,200 events / 50 MB per
    run, and a single 30-second WAV is ~1 MB on its own.
-3. **Audio chunks travel the DELTA lane** — ``run_event_producer().emit_token_delta`` — which is
-   lane A's single streaming entry point. A second bespoke audio transport is the specific thing
+3. **Audio chunks travel the DELTA lane** — ``run_event_producer().audio_delta`` (TASK-1038 R6:
+   run-protocol v2 ``output.audio.delta { field: 'audio' }``) — which is lane A's single
+   streaming entry point. A second bespoke audio transport is the specific thing
    the risk table forbids.
 4. **Every unresolvable binding still DEGRADES observably.**
 
@@ -75,19 +76,26 @@ class _RecordingProducer:
     def __init__(self) -> None:
         self.deltas: list[dict[str, Any]] = []
 
-    async def emit_token_delta(
-        self, *, tenant_id: str, run_id: str, node_id: str, sequence: int, text: str
-    ) -> str | None:
+    async def audio_delta(
+        self,
+        *,
+        run_id: str,
+        node_id: str,
+        field: str,
+        chunk: bytes,
+        audio_format: str,
+        sample_rate: int | None = None,
+    ) -> int | None:
         self.deltas.append(
             {
-                "tenant_id": tenant_id,
                 "run_id": run_id,
                 "node_id": node_id,
-                "sequence": sequence,
-                "text": text,
+                "field": field,
+                "chunk": chunk,
+                "format": audio_format,
             }
         )
-        return f"0-{sequence}"
+        return len(self.deltas)
 
 
 class _StubApi:
@@ -177,16 +185,15 @@ class TestTheDeltaLane:
     ) -> None:
         await core.interpreter_core_agent(_payload())
         assert len(producer.deltas) == len(_CHUNKS)
-        assert [d["sequence"] for d in producer.deltas] == [0, 1, 2]
         assert {d["run_id"] for d in producer.deltas} == {_RUN}
         assert {d["node_id"] for d in producer.deltas} == {"tts1"}
-        assert {d["tenant_id"] for d in producer.deltas} == {_TENANT}
+        assert {(d["field"], d["format"]) for d in producer.deltas} == {("audio", "wav")}
 
     async def test_the_deltas_decode_back_to_exactly_the_stored_artifact(
         self, producer: _RecordingProducer, synthesized: dict[str, Any]
     ) -> None:
         await core.interpreter_core_agent(_payload())
-        rebuilt = b"".join(base64.b64decode(d["text"]) for d in producer.deltas)
+        rebuilt = b"".join(d["chunk"] for d in producer.deltas)
         assert rebuilt == _AUDIO
 
     async def test_a_run_with_no_run_id_still_synthesizes_and_simply_does_not_stream(

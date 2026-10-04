@@ -36,6 +36,13 @@ Usage (from the repo root, conda env ``arcaenv``)::
 guards for its markers): ``interpreter_task1038_v1_history`` (payload references, a kept degraded
 output, the retry policy, the deadline, a review), ``interpreter_task1038_timed_out_history``,
 ``interpreter_task1038_cancelled_history`` and ``interpreter_task1038_loop_ref_history``.
+
+``--task1036`` records the wave-B data-contract era (lane B1) on its post-change definition, the
+forward guards for ``task-1038-run-protocol-v2``, ``task-1036-bindings`` and
+``task-1036-consultation-reads``: ``interpreter_task1036_contract_history`` (run.started, a
+run-start AND a node-start declared read, bound inputs, an End-wired node, a review fed by a
+binding) and ``loop_workflow_task1036_bindings_history`` / ``interpreter_task1036_loop_history``
+(a loop body bound to ``nodes.<loop>.outputs.item``).
 """
 
 from __future__ import annotations
@@ -550,12 +557,194 @@ async def capture_task1038_era(out_dir: Path) -> None:
     _write(out_dir, "interpreter_task1038_loop_ref_history", history)
 
 
+# ---------------------------------------------------------------------------------------------
+# The TASK-1036 / TASK-1038 wave-B era (`--task1036`), lane B1.
+# ---------------------------------------------------------------------------------------------
+
+
+async def capture_task1036_era(out_dir: Path) -> None:
+    from harness.temporal.interpreter import activities as interpreter_activities
+    from harness.tests.unit.temporal.interpreter import _task1038_harness as h
+    from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
+
+    class _Api:
+        async def read_consultation(self, consultation_id: str, **kwargs: Any) -> dict[str, Any]:
+            answers = {"consultation.patient.age": 41, "consultation.visitType": "revisit"}
+            return {
+                "values": {p: answers.get(p) for p in kwargs["paths"]},
+                "readAt": "2026-10-04T10:00:00.000Z",
+                "schemaVersion": 1,
+            }
+
+    interpreter_activities._RUN_EVENT_REDIS = FakeRunStreamRedis()  # noqa: SLF001
+    interpreter_activities._RUN_EVENT_REDIS_BUILT = True  # noqa: SLF001
+    interpreter_activities._api_client = lambda _settings: _Api()  # type: ignore[assignment]  # noqa: SLF001
+
+    def bound(node: dict[str, Any], **extra: Any) -> dict[str, Any]:
+        return {**node, **extra}
+
+    review = _node(
+        "n_review",
+        "core.humanReview",
+        "interpreter.core_human_review",
+        config={"timeoutSeconds": 600},
+        inputs=[_edge("n_note", "out", "in")],
+        timeout=3600,
+    )
+    review["bindings"] = {"in": {"from": "nodes.n_note.outputs.text"}}
+    consultation_trigger = h.trigger()
+    consultation_trigger["config"] = {"kinds": ["consultation", "api"]}
+    contract = h.body(
+        [
+            {"stageIndex": 0, "nodes": [consultation_trigger]},
+            {
+                "stageIndex": 1,
+                "nodes": [
+                    bound(
+                        h.agent("n_note", label="Write the note"),
+                        bindings={
+                            "message": {"from": "context.note"},
+                            "age": {"from": "consultation.patient.age"},
+                            "visit": {"from": "consultation.visitType", "at": "runStart"},
+                            "now": {"from": "run.now"},
+                        },
+                        consultationReads=[
+                            {"path": "consultation.patient.age", "at": "nodeStart"},
+                            {"path": "consultation.visitType", "at": "runStart"},
+                        ],
+                    )
+                ],
+            },
+            {"stageIndex": 2, "nodes": [review]},
+            {
+                "stageIndex": 3,
+                "nodes": [
+                    bound(
+                        h.output([h.edge("n_note", "out", "in")]),
+                        bindings={"in": {"from": "nodes.n_note.outputs.text"}},
+                    )
+                ],
+            },
+        ]
+    )
+
+    async def approve(env, handle):  # noqa: ANN001
+        review_id = review_gate_workflow_id(run_id, "n_review")
+
+        def _started(event: Any) -> bool:
+            return (
+                event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_STARTED
+                and event.child_workflow_execution_started_event_attributes.workflow_execution.workflow_id
+                == review_id
+            )
+
+        await await_history_event(handle, _started, description="review child started")
+        await env.client.get_workflow_handle(review_id).signal(
+            ReviewGateWorkflow.review,
+            ReviewDecisionSignal(decision="approved", reviewer_id="dr-fixture"),
+        )
+
+    run_id = "run-task1036-contract"
+    _, _, history = await h.run_graph(
+        contract,
+        payload={"note": "cough three days"},
+        subject=RunSubject(consultationId=_CONSULTATION),
+        run_id=run_id,
+        retention_seconds=86_400,
+        during=approve,
+    )
+    _write(out_dir, "interpreter_task1036_contract_history", history)
+
+    loop = h.body(
+        [
+            {"stageIndex": 0, "nodes": [h.trigger()]},
+            {
+                "stageIndex": 1,
+                "nodes": [
+                    _node(
+                        "n_loop",
+                        "core.loop",
+                        "interpreter.core_loop",
+                        config={
+                            "mode": "foreach",
+                            "over": "trigger.items",
+                            "bounds": {
+                                "maxIterations": 5,
+                                "maxDurationSeconds": 600,
+                                "maxTotalTokens": 100000,
+                            },
+                            "collect": "text",
+                        },
+                        inputs=[_edge("n_trigger", "out", "in")],
+                        timeout=3600,
+                    )
+                ],
+            },
+        ],
+        loops=[
+            {
+                "nodeId": "n_loop",
+                "body": {
+                    "stages": [
+                        {
+                            "stageIndex": 0,
+                            "nodes": [
+                                bound(
+                                    h.agent("n_body", _stub="echo"),
+                                    bindings={
+                                        "message": {"from": "nodes.n_loop.outputs.item.name"}
+                                    },
+                                )
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+    loop_run_id = "run-task1036-loop"
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        ref = await _ref(loop)
+        tq = f"task1036-loop-{uuid.uuid4()}"
+        async with Worker(
+            env.client, task_queue=tq, workflows=h.WORKFLOWS, activities=h.ACTIVITIES
+        ):
+            handle = await env.client.start_workflow(
+                WorkflowInterpreter.run,
+                InterpreterInput(
+                    session_id="s-fixture",
+                    workflow_version_id="v-fixture",
+                    config_ref=ref,
+                    tenant_id=_TENANT,
+                    run_id=loop_run_id,
+                    payload={"items": [{"name": "first"}, {"name": "second"}]},
+                ),
+                id=f"interpreter-task1036-loop-{uuid.uuid4()}",
+                task_queue=tq,
+            )
+            result = await handle.result()
+            print(f"task1036 loop: status={result.status}")
+            _write(out_dir, "interpreter_task1036_loop_history", await handle.fetch_history())
+            parent = await handle.fetch_history()
+            loop_id = core_loop_workflow_id(loop_run_id, "n_loop")
+            first_run = _child_first_run_id(parent, loop_id)
+            _write(
+                out_dir,
+                "loop_workflow_task1036_bindings_history",
+                await env.client.get_workflow_handle(loop_id, run_id=first_run).fetch_history(),
+            )
+
+
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--task1038"]
+    args = [a for a in sys.argv[1:] if a not in ("--task1038", "--task1036")]
     target = (
         Path(args[0]) if args else Path("apps/harness/src/harness/tests/unit/temporal/fixtures")
     )
-    if "--task1038" in sys.argv[1:]:
+    if "--task1036" in sys.argv[1:]:
+        asyncio.run(capture_task1036_era(target))
+    elif "--task1038" in sys.argv[1:]:
         asyncio.run(capture_task1038_era(target))
     else:
         asyncio.run(capture(target))

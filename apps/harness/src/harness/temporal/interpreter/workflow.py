@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
         emit_run_events,
         load_config,
         load_live_outputs,
+        read_consultation,
         resolve_context_path,
     )
     from harness.temporal.interpreter.compiled_config import (
@@ -43,6 +44,13 @@ with workflow.unsafe.imports_passed_through():
         LoopWorkflow,
         core_loop_workflow_id,
     )
+    from harness.temporal.interpreter.data_contract import (
+        ROUTER_NODE_TYPES,
+        BindingScope,
+        effective_settings,
+        end_wired_fields,
+        resolve_bindings,
+    )
     from harness.temporal.interpreter.gate_workflow import (
         ConsultationGateWorkflow,
         gate_workflow_id,
@@ -51,6 +59,8 @@ with workflow.unsafe.imports_passed_through():
         CancelSignal,
         ConsultationGateInput,
         ConsultationGateResult,
+        ConsultationReadRequest,
+        ConsultationReadResult,
         ContextPathRequest,
         ContextPathResult,
         CoreLoopBounds,
@@ -90,6 +100,7 @@ with workflow.unsafe.imports_passed_through():
         EVENT_NODE_FAILED,
         EVENT_NODE_STARTED,
         EVENT_RUN_COMPLETED,
+        EVENT_RUN_STARTED,
     )
     from harness.temporal.models import TrajectoryContext
 
@@ -222,6 +233,34 @@ _PAYLOAD_REFS_PATCH = "task-1038-payload-refs"
 #: `ApplicationError` type a node activity raises for an oversized RESULT.
 PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
 
+# TASK-1038 R6 / TASK-1036 (lane B1) — RUN PROTOCOL v2 for this run. Decided ONCE, right after
+# the config loads, so one run never mixes the two shapes. Under it the walk emits `run.started`
+# (a NEW `emit_run_events` command at the run's start — which is why it is gated), stamps the
+# v2 facts (durations, tokens, labels, retention, error codes) on the specs it already emits, and
+# hands every node activity the v2 fields (`protocol`, `bindings`, `delivery`, `run_fields`, …)
+# that turn on its admin debug events, public deltas and the dual `nodes.*` scope.
+_PROTOCOL_V2_PATCH = "task-1038-run-protocol-v2"
+
+# TASK-1036 §9.2 — a node's compiled `bindings` decide what it is handed. Cheap operand first: a
+# node CARRYING bindings is impossible in any history recorded before this marker existed (the
+# interpreter's `extra="forbid"` refused every such artifact at `load_config`), so the marker is
+# consulted only for a config that actually uses them. Without `bindings` the edge-port behaviour
+# is unchanged, byte for byte.
+_BINDINGS_PATCH = "task-1036-bindings"
+
+# TASK-1036 §9.3 (OD-30) — declared `consultation.*` reads: one NEW activity per node with
+# node-start reads (just before it is dispatched), and one per node with run-start reads (before
+# the walk). Cheap operand first, as for bindings: no prior history carries `consultationReads`.
+_CONSULTATION_READS_PATCH = "task-1036-consultation-reads"
+
+_CONSULTATION_READ_TIMEOUT = timedelta(seconds=30)
+_CONSULTATION_READ_RETRY = RetryPolicy(
+    maximum_attempts=3, non_retryable_error_types=["ApiClientError", "ValidationError"]
+)
+
+#: The fixed run-error code a failed declared read settles its node with.
+CONSULTATION_READ_FAILED = "CONSULTATION_READ_FAILED"
+
 _CONTEXT_PATH_TIMEOUT = timedelta(seconds=60)
 _CONTEXT_PATH_RETRY = RetryPolicy(
     maximum_attempts=3, non_retryable_error_types=["ClaimCheckIntegrityError"]
@@ -262,6 +301,62 @@ _LIVE_OUTPUTS_RETRY = RetryPolicy(maximum_attempts=1)
 # why. Spelled identically to the contract's own field name so an operator reading a trajectory
 # sees the same word the graph author wrote.
 _LOOP_DURATION_REASON = "max_duration_seconds"
+
+
+def _delivery_plan(config: CompiledWorkflowConfig) -> dict[str, dict[str, Any]]:
+    """OD-24 — per node, what reaches the PUBLIC plane (pure).
+
+    A node wired into End (a `core.output`'s compiled bindings, else its legacy edges resolved to
+    the producer's output key) publishes the wired fields; a node flagged `stream` publishes
+    everything it declares and streams its text. Nodes absent here reach the admin trace only.
+    """
+    nodes = {node.node_id: node for stage in config.stages for node in stage.nodes}
+    wired: dict[str, set[str]] = {}
+    for node in nodes.values():
+        if node.type != "core.output":
+            continue
+        legacy: list[tuple[str, str | None]] = []
+        for binding in node.inputs:
+            producer = nodes.get(binding.from_node_id)
+            keys = output_keys_for(producer.type, producer.config) if producer else None
+            if keys is not None and binding.from_port in keys:
+                legacy.append((binding.from_node_id, keys[binding.from_port]))
+        found = end_wired_fields(list(node.bindings.values()) if node.bindings else None, legacy)
+        for node_id, fields in found.items():
+            wired.setdefault(node_id, set()).update(fields)
+    plan: dict[str, dict[str, Any]] = {}
+    for node in nodes.values():
+        stream = node.config.get("stream") is True
+        if stream or node.node_id in wired:
+            plan[node.node_id] = {
+                "publicFields": sorted(wired.get(node.node_id, set())),
+                "stream": stream,
+            }
+    return plan
+
+
+def _nest_paths(values: dict[str, Any]) -> dict[str, Any]:
+    """``{"consultation.patient.age": 41}`` → ``{"patient": {"age": 41}}`` (pure)."""
+    nested: dict[str, Any] = {}
+    for path, value in values.items():
+        parts = path.split(".")[1:]
+        if not parts:
+            continue
+        current = nested
+        for part in parts[:-1]:
+            child = current.get(part)
+            if not isinstance(child, dict):
+                child = {}
+                current[part] = child
+            current = child
+        current[parts[-1]] = value
+    return nested
+
+
+def _consultation_id_of(inp: InterpreterInput) -> str | None:
+    if inp.subject is not None and inp.subject.consultation_id:
+        return inp.subject.consultation_id
+    return _opt_str(inp.payload.get("consultationId"))
 
 
 def interpreter_workflow_id(run_id: str) -> str:
@@ -365,7 +460,11 @@ def _oversized_input_reason(activity_input: NodeActivityInput, limits: RunLimits
     converter puts on the wire, to within its envelope), against a ceiling recorded on the run's
     input.
     """
-    size = len(activity_input.model_dump_json().encode("utf-8"))
+    # The TASK-1036/1038 fields are excluded while they are unset, so an input recorded before
+    # they existed measures EXACTLY what it measured then — the size decides whether an activity
+    # is scheduled at all, so a few bytes of new nulls must never flip a replayed decision.
+    unset = {name for name in _V2_INPUT_FIELDS if getattr(activity_input, name) is None}
+    size = len(activity_input.model_dump_json(exclude=unset).encode("utf-8"))
     ceiling = limits.activity_input_max_bytes
     if size <= ceiling:
         return None
@@ -373,6 +472,18 @@ def _oversized_input_reason(activity_input: NodeActivityInput, limits: RunLimits
         f"{PAYLOAD_TOO_LARGE}: the activity input for node {activity_input.node_id!r} "
         f"({activity_input.node_type}) is {size} bytes > {ceiling}"
     )
+
+
+#: `NodeActivityInput` fields added by TASK-1036/1038 (all optional; `None` = unset).
+_V2_INPUT_FIELDS = (
+    "protocol",
+    "bindings",
+    "delivery",
+    "consultation",
+    "run_fields",
+    "event_scope",
+    "output_offload_min_bytes",
+)
 
 
 def _node_retry_policy(node: CompiledNode, max_attempts: int) -> RetryPolicy:
@@ -502,6 +613,28 @@ class WorkflowInterpreter:
         self._pause_depth = 0
         self._pause_started: datetime | None = None
         self._deadline_task: asyncio.Future[None] | None = None
+        # TASK-1038 R6 / TASK-1036 (lane B1). All pure state built from the config, from
+        # recorded activity results and from `workflow.now()`, replay-safe like `_node_outputs`.
+        self._v2 = False
+        self._run_started_at: datetime | None = None
+        self._config_slug = ""
+        self._config_version = 0
+        self._delivery: dict[str, dict[str, Any]] = {}
+        #: The agent task each `core.agent` reported (`NodeActivityResult.io`), for `outputs`.
+        self._node_tasks: dict[str, str] = {}
+        #: `(tokens in, tokens out)` per node, from its `io.usage`.
+        self._node_usage: dict[str, tuple[int, int]] = {}
+        #: Workflow time each node's dispatch took, in ms.
+        self._node_duration_ms: dict[str, int] = {}
+        #: What each router was handed on `in` (OD-19 — `nodes.<router>.outputs.input`).
+        self._router_inputs: dict[str, Any] = {}
+        #: Outputs a node the WALK produced itself (a review, a loop) declares, for the admin
+        #: trace's per-node `output.data` (the activity envelope emits everyone else's).
+        self._walk_outputs: dict[str, dict[str, Any]] = {}
+        #: Run-start declared reads, by node id, and the node a failed one fails.
+        self._run_start_reads: dict[str, dict[str, Any]] = {}
+        self._run_start_read_failures: dict[str, str] = {}
+        self._sources: list[str] = []
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -545,6 +678,31 @@ class WorkflowInterpreter:
         self._bounded = workflow.patched(_CANCEL_PATCH)
         if workflow.patched(_DEADLINE_PATCH):
             self._start_deadline(caps.run_budget_seconds(config.caps.max_total_seconds))
+
+        self._config_slug = config.slug
+        self._config_version = config.version_number
+        # TASK-1036 §3.5 — the run's SOURCES: the compiled settings, else the legacy trigger
+        # `kinds` (one release). Read, never gated on: exposure is the gateway's concern.
+        self._sources = effective_settings(
+            [(node.type, node.config) for stage in config.stages for node in stage.nodes],
+            config.settings.model_dump() if config.settings is not None else None,
+        )["sources"]
+        # TASK-1038 R6 — run protocol v2, decided once for the whole run (see the marker).
+        self._v2 = workflow.patched(_PROTOCOL_V2_PATCH)
+        if self._v2:
+            self._run_started_at = workflow.now()
+            self._delivery = _delivery_plan(config)
+            await self._emit_run_events(
+                inp,
+                [
+                    RunEventSpec(
+                        event_type=EVENT_RUN_STARTED,
+                        slug=config.slug,
+                        version_number=config.version_number,
+                    )
+                ],
+            )
+        await self._read_run_start(inp, config)
 
         run_failed = False
         run_degraded = False
@@ -652,11 +810,17 @@ class WorkflowInterpreter:
                     node_id=node.node_id,
                     node_type=node.type,
                     stage_index=stage.stage_index,
+                    label=self._label_of(node) if self._v2 else None,
                 )
                 for node in stage.nodes
                 if self._preflight_skip(node, inp) is None
             ],
         )
+
+    @staticmethod
+    def _label_of(node: CompiledNode) -> str | None:
+        label = node.config.get("label")
+        return label if isinstance(label, str) and label else None
 
     async def _emit_stage_settled(
         self, stage: CompiledStage, node_results: list[NodeResult], inp: InterpreterInput
@@ -674,10 +838,23 @@ class WorkflowInterpreter:
                     stage_index=stage.stage_index,
                     status=result.status,
                     reason=result.reason,
+                    **self._v2_settled_facts(result.node_id),
                 )
                 for result in node_results
             ],
         )
+
+    def _v2_settled_facts(self, node_id: str) -> dict[str, Any]:
+        """The v2 facts of one settled node (pure); empty for a run not on protocol v2."""
+        if not self._v2:
+            return {}
+        facts: dict[str, Any] = {"duration_ms": self._node_duration_ms.get(node_id, 0)}
+        usage = self._node_usage.get(node_id)
+        if usage is not None:
+            facts["tokens_in"], facts["tokens_out"] = usage
+        if node_id in self._walk_outputs:
+            facts["outputs"] = self._walk_outputs[node_id]
+        return facts
 
     async def _emit_run_completed(self, inp: InterpreterInput, status: str) -> None:
         """The terminal event. This is what lets a connected client close its stream on a
@@ -685,18 +862,42 @@ class WorkflowInterpreter:
         node_count, failed_node_count, degraded_node_count, skipped_node_count = (
             _settled_node_counts(self._stages)
         )
+        v2: dict[str, Any] = {}
+        reason = self._run_failure_reason
+        if self._v2:
+            if reason is None and status == "FAILED":
+                # The run's cause, for the fixed error code: the first node that failed it.
+                reason = next(
+                    (n.reason for st in self._stages for n in st.nodes if n.status == "FAILED"),
+                    None,
+                )
+            elapsed = (
+                (workflow.now() - self._run_started_at).total_seconds()
+                if self._run_started_at is not None
+                else 0.0
+            )
+            v2 = {
+                "duration_ms": max(0, int(elapsed * 1000)),
+                "tokens_in": sum(u[0] for u in self._node_usage.values()),
+                "tokens_out": sum(u[1] for u in self._node_usage.values()),
+                "retention_seconds": inp.retention_seconds,
+                "result_inline_max_bytes": (
+                    inp.limits.result_inline_max_bytes if inp.limits is not None else None
+                ),
+            }
         await self._emit_run_events(
             inp,
             [
                 RunEventSpec(
                     event_type=EVENT_RUN_COMPLETED,
                     status=status,
-                    reason=self._run_failure_reason,
+                    reason=reason,
                     result_outputs=self._result_outputs(),
                     node_count=node_count,
                     failed_node_count=failed_node_count,
                     degraded_node_count=degraded_node_count,
                     skipped_node_count=skipped_node_count,
+                    **v2,
                 )
             ],
         )
@@ -1146,6 +1347,17 @@ class WorkflowInterpreter:
     async def _dispatch_node(
         self, node: CompiledNode, inp: InterpreterInput, stage_index: int
     ) -> NodeResult:
+        """Dispatch one node and record how long it took, in WORKFLOW time (pure clock)."""
+        started = workflow.now()
+        try:
+            return await self._dispatch_node_inner(node, inp, stage_index)
+        finally:
+            elapsed = (workflow.now() - started).total_seconds()
+            self._node_duration_ms[node.node_id] = max(0, int(elapsed * 1000))
+
+    async def _dispatch_node_inner(
+        self, node: CompiledNode, inp: InterpreterInput, stage_index: int
+    ) -> NodeResult:
         skipped = self._preflight_skip(node, inp)
         if skipped is not None:
             # TASK-932 R-16a — remember WHICH nodes were handed to the live executor, so the
@@ -1160,13 +1372,26 @@ class WorkflowInterpreter:
         # is its first refusal, so reaching here means the registry has a real spec.
         spec = effective_spec(node.type, node.config) or NODE_REGISTRY[node.type]
 
+        # TASK-1036 §9.3 (OD-30) — the node's DECLARED consultation reads, snapshotted now (node
+        # start) or taken at run start. A failed read fails the step by name; it is never
+        # dispatched on a guess.
+        consultation, read_failure = await self._consultation_values(node, inp, spec.critical)
+        if read_failure is not None:
+            return read_failure
+        node_now = workflow.now()
+        # TASK-1036 §9.2 — a node's compiled `bindings` decide what it is handed (cheap operand
+        # first; see `_BINDINGS_PATCH`). `None` = no bindings: today's edge-port threading.
+        bound_override: dict[str, Any] | None = None
+        if node.bindings is not None and workflow.patched(_BINDINGS_PATCH):
+            bound_override = self._resolve_node_bindings(node, inp, consultation, node_now)
+
         # TASK-864 — the two `core` constructs that run as CHILD WORKFLOWS. Cheap operand (the
         # node type) first, exactly as the loop gate below: `workflow.patched` is consulted only
         # for a graph that actually carries one, and no pre-existing history can.
         if node.type == CORE_REVIEW_NODE_TYPE and workflow.patched(_CORE_PATCH):
-            return await self._run_review(node, inp)
+            return await self._run_review(node, inp, bound=bound_override)
         if node.type == CORE_LOOP_NODE_TYPE and workflow.patched(_CORE_PATCH):
-            return await self._run_core_loop(node, inp)
+            return await self._run_core_loop(node, inp, bound=bound_override)
 
         timeout_seconds = caps.clamp_timeout(node.timeout_seconds)
         max_attempts = caps.clamp_attempts(node.retry.maximum_attempts)
@@ -1180,13 +1405,26 @@ class WorkflowInterpreter:
             doctor_id=_run_doctor_id(inp),
         )
         by_reference = workflow.patched(_PAYLOAD_REFS_PATCH)
-        bound_inputs = self._resolve_bound_inputs(node)
+        bound_inputs = (
+            bound_override if bound_override is not None else self._resolve_bound_inputs(node)
+        )
+        if self._v2 and node.type in ROUTER_NODE_TYPES and "in" in bound_inputs:
+            # OD-19 — `nodes.<router>.outputs.input` is what the router was handed.
+            self._router_inputs[node.node_id] = bound_inputs["in"]
         if by_reference:
             run_payload, run_context = self._payload_views(inp, core=node.type.startswith("core."))
             bound_inputs = self._bound_payload_by_reference(bound_inputs, inp)
         else:
             run_payload = inp.payload
             run_context = self._run_context() if node.type.startswith("core.") else {}
+        v2_fields = self._v2_activity_fields(node, inp, consultation, node_now, run_context)
+        if "run_context" in v2_fields:
+            run_context = v2_fields.pop("run_context")
+        offload_min = (
+            inp.limits.node_output_claim_check_min_bytes if inp.limits is not None else None
+        )
+        if offload_min is not None:
+            v2_fields["output_offload_min_bytes"] = offload_min
         activity_input = NodeActivityInput(
             node_id=node.node_id,
             node_type=node.type,
@@ -1200,6 +1438,7 @@ class WorkflowInterpreter:
             # TASK-864 — the run context, for `core.*` nodes only: a legacy node's payload stays
             # byte-identical to every run before this ticket.
             run_context=run_context,
+            **v2_fields,
         )
         if by_reference and inp.limits is not None:
             too_large = _oversized_input_reason(activity_input, inp.limits)
@@ -1239,6 +1478,7 @@ class WorkflowInterpreter:
                 reason=_activity_error_reason(exc),
             )
 
+        self._record_io(node.node_id, result)
         if result.status == "SUCCEEDED":
             if result.output is not None:
                 self._node_outputs[node.node_id] = result.output
@@ -1267,6 +1507,170 @@ class WorkflowInterpreter:
         # activity-internal sandbox check) — never critical-promoted; a skip is not a failure.
         return NodeResult(
             node_id=node.node_id, node_type=node.type, status="SKIPPED", reason=result.reason
+        )
+
+    # TASK-1036 / TASK-1038 (lane B1) — bindings, declared reads and the v2 activity fields.
+
+    def _record_io(self, node_id: str, result: NodeActivityResult) -> None:
+        """The NodeIO metadata a node activity reported: its agent task and token usage (pure)."""
+        io = result.io if isinstance(result.io, dict) else None
+        if io is None:
+            return
+        task = io.get("task")
+        if isinstance(task, str):
+            self._node_tasks[node_id] = task
+        usage = io.get("usage")
+        if isinstance(usage, dict):
+            tokens_in, tokens_out = usage.get("in"), usage.get("out")
+            if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+                self._node_usage[node_id] = (tokens_in, tokens_out)
+
+    def _run_fields(self, inp: InterpreterInput, now: datetime) -> dict[str, Any]:
+        """`run.*` (bindings.ts `RUN_SCOPE_FIELDS`). Replay-safe: workflow time only."""
+        return {
+            "id": inp.run_id,
+            "tenantId": inp.tenant_id,
+            "workflowSlug": self._config_slug,
+            "workflowVersion": self._config_version,
+            "startedAt": workflow.info().workflow_start_time.isoformat(),
+            "now": now.isoformat(),
+        }
+
+    def _variables(self) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for node_id, output in self._node_outputs.items():
+            if self._node_types.get(node_id) == "core.variable" and isinstance(
+                output.get("vars"), dict
+            ):
+                merged.update(output["vars"])
+        return merged
+
+    def _resolve_node_bindings(
+        self,
+        node: CompiledNode,
+        inp: InterpreterInput,
+        consultation: dict[str, Any],
+        now: datetime,
+    ) -> dict[str, Any]:
+        """The node's inputs, by NodeIO name, from its compiled `bindings` (pure).
+
+        A value the workflow cannot read (behind a claim-check reference) is handed over as a
+        DEFERRED binding the activity envelope finishes; an unresolved binding is simply absent
+        (the envelope reports it as `binding.warning`).
+        """
+        trigger = self._trigger_output()
+        scope = BindingScope(
+            context=trigger[1] if trigger is not None else None,
+            nodes=self._node_outputs,
+            node_types=self._node_types,
+            node_tasks=self._node_tasks,
+            router_inputs=self._router_inputs,
+            vars=self._variables(),
+            run=self._run_fields(inp, now),
+            consultation=consultation,
+            run_payload=inp.payload,
+        )
+        return resolve_bindings(node.bindings or {}, scope).values
+
+    def _v2_activity_fields(
+        self,
+        node: CompiledNode,
+        inp: InterpreterInput,
+        consultation: dict[str, Any],
+        now: datetime,
+        run_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """The protocol-v2 fields of one node activity input (pure); `{}` off protocol v2."""
+        if not self._v2:
+            return {}
+        fields: dict[str, Any] = {
+            "protocol": 2,
+            "bindings": node.bindings,
+            "delivery": self._delivery.get(node.node_id),
+            "run_fields": self._run_fields(inp, now),
+        }
+        if consultation:
+            fields["consultation"] = _nest_paths(consultation)
+        if node.type.startswith("core."):
+            # Who produced what, so the activity can serve `nodes.<id>.outputs.<field>` in its
+            # templates and conditions (the dual scope) without a second copy of any output.
+            fields["run_context"] = {**run_context, "nodeMeta": self._node_meta()}
+        return fields
+
+    def _node_meta(self) -> dict[str, dict[str, str]]:
+        """`{nodeId: {type, task?}}` — who produced what (pure)."""
+        return {
+            node_id: {
+                "type": node_type,
+                **({"task": self._node_tasks[node_id]} if node_id in self._node_tasks else {}),
+            }
+            for node_id, node_type in self._node_types.items()
+        }
+
+    async def _read_consultation(
+        self, inp: InterpreterInput, node_id: str, paths: list[str], snapshot: str
+    ) -> ConsultationReadResult:
+        consultation_id = _consultation_id_of(inp)
+        if consultation_id is None or not paths or "consultation" not in self._sources:
+            # Nothing to read against (no consultation, or a workflow its settings do not source
+            # from one — publish refuses that graph, this is the defensive half): the bindings
+            # resolve to nothing and are reported.
+            return ConsultationReadResult(ok=True)
+        try:
+            result: ConsultationReadResult = await workflow.execute_activity(
+                read_consultation,
+                ConsultationReadRequest(
+                    run_id=inp.run_id,
+                    tenant_id=inp.tenant_id,
+                    node_id=node_id,
+                    consultation_id=consultation_id,
+                    paths=paths,
+                    snapshot="run-start" if snapshot == "run-start" else "node-start",
+                ),
+                start_to_close_timeout=_CONSULTATION_READ_TIMEOUT,
+                retry_policy=_CONSULTATION_READ_RETRY,
+            )
+        except ActivityError as exc:
+            return ConsultationReadResult(ok=False, error=_activity_error_reason(exc))
+        return result
+
+    async def _read_run_start(self, inp: InterpreterInput, config: CompiledWorkflowConfig) -> None:
+        """OD-30 — every `runStart` declared read, once, before the walk."""
+        pending = [
+            (node.node_id, sorted({r.path for r in node.consultation_reads if r.at == "runStart"}))
+            for stage in config.stages
+            for node in stage.nodes
+            if any(r.at == "runStart" for r in node.consultation_reads)
+        ]
+        if not pending or not workflow.patched(_CONSULTATION_READS_PATCH):
+            return
+        for node_id, paths in pending:
+            result = await self._read_consultation(inp, node_id, paths, "run-start")
+            if result.ok:
+                self._run_start_reads[node_id] = dict(result.values)
+            else:
+                self._run_start_read_failures[node_id] = result.error or "read_failed"
+
+    async def _consultation_values(
+        self, node: CompiledNode, inp: InterpreterInput, critical: bool
+    ) -> tuple[dict[str, Any], NodeResult | None]:
+        """`(path → value, failure)` for one node's declared reads (node start + run start)."""
+        values: dict[str, Any] = dict(self._run_start_reads.get(node.node_id, {}))
+        failure_reason = self._run_start_read_failures.get(node.node_id)
+        node_start = sorted({r.path for r in node.consultation_reads if r.at == "nodeStart"})
+        if failure_reason is None and node_start and workflow.patched(_CONSULTATION_READS_PATCH):
+            result = await self._read_consultation(inp, node.node_id, node_start, "node-start")
+            if result.ok:
+                values.update(result.values)
+            else:
+                failure_reason = result.error or "read_failed"
+        if failure_reason is None:
+            return values, None
+        return values, NodeResult(
+            node_id=node.node_id,
+            node_type=node.type,
+            status="FAILED" if critical else "DEGRADED",
+            reason=f"{CONSULTATION_READ_FAILED}: {failure_reason}",
         )
 
     # TASK-864 — the `core` vocabulary's helpers. All pure except the two child dispatches.
@@ -1441,7 +1845,9 @@ class WorkflowInterpreter:
             return MISSING
         return answer.value if answer.found else MISSING
 
-    async def _run_review(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
+    async def _run_review(
+        self, node: CompiledNode, inp: InterpreterInput, bound: dict[str, Any] | None = None
+    ) -> NodeResult:
         """Dispatch a `core.humanReview` as a `ReviewGateWorkflow` child and TAKE its outcome
         as a branch. `approved` and `rejected` are both decisions the graph routes (SUCCEEDED);
         `timedOut` is the absence of one (DEGRADED, reason `review_timed_out`) — never approval.
@@ -1459,7 +1865,7 @@ class WorkflowInterpreter:
         branch returns, so the run's cause of death stays whatever the graph was actually unable
         to produce (`n_output`'s schema check) rather than moving onto the gate.
         """
-        payload = self._resolve_bound_inputs(node)
+        payload = bound if bound is not None else self._resolve_bound_inputs(node)
         if _is_empty_review_payload(payload) and workflow.patched(_REVIEW_SKIP_PATCH):
             # No decision was made, so NO handle is taken and NO `decision` output is published:
             # every branch guarded on `approved`/`rejected`/`timedOut` skips as
@@ -1529,6 +1935,8 @@ class WorkflowInterpreter:
             self._resume_clock()
 
         self._node_outputs[node.node_id] = {"decision": result.model_dump()}
+        if self._v2:
+            self._walk_outputs[node.node_id] = {"decision": result.model_dump(mode="json")}
         self._taken_handles[node.node_id] = {result.outcome}
         if result.outcome == "timedOut":
             return NodeResult(
@@ -1539,7 +1947,9 @@ class WorkflowInterpreter:
             )
         return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
 
-    async def _run_core_loop(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult:
+    async def _run_core_loop(
+        self, node: CompiledNode, inp: InterpreterInput, bound: dict[str, Any] | None = None
+    ) -> NodeResult:
         """Dispatch a `core.loop` as a `LoopWorkflow` child over its compiled body, racing it
         against the parent-owned `maxDurationSeconds` timer (the one bound a continue-as-new
         chain cannot carry itself — see `loop_workflow.py`)."""
@@ -1574,6 +1984,8 @@ class WorkflowInterpreter:
                 )
             items = resolved
 
+        if self._v2:
+            run_context = {**run_context, "nodeMeta": self._node_meta()}
         loop_input = CoreLoopInput(
             run_id=inp.run_id,
             node_id=node.node_id,
@@ -1587,13 +1999,14 @@ class WorkflowInterpreter:
             bounds=CoreLoopBounds.model_validate(config.get("bounds") or {}),
             body=body,
             nested=dict(self._loops_by_id),
-            seed_inputs=self._resolve_bound_inputs(node),
+            seed_inputs=bound if bound is not None else self._resolve_bound_inputs(node),
             run_payload=(
                 self._payload_views(inp, core=False)[0]
                 if workflow.patched(_PAYLOAD_REFS_PATCH)
                 else inp.payload
             ),
             run_context=run_context,
+            protocol=2 if self._v2 else None,
         )
         max_duration = int(loop_input.bounds.max_duration_seconds)
         try:
@@ -1625,6 +2038,8 @@ class WorkflowInterpreter:
             "iterations": result.iterations,
             "stopReason": result.stop_reason,
         }
+        if self._v2:
+            self._walk_outputs[node.node_id] = {"result": result.result}
         if result.stop_reason in ("items_exhausted", "until", "no_progress_iterations"):
             return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
         return NodeResult(

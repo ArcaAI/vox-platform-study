@@ -89,6 +89,27 @@ class NodeActivityInput(BaseModel):
     # from its own `_node_outputs` cache — pure derived state, replay-safe — and empty for every
     # legacy node, so pre-existing fixtures are byte-identical.
     run_context: dict[str, Any] = Field(default_factory=dict)
+    # TASK-1036 / TASK-1038 (lane B1) — the run-protocol v2 and data-contract fields. ALL
+    # additive-optional and set by the walk only under the `task-1038-run-protocol-v2` marker, so
+    # every input recorded before it (and every replay of one) is byte-identical.
+    #: `2` once the run speaks protocol v2: the activity envelope then emits the admin debug
+    #: events (`data.bound`, `binding.warning`, per-field `output.data`, …) and the node's
+    #: public outputs.
+    protocol: int | None = None
+    #: The node's compiled `bindings` (NodeIO name → binding), for `data.bound`'s sources.
+    bindings: dict[str, Any] | None = None
+    #: OD-24 — what of this node reaches the PUBLIC plane: `{"publicFields": [...], "stream": b}`
+    #: (wired into End, or flagged `stream`). Absent = admin trace only.
+    delivery: dict[str, Any] | None = None
+    #: The node's declared `consultation.*` reads, nested (`{"patient": {"age": 41}}`), for the
+    #: prompt scope's `consultation` root. Values only; the read itself was a recorded activity.
+    consultation: dict[str, Any] | None = None
+    #: `run.*` — the run identity fields (`run.now` is `workflow.now()` at this step's start).
+    run_fields: dict[str, Any] | None = None
+    #: Separates a loop body's iterations in dedupe keys (`iter:<n>`); empty at the top level.
+    event_scope: str | None = None
+    #: TASK-1038 — the run's node-output claim-check threshold, when the gateway injected one.
+    output_offload_min_bytes: int | None = None
 
 
 class NodeActivityResult(BaseModel):
@@ -115,6 +136,39 @@ class NodeActivityResult(BaseModel):
     # system prompt a `core.agent` step actually ran with — keys only, never a condition string
     # and never a fragment body. `None` for a non-composite instruction and for every other node.
     prompt_fragments: list[str] | None = None
+    # TASK-1036 §9.1 (lane B1), additive-optional — the NodeIO envelope's metadata, set by the
+    # node-activity envelope: `{"task"?, "usage": {"tokens", "costUnits", "in", "out"},
+    # "timing": {"startedAt", "durationMs"}, "artifacts": [...]}`. The envelope's `outputs` are
+    # NOT duplicated here: they are a projection of `output` (`data_contract.outputs_view`), so
+    # a large note is never carried twice in history.
+    io: dict[str, Any] | None = None
+
+
+class ConsultationReadRequest(BaseModel):
+    """TASK-1036 §9.3 — one node's DECLARED `consultation.*` reads (lane B3b serves the route)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    node_id: str
+    consultation_id: str
+    paths: list[str]
+    #: `node-start` (default, OD-30) or `run-start`.
+    snapshot: Literal["node-start", "run-start"] = "node-start"
+
+
+class ConsultationReadResult(BaseModel):
+    """What the read returned — recorded in history, so a replay binds the same values."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    values: dict[str, Any] = Field(default_factory=dict)
+    read_at: str | None = None
+    schema_version: int | None = None
+    #: Why the read failed (`ok: false`): the gateway's refusal, never patient data.
+    error: str | None = None
 
 
 class NodeResult(BaseModel):
@@ -222,6 +276,14 @@ class RunLimits(BaseModel):
     #: The pre-flight guard: an activity input larger than this fails the run by name
     #: (``PAYLOAD_TOO_LARGE``) instead of wedging on Temporal's own payload-size refusal.
     activity_input_max_bytes: int = Field(alias="activityInputMaxBytes", gt=0)
+    #: TASK-1038 (lane B3a → B1) — the two thresholds the ACTIVITIES apply, now resolved by the
+    #: gateway (settings registry) and injected with the start. Additive-optional: a run started
+    #: before the injection carries neither, and its activities keep reading the
+    #: `HARNESS_CLAIM_CHECK_*` settings (the one-release transition).
+    node_output_claim_check_min_bytes: int | None = Field(
+        default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
+    )
+    result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
 
 
 class InterpreterInput(BaseModel):
@@ -261,6 +323,12 @@ class InterpreterInput(BaseModel):
     # settings). Absent on every run started before TASK-1038 — and on those the walk behaves
     # exactly as it did, which is what keeps their replay byte-identical.
     limits: RunLimits | None = None
+    # TASK-1038 (OD-25), additive-optional. `workflowRuns.eventRetentionHours × 3600`, resolved by
+    # the gateway and injected with the start (gateway-resolved injection, never a literal in a
+    # producer). The terminal run event carries it so the event stream expires with its keys.
+    # Absent on a run the gateway started before the injection: its terminal append then passes
+    # `'0'` and the gateway's own `EXPIRE … NX` backstop starts the clock.
+    retention_seconds: int | None = None
 
 
 class InterpreterResult(BaseModel):
@@ -475,6 +543,26 @@ class RunEventSpec(BaseModel):
     #: `None` (every replayed pre-TASK-1038 history, and every run with no output) emits no
     #: `result` at all.
     result_outputs: dict[str, dict[str, Any]] | None = None
+    #: TASK-1038 R6 — run protocol v2 facts, all additive-optional on this ACTIVITY INPUT (no new
+    #: command). A spec recorded before them carries none, and the activity then emits the v2
+    #: event with the protocol's neutral values (``attempt`` 1, ``durationMs`` 0, no tokens).
+    label: str | None = None
+    duration_ms: int | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    #: `run.started` — the published definition this run executes.
+    slug: str | None = None
+    version_number: int | None = None
+    #: Terminal events — the gateway-injected retention (``InterpreterInput.retention_seconds``)
+    #: and the run's inline-result ceiling (``RunLimits.result_inline_max_bytes``).
+    retention_seconds: int | None = None
+    result_inline_max_bytes: int | None = None
+    #: A fixed SCREAMING_SNAKE run error code (``run_protocol.RUN_ERROR_MESSAGES``); the free
+    #: text stays in ``reason`` and travels as the admin-only ``error.detail``.
+    error_code: str | None = None
+    #: A node the workflow ran itself (a review child, a loop child): its declared outputs, for
+    #: the admin trace's per-node ``output.data`` (protocol-v2.md §5).
+    outputs: dict[str, Any] | None = None
 
 
 class RunEventBatch(BaseModel):
@@ -786,6 +874,9 @@ class CoreLoopInput(BaseModel):
     #: template variables inside the body read it.
     run_context: dict[str, Any] = Field(default_factory=dict)
     state: CoreLoopState = Field(default_factory=CoreLoopState)
+    #: TASK-1038 R6, additive-optional: `2` when the parent run speaks protocol v2 — the body's
+    #: node activities then emit their admin events, scoped per iteration (`iter:<n>`).
+    protocol: int | None = None
 
 
 class CoreLoopResult(BaseModel):

@@ -54,3 +54,7 @@ strict = true
 minversion = "9.0"
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 testpaths = ["tests"]
+# The INVOKING tree's `src/` ahead of the conda env's editable-install `.pth` (which points at
+# the PRIMARY checkout), so a run from a git worktree tests the code it sits next to —
+# `test_the_module_under_test_is_the_one_next_to_this_test` is the guard that proves it held.
+pythonpath = ["src"]

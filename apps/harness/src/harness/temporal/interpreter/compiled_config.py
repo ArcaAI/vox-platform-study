@@ -29,7 +29,7 @@ import hashlib
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from harness.temporal.interpreter import caps
 
@@ -123,6 +123,50 @@ class CompiledBranchGuard(BaseModel):
     handle: str
 
 
+_BINDING_SHAPES = ({"from"}, {"from", "at"}, {"value"}, {"template"}, {"firstOf"})
+
+
+def _is_compiled_binding(binding: Any) -> bool:
+    """One of the four closed ``compiledBinding`` shapes (the normative schema's ``anyOf``)."""
+    if not isinstance(binding, dict) or set(binding) not in _BINDING_SHAPES:
+        return False
+    if "from" in binding:
+        return (
+            isinstance(binding["from"], str)
+            and len(binding["from"]) > 0
+            and binding.get("at", "nodeStart") in ("nodeStart", "runStart")
+        )
+    if "template" in binding:
+        return isinstance(binding["template"], str)
+    if "firstOf" in binding:
+        paths = binding["firstOf"]
+        return (
+            isinstance(paths, list)
+            and len(paths) >= 2
+            and all(isinstance(path, str) and path for path in paths)
+        )
+    return True
+
+
+class CompiledConsultationRead(BaseModel):
+    """TASK-1036 §9.3 — one declared ``consultation.*`` read and when it is snapshotted (OD-30)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    path: str = Field(pattern=r"^consultation\.")
+    at: Literal["nodeStart", "runStart"]
+
+
+class CompiledSettings(BaseModel):
+    """TASK-1036 §3.5 — the effective workflow settings frozen into the artifact. Nothing in the
+    interpreter GATES on them (the gateway owns exposure); the walk reads ``sources`` only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    connections: list[Literal["api", "webhook", "sse", "socket"]]
+    sources: list[Literal["consultation", "schedule"]]
+
+
 class CompiledNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -138,6 +182,24 @@ class CompiledNode(BaseModel):
     #: TASK-864, additive-optional (the compiler OMITS it when empty, so legacy artifacts and
     #: their checksums are untouched). Dispatched only when one guard's handle was taken.
     branch_guards: list[CompiledBranchGuard] = Field(default_factory=list, alias="branchGuards")
+    #: TASK-1036 §9.2, additive-optional (the compiler's `emitDataContract`; OMITTED when the
+    #: node binds nothing). This node's inputs by NodeIO name. NO history recorded before
+    #: TASK-1036 can carry one: `extra="forbid"` refused every such artifact at `load_config`.
+    bindings: dict[str, dict[str, Any]] | None = None
+    #: TASK-1036 §9.3, additive-optional: the `consultation.*` paths this node reads, and when.
+    consultation_reads: list[CompiledConsultationRead] = Field(
+        default_factory=list, alias="consultationReads"
+    )
+
+    @field_validator("bindings")
+    @classmethod
+    def _closed_binding_shapes(
+        cls, value: dict[str, dict[str, Any]] | None
+    ) -> dict[str, dict[str, Any]] | None:
+        for name, binding in (value or {}).items():
+            if not _is_compiled_binding(binding):
+                raise ValueError(f"binding {name!r} is not one of from/value/template/firstOf")
+        return value
 
 
 class CompiledStage(BaseModel):
@@ -282,6 +344,8 @@ class CompiledWorkflowConfig(BaseModel):
     caps: CompiledCaps
     #: TASK-864, additive-optional — present only when the graph carries a `core.loop`.
     loops: list[CompiledLoop] = Field(default_factory=list)
+    #: TASK-1036 §3.5, additive-optional (`emitDataContract`).
+    settings: CompiledSettings | None = None
     checksum: str
 
 
