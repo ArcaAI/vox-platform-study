@@ -7,8 +7,16 @@
  * saved under the old scheme still renders at its authored coordinates rather than snapping to
  * the origin — but that legacy shape is never written again.
  */
+import type { WorkflowSettings } from '@arcaai/workflow-contract';
 import type { GraphStoreEdge, GraphStoreNode } from '../store/types';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from '../api/types';
+
+/**
+ * TASK-1036 §3.5 (D-3 / OD-5) — a graph that may carry `settings`. The server's `WorkflowGraph`
+ * mirror does not name the key yet; the contract (`workflow-settings.ts`) reads it off the graph
+ * JSON, so the Studio writes it there too.
+ */
+export type WorkflowGraphWithSettings = WorkflowGraph & { settings?: WorkflowSettings };
 
 /** Studio-reserved key from before `WorkflowGraphNode.position` existed — read-only fallback. */
 const LEGACY_POSITION_KEY = '__position';
@@ -43,10 +51,17 @@ function fromGraphEdge(edge: WorkflowGraphEdge): GraphStoreEdge {
   return { id: edge.id, source: edge.from, sourceHandle: edge.fromPort, target: edge.to, targetHandle: edge.toPort };
 }
 
-export function toWorkflowGraph(nodes: readonly GraphStoreNode[], edges: readonly GraphStoreEdge[]): WorkflowGraph {
-  return { version: 1, nodes: nodes.map(toGraphNode), edges: edges.map(toGraphEdge) };
+export function toWorkflowGraph(nodes: readonly GraphStoreNode[], edges: readonly GraphStoreEdge[], settings?: WorkflowSettings): WorkflowGraphWithSettings {
+  return { version: 1, nodes: nodes.map(toGraphNode), edges: edges.map(toGraphEdge), ...(settings !== undefined ? { settings } : {}) };
 }
 
-export function fromWorkflowGraph(graph: WorkflowGraph): { nodes: GraphStoreNode[]; edges: GraphStoreEdge[] } {
-  return { nodes: graph.nodes.map(fromGraphNode), edges: graph.edges.map(fromGraphEdge) };
+/**
+ * `settings` comes back exactly as stored when it is an object — even one the contract would
+ * refuse. Validity is publish's verdict (`workflowSettingsProblems`), and dropping an unreadable
+ * block here would silently delete it on the next Save.
+ */
+export function fromWorkflowGraph(graph: WorkflowGraph): { nodes: GraphStoreNode[]; edges: GraphStoreEdge[]; settings?: WorkflowSettings } {
+  const raw = (graph as { settings?: unknown }).settings;
+  const settings = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as WorkflowSettings) : undefined;
+  return { nodes: graph.nodes.map(fromGraphNode), edges: graph.edges.map(fromGraphEdge), ...(settings !== undefined ? { settings } : {}) };
 }

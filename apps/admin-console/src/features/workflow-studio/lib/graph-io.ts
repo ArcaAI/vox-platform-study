@@ -4,14 +4,15 @@
  * handed to the store's `hydrate`. Validation of the graph's meaning stays server-side
  * (`validate`), exactly as for a hand-edited graph.
  */
+import type { WorkflowSettings } from '@arcaai/workflow-contract';
 import type { WorkflowGraph, WorkflowGraphEdge, WorkflowGraphNode } from '../api/types';
 import type { GraphStoreEdge, GraphStoreNode } from '../store/types';
 import { toWorkflowGraph } from './graph-serialization';
 
 export const GRAPH_EXPORT_FILENAME = (slug: string, versionNumber: number) => `${slug}.v${versionNumber}.workflow.json`;
 
-export function exportGraphJson(nodes: readonly GraphStoreNode[], edges: readonly GraphStoreEdge[]): string {
-  return JSON.stringify(toWorkflowGraph(nodes, edges), null, 2);
+export function exportGraphJson(nodes: readonly GraphStoreNode[], edges: readonly GraphStoreEdge[], settings?: WorkflowSettings): string {
+  return JSON.stringify(toWorkflowGraph(nodes, edges, settings), null, 2);
 }
 
 export type ParsedGraph = { ok: true; graph: WorkflowGraph } | { ok: false; reason: string };
@@ -68,5 +69,7 @@ export function parseGraphJson(text: string): ParsedGraph {
     if (node.parentId !== undefined && !ids.has(node.parentId)) return { ok: false, reason: `Node "${node.id}" names an unknown parent "${node.parentId}".` };
   }
   const nodes: WorkflowGraphNode[] = (parsed.nodes as WorkflowGraphNode[]).map((node) => ({ ...node, config: node.config ?? {} }));
-  return { ok: true, graph: { version: 1, nodes, edges: parsed.edges as WorkflowGraphEdge[] } };
+  // TASK-1036 §3.5 — `settings` is carried as-is when it is an object; publish validates it.
+  const settings = isRecord(parsed.settings) ? { settings: parsed.settings } : {};
+  return { ok: true, graph: { version: 1, nodes, edges: parsed.edges as WorkflowGraphEdge[], ...settings } as WorkflowGraph };
 }

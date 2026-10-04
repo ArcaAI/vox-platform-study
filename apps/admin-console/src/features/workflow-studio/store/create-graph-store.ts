@@ -12,8 +12,10 @@
  * is actively editing, plus the Save/Discard state machine over it (TASK-893 §3.1-§3.4).
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { NODE_LABEL_MAX_LENGTH, type Binding, type WorkflowSettings } from '@arcaai/workflow-contract';
 import type { ActionResult, ConnectRequest, GraphStoreEdge, GraphStoreNode, SaveState } from './types';
 import { checkPortCompatibility } from '../lib/port-compatibility';
+import { pruneUnreachableBindings } from '../lib/binding-hygiene';
 import type { WorkflowNodeDescriptor } from '../api/types';
 
 /**
@@ -27,10 +29,32 @@ type PortLookup = ReadonlyMap<string, WorkflowNodeDescriptor>;
 export interface GraphSnapshot {
   nodes: GraphStoreNode[];
   edges: GraphStoreEdge[];
+  /**
+   * TASK-1036 §3.5 (D-3 / OD-5) — `graph.settings`: connections, sources and the context schema.
+   * It lives INSIDE the graph JSON (checksummed, frozen at publish, exported with the graph), so
+   * it rides every snapshot: undo, redo and Discard restore it with the nodes it was authored
+   * beside. `undefined` = the graph carries no `settings` (legacy graphs; `effectiveSettings`
+   * derives them from the trigger and output for one release).
+   */
+  settings?: WorkflowSettings;
 }
+
+/** One binding write the composer makes alongside a structural edit (`insertNodeOnEdge`). */
+export interface BindingWrite {
+  nodeId: string;
+  input: string;
+  /** `null` removes the binding. */
+  binding: Binding | null;
+}
+
+/** What an insert-on-edge planner returns: the wiring for the new step, or why it cannot be wired. */
+export type InsertPlan = { edges: ConnectRequest[]; bindings: BindingWrite[] } | { error: string };
 
 export interface GraphState extends GraphSnapshot {
   selectedNodeId: string | null;
+  /** TASK-1036 §3.6 — the inspector opens for an edge too (source/target, mapping, delete). A
+   *  node and an edge are never selected at once: selecting one clears the other. */
+  selectedEdgeId: string | null;
   dirty: boolean;
   saveState: SaveState;
   lastSavedVersion: number | null;
@@ -46,7 +70,7 @@ export interface GraphState extends GraphSnapshot {
 }
 
 export interface GraphActions {
-  hydrate: (nodes: GraphStoreNode[], edges: GraphStoreEdge[]) => void;
+  hydrate: (nodes: GraphStoreNode[], edges: GraphStoreEdge[], settings?: WorkflowSettings) => void;
   /** An AUTHORED wholesale replacement (JSON import, TASK-864 B1): undoable and dirty, unlike `hydrate`. */
   replaceGraph: (nodes: GraphStoreNode[], edges: GraphStoreEdge[]) => void;
   /** Pre-places every `mandatory`-classed descriptor into a fresh graph (README Task 12: "pre-
@@ -54,7 +78,12 @@ export interface GraphActions {
    *  mandatory descriptors are ignored — they come from the palette rail on demand. */
   initializeGraph: (descriptors: Array<{ type: string; safetyClasses: readonly string[] }>) => void;
   /** `options.parentId` nests the new node inside a `core.loop` body (TASK-864); `position` is then relative to that group. */
-  addNode: (descriptor: { type: string; safetyClasses: readonly string[] }, position: { x: number; y: number }, options?: { parentId?: string }) => string;
+  addNode: (
+    descriptor: { type: string; safetyClasses: readonly string[] },
+    position: { x: number; y: number },
+    options?: { parentId?: string; config?: Record<string, unknown> },
+  ) => string;
+  /** Refuses a `mandatory` node, and Start / End by TYPE (W1) — whatever classes they carry. */
   deleteNode: (nodeId: string) => ActionResult;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
   /** Copies a node's type/classes/config into a NEW node offset below the original. Refuses a
@@ -71,8 +100,33 @@ export interface GraphActions {
    *  SAME function, which is what keeps drag-time and commit-time from ever disagreeing. 
  */
   canConnect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
-  connect: (request: ConnectRequest, portLookup?: PortLookup) => ActionResult;
+  /**
+   * `options.binding` is the auto-mapped binding (OD-29) the composer derived for this link; it is
+   * written into the target's `config.inputs` in the SAME undo step, so undoing the link undoes
+   * its mapping too.
+   */
+  connect: (request: ConnectRequest, portLookup?: PortLookup, options?: { binding?: { input: string; binding: Binding } }) => ActionResult;
+  /** Also drops the bindings that read a step which, without this link, no longer runs first. */
   disconnectEdge: (edgeId: string) => void;
+  /**
+   * TASK-1036 §8.4 item 7 — `+` on an edge: removes the edge, adds a step, and applies the
+   * planner's wiring (edges + binding writes) as ONE undoable edit. The planner sees the draft
+   * graph with the new node in it and the old edge gone, so it can auto-map both new links.
+   */
+  insertNodeOnEdge: (
+    edgeId: string,
+    descriptor: { type: string; safetyClasses: readonly string[] },
+    position: { x: number; y: number },
+    planner: (draft: { nodes: GraphStoreNode[]; edges: GraphStoreEdge[]; newNode: GraphStoreNode }) => InsertPlan,
+    options?: { config?: Record<string, unknown> },
+  ) => { ok: true; nodeId: string } | { ok: false; reason: string };
+  /** OD-29 — write (or, with `null`, remove) one input binding into `config.inputs`. */
+  setInputBinding: (nodeId: string, input: string, binding: Binding | null) => void;
+  /** OD-20 — the node's display name; blank removes it. Refuses more than `NODE_LABEL_MAX_LENGTH`. */
+  setNodeLabel: (nodeId: string, label: string) => ActionResult;
+  /** §3.5 — replace `graph.settings` (undoable, dirty). */
+  setSettings: (settings: WorkflowSettings | undefined) => void;
+  selectEdge: (edgeId: string | null) => void;
   /**
    * TASK-893 §3.2 — creates a `core.loop` sized around `nodeIds` and re-parents them into it.
    * Refuses an empty selection, a selection containing a `mandatory` node (which includes both
@@ -106,6 +160,14 @@ export type GraphStoreApi = StoreApi<GraphStore>;
 
 const MANDATORY_CLASS = 'mandatory';
 const UNDO_STACK_LIMIT = 50;
+
+/**
+ * W1 — the graph's entry and exit. Undeletable and single by TYPE, not only by registry class: a
+ * registry that ever stopped classing them `mandatory` must not make Start or End deletable.
+ */
+export const BOUNDARY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.output']);
+export const BOUNDARY_DELETE_REASON = 'Start and End are part of every workflow and can’t be deleted.';
+const BOUNDARY_DUPLICATE_REASON = 'Start and End exist once in every workflow and can’t be duplicated.';
 
 /** The registry type a canvas GROUP is: `wrapInLoop` creates one, and every consumer that has to
  *  decide `kind: 'group'` reads this rather than re-typing the string. */
@@ -150,8 +212,8 @@ export function createGraphStore(): GraphStoreApi {
     /** Pushes the CURRENT (pre-mutation) snapshot onto the undo stack and clears redo — the
      *  standard "new edit invalidates the redo branch" rule. */
     function snapshotForUndo(): void {
-      const { nodes, edges, undoStack } = get();
-      const next = [...undoStack, { nodes, edges }];
+      const { nodes, edges, settings, undoStack } = get();
+      const next = [...undoStack, { nodes, edges, settings }];
       set({ undoStack: next.length > UNDO_STACK_LIMIT ? next.slice(next.length - UNDO_STACK_LIMIT) : next, redoStack: [] });
     }
 
@@ -165,7 +227,9 @@ export function createGraphStore(): GraphStoreApi {
     return {
       nodes: [],
       edges: [],
+      settings: undefined,
       selectedNodeId: null,
+      selectedEdgeId: null,
       dirty: false,
       saveState: 'clean',
       lastSavedVersion: null,
@@ -173,8 +237,19 @@ export function createGraphStore(): GraphStoreApi {
       undoStack: [],
       redoStack: [],
 
-      hydrate: (nodes, edges) => {
-        set({ nodes, edges, selectedNodeId: null, dirty: false, saveState: 'clean', baseline: { nodes, edges }, undoStack: [], redoStack: [] });
+      hydrate: (nodes, edges, settings) => {
+        set({
+          nodes,
+          edges,
+          settings,
+          selectedNodeId: null,
+          selectedEdgeId: null,
+          dirty: false,
+          saveState: 'clean',
+          baseline: { nodes, edges, settings },
+          undoStack: [],
+          redoStack: [],
+        });
       },
 
       replaceGraph: (nodes, edges) => {
@@ -193,7 +268,18 @@ export function createGraphStore(): GraphStoreApi {
         }));
         // The pre-placed set IS this graph's clean state: without a baseline here, the first edit
         // on a brand-new definition would be dirty with nothing to Discard back to.
-        set({ nodes, edges: [], selectedNodeId: null, dirty: false, saveState: 'clean', baseline: { nodes, edges: [] }, undoStack: [], redoStack: [] });
+        const { settings } = get();
+        set({
+          nodes,
+          edges: [],
+          selectedNodeId: null,
+          selectedEdgeId: null,
+          dirty: false,
+          saveState: 'clean',
+          baseline: { nodes, edges: [], settings },
+          undoStack: [],
+          redoStack: [],
+        });
       },
 
       addNode: (descriptor, position, options) => {
@@ -204,7 +290,7 @@ export function createGraphStore(): GraphStoreApi {
           type: descriptor.type,
           position,
           safetyClasses: descriptor.safetyClasses,
-          config: {},
+          config: options?.config ? { ...options.config } : {},
           ...(options?.parentId ? { parentId: options.parentId } : {}),
         };
         set((state) => ({ nodes: [...state.nodes, node], ...dirtied(state) }));
@@ -214,18 +300,26 @@ export function createGraphStore(): GraphStoreApi {
       deleteNode: (nodeId) => {
         const node = get().nodes.find((candidate) => candidate.id === nodeId);
         if (!node) return { ok: false, reason: 'Node not found.' };
+        if (BOUNDARY_NODE_TYPES.has(node.type)) return { ok: false, reason: BOUNDARY_DELETE_REASON };
         if (isMandatory(node)) return { ok: false, reason: 'This node type is mandatory for the palette and cannot be deleted.' };
         snapshotForUndo();
         // A loop body goes with its loop (TASK-864): children naming this node as parent are
         // removed too, so no orphan is ever left pointing at a group that no longer exists.
         // (`unwrapLoop` is the action that KEEPS the children — deleting a loop deletes its body.)
         const removed = new Set<string>([nodeId, ...get().nodes.filter((candidate) => candidate.parentId === nodeId).map((candidate) => candidate.id)]);
-        set((state) => ({
-          nodes: state.nodes.filter((candidate) => !removed.has(candidate.id)),
-          edges: state.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)),
-          selectedNodeId: state.selectedNodeId !== null && removed.has(state.selectedNodeId) ? null : state.selectedNodeId,
-          ...dirtied(state),
-        }));
+        set((state) => {
+          const edges = state.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target));
+          return {
+            nodes: pruneUnreachableBindings(
+              state.nodes.filter((candidate) => !removed.has(candidate.id)),
+              edges,
+            ),
+            edges,
+            selectedNodeId: state.selectedNodeId !== null && removed.has(state.selectedNodeId) ? null : state.selectedNodeId,
+            selectedEdgeId: state.selectedEdgeId !== null && edges.some((edge) => edge.id === state.selectedEdgeId) ? state.selectedEdgeId : null,
+            ...dirtied(state),
+          };
+        });
         return { ok: true };
       },
 
@@ -240,6 +334,7 @@ export function createGraphStore(): GraphStoreApi {
       duplicateNode: (nodeId) => {
         const node = get().nodes.find((candidate) => candidate.id === nodeId);
         if (!node) return { ok: false, reason: 'Node not found.' };
+        if (BOUNDARY_NODE_TYPES.has(node.type)) return { ok: false, reason: BOUNDARY_DUPLICATE_REASON };
         if (isMandatory(node)) return { ok: false, reason: 'This node type is mandatory and exists only once — it cannot be duplicated.' };
         snapshotForUndo();
         const copy: GraphStoreNode = {
@@ -298,19 +393,105 @@ export function createGraphStore(): GraphStoreApi {
         return { ok: true };
       },
 
-      connect: (request, portLookup) => {
+      connect: (request, portLookup, options) => {
         const allowed = get().canConnect(request, portLookup);
         if (!allowed.ok) return allowed;
         snapshotForUndo();
         const edge: GraphStoreEdge = { id: generateEdgeId(), ...request };
-        set((state) => ({ edges: [...state.edges, edge], ...dirtied(state) }));
+        const binding = options?.binding;
+        set((state) => ({
+          edges: [...state.edges, edge],
+          nodes: binding ? withBinding(state.nodes, request.target, binding.input, binding.binding) : state.nodes,
+          ...dirtied(state),
+        }));
         return { ok: true };
       },
 
       disconnectEdge: (edgeId) => {
+        if (!get().edges.some((edge) => edge.id === edgeId)) return;
         snapshotForUndo();
-        set((state) => ({ edges: state.edges.filter((edge) => edge.id !== edgeId), ...dirtied(state) }));
+        set((state) => {
+          const edges = state.edges.filter((edge) => edge.id !== edgeId);
+          return {
+            edges,
+            nodes: pruneUnreachableBindings(state.nodes, edges),
+            selectedEdgeId: state.selectedEdgeId === edgeId ? null : state.selectedEdgeId,
+            ...dirtied(state),
+          };
+        });
       },
+
+      insertNodeOnEdge: (edgeId, descriptor, position, planner, options) => {
+        const { nodes, edges } = get();
+        const edge = edges.find((candidate) => candidate.id === edgeId);
+        if (!edge) return { ok: false, reason: 'That link no longer exists.' };
+        const newNode: GraphStoreNode = {
+          id: generateNodeId(),
+          type: descriptor.type,
+          position,
+          safetyClasses: descriptor.safetyClasses,
+          config: options?.config ? { ...options.config } : {},
+        };
+        const draftNodes = [...nodes, newNode];
+        const draftEdges = edges.filter((candidate) => candidate.id !== edgeId);
+        const plan = planner({ nodes: draftNodes, edges: draftEdges, newNode });
+        if ('error' in plan) return { ok: false, reason: plan.error };
+        snapshotForUndo();
+        const added = plan.edges
+          .filter(
+            (request, index, all) =>
+              all.findIndex(
+                (other) =>
+                  other.source === request.source &&
+                  other.sourceHandle === request.sourceHandle &&
+                  other.target === request.target &&
+                  other.targetHandle === request.targetHandle,
+              ) === index,
+          )
+          .map((request) => ({ id: generateEdgeId(), ...request }));
+        let nextNodes = draftNodes;
+        for (const write of plan.bindings) nextNodes = withBinding(nextNodes, write.nodeId, write.input, write.binding);
+        const nextEdges = [...draftEdges, ...added];
+        set((state) => ({
+          nodes: pruneUnreachableBindings(nextNodes, nextEdges),
+          edges: nextEdges,
+          selectedNodeId: newNode.id,
+          selectedEdgeId: null,
+          ...dirtied(state),
+        }));
+        return { ok: true, nodeId: newNode.id };
+      },
+
+      setInputBinding: (nodeId, input, binding) => {
+        const { nodes } = get();
+        const next = withBinding(nodes, nodeId, input, binding);
+        if (next === nodes) return;
+        snapshotForUndo();
+        set((state) => ({ nodes: next, ...dirtied(state) }));
+      },
+
+      setNodeLabel: (nodeId, label) => {
+        const node = get().nodes.find((candidate) => candidate.id === nodeId);
+        if (!node) return { ok: false, reason: 'Node not found.' };
+        const trimmed = label.trim();
+        if (trimmed.length > NODE_LABEL_MAX_LENGTH) {
+          return { ok: false, reason: `A step name can be at most ${NODE_LABEL_MAX_LENGTH} characters.` };
+        }
+        const current = typeof node.config.label === 'string' ? node.config.label : '';
+        if (current === trimmed) return { ok: true };
+        const { label: _previous, ...rest } = node.config;
+        const config = trimmed.length > 0 ? { ...rest, label: trimmed } : rest;
+        snapshotForUndo();
+        set((state) => ({ nodes: state.nodes.map((candidate) => (candidate.id === nodeId ? { ...candidate, config } : candidate)), ...dirtied(state) }));
+        return { ok: true };
+      },
+
+      setSettings: (settings) => {
+        snapshotForUndo();
+        set((state) => ({ settings, ...dirtied(state) }));
+      },
+
+      selectEdge: (edgeId) => set((state) => ({ selectedEdgeId: edgeId, selectedNodeId: edgeId === null ? state.selectedNodeId : null })),
 
       wrapInLoop: (nodeIds) => {
         const { nodes } = get();
@@ -416,7 +597,7 @@ export function createGraphStore(): GraphStoreApi {
         }));
       },
 
-      selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+      selectNode: (nodeId) => set((state) => ({ selectedNodeId: nodeId, selectedEdgeId: nodeId === null ? state.selectedEdgeId : null })),
       setSaveState: (state) => set({ saveState: state }),
 
       discard: () => {
@@ -426,9 +607,11 @@ export function createGraphStore(): GraphStoreApi {
         set((state) => ({
           nodes: baseline.nodes,
           edges: baseline.edges,
+          settings: baseline.settings,
           // A node created since the last save no longer exists after a discard; leaving it
           // selected would render an inspector for a ghost.
           selectedNodeId: state.selectedNodeId !== null && alive.has(state.selectedNodeId) ? state.selectedNodeId : null,
+          selectedEdgeId: state.selectedEdgeId !== null && baseline.edges.some((edge) => edge.id === state.selectedEdgeId) ? state.selectedEdgeId : null,
           dirty: false,
           saveState: 'clean',
           undoStack: [],
@@ -437,37 +620,61 @@ export function createGraphStore(): GraphStoreApi {
       },
 
       markSaved: (version) => {
-        const { nodes, edges } = get();
-        set({ dirty: false, lastSavedVersion: version, saveState: 'saved', baseline: { nodes, edges } });
+        const { nodes, edges, settings } = get();
+        set({ dirty: false, lastSavedVersion: version, saveState: 'saved', baseline: { nodes, edges, settings } });
       },
 
       undo: () => {
-        const { undoStack, nodes, edges } = get();
+        const { undoStack, nodes, edges, settings } = get();
         if (undoStack.length === 0) return;
         const previous = undoStack[undoStack.length - 1];
         set((state) => ({
           nodes: previous.nodes,
           edges: previous.edges,
+          settings: previous.settings,
           undoStack: undoStack.slice(0, -1),
-          redoStack: [...state.redoStack, { nodes, edges }],
+          redoStack: [...state.redoStack, { nodes, edges, settings }],
           ...dirtied(state),
         }));
       },
 
       redo: () => {
-        const { redoStack, nodes, edges } = get();
+        const { redoStack, nodes, edges, settings } = get();
         if (redoStack.length === 0) return;
         const next = redoStack[redoStack.length - 1];
         set((state) => ({
           nodes: next.nodes,
           edges: next.edges,
+          settings: next.settings,
           redoStack: redoStack.slice(0, -1),
-          undoStack: [...state.undoStack, { nodes, edges }],
+          undoStack: [...state.undoStack, { nodes, edges, settings }],
           ...dirtied(state),
         }));
       },
     };
   });
+}
+
+/**
+ * `nodes` with `binding` written to (or, for `null`, removed from) `config.inputs[input]` of
+ * `nodeId`. The SAME array back when nothing changes. An emptied `inputs` map is removed, never
+ * left as `{}` (an absent map and an empty one mean the same thing; only one should be stored).
+ */
+function withBinding(nodes: GraphStoreNode[], nodeId: string, input: string, binding: Binding | null): GraphStoreNode[] {
+  const index = nodes.findIndex((node) => node.id === nodeId);
+  if (index === -1) return nodes;
+  const node = nodes[index] as GraphStoreNode;
+  const raw = node.config.inputs;
+  const current: Record<string, unknown> = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  if (binding === null && !(input in current)) return nodes;
+  if (binding !== null && JSON.stringify(current[input]) === JSON.stringify(binding)) return nodes;
+  const { [input]: _previous, ...others } = current;
+  const inputs = binding === null ? others : { ...others, [input]: binding };
+  const { inputs: _inputs, ...rest } = node.config;
+  const config = Object.keys(inputs).length > 0 ? { ...rest, inputs } : rest;
+  const next = nodes.slice();
+  next[index] = { ...node, config };
+  return next;
 }
 
 /** The same node with the `parentId` KEY absent — not present-and-`undefined`, so a graph
