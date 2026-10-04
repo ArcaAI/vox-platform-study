@@ -77,6 +77,15 @@ function toBigIntSafe(value: bigint | number | string | null | undefined): bigin
   return BigInt(Math.trunc(Number(value)));
 }
 
+/** The legacy deliver-node shape: `{ resultRef: ClaimCheckRef }` with a numeric `size`. */
+const LEGACY_RESULT_SIZE_IS_NUMBER = `jsonb_typeof("resultRef"->'resultRef'->'size') = 'number'`;
+/** The D-I producer shape (protocol v2 `run.completed.result`): `{ kind: 'ref', …, sizeBytes }`. */
+const REF_RESULT_SIZE_IS_NUMBER = `("resultRef"->>'kind' = 'ref' AND jsonb_typeof("resultRef"->'sizeBytes') = 'number')`;
+/** The bucket bytes of one `WorkflowRun.resultRef`, whichever shape it is. */
+const WORKFLOW_RUN_RESULT_BYTES =
+  `CASE WHEN ${REF_RESULT_SIZE_IS_NUMBER} THEN ("resultRef"->>'sizeBytes')::bigint ` +
+  `WHEN ${LEGACY_RESULT_SIZE_IS_NUMBER} THEN ("resultRef"->'resultRef'->>'size')::bigint ELSE 0 END`;
+
 /**
  * The nightly per-(tenant, storage class) GB-day snapshot (TASK-959 §5.2).
  *
@@ -345,9 +354,13 @@ export class StorageSnapshotService implements IStorageSnapshotService, OnModule
         `jsonb_typeof("payloadRef"->'size') = 'number'`,
         tenantId,
       ),
+      // TASK-1038 E2 (fix 6) — ONE aggregate over both shapes `resultRef` holds, so a row is never
+      // counted twice: the legacy deliver-node output (`{ resultRef: ClaimCheckRef }`, bytes at
+      // `.resultRef.size`) and the D-I producer ref (`{ kind: 'ref', bucket, key, sizeBytes, sha256 }`,
+      // bytes at `.sizeBytes`). Inline values and `expired` tombstones hold no bucket bytes.
       this.groupedBytesQuery(
-        `SELECT "tenantId", COALESCE(SUM(("resultRef"->'resultRef'->>'size')::bigint), 0)::bigint AS "bytes" FROM "core"."WorkflowRun"`,
-        `jsonb_typeof("resultRef"->'resultRef'->'size') = 'number'`,
+        `SELECT "tenantId", COALESCE(SUM(${WORKFLOW_RUN_RESULT_BYTES}), 0)::bigint AS "bytes" FROM "core"."WorkflowRun"`,
+        `(${LEGACY_RESULT_SIZE_IS_NUMBER} OR ${REF_RESULT_SIZE_IS_NUMBER})`,
         tenantId,
       ),
     ]);

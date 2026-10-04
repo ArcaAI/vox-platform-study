@@ -1,11 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { ClsService } from 'nestjs-cls';
 import { WorkflowRunEntity, WorkflowRunRepository } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
+import { IBlobStorageService } from '../baseServices/storage/IBlobStorageService';
 import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
-import type { ExpiredRunResult } from './run-result';
+import { isResultKeyInTenantPrefix, readPersistedRunResult, type ExpiredRunResult } from './run-result';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 /** Rows read per page. Bounded so one purge never holds a large result set in memory. */
@@ -26,9 +28,15 @@ const LIVE_RESULT = { OR: [{ resultRef: { path: ['kind'], equals: 'inline' } }, 
  * Expiring REPLACES `WorkflowRun.resultRef` with an `expired` tombstone rather than deleting the
  * row or nulling the column: the run's status, counts and timings are an audit trail that outlives
  * the output, and the result route can then answer "this existed and is gone" (410) instead of
- * "there never was one" (204). A claim-checked result's OBJECT is left to the bucket's own
- * lifecycle: object keys are content-addressed and may be shared, so deleting one here could
- * break another run's reference.
+ * "there never was one" (204).
+ *
+ * TASK-1038 E2 (fix 7) — a claim-checked result's OBJECT goes too: before the tombstone, the purge
+ * deletes it, best effort (a failed delete never blocks the tombstone; the bucket lifecycle is the
+ * backstop). Only an object provably the tenant's is deleted — its key is under the run tenant's
+ * prefix `<tenantId>/` (`isResultKeyInTenantPrefix`) — and only when no other live run row of the
+ * tenant still references the same bucket + key (a content-addressed key may be shared within
+ * the tenant). The delete runs under the row tenant's CLS context, so the storage provider
+ * resolves exactly as it did when the result was signed.
  *
  * The precedent is the composed-prompt purge (TASK-1035, `ComposedPromptService.purgeExpired`):
  * a daily cron, one node at a time behind a Redis lock, every step idempotent (a lost lock costs
@@ -50,6 +58,9 @@ export class WorkflowRunResultRetentionService {
     private readonly repository: WorkflowRunRepository,
     @Optional() private readonly settings?: TenantSettingsService,
     @Optional() @Inject(IRedisCacheService) private readonly redis?: IRedisCacheService,
+    // TASK-1038 E2 (fix 7) — the result object's delete. Optional: absent, only the pointer goes.
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
+    @Optional() private readonly cls?: ClsService,
   ) {}
 
   @Cron('45 4 * * *', { name: 'workflow-run-result-retention' })
@@ -99,6 +110,7 @@ export class WorkflowRunResultRetentionService {
   }
 
   private async expire(row: WorkflowRunEntity, now: Date): Promise<boolean> {
+    await this.deleteResultObject(row);
     const tombstone: ExpiredRunResult = { kind: 'expired', expiredAt: now.toISOString() };
     row.resultRef = tombstone as never;
     try {
@@ -113,6 +125,40 @@ export class WorkflowRunResultRetentionService {
         error: error instanceof Error ? error.name : 'unknown',
       });
       return false;
+    }
+  }
+
+  /** TASK-1038 E2 (fix 7) — the claim-checked result's object, best effort (see the class header). */
+  private async deleteResultObject(row: WorkflowRunEntity): Promise<void> {
+    const stored = readPersistedRunResult(row.resultRef);
+    if (!this.blobStorage || stored?.kind !== 'ref' || !isResultKeyInTenantPrefix(row.tenantId, stored.key)) return;
+    const blobStorage = this.blobStorage;
+    try {
+      const sharers = await this.repository.count({
+        where: {
+          tenantId: row.tenantId,
+          id: { not: row.id },
+          AND: [{ resultRef: { path: ['bucket'], equals: stored.bucket } }, { resultRef: { path: ['key'], equals: stored.key } }],
+        } as never,
+      });
+      if (sharers > 0) return;
+      const remove = () => blobStorage.deleteObject({ bucket: stored.bucket, key: stored.key });
+      if (this.cls) {
+        const cls = this.cls;
+        await cls.run(async () => {
+          cls.set('tenantId', row.tenantId);
+          await remove();
+        });
+      } else {
+        await remove();
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Workflow-run result object could not be deleted — the tombstone is written anyway',
+        runRowId: row.id,
+        tenantId: row.tenantId,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
     }
   }
 

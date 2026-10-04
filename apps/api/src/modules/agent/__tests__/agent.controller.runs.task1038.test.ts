@@ -146,7 +146,8 @@ describe('POST /agents/:slug/runs', () => {
     const answer = await controller.startRun('scribe', { message: 'Summarise.' }, undefined);
     expect(answer).toMatchObject({ status: 'RUNNING', links: { self: `/api/v1/agents/scribe/runs/${answer.runId}` } });
     await flush();
-    expect(invocation.invokeText).toHaveBeenCalledWith(RESOLVED, TENANT, { message: 'Summarise.' }, 'blocking');
+    // TASK-1038 E2 (fix 4) — the run's AbortSignal rides as the 5th argument.
+    expect(invocation.invokeText).toHaveBeenCalledWith(RESOLVED, TENANT, { message: 'Summarise.' }, 'blocking', { signal: expect.any(AbortSignal) });
     const status = await controller.getRun('scribe', answer.runId);
     expect(status).toMatchObject({ runId: answer.runId, status: 'COMPLETED', agentSlug: 'scribe', versionNumber: 2 });
   });

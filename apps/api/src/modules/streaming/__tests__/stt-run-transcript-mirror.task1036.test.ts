@@ -18,7 +18,12 @@ const CONSULTATION = 'consultation-1';
 function build(
   options: { consultationId?: string | null; sandboxRuns?: string[]; governing?: Record<string, unknown> | null; tenantId?: string } = {},
 ) {
-  const hub = { available: vi.fn(() => true), append: vi.fn().mockResolvedValue({ seq: 1, streamId: '1-0', duplicate: false }) };
+  // TASK-1038 E2 (fix 14) — the mirror appends only to a stream that already exists (`lastSeq`).
+  const hub = {
+    available: vi.fn(() => true),
+    append: vi.fn().mockResolvedValue({ seq: 1, streamId: '1-0', duplicate: false }),
+    lastSeq: vi.fn().mockResolvedValue(1),
+  };
   const jobs = {
     findAll: vi
       .fn()
@@ -31,7 +36,12 @@ function build(
       metadata: options.governing === undefined ? null : options.governing,
     }),
   };
-  const runs = { findAll: vi.fn().mockResolvedValue((options.sandboxRuns ?? []).map((runId) => ({ runId }))) };
+  // TASK-1038 E2 (fix 14) — the governed run is confirmed on the READ MODEL (a `runId` query).
+  const runs = {
+    findAll: vi.fn(async (props: { where: Record<string, unknown> }) =>
+      props.where.isSandbox === true ? (options.sandboxRuns ?? []).map((runId) => ({ runId })) : [{ runId: props.where.runId }],
+    ),
+  };
   const mirror = new SttRunTranscriptMirror(hub as never, jobs as never, consultations as never, runs as never);
   return { mirror, hub, jobs, consultations, runs };
 }
@@ -78,9 +88,16 @@ describe('SttRunTranscriptMirror', () => {
     }
     // Only the protocol's closed fields — no word timings, no context echo.
     expect(Object.keys(events[1].data as object).sort()).toEqual(['end', 'language', 'speaker', 'start', 'text', 'utteranceIndex']);
-    // The sandbox query is tenant-scoped, RUNNING-only and keyed on the bound consultation.
+    // The sandbox query is tenant-scoped, RUNNING-only, keyed on the bound consultation and (TASK-1038
+    // E2 fix 14) bounded by the open-stream ceiling.
     expect(runs.findAll).toHaveBeenCalledWith({
-      where: { tenantId: TENANT, isSandbox: true, status: 'RUNNING', metaData: { path: ['consultationId'], equals: CONSULTATION } },
+      where: expect.objectContaining({
+        tenantId: TENANT,
+        isSandbox: true,
+        status: 'RUNNING',
+        metaData: { path: ['consultationId'], equals: CONSULTATION },
+        startedAt: { gte: expect.any(Date) },
+      }),
     });
   });
 

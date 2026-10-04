@@ -89,7 +89,17 @@ beforeEach(() => {
   harness.startWorkflowRun.mockResolvedValue({ status: 'started' });
   s3.putFile.mockResolvedValue(undefined);
   media.findByIdOrNull.mockImplementation(async (id: string) => (MEDIA[id] ? { id, tenantId: 'tenant-1', uri: 's3://secret', ...MEDIA[id] } : null));
-  jobs.findAll.mockResolvedValue([{ id: 'job-1', tenantId: 'tenant-1', streamSessionId: 'stt-1', jobType: 'STREAMING', consultationId: null }]);
+  jobs.findAll.mockResolvedValue([
+    {
+      id: 'job-1',
+      tenantId: 'tenant-1',
+      streamSessionId: 'stt-1',
+      jobType: 'STREAMING',
+      status: 'PROCESSING',
+      createdBy: 'admin-1',
+      consultationId: null,
+    },
+  ]);
   jobs.update.mockImplementation(async (_id: string, e: unknown) => e);
   consultations.create.mockImplementation(async (e: { id: string }) => e);
 });

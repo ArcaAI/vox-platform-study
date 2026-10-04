@@ -197,6 +197,12 @@ function legacyMessageAlias(resolved: ResolvedAgent, input: unknown): unknown {
   return { ...rest, text: message };
 }
 
+/** Per-call options for `invokeText` / `invokeNer` (TASK-1038 E2 fix 4, R2). */
+export interface AgentInvocationCallOptions {
+  /** Aborts the upstream TEXT / NLP request (an agent run's cancel or ceiling). */
+  signal?: AbortSignal;
+}
+
 @Injectable()
 export class AgentInvocationService {
   private readonly logger = new Logger(AgentInvocationService.name);
@@ -269,13 +275,30 @@ export class AgentInvocationService {
       : undefined;
   }
 
-  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'blocking'): Promise<AgentTextInvocationResult>;
-  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'stream'): Promise<AgentTextStreamInvocation>;
+  /**
+   * `options.signal` (TASK-1038 E2 fix 4, R2) aborts the upstream request — an agent RUN's cancel
+   * and its ceiling. Absent, the request is unchanged.
+   */
+  async invokeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    mode: 'blocking',
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentTextInvocationResult>;
+  async invokeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    mode: 'stream',
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentTextStreamInvocation>;
   async invokeText(
     resolved: ResolvedAgent,
     tenantId: string,
     input: Record<string, unknown>,
     mode: 'blocking' | 'stream',
+    options?: AgentInvocationCallOptions,
   ): Promise<AgentTextInvocationResult | AgentTextStreamInvocation> {
     if (resolved.task !== 'TEXT_GENERATION') {
       throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; invocations apply to TEXT_GENERATION agents only.`);
@@ -437,11 +460,15 @@ export class AgentInvocationService {
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
         headers: { ...headers, Accept: 'text/event-stream' },
         responseType: 'stream',
+        ...(options?.signal ? { signal: options.signal } : {}),
       });
       return { stream: response.data as Readable, ...actingUser };
     }
 
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, { headers });
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
+      headers,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
     const data = (response.data ?? {}) as {
       content?: string;
       summary?: string;
@@ -493,7 +520,12 @@ export class AgentInvocationService {
    * `X-Tenant-Id` is mandatory on this hop (owner directive 2026-08-16): an invocation always
    * has a tenant, so there is no tenant-less branch to declare.
    */
-  async invokeNer(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>): Promise<AgentNerInvocationResult> {
+  async invokeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentNerInvocationResult> {
     if (resolved.task !== 'NAMED_ENTITY_RECOGNITION') {
       throw new BadRequestException(
         `Agent '${resolved.slug}' is a ${resolved.task} agent; entity extraction applies to NAMED_ENTITY_RECOGNITION agents only.`,
@@ -537,7 +569,10 @@ export class AgentInvocationService {
       tenantlessReason: TENANTLESS.CONTROL_PLANE,
     });
 
-    const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, { headers });
+    const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, {
+      headers,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
     const data = asRecord(response.data);
     return {
       entities: mapNerEntities(response.data),

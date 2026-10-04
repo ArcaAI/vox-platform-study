@@ -114,6 +114,7 @@ import { agentGraphFindings, agentNodesNeedingFacts, agentSlugOf, type GraphAgen
 import { collectPromptBindings, promptContentChecksum, withMovedPin } from './node-prompt-binding';
 import {
   agentNodeRefs,
+  agentPinDeprecatedFinding,
   agentPinUnresolvedFinding,
   agentPromptPins,
   documentPinFindings,
@@ -1869,9 +1870,15 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // AFTER every gate (a refused publish reads nothing more) and BEFORE compile, onto a COPY of
     // the graph: the authored `graph` is stored as saved, the compiled artifact carries the pins.
     const pins = await this.resolvePublishPins(graph, entity.tenantId);
-    if (pins.findings.length > 0) {
-      throw new BadRequestException({ message: 'The workflow references agent versions that cannot be pinned.', findings: pins.findings });
+    if (hasBlockingFindings(pins.findings)) {
+      throw new BadRequestException({
+        message: 'The workflow references agent versions that cannot be pinned.',
+        findings: pins.findings.filter((finding) => finding.severity === 'ERROR'),
+      });
     }
+    // TASK-1038 E2 (fix 9) — pin WARNINGs (a deprecated explicit pin) never block; they are
+    // recorded on the stored validation report.
+    const pinWarnings = pins.findings;
 
     // D-7 — resolve the tenant's context-schema pin BEFORE compiling, so the published artifact
     // records WHICH schema version it was built against instead of a hardcoded null.
@@ -1899,7 +1906,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     entity.contextSchemaVersionNumber = triggerContextSchema?.resolved?.versionNumber ?? null;
     entity.contextSchemaFollowsLatest = entity.contextSchemaId != null && authoredTriggerFollowsLatest(graph);
 
-    entity.validationReport = report as unknown as JsonValue;
+    entity.validationReport = this.mergePublishGate(report, pinWarnings) as unknown as JsonValue;
     entity.validatedAt = new Date();
     entity.compiledConfig = compiled as unknown as JsonValue;
     entity.compiledConfigChecksum = compiled.checksum;
@@ -2891,7 +2898,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     if (this.agentRepository) {
       const agentPins = new Map<string, ResolvedAgentPin>();
       for (const ref of agentNodeRefs(graph)) {
-        const agent = await (
+        let agent = await (
           ref.versionNumber === null
             ? this.agentRepository.findPublishedActiveBySlug(tenantId, ref.slug)
             : this.agentRepository.findPublishedVisibleBySlugVersion(tenantId, ref.slug, ref.versionNumber)
@@ -2899,6 +2906,21 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
           if (isNotFoundError(error)) return null;
           throw error;
         });
+        // TASK-1038 E2 (fix 9, OD-21) — an EXPLICIT pin on a DEPRECATED version publishes with a
+        // WARNING: the pinned version keeps running after deprecation (the runtime resolver serves
+        // PUBLISHED and DEPRECATED pins). An unpinned node never falls back to a deprecated version.
+        if (!agent && ref.versionNumber !== null) {
+          const pinnedVersion = ref.versionNumber;
+          const versions = await this.agentRepository.findAllVersionsBySlug(tenantId, ref.slug).catch((error: unknown) => {
+            if (isNotFoundError(error)) return [];
+            throw error;
+          });
+          const deprecated = versions.find((row) => row.versionNumber === pinnedVersion && row.status === WorkflowDefinitionStatus.DEPRECATED);
+          if (deprecated) {
+            agent = deprecated;
+            findings.push(agentPinDeprecatedFinding({ ...ref, versionNumber: pinnedVersion }));
+          }
+        }
         if (!agent) {
           findings.push(agentPinUnresolvedFinding(ref));
           continue;

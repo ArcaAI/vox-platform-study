@@ -9,6 +9,7 @@ import {
   IUserService,
   IWorkflowRunService,
   PolicyEngine,
+  WorkflowRunTraceAccessService,
   SecretsService,
   createJwt,
   // Password rotation surfaced at login() (warning-only).
@@ -148,6 +149,10 @@ export class AuthController {
     // see `assertDnaJobScopeOwnership` for why CLS cannot supply it here.
     // TS-optional + trailing for the same positional-fixture reason.
     private readonly policyEngine?: PolicyEngine,
+    // TASK-1038 E2 (fix 2) — the admin trace's own audience check, applied at the
+    // `workflow_run_trace:` mint. TS-optional + trailing for the positional fixtures; absent, the
+    // namespace fails CLOSED (403) — it can never mean "allow".
+    private readonly runTraceAccess?: WorkflowRunTraceAccessService,
   ) {}
 
   /**
@@ -979,6 +984,10 @@ export class AuthController {
     // Fail-closed: a missing/foreign run 404s too.
     await this.assertWorkflowRunScopeOwnership(body.scope, tenantId);
 
+    // TASK-1038 E2 (fix 2) — `workflow_run_trace:<runId>` (the console's admin trace) is minted
+    // ONLY here, on the JWT plane, and only for a caller the trace itself admits.
+    await this.assertWorkflowRunTraceScope(body.scope, tenantId);
+
     // `tts_session:<sessionId>` was the only stream-ticket
     // scope prefix with NO branch here. This is deliberately NOT an ownership
     // check; read `assertTtsSessionScopeShape` for why one is impossible today
@@ -1134,6 +1143,54 @@ export class AuthController {
     }
   }
 
+  /** Scope prefix for the ADMIN TRACE ticket (`WorkflowRunTraceController.streamTrace`). */
+  private static readonly WORKFLOW_RUN_TRACE_SCOPE_PREFIX = 'workflow_run_trace:';
+
+  /**
+   * TASK-1038 E2 (fix 2) — `workflow_run_trace:<runId>`, the admin trace's OWN namespace.
+   *
+   * The trace used to accept `workflow_run:` tickets, which the business route mints for API keys
+   * and service accounts. A ticket restores the BOUND HUMAN, so a machine credential whose human
+   * is a TENANT_ADMIN reached the admin plane (policy A2). This namespace is mintable only here —
+   * the JWT plane (`@ForbidApiKey()`, no svc scope) — and only after:
+   *
+   * 1. a service-account context is refused outright (403, belt and braces over the missing
+   *    svc scope);
+   * 2. the trace's own audience check, `WorkflowRunTraceAccessService.assertCanTrace` — a super
+   *    admin, or a tenant admin of the working tenant (403 `RUN_TRACE_FORBIDDEN`). Row-INDEPENDENT,
+   *    so it runs FIRST: every non-admin gets the same 403 whether the id exists or not;
+   * 3. the run's ownership in the active tenant (404-over-403).
+   *
+   * Absent access service ⇒ 403: fail closed. Non-trace scopes pass through untouched.
+   */
+  private async assertWorkflowRunTraceScope(scope: string, activeTenantId: string | null): Promise<void> {
+    if (!scope?.startsWith(AuthController.WORKFLOW_RUN_TRACE_SCOPE_PREFIX)) {
+      return;
+    }
+    const forbidden = () =>
+      new ForbiddenException({
+        code: 'RUN_TRACE_FORBIDDEN',
+        message: 'The run trace is readable only by a super administrator or a tenant administrator of this tenant.',
+      });
+    if (this.clsService.get('serviceAccount') || !this.runTraceAccess) {
+      throw forbidden();
+    }
+    if (!activeTenantId) {
+      throw new NotFoundException('Run not found');
+    }
+    await this.runTraceAccess.assertCanTrace({ user: this.clsService.get('user'), serviceAccount: undefined, tenantId: activeTenantId });
+    const runId = scope.slice(AuthController.WORKFLOW_RUN_TRACE_SCOPE_PREFIX.length);
+    try {
+      await this.workflowRunService.getRun(activeTenantId, runId);
+    } catch (error) {
+      if (!this.isLookupMiss(error)) {
+        this.logger.error({ message: 'Stream-ticket workflow run (trace) lookup failed', error, runId });
+        throw error;
+      }
+      throw new NotFoundException('Run not found');
+    }
+  }
+
   /** Scope prefix for DNA generation job SSE tickets (`dna_job:<jobId>`). */
   private static readonly DNA_JOB_SCOPE_PREFIX = 'dna_job:';
 
@@ -1254,6 +1311,8 @@ export class AuthController {
   private static readonly KNOWN_SCOPE_NAMESPACES: ReadonlySet<string> = new Set([
     'dna_job',
     'workflow_run',
+    // TASK-1038 E2 (fix 2) — the admin trace; ownership + audience asserted above.
+    'workflow_run_trace',
     'transcription_job',
     'stt_session',
     'tts_session',

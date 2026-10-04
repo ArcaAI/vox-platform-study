@@ -32,13 +32,13 @@ function build(overrides: { access?: () => Promise<void>; getRun?: () => Promise
 }
 
 describe('WorkflowRunTraceController', () => {
-  it('is console-only: ForbidApiKey + ForbidServiceAccount + read:WorkflowRun + the workflow_run stream ticket', () => {
+  it('is console-only: ForbidApiKey + ForbidServiceAccount + read:WorkflowRun + its OWN workflow_run_trace stream ticket', () => {
     const reflector = new Reflector();
     const handler = WorkflowRunTraceController.prototype.streamTrace;
     expect(reflector.getAllAndOverride(API_KEY_FORBIDDEN, [handler, WorkflowRunTraceController])).toBe(true);
     expect(reflector.getAllAndOverride(SERVICE_ACCOUNT_FORBIDDEN, [handler, WorkflowRunTraceController])).toBe(true);
     expect(reflector.getAllAndOverride(REQUIRED_PERMISSIONS_KEY, [handler, WorkflowRunTraceController])).toEqual([{ action: 'read', subject: 'WorkflowRun' }]);
-    expect(reflector.getAllAndOverride(STREAM_SCOPE_METADATA, [handler, WorkflowRunTraceController])).toEqual({ namespace: 'workflow_run', param: 'runId' });
+    expect(reflector.getAllAndOverride(STREAM_SCOPE_METADATA, [handler, WorkflowRunTraceController])).toEqual({ namespace: 'workflow_run_trace', param: 'runId' });
   });
 
   it('streams the ADMIN plane in protocol v2 with the cursor, reading status from the run read model', async () => {

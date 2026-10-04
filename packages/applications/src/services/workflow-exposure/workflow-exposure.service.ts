@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
@@ -18,6 +18,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
+import { idempotencyCanonicalJson } from '../consultation/jobs/job-idempotency.service';
 import { WORKFLOW_EXPOSURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
 import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
@@ -32,6 +33,7 @@ import type { UserIdentityBinding } from '../consultation-context-schema/context
 import {
   deliveredRunResultFrom,
   interpreterSessionId,
+  isResultKeyInTenantPrefix,
   IWorkflowRunService,
   readPersistedRunResult,
   terminalStatusOf,
@@ -235,13 +237,20 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const runId = opts.idempotencyKey ? deterministicRunId(tenantId, slug, opts.idempotencyKey) : generateId();
 
     const idempotencyRedisKey = opts.idempotencyKey ? `${IDEMPOTENCY_KEY_PREFIX}${tenantId}:${slug}:${opts.idempotencyKey}` : null;
-    if (idempotencyRedisKey) {
+    // TASK-1038 E2 (fix 11) — the agent-run semantic on workflow runs: the key names ONE intent.
+    // Same key + same body joins; a DIFFERENT body is 409 `IDEMPOTENCY_KEY_REUSED`. The body is
+    // the caller's `input` plus the server-resolved consultation the run is bound to.
+    const requestBodyHash = opts.idempotencyKey ? workflowInvokeBodyHash(dto, opts.consultationId) : null;
+    if (idempotencyRedisKey && requestBodyHash) {
       const cached = await this.tryReadIdempotencyCache(idempotencyRedisKey);
-      if (cached) return cached;
+      if (cached) {
+        if (cached.requestBodyHash !== undefined && cached.requestBodyHash !== requestBodyHash) throw idempotencyKeyReused();
+        return cached.response;
+      }
       // The DURABLE layer, consulted when the cache misses (eviction, cold node, Redis down —
       // all of which the cache read swallows by design). A run row under this derived id means a
       // prior delivery already started it; JOIN it rather than dispatching a second billed run.
-      const joined = await this.tryJoinExistingRun(tenantId, slug, runId);
+      const joined = await this.tryJoinExistingRun(tenantId, slug, runId, requestBodyHash);
       if (joined) return joined;
     }
 
@@ -424,9 +433,16 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // (`subject.consultationId`, from the request PATH — never `input`): the internal
       // consultation-read route admits an exposure-plane run only when its row names the
       // consultation it was bound to.
+      //
+      // TASK-1038 E2 (fix 11) — an `Idempotency-Key` start also stamps its body fingerprint, the
+      // DURABLE half of "a different body under the same key is a 409".
       metaData:
-        actingUserId || subject?.consultationId
-          ? { ...(actingUserId ? { actingUserId } : {}), ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}) }
+        actingUserId || subject?.consultationId || requestBodyHash
+          ? {
+              ...(actingUserId ? { actingUserId } : {}),
+              ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
+              ...(requestBodyHash ? { requestBodyHash } : {}),
+            }
           : undefined,
     });
 
@@ -485,8 +501,8 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     const response = WorkflowExposureDtoMapper.toInvokeResponse(runId, definition.slug, started.status);
 
-    if (idempotencyRedisKey) {
-      await this.tryWriteIdempotencyCache(idempotencyRedisKey, response);
+    if (idempotencyRedisKey && requestBodyHash) {
+      await this.tryWriteIdempotencyCache(idempotencyRedisKey, response, requestBodyHash);
     }
 
     return response;
@@ -563,6 +579,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     if (stored.kind === 'inline') return { runId, status, kind: 'inline', value: stored.value };
     if (stored.kind === 'expired') return { runId, status, kind: 'expired', expiredAt: stored.expiredAt };
 
+    // TASK-1038 E2 (fix 13) — sign only an object under the run tenant's prefix. A key outside it
+    // (another tenant's, a shared content-addressed key, a legacy un-prefixed key) is not provably
+    // this tenant's: the house 404, and nothing is signed.
+    // `tenantId` is the run's own tenant: `resolveOwnedRun` read the row under it.
+    if (!isResultKeyInTenantPrefix(tenantId, stored.key)) {
+      throw new NotFoundException(`Run '${runId}' has no readable result.`);
+    }
     if (!this.blobStorage) {
       throw new ServiceUnavailableException('This run delivered a stored result, but no object storage is configured to sign a download URL for it.');
     }
@@ -961,14 +984,18 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
    * Redis fast path takes, and safe for the same reason: Temporal's own `USE_EXISTING` +
    * `REJECT_DUPLICATE` still refuse a second execution under that workflow id.
    */
-  private async tryJoinExistingRun(tenantId: string, slug: string, runId: string): Promise<WorkflowInvokeResponse | null> {
+  private async tryJoinExistingRun(tenantId: string, slug: string, runId: string, requestBodyHash: string): Promise<WorkflowInvokeResponse | null> {
+    let storedHash: string | null;
     try {
       const existing = await this.workflowRunService.getRun(tenantId, runId);
       if (existing.workflowSlug !== slug) return null;
-      return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
+      storedHash = await this.workflowRunService.getRunRequestBodyHash(tenantId, runId);
     } catch {
       return null;
     }
+    // TASK-1038 E2 (fix 11) — a row started before fingerprints existed carries none and joins.
+    if (storedHash !== null && storedHash !== requestBodyHash) throw idempotencyKeyReused();
+    return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
   }
 
   /** Cross-tenant `runId`, or a `runId` whose lineage does not belong to `slug` -> 404 (never 403). */
@@ -1010,25 +1037,50 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     }
   }
 
-  private async tryReadIdempotencyCache(key: string): Promise<WorkflowInvokeResponse | null> {
+  /**
+   * The Redis fast path. The record is the invoke response plus the body fingerprint
+   * (`requestBodyHash`, TASK-1038 E2 fix 11), which is stripped before the response is replayed.
+   * A record written before fingerprints existed has none (`requestBodyHash: undefined`).
+   */
+  private async tryReadIdempotencyCache(key: string): Promise<{ response: WorkflowInvokeResponse; requestBodyHash: string | undefined } | null> {
     if (!this.redisCache) return null;
     try {
       const cached = await this.redisCache.get(key);
-      return cached ? (JSON.parse(cached) as WorkflowInvokeResponse) : null;
+      if (!cached) return null;
+      const { requestBodyHash, ...response } = JSON.parse(cached) as WorkflowInvokeResponse & { requestBodyHash?: unknown };
+      return { response: response as WorkflowInvokeResponse, requestBodyHash: typeof requestBodyHash === 'string' ? requestBodyHash : undefined };
     } catch {
       return null; // best-effort — a lookup failure falls through to a normal (fresh) invoke
     }
   }
 
-  private async tryWriteIdempotencyCache(key: string, response: WorkflowInvokeResponse): Promise<void> {
+  private async tryWriteIdempotencyCache(key: string, response: WorkflowInvokeResponse, requestBodyHash: string): Promise<void> {
     if (!this.redisCache) return;
     try {
-      await this.redisCache.setex(key, IDEMPOTENCY_TTL_SECONDS, JSON.stringify(response));
+      await this.redisCache.setex(key, IDEMPOTENCY_TTL_SECONDS, JSON.stringify({ ...response, requestBodyHash }));
     } catch {
       // A record failure means a retry within the TTL may start a second run — logged upstream
       // by the cache service itself; never a reason to fail the invoke that already succeeded.
     }
   }
+}
+
+/**
+ * TASK-1038 E2 (fix 11) — the fingerprint of a workflow start under an `Idempotency-Key`: the
+ * caller's `input` (key order irrelevant) and the consultation the run is bound to.
+ */
+function workflowInvokeBodyHash(dto: InvokeWorkflowRequest, consultationId: string | undefined): string {
+  return createHash('sha256')
+    .update(idempotencyCanonicalJson({ input: dto?.input ?? {}, consultationId: consultationId ?? null }), 'utf8')
+    .digest('hex');
+}
+
+/** The 409 for a key reused with a different body — the agent-run shape; it never names the other request's run. */
+function idempotencyKeyReused(): ConflictException {
+  return new ConflictException({
+    code: 'IDEMPOTENCY_KEY_REUSED',
+    message: 'This Idempotency-Key already started a run with a different request body. Use a new key for a new request.',
+  });
 }
 
 /** An axios-style "the harness answered 404" — the harness has no record of the run. */

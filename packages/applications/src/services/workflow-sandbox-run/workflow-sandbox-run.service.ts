@@ -35,6 +35,9 @@ import { sandboxRunPayload, type SandboxMediaReference } from './sandbox-input-s
 
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
+/** TASK-1038 E2 (fix 12) — the STT job statuses of a session that is still live. */
+const LIVE_RECORDING_STATUSES: ReadonlySet<string> = new Set(['QUEUED', 'PROCESSING']);
+
 /**
  * The Workbench's sandbox-run application service. See
  * `IWorkflowSandboxRunService` for the per-method contract and how this differs from the
@@ -72,7 +75,7 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
           dto.attachments.map((a) => a.mediaId),
         )
       : undefined;
-    const recordingJob = dto.recording ? await this.resolveRecordingSession(tenantId, dto.recording.sttSessionId) : undefined;
+    const recordingJob = dto.recording ? await this.resolveRecordingSession(tenantId, definitionId, dto.recording.sttSessionId) : undefined;
     // TASK-1038 (F1) — attachments and the recording go where the INPUT SHAPE declares them (a
     // 400 when it declares nowhere), still BEFORE anything is written.
     const payload = sandboxRunPayload(compiled.compiledConfig, basePayload, attachments, dto.recording);
@@ -208,22 +211,43 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
     return out;
   }
 
-  /** TASK-1036 OD-15 — the STT streaming session's job row, of THIS tenant (else 404). */
-  private async resolveRecordingSession(tenantId: string, sttSessionId: string): Promise<TranscriptionJobEntity> {
+  /**
+   * TASK-1036 OD-15 — the STT streaming session's job row a sandbox run may record on.
+   *
+   * TASK-1038 E2 (fix 12) — the session must be the CALLER's, LIVE, and (if already bound) bound
+   * to a sandbox consultation of THIS definition. Every check runs before anything is written, so
+   * a refused request never re-binds a job the caller did not create:
+   *  - of THIS tenant AND created by the requesting principal (`createdBy`) — else 404, the same
+   *    answer as an unknown session (404-over-403; a colleague's live clinical audio is not the
+   *    caller's to pull into a test run);
+   *  - live (QUEUED / PROCESSING, not completed) — else 409 `SANDBOX_RECORDING_NOT_LIVE`;
+   *  - unbound, or bound to a sandbox consultation created for `definitionId` — else 409
+   *    `SANDBOX_RECORDING_BOUND_ELSEWHERE` (a clinical consultation, or another workflow's sandbox).
+   */
+  private async resolveRecordingSession(tenantId: string, definitionId: string, sttSessionId: string): Promise<TranscriptionJobEntity> {
     if (!this.transcriptionJobRepository || !this.consultationRepository) {
       throw new ArgumentInvalidException('Sandbox recordings are unavailable: the STT session store is not configured.');
     }
     const [job] = await this.transcriptionJobRepository.findAll({
       filters: { tenantId, streamSessionId: sttSessionId, jobType: TranscriptionJobType.STREAMING },
     });
-    if (!job || job.tenantId !== tenantId) throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
+    const requester = this.requestUserId;
+    if (!job || job.tenantId !== tenantId || !requester || !job.createdBy || job.createdBy !== requester) {
+      throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
+    }
+    if (!LIVE_RECORDING_STATUSES.has(String(job.status)) || job.completedAt) {
+      throw new ConflictException({
+        code: 'SANDBOX_RECORDING_NOT_LIVE',
+        message: `STT session '${sttSessionId}' has ended; a sandbox run records on a live session.`,
+      });
+    }
     if (job.consultationId) {
       const bound = await this.consultationRepository.findByIdOrNull(job.consultationId);
       if (!bound || bound.tenantId !== tenantId) throw new NotFoundException(`STT session '${sttSessionId}' not found.`);
-      if (sandboxDefinitionOf(bound.metadata) === null) {
+      if (sandboxDefinitionOf(bound.metadata) !== definitionId) {
         throw new ConflictException({
           code: 'SANDBOX_RECORDING_BOUND_ELSEWHERE',
-          message: `STT session '${sttSessionId}' belongs to a clinical consultation; a sandbox run records on its own session.`,
+          message: `STT session '${sttSessionId}' is bound to another consultation; a sandbox run records on its own session.`,
         });
       }
     }

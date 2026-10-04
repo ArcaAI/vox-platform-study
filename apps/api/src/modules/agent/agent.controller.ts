@@ -566,9 +566,13 @@ export class AgentController {
     tenantId: string,
     slug: string,
     body: AgentInvocationBody,
+    // TASK-1038 E2 (fix 4) — an agent RUN's abort (cancel / ceiling); absent on the synchronous route.
+    signal?: AbortSignal,
   ): Promise<AgentTextInvocationResponse> {
     const guardrail: GuardrailDisposition = 'screened';
-    const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
+    const result = signal
+      ? await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking', { signal })
+      : await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
     this.emitInvocationUsage(await this.buildBlockingUsage(tenantId, resolved, result), slug, guardrail);
     // TASK-957 F-3 — a SEPARATE row for the screening call TEXT made on this request's behalf.
     // Its own operation, its own key, its own model: it is another provider call, not a dimension
@@ -629,8 +633,17 @@ export class AgentController {
     await this.billing?.assertSpendLimit(tenantId);
   }
 
-  private async executeNer(resolved: ResolvedAgent, tenantId: string, slug: string, body: AgentInvocationBody): Promise<AgentNerInvocationResponse> {
-    const result = await this.invocation.invokeNer(resolved, tenantId, body ?? {});
+  private async executeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    // TASK-1038 E2 (fix 4) — an agent RUN's abort (cancel / ceiling); absent on the synchronous route.
+    signal?: AbortSignal,
+  ): Promise<AgentNerInvocationResponse> {
+    const result = signal
+      ? await this.invocation.invokeNer(resolved, tenantId, body ?? {}, { signal })
+      : await this.invocation.invokeNer(resolved, tenantId, body ?? {});
     this.emitInvocationUsage(this.buildNerUsage(tenantId, result), slug);
 
     const payload: AgentNerInvocationResponse = {
@@ -689,11 +702,20 @@ export class AgentController {
     const runs = this.requireRuns();
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, agentSlug: slug });
-    let execute: () => Promise<AgentRunOutcome>;
+    const key = typeof idempotencyKey === 'string' && idempotencyKey.length > 0 ? idempotencyKey : undefined;
+    // TASK-1038 E2 (fix 10) — a key that already started a run JOINS it first (or is 409 for a
+    // different body), BEFORE validation and the quota / spend prechecks: a retry of an accepted
+    // request must reach its run, never be refused by a meter it already passed.
+    if (key !== undefined) {
+      const joined = await runs.joinExisting({ tenantId, slug: resolved.slug, idempotencyKey: key, body: body ?? {} });
+      if (joined) return { runId: joined.runId, status: joined.status, links: agentRunLinks(joined.slug, joined.runId) };
+    }
+    // TASK-1038 E2 (fix 4, R2) — `signal` aborts the model call on cancel or at the run ceiling.
+    let execute: (signal: AbortSignal) => Promise<AgentRunOutcome>;
     if (resolved.task === AgentTask.TEXT_GENERATION) {
       await this.precheckText(resolved, tenantId, body);
-      execute = async () => {
-        const answer = await this.executeText(resolved, tenantId, slug, body);
+      execute = async (signal) => {
+        const answer = await this.executeText(resolved, tenantId, slug, body, signal);
         return {
           output: answer.output,
           tokens: { in: answer.usage?.promptTokens ?? 0, out: answer.usage?.completionTokens ?? 0 },
@@ -701,14 +723,13 @@ export class AgentController {
       };
     } else if (resolved.task === AgentTask.NAMED_ENTITY_RECOGNITION) {
       await this.precheckNer(resolved, tenantId, body);
-      execute = async () => ({ output: (await this.executeNer(resolved, tenantId, slug, body)).output, tokens: { in: 0, out: 0 } });
+      execute = async (signal) => ({ output: (await this.executeNer(resolved, tenantId, slug, body, signal)).output, tokens: { in: 0, out: 0 } });
     } else {
       throw new BadRequestException({
         message: `Agent '${resolved.slug}' is a ${resolved.task} agent; a run applies to TEXT_GENERATION and NAMED_ENTITY_RECOGNITION agents. Use its own route (\`/speech\`, \`/transcriptions\`).`,
         code: 'RUN_TASK_UNSUPPORTED',
       });
     }
-    const key = typeof idempotencyKey === 'string' && idempotencyKey.length > 0 ? idempotencyKey : undefined;
     const { state } = await runs.start({
       tenantId,
       slug: resolved.slug,
@@ -794,8 +815,8 @@ export class AgentController {
   @ApiOperation({
     summary: 'Cancel an agent run (idempotent)',
     description:
-      'A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call already in ' +
-      'flight is not interrupted — its output is discarded, and it is still metered because it was spent.',
+      'A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call in flight ' +
+      'is aborted; whatever the provider already spent is still metered.',
   })
   @ApiParam({ name: 'slug', type: String })
   @ApiParam({ name: 'runId', type: String })
@@ -960,6 +981,18 @@ export class AgentController {
         // here (its state is the record); otherwise a ping keeps the connection and the cursor.
         state = await runs.get(tenantId, slug, runId);
         if (TERMINAL_STATUSES.has(state.status) && (await runs.events.lastSeq(runId)) === delivered) {
+          // TASK-1038 E2 (fix 8) — the §6.1 terminal backstop (as `run-protocol-delivery.ts`): a run
+          // that is terminal in the read model but whose retained stream ends WITHOUT a terminal
+          // event (an append was lost) gets its stream closed and a terminal
+          // `run.resync { reason: 'gap', snapshot }` — never a silent close. A client that already
+          // holds the terminal event (a reconnect after the end) gets nothing more.
+          // swallow-ok: an unreadable tail is treated as "no terminal event retained" — the backstop is the safe answer.
+          const newest = await runs.events.newestType(runId).catch(() => null);
+          if (newest === null || !(TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(newest)) {
+            this.logger.warn({ message: 'Agent run ended without a terminal event reaching its stream — closing with a terminal snapshot', runId });
+            await runs.closeStreamAfterTerminal(runId);
+            await resync('gap', delivered);
+          }
           res.end();
           return;
         }

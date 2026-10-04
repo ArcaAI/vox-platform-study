@@ -34,6 +34,7 @@ import { SttRunTranscriptMirror } from './stt-run-transcript-mirror';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 import { WorkflowWsGateway } from './workflow-ws.gateway';
+import { RunStreamOrphanSweeper } from './run-stream-orphan-sweeper';
 
 @Module({
   imports: [
@@ -131,7 +132,10 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.
   // TASK-1036 (lane B6b) — `SttRunTranscriptMirror` reaches `RunEventStreamHub` through the @Global()
   // `WorkflowRunCompletionModule`, and the three repositories through `CoreDatabaseModule`.
-  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway, SttRunTranscriptMirror],
+  // TASK-1038 E2 (fix 14) — `RunStreamOrphanSweeper` closes run streams nothing will ever close (the
+  // hub is @Global(), `WorkflowRunRepository` comes from `CoreDatabaseModule`, the ceiling from
+  // `EffectiveSettingsModule`'s `TenantSettingsService`).
+  providers: [SttWsGateway, SessionRemovalRetryService, WorkflowWsGateway, SttRunTranscriptMirror, RunStreamOrphanSweeper],
   exports: [SttWsGateway, WorkflowWsGateway],
 })
 export class StreamingModule {}

@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto';
 import { ConflictException, HttpException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   IRedisCacheService,
   TenantSettingsService,
+  WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY,
   WORKFLOW_RUNS_DEFAULTS,
   WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY,
+  WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY,
   readPersistedRunResult,
   type PersistedRunResult,
 } from '@arcaai/applications';
-import { WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus, generateId } from '@arcaai/domains';
+import { WorkflowRunEntity, WorkflowRunFactory, WorkflowRunKind, WorkflowRunRepository, WorkflowRunStatus, generateId } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   AGENT_RUN_NODE_ID,
@@ -54,8 +57,12 @@ export interface AgentRunOutcome {
   tokens: RunTokens;
 }
 
-/** Runs the agent once. Supplied by the controller, which owns the metering of the call it makes. */
-export type AgentRunExecutor = () => Promise<AgentRunOutcome>;
+/**
+ * Runs the agent once. Supplied by the controller, which owns the metering of the call it makes.
+ * TASK-1038 E2 (fix 4, R2) — `signal` aborts when the run is cancelled or reaches its ceiling; the
+ * executor passes it to the model call so in-flight work actually stops.
+ */
+export type AgentRunExecutor = (signal: AbortSignal) => Promise<AgentRunOutcome>;
 
 export interface StartAgentRunInput {
   tenantId: string;
@@ -118,6 +125,12 @@ const TERMINAL: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED'
 /** A terminal write re-reads after an OCC conflict at most this many times in total. */
 const TRANSITION_ATTEMPTS = 3;
 
+/** Stale AGENT rows one sweep reads; a larger backlog finishes on the next sweep (every minute). */
+export const AGENT_RUN_SWEEP_PAGE = 500;
+
+/** Why an in-flight execution was aborted. */
+type AbortReason = 'cancelled' | 'timeout';
+
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
 }
@@ -174,14 +187,25 @@ export function agentRunStateOf(entity: WorkflowRunEntity): AgentRunState {
  * intent. The body hash rides in the row's `_metadata`.
  *
  * Cancel is idempotent and races completion through the row's `_version` compare-and-set:
- * whichever lands first decides the terminal status. A model call already in flight is not
- * interrupted (the text plane has no abort), so its output is discarded — and it is still
- * metered, because it was spent.
+ * whichever lands first decides the terminal status.
+ *
+ * TASK-1038 E2 (fix 4, R2) — every run is BOUNDED and cancel STOPS work:
+ * - the executor gets an `AbortSignal`, which the model call carries. A cancel aborts it at once
+ *   on the instance executing the run; any other instance's cancel is noticed at the executing
+ *   instance's next status re-check (`workflowRuns.streamTerminalCheckSeconds`). Whatever the
+ *   provider already spent is still metered by the caller when it reports usage;
+ * - a run still executing at `workflowRuns.agentRunMaxSeconds` (platform-only) is aborted and ends
+ *   TIMED_OUT (`RUN_TIMED_OUT`);
+ * - `sweepStaleRuns` (every minute) moves a `kind = AGENT` row left RUNNING past that ceiling by a
+ *   process that is gone to TIMED_OUT, with `node.failed` + `run.failed` on its stream.
  */
 @Injectable()
 export class AgentRunService {
   private readonly logger = new Logger(AgentRunService.name);
   readonly events: AgentRunEventStream;
+  /** The runs THIS instance is executing, by runId — what a cancel or the ceiling aborts. */
+  private readonly inFlight = new Map<string, AbortController>();
+  now: () => Date = () => new Date();
 
   constructor(
     private readonly runs: WorkflowRunRepository,
@@ -189,6 +213,31 @@ export class AgentRunService {
     @Optional() private readonly settings?: TenantSettingsService,
   ) {
     this.events = new AgentRunEventStream(redis);
+  }
+
+  /**
+   * TASK-1038 E2 (fix 10) — the run an `Idempotency-Key` already started, JOINED, or `null` when the
+   * key has started nothing. The controller asks this BEFORE its prechecks (validation, quota,
+   * spend): a retry of an accepted request must reach its run, never a meter it already passed.
+   * A different body under the key is the 409 `IDEMPOTENCY_KEY_REUSED`.
+   */
+  async joinExisting(input: { tenantId: string; slug: string; idempotencyKey: string; body: unknown }): Promise<AgentRunState | null> {
+    const runId = deterministicAgentRunId(input.tenantId, input.slug, input.idempotencyKey);
+    const existing = await this.runs.findAgentRun(input.tenantId, runId);
+    return existing ? this.join(existing, input.slug, agentRunBodyHash(input.body)) : null;
+  }
+
+  /**
+   * TASK-1038 E2 (fix 8) — the §6.1 terminal backstop on THIS run's stream (agent runs own their
+   * stream, so the gateway closes it with the run's own retention). Best effort.
+   */
+  async closeStreamAfterTerminal(runId: string): Promise<void> {
+    if (!this.events.available()) return;
+    try {
+      await this.events.closeAfterTerminal(runId, this.eventRetentionSeconds());
+    } catch (error) {
+      this.logger.warn({ message: 'Agent run stream could not be closed', runId, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   async start(input: StartAgentRunInput): Promise<{ state: AgentRunState; created: boolean }> {
@@ -266,6 +315,9 @@ export class AgentRunService {
       entity.durationMs = Math.max(0, endedAt.getTime() - entity.startedAt.getTime());
     });
     if (!saved) return this.get(tenantId, slug, runId);
+    // R2 — stop the model call this instance is making for it (another instance notices at its
+    // next status re-check).
+    this.abortInFlight(runId, 'cancelled');
     const next = agentRunStateOf(saved);
     await this.safeAppend({
       runId,
@@ -294,16 +346,65 @@ export class AgentRunService {
     };
   }
 
+  /**
+   * TASK-1038 E2 (fix 4, R2) — the backstop for a run nothing is executing any more (its process
+   * died, its promise was lost): every `kind = AGENT` row RUNNING longer than
+   * `workflowRuns.agentRunMaxSeconds` becomes TIMED_OUT (`RUN_TIMED_OUT`), with `node.failed` +
+   * `run.failed` on its stream. Idempotent and safe on every instance at once: each move is the
+   * row's `_version` compare-and-set out of RUNNING, and the events carry dedupe keys. Outside a
+   * request the tenant-scope extension sees no CLS tenant, so the read spans tenants (the
+   * retention purges' posture).
+   */
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'agent-run-ceiling-sweep' })
+  async sweep(): Promise<void> {
+    await this.sweepStaleRuns().catch((error) =>
+      this.logger.error({ message: 'Agent run ceiling sweep failed', error: error instanceof Error ? error.name : 'unknown' }),
+    );
+  }
+
+  async sweepStaleRuns(): Promise<{ timedOut: number }> {
+    const now = this.now();
+    const cutoff = new Date(now.getTime() - this.maxRunSeconds() * 1000);
+    const rows: WorkflowRunEntity[] = await this.runs.findAll({
+      where: { kind: WorkflowRunKind.AGENT, status: WorkflowRunStatus.RUNNING, startedAt: { lt: cutoff } } as never,
+      sort: [{ startedAt: 'asc' }, { id: 'asc' }],
+      limit: AGENT_RUN_SWEEP_PAGE,
+    });
+    let timedOut = 0;
+    for (const row of rows) {
+      const state = agentRunStateOf(row);
+      this.abortInFlight(state.runId, 'timeout');
+      if (await this.fail(state, null, row.startedAt.getTime(), { code: 'RUN_TIMED_OUT', endedAt: now })) timedOut += 1;
+    }
+    if (timedOut > 0) this.logger.warn({ message: 'Agent runs past their ceiling were timed out', timedOut });
+    return { timedOut };
+  }
+
   // ---------------------------------------------------------------------------------------------
 
   private async execute(state: AgentRunState, execute: AgentRunExecutor): Promise<void> {
     const startedAt = Date.parse(state.createdAt);
+    const controller = new AbortController();
+    this.inFlight.set(state.runId, controller);
+    // R2 — the ceiling, measured from the run's start.
+    const deadline = setTimeout(() => this.abortInFlight(state.runId, 'timeout'), Math.max(0, startedAt + this.maxRunSeconds() * 1000 - Date.now()));
+    // R2 — a cancel decided on ANOTHER instance: re-read the row and stop when it left RUNNING.
+    const recheck = setInterval(() => void this.stopIfNoLongerRunning(state), this.recheckSeconds() * 1000);
+    deadline.unref?.();
+    recheck.unref?.();
     let outcome: AgentRunOutcome;
     try {
-      outcome = await execute();
+      outcome = await execute(controller.signal);
     } catch (error) {
-      await this.fail(state, error, startedAt);
+      const reason = controller.signal.aborted ? (controller.signal.reason as AbortReason | undefined) : undefined;
+      // Cancelled (here or elsewhere): the row already says so — nothing to record, nothing to warn.
+      if (reason === 'cancelled') return;
+      await this.fail(state, error, startedAt, reason === 'timeout' ? { code: 'RUN_TIMED_OUT' } : undefined);
       return;
+    } finally {
+      clearTimeout(deadline);
+      clearInterval(recheck);
+      if (this.inFlight.get(state.runId) === controller) this.inFlight.delete(state.runId);
     }
     const endedAt = new Date();
     const durationMs = Math.max(0, endedAt.getTime() - startedAt);
@@ -356,11 +457,16 @@ export class AgentRunService {
     });
   }
 
-  private async fail(state: AgentRunState, cause: unknown, startedAt: number): Promise<void> {
-    const code = agentRunErrorCode(cause);
+  /**
+   * Move the run to FAILED / TIMED_OUT and append `node.failed` + `run.failed`. `override.code`
+   * replaces the code derived from `cause` (the ceiling, the sweep). `true` when THIS call decided
+   * the transition.
+   */
+  private async fail(state: AgentRunState, cause: unknown, startedAt: number, override?: { code?: string; endedAt?: Date }): Promise<boolean> {
+    const code = override?.code ?? agentRunErrorCode(cause);
     const status = code === 'RUN_TIMED_OUT' ? WorkflowRunStatus.TIMED_OUT : WorkflowRunStatus.FAILED;
     const error: RunError = { code, message: runErrorMessage(code) };
-    const endedAt = new Date();
+    const endedAt = override?.endedAt ?? new Date();
     const durationMs = Math.max(0, endedAt.getTime() - startedAt);
     this.logger.warn({
       message: 'Agent run failed',
@@ -377,7 +483,7 @@ export class AgentRunService {
       entity.firstErrorCode = code;
       entity.failedNodeCount = 1;
     });
-    if (!saved) return;
+    if (!saved) return false;
     const ts = endedAt.toISOString();
     await this.safeAppend({
       runId: state.runId,
@@ -395,6 +501,42 @@ export class AgentRunService {
       dedupeKey: `wf:run:${state.runId}:failed`,
       retentionSeconds: this.eventRetentionSeconds(),
     });
+    return true;
+  }
+
+  /** Abort the execution THIS instance runs for `runId`, if any. */
+  private abortInFlight(runId: string, reason: AbortReason): void {
+    const controller = this.inFlight.get(runId);
+    if (controller && !controller.signal.aborted) controller.abort(reason);
+  }
+
+  /** A cancel decided elsewhere: the row left RUNNING, so the call this instance makes is moot. */
+  private async stopIfNoLongerRunning(state: AgentRunState): Promise<void> {
+    try {
+      const row = await this.runs.findAgentRun(state.tenantId, state.runId);
+      if (row && row.status !== WorkflowRunStatus.RUNNING) this.abortInFlight(state.runId, 'cancelled');
+    } catch {
+      // swallow-ok: a failed re-read means "ask again next interval"; the ceiling still bounds the run.
+    }
+  }
+
+  /** R2 — `workflowRuns.agentRunMaxSeconds` (platform). */
+  private maxRunSeconds(): number {
+    return this.platformWholeNumber(WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY, WORKFLOW_RUNS_DEFAULTS.agentRunMaxSeconds, 1);
+  }
+
+  /** The status re-check cadence the delivery plane already uses (`workflowRuns.streamTerminalCheckSeconds`). */
+  private recheckSeconds(): number {
+    return this.platformWholeNumber(WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY, WORKFLOW_RUNS_DEFAULTS.streamTerminalCheckSeconds, 1);
+  }
+
+  private platformWholeNumber(key: string, fallback: number, min: number): number {
+    try {
+      const value = this.settings?.resolvePlatform<number>(key).value;
+      return typeof value === 'number' && Number.isInteger(value) && value >= min ? value : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   /**
@@ -421,10 +563,11 @@ export class AgentRunService {
   private join(existing: WorkflowRunEntity, slug: string, bodyHash: string): AgentRunState {
     const state = agentRunStateOf(existing);
     if (state.slug !== slug || state.bodyHash !== bodyHash) {
+      // TASK-1038 E2 (fix 11) — no `runId`: the key's first request may be someone else's, and its
+      // run id is a handle to that run. The caller learns only that the key is taken.
       throw new ConflictException({
         code: 'IDEMPOTENCY_KEY_REUSED',
         message: 'This Idempotency-Key already started a run with a different request body. Use a new key for a new request.',
-        runId: state.runId,
       });
     }
     return state;

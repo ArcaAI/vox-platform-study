@@ -25,6 +25,17 @@ export class WorkflowEntryGateService {
 
   /** @throws BadRequestException `MODE_UNSUPPORTED` when the settings do not admit `entry`. */
   async assertEntryAllowed(slug: string, versionNumber: number, entry: WorkflowEntry): Promise<void> {
+    await this.assertAnyEntryAllowed(slug, versionNumber, [entry]);
+  }
+
+  /**
+   * TASK-1038 E2 (fix 1) — passes when the settings admit AT LEAST ONE of `entries`. A run stream
+   * ticket opens either lane (`url` = socket, `sseUrl` = SSE), so its mint asks about both and each
+   * lane is enforced again where the ticket is redeemed.
+   *
+   * @throws BadRequestException `MODE_UNSUPPORTED` when none is admitted.
+   */
+  async assertAnyEntryAllowed(slug: string, versionNumber: number, entries: readonly WorkflowEntry[]): Promise<void> {
     const tenantId = this.cls.get<string | undefined>('tenantId');
     if (!tenantId) throw new ArgumentInvalidException('Tenant context required');
 
@@ -34,10 +45,11 @@ export class WorkflowEntryGateService {
     if (!definition) return;
 
     const exposure = effectiveExposureSettings({ compiledConfig: definition.compiledConfig, graph: definition.graph });
-    if (exposure.origin === 'legacy' || isWorkflowEntryAllowed(exposure, entry)) return;
+    if (exposure.origin === 'legacy' || entries.some((entry) => isWorkflowEntryAllowed(exposure, entry))) return;
+    const asked = entries.map((entry) => `'${entry}'`).join(' or ');
     throw new BadRequestException({
       code: 'MODE_UNSUPPORTED',
-      message: `The '${entry}' connection is not enabled for workflow '${slug}'; it admits [${exposure.connections.join(', ')}]. Enable it in the workflow settings, or use SSE.`,
+      message: `The ${asked} connection is not enabled for workflow '${slug}'; it admits [${exposure.connections.join(', ')}]. Enable it in the workflow settings.`,
     });
   }
 }

@@ -137,6 +137,8 @@ export function pinPromptBindings(graph: WorkflowGraph, approved: ReadonlyMap<st
 export const DOCUMENT_VERSION_PIN_DEPRECATED = 'DOCUMENT_VERSION_PIN_DEPRECATED';
 /** The machine-readable code of an agent node publish could not freeze. */
 export const AGENT_PIN_UNRESOLVED = 'AGENT_PIN_UNRESOLVED';
+/** TASK-1038 E2 (fix 9, OD-21) — an explicit pin on a DEPRECATED agent version: kept, with a warning. */
+export const AGENT_PIN_DEPRECATED = 'AGENT_PIN_DEPRECATED';
 
 /**
  * W3 — a document template follows its latest APPROVED version (OD-22). A node that still names a
@@ -174,5 +176,23 @@ export function agentPinUnresolvedFinding(ref: AgentNodeRef): WorkflowFinding {
       ref.versionNumber === null
         ? `Step \`${ref.nodeId}\` uses agent \`${ref.slug}\`, which has no active published version to pin. Publish the agent first.`
         : `Step \`${ref.nodeId}\` pins agent \`${ref.slug}\` version ${ref.versionNumber}, which is not a published version of this tenant.`,
+  };
+}
+
+/**
+ * TASK-1038 E2 (fix 9, OD-21) — an authored `agentRef.versionNumber` that names a DEPRECATED
+ * version publishes: a pinned version keeps running after it is deprecated (the runtime resolver
+ * serves PUBLISHED and DEPRECATED pins), so refusing the publish would contradict the runtime.
+ * The author is told, never blocked.
+ */
+export function agentPinDeprecatedFinding(ref: AgentNodeRef & { versionNumber: number }): WorkflowFinding {
+  return {
+    ruleId: 'WF-PIN-003',
+    ruleClass: 'schema',
+    severity: 'WARNING',
+    nodeId: ref.nodeId,
+    path: '/agentRef',
+    code: AGENT_PIN_DEPRECATED,
+    message: `Step \`${ref.nodeId}\` pins agent \`${ref.slug}\` version ${ref.versionNumber}, which is deprecated. It keeps running; pin a published version to pick up the agent's current behaviour.`,
   };
 }

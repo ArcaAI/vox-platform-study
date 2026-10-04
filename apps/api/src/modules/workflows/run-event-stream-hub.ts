@@ -41,6 +41,10 @@ export interface RunStreamConnection {
   /** TASK-1038 B3a — the ONE sequencer, `RUN_APPEND_LUA`. */
   eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<unknown>;
   expire(key: string, seconds: number, mode: 'NX'): Promise<unknown>;
+  /** TASK-1038 E2 (fix 14) — the orphan sweep's keyspace walk (`SCAN … MATCH … COUNT …`). */
+  scan?(cursor: string, matchWord: 'MATCH', pattern: string, countWord: 'COUNT', count: number): Promise<unknown>;
+  /** TASK-1038 E2 (fix 14) — whether a stream already has an expiry. */
+  pttl?(key: string): Promise<unknown>;
   client(subcommand: string, ...args: (string | number)[]): Promise<unknown>;
   quit(): Promise<unknown>;
 }
@@ -264,6 +268,28 @@ export class RunEventStreamHub implements OnModuleDestroy {
       });
       return null;
     }
+  }
+
+  /**
+   * TASK-1038 E2 (fix 14) — one page of the `wf:run:*:events` keyspace, for the orphan sweep
+   * (`RunStreamOrphanSweeper`). `SCAN` is cursor-based and non-blocking; a `cursor` of `'0'` back
+   * means the walk is complete.
+   */
+  async scanRunEventKeys(cursor: string, count: number): Promise<{ cursor: string; keys: string[] }> {
+    const connection = this.controlConnection();
+    if (!connection.scan) return { cursor: '0', keys: [] };
+    const reply = (await connection.scan(cursor, 'MATCH', RUN_EVENTS_KEY('*'), 'COUNT', count)) as [string, string[]] | null;
+    return { cursor: String(reply?.[0] ?? '0'), keys: Array.isArray(reply?.[1]) ? reply[1].map(String) : [] };
+  }
+
+  /**
+   * TASK-1038 E2 (fix 14) — whether `key` already expires. `PTTL` -1 is "no expiry"; -2 is "no key"
+   * (already gone), which counts as expiring: there is nothing left to close.
+   */
+  async hasExpiry(key: string): Promise<boolean> {
+    const connection = this.controlConnection();
+    if (!connection.pttl) return true;
+    return Number(await connection.pttl(key)) !== -1;
   }
 
   /** `GET wf:run:<runId>:seq` — the last `seq` assigned, or `null` when the run has none (yet, or any more). */

@@ -1,6 +1,7 @@
 import {
   CONTEXT_ATTACHMENT_MIME_TYPES,
   IMediaUploadService,
+  MEDIA_AUDIO_MIME_TYPES,
   MEDIA_UPLOAD_HARD_CEILING_MB,
   MediaUploadResponse,
   normalizeContextMimeType,
@@ -10,7 +11,6 @@ import { BadRequestException, Controller, Get, HttpCode, HttpStatus, Inject, Par
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CanCreate, CanRead, RequiredScopes, RequiredSvcScopes } from '../../decorators';
-import { ALLOWED_AUDIO_MIMES } from '../streaming/dto/transcription-job.dto';
 
 /**
  * The STATIC multipart ceiling: a decorator is evaluated once and cannot read the
@@ -19,11 +19,15 @@ import { ALLOWED_AUDIO_MIMES } from '../streaming/dto/transcription-job.dto';
  */
 export const MEDIA_UPLOAD_MULTIPART_LIMITS = { fileSize: MEDIA_UPLOAD_HARD_CEILING_MB * 1024 * 1024, files: 1 } as const;
 
-/** Which allow-list a MIME type belongs to: an attachment, the batch-transcription audio list, or neither. */
+/**
+ * Which allow-list a MIME type belongs to: an attachment, the audio list, or neither. TASK-1038 E2
+ * (fix 15) — the audio list is the SERVICE's own (`MEDIA_AUDIO_MIME_TYPES`), so the route and the
+ * service can never disagree about what an audio upload is.
+ */
 function categoryOf(mimeType: string | undefined): MediaUploadCategory | null {
   const raw = (mimeType ?? '').trim().toLowerCase();
   if ((CONTEXT_ATTACHMENT_MIME_TYPES as readonly string[]).includes(normalizeContextMimeType(raw))) return 'attachment';
-  if (ALLOWED_AUDIO_MIMES.has(raw)) return 'audio';
+  if (MEDIA_AUDIO_MIME_TYPES.has(raw)) return 'audio';
   return null;
 }
 

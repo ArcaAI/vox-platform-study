@@ -16,6 +16,11 @@ export const WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY = 'workflowRuns.resultUrlT
 export const WORKFLOW_RUNS_NODE_OUTPUT_CLAIM_CHECK_MIN_BYTES_KEY = 'workflowRuns.nodeOutputClaimCheckMinBytes';
 export const WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY = 'workflowRuns.resultInlineMaxBytes';
 export const WORKFLOW_RUNS_ACTIVITY_INPUT_MAX_BYTES_KEY = 'workflowRuns.activityInputMaxBytes';
+// TASK-1038 E2 (fix 4, R2) — the ceiling on one agent run (`POST /agents/:slug/runs`).
+export const WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY = 'workflowRuns.agentRunMaxSeconds';
+// TASK-1038 E2 (fix 14) — how long a RUNNING run's event stream may stay open before the gateway
+// stops mirroring live transcripts into it and the orphan sweep closes it.
+export const WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY = 'workflowRuns.runStreamMaxOpenHours';
 
 export const WORKFLOW_RUNS_DEFAULTS = {
   /** OD-25: run events expire 24 h after the run is terminal. */
@@ -34,6 +39,10 @@ export const WORKFLOW_RUNS_DEFAULTS = {
   resultInlineMaxBytes: 64 * 1024,
   /** An activity input over this many bytes fails the run with `PAYLOAD_TOO_LARGE` (below Temporal's 2 MB blob limit). */
   activityInputMaxBytes: 1536 * 1024,
+  /** R2: an agent run still executing after this many seconds is aborted and ends TIMED_OUT. */
+  agentRunMaxSeconds: 900,
+  /** A run RUNNING longer than this gets no more live transcripts, and its open stream is closed by the orphan sweep. */
+  runStreamMaxOpenHours: 72,
 } as const;
 
 function wholeNumberBetween(min: number, max: number): (value: unknown) => string | undefined {
@@ -141,5 +150,27 @@ export const WORKFLOW_RUNS_SETTINGS: SettingDescriptor[] = [
       'The largest input (serialized) a workflow step may hand a Temporal activity; a larger one fails the run by name (PAYLOAD_TOO_LARGE) instead of stalling it. Kept below Temporal`s 2 MB payload limit.',
     default: WORKFLOW_RUNS_DEFAULTS.activityInputMaxBytes,
     validate: wholeNumberBetween(64 * 1024, 2 * 1000 * 1000),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY,
+    maxScope: 'system',
+    globalOnly: true,
+    label: 'Agent run ceiling (seconds)',
+    description:
+      'An agent run (POST /agents/:slug/runs) still executing after this many seconds is aborted and ends TIMED_OUT (RUN_TIMED_OUT). A run left RUNNING past it by a lost process is swept to TIMED_OUT by the gateway.',
+    default: WORKFLOW_RUNS_DEFAULTS.agentRunMaxSeconds,
+    validate: wholeNumberBetween(30, 6 * 3600),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY,
+    maxScope: 'system',
+    globalOnly: true,
+    label: 'Open run stream ceiling (hours)',
+    description:
+      "How long a RUNNING workflow run's event stream may stay open. Past it the gateway stops mirroring live STT transcripts into the run, and the orphan sweep closes the stream (it then expires after the event retention). A stream whose run is finished or gone is closed by the same sweep.",
+    default: WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours,
+    validate: wholeNumberBetween(1, 24 * 30),
   },
 ];

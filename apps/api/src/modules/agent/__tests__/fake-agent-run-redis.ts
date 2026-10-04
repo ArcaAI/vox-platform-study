@@ -39,6 +39,11 @@ export class FakeAgentRunRedis implements AgentRunRedis {
       const filtered = end === '+' ? rows : rows.filter(([id]) => compareIds(id, end.slice(1)) < 0);
       return filtered.slice(0, count);
     }
+    if (script.includes("'EXPIRE'")) {
+      // EXPIRE … NX on every key: only a key without a TTL gets one.
+      for (const key of keys) if (!this.ttls.has(key)) this.ttls.set(key, Number(argv[0]));
+      return 1;
+    }
     throw new Error(`FakeAgentRunRedis: unrecognised script ${script.slice(0, 40)}`);
   }
 

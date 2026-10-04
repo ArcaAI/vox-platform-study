@@ -54,9 +54,14 @@ export class WorkflowSandboxRunController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Unknown or cross-tenant definitionId, fixtureId, attachment mediaId or recording sttSessionId.',
+    description:
+      'Unknown or cross-tenant definitionId, fixtureId or attachment mediaId; or a recording sttSessionId that is unknown, of another tenant, or not created by the caller.',
   })
-  @ApiResponse({ status: 409, description: '`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session belongs to a clinical consultation.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`SANDBOX_RECORDING_BOUND_ELSEWHERE` — the STT session is bound to a clinical consultation or to another workflow’s sandbox; `SANDBOX_RECORDING_NOT_LIVE` — the session has ended.',
+  })
   async start(@Param('definitionId') definitionId: string, @Body() dto: StartSandboxRunRequest): Promise<SandboxRunResponse> {
     return this.workflowSandboxRunService.startRun(definitionId, dto);
   }

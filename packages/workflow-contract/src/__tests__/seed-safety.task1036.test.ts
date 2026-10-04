@@ -5,10 +5,17 @@
  *  1. ZERO new ERROR findings — `validate()` + `publishFindings()` are as clean as the committed
  *     engine output (`*.generated.ts`), both the way the regen script calls the gate (agents
  *     unresolved) and the way the gateway will (agent tasks and output schemas resolved);
- *  2. with `emitDataContract` OFF, `compile()` reproduces the committed artifact BYTE FOR BYTE
- *     (same checksum);
- *  3. with it ON, everything but the three new keys is unchanged, and every legacy data input
- *     binding is translated into exactly one compiled binding that reads the same producer key.
+ *  2. compiled the way the regen script compiles (`packages/database/scripts/regen-workflow-seeds.ts`
+ *     `engineOutputFor`: the W3 publish pins applied, `emitDataContract: true`, the resolved agents),
+ *     it reproduces the committed artifact (same checksum), and every legacy data input binding is
+ *     translated into exactly one compiled binding that reads the same producer key.
+ *
+ * TASK-1038 E2 (fix 16) — the committed blobs are compiled with the publish pins and the data
+ * contract ON (TASK-1036 lane B6b). This suite used to rebuild a context with NEITHER, so it could
+ * never reproduce them; the "contract off ⇒ byte-identical to the committed blob" assertion is
+ * gone (no committed blob is compiled that way any more), and the context below is the regen
+ * script's. The pin helpers are the SAME pure functions the regen script and the publish service
+ * use, imported by path from `packages/applications` exactly as the regen script imports them.
  *
  * The seed modules live in `packages/database`, outside this package; they are imported by path,
  * as the regen script imports this package's dist. Nothing here writes.
@@ -28,6 +35,22 @@ import { resolveOutputPort } from '../core-contract';
 import type { AgentTask } from '../agent-schemas';
 
 const SEED = path.resolve(__dirname, '../../../database/src/prisma/db_main/seed');
+const PUBLISH_PINS = path.resolve(__dirname, '../../../applications/src/services/workflow-definition/publish-pins.ts');
+const PROMPT_BINDINGS = path.resolve(__dirname, '../../../applications/src/services/workflow-definition/node-prompt-binding.ts');
+
+/** MUST mirror the regen script (`COMPILER_VERSION`, `RULE_SET_VERSION`, `DEFAULT_CAPS`, `NON_DERIVABLE_POLICY_BINDINGS`). */
+const REGEN_CAPS = { maxTotalSeconds: 3600, maxNodeSeconds: 600, maxAttempts: 5 };
+/** Every seeded agent row is version 1 (the regen script's `SEEDED_AGENT_VERSION`). */
+const SEEDED_AGENT_VERSION = 1;
+
+interface SeedAgentSpec {
+  slug: string;
+  task: AgentTask;
+  status?: string;
+  isActive?: boolean;
+  instruction?: unknown;
+  outputSchema: Record<string, unknown> | null;
+}
 
 interface Target {
   key: string;
@@ -51,6 +74,12 @@ interface SeededTarget {
 }
 
 let TARGETS: SeededTarget[] = [];
+/* eslint-disable @typescript-eslint/no-explicit-any */
+let PINS: any;
+let BINDINGS: any;
+let CONSTANTS: any;
+let AGENT_SPECS: { platform: SeedAgentSpec[]; global: SeedAgentSpec[]; arcaai: SeedAgentSpec[] } = { platform: [], global: [], arcaai: [] };
+/* eslint-enable @typescript-eslint/no-explicit-any */
 let AGENTS: AgentIOResolver = {};
 let PUBLISH_AGENTS: Record<string, PublishAgentView> = {};
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,14 +89,25 @@ let noteSchema: any;
 beforeAll(async () => {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const load = (name: string): Promise<any> => import(/* @vite-ignore */ `${SEED}/${name}`);
-  const [library, libraryGenerated, arcaai, arcaaiGenerated, agentsModule, note] = await Promise.all([
+  const [library, libraryGenerated, arcaai, arcaaiGenerated, agentsModule, note, constants, pins, bindings] = await Promise.all([
     load('28-workflow-library.ts'),
     load('28-workflow-library.generated.ts'),
     load('29-arcaai-agents-and-workflows.ts'),
     load('29-arcaai-agents-and-workflows.generated.ts'),
     load('25-agents.ts'),
     load('07e-consultation-note-context-schema.ts'),
+    load('00-constants.ts'),
+    import(/* @vite-ignore */ PUBLISH_PINS),
+    import(/* @vite-ignore */ PROMPT_BINDINGS),
   ]);
+  CONSTANTS = constants;
+  PINS = pins;
+  BINDINGS = bindings;
+  AGENT_SPECS = {
+    platform: agentsModule.PLATFORM_AGENT_SPECS,
+    global: [...agentsModule.GLOBAL_AGENT_SPECS, ...agentsModule.GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS],
+    arcaai: [...arcaai.ARCAAI_AGENT_SPECS, arcaai.ARCAAI_FINALIZATION_AGENT_SPEC],
+  };
   /* eslint-enable @typescript-eslint/no-explicit-any */
   noteSchema = note;
   TARGETS = [
@@ -99,7 +139,82 @@ function payloadSchemaOf(target: Target): Record<string, unknown> {
   return noteSchema.payloadSchemaFromDefinition(target.contextSchemaDefinition ?? noteSchema.NOTE_CONTEXT_SCHEMA_DEFINITION);
 }
 
-/** The compiler context the regen script builds (`engineOutputFor`), with the data-contract knobs on top. */
+/**
+ * The regen script's `seededAgentFor`: the agent a seeded tenant runs under `slug` — its OWN live
+ * row (SYSTEM's, Global's + playground-only, ArcaAI's), and for ArcaAI the SYSTEM row phase 26
+ * clones in for a slug it does not author (`cloned`).
+ */
+function seededAgentFor(tenantId: string, slug: string): { spec: SeedAgentSpec; cloned: boolean } | null {
+  const live = (specs: readonly SeedAgentSpec[]) => specs.find((spec) => spec.slug === slug && spec.status === 'PUBLISHED' && spec.isActive);
+  if (tenantId === CONSTANTS.SYSTEM_TENANT_ID) {
+    const spec = live(AGENT_SPECS.platform);
+    return spec ? { spec, cloned: false } : null;
+  }
+  if (tenantId === CONSTANTS.SEED_TENANT_ID) {
+    const spec = live(AGENT_SPECS.global);
+    return spec ? { spec, cloned: false } : null;
+  }
+  if (tenantId === CONSTANTS.SEED_CUSTOMER_TENANT_IDS.ARCAAI) {
+    const own = live(AGENT_SPECS.arcaai);
+    if (own) return { spec: own, cloned: false };
+    const clone = live(AGENT_SPECS.platform);
+    return clone ? { spec: clone, cloned: true } : null;
+  }
+  return null;
+}
+
+/** The regen script's `publishPinsFor`: the pinned graph copy, the agents, and the prompt refs a publish freezes. */
+function publishPinsFor(target: Target): {
+  graph: WorkflowGraph;
+  agents: AgentIOResolver;
+  promptTemplateRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }>;
+} {
+  const agents: AgentIOResolver = {};
+  const pins = new Map<string, { versionNumber: number; promptRefs: Array<{ templateId: string; versionNumber: number }> }>();
+  const agentPromptRefs: Array<{ nodeId: string; templateId: string; versionNumber: number }> = [];
+  for (const ref of PINS.agentNodeRefs(target.graph) as Array<{ nodeId: string; slug: string; versionNumber: number | null }>) {
+    const found = seededAgentFor(target.tenantId, ref.slug);
+    if (!found || (ref.versionNumber !== null && ref.versionNumber !== SEEDED_AGENT_VERSION)) continue;
+    const promptRefs = PINS.agentPromptPins(found.spec.instruction, null) as Array<{ templateId: string; versionNumber: number }>;
+    if (found.cloned && promptRefs.length > 0) continue;
+    agents[ref.slug] = { task: found.spec.task, outputSchema: found.spec.outputSchema };
+    pins.set(ref.nodeId, { versionNumber: SEEDED_AGENT_VERSION, promptRefs });
+    for (const prompt of promptRefs) agentPromptRefs.push({ nodeId: ref.nodeId, ...prompt });
+  }
+  const graph = PINS.pinAgentNodes(target.graph, pins) as WorkflowGraph;
+  const promptTemplateRefs = [
+    ...(BINDINGS.collectPromptBindings(graph) as Array<{ nodeId: string; promptTemplateId: string; pinnedVersionNumber: number | null }>)
+      .filter((binding) => binding.pinnedVersionNumber !== null)
+      .map((binding) => ({ nodeId: binding.nodeId, templateId: binding.promptTemplateId, versionNumber: binding.pinnedVersionNumber as number })),
+    ...agentPromptRefs,
+  ];
+  return { graph, agents, promptTemplateRefs };
+}
+
+/**
+ * TASK-1038 E2 (fix 16) — the compile the regen script runs (`engineOutputFor`): the pinned graph,
+ * the publish's prompt refs, `emitDataContract: true` and the resolved agents.
+ */
+function regenCompile(target: Target, blob: Blob, registryChecksum: string): ReturnType<typeof compile> {
+  const pinned = publishPinsFor(target);
+  return compile(
+    pinned.graph,
+    compilerContext(target, blob, registryChecksum, {
+      emitDataContract: true,
+      agents: pinned.agents,
+      policyBindings: {
+        guardrailProfile: 'STANDARD',
+        redactionRuleSetId: null,
+        promptTemplateRefs: pinned.promptTemplateRefs,
+        documentTemplateRefs: [],
+        contextSchemaVersionId: target.contextSchemaVersionId,
+        entitlementKeys: blob.compiledConfig.policyBindings.entitlementKeys,
+      },
+    }),
+  );
+}
+
+/** The compiler context the regen script builds (`engineOutputFor`) before its pins and data-contract knobs. */
 function compilerContext(target: Target, blob: Blob, registryChecksum: string, extra: Partial<CompilerContext> = {}): CompilerContext {
   const trigger = target.graph.nodes.find((node) => node.type === 'core.trigger');
   const contextSchemaId = (trigger?.config.contextSchema as { contextSchemaId?: string } | undefined)?.contextSchemaId;
@@ -112,7 +227,7 @@ function compilerContext(target: Target, blob: Blob, registryChecksum: string, e
     compilerVersion: '0.1.0',
     registryChecksum,
     ruleSetVersion: 1,
-    caps: blob.compiledConfig.caps,
+    caps: REGEN_CAPS,
     policyBindings: {
       guardrailProfile: 'STANDARD',
       redactionRuleSetId: null,
@@ -188,19 +303,12 @@ describe('seed safety — the 15 seeded workflows', () => {
     }
   });
 
-  it('every target: compiles byte-identically with the data contract off', () => {
+  it('every target, compiled the way the regen script compiles: the committed artifact, and every legacy data input becomes one binding of the same producer key', () => {
     for (const { target, blob, registryChecksum } of TARGETS) {
-      const result = compile(target.graph, compilerContext(target, blob, registryChecksum));
+      const result = regenCompile(target, blob, registryChecksum);
       if (!('config' in result)) throw new Error(`${target.key}: ${JSON.stringify(result.findings)}`);
+      // The regen script's compile reproduces the committed artifact exactly (same checksum).
       expect(result.config.checksum, target.key).toBe(blob.compiledConfig.checksum);
-      expect(result.config, target.key).toEqual(blob.compiledConfig);
-    }
-  });
-
-  it('every target: with the data contract on, only the new keys change and every legacy data input becomes one binding of the same producer key', () => {
-    for (const { target, blob, registryChecksum } of TARGETS) {
-      const result = compile(target.graph, compilerContext(target, blob, registryChecksum, { emitDataContract: true, agents: AGENTS }));
-      if (!('config' in result)) throw new Error(`${target.key}: ${JSON.stringify(result.findings)}`);
       expect(withoutDataContract(result.config), target.key).toEqual(withoutDataContract(blob.compiledConfig));
       expect(result.config.settings?.connections.length, target.key).toBeGreaterThan(0);
 
@@ -226,10 +334,7 @@ describe('seed safety — the 15 seeded workflows', () => {
   it('the documented seeded patterns translate as the brief requires', () => {
     const global = TARGETS.find((entry) => entry.target.key === 'GLOBAL:general-medicine-consultation');
     if (global === undefined) throw new Error('GLOBAL:general-medicine-consultation not seeded');
-    const result = compile(
-      global.target.graph,
-      compilerContext(global.target, global.blob, global.registryChecksum, { emitDataContract: true, agents: AGENTS }),
-    );
+    const result = regenCompile(global.target, global.blob, global.registryChecksum);
     if (!('config' in result)) throw new Error('compile failed');
     const nodes = new Map(nodesOf(result.config).map((node) => [node.nodeId, node]));
     expect(nodes.get('n_ner')?.bindings).toEqual({ text: { firstOf: ['nodes.n_transcript.outputs.text', 'nodes.n_asr.outputs.transcript'] } });

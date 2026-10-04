@@ -254,6 +254,10 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         runId,
         trigger: 'consultation open',
         isSandbox: false,
+        // TASK-1038 E2 (fix 3) — the internal consultation-read route admits a run only when its
+        // row names the consultation; governance is recorded AFTER the start, so without this the
+        // run's first consultation read could be refused 404. Same stamp as the exposure plane.
+        metaData: { consultationId },
       });
 
       // The identity every consultation node reads from `run_payload`
@@ -436,6 +440,8 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
           runId,
           trigger: CONSULTATION_RESUME_TRIGGER,
           isSandbox: false,
+          // TASK-1038 E2 (fix 3) — see `dispatchForConsultation`.
+          metaData: { consultationId },
         });
         await this.harnessGateway.startWorkflowRun({
           runId,

@@ -46,7 +46,7 @@ const mockRepository = {
 };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(TX)) } };
 const mockPromptTemplateRepository = { findById: vi.fn() };
-const mockAgentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn() };
+const mockAgentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn(), findAllVersionsBySlug: vi.fn() };
 const mockSettings = { resolvePlatform: vi.fn() };
 
 const PROMPT_A = '71000000-0000-0000-0000-0000000000a1';
@@ -186,6 +186,7 @@ beforeEach(() => {
       : null,
   );
   mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, approvedVersionNumber: id === PROMPT_A ? 9 : null }));
+  mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([]);
 });
 
 // =============================================================================================
@@ -485,5 +486,52 @@ describe('R18 — publish with activate demotes and writes in ONE transaction', 
 
     expect(mockDatabaseService.baseClient.$transaction).not.toHaveBeenCalled();
     expect(mockRepository.update.mock.calls.every((call) => call[2] === OUTER)).toBe(true);
+  });
+});
+
+// =============================================================================================
+describe('TASK-1038 E2 (fix 9, OD-21) — an explicit pin on a DEPRECATED agent version', () => {
+  it('publishes, keeps the pin, and records a WARNING (never AGENT_PIN_UNRESOLVED)', async () => {
+    mockAgentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+    mockAgentRepository.findAllVersionsBySlug.mockImplementation(async (_tenant: string, slug: string) =>
+      slug === 'coder' ? [agentRow('coder', 5), { ...agentRow('coder', 2), status: WorkflowDefinitionStatus.DEPRECATED }] : [],
+    );
+    mockRepository.findById.mockResolvedValue(entity(graph()));
+
+    await makeService().publish('def-1', {});
+
+    expect(mockAgentRepository.findAllVersionsBySlug).toHaveBeenCalledWith('tenant-1', 'coder');
+    expect(compiledNode(publishedConfig(), 'a_pinned')?.config).toMatchObject({ agentRef: { slug: 'coder', versionNumber: 2 } });
+    const written = mockRepository.update.mock.calls.find((call) => call[0] === 'def-1')?.[1] as {
+      validationReport: { findings: Array<{ code?: string; severity: string; nodeId: string | null }> };
+    };
+    expect(written.validationReport.findings).toContainEqual(
+      expect.objectContaining({ code: 'AGENT_PIN_DEPRECATED', severity: 'WARNING', nodeId: 'a_pinned' }),
+    );
+    expect(written.validationReport.findings).not.toContainEqual(expect.objectContaining({ code: 'AGENT_PIN_UNRESOLVED' }));
+  });
+
+  it('a DRAFT (or absent) version under the pin is still refused AGENT_PIN_UNRESOLVED', async () => {
+    mockAgentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+    mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([{ ...agentRow('coder', 2), status: WorkflowDefinitionStatus.DRAFT }]);
+    mockRepository.findById.mockResolvedValue(entity(graph()));
+
+    const error = await makeService()
+      .publish('def-1', {})
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    const body = (error as BadRequestException).getResponse() as { findings: Array<{ code?: string; nodeId: string | null }> };
+    expect(body.findings).toContainEqual(expect.objectContaining({ code: 'AGENT_PIN_UNRESOLVED', nodeId: 'a_pinned' }));
+  });
+
+  it('an UNPINNED node never falls back to a deprecated version (it pins the ACTIVE one or refuses)', async () => {
+    mockAgentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
+    mockAgentRepository.findAllVersionsBySlug.mockResolvedValue([{ ...agentRow('summarizer', 4), status: WorkflowDefinitionStatus.DEPRECATED }]);
+    mockRepository.findById.mockResolvedValue(entity(graph()));
+
+    const error = await makeService()
+      .publish('def-1', {})
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
   });
 });
