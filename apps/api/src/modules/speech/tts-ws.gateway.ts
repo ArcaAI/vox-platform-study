@@ -129,6 +129,11 @@ interface Bridge {
    * platform's own calling CPU exactly like the REST readers do.
    */
   firstAudioAtMs: number | null;
+  /**
+   * TASK-1036 §3.2 — set once the first `init` named an `agentSlug`: client frames are then
+   * forwarded through this chain so nothing overtakes the init while that agent resolves.
+   */
+  clientChain?: Promise<void>;
 }
 
 /** Byte length of a relayed WS frame, across every shape `ws` may hand back a binary message in. */
@@ -468,15 +473,90 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Browser → upstream: control frames (init/text/flush/end). Buffered until
     // the upstream socket is open (the client sends init immediately on connect).
     client.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
-      const frame = this.maybeEnrichInit(bridge, data, isBinary);
-      if (bridge.upstreamOpen) {
-        this.safeSend(upstream, frame, isBinary);
-      } else {
-        bridge.pending.push({ data: frame, isBinary });
+      if (bridge.clientChain) {
+        bridge.clientChain = bridge.clientChain.then(() => this.forwardClientFrame(bridge, data, isBinary));
+        return;
       }
+      // TASK-1036 §3.2 — the first `init` may name the TEXT_TO_SPEECH agent to speak with.
+      const agentSlug = this.initAgentSlug(bridge, data, isBinary);
+      if (agentSlug !== null) {
+        bridge.clientChain = this.resolveNamedAgent(bridge, agentSlug).then((ok) => {
+          if (ok) this.forwardClientFrame(bridge, data, isBinary);
+        });
+        return;
+      }
+      this.forwardClientFrame(bridge, data, isBinary);
     });
 
     this.logger.log({ message: 'TTS WS bridge opened', sessionId });
+  }
+
+  /** Enrich (first init) and send — or buffer until the upstream opens. */
+  private forwardClientFrame(bridge: Bridge, data: WebSocket.RawData, isBinary: boolean): void {
+    if (!this.bridges.has(bridge.client)) return;
+    const frame = this.maybeEnrichInit(bridge, data, isBinary);
+    if (bridge.upstreamOpen) {
+      this.safeSend(bridge.upstream, frame, isBinary);
+    } else {
+      bridge.pending.push({ data: frame, isBinary });
+    }
+  }
+
+  /** The `agentSlug` of the session's FIRST `init` frame, or `null` (not an init, not the first, or none named). */
+  private initAgentSlug(bridge: Bridge, data: WebSocket.RawData, isBinary: boolean): string | null {
+    if (isBinary || bridge.initEnriched) return null;
+    try {
+      const parsed = JSON.parse(data.toString()) as Record<string, unknown> | null;
+      if (!parsed || parsed.type !== 'init') return null;
+      return typeof parsed.agentSlug === 'string' && parsed.agentSlug.length > 0 ? parsed.agentSlug : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * TASK-1036 §3.2 — resolve the PUBLISHED TEXT_TO_SPEECH agent the client named, for the
+   * TICKET's tenant (the one resolver: a foreign or unknown slug is the same 404 every other
+   * by-slug read gives). On failure the session ends with a quotable error frame rather than
+   * falling back to the tenant's assigned agent: the caller chose a voice, and speaking in a
+   * different one is a wrong answer, not a degraded one.
+   */
+  private async resolveNamedAgent(bridge: Bridge, agentSlug: string): Promise<boolean> {
+    if (!this.ttsAgentResolver || !bridge.tenantId) {
+      this.endWithAgentError(bridge, agentSlug);
+      return false;
+    }
+    try {
+      const resolved = await resolveTtsRequestConfig(bridge.tenantId, { ttsAgentResolver: this.ttsAgentResolver, agentSlug });
+      bridge.spec = resolved.spec;
+      bridge.providerOverrides = resolved.overrides;
+      return true;
+    } catch (err) {
+      this.logger.warn({
+        message: 'TTS socket named an agent that could not be resolved; ending the session',
+        sessionId: bridge.sessionId,
+        agentSlug,
+        error: err instanceof Error ? err.name : typeof err,
+      });
+      this.endWithAgentError(bridge, agentSlug);
+      return false;
+    }
+  }
+
+  private endWithAgentError(bridge: Bridge, agentSlug: string): void {
+    this.safeSend(
+      bridge.client,
+      Buffer.from(
+        JSON.stringify({
+          type: 'error',
+          code: 'agent_unavailable',
+          message: `TEXT_TO_SPEECH agent '${agentSlug}' is not available to this tenant.`,
+          correlationId: bridge.requestId,
+        }),
+      ),
+      false,
+    );
+    this.closeClientAndTeardown(bridge.client, TTS_WS_CLOSE_CODES.UPSTREAM_ERROR);
   }
 
   /** Pause the upstream while the browser socket is over the egress watermark. */
@@ -523,8 +603,10 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // `resolved_spec` / `provider_overrides` are the RESOLUTION this gateway injects; a client that
     // sends its own names an engine chain / credential of its choosing. Dropped from EVERY client
     // text frame — with no resolver, and on any init after the first (TASK-1012 L-1).
-    const callerSelected = 'resolved_spec' in parsed || 'provider_overrides' in parsed;
-    const { resolved_spec: _callerSpec, provider_overrides: _callerOverrides, ...clean } = parsed;
+    // TASK-1036 §3.2 — `agentSlug` is a GATEWAY selector (resolved in `resolveNamedAgent`); it
+    // never travels upstream, where the resolved spec already says which agent speaks.
+    const callerSelected = 'resolved_spec' in parsed || 'provider_overrides' in parsed || 'agentSlug' in parsed;
+    const { resolved_spec: _callerSpec, provider_overrides: _callerOverrides, agentSlug: _agentSlug, ...clean } = parsed;
     if (clean.type !== 'init' || bridge.initEnriched || (!bridge.spec && !bridge.providerOverrides)) {
       return callerSelected ? Buffer.from(JSON.stringify(clean)) : data;
     }
