@@ -11,13 +11,14 @@ import {
   terminalStatusOf,
 } from '@arcaai/applications';
 import type { DeliveredRunResult, IActiveUserContext } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING } from '@arcaai/async-contract';
+import { RESUME_FROM_BEGINNING, parseStoredRunEvent } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import { runCompletedCountsFromPayload } from './run-completed-counts';
 import type { RunCompletedCounts } from './run-completed-counts';
 import { RunEventStreamHub } from './run-event-stream-hub';
-import { parseRunStreamEntry, terminalCheckIntervalMs } from './run-stream-delivery';
-import { WORKFLOW_RUN_COMPLETED, runEventStreamKey } from './workflow-run-event';
+import { RunEventFold, terminalOutcomeOf } from './run-protocol-delivery';
+import { terminalCheckIntervalMs } from './run-stream-delivery';
+import { runEventStreamKey } from './workflow-run-event';
 
 export { runCompletedCountsFromPayload } from './run-completed-counts';
 export type { RunCompletedCounts } from './run-completed-counts';
@@ -109,6 +110,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     let lastCheck = Date.now();
     let backoffMs = 0;
     let cursor = RESUME_FROM_BEGINNING;
+    const fold = new RunEventFold();
 
     while (!signal.aborted && Date.now() < deadline) {
       let entries;
@@ -134,21 +136,26 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
 
       for (const entry of entries) {
         cursor = entry.id;
-        const envelope = parseRunStreamEntry(entry.fields);
-        if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
-        const payload = envelope.payload as Record<string, unknown> | undefined;
-        const status = terminalStatusOf(payload?.status);
+        // TASK-1038 B3a — producers write protocol v2 from this release; the node events are
+        // folded for the TASK-982 counts (`run.completed` does not carry them), and a pre-v2
+        // `workflow.run.completed` of a run that started before the deploy still ends the watch.
+        const parsed = parseStoredRunEvent(runId, entry.fields);
+        if (parsed.kind === 'event') fold.apply(parsed.event);
+        const outcome = terminalOutcomeOf(runId, entry.fields);
+        if (outcome === null) continue;
+        const status = terminalStatusOf(outcome.status);
         if (status === null) return;
         void hub.expireAfterTerminal(runId);
+        const counts = outcome.legacyPayload ? runCompletedCountsFromPayload(outcome.legacyPayload) : (fold.counts() ?? {});
         await this.recordTerminal(
           tenantId,
           runId,
           status,
-          String(payload?.status),
-          envelope.occurredAt,
+          outcome.reason ?? outcome.status,
+          outcome.occurredAt,
           consultationId,
-          runCompletedCountsFromPayload(payload),
-          deliveredRunResultFrom(payload),
+          counts,
+          deliveredRunResultFrom({ result: outcome.result }),
         );
         return;
       }
