@@ -5,21 +5,28 @@
  * through the ONE sequencer (every stored event valid for an AGENT run: `nodeId: 'agent'`),
  * terminal retention, idempotency (same key + same body joins; a different body is 409), cancel
  * racing completion, and the cross-tenant / cross-slug 404.
+ *
+ * Lane B6a — the run's STATE and RESULT are a Postgres row (`WorkflowRun`, `kind = AGENT`), not a
+ * Redis document: they survive a restart, the result is the A2-purgeable `resultRef`, and Redis
+ * holds the event stream only (no PHI-bearing run document for 30 days).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConflictException, NotFoundException, ServiceUnavailableException, BadGatewayException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadGatewayException } from '@nestjs/common';
 import { RUN_EVENTS_KEY, parseStoredRunEvent, runEventProblems } from '@arcaai/async-contract';
+import { WorkflowRunKind } from '@arcaai/domains';
 import { AgentRunService, agentRunLinks, type AgentRunOutcome } from '../agent-run.service';
 import { FakeAgentRunRedis } from './fake-agent-run-redis';
+import { FakeWorkflowRunRepository } from './fake-workflow-run-repository';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 const OTHER_TENANT = '51000000-0000-0000-0000-000000000000';
 
 let redis: FakeAgentRunRedis;
+let repository: FakeWorkflowRunRepository;
 const settings = { resolvePlatform: vi.fn(() => ({ value: 24 })), resolve: vi.fn(() => ({ value: 30 })) };
 
 function service(): AgentRunService {
-  return new AgentRunService(redis as never, settings as never);
+  return new AgentRunService(repository as never, redis as never, settings as never);
 }
 
 function startInput(execute: () => Promise<AgentRunOutcome>, over: Record<string, unknown> = {}) {
@@ -47,6 +54,7 @@ function storedEvents(runId: string) {
 
 beforeEach(() => {
   redis = new FakeAgentRunRedis();
+  repository = new FakeWorkflowRunRepository();
   vi.clearAllMocks();
 });
 
@@ -88,8 +96,6 @@ describe('start → complete', () => {
     const { state } = await service().start(startInput(async () => ({ output: { text: 'x' }, tokens: { in: 1, out: 1 } })));
     await flush();
     expect(redis.ttls.get(RUN_EVENTS_KEY(state.runId))).toBe(24 * 3600);
-    // The run document itself is kept for `workflowRuns.resultRetentionDays` (30 d).
-    expect(redis.ttls.get(`agent:run:${TENANT}:${state.runId}`)).toBe(30 * 86_400);
   });
 
   it('emits a NER result as `output.data`', async () => {
@@ -194,14 +200,110 @@ describe('404-over-403', () => {
     await expect(service().get(OTHER_TENANT, 'scribe', state.runId)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service().get(TENANT, 'other-agent', state.runId)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service().cancel(OTHER_TENANT, 'scribe', state.runId)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service().cancel(TENANT, 'other-agent', state.runId)).rejects.toBeInstanceOf(NotFoundException);
+    // Nothing was cancelled by the refused calls.
+    expect(repository.rowOf(state.runId)?.status).not.toBe('CANCELED');
+  });
+
+  it('an unknown run id is the same 404', async () => {
+    await expect(service().get(TENANT, 'scribe', 'no-such-run')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
-describe('no run store', () => {
-  it('is a named 503, never a run that cannot be followed', async () => {
-    redis.connected = false;
-    await expect(service().start(startInput(async () => ({ output: {}, tokens: { in: 0, out: 0 } })))).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
+describe('durable run record (lane B6a) — Postgres, not Redis', () => {
+  it('writes ONE `kind = AGENT` row: agent identity, no workflow identity, the result as an inline resultRef', async () => {
+    const { state } = await service().start(startInput(async () => ({ output: { text: 'The note.' }, tokens: { in: 1, out: 1 } })));
+    expect(repository.rows.size).toBe(1);
+    expect(repository.rowOf(state.runId)).toMatchObject({
+      kind: WorkflowRunKind.AGENT,
+      tenantId: TENANT,
+      runId: state.runId,
+      sessionId: `agent-run-${state.runId}`,
+      agentSlug: 'scribe',
+      agentVersionId: 'agent-v3',
+      agentVersionNumber: 3,
+      workflowSlug: null,
+      workflowVersionId: null,
+      status: 'RUNNING',
+    });
+    await flush();
+    expect(repository.rowOf(state.runId)).toMatchObject({
+      status: 'COMPLETED',
+      resultRef: { kind: 'inline', value: { text: 'The note.' } },
+      nodeCount: 1,
+    });
+    expect(repository.rowOf(state.runId)?.endedAt).toBeInstanceOf(Date);
+  });
+
+  it('a FAILED run stores the fixed-label code only — never the exception text', async () => {
+    const { state } = await service().start(
+      startInput(async () => {
+        throw new BadGatewayException('upstream said: patient John Doe ...');
+      }),
     );
+    await flush();
+    expect(repository.rowOf(state.runId)).toMatchObject({ status: 'FAILED', firstErrorCode: 'MODEL_UNAVAILABLE', failedNodeCount: 1, resultRef: null });
+    expect(JSON.stringify(repository.rowOf(state.runId))).not.toContain('John Doe');
+  });
+
+  it('keeps NO run state in Redis — only the event stream keys (no PHI-bearing run document)', async () => {
+    const { state } = await service().start(startInput(async () => ({ output: { text: 'PHI note' }, tokens: { in: 1, out: 1 } })));
+    await flush();
+    const keys = [...redis.strings.keys(), ...redis.streams.keys(), ...redis.hashes.keys()];
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) expect(key.startsWith(`wf:run:${state.runId}:`)).toBe(true);
+    expect(keys.some((key) => key.startsWith('agent:run:'))).toBe(false);
+  });
+
+  it('survives a restart: a new instance with an EMPTY Redis still serves the run and its result', async () => {
+    const { state } = await service().start(startInput(async () => ({ output: { text: 'The note.' }, tokens: { in: 1, out: 1 } })));
+    await flush();
+    redis = new FakeAgentRunRedis(); // the restart: Redis persistence is disabled on this platform
+    const after = await service().get(TENANT, 'scribe', state.runId);
+    expect(after).toMatchObject({ status: 'COMPLETED', output: { text: 'The note.' }, versionNumber: 3, task: 'TEXT_GENERATION' });
+  });
+
+  it('an Idempotency-Key still joins its run after a restart (the claim is the row, not a Redis key)', async () => {
+    const execute = vi.fn(async () => ({ output: { text: 'x' }, tokens: { in: 1, out: 1 } }));
+    const first = await service().start(startInput(execute, { idempotencyKey: 'k-restart' }));
+    await flush();
+    redis = new FakeAgentRunRedis();
+    const second = await service().start(startInput(execute, { idempotencyKey: 'k-restart' }));
+    expect(second).toMatchObject({ created: false, state: { runId: first.state.runId, status: 'COMPLETED' } });
+    await expect(service().start(startInput(execute, { idempotencyKey: 'k-restart', body: { message: 'other' } }))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('two concurrent starts with one key: the unique key decides — one row, the agent runs ONCE', async () => {
+    const execute = vi.fn(async () => ({ output: { text: 'x' }, tokens: { in: 1, out: 1 } }));
+    const svc = service();
+    const [a, b] = await Promise.all([
+      svc.start(startInput(execute, { idempotencyKey: 'k-race' })),
+      svc.start(startInput(execute, { idempotencyKey: 'k-race' })),
+    ]);
+    expect(a.state.runId).toBe(b.state.runId);
+    expect([a.created, b.created].sort()).toEqual([false, true]);
+    expect(repository.rows.size).toBe(1);
+    await flush();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('with Redis down the run still starts, completes and is readable — the stream is best effort', async () => {
+    redis.connected = false;
+    const { state } = await service().start(startInput(async () => ({ output: { text: 'x' }, tokens: { in: 1, out: 1 } })));
+    await flush();
+    expect(await service().get(TENANT, 'scribe', state.runId)).toMatchObject({ status: 'COMPLETED', output: { text: 'x' } });
+  });
+
+  it('a result the OD-25 purge expired reads back as `expired`, with no output', async () => {
+    const { state } = await service().start(startInput(async () => ({ output: { text: 'x' }, tokens: { in: 1, out: 1 } })));
+    await flush();
+    const row = repository.rowOf(state.runId)!;
+    row.resultRef = { kind: 'expired', expiredAt: '2026-11-04T04:45:00.000Z' };
+    const after = await service().get(TENANT, 'scribe', state.runId);
+    expect(after.output).toBeNull();
+    expect(after.result).toEqual({ kind: 'expired', expiredAt: '2026-11-04T04:45:00.000Z' });
   });
 });

@@ -1,31 +1,52 @@
 import { createHash } from 'node:crypto';
-import {
-  ConflictException,
-  HttpException,
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { ConflictException, HttpException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import {
   IRedisCacheService,
   TenantSettingsService,
   WORKFLOW_RUNS_DEFAULTS,
   WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY,
-  WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY,
+  readPersistedRunResult,
+  type PersistedRunResult,
 } from '@arcaai/applications';
-import { generateId } from '@arcaai/domains';
+import { WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus, generateId } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   AGENT_RUN_NODE_ID,
   RUN_RESULT_INLINE_MAX_BYTES,
   runErrorMessage,
   type RunError,
   type RunSnapshot,
+  type RunStatus,
   type RunTokens,
 } from '@arcaai/async-contract';
-import { AgentRunStore, AgentRunStoreUnavailableError, deterministicAgentRunId, type AgentRunState, type AgentRunTask } from './agent-run.store';
+import { AgentRunEventStream, deterministicAgentRunId } from './agent-run.events';
+
+export type AgentRunTask = 'TEXT_GENERATION' | 'NAMED_ENTITY_RECOGNITION';
+
+/**
+ * One agent run as the routes answer it — a READ of the `WorkflowRun` row (`kind = AGENT`), never
+ * a document of its own. `output` is the inline result while it is retained; `result` is what the
+ * row's `resultRef` means (`inline`, or the OD-25 `expired` tombstone), `null` when there is none.
+ */
+export interface AgentRunState {
+  runId: string;
+  tenantId: string;
+  slug: string;
+  agentVersionId: string;
+  versionNumber: number;
+  task: AgentRunTask | null;
+  status: RunStatus;
+  createdAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  /** The agent's output (`{ text }` / `{ entities }`) once COMPLETED and retained; `null` otherwise. */
+  output: Record<string, unknown> | null;
+  result: PersistedRunResult | null;
+  /** The PUBLIC error of a FAILED / TIMED_OUT run (fixed label, no detail). */
+  error: RunError | null;
+  /** sha-256 of the canonical request body, when the run was started with an `Idempotency-Key`. */
+  bodyHash: string | null;
+}
 
 /** What one execution of the agent produced. */
 export interface AgentRunOutcome {
@@ -94,6 +115,41 @@ export function agentRunErrorCode(error: unknown): string {
 
 const TERMINAL: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
 
+/** A terminal write re-reads after an OCC conflict at most this many times in total. */
+const TRANSITION_ATTEMPTS = 3;
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** The row → the run as the routes answer it. */
+export function agentRunStateOf(entity: WorkflowRunEntity): AgentRunState {
+  const meta = entity.metaData ?? {};
+  const result = readPersistedRunResult(entity.resultRef);
+  const status = String(entity.status) as RunStatus;
+  const code = entity.firstErrorCode;
+  return {
+    runId: entity.runId,
+    tenantId: entity.tenantId,
+    slug: entity.agentSlug ?? '',
+    agentVersionId: entity.agentVersionId ?? '',
+    versionNumber: entity.agentVersionNumber ?? 0,
+    task: meta.agentTask === 'TEXT_GENERATION' || meta.agentTask === 'NAMED_ENTITY_RECOGNITION' ? meta.agentTask : null,
+    status,
+    createdAt: entity.startedAt.toISOString(),
+    endedAt: entity.endedAt ? entity.endedAt.toISOString() : null,
+    durationMs: entity.durationMs ?? null,
+    output: result?.kind === 'inline' && isRecord(result.value) ? result.value : null,
+    result,
+    error: code && (status === 'FAILED' || status === 'TIMED_OUT') ? { code, message: runErrorMessage(code) } : null,
+    bodyHash: typeof meta.requestBodyHash === 'string' ? meta.requestBodyHash : null,
+  };
+}
+
 /**
  * TASK-1038 OD-26 — `POST /agents/:slug/runs`: an agent invocation as a RUN.
  *
@@ -103,91 +159,98 @@ const TERMINAL: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED'
  * detects loss exactly as on a workflow run; an agent run has one step, `nodeId: 'agent'`
  * (`AGENT_RUN_NODE_ID`).
  *
- * Idempotency: with an `Idempotency-Key` the run id is DERIVED from `(tenant, slug, key)` and the
- * key is claimed with the body's hash. The same key with the same body joins the run it started;
- * the same key with a DIFFERENT body is a 409 — the caller is reusing a key for a second intent.
+ * The run's STATE and RESULT are a Postgres row of the run read model (`WorkflowRun`,
+ * `kind = AGENT`, anchored at `agent-run-<runId>`; lane B6a), so a run outlives a restart and its
+ * output is the A2-purgeable `resultRef = { kind: 'inline', value }` — expired after
+ * `workflowRuns.resultRetentionDays` by `WorkflowRunResultRetentionService` like any workflow
+ * result. Redis carries only the event stream (`AgentRunEventStream`), best effort.
  *
- * Cancel is idempotent and races completion through a compare-and-set: whichever lands first
- * decides the terminal status. A model call already in flight is not interrupted (the text plane
- * has no abort), so its output is discarded — and it is still metered, because it was spent.
+ * Idempotency: with an `Idempotency-Key` the run id is DERIVED from `(tenant, slug, key)`, and the
+ * row's unique key `(tenantId, sessionId, runId)` admits ONE start: a concurrent or later start of
+ * the same key finds (or collides with) that row. The same key with the same body joins the run it
+ * started; the same key with a DIFFERENT body is a 409 — the caller is reusing a key for a second
+ * intent. The body hash rides in the row's `_metadata`.
+ *
+ * Cancel is idempotent and races completion through the row's `_version` compare-and-set:
+ * whichever lands first decides the terminal status. A model call already in flight is not
+ * interrupted (the text plane has no abort), so its output is discarded — and it is still
+ * metered, because it was spent.
  */
 @Injectable()
 export class AgentRunService {
   private readonly logger = new Logger(AgentRunService.name);
-  readonly store: AgentRunStore;
+  readonly events: AgentRunEventStream;
 
   constructor(
+    private readonly runs: WorkflowRunRepository,
     @Optional() @Inject(IRedisCacheService) redis?: IRedisCacheService,
     @Optional() private readonly settings?: TenantSettingsService,
   ) {
-    this.store = new AgentRunStore(redis);
+    this.events = new AgentRunEventStream(redis);
   }
 
   async start(input: StartAgentRunInput): Promise<{ state: AgentRunState; created: boolean }> {
-    if (!this.store.available()) throw this.unavailable();
     const bodyHash = input.idempotencyKey !== undefined ? agentRunBodyHash(input.body) : null;
     const runId = input.idempotencyKey !== undefined ? deterministicAgentRunId(input.tenantId, input.slug, input.idempotencyKey) : generateId();
-    const resultTtl = this.resultRetentionSeconds(input.tenantId);
 
+    if (bodyHash !== null) {
+      const existing = await this.runs.findAgentRun(input.tenantId, runId);
+      if (existing) return { state: this.join(existing, input.slug, bodyHash), created: false };
+    }
+
+    const entity = WorkflowRunFactory.CreateAgentRun({
+      tenantId: input.tenantId,
+      runId,
+      agentSlug: input.slug,
+      agentVersionId: input.agentVersionId,
+      agentVersionNumber: input.versionNumber,
+      startedAt: new Date(),
+      metaData: { agentTask: input.task, ...(bodyHash !== null ? { requestBodyHash: bodyHash } : {}) },
+    });
+    let saved: WorkflowRunEntity;
     try {
-      if (input.idempotencyKey !== undefined && bodyHash !== null) {
-        const owner = await this.store.claimIdempotencyKey(input.tenantId, input.slug, input.idempotencyKey, { runId, bodyHash }, resultTtl);
-        if (owner.bodyHash !== bodyHash || owner.runId !== runId) {
-          throw new ConflictException({
-            code: 'IDEMPOTENCY_KEY_REUSED',
-            message: 'This Idempotency-Key already started a run with a different request body. Use a new key for a new request.',
-            runId: owner.runId,
-          });
-        }
-        const existing = await this.store.get(input.tenantId, runId);
-        if (existing) return { state: existing, created: false };
-      }
-
-      const state: AgentRunState = {
-        runId,
-        tenantId: input.tenantId,
-        slug: input.slug,
-        agentVersionId: input.agentVersionId,
-        versionNumber: input.versionNumber,
-        task: input.task,
-        status: 'RUNNING',
-        createdAt: new Date().toISOString(),
-        endedAt: null,
-        durationMs: null,
-        output: null,
-        error: null,
-        bodyHash,
-      };
-      await this.store.create(state, resultTtl);
-      await this.store.append({
-        runId,
-        type: 'run.started',
-        ts: state.createdAt,
-        data: { kind: 'agent', slug: input.slug, versionNumber: input.versionNumber, mode: 'async' },
-        dedupeKey: `wf:run:${runId}:started`,
-      });
-      await this.store.append({
-        runId,
-        type: 'node.started',
-        ts: new Date().toISOString(),
-        nodeId: AGENT_RUN_NODE_ID,
-        data: { kind: 'core.agent', label: input.slug, attempt: 1 },
-        dedupeKey: `wf:run:${runId}:node:${AGENT_RUN_NODE_ID}:1:started`,
-      });
-      void this.execute(state, input.execute);
-      return { state, created: true };
+      saved = await this.runs.create(entity);
     } catch (error) {
-      if (error instanceof AgentRunStoreUnavailableError) throw this.unavailable();
+      // Lost the race for this key's row to a concurrent start: join (or refuse) that one.
+      if (bodyHash !== null && isUniqueViolation(error)) {
+        const existing = await this.runs.findAgentRun(input.tenantId, runId);
+        if (existing) return { state: this.join(existing, input.slug, bodyHash), created: false };
+      }
       throw error;
     }
+
+    const state = agentRunStateOf(saved);
+    await this.safeAppend({
+      runId,
+      type: 'run.started',
+      ts: state.createdAt,
+      data: { kind: 'agent', slug: input.slug, versionNumber: input.versionNumber, mode: 'async' },
+      dedupeKey: `wf:run:${runId}:started`,
+    });
+    await this.safeAppend({
+      runId,
+      type: 'node.started',
+      ts: new Date().toISOString(),
+      nodeId: AGENT_RUN_NODE_ID,
+      data: { kind: 'core.agent', label: input.slug, attempt: 1 },
+      dedupeKey: `wf:run:${runId}:node:${AGENT_RUN_NODE_ID}:1:started`,
+    });
+    void this.execute(state, input.execute).catch((error) =>
+      this.logger.error({
+        message: 'Agent run could not record its outcome',
+        runId,
+        agentSlug: input.slug,
+        error: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
+    return { state, created: true };
   }
 
   /** The run, by id, within the caller's tenant and this slug's lineage — else one 404. */
   async get(tenantId: string, slug: string, runId: string): Promise<AgentRunState> {
-    if (!this.store.available()) throw this.unavailable();
-    const state = await this.store.get(tenantId, runId);
-    if (!state || state.slug !== slug || state.tenantId !== tenantId) throw new NotFoundException('Agent run not found');
-    return state;
+    const entity = await this.runs.findAgentRun(tenantId, runId);
+    if (!entity || entity.tenantId !== tenantId || entity.agentSlug !== slug) throw new NotFoundException('Agent run not found');
+    return agentRunStateOf(entity);
   }
 
   /** Idempotent: a terminal run is returned as it is; a RUNNING one becomes CANCELED. */
@@ -195,9 +258,13 @@ export class AgentRunService {
     const state = await this.get(tenantId, slug, runId);
     if (TERMINAL.has(state.status)) return state;
     const endedAt = new Date();
-    const next: AgentRunState = { ...state, status: 'CANCELED', endedAt: endedAt.toISOString(), durationMs: this.elapsed(state, endedAt) };
-    const won = await this.store.transition(next, this.resultRetentionSeconds(tenantId));
-    if (!won) return this.get(tenantId, slug, runId);
+    const saved = await this.transition(tenantId, runId, (entity) => {
+      entity.status = WorkflowRunStatus.CANCELED;
+      entity.endedAt = endedAt;
+      entity.durationMs = Math.max(0, endedAt.getTime() - entity.startedAt.getTime());
+    });
+    if (!saved) return this.get(tenantId, slug, runId);
+    const next = agentRunStateOf(saved);
     await this.safeAppend({
       runId,
       type: 'run.cancelled',
@@ -238,11 +305,16 @@ export class AgentRunService {
     }
     const endedAt = new Date();
     const durationMs = Math.max(0, endedAt.getTime() - startedAt);
-    const next: AgentRunState = { ...state, status: 'COMPLETED', endedAt: endedAt.toISOString(), durationMs, output: outcome.output };
-    const won = await this.store.transition(next, this.resultRetentionSeconds(state.tenantId)).catch(() => false);
-    if (!won) return; // cancelled first: the output is discarded.
+    const saved = await this.transition(state.tenantId, state.runId, (entity) => {
+      entity.status = WorkflowRunStatus.COMPLETED;
+      entity.endedAt = endedAt;
+      entity.durationMs = durationMs;
+      // The run's result, in the shape workflow results use, so the OD-25 purge expires it.
+      entity.resultRef = { kind: 'inline', value: outcome.output } as never;
+    });
+    if (!saved) return; // cancelled first: the output is discarded.
 
-    const ts = next.endedAt as string;
+    const ts = endedAt.toISOString();
     const text = outcome.output.text;
     if (typeof text === 'string' && text.length > 0) {
       await this.safeAppend({ runId: state.runId, type: 'output.text.delta', ts, nodeId: AGENT_RUN_NODE_ID, data: { field: 'text', text } });
@@ -284,7 +356,7 @@ export class AgentRunService {
 
   private async fail(state: AgentRunState, cause: unknown, startedAt: number): Promise<void> {
     const code = agentRunErrorCode(cause);
-    const status = code === 'RUN_TIMED_OUT' ? 'TIMED_OUT' : 'FAILED';
+    const status = code === 'RUN_TIMED_OUT' ? WorkflowRunStatus.TIMED_OUT : WorkflowRunStatus.FAILED;
     const error: RunError = { code, message: runErrorMessage(code) };
     const endedAt = new Date();
     const durationMs = Math.max(0, endedAt.getTime() - startedAt);
@@ -295,10 +367,16 @@ export class AgentRunService {
       code,
       error: cause instanceof Error ? cause.name : 'unknown',
     });
-    const next: AgentRunState = { ...state, status, endedAt: endedAt.toISOString(), durationMs, error };
-    const won = await this.store.transition(next, this.resultRetentionSeconds(state.tenantId)).catch(() => false);
-    if (!won) return;
-    const ts = next.endedAt as string;
+    const saved = await this.transition(state.tenantId, state.runId, (entity) => {
+      entity.status = status;
+      entity.endedAt = endedAt;
+      entity.durationMs = durationMs;
+      // The fixed-label code only — the public message is `runErrorMessage(code)`; never the cause.
+      entity.firstErrorCode = code;
+      entity.failedNodeCount = 1;
+    });
+    if (!saved) return;
+    const ts = endedAt.toISOString();
     await this.safeAppend({
       runId: state.runId,
       type: 'node.failed',
@@ -317,10 +395,45 @@ export class AgentRunService {
     });
   }
 
+  /**
+   * Move a RUNNING run to its terminal state through the row's `_version` compare-and-set.
+   * Returns the saved row when THIS call decided the transition, `null` when the run was already
+   * terminal (a cancel or the completion got there first). An OCC conflict re-reads and decides
+   * again — the row is only ever moved out of RUNNING once.
+   */
+  private async transition(tenantId: string, runId: string, apply: (entity: WorkflowRunEntity) => void): Promise<WorkflowRunEntity | null> {
+    for (let attempt = 0; attempt < TRANSITION_ATTEMPTS; attempt++) {
+      const entity = await this.runs.findAgentRun(tenantId, runId);
+      if (!entity || entity.status !== WorkflowRunStatus.RUNNING) return null;
+      apply(entity);
+      try {
+        return await this.runs.updateWithVersion(entity.id, entity, entity.version);
+      } catch (error) {
+        if (!(error instanceof OptimisticConcurrencyException)) throw error;
+      }
+    }
+    return null;
+  }
+
+  /** An `Idempotency-Key` that already started a run: join it, or refuse a different body (409). */
+  private join(existing: WorkflowRunEntity, slug: string, bodyHash: string): AgentRunState {
+    const state = agentRunStateOf(existing);
+    if (state.slug !== slug || state.bodyHash !== bodyHash) {
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_KEY_REUSED',
+        message: 'This Idempotency-Key already started a run with a different request body. Use a new key for a new request.',
+        runId: state.runId,
+      });
+    }
+    return state;
+  }
+
   /** Protocol v2 §6.1: the stream mirrors the run and never fails it. */
-  private async safeAppend(input: Parameters<AgentRunStore['append']>[0]): Promise<void> {
+  private async safeAppend(input: Parameters<AgentRunEventStream['append']>[0]): Promise<void> {
+    // No Redis: the run is still recorded (Postgres) and readable; a follower gets a resync snapshot.
+    if (!this.events.available()) return;
     try {
-      await this.store.append(input);
+      await this.events.append(input);
     } catch (error) {
       this.logger.warn({
         message: 'Agent run event append failed',
@@ -335,10 +448,6 @@ export class AgentRunService {
     return Buffer.byteLength(JSON.stringify(output), 'utf8') <= RUN_RESULT_INLINE_MAX_BYTES;
   }
 
-  private elapsed(state: AgentRunState, at: Date): number {
-    return Math.max(0, at.getTime() - Date.parse(state.createdAt));
-  }
-
   /** OD-25 — `workflowRuns.eventRetentionHours` (platform), in seconds. */
   private eventRetentionSeconds(): number {
     try {
@@ -348,23 +457,5 @@ export class AgentRunService {
     } catch {
       return WORKFLOW_RUNS_DEFAULTS.eventRetentionHours * 3600;
     }
-  }
-
-  /** OD-25 — `workflowRuns.resultRetentionDays` (tenant → platform), in seconds: how long the run's state and result are kept. */
-  private resultRetentionSeconds(tenantId: string): number {
-    try {
-      const value = this.settings?.resolve<number>(WORKFLOW_RUNS_RESULT_RETENTION_DAYS_KEY, tenantId).value;
-      const days = typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : WORKFLOW_RUNS_DEFAULTS.resultRetentionDays;
-      return days * 86_400;
-    } catch {
-      return WORKFLOW_RUNS_DEFAULTS.resultRetentionDays * 86_400;
-    }
-  }
-
-  private unavailable(): ServiceUnavailableException {
-    return new ServiceUnavailableException({
-      code: 'AGENT_RUN_STORE_UNAVAILABLE',
-      message: 'Agent runs are unavailable: the run store is not reachable.',
-    });
   }
 }
