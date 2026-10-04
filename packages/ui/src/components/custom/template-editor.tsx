@@ -316,7 +316,7 @@ export function renderVariablePathBadges(completion: Completion): Node | null {
     badge.textContent = text;
     row.appendChild(badge);
   };
-  if (entry.bestMatch && !entry.disabledReason) add('Best match', 'border-primary text-primary');
+  if (entry.bestMatch && !entry.disabledReason) add('Best match', 'border-primary text-foreground');
   if (entry.type) add(entry.type, 'border-border text-muted-foreground font-mono');
   if (entry.required) add('required', 'border-border text-foreground');
   if (entry.phiClass === 'PHI') add('PHI', 'border-destructive text-destructive');
