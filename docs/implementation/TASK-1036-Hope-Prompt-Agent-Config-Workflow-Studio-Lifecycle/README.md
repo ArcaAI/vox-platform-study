@@ -599,6 +599,27 @@ The budget holds because:
 
 Wave A in progress (2026-10-04). Per-wave merge commits, gate output and live evidence are recorded here as each wave lands.
 
+### 6.1 Wave A: launched 2026-10-04 from base `45ce54bc6`
+
+| Lane | Ticket | Tier | Worktree | Branch |
+|---|---|---|---|---|
+| A1 RUN-HARNESS | 1038 | opus | `../hope-v2-task-1038-a1-harness` | `task-1038/a1-harness` |
+| A2 RUN-GATEWAY | 1038 | opus | `../hope-v2-task-1038-a2-gateway` | `task-1038/a2-gateway` |
+| A3 LIFECYCLE | 1036 | sonnet | `../hope-v2-task-1036-a3-lifecycle` | `task-1036/a3-lifecycle` |
+| A4 PROMPT-TAGS | 1036 | sonnet | `../hope-v2-task-1036-a4-tags` | `task-1036/a4-tags` |
+| C0a CONTRACT-GRAPH | 1036 | opus | `../hope-v2-task-1036-c0a-contract` | `task-1036/c0a-contract-graph` |
+| C0b CONTRACT-AGENT-PROTOCOL | 1036 + 1038 | opus | `../hope-v2-task-1036-c0b-protocol` | `task-1036/c0b-contract-protocol` |
+
+Worktree setup:
+- `node_modules` is symlinked from the primary checkout, along with every `packages/*/dist` except the packages that lane modifies, and the generated Prisma client.
+- `.env.dev` and `.env.test` are copied in.
+- Nothing is installed inside a worktree.
+
+Lane briefs carry the cross-lane interfaces:
+- `GET /api/v1/internal/agents/:slug/versions/:versionNumber/resolved`: A2 serves it, A1 calls it.
+- The `run.completed.data.result` shape `{kind:'inline',value} | {kind:'ref',bucket,key,sizeBytes,sha256}`: A1 produces it, A2 consumes it, and C0b types it.
+- C0b's nullable rendering and empty-block dropping are behind options that default off, so Python parity holds until B1.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
