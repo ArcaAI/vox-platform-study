@@ -6,6 +6,10 @@
 export const workflowStudioKeys = {
   root: ['workflow-studio'] as const,
   list: () => [...workflowStudioKeys.root, 'list'] as const,
+  // TASK-1036 — the management screen's register (one row per slug) and its tag autocomplete.
+  lineages: (params?: object) => [...workflowStudioKeys.root, 'lineages', params ?? {}] as const,
+  versionsBySlug: (slug: string) => [...workflowStudioKeys.root, 'versions-by-slug', slug] as const,
+  tags: (q?: string) => [...workflowStudioKeys.root, 'tags', q ?? ''] as const,
   detail: (id: string) => [...workflowStudioKeys.root, 'detail', id] as const,
   versions: (id: string) => [...workflowStudioKeys.root, 'versions', id] as const,
   registry: () => [...workflowStudioKeys.root, 'registry'] as const,
