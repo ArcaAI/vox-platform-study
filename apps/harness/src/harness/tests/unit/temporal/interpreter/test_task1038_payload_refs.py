@@ -284,3 +284,27 @@ class TestPureHelpers:
         assert payload_refs.is_marker(marker)
         assert not payload_refs.is_marker({"store": "memory"})
         assert json.loads(json.dumps(marker)) == marker
+
+
+class TestLoopUntilReadsThroughReferences:
+    @pytest.mark.asyncio
+    async def test_the_served_evaluate_activity_dereferences_its_context(self):
+        """`core.loop`'s `until` runs in `interpreter.core_evaluate`, which is not a node
+        activity; a body output it reads may have been offloaded, so it too must see values."""
+        from harness.temporal.claim_check import _MEMORY_STORE, store_blob
+        from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
+        from harness.temporal.interpreter.models import EvaluateExpressionInput
+
+        ref = await store_blob(json.dumps({"done": True}), store=_MEMORY_STORE, bucket="b")
+        (served,) = [
+            a
+            for a in INTERPRETER_ACTIVITIES
+            if getattr(a, "__temporal_activity_definition").name == "interpreter.core_evaluate"
+        ]
+        result = await served(
+            EvaluateExpressionInput(
+                expression="nodes.n_body.data.done == true",
+                context={"nodes": {"n_body": {"data": payload_refs.make_marker(ref.model_dump())}}},
+            )
+        )
+        assert result.taken is True

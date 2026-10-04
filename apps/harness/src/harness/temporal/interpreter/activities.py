@@ -39,6 +39,8 @@ from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig,
 from harness.temporal.interpreter.models import (
     ContextPathRequest,
     ContextPathResult,
+    EvaluateExpressionInput,
+    EvaluateExpressionResult,
     LiveOutputsRequest,
     LiveOutputsResult,
     NodeActivityInput,
@@ -355,21 +357,42 @@ def node_activity_envelope(fn: NodeActivityFn) -> NodeActivityFn:
     return _enveloped
 
 
-def _takes_node_input(fn: Callable[..., Any]) -> bool:
+def _first_param_type(fn: Callable[..., Any]) -> Any:
     try:
         hints = typing.get_type_hints(fn)
-    except Exception:  # noqa: BLE001 — an unresolvable hint is simply not a node activity
-        return False
+    except Exception:  # noqa: BLE001 — an unresolvable hint is simply not ours to wrap
+        return None
     params = list(inspect.signature(fn).parameters)
-    return bool(params) and hints.get(params[0]) is NodeActivityInput
+    return hints.get(params[0]) if params else None
+
+
+def _evaluate_envelope(
+    fn: Callable[[EvaluateExpressionInput], Awaitable[EvaluateExpressionResult]],
+) -> Callable[[EvaluateExpressionInput], Awaitable[EvaluateExpressionResult]]:
+    """``core.loop``'s ``until`` evaluation sees VALUES too: a body output it reads may have
+    been offloaded (R-3), and CEL over a claim-check marker would silently read nothing."""
+
+    async def _enveloped(payload: EvaluateExpressionInput) -> EvaluateExpressionResult:
+        if _has_reference(payload.context):
+            payload = payload.model_copy(
+                update={"context": await _resolve_references(payload.context, {})}
+            )
+        return await fn(payload)
+
+    _enveloped.__name__ = getattr(fn, "__name__", "evaluate")
+    _enveloped.__qualname__ = getattr(fn, "__qualname__", _enveloped.__name__)
+    return _enveloped
 
 
 def _enveloped_activity(fn: Callable[..., Any]) -> Callable[..., Any]:
     """The registered form of one node activity: the envelope, under the activity's own name."""
-    if not _takes_node_input(fn):
-        return fn
+    first = _first_param_type(fn)
     name = getattr(fn, "__temporal_activity_definition").name
-    return activity.defn(name=name)(node_activity_envelope(fn))
+    if first is NodeActivityInput:
+        return activity.defn(name=name)(node_activity_envelope(fn))
+    if first is EvaluateExpressionInput:
+        return activity.defn(name=name)(_evaluate_envelope(fn))
+    return fn
 
 
 #: The activity callables the seventeen catalogue actions run, derived FROM the catalogue rather
