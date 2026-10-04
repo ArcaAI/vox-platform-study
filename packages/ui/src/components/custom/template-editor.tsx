@@ -159,7 +159,11 @@ function pathOption(entry: VariablePath, apply?: Completion['apply'], sections?:
 function rankedOptions(paths: readonly VariablePath[], applyFor?: (entry: VariablePath) => Completion['apply']): PathCompletion[] {
   const sections = sectionsOf(paths);
   return paths
-    .map((entry, index) => ({ option: pathOption(entry, applyFor?.(entry), sections), index, rank: entry.group ? (sections.get(entry.group)?.rank ?? 0) : -1 }))
+    .map((entry, index) => ({
+      option: pathOption(entry, applyFor?.(entry), sections),
+      index,
+      rank: entry.group ? (sections.get(entry.group)?.rank ?? 0) : -1,
+    }))
     .sort((a, b) => a.rank - b.rank || (b.option.boost ?? 0) - (a.option.boost ?? 0) || a.index - b.index)
     .map((entry) => entry.option);
 }
@@ -296,7 +300,13 @@ function editorTheme(minLines: number): Extension {
       color: 'var(--accent-foreground)',
     },
     '.cm-completionDetail': { color: 'var(--muted-foreground)', fontStyle: 'normal', marginLeft: '0.5rem' },
-    '.cm-completionSection': { color: 'var(--muted-foreground)', fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: '600', padding: '0.25rem 0.5rem' },
+    '.cm-completionSection': {
+      color: 'var(--muted-foreground)',
+      fontFamily: 'var(--font-sans)',
+      fontSize: '11px',
+      fontWeight: '600',
+      padding: '0.25rem 0.5rem',
+    },
     '.cm-completion-disabled': { opacity: '0.6' },
     '.cm-completionInfo': { padding: '0.375rem 0.5rem', maxWidth: '20rem' },
     // Wavy underlines from tokens instead of CodeMirror's fixed-colour SVG.

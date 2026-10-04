@@ -6,7 +6,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { renderWithProviders } from '@/test/render';
 import { GraphStoreProvider, useGraphStoreApi } from '../../../store';
 import type { GraphStoreNode } from '../../../store/types';
@@ -25,9 +25,12 @@ function node(id: string, type: string, config: Record<string, unknown> = {}): G
   return { id, type, position: { x: 0, y: 0 }, safetyClasses: [], config };
 }
 
-let api: ReturnType<typeof useGraphStoreApi> | null = null;
+const holder: { api: ReturnType<typeof useGraphStoreApi> | null } = { api: null };
 function Capture({ children }: { children: ReactNode }) {
-  api = useGraphStoreApi();
+  const storeApi = useGraphStoreApi();
+  useEffect(() => {
+    holder.api = storeApi;
+  }, [storeApi]);
   return <>{children}</>;
 }
 
@@ -40,7 +43,7 @@ function mount(readOnly = false) {
       </Capture>
     </GraphStoreProvider>,
   );
-  act(() => api?.getState().hydrate([node('t', 'core.trigger'), node('a', 'core.agent', { agentRef: { slug: 'asr' } }), node('o', 'core.output')], [], { connections: ['api'], sources: [] }));
+  act(() => holder.api?.getState().hydrate([node('t', 'core.trigger'), node('a', 'core.agent', { agentRef: { slug: 'asr' } }), node('o', 'core.output')], [], { connections: ['api'], sources: [] }));
   return { ...view, onOpenChange };
 }
 
@@ -71,8 +74,8 @@ describe('SettingsDialog', () => {
     const { onOpenChange } = mount();
     fireEvent.click(checkbox(/^webhook/i));
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    expect(api?.getState().settings).toEqual({ connections: ['api', 'webhook', 'socket'], sources: [] });
-    expect(api?.getState().dirty).toBe(true);
+    expect(holder.api?.getState().settings).toEqual({ connections: ['api', 'webhook', 'socket'], sources: [] });
+    expect(holder.api?.getState().dirty).toBe(true);
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

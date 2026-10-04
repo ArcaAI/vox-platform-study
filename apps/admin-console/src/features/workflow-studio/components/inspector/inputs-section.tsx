@@ -93,13 +93,9 @@ function RowStatus({ row }: { row: InputRow }) {
   return null;
 }
 
-interface InputRowItemProps {
-  row: InputRow;
-  props: InputsSectionProps;
-}
+type InputRowItemProps = InputsSectionProps & { row: InputRow };
 
-function InputRowItem({ row, props }: InputRowItemProps) {
-  const { node, graph, agents, onConfigChange, disabled } = props;
+function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, contextSchema, contextSchemaName, contextSchemaVersion, samples, errorsFor }: InputRowItemProps) {
   const [fixedMode, setFixedMode] = useState(false);
   const binding = row.binding;
   const isValue = binding !== null && 'value' in binding;
@@ -113,16 +109,16 @@ function InputRowItem({ row, props }: InputRowItemProps) {
     settings: graph.settings,
     nodeId: node.id,
     agents,
-    contextSchema: props.contextSchema,
-    contextSchemaName: props.contextSchemaName,
-    contextSchemaVersion: props.contextSchemaVersion,
+    contextSchema: contextSchema,
+    contextSchemaName: contextSchemaName,
+    contextSchemaVersion: contextSchemaVersion,
     targetType: row.type,
     purpose: row.origin === 'prompt' ? 'template' : 'binding',
-    samples: props.samples,
+    samples: samples,
   });
   const phi = groups.some((group) => group.items.some((item) => binding !== null && 'from' in binding && item.raw === binding.from && item.phiClass === 'PHI'));
   const write = (next: Binding | null) => onConfigChange(withRowBinding(node.config, row, next));
-  const errors = props.errorsFor?.(row) ?? [];
+  const errors = errorsFor?.(row) ?? [];
 
   return (
     <li
@@ -188,7 +184,7 @@ function InputRowItem({ row, props }: InputRowItemProps) {
             aria-label={`Text for ${row.name}`}
             value={(binding as { template: string }).template}
             onChange={(next) => write({ template: next })}
-            paths={groupsToVariablePaths(pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: props.contextSchema, purpose: 'template', samples: props.samples }))}
+            paths={groupsToVariablePaths(pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: contextSchema, purpose: 'template', samples: samples }))}
             minLines={2}
             readOnly={disabled}
             placeholder="Type text, and {{ or / to insert a field"
@@ -291,7 +287,7 @@ export function InputsSection(props: InputsSectionProps) {
       ) : null}
       <ul className="flex flex-col gap-2">
         {rows.map((row) => (
-          <InputRowItem key={row.key} row={row} props={props} />
+          <InputRowItem key={row.key} row={row} {...props} />
         ))}
       </ul>
     </section>

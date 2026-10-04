@@ -9,7 +9,7 @@
  */
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { NODE_CONFIG_SCHEMAS } from '@arcaai/workflow-contract';
 import { renderWithProviders } from '@/test/render';
 import { GraphStoreProvider, useGraphStoreApi } from '../../../store';
@@ -51,9 +51,12 @@ const EDGES: GraphStoreEdge[] = [
   { id: 'e2', source: 'a', sourceHandle: 'next', target: 'w', targetHandle: 'after' },
 ];
 
-let api: ReturnType<typeof useGraphStoreApi> | null = null;
+const holder: { api: ReturnType<typeof useGraphStoreApi> | null } = { api: null };
 function Capture({ children }: { children: ReactNode }) {
-  api = useGraphStoreApi();
+  const storeApi = useGraphStoreApi();
+  useEffect(() => {
+    holder.api = storeApi;
+  }, [storeApi]);
   return <>{children}</>;
 }
 
@@ -126,7 +129,7 @@ describe('InspectorPanel — composing inside the editor store', () => {
 
   it('renders the step name and the Inputs panel, never the raw `inputs` / prompt-variable JSON', () => {
     renderInStore(<Mounted nodeId="w" />);
-    act(() => api?.getState().hydrate(NODES, EDGES));
+    act(() => holder.api?.getState().hydrate(NODES, EDGES));
     expect(screen.getByRole('textbox', { name: /step name/i })).toBeTruthy();
     const inputs = screen.getByRole('region', { name: /inputs/i });
     expect(within(inputs).getByText('message')).toBeTruthy();
@@ -136,18 +139,18 @@ describe('InspectorPanel — composing inside the editor store', () => {
 
   it('tells the author Start and End can`t be deleted (W1)', () => {
     renderInStore(<Mounted nodeId="t" />);
-    act(() => api?.getState().hydrate(NODES, EDGES));
+    act(() => holder.api?.getState().hydrate(NODES, EDGES));
     expect(screen.getByText(/part of every workflow and can’t be deleted/)).toBeTruthy();
   });
 
   it('opens the link view for a selected edge, and deletes it through the store', () => {
     renderInStore(<Mounted nodeId={null} />);
     act(() => {
-      api?.getState().hydrate(NODES, EDGES);
-      api?.getState().selectEdge('e2');
+      holder.api?.getState().hydrate(NODES, EDGES);
+      holder.api?.getState().selectEdge('e2');
     });
     expect(screen.getByRole('region', { name: 'Link' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /delete this link/i }));
-    expect(api?.getState().edges.map((edge) => edge.id)).toEqual(['e1']);
+    expect(holder.api?.getState().edges.map((edge) => edge.id)).toEqual(['e1']);
   });
 });

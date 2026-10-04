@@ -205,7 +205,6 @@ export function planConnection(input: PlanConnectionInput): ConnectionPlan {
   const branch = input.sourceHandle && sourceField === null && branchIds.includes(input.sourceHandle) ? input.sourceHandle : null;
 
   const sourceIo = nodeIoOf(source, agents);
-  const targetIo = nodeIoOf(target, agents);
   const sourceOutputs = (sourceIo?.outputs ?? {}) as Record<string, { type: IoType }>;
   const targetPorts = canvasPortsOf(target, agents);
   const targetInputs = hasExactIo(target, agents) ? (targetPorts?.inputs ?? []) : [];

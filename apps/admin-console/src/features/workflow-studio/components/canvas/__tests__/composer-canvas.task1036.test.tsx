@@ -11,7 +11,7 @@
  */
 import { act, fireEvent, screen } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { renderWithProviders } from '@/test/render';
 import { GraphStoreProvider, useGraphStoreApi } from '../../../store';
 import type { GraphStoreEdge, GraphStoreNode } from '../../../store/types';
@@ -59,9 +59,12 @@ function node(id: string, type: string, config: Record<string, unknown> = {}, sa
   return { id, type, position: { x: 0, y: 0 }, safetyClasses, config };
 }
 
-let api: ReturnType<typeof useGraphStoreApi> | null = null;
+const holder: { api: ReturnType<typeof useGraphStoreApi> | null } = { api: null };
 function Capture({ children }: { children: ReactNode }) {
-  api = useGraphStoreApi();
+  const storeApi = useGraphStoreApi();
+  useEffect(() => {
+    holder.api = storeApi;
+  }, [storeApi]);
   return <>{children}</>;
 }
 
@@ -73,7 +76,7 @@ function mount(nodes: GraphStoreNode[], edges: GraphStoreEdge[] = []) {
       </Capture>
     </GraphStoreProvider>,
   );
-  act(() => api?.getState().hydrate(nodes, edges));
+  act(() => holder.api?.getState().hydrate(nodes, edges));
   return view;
 }
 
@@ -114,8 +117,8 @@ describe('ComposerCanvas — connecting', () => {
   it('auto-maps on connect: an ordering link plus the binding (D-C)', () => {
     mount([START, ASR, WRITER]);
     act(() => latest().onConnect({ source: 'asr1', sourceHandle: 'out:transcript', target: 'w', targetHandle: 'in:message' }));
-    expect(api?.getState().edges).toEqual([expect.objectContaining({ source: 'asr1', sourceHandle: 'next', target: 'w', targetHandle: 'after' })]);
-    expect(api?.getState().nodes.find((candidate) => candidate.id === 'w')?.config.inputs).toEqual({ message: { from: 'nodes.asr1.outputs.transcript' } });
+    expect(holder.api?.getState().edges).toEqual([expect.objectContaining({ source: 'asr1', sourceHandle: 'next', target: 'w', targetHandle: 'after' })]);
+    expect(holder.api?.getState().nodes.find((candidate) => candidate.id === 'w')?.config.inputs).toEqual({ message: { from: 'nodes.asr1.outputs.transcript' } });
   });
 
   it('refuses an incompatible pair while dragging and says why', () => {
@@ -133,10 +136,10 @@ describe('ComposerCanvas — connecting', () => {
       { id: 'e1', source: 'w', sourceHandle: 'next', target: 'w3', targetHandle: 'after' },
     ]);
     act(() => latest().onConnect({ source: 'w2', sourceHandle: 'out:text', target: 'w3', targetHandle: 'in:message' }));
-    expect(api?.getState().edges).toHaveLength(1);
+    expect(holder.api?.getState().edges).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Use first available' }));
-    expect(api?.getState().edges).toHaveLength(2);
-    expect(api?.getState().nodes.find((candidate) => candidate.id === 'w3')?.config.inputs).toEqual({
+    expect(holder.api?.getState().edges).toHaveLength(2);
+    expect(holder.api?.getState().nodes.find((candidate) => candidate.id === 'w3')?.config.inputs).toEqual({
       message: { firstOf: ['nodes.w.outputs.text', 'nodes.w2.outputs.text'] },
     });
   });
@@ -144,14 +147,14 @@ describe('ComposerCanvas — connecting', () => {
   it('refuses deleting Start, saying why (W1)', () => {
     mount([START, ASR]);
     act(() => latest().onDeleteRequest('t'));
-    expect(api?.getState().nodes).toHaveLength(2);
+    expect(holder.api?.getState().nodes).toHaveLength(2);
     expect(screen.getByRole('status').textContent).toMatch(/can’t be deleted/);
   });
 
   it('selecting a link selects it in the store (the edge inspector)', () => {
     mount([START, ASR], [{ id: 'e1', source: 't', sourceHandle: 'next', target: 'asr1', targetHandle: 'after' }]);
     act(() => latest().onEdgeSelect('e1'));
-    expect(api?.getState().selectedEdgeId).toBe('e1');
+    expect(holder.api?.getState().selectedEdgeId).toBe('e1');
   });
 });
 
@@ -164,7 +167,7 @@ describe('ComposerCanvas — adding steps', () => {
     mount([ASR, WRITER], [{ id: 'e1', source: 'asr1', sourceHandle: 'next', target: 'w', targetHandle: 'after' }]);
     act(() => latest().onEdgeInsert('e1'));
     fireEvent.click(screen.getByRole('option', { name: /merge/i }));
-    const state = api?.getState();
+    const state = holder.api?.getState();
     const merge = state?.nodes.find((candidate) => candidate.type === 'core.data');
     expect(merge?.config.label).toBe('Merge');
     expect(state?.edges.map((edge) => `${edge.source}->${edge.target}`).sort()).toEqual([`asr1->${merge?.id}`, `${merge?.id}->w`].sort());
@@ -175,7 +178,7 @@ describe('ComposerCanvas — adding steps', () => {
     mount([START, ASR]);
     act(() => latest().onConnectEndOnPane({ nodeId: 'asr1', handleId: 'out:transcript' }, { x: 400, y: 120 }));
     fireEvent.click(screen.getByRole('option', { name: /^output\b/i }));
-    const state = api?.getState();
+    const state = holder.api?.getState();
     const added = state?.nodes.find((candidate) => candidate.type === 'core.output');
     expect(added?.position).toEqual({ x: 400, y: 120 });
     expect(state?.edges.some((edge) => edge.source === 'asr1' && edge.target === added?.id)).toBe(true);
