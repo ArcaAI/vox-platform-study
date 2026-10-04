@@ -670,6 +670,52 @@ Lane briefs carry the cross-lane interfaces:
 - A2 edited the WS gateway and `internal.module.ts`, outside its strict ownership list, because the deliverables required it. No overlap with any other lane.
 - The tags service and controller had partial RED evidence. The full gate covers them.
 
+### 6.3 Contract review (`fable`, 2026-10-04) and freeze
+
+**Gate verdicts:**
+
+| Gate | Verdict |
+|---|---|
+| **G1:** every seeded workflow translates with identical data flow | **YES**, conditional. `firstOf` reproduces today's last-write-wins order exactly (fixture `legacy-seeded-consultation-shape`). Two caveats: publish compiles without agent views, and two fan-ins per ArcaAI graph cannot be re-authored. |
+| **G2:** every §10.3 event derivable | **Catalogue YES; derivability NO for four:** per-node outputs on the trace, required token counts, `nodeId` for agent runs and session transcripts, and **no run-level `seq` sequencer** shared by the two producers. |
+| **G3:** PHI classes | **YES** on every leaf. Declared reads are complete for bindings and templates; CEL and the flat aliases are not covered. |
+
+The orchestrator re-checked three blockers in code before acting:
+- `buildCompilerContext` passes no agents.
+- `core.data` has a single input.
+- No run-level seq exists (`run_events.py` only has per-node delta sequences).
+
+**Resolutions.** The reviewer's recommendation was adopted for each of Q1–Q16.
+
+| Q | Resolution |
+|---|---|
+| Q1 | **Amends OD-18's wording:** an explicit ordered coalesce `{ firstOf: [...] }` is authorable. Implicit fan-in stays refused. |
+| Q2 | Text `message` is optional, with an `AGENT_NOTHING_BOUND` warning. |
+| Q3 | Accepted (`any`, NER `text`, router `input`, `document→text`), with a C2b brief item: auto-bind `nodes.<router>.outputs.input` on branch connects. |
+| Q4 | No INFO severity. |
+| Q5 | Accepted as is. |
+| Q6 | Settings-first schema resolution. WF-SET-003 is exempt for consultation-sourced ASR. |
+| Q7 | Accepted, with deprecation entries. |
+| Q8 | §8.6 switch list confirmed. `languageMode` / `fallback.*` / `guards` stay platform-managed. |
+| Q9 | `{ variables }` input branch added. |
+| Q10 | No DNA sub-switches. |
+| Q11 | `image/png` and `image/webp` added. |
+| Q12 | Keep `CANCELED`; add `?protocol=2`. |
+| Q13 | Sound, with the gap rule fixed. |
+| Q14 | A `delivery` change is BREAKING. |
+| Q15 | **Semantic registry checksum.** Optional config properties never flag published definitions NEEDS_REVIEW. |
+| Q16 | Prompt tags are normalised to lower-case (plus a back-fill SQL) instead of refused. |
+
+**Freeze lanes**, both from base `ab6c6f756`:
+- **F1 graph** (`task-1036/f1-freeze-graph`, opus): items 1, 2, 4, 5, 6, 7.
+- **F2 protocol** (`task-1038/f2-freeze-protocol`, opus): the single Redis Lua sequencer (`INCR` + `XADD` with `seq`), public gap semantics, `?protocol=2`, `nodeId:'agent'`, per-node `output.data` on the admin trace, optional token counts, fixed-label public errors, tag normalisation, and `protocol-v2.md`.
+
+**Orchestrator:**
+- deprecation-register entries (added);
+- seed regeneration after F1 (checksum, retired `transcript` array in `25-agents.ts`, agent prompt pins for W3);
+- barrels and one re-verification;
+- B1 brief additions: NodeIO envelope mapping, the dual `nodes.*` scope, no `consultation` in CEL, `run.now = workflow.now()`, loop `item` binding.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received

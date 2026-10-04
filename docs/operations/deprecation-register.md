@@ -194,6 +194,20 @@ Redis-persisted streaming sessions and queued Dramatiq batch jobs carrying a sor
 `apps/stt` Literal rejects them — a recovered session is skipped with a logged reason, a queued job fails
 validation and spends its retries (`max_retries=3`).
 
+### TASK-1036 / TASK-1038 — legacy data-flow and delivery shapes, deprecated (2026-10-04)
+
+Each item stays readable for **one release** after the TASK-1036 programme ships, then is removed in a follow-up ticket.
+
+| Item | Where | Status |
+|---|---|---|
+| Flat `context.<name>` platform variables (`safe_age`, `safe_gender`, `safe_dob`, `safe_vitals`, `formatted_test_results`, `formatted_previous_visits`, `current_department`, `visit_type`, `language_name`, `dna_style_text`, `dna_redaction_rules_text`) | `platform-context-variables.ts`; gateway prompt assembly, realtime lane and durable handoff | **deprecated**. The replacement is `consultation.*` declared reads (`CONSULTATION_READ_SCHEMA_V1`; aliases in `PLATFORM_CONTEXT_ALIASES`). Until removal the aliases keep riding the legacy gateway injection and are NOT declared reads. |
+| `nodes.<id>.<key>` (raw activity-output keys) | harness run scope; `{{…}}` templates and CEL | **deprecated**. Use `nodes.<id>.outputs.<field>` (NodeIO). Both are served for one release. |
+| Edge-implied port bindings (`fromPort → toPort` carrying data) | `compiler.ts` legacy translation; graphs without node `inputs` | **deprecated**. Use node `inputs` bindings (`from` / `value` / `template` / `firstOf`). The compiler translates legacy graphs; publish warns for one release. |
+| `core.trigger.config.kinds` and `core.output.config.protocols` as the source of connection/source settings | `node-config-schemas.ts`; gateway exposure gate | **deprecated**. Use `graph.settings.connections` / `graph.settings.sources`; `effectiveSettings()` falls back to the legacy fields for one release. |
+| The six legacy stream frame shapes (workflow SSE/WS envelope, text-agent SSE, transcription-job SSE, consultation-job SSE, STT WS, TTS WS) | gateway streams; vox-node / vox clients | **deprecated** in favour of run protocol v2 (`packages/async-contract/src/run-protocol.ts`; selected by `x-hope-run-protocol: 2` or `?protocol=2`). SDK 5.0 (TASK-1039) normalises both for one release. |
+| Text agent input field `text` | `AGENT_IO_DEFAULTS`, agent invocation | **deprecated alias** of `message` (OD-8) |
+| Node-level `documentTemplate*` and `dna` on `core.agent` | `node-config-schemas.ts` | **deprecated**. The agent's `instruction.documentTemplate` / `parameters.dna` take over (OD-7); node fields act as overrides for one release. |
+
 ## Environment variables (TASK-940, TASK-870 item 12)
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
