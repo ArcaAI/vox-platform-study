@@ -176,7 +176,8 @@ describe('useConsultationJob', () => {
 
       expect(sseConstructorSpy).toHaveBeenCalledTimes(1);
       const ctorArgs = sseConstructorSpy.mock.calls[0]!;
-      expect(ctorArgs[0]).toBe('consultation-jobs');
+      // G6 (TASK-1038): the gateway compares the ticket scope by strict equality with `consultation_job:<jobId>`.
+      expect(ctorArgs[0]).toBe('consultation_job:job-1');
       expect(ctorArgs[1]).toBe(mockStore.apiClient);
       expect(ctorArgs[2]).toBeDefined();
 
@@ -318,6 +319,59 @@ describe('useConsultationJob', () => {
       });
 
       expect(callbacks.onResult).toHaveBeenCalledWith({ summary: 'Test summary' });
+    });
+
+    // G6 — since TASK-1038 B3a every frame is NAMED and carries the FULL job status in the gateway's
+    // vocabulary (`RUNNING`, `COMPLETED`, `CANCELLED`, …), `result` included.
+    describe('named frames carrying the full job status (G6)', () => {
+      const fullStatus = (overrides: Record<string, unknown> = {}) =>
+        JSON.stringify({ jobId: 'job-1', type: 'PRE_SUMMARY', status: 'RUNNING', consultationId: 'c-1', progress: 40, ...overrides });
+
+      function stream(callbacks: Record<string, unknown>) {
+        const { result } = renderHook(() => useConsultationJob());
+        act(() => {
+          result.current.streamJob('job-1', callbacks);
+        });
+        const handler = (name: string) => mockSSEInstance.onEvent.mock.calls.find((call: any[]) => call[0] === name)?.[1];
+        return { result, status: handler('status'), progress: handler('progress'), resultFrame: handler('result') };
+      }
+
+      it('maps the gateway status vocabulary onto JobStatus', () => {
+        const callbacks = { onStatus: vi.fn() };
+        const { result, status } = stream(callbacks);
+
+        act(() => status(fullStatus({ status: 'PENDING' })));
+        expect(result.current.status).toBe('pending');
+        act(() => status(fullStatus({ status: 'RUNNING' })));
+        expect(result.current.status).toBe('processing');
+
+        expect(callbacks.onStatus).toHaveBeenNthCalledWith(1, 'pending');
+        expect(callbacks.onStatus).toHaveBeenNthCalledWith(2, 'processing');
+      });
+
+      it('treats COMPLETED, FAILED and CANCELLED (and the CANCELED spelling) as terminal and closes the stream', () => {
+        for (const terminal of ['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED']) {
+          mockSSEInstance.disconnect.mockClear();
+          mockSSEInstance.onEvent.mockClear();
+          const { result, status } = stream({});
+          act(() => status(fullStatus({ status: terminal })));
+          expect(mockSSEInstance.disconnect, terminal).toHaveBeenCalled();
+          expect(result.current.isStreaming, terminal).toBe(false);
+        }
+      });
+
+      it('keeps the full job in state', () => {
+        const { result, status } = stream({});
+        act(() => status(fullStatus({ status: 'RUNNING', progress: 40 })));
+        expect(result.current.job).toMatchObject({ id: 'job-1', status: 'RUNNING', progress: 40, consultationId: 'c-1' });
+      });
+
+      it('hands onResult the job RESULT, not the whole status frame', () => {
+        const callbacks = { onResult: vi.fn() };
+        const { resultFrame } = stream(callbacks);
+        act(() => resultFrame(fullStatus({ status: 'COMPLETED', result: { summary: 'S' } })));
+        expect(callbacks.onResult).toHaveBeenCalledWith({ summary: 'S' });
+      });
     });
 
     it('should handle malformed JSON in status events gracefully', () => {

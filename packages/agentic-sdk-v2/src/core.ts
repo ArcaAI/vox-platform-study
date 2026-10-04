@@ -66,6 +66,8 @@ export {
   // workflow invocation (run / watch / cancel). No audio or ML, so
   // it belongs in /core: an admin or dashboard surface runs workflows too.
   useWorkflowRun,
+  // TASK-1039: the run handle — one hook for a workflow OR agent run (start / text / events / result / cancel, resumable).
+  useRun,
   // TASK-890: the workflow human-review surface, and invoking a published agent. Both are
   // plain reads/writes with no audio or ML, so they belong in /core alongside useWorkflowRun.
   useWorkflowReview,
@@ -260,6 +262,14 @@ export type {
 } from './types';
 
 export { TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
+
+// TASK-1039 — `useRun`'s types, and the errors it reports by name.
+export type { StartRunOptions, UseRunOptions, UseRunReturn } from './hooks';
+export type { RunEvent } from './core/run/runState';
+export type { RunStatus, RunResult, RunError, RunEventV2, RunEventType } from './core/run/run-protocol';
+export { RunFailedError, RunResultError, RunResultIntegrityError } from './core/run/errors';
+export { RunStreamInterruptedError } from './core/run/RunStreamClient';
+
 
 /**
  * The reserved run-identity keys and their detector — exported so a caller can

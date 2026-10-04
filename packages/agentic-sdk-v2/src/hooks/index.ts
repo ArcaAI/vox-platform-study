@@ -70,6 +70,11 @@ export {
   type UseWorkflowRunReturn,
 } from './useWorkflowRun';
 
+// TASK-1039: one hook for one run, workflow OR agent — start with an Idempotency-Key, stream protocol
+// v2 over a run-scoped ticket, resume by seq (also on mount), read the result. Replaces the
+// frame-level `useWorkflowRun` for new code. (`useRunAudio` lives in the plugins entry: it needs capture.)
+export { useRun, type StartRunOptions, type UseRunOptions, type UseRunReturn } from './useRun';
+
 // TASK-890: release a `core.humanReview` node — the durable wait a run parks on.
 export { useWorkflowReview, type UseWorkflowReviewReturn } from './useWorkflowReview';
 

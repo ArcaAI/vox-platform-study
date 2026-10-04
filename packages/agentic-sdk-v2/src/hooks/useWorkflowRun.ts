@@ -197,6 +197,13 @@ const STREAM_EVENT_TYPES: readonly string[] = Object.freeze([
   'workflow.token.delta',
 ]);
 
+/**
+ * @deprecated TASK-1039 (SDK 5.0) — for running ONE workflow, use {@link useRun} (`useRun({ workflow })`):
+ * it sends an `Idempotency-Key`, speaks run protocol v2 (typed events, `text`, `result`, `status`)
+ * instead of surfacing the raw legacy frames, resumes by `seq` on mount, and works for agent runs too.
+ * This hook stays for its catalogue (`workflows`, `schema`) and review-adjacent callers, and is
+ * removed with the legacy frame shapes (OD-23).
+ */
 export function useWorkflowRun(options: UseWorkflowRunOptions = {}): UseWorkflowRunReturn {
   const { consultationId, skipInitialLoad = false, maxEvents = DEFAULT_MAX_EVENTS, transport = 'sse' } = options;
   const { execute, isLoading, error, apiClient, logger } = useApiOperation('useWorkflowRun');

@@ -11,12 +11,22 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useAgenticStore } from '../store';
-import { CONSULTATION_JOB_ENDPOINTS, CONTEXT_ENDPOINTS } from '../core/constants';
+import { CONSULTATION_JOB_ENDPOINTS, CONTEXT_ENDPOINTS, consultationJobStreamScope } from '../core/constants';
 import { SSEClient, type SSEApiClient } from '../core/SSEClient';
 import type { ConsultationJob, JobStatus, PollOptions, JobStreamCallbacks } from '../types/consultation-job';
 import { isTerminalStatus } from '../types/consultation-job';
 
-const SSE_SCOPE = 'consultation-jobs';
+/**
+ * The gateway's job status vocabulary (`PENDING` / `RUNNING` / `COMPLETED` / `FAILED` /
+ * `CANCELLED`, and the `CANCELED` spelling a read may still carry) onto {@link JobStatus}. A value
+ * already in the SDK's own vocabulary (`processing`) passes through unchanged.
+ */
+function toJobStatus(raw: unknown): JobStatus {
+  const lowered = typeof raw === 'string' ? raw.toLowerCase() : '';
+  if (lowered === 'running') return 'processing';
+  if (lowered === 'canceled') return 'cancelled';
+  return lowered as JobStatus;
+}
 
 export interface UseConsultationJobReturn {
   job: ConsultationJob | null;
@@ -106,7 +116,7 @@ export function useConsultationJob(): UseConsultationJobReturn {
       setIsStreaming(true);
       setError(null);
 
-      const sseClient = new SSEClient(SSE_SCOPE, apiClient as unknown as SSEApiClient, logger);
+      const sseClient = new SSEClient(consultationJobStreamScope(jobId), apiClient as unknown as SSEApiClient, logger);
       sseClientRef.current = sseClient;
 
       const cleanup = () => {
@@ -127,9 +137,12 @@ export function useConsultationJob(): UseConsultationJobReturn {
       sseClient.onEvent('status', (data: string) => {
         try {
           const parsed = JSON.parse(data);
-          setStatus(parsed.status as JobStatus);
-          callbacks.onStatus?.(parsed.status);
-          if (isTerminalStatus(parsed.status)) {
+          const next = toJobStatus(parsed.status);
+          // Every frame carries the FULL job status (TASK-1038 B3a), so the job in state is that frame.
+          if (typeof parsed.jobId === 'string') setJob({ ...parsed, id: parsed.jobId } as ConsultationJob);
+          setStatus(next);
+          callbacks.onStatus?.(next);
+          if (isTerminalStatus(next)) {
             cleanup();
             const cId = parsed.consultationId || store.consultation?.id;
             if (cId) refreshContextItems(cId);
@@ -159,7 +172,10 @@ export function useConsultationJob(): UseConsultationJobReturn {
       sseClient.onEvent('result', (data: string) => {
         try {
           const parsed = JSON.parse(data);
-          callbacks.onResult?.(parsed);
+          // The gateway's `result` frame is the full job status; the job's result rides on it. A
+          // bare result object (the pre-TASK-1038 frame) is passed through as it was.
+          const isJobFrame = parsed !== null && typeof parsed === 'object' && 'status' in parsed && 'result' in parsed;
+          callbacks.onResult?.(isJobFrame ? parsed.result : parsed);
         } catch (err) {
           logger?.warn('Failed to parse SSE result event', {
             operation: 'streamJob',

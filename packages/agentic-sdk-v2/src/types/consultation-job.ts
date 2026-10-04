@@ -31,7 +31,7 @@ export interface JobStreamCallbacks {
   onError?: (error: Error) => void;
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled', 'canceled']);
 
 /**
  * Case-insensitive terminal-status check. The backend has
