@@ -15,8 +15,15 @@ import {
   AGENT_SSE_RESPONSE_HEADERS,
   AGENT_STREAM_RESUME_NOTE,
   NO_TEXT_JOB_MODE_NOTE,
+  RUN_ENVELOPE_NOTE,
+  RUN_ERROR_CODES,
+  RUN_RESULT_NOTE,
+  RUN_RESYNC_NOTE,
+  RUN_V2_EVENTS,
   agentSseCurlSnippet,
   agentSseFetchSnippet,
+  runEventsCurlSnippet,
+  runEventsFetchSnippet,
 } from '../sse-frame-protocol';
 
 const BASE_URL = 'https://api.example.com';
@@ -60,6 +67,9 @@ describe('the two honest absences', () => {
     expect(NO_TEXT_JOB_MODE_NOTE).toMatch(/stream/);
     // The legacy task plane exists but cannot name an agent — the note must not offer it as this agent's lane.
     expect(NO_TEXT_JOB_MODE_NOTE).toMatch(/text-generations/);
+    // …and points at the lane that IS asynchronous: the agent run resource (SDK 5, OD-26).
+    expect(NO_TEXT_JOB_MODE_NOTE).toContain('POST /agents/{slug}/runs');
+    expect(NO_TEXT_JOB_MODE_NOTE).toContain('hope.agents.run');
   });
 });
 
@@ -91,5 +101,62 @@ describe('the manual samples call the route they document', () => {
   it('the body is rendered flat, never wrapped in the workflow envelope', () => {
     expect(curl).not.toMatch(/"input"\s*:/);
     expect(fetchSnippet).not.toMatch(/"input"\s*:/);
+  });
+});
+
+/**
+ * TASK-1036 lane C4 — run protocol v2, the resumable lane. `invocations?mode=stream` (above) is
+ * sugar that cannot resume; a RUN is what a developer follows with Last-Event-ID.
+ */
+describe('run protocol v2 — the public events', () => {
+  it('lists only business-plane events (no admin-audience debug event)', () => {
+    const types = RUN_V2_EVENTS.map((event) => event.type);
+    for (const adminOnly of ['prompt.composed', 'data.bound', 'model.request', 'guardrail.inbound', 'input.validated']) expect(types).not.toContain(adminOnly);
+    expect(types).toEqual(
+      expect.arrayContaining(['run.started', 'run.completed', 'run.failed', 'run.cancelled', 'run.resync', 'node.started', 'node.failed', 'output.text.delta', 'output.audio.delta', 'output.data', 'ping']),
+    );
+  });
+
+  it('marks exactly the three terminal run events', () => {
+    expect(RUN_V2_EVENTS.filter((event) => event.terminal).map((event) => event.type)).toEqual(['run.completed', 'run.failed', 'run.cancelled']);
+  });
+
+  it('error codes are SCREAMING_SNAKE identifiers (the fixed public labels, never a value)', () => {
+    for (const code of RUN_ERROR_CODES) expect(code).toMatch(/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/);
+    expect(RUN_ERROR_CODES).toContain('INPUT_INVALID');
+  });
+
+  it('states how v2 is selected, how a cursor resumes, and where the result is', () => {
+    expect(RUN_ENVELOPE_NOTE).toMatch(/x-hope-run-protocol: 2/);
+    expect(RUN_ENVELOPE_NOTE).toMatch(/\?protocol=2/);
+    expect(RUN_RESYNC_NOTE).toMatch(/Last-Event-ID/);
+    expect(RUN_RESYNC_NOTE).toMatch(/gap \| expired \| cursor_invalid \| unavailable/);
+    expect(RUN_RESULT_NOTE).toMatch(/64 KiB/);
+    expect(RUN_RESULT_NOTE).toMatch(/RUN_NOT_TERMINAL/);
+  });
+});
+
+describe('run protocol v2 — the manual samples', () => {
+  it('a workflow follows /stream, an agent follows /events, both with the protocol header and a cursor', () => {
+    const workflow = runEventsCurlSnippet('workflow', 'discharge-summary', BASE_URL);
+    const agent = runEventsCurlSnippet('agent', 'scribe', BASE_URL);
+    expect(workflow).toContain('/api/v1/workflows/discharge-summary/runs/$RUN_ID/stream');
+    expect(agent).toContain('/api/v1/agents/scribe/runs/$RUN_ID/events');
+    for (const snippet of [workflow, agent]) {
+      expect(snippet).toContain('curl -N');
+      expect(snippet).toContain('x-hope-run-protocol: 2');
+      expect(snippet).toContain('Last-Event-ID');
+    }
+  });
+
+  it('the fetch reader drops replays, honours run.resync and stops on a terminal event', () => {
+    const code = runEventsFetchSnippet('agent', 'scribe', BASE_URL);
+    expect(code).toContain("'x-hope-run-protocol': '2'");
+    expect(code).toContain('response.body');
+    expect(code).not.toContain('new EventSource');
+    expect(code).toContain('run.resync');
+    expect(code).toContain('run.completed');
+    // A replayed duplicate is dropped by seq, never because the numbers jumped.
+    expect(code).toMatch(/event\.seq <= lastSeq/);
   });
 });

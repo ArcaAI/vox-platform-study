@@ -10,7 +10,17 @@
  * `?mode=blocking` (the default) answers one JSON body. `?mode=stream` answers
  * `text/event-stream`. The agent plane has NO async/job mode: there is no run id, no
  * `GET /agents/{slug}/invocations/{id}`, nothing to poll. Anything longer than the blocking
- * ceiling is the stream lane. See {@link NO_TEXT_JOB_MODE_NOTE}.
+ * ceiling is the stream lane — or, since SDK 5, an agent RUN (`POST /agents/{slug}/runs`). See
+ * {@link NO_TEXT_JOB_MODE_NOTE}.
+ *
+ * ## TASK-1036 lane C4 — the RUN stream (protocol v2) lives at the bottom of this file
+ *
+ * `invocations?mode=stream` is kept as blocking/stream SUGAR (OD-26) and still relays TEXT's own
+ * four frames, verbatim, with no resume. A RUN — `POST /workflows/{slug}/runs`,
+ * `POST /agents/{slug}/runs` — speaks run protocol v2 (`docs/implementation/TASK-1038-…/protocol-v2.md`):
+ * one envelope `{ seq, runId, type, ts, nodeId?, data }` on SSE and WS alike, selected by the
+ * `x-hope-run-protocol: 2` header or the `?protocol=2` query, resumed by `seq`. The constants and
+ * snippets under "Run protocol v2" below are what the Integration tab prints.
  *
  * ## Source of truth (file:line — the docs follow the code)
  *
@@ -90,12 +100,15 @@ export const AGENT_STREAM_RESUME_NOTE =
   'This stream does not resume. The frames carry an `id:`, but it is TEXT’s own generation cursor and the gateway ' +
   'exposes no route to reconnect against — sending Last-Event-ID has nothing to replay it. A dropped connection ends ' +
   'the invocation; re-send with the same Idempotency-Key to join the in-flight one rather than start a second. ' +
-  '(Workflow runs are the opposite: their SSE lane resumes with Last-Event-ID, which is why it is their default.)';
+  '(Runs are the opposite: a workflow run, and since SDK 5 an agent run — POST /agents/{slug}/runs, followed on ' +
+  '…/events — resume with Last-Event-ID by seq, which is why a run is the lane for anything that must survive a drop.)';
 
 /** Why there is no job lane here — said once, so nobody invents one. */
 export const NO_TEXT_JOB_MODE_NOTE =
-  'There is no job mode on the agent plane: `?mode=blocking` and `?mode=stream` are the two lanes, and an invocation ' +
-  'has no run id to poll. (The gateway does carry a task-based text plane — POST text-generations/generate with ' +
+  'There is no job mode on the invocations route: `?mode=blocking` and `?mode=stream` are its two lanes, and an invocation ' +
+  'has no run id to poll. For work that is asynchronous, pollable, idempotent and resumable, start an agent RUN instead — ' +
+  'POST /agents/{slug}/runs (hope.agents.run in @arcaai/vox-node 5.0) — and follow it on …/events. ' +
+  '(The gateway also carries a task-based text plane — POST text-generations/generate with ' +
   '`stream: true` answers a `task_id` and a resumable `stream_url` — but nothing there names a published agent: it ' +
   'selects a provider and a model directly, on the consultation:report:write scope. It is not this agent’s lane.)';
 
@@ -180,5 +193,142 @@ export function agentSseFetchSnippet(slug: string, exampleBody: Record<string, u
     ``,
     `// Browser with a signed-in user instead of a key? The same call works with`,
     `// Authorization: Bearer <jwt>. Still fetch, never EventSource — the body is a POST.`,
+  ].join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Run protocol v2 (TASK-1038 / TASK-1036 lane C4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The events a BUSINESS-PLANE reader receives (`docs/implementation/TASK-1038-…/protocol-v2.md` §3,
+ * the `public` rows). Admin-audience events (`prompt.composed`, `data.bound`, …) never reach an
+ * API key or a service account, so they are deliberately not listed.
+ */
+export interface RunV2Event {
+  type: string;
+  terminal: boolean;
+  note: string;
+}
+
+export const RUN_V2_EVENTS: readonly RunV2Event[] = Object.freeze([
+  { type: 'run.started', terminal: false, note: 'First. Carries kind (workflow | agent), slug and versionNumber.' },
+  { type: 'node.started', terminal: false, note: 'A step began. When attempt > 1, discard that node’s earlier partial output.' },
+  { type: 'output.text.delta', terminal: false, note: 'A piece of text for `field`, in order. Only End-wired or `stream` nodes send them.' },
+  { type: 'output.audio.delta', terminal: false, note: 'A base64 audio chunk for `field`, with its format and sample rate.' },
+  { type: 'output.data', terminal: false, note: 'A whole non-text output value for `field`.' },
+  { type: 'node.completed', terminal: false, note: 'A step ended: COMPLETED, DEGRADED or SKIPPED.' },
+  { type: 'node.failed', terminal: false, note: 'A step failed. error is { code, message }; willRetry says whether another attempt follows.' },
+  { type: 'run.completed', terminal: true, note: 'Terminal. durationMs, tokens, and the result as { kind: "inline", value } or { kind: "ref", … }.' },
+  { type: 'run.failed', terminal: true, note: 'Terminal. status FAILED | TIMED_OUT, with error { code, message } — the fixed public label.' },
+  { type: 'run.cancelled', terminal: true, note: 'Terminal. The type is spelled cancelled; the status is CANCELED.' },
+  { type: 'run.resync', terminal: false, note: 'The server could not replay from your cursor. Replace your state with data.snapshot and continue from its seq.' },
+  { type: 'ping', terminal: false, note: 'Keep-alive. Its seq moves your cursor past events you were never meant to see; do not deliver it.' },
+]);
+
+/** The fixed public error codes (`RUN_ERROR_MESSAGES`). A producer may use another; its message is then a generic label. */
+export const RUN_ERROR_CODES: readonly string[] = Object.freeze([
+  'RUN_TIMED_OUT',
+  'NODE_TIMED_OUT',
+  'RUN_CANCELLED',
+  'INPUT_INVALID',
+  'OUTPUT_INVALID',
+  'BINDING_UNRESOLVED',
+  'PROMPT_VARIABLE_UNRESOLVED',
+  'PAYLOAD_TOO_LARGE',
+  'MODEL_UNAVAILABLE',
+  'MODEL_ERROR',
+  'PROVIDER_NOT_CONFIGURED',
+  'AGENT_VERSION_UNAVAILABLE',
+  'GUARDRAIL_BLOCKED',
+  'CONSULTATION_READ_FAILED',
+  'DOWNSTREAM_UNAVAILABLE',
+  'INTERNAL_ERROR',
+]);
+
+export const RUN_ENVELOPE_NOTE =
+  'Every event is one JSON object { seq, runId, type, ts, nodeId?, data } — the SSE data: line, and one WebSocket text frame. ' +
+  'Select protocol v2 with the x-hope-run-protocol: 2 header, or ?protocol=2 where a browser cannot set headers; ' +
+  'without either you get the six legacy shapes (kept readable for one release). Any other value is a 400.';
+
+/** Prose a reader needs beside the event table. */
+export const RUN_EVENT_NOTES: readonly string[] = Object.freeze([
+  RUN_ENVELOPE_NOTE,
+  `Events you handle: ${RUN_V2_EVENTS.map((event) => event.type).join(', ')}. The terminal ones are ${RUN_V2_EVENTS.filter((event) => event.terminal).map((event) => event.type).join(', ')} — stop reading after one.`,
+]);
+
+export const RUN_RESYNC_NOTE =
+  'Resume: send the seq of the last event you handled as Last-Event-ID (or ?after=<seq>; the header wins, 0 means from the beginning). ' +
+  'If the server cannot replay — the window was trimmed, the stream expired, or the cursor is invalid — it sends run.resync { reason, snapshot } ' +
+  'with reason gap | expired | cursor_invalid | unavailable: replace your state with the snapshot and carry on from its seq. ' +
+  'Streams are retained 24 hours after the run ends; after that, read GET …/runs/{runId} and …/result.';
+
+export const RUN_RESULT_NOTE =
+  'The result: run.completed carries it inline (value) when it is 64 KiB or less, otherwise as a ref (bucket, key, sizeBytes, sha256). ' +
+  'GET …/runs/{runId}/result answers it either way — 200 JSON, 204 when there is none, 409 RUN_NOT_TERMINAL while the run is still going, ' +
+  'and with an x-hope-result-kind: ref header the body points at a signed URL (ask the route again if the URL is refused or has expired).';
+
+export type RunStreamKind = 'workflow' | 'agent';
+
+function runEventsPath(kind: RunStreamKind, slug: string): string {
+  return kind === 'workflow' ? `workflows/${slug}/runs/$RUN_ID/stream` : `agents/${slug}/runs/$RUN_ID/events`;
+}
+
+/** Shell: follow a run with protocol v2. `-N` for the same reason as {@link agentSseCurlSnippet}. */
+export function runEventsCurlSnippet(kind: RunStreamKind, slug: string, baseUrl: string = FALLBACK_ORIGIN): string {
+  return [
+    `export HOPE_API_URL=${JSON.stringify(origin(baseUrl))}`,
+    `export HOPE_API_KEY=${JSON.stringify('…')}`,
+    ``,
+    `# -N disables curl's buffering. x-hope-run-protocol: 2 selects the v2 envelope.`,
+    `# Last-Event-ID is the seq of the last event you handled; 0 (or omit it) replays the retained window.`,
+    `curl -N "$HOPE_API_URL/api/v1/${runEventsPath(kind, slug)}" \\`,
+    `  -H "X-API-Key: $HOPE_API_KEY" \\`,
+    `  -H "x-hope-run-protocol: 2" \\`,
+    `  -H "Last-Event-ID: 0"`,
+    ``,
+    `# On the wire (one envelope per frame; the event: and id: lines repeat the envelope's type and seq):`,
+    `#   event: output.text.delta`,
+    `#   id: 5`,
+    `#   data: {"seq":5,"runId":"…","type":"output.text.delta","ts":"…","nodeId":"n_note","data":{"field":"text","text":"The patient"}}`,
+  ].join('\n');
+}
+
+/** Plain `fetch` reader for run protocol v2 — body, not EventSource, because the key goes in a header. */
+export function runEventsFetchSnippet(kind: RunStreamKind, slug: string, baseUrl: string = FALLBACK_ORIGIN): string {
+  const path = kind === 'workflow' ? `workflows/${slug}/runs/\${runId}/stream` : `agents/${slug}/runs/\${runId}/events`;
+  return [
+    `// No SDK. EventSource cannot send X-API-Key, so read response.body.`,
+    `let lastSeq = 0; // persist this to resume from another process`,
+    `const response = await fetch(\`${origin(baseUrl)}/api/v1/${path}\`, {`,
+    `  headers: {`,
+    `    'X-API-Key': process.env.HOPE_API_KEY,`,
+    `    'x-hope-run-protocol': '2',`,
+    `    'Last-Event-ID': String(lastSeq),`,
+    `  },`,
+    `});`,
+    `if (!response.ok) throw new Error(\`\${response.status} \${await response.text()}\`);`,
+    ``,
+    `const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();`,
+    `let buffer = '';`,
+    `for (;;) {`,
+    `  const { value, done } = await reader.read();`,
+    `  if (done) break;`,
+    `  buffer += value;`,
+    `  let split;`,
+    `  while ((split = buffer.indexOf('\\n\\n')) !== -1) {`,
+    `    const raw = buffer.slice(0, split);`,
+    `    buffer = buffer.slice(split + 2);`,
+    `    const data = /^data: ?(.*)$/m.exec(raw)?.[1];`,
+    `    if (data === undefined) continue; // a comment line`,
+    `    const event = JSON.parse(data);`,
+    `    if (event.type === 'ping') { lastSeq = Math.max(lastSeq, event.seq); continue; }`,
+    `    if (event.type === 'run.resync') { /* replace your state with event.data.snapshot */ }`,
+    `    if (event.seq <= lastSeq && event.type !== 'run.resync') continue; // a replayed duplicate`,
+    `    lastSeq = event.seq;`,
+    `    if (event.type === 'output.text.delta') process.stdout.write(event.data.text);`,
+    `    if (event.type === 'run.completed' || event.type === 'run.failed' || event.type === 'run.cancelled') return event;`,
+    `  }`,
+    `}`,
   ].join('\n');
 }

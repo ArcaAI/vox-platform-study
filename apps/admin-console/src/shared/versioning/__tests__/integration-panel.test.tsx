@@ -246,7 +246,9 @@ describe('IntegrationPanel — the example body is derived, not invented', () =>
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
     const node = codeOf('Node.js (@arcaai/vox-node) snippet');
-    expect(node).toContain('input:');
+    // SDK 5.0: the input ITSELF, with a key — the { input } envelope is the raw HTTP body's.
+    expect(node).toContain("hope.workflows.run('discharge-summary', {");
+    expect(node).not.toMatch(/\binput:\s*\{/);
     expect(node).toContain('"dischargeDate": "…"');
     // `required` narrows: `ward` is declared but optional, so the minimal body omits it.
     expect(node).not.toContain('ward');
@@ -364,7 +366,7 @@ describe('IntegrationPanel — the four lanes', () => {
     expect(curl).toContain('"tone": "clinical"');
     expect(curl).not.toMatch(/"input"\s*:/);
     // The tenant binds to the credential; sending it too is the mistake this line prevents.
-    expect(screen.getByText(/X-Tenant-Id/)).toBeTruthy();
+    expect(screen.getAllByText(/X-Tenant-Id/).length).toBeGreaterThan(0);
 
     selectJob('Realtime (SSE)');
     const streamed = codeOf('Streamed invocation without an SDK (curl -N) snippet');
@@ -468,16 +470,16 @@ describe('IntegrationPanel — workflow', () => {
     expect(await axe(screen.getByRole('main'))).toHaveNoViolations();
   });
 
-  it('the browser lane starts a run async and WATCHES it — never ?mode=', async () => {
+  it('the browser lane starts a run and follows it with useRun (vox 5.0) — never ?mode=', async () => {
     stubSchemaFetch();
     renderWithProviders(<IntegrationPanel kind="workflow" slug="discharge-summary" />);
 
     await screen.findByText('POST /workflows/discharge-summary/runs');
     selectTab('Browser');
     const browser = codeOf('Browser (@arcaai/vox) snippet');
-    expect(browser).toContain('useWorkflowRun');
+    expect(browser).toContain("useRun({ workflow: 'discharge-summary' })");
+    expect(browser).toMatch(/5\.0/);
     expect(browser).toContain('start(');
-    expect(browser).toContain('watch(');
     expect(browser).not.toContain('mode=');
   });
 
@@ -937,11 +939,42 @@ describe('IntegrationPanel — batch and realtime are both complete', () => {
   });
 
   /** The honest absence: an invocation has no job id to poll, and nobody should invent one. */
-  it('says the agent plane has no job mode, on the blocking view where a developer looks for one', () => {
+  it('says invocations has no job mode — and points at the agent RUN that does, on the view where a developer looks', () => {
     renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
-    expect(screen.getAllByText(/no job mode on the agent plane/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/no job mode on the invocations route/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/hope\.agents\.run/).length).toBeGreaterThan(0);
     selectTab('Manual');
-    expect(screen.getAllByText(/no job mode on the agent plane/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/no job mode on the invocations route/i).length).toBeGreaterThan(0);
+  });
+
+  /** TASK-1036 lane C4 — an agent run is the asynchronous, resumable lane, in all three SDK lanes. */
+  it('a TEXT_GENERATION agent carries the agent-run snippet in the Node, Browser and Manual lanes', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="clinic-summarizer" task="TEXT_GENERATION" inputSchema={AGENT_INPUT_SCHEMA} />);
+
+    const node = codeOf('Agent run (@arcaai/vox-node 5.0) snippet');
+    expect(node).toContain("hope.agents.run('clinic-summarizer'");
+    expect(node).toContain('run.text()');
+    // The agent plane stays FLAT even on the run resource.
+    expect(node).toContain('"text": "…"');
+    expect(node).not.toMatch(/\binput:\s*\{/);
+
+    selectTab('Browser');
+    expect(codeOf('Agent run (@arcaai/vox 5.0) snippet')).toContain("useRun({ agent: 'clinic-summarizer' })");
+
+    selectTab('Manual');
+    const curl = codeOf('Agent run (curl) snippet');
+    expect(curl).toContain('/api/v1/agents/clinic-summarizer/runs');
+    expect(curl).toContain('/runs/$RUN_ID/events');
+  });
+
+  it('a NER agent gets the run too (it is one-shot, but a run is still asynchronous and idempotent)', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="ner" task="NAMED_ENTITY_RECOGNITION" inputSchema={AGENT_INPUT_SCHEMA} />);
+    expect(codeOf('Agent run (@arcaai/vox-node 5.0) snippet')).toContain("hope.agents.run('ner'");
+  });
+
+  it('speech agents have no agent-run snippet: their runs are the transcription job and the socket', () => {
+    renderWithProviders(<IntegrationPanel kind="agent" slug="asr" task="SPEECH_TO_TEXT" />);
+    expect(screen.queryByRole('group', { name: 'Agent run (@arcaai/vox-node 5.0) snippet' })).toBeNull();
   });
 
   /**
