@@ -1489,6 +1489,52 @@
         ],
         "type": "object"
       },
+      "AgentUsageResponse": {
+        "properties": {
+          "count": {
+            "description": "Length of `publishedWorkflows` — the N in \"used by N published workflows\".",
+            "example": 2,
+            "type": "number"
+          },
+          "publishedWorkflows": {
+            "description": "The caller tenant's PUBLISHED or DEPRECATED workflow versions whose compiled config pins this agent version.",
+            "items": {
+              "$ref": "#/components/schemas/AgentUsageWorkflowResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "publishedWorkflows",
+          "count"
+        ],
+        "type": "object"
+      },
+      "AgentUsageWorkflowResponse": {
+        "properties": {
+          "isActive": {
+            "description": "Whether this workflow version is the ACTIVE one of its slug.",
+            "example": true,
+            "type": "boolean"
+          },
+          "slug": {
+            "description": "The workflow lineage slug.",
+            "example": "general-medicine-intake",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The workflow version number.",
+            "example": 4,
+            "type": "number"
+          }
+        },
+        "required": [
+          "slug",
+          "versionNumber",
+          "isActive"
+        ],
+        "type": "object"
+      },
       "AgentValidationReportResponse": {
         "properties": {
           "blocking": {
@@ -43755,6 +43801,9 @@
         "responses": {
           "201": {
             "description": "The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one."
+          },
+          "400": {
+            "description": "MODE_UNSUPPORTED — the workflow’s settings do not enable the `socket` connection (use SSE)."
           },
           "401": {
             "description": "No caller identity to bind the ticket to."

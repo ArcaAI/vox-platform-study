@@ -20,6 +20,7 @@ import type {
   AgentTagSuggestionResponse,
   AgentTestAckResponse,
   AgentTestResultResponse,
+  AgentUsageResponse,
   CloneAgentRequest,
   CreateAgentRequest,
   FinalizeAgentTestRequest,
@@ -42,7 +43,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controllers AgentAdminController, AgentAssignmentAdminController, AgentPromoteToSystemController
- * (25 routes). Several controllers sharing one scope share one
+ * (26 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -387,6 +388,22 @@ export class AdminAgentResource extends AdminResource {
       method: 'POST',
       path: `admin/agents/${encodePathSegment(String(slug))}/sync`,
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Published workflows that pin this agent version
+   *
+   * The caller tenant's PUBLISHED or DEPRECATED workflow versions whose compiled config pins this exact agent version in a `core.agent` node. A pinned version keeps running after it is deprecated (OD-21), so Deprecate warns with `count` first. Unpinned references (they follow the active version) are not counted.
+   *
+   * `GET /api/v1/admin/agents/{slug}/versions/{versionNumber}/usage` — `AgentAdminController.fetchVersionUsage`.
+   */
+  fetchVersionUsage(slug: string, versionNumber: number, options: AdminRequestOptions = {}): Promise<AgentUsageResponse> {
+    return this.request<AgentUsageResponse>({
+      method: 'GET',
+      path: `admin/agents/${encodePathSegment(String(slug))}/versions/${encodePathSegment(String(versionNumber))}/usage`,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

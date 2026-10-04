@@ -647,6 +647,29 @@
     },
     {
       "controller": "AgentAdminController",
+      "handler": "fetchVersionUsage",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/{slug}/versions/{versionNumber}/usage",
+      "routePath": "/admin/agents/:slug/versions/:versionNumber/usage",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
       "handler": "importBundle",
       "method": "POST",
       "path": "/api/v1/admin/agents/import",

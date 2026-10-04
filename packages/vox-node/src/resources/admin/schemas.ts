@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 545 component schemas the generated surface transitively
+ * Only the 547 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -382,6 +382,22 @@ export interface AgentTrajectoryStepsPageResponse {
   limit: number;
   /** Opaque cursor for the next page, or null at the end. */
   nextCursor?: string | null;
+}
+
+export interface AgentUsageResponse {
+  /** Length of `publishedWorkflows` — the N in "used by N published workflows". */
+  count: number;
+  /** The caller tenant's PUBLISHED or DEPRECATED workflow versions whose compiled config pins this agent version. */
+  publishedWorkflows: AgentUsageWorkflowResponse[];
+}
+
+export interface AgentUsageWorkflowResponse {
+  /** Whether this workflow version is the ACTIVE one of its slug. */
+  isActive: boolean;
+  /** The workflow lineage slug. */
+  slug: string;
+  /** The workflow version number. */
+  versionNumber: number;
 }
 
 export interface AgentValidationReportResponse {
