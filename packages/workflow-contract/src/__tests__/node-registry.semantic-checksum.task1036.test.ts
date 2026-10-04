@@ -70,7 +70,10 @@ describe('registryChecksum — the semantic surface', () => {
 
   it.each<[string, (registry: Registry) => void]>([
     ['a REQUIRED config key is added', (r) => schemaOf(r, 'core.agent').required.push('someNewKnob')],
-    ['a port is added', (r) => (r['core.agent'] as any).outputs.push({ name: 'extra', primitive: 'text', required: false, multiple: true, outputKey: 'extra' })],
+    [
+      'a port is added',
+      (r) => (r['core.agent'] as any).outputs.push({ name: 'extra', primitive: 'text', required: false, multiple: true, outputKey: 'extra' }),
+    ],
     ['a port changes type', (r) => ((r['core.agent'] as any).inputs[0].primitive = 'object')],
     ['classes change', (r) => ((r['core.agent'] as any).classes = ['agent', 'gate'])],
     ['the activity changes', (r) => ((r['core.agent'] as any).activityName = 'interpreter.other')],

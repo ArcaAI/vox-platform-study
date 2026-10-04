@@ -337,7 +337,8 @@ function walkSchema(schema: unknown, segments: readonly string[], walk: SchemaWa
       continue;
     }
     if (walk === 'strict') return admitsMore(current) ? 'open' : 'unknown';
-    if (walk === 'declared') return properties === undefined ? (current.additionalProperties === false ? 'unknown' : 'open') : admitsMore(current) ? 'open' : 'unknown';
+    if (walk === 'declared')
+      return properties === undefined ? (current.additionalProperties === false ? 'unknown' : 'open') : admitsMore(current) ? 'open' : 'unknown';
     return properties !== undefined && current.additionalProperties === false ? 'unknown' : 'open';
   }
   return current === undefined ? 'open' : { schema: current };
@@ -427,7 +428,8 @@ function resolvePath(path: string, scope: ResolveScope): Resolution {
     case 'vars': {
       const key = rest[0];
       const declared = key === undefined ? undefined : scope.vars.get(key);
-      if (declared === undefined) return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
+      if (declared === undefined)
+        return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\`: no \`core.variable\` step declares \`${key ?? ''}\`.` };
       if (!declared.nodeIds.some((id) => scope.ancestors.has(id))) {
         const setters = declared.nodeIds.map((id) => scope.nodesById.get(id)).filter((node): node is WorkflowGraphNode => node !== undefined);
         return {

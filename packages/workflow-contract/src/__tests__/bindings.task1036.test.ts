@@ -460,7 +460,10 @@ describe('picker / binding hygiene (contract freeze)', () => {
         bindingIssues(
           {
             version: 1,
-            nodes: [{ id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } }, agent('n_gen', 'summary', { inputs: { message: { from: path } } })],
+            nodes: [
+              { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'] } },
+              agent('n_gen', 'summary', { inputs: { message: { from: path } } }),
+            ],
             edges: [e('n_trigger', 'next', 'n_gen', 'after')],
           },
           { agents: AGENTS, contextPayloadSchema: payload },

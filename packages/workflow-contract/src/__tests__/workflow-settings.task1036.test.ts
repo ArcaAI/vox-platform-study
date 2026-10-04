@@ -150,9 +150,9 @@ describe('settingsImplications — WF-SET-001..004', () => {
     ]);
     // A STREAM audio kind in the Input shape still needs the socket, consultation or not.
     const definition = { schemaVersion: '1.0', kinds: [{ key: 'audio_stream', primitive: 'STREAM_AUDIO' }] };
-    expect(
-      settingsImplications(graphWith(undefined), consultation, { contextSchemaDefinition: definition }).map((entry) => entry.ruleId),
-    ).toEqual(['WF-SET-003']);
+    expect(settingsImplications(graphWith(undefined), consultation, { contextSchemaDefinition: definition }).map((entry) => entry.ruleId)).toEqual([
+      'WF-SET-003',
+    ]);
   });
 
   it('WF-SET-003: a stream audio kind in the Input shape needs socket', () => {
