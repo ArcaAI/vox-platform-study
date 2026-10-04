@@ -1,4 +1,9 @@
-import { readGoverningEngineMarker } from '@arcaai/applications';
+import {
+  TenantSettingsService,
+  WORKFLOW_RUNS_DEFAULTS,
+  WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY,
+  readGoverningEngineMarker,
+} from '@arcaai/applications';
 import type { RunAppendInput } from '@arcaai/async-contract';
 import { ConsultationRepository, TranscriptionJobRepository, TranscriptionJobType, WorkflowRunRepository } from '@arcaai/domains';
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -49,6 +54,15 @@ interface TrackedSession {
  * query names the session's tenant explicitly (the socket runs outside a request's CLS tenant).
  * Best-effort end to end, like every other producer of the mirror: a failed lookup or append is
  * logged at debug and swallowed — it never touches the transcript the clinician sees.
+ *
+ * TASK-1038 E2 (fix 14) — never a stale run, never a revived stream:
+ * - a run is fed only while its READ-MODEL row is RUNNING and younger than
+ *   `workflowRuns.runStreamMaxOpenHours`; the governed-run marker alone is not trusted (it
+ *   outlives the run when its terminal update was lost);
+ * - nothing is appended to a run whose `seq` key is absent: the sequencer would start a FRESH
+ *   stream with no TTL (protocol-v2.md §11) — an orphan nothing would ever expire. The check and
+ *   the append are two commands, so the window is one round trip; the orphan sweep
+ *   (`RunStreamOrphanSweeper`) is the backstop for anything that slips through it.
  */
 @Injectable()
 export class SttRunTranscriptMirror {
@@ -60,6 +74,7 @@ export class SttRunTranscriptMirror {
     @Optional() private readonly jobs?: TranscriptionJobRepository,
     @Optional() private readonly consultations?: ConsultationRepository,
     @Optional() private readonly runs?: WorkflowRunRepository,
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {}
 
   /** Mirror one relayed STT frame. Synchronous and never throws; the work is queued per session. */
@@ -78,6 +93,9 @@ export class SttRunTranscriptMirror {
       tracked.chain = tracked.chain
         .then(async () => {
           for (const runId of await runIds) {
+            // TASK-1038 E2 (fix 14) — no counter means no stream (not started yet, or expired):
+            // appending would create one without a TTL. Skip; the run's own producer opens it.
+            if ((await this.hub?.lastSeq(runId)) === null) continue;
             await this.hub?.append({ runId, ts, ...event } as RunAppendInput);
           }
         })
@@ -120,6 +138,15 @@ export class SttRunTranscriptMirror {
     return tracked;
   }
 
+  /** `workflowRuns.runStreamMaxOpenHours` (platform), failing open to its default. */
+  private maxOpenHours(): number {
+    try {
+      return wholeHours(this.settings?.resolvePlatform<number>(WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY).value) ?? WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours;
+    } catch {
+      return WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours;
+    }
+  }
+
   /** The RUNNING runs the session's consultation feeds: its sandbox run(s), then its governed run. */
   private async resolveRuns(tenantId: string, sttSessionId: string): Promise<string[]> {
     try {
@@ -131,13 +158,25 @@ export class SttRunTranscriptMirror {
       const consultation = (await this.consultations!.findByIdOrNull(consultationId)) as { tenantId?: string; metadata?: unknown } | null;
       if (!consultation || consultation.tenantId !== tenantId) return [];
 
+      // TASK-1038 E2 (fix 14) — RUNNING on the read model, and younger than the open-stream ceiling.
+      const startedAfter = new Date(Date.now() - this.maxOpenHours() * 3_600_000);
       const sandbox = (await this.runs!.findAll({
-        where: { tenantId, isSandbox: true, status: 'RUNNING', metaData: { path: ['consultationId'], equals: consultationId } },
+        where: {
+          tenantId,
+          isSandbox: true,
+          status: 'RUNNING',
+          startedAt: { gte: startedAfter },
+          metaData: { path: ['consultationId'], equals: consultationId },
+        },
       } as never)) as Array<{ runId: string }>;
       const runIds = sandbox.map((run) => run.runId);
       const governed = readGoverningEngineMarker(consultation.metadata);
       if (governed && (governed.runStatus === undefined || governed.runStatus === 'RUNNING') && !runIds.includes(governed.workflowRunId)) {
-        runIds.push(governed.workflowRunId);
+        const live = (await this.runs!.findAll({
+          where: { tenantId, runId: governed.workflowRunId, status: 'RUNNING', startedAt: { gte: startedAfter } },
+          limit: 1,
+        } as never)) as Array<{ runId: string }>;
+        if (live.length > 0) runIds.push(governed.workflowRunId);
       }
       return runIds;
     } catch (error) {
@@ -149,6 +188,11 @@ export class SttRunTranscriptMirror {
       return [];
     }
   }
+}
+
+/** A whole number of hours, at least 1 — else `undefined` (the default applies). */
+function wholeHours(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined;
 }
 
 /** The protocol event for one STT frame — only the closed fields of `transcript.partial|final` — or `null`. */
