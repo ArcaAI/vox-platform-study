@@ -620,6 +620,56 @@ Lane briefs carry the cross-lane interfaces:
 - The `run.completed.data.result` shape `{kind:'inline',value} | {kind:'ref',bucket,key,sizeBytes,sha256}`: A1 produces it, A2 consumes it, and C0b types it.
 - C0b's nullable rendering and empty-block dropping are behind options that default off, so Python parity holds until B1.
 
+### 6.2 Wave A: merged into dev-2.2 (2026-10-04)
+
+**Lane results.** Every lane reported RED→GREEN evidence. The orchestrator re-ran each lane's tests on the merged tree.
+
+| Lane | Head | Merge | Notes |
+|---|---|---|---|
+| C0b | `668edb89f` | merge(task-1036) c0b | 5 deliverables; existing goldens byte-identical; 26 of 38 seeded agents would fail `PROMPT_VERSION_UNPINNED` (seed pins come in wave B) |
+| C0a | `4faf16fe2` | merge(task-1036) c0a | 1,217 package tests; all 15 seeds compile byte-identically with the new output switched off (`emitDataContract`, default off until B1); defect confirmed: `promptVariables` `"{{…}}"` binds literally (fix in B1) |
+| A3 | `1b4099e13` | merge(task-1036) a3 | 7 deliverables; `POST :id/draft`; W1 seeding of Start/End; freeze SQL |
+| A4 | `4430d5b9f` | merge(task-1036) a4 | Tags suggest route, grammar, `TagsField`, Hope Prompt labels in owned files |
+| A2 | `61951fec3` | merge(task-1038) a2 | R-1 solved with ONE multiplexed `XREAD` hub per process (2 connections, `CLIENT UNBLOCK` wake-up) instead of a pool; result route; purge; 5 settings; pinned-version internal route |
+| A1 | `570d995fd` | `1d3e4b27b` | D-A, D-B, R-3…R-6, D-H, D-I; 5 new patch markers; replay fixtures for task-731/932/946 and the child workflows |
+
+**Integration commits:**
+
+| Commit | What |
+|---|---|
+| `a902e8952` | Contract barrels; `PROMPT_VERSION_UNPINNED` in `AgentFindingCode`; 9 test files moved to the Hope Prompt labels; harness claim-check env surface regenerated |
+| `4ae580b47` | Migration `…_task_1036_workflow_definition_freeze_deprecated` |
+| `84bc407b3` | Workflow seed blobs regenerated (registry checksum) |
+| `820ea91d9` | Route manifest, OpenAPI, portal and vox-node admin regenerated; authz inventory re-pinned to 39 internal public routes. TASK-1035 had added one without re-pinning. |
+
+**Verification on the merged tree:**
+
+| Check | Result |
+|---|---|
+| Type checks: applications, api, admin-console | Clean |
+| `@arcaai/workflow-contract` | 76 files, 1,308 tests |
+| `@arcaai/async-contract` | 6 files, 107 tests |
+| Services and API: workflow-definition, prompt-management, workflow-exposure, workflow-run, agent version resolver, context schema, settings registry, the workflows / workflow-definition / prompt-management / internal / streaming modules | 208 files, 2,500 tests |
+| Harness TASK-1038 plus all replay suites | 114 passed |
+| Agents and inspector console suites | 348/348 |
+| Database seed tests | 70 files, 943 tests |
+| `api:openapi:check`, `api:portal:check`, `vox-node gen:admin:check`, `env:sync:check`, `env:python-surface:check` | Green |
+
+**Migration, proven on a throwaway shadow DB** on the test Postgres (`:5433`; the dev Postgres container is not running):
+- Full replay, then `migrate diff` empty.
+- Deprecating a PUBLISHED row is allowed.
+- On a DEPRECATED row, writes to `status` / `deprecatedAt` / `isActive=true` are refused by the trigger.
+- Soft delete is allowed.
+
+**Not done yet:**
+- `db:push` to the dev DB, which is down. Run `pnpm db:push` when the dev stack is next up.
+- Known red until B1 lands: `packages/py-workflow-contract` `test_parity.py` (+2 from the extended `compiled-config.schema.json`; one failure pre-existed).
+
+**Deviations recorded:**
+- A1's three node-output / inline / activity-input thresholds are `HARNESS_CLAIM_CHECK_*` env vars, following the existing claim-check pattern. Under the owner's config rule they move to settings-registry descriptors in B1.
+- A2 edited the WS gateway and `internal.module.ts`, outside its strict ownership list, because the deliverables required it. No overlap with any other lane.
+- The tags service and controller had partial RED evidence. The full gate covers them.
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
