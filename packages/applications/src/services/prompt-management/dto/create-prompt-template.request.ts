@@ -2,6 +2,7 @@ import { IsString, IsOptional, IsEnum, IsArray, IsIn, MaxLength, ValidateNested 
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PromptVariableDeclarationDto } from './prompt-variable-declaration.dto';
+import { IsPromptTags } from './prompt-tag';
 
 export class CreatePromptTemplateRequest {
   @ApiProperty({ description: 'Template name', example: 'SOAP Summary Prompt' })
@@ -50,10 +51,10 @@ export class CreatePromptTemplateRequest {
   @IsString()
   departmentId?: string;
 
-  @ApiPropertyOptional({ description: 'Tags for search/filtering', type: [String] })
+  @ApiPropertyOptional({ description: 'Tags for search/filtering — lower-case `key` or `key:value`, max 24', type: [String] })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsPromptTags()
   tags?: string[];
 
   // Admin per-user prompt scope. Defaults to `TENANT_DEFAULT`

@@ -14,3 +14,5 @@ export * from './prompt-usage-record.response';
 export * from './set-preferred-template.request';
 export * from './preferred-prompt-template.response';
 export * from './approve-prompt-template.request';
+export * from './prompt-tag';
+export * from './prompt-tag-suggestion.response';

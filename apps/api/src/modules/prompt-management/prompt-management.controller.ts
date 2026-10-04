@@ -14,6 +14,7 @@ import {
   PromptVersionDiffResponse,
   PromptUsageRecordResponse,
   PaginatedPromptUsageRecordResponse,
+  PromptTagSuggestionResponse,
   Paginated,
   DepartmentResponse,
   HttpMethod,
@@ -127,6 +128,30 @@ export class PromptManagementController {
       tags: parseTagsQuery(queryParams.tags),
       page: Number(queryParams.page) || 1,
       limit: Number(queryParams.limit) || 50,
+    });
+  }
+
+  // Tag autocomplete for the console `TagsField` (TASK-1036 R1). Static path, so it is declared
+  // BEFORE the `:id` param routes. Inherits the class-level `manage:PromptTemplate` posture and
+  // reads ONLY the caller tenant's prompts (SYSTEM rows are never folded into suggestions).
+  @Get('tags')
+  @ApiOperation({
+    summary: 'Distinct prompt tags with usage counts (autocomplete)',
+    description:
+      "Distinct tags over the caller tenant's non-deleted Hope Prompts, ranked by how many prompts " +
+      'carry them (descending) then alphabetically. `q` is a case-insensitive substring filter; ' +
+      '`limit` defaults to 20 and is capped at 100.',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Case-insensitive substring filter' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max suggestions (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Tag suggestions', type: [PromptTagSuggestionResponse] })
+  @ApiResponse({ status: 400, description: 'No tenant context on the request' })
+  @ApiResponse({ status: 403, description: 'Caller lacks manage:PromptTemplate' })
+  async listTags(@Query() queryParams: { q?: string; limit?: string }): Promise<PromptTagSuggestionResponse[]> {
+    const limit = Number(queryParams.limit);
+    return this.promptService.listTagSuggestions({
+      q: queryParams.q,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
     });
   }
 
