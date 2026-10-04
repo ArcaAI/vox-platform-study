@@ -9,26 +9,24 @@ SYSTEM message, and wraps everything per-encounter in::
     <body>
     <<<END_EXTERNAL_DATA>>>
 
-The egress guardrails (inbound PII/safety screen, medical-relevance judge, and the
-``pii_leak`` source of the output screen) scope to that context and to the response —
-never to the platform's own instructions. The composer neutralises any start or end
-marker inside a body, so a block cannot be forged from inside another one.
+The egress guardrails inspect every text the provider receives minus only these
+markers (TASK-1036 E1): the system message is not platform-only, since the agent
+instruction is rendered over the request's variables into it. The composer
+neutralises any start or end marker inside a body, so a block cannot be forged from
+inside another one.
 """
 
 from __future__ import annotations
 
 import re
 
-__all__ = ["DataBlock", "external_data_blocks", "screened_ranges", "context_text"]
+__all__ = ["DataBlock", "external_data_blocks", "screened_ranges"]
 
 #: A complete block; group 1 is everything between the start-marker line and the end marker.
 _BLOCK = re.compile(
     r'<<<EXTERNAL_DATA section="[a-z0-9_]+">>>\n(.*?)\n<<<END_EXTERNAL_DATA>>>',
     re.DOTALL,
 )
-
-#: Joins the texts of one request into the single string a guardrail sees.
-JOIN = "\n\n"
 
 
 class DataBlock:
@@ -69,11 +67,3 @@ def screened_ranges(text: str) -> list[tuple[int, int]]:
         end -= len(piece) - len(piece.rstrip())
         trimmed.append((start, end))
     return trimmed
-
-
-def context_text(user_text: str) -> str:
-    """The block bodies of ``user_text`` joined; with no blocks, ``user_text`` itself."""
-    blocks = external_data_blocks(user_text)
-    if not blocks:
-        return user_text
-    return JOIN.join(user_text[block.start : block.end] for block in blocks)

@@ -4,8 +4,10 @@
 
 1. **classify locality** per provider actually called (`core/locality.py`);
 2. **inbound gate** — guardrail ``/screen/inbound`` (prompt safety + GLiNER2 PII
-   spans) CONCURRENTLY with the medical judge (``/api/medical/validate``); both
-   verdicts block. The judge is skipped only for ``medical_exempt: "internal"``;
+   spans) over EVERY text the provider receives, system prompt included,
+   CONCURRENTLY with the medical judge (``/api/medical/validate``) over the
+   context only; both verdicts block. The judge is skipped only for
+   ``medical_exempt: "internal"``;
 3. **cloud: pseudonymize** — the caller's ``known_phi`` plus the spans, in every
    text the provider receives, with ``[<LABEL>_<n>]`` tokens and one platform
    sentence telling the model to copy them verbatim. Images pass through as-is and
@@ -32,7 +34,7 @@ from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
 from text.models.responses import EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
-from text.services.data_blocks import context_text, screened_ranges
+from text.services.data_blocks import screened_ranges
 from text.services.external_guardrail import GUARDRAIL_UNAVAILABLE_REASON
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
@@ -45,7 +47,9 @@ __all__ = [
     "InboundResult",
     "prepare_egress",
     "prepare_text_egress",
+    "request_segments",
     "run_inbound_gate",
+    "sent_text",
 ]
 
 #: Joins the texts of one request into the single string the inbound screen sees.
@@ -73,16 +77,22 @@ class InboundResult:
 _Region = tuple[int, int, int]
 
 
-def _regions(segments: list[str], *, system_index: int | None) -> list[_Region]:
-    """The stretches of ``segments`` the guardrails inspect (TASK-1036 OD-1).
+def _regions(segments: list[str], *, skip: int | None = None) -> list[_Region]:
+    """The stretches of ``segments`` a guardrail inspects.
 
-    Every caller-supplied user-side text: ``EXTERNAL_DATA`` block bodies AND any
-    text outside a block, minus only the composer's own markers. The system prompt
-    (``system_index``) is never inspected.
+    Every text the provider receives — ``EXTERNAL_DATA`` block bodies AND any text
+    outside a block — minus only the composer's own markers. ``skip`` leaves one
+    segment out; only the medical judge uses it, for the system prompt.
+
+    The inbound screen and the pseudonymiser cover EVERY segment, the system prompt
+    included (TASK-1035 §3.1): ``composeMessages`` renders the agent instruction
+    over the request's variables, ``context.*`` and bindings INTO the system
+    message, and a business caller may send its own ``system_prompt`` — so it can
+    carry PHI and injection text like any user message (TASK-1036 E1).
     """
     regions: list[_Region] = []
     for index, text in enumerate(segments):
-        if index == system_index:
+        if index == skip:
             continue
         regions.extend((index, start, end) for start, end in screened_ranges(text))
     return regions
@@ -160,10 +170,12 @@ async def run_inbound_gate(
     """Run the inbound screen and the medical judge CONCURRENTLY; both verdicts block.
 
     ``segments`` are the texts the provider will receive (segment 0 is the system
-    prompt whenever ``system_prompt`` is not ``None``). The screen sees every
-    caller-supplied user-side text — block bodies and text outside blocks, not the
-    composer's markers — joined, and its PII spans come back per segment. The
-    judge sees that same text and never the system prompt (TASK-1036 OD-1).
+    prompt whenever ``system_prompt`` is not ``None``). The screen sees ALL of them
+    — system prompt included; block bodies and text outside blocks, never the
+    composer's markers — joined, and its PII spans come back per segment, so the
+    cloud pseudonymiser covers every segment (TASK-1036 E1). The medical judge
+    keeps OD-1's narrower scope: the context (the non-system segments), never the
+    platform rules or the agent instruction.
     A client that is not wired is only ever a process the lifespan did not build
     (the unit harness): nothing to call, no spans.
 
@@ -174,10 +186,11 @@ async def run_inbound_gate(
         return InboundResult(None, [[] for _ in segments])
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
-    regions = _regions(segments, system_index=0 if system_prompt is not None else None)
+    regions = _regions(segments)
     combined, offsets = _combine(segments, regions)
-    # An empty context is nothing to screen; the judge still gets the direct prompt.
-    judged = combined if regions and any(r[2] > r[1] for r in regions) else prompt
+    judge_regions = _regions(segments, skip=0 if system_prompt is not None else None)
+    # An empty context is nothing to judge; the judge then gets the direct prompt.
+    judged = _combine(segments, judge_regions)[0] if judge_regions else prompt
     screen = guardrail_client.screen_inbound(combined, tenant_id=tenant_id)
     if medical_exempt == "internal":
         screen_verdict = await screen
@@ -293,16 +306,16 @@ def prepare_egress(
         for text, segment_spans in zip(segments, spans, strict=False):
             pseudonymizer.count(text, segment_spans)
         provider_request = request
-        source_context = _source_context(request.system_prompt, request.prompt)
+        source_context = sent_text(segments)
     else:
         rewritten = [
             pseudonymizer.pseudonymize(text, segment_spans) if text else text
             for text, segment_spans in zip(segments, spans, strict=False)
         ]
-        # The output screen's source is the context the provider was given (its
-        # data blocks), minus the platform sentence (it names a token shape, not
+        # The output screen's source is everything the provider was given,
+        # pseudonymised, minus the platform sentence (it names a token shape, not
         # anything the model read).
-        source_context = _source_context(rewritten[0] or None, rewritten[1])
+        source_context = sent_text(rewritten)
         system_prompt = rewritten[0]
         system_prompt = (
             f"{system_prompt}{_SEGMENT_SEPARATOR}{PLATFORM_TOKEN_SENTENCE}"
@@ -339,14 +352,14 @@ def prepare_egress(
     )
 
 
-def _source_context(system_prompt: str | None, prompt: str) -> str:
-    """The context the response was generated FROM, for the ``pii_leak`` check.
+def sent_text(segments: list[str]) -> str:
+    """What the response was generated FROM, for the ``pii_leak`` check.
 
-    The ``EXTERNAL_DATA`` block bodies of ``prompt`` (the user message), or the
-    user message itself when it carries none. The system prompt is the platform's
-    own text, not data supplied, so it is never part of it (TASK-1036 OD-1).
+    Every text the provider received — system prompt, user message, text parts —
+    minus only the composer's ``EXTERNAL_DATA`` markers, so a response that repeats
+    supplied PHI (wherever it was supplied) is judged against all of it (TASK-1036 E1).
     """
-    return context_text(prompt)
+    return _combine(segments, _regions(segments))[0]
 
 
 def prepare_text_egress(
