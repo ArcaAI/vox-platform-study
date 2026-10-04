@@ -51,6 +51,7 @@ import { TENANT_STORAGE_LIFECYCLE_SETTINGS } from './descriptors/tenant-storage-
 import { TENANT_CHECKPOINT_SETTINGS } from './descriptors/tenant-checkpoint.descriptors';
 import { COMPOSED_PROMPTS_SETTINGS } from './descriptors/composed-prompts.descriptors';
 import { WORKFLOW_RUNS_SETTINGS } from './descriptors/workflow-runs.descriptors';
+import { MEDIA_UPLOAD_SETTINGS } from './descriptors/media-upload.descriptors';
 import { WORKFLOW_DEFINITION_SETTINGS } from './descriptors/workflow-definitions.descriptors';
 import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
@@ -75,6 +76,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...COMPOSED_PROMPTS_SETTINGS,
   // TASK-1038 — run event/result retention and the delivery plane's tuning knobs.
   ...WORKFLOW_RUNS_SETTINGS,
+  // TASK-1038 (F1) — `POST /media` size ceilings (attachment / audio).
+  ...MEDIA_UPLOAD_SETTINGS,
   // TASK-1036 — the compiler's data-contract release switch (`workflows.emitDataContract`).
   ...WORKFLOW_DEFINITION_SETTINGS,
   // `TTS_SETTINGS` was spread here — one key, `tts.defaultVoiceEn`. TASK-879

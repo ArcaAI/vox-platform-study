@@ -11,6 +11,7 @@ export * from './sysEvent';
 export * from './globalSetting';
 // Kafka service removed - using Redis for job queues and PostgreSQL for audit logs
 export * from './media';
+export * from './media-upload';
 export * from './notification';
 export * from './resourceSubscription';
 export * from './security';
