@@ -74,6 +74,13 @@
  *   (larger; the gateway serves it through a short-lived signed URL). Absent when the run produced
  *   no result. Lanes A1 (producer) and A2 (consumer) implement exactly these two shapes.
  *
+ * ## Errors
+ *
+ * `run.failed.error` and `node.failed.error` carry a fixed SCREAMING_SNAKE `code` and the fixed
+ * label of that code as `message` ({@link runErrorMessage}) — never interpolated text, which could
+ * echo a patient value to a business caller. Free text is `error.detail`, on the stored event and
+ * the admin trace only; {@link toPublicRunEvent} strips it.
+ *
  * ## Validation
  *
  * Hand-written, dependency-free, like the rest of this package (`envelope.ts` explains why). The
@@ -181,7 +188,11 @@ export const RUN_EVENT_NODE_SCOPE: Readonly<Record<RunEventType, RunEventNodeSco
   Object.fromEntries(
     RUN_EVENT_TYPES.map((type) => [
       type,
-      type.startsWith('run.') || type === 'ping' || type === 'input.validated' ? 'forbidden' : type.startsWith('transcript.') ? 'optional' : 'required',
+      type.startsWith('run.') || type === 'ping' || type === 'input.validated'
+        ? 'forbidden'
+        : type.startsWith('transcript.')
+          ? 'optional'
+          : 'required',
     ]),
   ) as Record<RunEventType, RunEventNodeScope>,
 );
@@ -195,6 +206,11 @@ export const AGENT_RUN_NODE_ID = 'agent';
 export interface RunEventValidationOptions {
   /** `agent`: every `nodeId` present must be {@link AGENT_RUN_NODE_ID}. Unknown ⇒ no run-kind rule. */
   readonly runKind?: 'agent' | 'workflow';
+  /**
+   * `public`: what a business-plane client may receive — no admin-audience event, no error
+   * `detail`. `admin` (or absent): the stored / admin-trace form.
+   */
+  readonly plane?: 'public' | 'admin';
 }
 
 /** Emitted to one connection, never stored, never advancing `seq` (see the module doc). */
@@ -222,11 +238,52 @@ export interface RunTokens {
   readonly out: number;
 }
 
+/**
+ * A run or step failure (fix 7). `code` is a fixed SCREAMING_SNAKE identifier and `message` is the
+ * fixed label {@link runErrorMessage} gives that code — so nothing a producer interpolates (a model
+ * error, a patient value) can reach a business caller. Free text lives only in `detail`, which the
+ * public plane never carries ({@link toPublicRunEvent} strips it).
+ */
 export interface RunError {
   readonly code: string;
+  /** Always `runErrorMessage(code)`. */
   readonly message: string;
   /** The node the failure is attributed to, when it is a step's failure. */
   readonly nodeId?: string;
+  /** ADMIN TRACE ONLY: free-text diagnosis (may echo values; PHI shown to admins only, audited). */
+  readonly detail?: string;
+}
+
+/**
+ * The fixed labels. A producer may use a code that is not listed (it must still be SCREAMING_SNAKE);
+ * its label is then {@link RUN_ERROR_FALLBACK_MESSAGE}. Adding a code here is a contract change
+ * (fixture + Python mirror), never a per-call string.
+ */
+export const RUN_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.freeze({
+  RUN_TIMED_OUT: 'The run exceeded its time limit.',
+  NODE_TIMED_OUT: 'The step exceeded its time limit.',
+  RUN_CANCELLED: 'The run was cancelled.',
+  INPUT_INVALID: 'The run input does not match its schema.',
+  OUTPUT_INVALID: 'The output does not match its declared contract.',
+  BINDING_UNRESOLVED: 'A required input of the step has no value.',
+  PROMPT_VARIABLE_UNRESOLVED: 'A required prompt variable has no value.',
+  PAYLOAD_TOO_LARGE: 'A payload exceeded the size limit.',
+  MODEL_UNAVAILABLE: 'The model did not answer.',
+  MODEL_ERROR: 'The model returned an error.',
+  PROVIDER_NOT_CONFIGURED: 'No usable provider connection is configured.',
+  AGENT_VERSION_UNAVAILABLE: 'The pinned agent version is not available.',
+  GUARDRAIL_BLOCKED: 'A guardrail blocked the content.',
+  CONSULTATION_READ_FAILED: 'Consultation data could not be read.',
+  DOWNSTREAM_UNAVAILABLE: 'A downstream service did not answer.',
+  INTERNAL_ERROR: 'An internal error occurred.',
+});
+
+/** The label of every code {@link RUN_ERROR_MESSAGES} does not list. */
+export const RUN_ERROR_FALLBACK_MESSAGE = 'The step could not be completed.';
+
+/** The one message a `RunError` with this code may carry. */
+export function runErrorMessage(code: string): string {
+  return Object.prototype.hasOwnProperty.call(RUN_ERROR_MESSAGES, code) ? (RUN_ERROR_MESSAGES[code] as string) : RUN_ERROR_FALLBACK_MESSAGE;
 }
 
 /** `run.completed.data.result` — EXACTLY these two shapes (lanes A1/A2). */
@@ -434,7 +491,15 @@ function closed(properties: Record<string, RunEventDataSchema>, required: readon
 }
 
 const TOKENS = closed({ in: INT0, out: INT0 }, ['in', 'out']);
-const ERROR = closed({ code: STR1, message: STR, nodeId: STR1 }, ['code', 'message']);
+const ERROR = closed(
+  {
+    code: Object.freeze({ type: 'string', pattern: '^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$', maxLength: 64 }),
+    message: STR,
+    nodeId: STR1,
+    detail: Object.freeze({ type: 'string', maxLength: 4000 }),
+  },
+  ['code', 'message'],
+);
 const SHA256: RunEventDataSchema = Object.freeze({ type: 'string', pattern: '^[0-9a-f]{64}$' });
 const RESULT: RunEventDataSchema = Object.freeze({
   anyOf: Object.freeze([
@@ -733,6 +798,18 @@ export function runEventProblems(value: unknown, options: RunEventValidationOpti
     if (type === 'run.resync' && isPlainObject(value.data.snapshot) && value.data.snapshot.lastSeq !== value.seq) {
       problems.push('run.resync seq must equal data.snapshot.lastSeq (the stream continues at lastSeq + 1)');
     }
+    const error = value.data.error;
+    if ((type === 'run.failed' || type === 'node.failed') && isPlainObject(error) && typeof error.code === 'string') {
+      const label = runErrorMessage(error.code);
+      if (error.message !== label)
+        problems.push(`data.error.message must be the fixed label of ${error.code} (${JSON.stringify(label)}); free text belongs in detail`);
+      if (options.plane === 'public' && Object.prototype.hasOwnProperty.call(error, 'detail')) {
+        problems.push('data.error.detail is admin-trace only and never reaches the public plane');
+      }
+    }
+    if (options.plane === 'public' && runEventAudience({ type, data: value.data } as Pick<RunEventV2, 'type' | 'data'>) !== 'public') {
+      problems.push(`${type} with this audience is admin-trace only and never reaches the public plane`);
+    }
   }
   return problems;
 }
@@ -935,7 +1012,10 @@ export function runEventAudience(event: Pick<RunEventV2, 'type' | 'data'>): RunE
  */
 export function toPublicRunEvent(event: RunEventV2): RunEventV2 | null {
   if (runEventAudience(event) !== 'public') return null;
-  return event;
+  if (event.type !== 'run.failed' && event.type !== 'node.failed') return event;
+  const { detail: _detail, ...error } = event.data.error;
+  void _detail;
+  return { ...event, data: { ...event.data, error } } as RunEventV2;
 }
 
 /**
@@ -987,7 +1067,8 @@ export function parseStoredRunEvent(runId: string, fields: readonly string[]): P
   const rawSeq = map.get('seq');
   if (rawSeq === undefined) return { kind: 'legacy' };
   const problems: string[] = [];
-  if (!STORED_SEQ_PATTERN.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq))) problems.push(`stored seq must be a positive integer (received ${JSON.stringify(rawSeq)})`);
+  if (!STORED_SEQ_PATTERN.test(rawSeq) || !Number.isSafeInteger(Number(rawSeq)))
+    problems.push(`stored seq must be a positive integer (received ${JSON.stringify(rawSeq)})`);
   let data: unknown;
   try {
     data = JSON.parse(map.get('body') ?? '');
@@ -1003,7 +1084,8 @@ export function parseStoredRunEvent(runId: string, fields: readonly string[]): P
   if (problems.length > 0) return { kind: 'invalid', problems };
   const typed = event as unknown as RunEventV2;
   const visibility = runEventAudience(typed);
-  if (map.get('vis') !== visibility) return { kind: 'invalid', problems: [`stored vis ${JSON.stringify(map.get('vis'))} disagrees with ${visibility}`] };
+  if (map.get('vis') !== visibility)
+    return { kind: 'invalid', problems: [`stored vis ${JSON.stringify(map.get('vis'))} disagrees with ${visibility}`] };
   return { kind: 'event', event: typed, visibility };
 }
 

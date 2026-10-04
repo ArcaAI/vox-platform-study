@@ -13,6 +13,8 @@ import {
   PUBLIC_RUN_EVENT_TYPES,
   RUN_EVENT_NODE_SCOPE,
   RUN_EVENT_TYPES,
+  RUN_ERROR_FALLBACK_MESSAGE,
+  RUN_ERROR_MESSAGES,
   RUN_EVENT_VISIBILITY,
   RUN_PROTOCOL_HEADER,
   RUN_PROTOCOL_QUERY_PARAM,
@@ -32,6 +34,7 @@ import {
   parseStoredRunEvent,
   planRunResume,
   runEventAudience,
+  runErrorMessage,
   toPublicRunEvent,
   selectRunProtocol,
   isPublicRunEvent,
@@ -51,8 +54,10 @@ interface Fixture {
   visibility: Record<string, string>;
   nodeScope: Record<string, string>;
   agentRunNodeId: string;
-  examples: Array<{ name: string; event: RunEventV2; runKind?: 'agent' | 'workflow' }>;
-  invalid: Array<{ name: string; event: unknown; problem: string; runKind?: 'agent' | 'workflow' }>;
+  errorMessages: Record<string, string>;
+  errorFallbackMessage: string;
+  examples: Array<{ name: string; event: RunEventV2; runKind?: 'agent' | 'workflow'; plane?: 'public' | 'admin' }>;
+  invalid: Array<{ name: string; event: unknown; problem: string; runKind?: 'agent' | 'workflow'; plane?: 'public' | 'admin' }>;
   sse: Array<{ name: string; event: RunEventV2; frame: string }>;
   sequencer: {
     keys: { seq: string; events: string; dedupe: string };
@@ -69,6 +74,14 @@ interface Fixture {
     entry: string[];
     event: RunEventV2;
   }>;
+}
+
+/** A fixture entry's validation context (`runKind`, `plane`), when it names one. */
+function optionsOf(entry: { runKind?: 'agent' | 'workflow'; plane?: 'public' | 'admin' }): {
+  runKind?: 'agent' | 'workflow';
+  plane?: 'public' | 'admin';
+} {
+  return { ...(entry.runKind === undefined ? {} : { runKind: entry.runKind }), ...(entry.plane === undefined ? {} : { plane: entry.plane }) };
 }
 
 // __dirname, not import.meta.url: this package's tests compile to CommonJS (see envelope.test.ts).
@@ -115,7 +128,7 @@ describe('every example validates; every type has one', () => {
   });
 
   it.each(fixture.examples.map((entry) => [entry.name, entry] as const))('%s', (_name, entry) => {
-    const options = entry.runKind === undefined ? undefined : { runKind: entry.runKind };
+    const options = optionsOf(entry);
     expect(runEventProblems(entry.event, options)).toEqual([]);
     expect(parseRunEvent(entry.event, options)).toBe(entry.event);
   });
@@ -123,7 +136,7 @@ describe('every example validates; every type has one', () => {
 
 describe('every invalid example is refused, by name', () => {
   it.each(fixture.invalid.map((entry) => [entry.name, entry] as const))('%s', (_name, entry) => {
-    const options = entry.runKind === undefined ? undefined : { runKind: entry.runKind };
+    const options = optionsOf(entry);
     const problems = runEventProblems(entry.event, options);
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.join('\n')).toContain(entry.problem);
@@ -292,7 +305,11 @@ describe('ONE sequencer — the stored shape every producer appends through (F2 
 
   it.each(fixture.stored.map((entry) => [entry.name, entry] as const))('%s: append command and stored entry round trip', (_name, entry) => {
     expect(buildRunAppend(entry.append)).toEqual(entry.command);
-    expect(parseStoredRunEvent(entry.append.runId, entry.entry)).toEqual({ kind: 'event', event: entry.event, visibility: entry.entry[entry.entry.indexOf('vis') + 1] });
+    expect(parseStoredRunEvent(entry.append.runId, entry.entry)).toEqual({
+      kind: 'event',
+      event: entry.event,
+      visibility: entry.entry[entry.entry.indexOf('vis') + 1],
+    });
     expect(runEventProblems(entry.event)).toEqual([]);
   });
 
@@ -318,8 +335,12 @@ describe('ONE sequencer — the stored shape every producer appends through (F2 
   it('a legacy entry (no seq field) is recognised and skipped; a broken v2 entry is invalid, never guessed', () => {
     expect(parseStoredRunEvent('r1', ['data', '{"schemaVersion":1}'])).toEqual({ kind: 'legacy' });
     expect(parseStoredRunEvent('r1', ['seq', '3', 'type', 'ping', 'ts', '2026-10-04T10:00:00Z', 'vis', 'public', 'body', '{}']).kind).toBe('invalid');
-    expect(parseStoredRunEvent('r1', ['seq', '3', 'type', 'run.started', 'ts', '2026-10-04T10:00:00Z', 'vis', 'public', 'body', '{nope']).kind).toBe('invalid');
-    expect(parseStoredRunEvent('r1', ['seq', 'x', 'type', 'run.started', 'ts', '2026-10-04T10:00:00Z', 'vis', 'public', 'body', '{}']).kind).toBe('invalid');
+    expect(parseStoredRunEvent('r1', ['seq', '3', 'type', 'run.started', 'ts', '2026-10-04T10:00:00Z', 'vis', 'public', 'body', '{nope']).kind).toBe(
+      'invalid',
+    );
+    expect(parseStoredRunEvent('r1', ['seq', 'x', 'type', 'run.started', 'ts', '2026-10-04T10:00:00Z', 'vis', 'public', 'body', '{}']).kind).toBe(
+      'invalid',
+    );
   });
 
   describe('planRunResume — the gateway maps a seq cursor onto the contiguous stored stream', () => {
@@ -401,14 +422,21 @@ describe('node scoping — agent runs and session-sourced transcripts (F2 fix 4)
   });
 
   it('every other node-scoped type keeps `required`, and run-level types keep `forbidden`', () => {
-    const optional = Object.entries(RUN_EVENT_NODE_SCOPE).filter(([, scope]) => scope === 'optional').map(([type]) => type);
+    const optional = Object.entries(RUN_EVENT_NODE_SCOPE)
+      .filter(([, scope]) => scope === 'optional')
+      .map(([type]) => type);
     expect(optional).toEqual(['transcript.partial', 'transcript.final']);
   });
 });
 
 describe('per-node outputs on the ADMIN trace (F2 fix 5)', () => {
   const base = { seq: 14, runId: 'r', ts: '2026-10-04T10:00:00Z' };
-  const adminOutput = { ...base, type: 'output.data', nodeId: 'n_entities', data: { field: 'entities', value: [], visibility: 'admin' } } as unknown as RunEventV2;
+  const adminOutput = {
+    ...base,
+    type: 'output.data',
+    nodeId: 'n_entities',
+    data: { field: 'entities', value: [], visibility: 'admin' },
+  } as unknown as RunEventV2;
   const publicOutput = { ...base, type: 'output.data', nodeId: 'n_end', data: { field: 'entities', value: [] } } as unknown as RunEventV2;
 
   it('an admin-trace output.data (visibility: admin) is valid, admin-audience, and never reaches the public plane', () => {
@@ -436,7 +464,13 @@ describe('per-node outputs on the ADMIN trace (F2 fix 5)', () => {
   });
 
   it('the stored entry records the event-level audience in `vis`', () => {
-    const command = buildRunAppend({ runId: 'r', type: 'output.data', ts: base.ts, nodeId: 'n_entities', data: { field: 'entities', value: [], visibility: 'admin' } });
+    const command = buildRunAppend({
+      runId: 'r',
+      type: 'output.data',
+      ts: base.ts,
+      nodeId: 'n_entities',
+      data: { field: 'entities', value: [], visibility: 'admin' },
+    });
     expect(command.args[command.args.indexOf('vis') + 1]).toBe('admin');
   });
 
@@ -468,11 +502,74 @@ describe('prompt.composed — characters always, tokens only when a tokenizer ex
   });
 
   it('token counts are optional extras, per layer and in total', () => {
-    expect(runEventProblems(composed({ layers: [{ name: 'instruction', chars: 1200, tokens: 300 }], charsTotal: 1200, tokensTotal: 300 }))).toEqual([]);
+    expect(runEventProblems(composed({ layers: [{ name: 'instruction', chars: 1200, tokens: 300 }], charsTotal: 1200, tokensTotal: 300 }))).toEqual(
+      [],
+    );
   });
 
   it('characters stay required — per layer and in total', () => {
-    expect(runEventProblems(composed({ layers: [{ name: 'instruction', tokens: 300 }], charsTotal: 0 })).join('\n')).toContain('layers[0].chars is required');
+    expect(runEventProblems(composed({ layers: [{ name: 'instruction', tokens: 300 }], charsTotal: 0 })).join('\n')).toContain(
+      'layers[0].chars is required',
+    );
     expect(runEventProblems(composed({ layers: [] })).join('\n')).toContain('charsTotal is required');
+  });
+});
+
+describe('errors — a fixed code and a fixed label; free text only in the admin-only detail (F2 fix 7)', () => {
+  const failed = (error: Record<string, unknown>): RunEventV2 =>
+    ({
+      seq: 18,
+      runId: 'r',
+      type: 'node.failed',
+      ts: '2026-10-04T10:00:00Z',
+      nodeId: 'n_tts',
+      data: { durationMs: 900, error },
+    }) as unknown as RunEventV2;
+  const runFailed = (error: Record<string, unknown>): RunEventV2 =>
+    ({
+      seq: 19,
+      runId: 'r',
+      type: 'run.failed',
+      ts: '2026-10-04T10:00:00Z',
+      data: { status: 'FAILED', durationMs: 900, error },
+    }) as unknown as RunEventV2;
+
+  it('the label catalogue agrees with the fixture', () => {
+    expect(RUN_ERROR_MESSAGES).toEqual(fixture.errorMessages);
+    expect(RUN_ERROR_FALLBACK_MESSAGE).toBe(fixture.errorFallbackMessage);
+    expect(runErrorMessage('MODEL_UNAVAILABLE')).toBe(RUN_ERROR_MESSAGES.MODEL_UNAVAILABLE);
+    expect(runErrorMessage('SOME_NEW_CODE')).toBe(RUN_ERROR_FALLBACK_MESSAGE);
+  });
+
+  it('message must be the fixed label of its code — on node.failed and run.failed alike', () => {
+    expect(runEventProblems(failed({ code: 'MODEL_UNAVAILABLE', message: 'The model did not answer.' }))).toEqual([]);
+    expect(runEventProblems(failed({ code: 'NEW_PRODUCER_CODE', message: RUN_ERROR_FALLBACK_MESSAGE }))).toEqual([]);
+    const echo = 'Model refused: patient John Doe, DOB 1970-01-01';
+    expect(runEventProblems(failed({ code: 'MODEL_ERROR', message: echo })).join('\n')).toContain('fixed label');
+    expect(runEventProblems(runFailed({ code: 'RUN_TIMED_OUT', message: echo })).join('\n')).toContain('fixed label');
+  });
+
+  it('the code is SCREAMING_SNAKE — it cannot carry a value', () => {
+    expect(runEventProblems(failed({ code: 'model unavailable for John', message: RUN_ERROR_FALLBACK_MESSAGE })).join('\n')).toContain('code');
+  });
+
+  it('free-text detail is allowed on the stored event and stripped from the public plane', () => {
+    const event = failed({ code: 'MODEL_ERROR', message: RUN_ERROR_MESSAGES.MODEL_ERROR, detail: 'upstream 500: context length exceeded' });
+    expect(runEventProblems(event)).toEqual([]);
+    expect(runEventProblems(event, { plane: 'admin' })).toEqual([]);
+    expect(runEventProblems(event, { plane: 'public' }).join('\n')).toContain('detail');
+    const projected = toPublicRunEvent(event)!;
+    expect((projected.data as unknown as { error: Record<string, unknown> }).error).toEqual({
+      code: 'MODEL_ERROR',
+      message: RUN_ERROR_MESSAGES.MODEL_ERROR,
+    });
+    expect(runEventProblems(projected, { plane: 'public' })).toEqual([]);
+    // the stored event is not mutated
+    expect((event.data as unknown as { error: Record<string, unknown> }).error.detail).toBe('upstream 500: context length exceeded');
+  });
+
+  it('the public plane refuses admin-audience events outright', () => {
+    const debug = fixture.examples.find((entry) => entry.event.type === 'model.request')!.event;
+    expect(runEventProblems(debug, { plane: 'public' }).join('\n')).toContain('admin');
   });
 });

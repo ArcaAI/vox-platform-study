@@ -55,6 +55,25 @@
     "output.validated": "required"
   },
   "agentRunNodeId": "agent",
+  "errorMessages": {
+    "RUN_TIMED_OUT": "The run exceeded its time limit.",
+    "NODE_TIMED_OUT": "The step exceeded its time limit.",
+    "RUN_CANCELLED": "The run was cancelled.",
+    "INPUT_INVALID": "The run input does not match its schema.",
+    "OUTPUT_INVALID": "The output does not match its declared contract.",
+    "BINDING_UNRESOLVED": "A required input of the step has no value.",
+    "PROMPT_VARIABLE_UNRESOLVED": "A required prompt variable has no value.",
+    "PAYLOAD_TOO_LARGE": "A payload exceeded the size limit.",
+    "MODEL_UNAVAILABLE": "The model did not answer.",
+    "MODEL_ERROR": "The model returned an error.",
+    "PROVIDER_NOT_CONFIGURED": "No usable provider connection is configured.",
+    "AGENT_VERSION_UNAVAILABLE": "The pinned agent version is not available.",
+    "GUARDRAIL_BLOCKED": "A guardrail blocked the content.",
+    "CONSULTATION_READ_FAILED": "Consultation data could not be read.",
+    "DOWNSTREAM_UNAVAILABLE": "A downstream service did not answer.",
+    "INTERNAL_ERROR": "An internal error occurred."
+  },
+  "errorFallbackMessage": "The step could not be completed.",
   "examples": [
     {
       "name": "run.started",
@@ -543,7 +562,30 @@
           "durationMs": 600000,
           "error": {
             "code": "RUN_TIMED_OUT",
-            "message": "The run exceeded maxTotalSeconds."
+            "message": "The run exceeded its time limit.",
+            "detail": "maxTotalSeconds=600 elapsed while n_note was running."
+          },
+          "tokens": {
+            "in": 0,
+            "out": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "run.failed-as-the-public-plane-receives-it",
+      "plane": "public",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "TIMED_OUT",
+          "durationMs": 600000,
+          "error": {
+            "code": "RUN_TIMED_OUT",
+            "message": "The run exceeded its time limit."
           },
           "tokens": {
             "in": 0,
@@ -1018,6 +1060,81 @@
               "text": "Subjective: "
             }
           }
+        }
+      }
+    },
+    {
+      "name": "error-message-is-free-text",
+      "problem": "fixed label",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "durationMs": 900,
+          "error": {
+            "code": "MODEL_ERROR",
+            "message": "Model refused the note for John Doe."
+          }
+        }
+      }
+    },
+    {
+      "name": "error-code-is-not-screaming-snake",
+      "problem": "code",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "durationMs": 900,
+          "error": {
+            "code": "model error",
+            "message": "The step could not be completed."
+          }
+        }
+      }
+    },
+    {
+      "name": "error-detail-on-the-public-plane",
+      "plane": "public",
+      "problem": "detail",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "FAILED",
+          "durationMs": 1,
+          "error": {
+            "code": "MODEL_ERROR",
+            "message": "The model returned an error.",
+            "detail": "upstream 500"
+          }
+        }
+      }
+    },
+    {
+      "name": "admin-event-on-the-public-plane",
+      "plane": "public",
+      "problem": "admin",
+      "event": {
+        "seq": 9,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "model.request",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "provider": "lm-studio",
+          "model": "gemma",
+          "attempt": 1,
+          "fallback": false,
+          "stream": true
         }
       }
     }
