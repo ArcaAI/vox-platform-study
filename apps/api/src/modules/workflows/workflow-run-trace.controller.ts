@@ -12,6 +12,9 @@ import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { resolveRunProtocol } from './run-protocol-delivery';
 import { WorkflowStreamService } from './workflow-stream.service';
 
+/** TASK-1038 E2 (fix 2) — the admin trace's own stream-ticket namespace (never `workflow_run`). */
+export const WORKFLOW_RUN_TRACE_TICKET_NAMESPACE = 'workflow_run_trace';
+
 /**
  * `WorkflowRunTraceController` — TASK-1038 B3a deliverable 3: the ADMIN TRACE of a run,
  * `GET /api/v1/admin/workflow-runs/:runId/trace/stream` (SSE).
@@ -27,8 +30,9 @@ import { WorkflowStreamService } from './workflow-stream.service';
  *
  * Console only. `@ForbidApiKey()` (admin plane, policy A2) and `@ForbidServiceAccount()` — the
  * trace never exists on a machine plane. A browser `EventSource` authenticates with a single-use
- * `?ticket=` scoped `workflow_run:<runId>` (`POST /auth/stream-ticket`, whose mint-time check
- * already proves the run is the caller's tenant's).
+ * `?ticket=` scoped `workflow_run_trace:<runId>` — TASK-1038 E2 (fix 2): its own namespace, minted
+ * ONLY by the JWT `POST /auth/stream-ticket` after the trace's audience check and the run's
+ * ownership. The business `workflow_run:` ticket (mintable by machine credentials) is refused.
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-runs')
@@ -48,7 +52,9 @@ export class WorkflowRunTraceController {
 
   @Get(':runId/trace/stream')
   @CanRead('WorkflowRun')
-  @StreamScope({ namespace: 'workflow_run', param: 'runId' })
+  // TASK-1038 E2 (fix 2) — its OWN namespace. A `workflow_run:` ticket is mintable by an API key or a
+  // service account on the business route and restores the bound human; it must never open this.
+  @StreamScope({ namespace: WORKFLOW_RUN_TRACE_TICKET_NAMESPACE, param: 'runId' })
   // AUTH-NOTE: `@CanRead('WorkflowRun')` UNDERSTATES this route's gate. A clinician may hold
   // `read:WorkflowRun`, but the trace carries every event of the run, PHI and admin-only debug
   // data included (protocol-v2.md §5), so `WorkflowRunTraceAccessService.assertCanTrace` admits a
@@ -61,7 +67,8 @@ export class WorkflowRunTraceController {
       'admin-audience debug events (input.validated, data.bound, binding.warning, consultation.read, transcript.*, prompt.composed, model.request, ' +
       'guardrail.*, output.validated) and `output.data` with `visibility: admin`. Resume with `Last-Event-ID: <seq>` or `?after=<seq>`. Loss is ' +
       'signalled with `run.resync`. Super administrators and tenant administrators of the working tenant only; patient data is shown and the ' +
-      'read is audited. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=` (scope `workflow_run:<runId>`).',
+      'read is audited. Accepts `Authorization: Bearer <jwt>` or a single-use `?ticket=` (scope `workflow_run_trace:<runId>`, minted only by ' +
+      '`POST /auth/stream-ticket`; a `workflow_run:` ticket is refused).',
   })
   @ApiParam({ name: 'runId', description: 'The domain run id (sandbox or real).' })
   @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'The `seq` of the last event received. Omit on a first connect.' })
