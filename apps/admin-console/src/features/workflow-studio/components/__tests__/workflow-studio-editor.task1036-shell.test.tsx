@@ -39,7 +39,10 @@ vi.mock('../palette', () => ({ PaletteRail: () => <div data-testid="palette-stub
 vi.mock('../inspector', () => ({
   InspectorPanel: () => <div data-testid="inspector-stub" />,
 }));
-vi.mock('../test-tab', () => ({ TestTab: (props: { definitionId: string }) => <div data-testid="test-tab" data-definition-id={props.definitionId} /> }));
+vi.mock('../test-tab', () => ({
+  TestTab: (props: { definitionId: string }) => <div data-testid="test-tab" data-definition-id={props.definitionId} />,
+  useNodeLastRuns: () => ({}),
+}));
 vi.mock('../integration-tab', () => ({ IntegrationTab: (props: { definitionId: string }) => <div data-testid="integration-tab" data-definition-id={props.definitionId} /> }));
 
 const historyProps = vi.hoisted(() => ({ last: null as null | { slug: string; currentDefinitionId?: string; open: boolean } }));
@@ -51,11 +54,6 @@ vi.mock('../management/version-history-sheet', () => ({
 }));
 vi.mock('../settings/settings-dialog', () => ({
   SettingsDialog: (props: { open: boolean }) => (props.open ? <div role="dialog" aria-label="Settings stub" /> : null),
-}));
-vi.mock('@/shared/sandbox', () => ({
-  SandboxRunPanel: () => <div data-testid="sandbox-run-panel" />,
-  SandboxNodeTrace: () => null,
-  useSandboxNodeStates: () => new Map(),
 }));
 
 const OK_REPORT: WorkflowValidationReport = { reportVersion: 1, ok: true, findings: [], ruleSetVersion: 1, registryChecksum: 'reg', evaluatedAt: '2026-09-13T00:00:00.000Z' };
@@ -280,12 +278,6 @@ describe('studio shell — floating panes (OD-17)', () => {
     expect(inspector.getAttribute('data-dock')).toBe('right');
     fireEvent.click(screen.getByRole('button', { name: 'Close Inspector' }));
     expect(screen.queryByRole('region', { name: 'Inspector' })).toBeNull();
-  });
-
-  it('no longer hosts a sandbox Run surface in the inspector — the Test tab replaced it', () => {
-    renderEditor();
-    fireEvent.click(screen.getByRole('button', { name: 'select n1' }));
-    expect(screen.queryByTestId('sandbox-run-panel')).toBeNull();
   });
 
   it('has 0 axe violations in the Composer', async () => {

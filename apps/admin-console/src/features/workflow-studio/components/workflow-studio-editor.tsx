@@ -14,6 +14,12 @@
  * sections below `md`. The Test and Integration tabs are other lanes' components, mounted here with
  * the definition id; each stays mounted (hidden) once visited so a live run survives a tab switch.
  *
+ * COMPOSER GLUE (TASK-1036 lane C2c). The canvas is `ComposerCanvas` (lane C2b), which owns every
+ * canvas gesture against the store — typed ports, auto-mapped links, `+` on a link, drop, delete —
+ * so the editor no longer carries its own connect / drop / secondary-binding code. `graph.settings`
+ * travels with the graph on every hydrate, Save and export. Selecting a LINK opens the inspector
+ * (its edge view), and the inspector reads the Test tab's last run per node (`useNodeLastRuns`).
+ *
  * SAVE MODEL (OD-7). No autosave. Every edit — including a node MOVE and a header rename — marks
  * the store dirty and waits for the admin to press Save, which performs the same If-Match PATCH
  * autosave used to (428 on a missing precondition, 412 -> `OccConflictAlert`). Discard reverts to
@@ -57,7 +63,7 @@ import {
 } from '@arcaai/ui';
 import { IconDots, IconLock, IconPencil, IconPlus, IconTopologyStar3 } from '@tabler/icons-react';
 import { ACTION_CATALOGUE } from '@arcaai/workflow-contract';
-import { WorkflowCanvas, layoutWorkflowGraph, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
+import { layoutWorkflowGraph } from '@arcaai/ui/components/workflow-canvas';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
@@ -67,7 +73,7 @@ import { useStudioShortcuts, useUnsavedChangesGuard } from '../hooks';
 import { useSaveModel, type SaveDefinitionPatch } from '../hooks/use-save-model';
 import {
   useCloneWorkflowDefinition,
-  useCreateWorkflowDefinition,
+  useCreateDraftFrom,
   useExportWorkflowDefinition,
   useImportWorkflowDefinition,
   usePublishWorkflowDefinition,
@@ -84,13 +90,11 @@ import { layoutClusteredGraph } from '../lib/ensure-canvas-layout';
 import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/graph-io';
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { readContextSchemaBinding } from '../lib/context-schema-ref';
-import { readPaletteDragType } from '../lib/palette-drag';
 import { actionKeyOf } from '../lib/core-ports';
 import { nodeDisplayName } from '../lib/node-identity';
 import { humanizeKey } from '../lib/schema-form';
-import { branchHandlesFor, primaryIoFor, secondaryInputsFor } from '../lib/canvas-handles';
+import { planConnection } from '../lib/connection-plan';
 import { computeStepOrder } from '../lib/step-order';
-import { resolvePrimarySockets } from '../lib/socket-resolution';
 import {
   GraphStoreProvider,
   useGraphStore,
@@ -104,12 +108,13 @@ import {
   selectEdges,
   selectNodes,
   selectSaveState,
+  selectSelectedEdgeId,
   selectSelectedNode,
   selectSelectedNodeId,
 } from '../store';
-import type { WorkflowDefinition, WorkflowFinding, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
+import type { WorkflowDefinition, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
 import { InspectorPanel, type InspectorTab } from './inspector';
-import { CORE_NODE_RENDERERS } from './canvas';
+import { ComposerCanvas, useComposerAgents } from './canvas';
 import { PromptBindingsRail } from './prompt-bindings';
 import { PaletteRail } from './palette';
 import { ValidationRail, publishBlockedReason, useFocusNode } from './validation';
@@ -120,7 +125,7 @@ import { CloneDefinitionDialog, type CloneDefinitionSubmission } from './clone-d
 import { ImportDefinitionDialog, type ImportDefinitionSubmission } from './import-definition-dialog';
 import { WorkflowSwitcher } from './workflow-switcher';
 import { StudioHeader, collectAgentPins } from './header';
-import { TestTab } from './test-tab';
+import { TestTab, useNodeLastRuns } from './test-tab';
 import { IntegrationTab } from './integration-tab';
 import { VersionHistorySheet } from './management/version-history-sheet';
 import { SettingsDialog } from './settings/settings-dialog';
@@ -191,6 +196,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const dirty = useGraphStore(selectDirty);
   const selectedNode = useGraphStore(selectSelectedNode);
   const selectedNodeId = useGraphStore(selectSelectedNodeId);
+  const selectedEdgeId = useGraphStore(selectSelectedEdgeId);
   const saveState = useGraphStore(selectSaveState);
   const storeCanSave = useGraphStore(selectCanSave);
   const storeCanDiscard = useGraphStore(selectCanDiscard);
@@ -250,17 +256,22 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('config');
   /**
    * The right rail collapses "entirely when no node is selected" so the canvas gains the width
-   * (§3.5). But Problems and Run are GRAPH-level, not node-level — collapsing on deselect alone
-   * would make them unreachable with nothing selected. So the rail is open when a node is
-   * selected OR the admin explicitly opened it for one of those two tabs; closing it clears both.
+   * (§3.5). But Problems is GRAPH-level, not node-level — collapsing on deselect alone would make
+   * it unreachable with nothing selected. So the rail is open when a node OR A LINK is selected
+   * (TASK-1036 C2c: the edge inspector — what a link carries, and its delete — lives in the
+   * inspector) OR the admin explicitly opened it for Problems; closing it clears all three.
    */
   const [railPinned, setRailPinned] = useState(false);
-  const railOpen = selectedNodeId !== null || railPinned;
+  const railOpen = selectedNodeId !== null || selectedEdgeId !== null || railPinned;
   const versionsQuery = useWorkflowDefinitionVersions(definition.id);
   const versionCount = Array.isArray(versionsQuery.data) ? versionsQuery.data.length : null;
 
   const readOnly = status === 'PUBLISHED' || status === 'DEPRECATED';
-  const createNewVersion = useCreateWorkflowDefinition();
+  const draftFrom = useCreateDraftFrom();
+  /** TASK-1036 OD-17 — the latest Test run per node (lane C3), for the inspector's Last run tab and the picker's samples. */
+  const lastRunByNode = useNodeLastRuns(definition.id);
+  /** The composer's agent resolver — the SAME cached read `ComposerCanvas` types ports with. */
+  const { agents } = useComposerAgents();
   // TASK-965 WS-1 (WF-1, WF-26) — validate and publish go through the studio's TanStack mutations,
   // whose `onSuccess` invalidates the whole namespace (rule 13: mutations, never raw client calls).
   const validateMutation = useValidateWorkflowDefinition();
@@ -314,10 +325,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   }, [nodes]);
 
   /**
-   * TASK-893 OD-4 — execution order, computed once per graph shape and used for THREE things: the
-   * canvas step badges, the order the "Connect to…" menu lists nodes in, and the upstream-node
-   * pickers the inspector binds secondary data inputs with. One derivation, so a node cannot be
-   * "③" on the canvas and second in the inspector.
+   * TASK-893 OD-4 — execution order, computed once per graph shape: it numbers the "Connect to…"
+   * menu's entries and orders them. The canvas's step badges run the same `computeStepOrder`
+   * (inside `ComposerCanvas`), so a node cannot be "③" on the canvas and second in the menu.
    */
   const stepOrder = useMemo(
     () =>
@@ -344,10 +354,13 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   useEffect(() => {
     if (hydratedRef.current === definition.id) return;
     hydratedRef.current = definition.id;
-    const { nodes: loadedNodes, edges: loadedEdges } = fromWorkflowGraph(definition.graph);
+    // TASK-1036 §3.5 — `graph.settings` is hydrated WITH the graph. Dropping it here is how a
+    // workflow's connections / sources / context schema vanished on the next Save.
+    const { nodes: loadedNodes, edges: loadedEdges, settings: loadedSettings } = fromWorkflowGraph(definition.graph);
     storeApi.getState().hydrate(
       loadedNodes.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       loadedEdges,
+      loadedSettings,
     );
     setName(definition.name);
     setDescription(definition.description ?? '');
@@ -392,7 +405,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
    * saved), so it must not present itself as an edit.
    */
   useEffect(() => {
-    const { nodes: current, edges: currentEdges } = storeApi.getState();
+    const { nodes: current, edges: currentEdges, settings: currentSettings } = storeApi.getState();
     const needsInitialLayout = current.length > 1 && current.every((node) => node.position.x === 0 && node.position.y === 0);
     if (!needsInitialLayout) return;
     let cancelled = false;
@@ -405,6 +418,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       storeApi.getState().hydrate(
         current.map((node) => ({ ...node, position: positions[node.id] ?? node.position })),
         currentEdges,
+        currentSettings,
       );
       setFitViewKey((key) => key + 1);
     });
@@ -448,10 +462,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
 
   /** What one explicit Save writes, read from the store at click time (never a stale closure). */
   const buildPatch = useCallback((): SaveDefinitionPatch => {
-    const { nodes: current, edges: currentEdges, dirty: graphDirty } = storeApi.getState();
+    const { nodes: current, edges: currentEdges, settings: currentSettings, dirty: graphDirty } = storeApi.getState();
     // TASK-965 WS-1 (WF-9) — the graph rides the PATCH only when the STORE is dirty: a graph
     // patch resets VALIDATED → DRAFT server-side, so a rename must not carry one.
-    const patch: SaveDefinitionPatch = graphDirty ? { graph: toWorkflowGraph(current, currentEdges) } : {};
+    const patch: SaveDefinitionPatch = graphDirty ? { graph: toWorkflowGraph(current, currentEdges, currentSettings) } : {};
     if (metadataDirty) {
       patch.name = name;
       patch.description = description;
@@ -472,22 +486,23 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     toast.success('Unsaved changes discarded.');
   }, [storeApi, definition.name, definition.description]);
 
-  // "Edit as new draft" (published rows are immutable — edits create versions). Clones the frozen
-  // graph into a fresh DRAFT in the same (tenantId, slug) lineage.
+  // "Edit as new draft" (published rows are immutable — edits create versions). TASK-1036 §3.4: the
+  // gateway's own `POST …/:id/draft` branches the frozen version into a DRAFT of the same lineage
+  // (graph, settings and bindings server-side, not a client copy of whatever this tab loaded). A
+  // lineage holds ONE open draft: a 409 `OPEN_DRAFT_EXISTS` names it, and the admin is taken there.
   async function handleCreateNewVersion() {
     try {
-      const created = await createNewVersion.mutateAsync({
-        slug: definition.slug,
-        name: definition.name,
-        description: definition.description ?? undefined,
-        paletteKey: definition.paletteKey,
-        graph: definition.graph,
-        parentVersionId: definition.id,
-      });
-      toast.success('New draft version created.');
-      navigate(`/workflow-studio/${created.id}`);
-    } catch {
-      toast.error('Could not create a new version.');
+      const created = await draftFrom.mutateAsync(definition.id);
+      toast.success(`Draft v${created.versionNumber} created from v${definition.versionNumber}.`);
+      navigate(`/workflow-studio/${encodeURIComponent(created.id)}`);
+    } catch (cause) {
+      const body = cause instanceof GatewayError ? (cause.details as { code?: string; draftId?: string } | undefined) : undefined;
+      if (cause instanceof GatewayError && cause.status === 409 && body?.code === 'OPEN_DRAFT_EXISTS' && body.draftId) {
+        toast.info('This workflow already has an open draft — opening it.');
+        navigate(`/workflow-studio/${encodeURIComponent(body.draftId)}`);
+        return;
+      }
+      toast.error(cause instanceof GatewayError ? cause.message : 'Could not create a new draft.');
     }
   }
 
@@ -529,7 +544,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     }
   }
 
-  // Stable identity is load-bearing for the canvas: `WorkflowCanvas` memoizes its
+  // Stable identity is load-bearing for the canvas: `WorkflowCanvas` (inside `ComposerCanvas`) memoizes its
   // `onSelectionChange` on this callback, and React Flow re-emits the current selection every
   // time that handler's identity changes — an inline arrow here looped selection into
   // "Maximum update depth exceeded".
@@ -558,135 +573,61 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const duplicateSelected = useCallback(() => handleDuplicate(storeApi.getState().selectedNodeId), [handleDuplicate, storeApi]);
 
   /**
-   * TASK-893 OD-4 — ONE user-drawn link, sockets resolved underneath. `resolvePrimarySockets`
-   * picks the primary data pair (`out` -> `in`), falling back to the control pair
-   * (`next` -> `after`); a branch handle the admin actually grabbed wins over both. `null` means
-   * these two nodes cannot be linked at all — which is a refusal with a reason, never a silent
-   * no-op (rule 11 §5).
+   * The keyboard "Connect to…" command (WCAG 2.5.7 — the one non-drag path between two EXISTING
+   * steps). TASK-1036 C2c: it runs the composer's own planner (`planConnection`), the same one
+   * `ComposerCanvas` runs on a drag, so a keyboard link is typed, auto-mapped and refused for the
+   * same reasons a pointer link is. A fan-in refusal is reported with its reason; the "Use first
+   * available" choice is offered on the canvas, where the second producer is drawn.
    */
-  const resolveConnection = useCallback(
-    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
-      const current = storeApi.getState().nodes;
-      const source = current.find((node) => node.id === connection.source);
-      const target = current.find((node) => node.id === connection.target);
-      if (!source || !target) return null;
-      return resolvePrimarySockets(
-        descriptorByType,
-        { type: source.type, config: source.config },
-        { type: target.type, config: target.config },
-        connection.sourceHandle,
-      );
-    },
-    [descriptorByType, storeApi],
-  );
-
-  // Drag-time guard: the SAME resolution + the SAME store predicate (`canConnect`, port-lattice
-  // check included via `descriptorByType`) the committed `connect` below runs, so drag-time and
-  // commit-time can never disagree. React Flow refuses an invalid drop target visually, but a
-  // colour change alone doesn't say WHY — so this also toasts the store's reason, deduped per
-  // attempted (source, target) pair so hovering the same invalid handle doesn't spam the user
-  // while the pointer is still moving (rule 11 §5: feedback within 100ms, never silent, but not
-  // noisy either).
-  const lastRefusedConnectionRef = useRef<string | null>(null);
-  const refuseConnection = useCallback((key: string, reason: string) => {
-    if (lastRefusedConnectionRef.current === key) return;
-    lastRefusedConnectionRef.current = key;
-    toast.error(reason);
-  }, []);
-  const isValidConnection = useCallback(
-    (connection: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
-      const key = `${connection.source}:${connection.sourceHandle ?? ''}->${connection.target}:${connection.targetHandle ?? ''}`;
-      const sockets = resolveConnection(connection);
-      if (!sockets) {
-        refuseConnection(key, 'These two nodes have no compatible ports to connect.');
-        return false;
-      }
-      const result = storeApi
-        .getState()
-        .canConnect({ source: connection.source, sourceHandle: sockets.sourceHandle, target: connection.target, targetHandle: sockets.targetHandle }, descriptorByType);
-      if (result.ok) {
-        lastRefusedConnectionRef.current = null;
-        return true;
-      }
-      refuseConnection(key, result.reason);
-      return false;
-    },
-    [resolveConnection, refuseConnection, storeApi, descriptorByType],
-  );
-
-  /** The one commit path for a new edge — shared by the canvas drag and the keyboard "Connect to…". */
-  const commitConnection = useCallback(
-    (request: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }) => {
-      const sockets = resolveConnection(request);
-      if (!sockets) {
-        toast.error('These two nodes have no compatible ports to connect.');
+  const connectTo = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (readOnly) return;
+      const state = storeApi.getState();
+      const planned = planConnection({ nodes: state.nodes, edges: state.edges, descriptorByType, agents, source: sourceId, target: targetId });
+      if (!planned.ok) {
+        toast.error(planned.reason);
         return;
       }
-      const result = storeApi
-        .getState()
-        .connect({ source: request.source, sourceHandle: sockets.sourceHandle, target: request.target, targetHandle: sockets.targetHandle }, descriptorByType);
+      if (planned.request === null) {
+        if (planned.binding) state.setInputBinding(targetId, planned.binding.input, planned.binding.binding);
+        return;
+      }
+      const result = state.connect(planned.request, descriptorByType, planned.binding ? { binding: planned.binding } : undefined);
       if (!result.ok) toast.error(result.reason);
+      else if (planned.note) toast(planned.note);
     },
-    [resolveConnection, storeApi, descriptorByType],
+    [readOnly, storeApi, descriptorByType, agents],
   );
 
   /**
    * Palette CLICK — the pointer-free path (WCAG 2.5.7), and the one that nests.
    *
-   * TASK-893 §3.8: gated on `readOnly` exactly as `handlePaneDrop` is. Before this, clicking a
+   * TASK-893 §3.8: gated on `readOnly` exactly as the canvas drop is. Before this, clicking a
    * palette card on a PUBLISHED definition mutated the store and marked it dirty for an edit that
    * could never be saved, while the drop path refused — two paths, one rule, opposite answers.
+   * TASK-1036 §8.4 item 3 — a PRESET card (Merge) hands its config over with the descriptor.
    */
   const handleAddNode = useCallback(
-    (descriptor: WorkflowNodeDescriptor) => {
+    (descriptor: WorkflowNodeDescriptor, options?: { config?: Record<string, unknown> }) => {
       if (readOnly) return;
       // TASK-864 B1 — with a loop selected, the new node joins its body (pointer-free
       // nesting: no drag-into-group is ever required).
       const parent = selectedNode?.type === LOOP_NODE_TYPE ? selectedNode : undefined;
       const siblings = parent ? nodes.filter((node) => node.parentId === parent.id).length : nodes.length;
       const position = parent ? { x: 24 + siblings * 260, y: 56 } : { x: 120, y: 120 + siblings * 100 };
-      storeApi
-        .getState()
-        .addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, parent ? { parentId: parent.id } : undefined);
+      storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position, {
+        ...(parent ? { parentId: parent.id } : {}),
+        ...(options?.config ? { config: options.config } : {}),
+      });
     },
     [readOnly, nodes, selectedNode, storeApi],
   );
 
-  /**
-   * TASK-890 black-box J4-F1 — palette DROP. The canvas hands over the drop point already
-   * projected into flow coordinates; this decides what the payload means, which is the half only
-   * the consumer can know: an unrecognised drag (a file, dragged prose) and a type the live
-   * registry does not carry are both ignored, so a drop can never author a node the palette
-   * itself would refuse.
-   *
-   * Deliberately TOP-LEVEL: a drop names a point, not a container. Nesting into a `core.loop`
-   * body stays the click path's job (select the loop, click the type) and the "Move into…"
-   * command's, where the intent is explicit and no group hit-testing has to be guessed at.
-   */
-  const handlePaneDrop = useCallback(
-    (event: { dataTransfer: DataTransfer | null }, position: { x: number; y: number }) => {
-      if (readOnly) return;
-      const type = readPaletteDragType(event.dataTransfer);
-      const descriptor = type ? descriptorByType.get(type) : undefined;
-      if (!descriptor || descriptor.implemented === false) return;
-      storeApi.getState().addNode({ type: descriptor.type, safetyClasses: descriptor.classes }, position);
-      storeApi.getState().selectNode(null);
-    },
-    [readOnly, descriptorByType, storeApi],
-  );
-
+  /** The toolbar's "Delete" command; the canvas's own delete path is `ComposerCanvas`'s. */
   const handleDeleteRequest = useCallback(
     (nodeId: string) => {
       const result = storeApi.getState().deleteNode(nodeId);
       if (!result.ok) toast.error(result.reason);
-    },
-    [storeApi],
-  );
-
-  /** TASK-893 §6.7 — deleting a connection. Until now this was possible ONLY in the List view. */
-  const handleEdgeDelete = useCallback(
-    (edgeId: string) => {
-      storeApi.getState().disconnectEdge(edgeId);
     },
     [storeApi],
   );
@@ -715,7 +656,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     return {
       nodeLabel: nodeDisplayName(selectedNode),
       connectTargets: orderedNodes.filter((node) => node.id !== selectedNode.id).map((node) => ({ id: node.id, label: label(node) })),
-      onConnectTo: (targetId: string) => commitConnection({ source: selectedNode.id, target: targetId }),
+      onConnectTo: (targetId: string) => connectTo(selectedNode.id, targetId),
       loopTargets: nodes.filter((node) => node.type === LOOP_NODE_TYPE && node.id !== selectedNode.id).map((node) => ({ id: node.id, label: nodeDisplayName(node) })),
       currentParentId: selectedNode.parentId ?? null,
       onMoveToLoop: (loopId: string | null) => {
@@ -756,7 +697,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       onDuplicate: () => handleDuplicate(selectedNode.id),
       onDelete: () => handleDeleteRequest(selectedNode.id),
     };
-  }, [selectedNode, selectedNodeIds, orderedNodes, nodes, stepOf, commitConnection, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
+  }, [selectedNode, selectedNodeIds, orderedNodes, nodes, stepOf, connectTo, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
 
   // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
   // JSON export and undoable JSON import. Layout moves mark the graph dirty like any other edit;
@@ -775,8 +716,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     toast.success('Graph arranged — Save to keep it.');
   }
   function handleExport() {
-    const { nodes: current, edges: currentEdges } = storeApi.getState();
-    downloadText(GRAPH_EXPORT_FILENAME(definition.slug, definition.versionNumber), exportGraphJson(current, currentEdges));
+    const { nodes: current, edges: currentEdges, settings: currentSettings } = storeApi.getState();
+    downloadText(GRAPH_EXPORT_FILENAME(definition.slug, definition.versionNumber), exportGraphJson(current, currentEdges, currentSettings));
     toast.success('Graph exported.');
   }
   /**
@@ -803,11 +744,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       toast.error(`Import refused: ${parsed.reason}`);
       return;
     }
-    const { nodes: imported, edges: importedEdges } = fromWorkflowGraph(parsed.graph);
+    const { nodes: imported, edges: importedEdges, settings: importedSettings } = fromWorkflowGraph(parsed.graph);
     storeApi.getState().replaceGraph(
       imported.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       importedEdges,
     );
+    // TASK-1036 §3.5 — a file that carries `settings` brings them (an export → import round trip
+    // is lossless); a file without them leaves the workflow's own settings alone rather than
+    // silently clearing its connections. `replaceGraph` takes no settings, so this is a second,
+    // separately undoable step.
+    if (importedSettings !== undefined) storeApi.getState().setSettings(importedSettings);
     void layoutClusteredGraph(imported, importedEdges).then((positions) => {
       if (!positions) return;
       for (const node of imported) {
@@ -917,145 +863,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   function closeRail() {
     setRailPinned(false);
     selectNodeById(null);
+    storeApi.getState().selectEdge(null);
   }
 
   const findings = report?.findings ?? [];
   const errorCount = findings.filter((finding) => finding.severity === 'ERROR').length;
   const warningCount = findings.filter((finding) => finding.severity === 'WARNING').length;
-
-  const canvasNodes: WorkflowCanvasNode[] = nodes.map((node) => {
-    const entry = stepOrder.get(node.id);
-    const io = primaryIoFor(descriptorByType, node.type);
-    const nodeFindings = problemsByNodeId.get(node.id);
-    return {
-      id: node.id,
-      type: node.type,
-      // TASK-890 black-box J4-F3 — the header names the NODE (label, else type + short id), so two
-      // `core.agent` boxes are tellable apart on the canvas and in their Remove buttons.
-      label: nodeDisplayName(node),
-      position: node.position,
-      safetyClasses: node.safetyClasses,
-      config: node.config,
-      kind: node.type === LOOP_NODE_TYPE ? 'group' : 'node',
-      parentId: node.parentId,
-      deprecated: descriptorByType.get(node.type)?.deprecated === true,
-      // TASK-893 OD-4 — one input dot, one output dot, plus the labelled branch outputs that are
-      // the ONE place several handles earn their space. The old 14-handle port grid is gone.
-      hasInput: io.hasInput,
-      hasOutput: io.hasOutput,
-      branches: branchHandlesFor(descriptorByType, node.type, node.config),
-      stepNumber: entry && 'step' in entry ? entry.step : null,
-      stepMarker: entry && 'marker' in entry ? entry.marker : undefined,
-      problem:
-        nodeFindings && nodeFindings.length > 0
-          ? {
-              severity: nodeFindings.some((finding: WorkflowFinding) => finding.severity === 'ERROR') ? ('ERROR' as const) : ('WARNING' as const),
-              messages: nodeFindings.map((finding: WorkflowFinding) => finding.message),
-            }
-          : undefined,
-    };
-  });
-  /**
-   * The set of `(nodeId, portName)` pairs the inspector binds instead of the canvas drawing them
-   * — the whole of "one link instead of split handles" (§3.1). A secondary binding is still a
-   * REAL typed edge on the wire (the interpreter resolves data flow from edges and nothing else,
-   * `_resolve_bound_inputs`); it is only the DRAWING that moves into a form field. So the canvas
-   * is handed every edge except those, and the inspector is handed exactly those.
-   */
-  const secondaryPortsByNode = useMemo(() => {
-    const byNode = new Map<string, Set<string>>();
-    for (const node of nodes) {
-      const ports = secondaryInputsFor(descriptorByType, node.type, node.config);
-      if (ports.length > 0) byNode.set(node.id, new Set(ports.map((port) => port.name)));
-    }
-    return byNode;
-  }, [nodes, descriptorByType]);
-  const isSecondaryBinding = useCallback(
-    (edge: { target: string; targetHandle: string }) => secondaryPortsByNode.get(edge.target)?.has(edge.targetHandle) === true,
-    [secondaryPortsByNode],
-  );
-
-  /**
-   * The inverse of `resolvePrimarySockets`: wire sockets projected back onto the handles the
-   * canvas actually renders.
-   *
-   * Collapsing the node chrome to one input dot and one output dot removed the `after`/`next`
-   * handles, and React Flow silently DROPS an edge whose named handle does not exist — so an
-   * ordering edge (`next -> after`) rendered as nothing at all. Every seeded graph is built out of
-   * those, which is how a whole chain could look disconnected while the wire data was perfectly
-   * intact. Branch handles keep their own id (they are really rendered); everything else lands on
-   * the primary pair. The store is untouched — this is presentation only.
-   */
-  const canvasEdges: WorkflowCanvasEdge[] = edges.map((edge) => {
-    const source = nodes.find((node) => node.id === edge.source);
-    const isBranch =
-      source !== undefined && branchHandlesFor(descriptorByType, source.type, source.config).some((branch) => branch.id === edge.sourceHandle);
-    // TASK-965 — a SECONDARY-input binding (`context`, `audio`, …: edited in the consumer's
-    // inspector field, TASK-893 §3.1) used to be filtered out here entirely, so the platform's own
-    // default workflow — trigger `out` bound into the agent's `context` — drew a trigger connected
-    // to nothing while the footer counted the connection. It is now drawn as a dashed, labelled,
-    // non-deletable BINDING edge landing on the primary input dot: the flow reads correctly, and
-    // the inspector stays the one place it is edited.
-    const binding = isSecondaryBinding(edge);
-    return {
-      id: edge.id,
-      source: edge.source,
-      sourceHandle: isBranch ? edge.sourceHandle : 'out',
-      target: edge.target,
-      targetHandle: 'in',
-      ...(binding ? { kind: 'binding' as const, label: edge.targetHandle } : {}),
-    };
-  });
-
-  /** Upstream nodes the inspector's secondary-input pickers offer, in execution order (§4.1). */
-  const upstreamNodes = useMemo(() => {
-    if (!selectedNode) return [];
-    const selectedStep = stepOf(selectedNode.id);
-    return orderedNodes
-      .filter((node) => node.id !== selectedNode.id)
-      .map((node) => ({ id: node.id, label: nodeDisplayName(node), step: stepOf(node.id) }))
-      .filter((candidate) => selectedStep === null || candidate.step === null || candidate.step < selectedStep);
-  }, [orderedNodes, selectedNode, stepOf]);
-  const secondaryInputs = useMemo(
-    () => (selectedNode ? secondaryInputsFor(descriptorByType, selectedNode.type, selectedNode.config) : undefined),
-    [descriptorByType, selectedNode],
-  );
-
-  /** Port name -> the upstream node currently bound to it, read back off the graph's edges. */
-  const secondaryBindings = useMemo(() => {
-    if (!selectedNode) return undefined;
-    const bound: Record<string, string | null> = {};
-    for (const edge of edges) {
-      if (edge.target !== selectedNode.id) continue;
-      if (!isSecondaryBinding(edge)) continue;
-      bound[edge.targetHandle] = edge.source;
-    }
-    return bound;
-  }, [edges, selectedNode, isSecondaryBinding]);
-
-  /**
-   * Bind/unbind one secondary input. A port holds at most one binding, so this REPLACES: the
-   * existing edge into that port is dropped first, then the new one is proposed through the same
-   * `connect` the canvas uses — so the port lattice refuses an incompatible pick here exactly as
-   * it would refuse the drag, with the same reason surfaced the same way.
-   */
-  const handleSecondaryInputChange = useCallback(
-    (portName: string, fromNodeId: string | null) => {
-      if (!selectedNode || readOnly) return;
-      const state = storeApi.getState();
-      const existing = state.edges.find((edge) => edge.target === selectedNode.id && edge.targetHandle === portName);
-      if (existing) state.disconnectEdge(existing.id);
-      if (fromNodeId === null) return;
-      const source = state.nodes.find((node) => node.id === fromNodeId);
-      if (!source) return;
-      const sockets = resolvePrimarySockets(descriptorByType, { type: source.type, config: source.config }, { type: selectedNode.type, config: selectedNode.config });
-      const result = storeApi
-        .getState()
-        .connect({ source: fromNodeId, sourceHandle: sockets?.sourceHandle ?? 'out', target: selectedNode.id, targetHandle: portName }, descriptorByType);
-      if (!result.ok) toast.error(result.reason);
-    },
-    [selectedNode, readOnly, storeApi, descriptorByType],
-  );
 
   const publishDisabledReason = readOnly
     ? 'This version is already published.'
@@ -1091,9 +904,9 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
               <>
                 <WorkflowSwitcher current={definition} onNavigate={navigate} />
                 {readOnly ? (
-                  <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
+                  <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={draftFrom.isPending}>
                     <IconPlus aria-hidden="true" />
-                    {createNewVersion.isPending ? 'Creating…' : 'Edit as new draft'}
+                    {draftFrom.isPending ? 'Creating…' : 'Edit as new draft'}
                   </Button>
                 ) : null}
                 <Button type="button" variant="outline" size="sm" onClick={() => navigate('/workflow-studio/new')}>
@@ -1221,18 +1034,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
             </FloatingPane>
 
             <div className="h-[26rem] shrink-0 md:absolute md:inset-0 md:h-auto">
-              <WorkflowCanvas
+              {/* TASK-1036 C2c — the composer's canvas owns every canvas gesture against the store
+                  (typed ports, auto-mapped links, `+` on a link, drop, delete, re-parent, move); the
+                  editor hands it the registry, the server's findings and the selection. */}
+              <ComposerCanvas
                 aria-label={`${name} graph`}
-                nodes={canvasNodes}
-                edges={canvasEdges}
-                nodeTypes={CORE_NODE_RENDERERS}
+                descriptorByType={descriptorByType}
                 readOnly={readOnly}
-                selectedNodeId={selectedNodeId}
+                findings={findings}
                 selectedNodeIds={selectedNodeIds}
                 onSelectionChange={handleSelectionChange}
-                onSelect={selectNodeById}
-                onPaneDrop={handlePaneDrop}
-                isValidConnection={isValidConnection}
                 fitViewKey={fitViewKey}
                 emptyState={
                   <Empty>
@@ -1241,33 +1052,11 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                     </EmptyMedia>
                     <EmptyTitle>No nodes yet</EmptyTitle>
                     <EmptyDescription>
-                      Add a node from the palette — click a card, or drag it onto the canvas. Every action here also has a keyboard path under
-                      “Node actions”.
+                      Add a step — click a palette card, drag it onto the canvas, or use “Add a step”. Every action here also has a keyboard path
+                      under “Node actions”.
                     </EmptyDescription>
                   </Empty>
                 }
-                onDeleteRequest={handleDeleteRequest}
-                onEdgeDelete={handleEdgeDelete}
-                onNodeParentChange={handleNodeParentChange}
-                onConnect={(connection) => commitConnection(connection)}
-                onNodesChange={(next) => {
-                  // React Flow reports EVERY node on every change and re-emits the current positions
-                  // whenever the controlled `nodes` prop is re-synced, so most reports move nothing.
-                  // Only a report that actually changes a position may touch the store: treating the
-                  // no-op reports as edits churned `nodes` on each emission, which re-rendered the
-                  // canvas, which re-emitted — a real drag ended in "Maximum update depth exceeded"
-                  // and the error boundary, losing the move (TASK-890 black-box J5).
-                  const before = storeApi.getState().nodes;
-                  const movedSomething = next.some((node) => {
-                    const current = before.find((candidate) => candidate.id === node.id);
-                    return current !== undefined && (current.position.x !== node.position.x || current.position.y !== node.position.y);
-                  });
-                  if (!movedSomething) return;
-                  // `moveNode` now marks the graph dirty (TASK-893 §3.7). It deliberately did not
-                  // before, because layout rode an autosave side-channel; with no autosave, a move
-                  // that is never dirty is a move that is silently lost on reload.
-                  for (const node of next) storeApi.getState().moveNode(node.id, node.position);
-                }}
               />
             </div>
 
@@ -1286,10 +1075,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                   tab={inspectorTab}
                   onTabChange={setInspectorTab}
                   problemCount={findings.length}
-                  upstreamNodes={upstreamNodes}
-                  secondaryInputs={secondaryInputs}
-                  secondaryBindings={secondaryBindings}
-                  onSecondaryInputChange={handleSecondaryInputChange}
+                  lastRunByNode={lastRunByNode}
                   problemsSlot={
                     <div className="flex flex-col gap-4">
                       <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
