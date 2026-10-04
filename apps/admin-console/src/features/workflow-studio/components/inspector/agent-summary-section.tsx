@@ -136,6 +136,11 @@ export function AgentSummarySection({ agent, config }: AgentSummarySectionProps)
   const asrProfile = task === 'SPEECH_TO_TEXT' ? (catalogue.data?.models ?? []).find((row) => row.id === agent.modelId)?.asrProfile : undefined;
   const inherited = asrInheritedValues(asrProfile);
   const findings = agent.validationReport?.findings ?? [];
+  const pinnedVersion = asRecord(config.agentRef)?.versionNumber;
+  const instruction = asRecord(agent.instruction);
+  const promptPin = typeof instruction?.promptVersionNumber === 'number' ? instruction.promptVersionNumber : null;
+  const documentTemplateSlug = typeof asRecord(instruction?.documentTemplate)?.slug === 'string' ? (asRecord(instruction?.documentTemplate)?.slug as string) : null;
+  const dnaEnabled = asRecord(parameters.dna)?.enabled === true;
   const hotwords = agent.instruction?.hotwords ?? [];
   const labels = agent.instruction?.labels ?? [];
 
@@ -154,6 +159,12 @@ export function AgentSummarySection({ agent, config }: AgentSummarySectionProps)
         </Link>
       </div>
 
+      {typeof pinnedVersion === 'number' ? (
+        <Row label="Version" testId="agent-pin">
+          {`Pinned to v${pinnedVersion}`}
+          {typeof agent.versionNumber === 'number' && agent.versionNumber > pinnedVersion ? ` · v${agent.versionNumber} is available` : ''}
+        </Row>
+      ) : null}
       {model ? (
         <Row label="Model" testId="agent-model">
           {model.provider ? `${model.slug} (${model.provider})` : model.slug}
@@ -162,6 +173,21 @@ export function AgentSummarySection({ agent, config }: AgentSummarySectionProps)
       {fallbacks.length > 0 ? (
         <Row label="Fallbacks" testId="agent-fallbacks">
           {fallbacks.join(' → ')}
+        </Row>
+      ) : null}
+      {promptPin !== null ? (
+        <Row label="Prompt" testId="agent-prompt-pin">
+          {`Pinned to v${promptPin}`}
+        </Row>
+      ) : null}
+      {documentTemplateSlug ? (
+        <Row label="Document template" testId="agent-document-template">
+          {`${documentTemplateSlug} (latest approved)`}
+        </Row>
+      ) : null}
+      {task === 'TEXT_GENERATION' && dnaEnabled ? (
+        <Row label="DNA writing style" testId="agent-dna">
+          On (latest report)
         </Row>
       ) : null}
       {hotwords.length > 0 ? <Row label={`Hotwords (${hotwords.length})`}>{hotwords.join(', ')}</Row> : null}

@@ -219,6 +219,8 @@ function problemToast(error: unknown, fallback: string): void {
 /** How a wizard run ended — `published: false` with `findings` is a draft kept for a stated reason. */
 export interface AgentWizardResult {
   published: boolean;
+  /** True when publish was attempted and refused — the draft stays open to be fixed, as opposed to a draft saved on purpose. */
+  blocked: boolean;
   /** The blocking findings that kept the agent DRAFT (publish fails closed; a prompt that is not APPROVED is one). */
   findings: AgentFinding[];
 }
@@ -360,7 +362,7 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
     }
     if (!andPublish) {
       toast.success(editing ? `Draft v${draft.versionNumber} saved` : `Agent ${draft.name} created as a draft`);
-      onCreated(draft, { published: false, findings: [] });
+      onCreated(draft, { published: false, blocked: false, findings: [] });
       reset();
       return;
     }
@@ -368,13 +370,13 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
       // Editing never moves the active pointer: the caller re-pins to the new version (OD-12).
       const published = await publish.mutateAsync({ id: draft.id, body: { activate: !editing } });
       toast.success(editing ? `Version ${published.versionNumber} of ${published.name} published` : `Agent ${published.name} published`);
-      onCreated(published, { published: true, findings: [] });
+      onCreated(published, { published: true, blocked: false, findings: [] });
       reset();
     } catch (error) {
       const findings = findingsOf(error);
       setOutcome({ agent: draft, findings });
       problemToast(error, 'The draft was saved but could not be published.');
-      onCreated(draft, { published: false, findings });
+      onCreated(draft, { published: false, blocked: true, findings });
     }
   }
 

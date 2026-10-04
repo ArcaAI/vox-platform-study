@@ -128,7 +128,7 @@ describe('AgentWizard edit mode', () => {
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     const [published, result] = onCreated.mock.calls[0];
     expect(published.versionNumber).toBe(3);
-    expect(result).toEqual({ published: true, findings: [] });
+    expect(result).toEqual({ published: true, blocked: false, findings: [] });
 
     const branch = calls.find((call) => call.method === 'POST' && call.url.endsWith('admin/agents/a-v2/versions'));
     expect(branch).toBeTruthy();
@@ -164,7 +164,7 @@ describe('AgentWizard edit mode', () => {
     expect(alert.textContent).toMatch(/Kept as draft v3/);
     expect(alert.textContent).toMatch(/AGENT_PROMPT_NOT_APPROVED/);
     expect(alert.textContent).toMatch(/Nothing was approved for you/);
-    expect(onCreated.mock.calls[0][1]).toMatchObject({ published: false });
+    expect(onCreated.mock.calls[0][1]).toMatchObject({ published: false, blocked: true });
     expect(calls.some((call) => /approve/.test(call.url))).toBe(false);
   });
 
