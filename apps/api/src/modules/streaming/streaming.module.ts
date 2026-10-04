@@ -8,6 +8,7 @@ import {
   EffectiveSettingsModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
+  JobIdempotencyModule,
   OriginRegistryServiceModule,
   PlatformMetricsServiceModule,
   ProviderCapacityServiceModule,
@@ -35,6 +36,8 @@ import { WorkflowWsGateway } from './workflow-ws.gateway';
 
 @Module({
   imports: [
+    // TASK-1038 B3a — `JobIdempotencyService` for `Idempotency-Key` on `POST transcribe`.
+    JobIdempotencyModule,
     VisitTypeServiceModule,
     // TASK-993 lane C — keepAlive pooling shared with the other TEXT_URL/TTS_URL
     // callers; see `common/gateway-http-agent.ts` for the sizing rationale.
