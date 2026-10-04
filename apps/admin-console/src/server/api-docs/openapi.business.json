@@ -32091,7 +32091,7 @@
     },
     "/api/v1/agents/{slug}/runs/{runId}/result": {
       "get": {
-        "description": "Mirrors `GET /workflows/{slug}/runs/{runId}/result`: 200 with `X-Hope-Result-Kind: inline` and the agent output as the body (`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "Mirrors `GET /workflows/{slug}/runs/{runId}/result`: 200 with `X-Hope-Result-Kind: inline` and the agent output as the body (`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs; 410 `RESULT_EXPIRED` once the output has passed `workflowRuns.resultRetentionDays`.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:agent:invocation:write`).\n\n**API key scopes** — `agent:invocation:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "AgentController_getRunResult",
         "parameters": [
           {
@@ -32123,6 +32123,9 @@
           },
           "409": {
             "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status."
+          },
+          "410": {
+            "description": "`RESULT_EXPIRED` — the result existed and has passed its retention window."
           }
         },
         "security": [

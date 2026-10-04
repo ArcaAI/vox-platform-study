@@ -314,7 +314,8 @@ export function edgeMappingLabels(nodes: readonly GraphStoreNode[], edges: reado
       for (const path of bindingPaths(binding)) {
         if (path.startsWith(prefix)) pairs.push([path.slice(prefix.length).split('.')[0] as string, input]);
       }
-      if (isRecord(binding) && typeof binding.template === 'string' && binding.template.includes(`{{${prefix}`)) pairs.push(['template', input]);
+      const template = isRecord(binding) ? (binding as { template?: unknown }).template : undefined;
+      if (typeof template === 'string' && template.includes(`{{${prefix}`)) pairs.push(['template', input]);
     }
     if (pairs.length === 0) continue;
     const [first] = pairs as [[string, string]];

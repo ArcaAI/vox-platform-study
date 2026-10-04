@@ -1307,16 +1307,6 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
                       <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
                     </div>
                   }
-                  runSlot={
-                    // The inspector's Run tab is retired by the Test tab (TASK-1036 §3.6); until the
-                    // inspector drops the trigger, point at the replacement rather than render a blank.
-                    <div className="flex flex-col items-start gap-2">
-                      <p className="text-muted-foreground text-sm">Test runs moved to the Test tab, beside Composer.</p>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void setTab('test')}>
-                        Open the Test tab
-                      </Button>
-                    </div>
-                  }
                 />
               </FloatingPane>
             ) : null}

@@ -30,7 +30,7 @@ export class FakeWorkflowRunRepository {
         throw Object.assign(new Error('Unique constraint failed on WorkflowRun_session_run_key'), { code: 'P2002' });
       }
     }
-    const stored = { ...data, version: 1 };
+    const stored: Record<string, unknown> = { ...data, version: 1 };
     this.rows.set(String(stored.id), stored);
     return this.toEntity(stored);
   }
