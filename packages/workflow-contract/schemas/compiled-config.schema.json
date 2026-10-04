@@ -91,6 +91,9 @@
         "$ref": "#/$defs/loop"
       }
     },
+    "settings": {
+      "$ref": "#/$defs/settings"
+    },
     "checksum": {
       "type": "string",
       "minLength": 1,
@@ -182,6 +185,20 @@
           "description": "TASK-864 \u2014 present only when this node sits behind at least one branch handle of a router (`core.classify`/`core.condition`) or review (`core.humanReview`) node. The interpreter dispatches the node only when one guard's handle was TAKEN; otherwise it is SKIPPED(branch_not_taken). A branch carries no payload, so it is never an input binding.",
           "items": {
             "$ref": "#/$defs/branchGuard"
+          }
+        },
+        "bindings": {
+          "type": "object",
+          "description": "TASK-1036 \u00a79.2 \u2014 this node's inputs by NodeIO name: its authored `inputs` over the bindings its legacy data edges imply. Emitted only when the compiler runs with `emitDataContract`; OMITTED when the node binds nothing.",
+          "additionalProperties": {
+            "$ref": "#/$defs/compiledBinding"
+          }
+        },
+        "consultationReads": {
+          "type": "array",
+          "description": "TASK-1036 \u00a79.3 \u2014 the `consultation.*` paths this node reads and when (declared reads; the harness fetches exactly these). Emitted only with `emitDataContract`; OMITTED when empty.",
+          "items": {
+            "$ref": "#/$defs/consultationRead"
           }
         }
       },
@@ -512,6 +529,126 @@
           "type": "integer",
           "minimum": 1,
           "description": "Present ONLY in a PER-RUN config the gateway minted for a follow-latest trigger: the schema version whose derived bytes are in `resolved` for that run. The compiler never writes it, so a PUBLISHED artifact never carries it."
+        }
+      }
+    },
+    "compiledBinding": {
+      "description": "TASK-1036 \u00a79.2 \u2014 one input binding. `from` reads a path (`context.*`, `consultation.*`, `nodes.<id>.outputs.*`, `vars.*`, `run.*`); `value` is a literal; `template` renders text; `firstOf` (compiled-only, the legacy fan-in translation) is the first path that produced a value.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from"
+          ],
+          "properties": {
+            "from": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "enum": [
+                "nodeStart",
+                "runStart"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value"
+          ],
+          "properties": {
+            "value": {}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "template"
+          ],
+          "properties": {
+            "template": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "firstOf"
+          ],
+          "properties": {
+            "firstOf": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "consultationRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "at"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^consultation\\."
+        },
+        "at": {
+          "type": "string",
+          "enum": [
+            "nodeStart",
+            "runStart"
+          ]
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "TASK-1036 \u00a73.5 \u2014 the effective workflow settings (`graph.settings`, else derived from the legacy trigger `kinds` / output `protocols`). Emitted only with `emitDataContract`.",
+      "required": [
+        "connections",
+        "sources"
+      ],
+      "properties": {
+        "connections": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "api",
+              "webhook",
+              "sse",
+              "socket"
+            ]
+          }
+        },
+        "sources": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "consultation",
+              "schedule"
+            ]
+          }
         }
       }
     }
