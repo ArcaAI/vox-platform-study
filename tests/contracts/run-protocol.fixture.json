@@ -46,14 +46,15 @@
     "data.bound": "required",
     "binding.warning": "required",
     "consultation.read": "required",
-    "transcript.partial": "required",
-    "transcript.final": "required",
+    "transcript.partial": "optional",
+    "transcript.final": "optional",
     "prompt.composed": "required",
     "model.request": "required",
     "guardrail.inbound": "required",
     "guardrail.outbound": "required",
     "output.validated": "required"
   },
+  "agentRunNodeId": "agent",
   "examples": [
     {
       "name": "run.started",
@@ -582,6 +583,53 @@
           "versionNumber": 2
         }
       }
+    },
+    {
+      "name": "transcript.final-from-the-consultation-session",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "transcript.final",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "text": "No fever since Monday.",
+          "utteranceIndex": 4,
+          "start": 15.2,
+          "end": 17.0,
+          "language": "en"
+        }
+      }
+    },
+    {
+      "name": "node.started-agent-run",
+      "runKind": "agent",
+      "event": {
+        "seq": 2,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "agent",
+        "data": {
+          "kind": "core.agent",
+          "label": "casenote-finalization",
+          "attempt": 1
+        }
+      }
+    },
+    {
+      "name": "output.text.delta-agent-run",
+      "runKind": "agent",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "agent",
+        "data": {
+          "field": "text",
+          "text": "Assessment: "
+        }
+      }
     }
   ],
   "invalid": [
@@ -834,6 +882,36 @@
         "data": []
       },
       "problem": "data"
+    },
+    {
+      "name": "agent-run-step-with-a-graph-node-id",
+      "runKind": "agent",
+      "problem": "nodeId must be 'agent'",
+      "event": {
+        "seq": 2,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "kind": "core.agent"
+        }
+      }
+    },
+    {
+      "name": "agent-run-step-without-nodeId",
+      "runKind": "agent",
+      "problem": "nodeId is required",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "field": "text",
+          "text": "x"
+        }
+      }
     }
   ],
   "sse": [

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ADMIN_RUN_EVENT_TYPES,
+  AGENT_RUN_NODE_ID,
   PUBLIC_RUN_EVENT_TYPES,
   RUN_EVENT_NODE_SCOPE,
   RUN_EVENT_TYPES,
@@ -47,8 +48,9 @@ interface Fixture {
   inlineResultMaxBytes: number;
   visibility: Record<string, string>;
   nodeScope: Record<string, string>;
-  examples: Array<{ name: string; event: RunEventV2 }>;
-  invalid: Array<{ name: string; event: unknown; problem: string }>;
+  agentRunNodeId: string;
+  examples: Array<{ name: string; event: RunEventV2; runKind?: 'agent' | 'workflow' }>;
+  invalid: Array<{ name: string; event: unknown; problem: string; runKind?: 'agent' | 'workflow' }>;
   sse: Array<{ name: string; event: RunEventV2; frame: string }>;
   sequencer: {
     keys: { seq: string; events: string; dedupe: string };
@@ -110,18 +112,20 @@ describe('every example validates; every type has one', () => {
     for (const type of RUN_EVENT_TYPES) expect(covered.has(type), type).toBe(true);
   });
 
-  it.each(fixture.examples.map((entry) => [entry.name, entry.event] as const))('%s', (_name, event) => {
-    expect(runEventProblems(event)).toEqual([]);
-    expect(parseRunEvent(event)).toBe(event);
+  it.each(fixture.examples.map((entry) => [entry.name, entry] as const))('%s', (_name, entry) => {
+    const options = entry.runKind === undefined ? undefined : { runKind: entry.runKind };
+    expect(runEventProblems(entry.event, options)).toEqual([]);
+    expect(parseRunEvent(entry.event, options)).toBe(entry.event);
   });
 });
 
 describe('every invalid example is refused, by name', () => {
   it.each(fixture.invalid.map((entry) => [entry.name, entry] as const))('%s', (_name, entry) => {
-    const problems = runEventProblems(entry.event);
+    const options = entry.runKind === undefined ? undefined : { runKind: entry.runKind };
+    const problems = runEventProblems(entry.event, options);
     expect(problems.length).toBeGreaterThan(0);
     expect(problems.join('\n')).toContain(entry.problem);
-    expect(parseRunEvent(entry.event)).toBeNull();
+    expect(parseRunEvent(entry.event, options)).toBeNull();
   });
 
   it('a non-object is refused', () => {
@@ -365,5 +369,37 @@ describe('protocol selection — header OR query, because EventSource cannot set
     for (const bad of ['1', '3', 'v2', ' 2', 'legacy']) {
       expect(selectRunProtocol({ query: bad }), bad).toEqual({ problems: [expect.stringContaining('protocol')] });
     }
+  });
+});
+
+describe('node scoping — agent runs and session-sourced transcripts (F2 fix 4)', () => {
+  const base = { seq: 3, runId: 'r', ts: '2026-10-04T10:00:00Z' };
+
+  it('an agent run has one step, and its nodeId is the convention `agent`', () => {
+    expect(AGENT_RUN_NODE_ID).toBe('agent');
+    expect(AGENT_RUN_NODE_ID).toBe(fixture.agentRunNodeId);
+    const started = { ...base, type: 'node.started', nodeId: 'agent', data: { kind: 'core.agent' } };
+    expect(runEventProblems(started, { runKind: 'agent' })).toEqual([]);
+    expect(runEventProblems({ ...started, nodeId: 'n_note' }, { runKind: 'agent' }).join('\n')).toContain("nodeId must be 'agent'");
+    // A workflow graph names its own node ids — `agent` included — so the rule is agent-runs-only.
+    expect(runEventProblems({ ...started, nodeId: 'n_note' }, { runKind: 'workflow' })).toEqual([]);
+    expect(runEventProblems({ ...started, nodeId: 'n_note' })).toEqual([]);
+  });
+
+  it('nodeId stays required on graph node events, agent run or not', () => {
+    const started = { ...base, type: 'node.started', data: { kind: 'core.agent' } };
+    expect(runEventProblems(started, { runKind: 'agent' }).join('\n')).toContain('nodeId is required');
+  });
+
+  it('transcript.partial|final may omit nodeId (sourced by the consultation session, no ASR node)', () => {
+    expect(RUN_EVENT_NODE_SCOPE['transcript.partial']).toBe('optional');
+    expect(RUN_EVENT_NODE_SCOPE['transcript.final']).toBe('optional');
+    expect(runEventProblems({ ...base, type: 'transcript.final', data: { text: 'Dry cough.' } })).toEqual([]);
+    expect(runEventProblems({ ...base, type: 'transcript.partial', nodeId: 'n_asr', data: { text: 'dry' } })).toEqual([]);
+  });
+
+  it('every other node-scoped type keeps `required`, and run-level types keep `forbidden`', () => {
+    const optional = Object.entries(RUN_EVENT_NODE_SCOPE).filter(([, scope]) => scope === 'optional').map(([type]) => type);
+    expect(optional).toEqual(['transcript.partial', 'transcript.final']);
   });
 });

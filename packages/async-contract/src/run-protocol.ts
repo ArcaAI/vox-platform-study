@@ -159,15 +159,36 @@ export const RUN_EVENT_VISIBILITY: Readonly<Record<RunEventType, RunEventVisibil
 );
 
 /**
- * Whether the envelope MUST carry `nodeId` (`required`) or must NOT (`forbidden`). Run-level
- * events and `ping` belong to no node; `input.validated` validates the RUN's input. Everything a
- * step does — including every delta (OD-33) and every debug event of §10.3 — names its node.
+ * Whether the envelope MUST carry `nodeId` (`required`), MAY (`optional`) or must NOT
+ * (`forbidden`). Run-level events and `ping` belong to no node; `input.validated` validates the
+ * RUN's input. Everything a step does — including every delta (OD-33) and every debug event of
+ * §10.3 — names its node. Two conventions keep that rule honest where there is no graph node:
+ *
+ * - an AGENT run (`POST /agents/:slug/runs`) has exactly one step, whose `nodeId` is
+ *   {@link AGENT_RUN_NODE_ID} (`runEventProblems(…, { runKind: 'agent' })` enforces it);
+ * - `transcript.partial|final` is `optional`: a graph's ASR node names itself, but a transcript
+ *   sourced by the consultation SESSION (the gateway's STT bridge, no ASR node in the graph)
+ *   carries no `nodeId`.
  */
-export const RUN_EVENT_NODE_SCOPE: Readonly<Record<RunEventType, 'required' | 'forbidden'>> = Object.freeze(
+export const RUN_EVENT_NODE_SCOPE: Readonly<Record<RunEventType, RunEventNodeScope>> = Object.freeze(
   Object.fromEntries(
-    RUN_EVENT_TYPES.map((type) => [type, type.startsWith('run.') || type === 'ping' || type === 'input.validated' ? 'forbidden' : 'required']),
-  ) as Record<RunEventType, 'required' | 'forbidden'>,
+    RUN_EVENT_TYPES.map((type) => [
+      type,
+      type.startsWith('run.') || type === 'ping' || type === 'input.validated' ? 'forbidden' : type.startsWith('transcript.') ? 'optional' : 'required',
+    ]),
+  ) as Record<RunEventType, RunEventNodeScope>,
 );
+
+export type RunEventNodeScope = 'required' | 'optional' | 'forbidden';
+
+/** The `nodeId` of the single step of an agent run (`POST /agents/:slug/runs`). */
+export const AGENT_RUN_NODE_ID = 'agent';
+
+/** What a validator knows about the run beyond the event itself. */
+export interface RunEventValidationOptions {
+  /** `agent`: every `nodeId` present must be {@link AGENT_RUN_NODE_ID}. Unknown ⇒ no run-kind rule. */
+  readonly runKind?: 'agent' | 'workflow';
+}
 
 /** Emitted to one connection, never stored, never advancing `seq` (see the module doc). */
 export const SYNTHETIC_RUN_EVENT_TYPES: readonly RunEventType[] = Object.freeze(['ping', 'run.resync'] as RunEventType[]);
@@ -337,7 +358,7 @@ export type RunEventV2<T extends RunEventType = RunEventType> = T extends RunEve
       readonly type: T;
       /** ISO-8601 UTC, when the event happened (not when it was delivered). */
       readonly ts: string;
-      /** Present exactly when {@link RUN_EVENT_NODE_SCOPE} says `required`. */
+      /** Present when {@link RUN_EVENT_NODE_SCOPE} says `required`, absent when `forbidden`, either when `optional`. */
       readonly nodeId?: string;
       readonly data: RunEventDataMap[T];
     }
@@ -638,7 +659,7 @@ const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d
  * Every problem with a candidate run event. Empty array = conforms. Never throws — the package's
  * house idiom (`asyncEnvelopeProblems`).
  */
-export function runEventProblems(value: unknown): string[] {
+export function runEventProblems(value: unknown, options: RunEventValidationOptions = {}): string[] {
   if (!isPlainObject(value)) return ['run event must be a JSON object'];
   const problems: string[] = [];
 
@@ -671,6 +692,9 @@ export function runEventProblems(value: unknown): string[] {
     const scope = RUN_EVENT_NODE_SCOPE[type];
     if (scope === 'required' && !hasNodeId) problems.push(`nodeId is required on ${type}`);
     if (scope === 'forbidden' && hasNodeId) problems.push(`nodeId must be absent on ${type} (a run-level event)`);
+    if (options.runKind === 'agent' && hasNodeId && value.nodeId !== AGENT_RUN_NODE_ID) {
+      problems.push(`nodeId must be '${AGENT_RUN_NODE_ID}' on every step event of an agent run (received ${JSON.stringify(value.nodeId)})`);
+    }
   }
 
   if (!isPlainObject(value.data)) {
@@ -685,8 +709,8 @@ export function runEventProblems(value: unknown): string[] {
 }
 
 /** Refuse-if-unknown parse: the event itself, or `null` for ANY problem (the caller must not proceed on `null`). */
-export function parseRunEvent(value: unknown): RunEventV2 | null {
-  return runEventProblems(value).length === 0 ? (value as RunEventV2) : null;
+export function parseRunEvent(value: unknown, options: RunEventValidationOptions = {}): RunEventV2 | null {
+  return runEventProblems(value, options).length === 0 ? (value as RunEventV2) : null;
 }
 
 /** Thrown by {@link toSseFrame} for an event that does not conform — a producer never emits one. */
