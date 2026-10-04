@@ -18,7 +18,7 @@
  * import each other; this lives inside the `agents` feature and consumes the SHARED
  * picker/catalogue, never a copy of either).
  */
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import {
   Field,
   FieldDescription,
@@ -89,6 +89,12 @@ export interface InstructionBindingFormProps {
   inheritedContextSchema?: { id: string; versionNumber: number } | null;
   /** The caller renders the context-schema choice itself (the create wizard does, in step 1). */
   hideContextSchema?: boolean;
+  /**
+   * TASK-1036 W2/W3 — the simple editor: a library prompt is pinned to its approved version when
+   * chosen (changeable, never clearable), and composable fragments are offered only to an agent
+   * that already uses them. The advanced form is the default so existing call sites are unchanged.
+   */
+  simple?: boolean;
 }
 
 /**
@@ -172,7 +178,7 @@ export function instructionFromBinding(value: InstructionBindingValue): Record<s
 
 const NO_FINDINGS: readonly AgentFinding[] = [];
 
-export function InstructionBindingForm({ value, onChange, disabled, findings = NO_FINDINGS, inheritedContextSchema, hideContextSchema }: InstructionBindingFormProps) {
+export function InstructionBindingForm({ value, onChange, disabled, findings = NO_FINDINGS, inheritedContextSchema, hideContextSchema, simple = false }: InstructionBindingFormProps) {
   const idPrefix = useId();
   const [template, setTemplate] = useState<PromptPickerTemplate | null>(null);
   const schemas = useContextSchemaOptions();
@@ -182,6 +188,21 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
 
   function patch(next: Partial<InstructionBindingValue>) {
     onChange({ ...value, ...next });
+  }
+
+  // TASK-1036 W3 — stamp the approved version when a template is CHOSEN (not when a stored
+  // agent merely loads it), so a saved `null` is never rewritten behind the author's back.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const stampFor = useRef<string | null>(null);
+  function handleTemplateChange(next: PromptPickerTemplate | null) {
+    setTemplate(next);
+    if (simple && next && stampFor.current === next.id) {
+      stampFor.current = null;
+      if (next.approvedVersionNumber != null && valueRef.current.promptTemplateId === next.id) {
+        onChange({ ...valueRef.current, promptVersionNumber: next.approvedVersionNumber });
+      }
+    }
   }
 
   return (
@@ -197,10 +218,12 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
             <RadioGroupItem id={`${idPrefix}-mode-inline`} value="inline" disabled={disabled} />
             <Label htmlFor={`${idPrefix}-mode-inline`}>Inline system prompt</Label>
           </div>
-          <div className="flex items-center gap-2">
-            <RadioGroupItem id={`${idPrefix}-mode-fragments`} value="fragments" disabled={disabled} />
-            <Label htmlFor={`${idPrefix}-mode-fragments`}>Composable fragments (conditional)</Label>
-          </div>
+          {!simple || value.mode === 'fragments' ? (
+            <div className="flex items-center gap-2">
+              <RadioGroupItem id={`${idPrefix}-mode-fragments`} value="fragments" disabled={disabled} />
+              <Label htmlFor={`${idPrefix}-mode-fragments`}>Composable fragments (conditional)</Label>
+            </div>
+          ) : null}
         </RadioGroup>
       </fieldset>
 
@@ -209,8 +232,11 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
           <PromptTemplatePicker
             id={`${idPrefix}-template`}
             value={value.promptTemplateId}
-            onChange={(id) => patch({ promptTemplateId: id, promptVersionNumber: null, variables: {} })}
-            onTemplateChange={setTemplate}
+            onChange={(id) => {
+              stampFor.current = id;
+              patch({ promptTemplateId: id, promptVersionNumber: null, variables: {} });
+            }}
+            onTemplateChange={handleTemplateChange}
             disabled={disabled}
           />
           {value.promptTemplateId && template ? (
@@ -222,6 +248,7 @@ export function InstructionBindingForm({ value, onChange, disabled, findings = N
                 value={value.promptVersionNumber}
                 onChange={(promptVersionNumber) => patch({ promptVersionNumber })}
                 disabled={disabled}
+                required={simple}
               />
               <VariableBindingsFieldset
                 idPrefix={idPrefix}
