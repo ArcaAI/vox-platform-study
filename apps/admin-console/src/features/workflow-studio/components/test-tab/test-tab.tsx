@@ -278,9 +278,6 @@ function TestSurface({ definitionId }: TestTabProps) {
               : 'Showing the state before the first event.'}{' '}
             {controller.playing ? 'Replaying to live…' : 'The run keeps going live.'}
           </span>
-          <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={goLive}>
-            Back to live
-          </Button>
         </div>
       ) : null}
       {controller.streamError ? (
@@ -294,7 +291,10 @@ function TestSurface({ definitionId }: TestTabProps) {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <TestFlow view={view} />
+          {/* Sticky at xl: the time-travelled flow stays on screen beside the event that was clicked in the right column. */}
+          <div data-slot="test-flow-column" className="bg-background xl:sticky xl:top-0 xl:z-10">
+            <TestFlow view={view} />
+          </div>
           <StepPanel node={stepNode} run={stepNodeId ? view.nodes[stepNodeId] : undefined} hidePhi={hidePhi} live={!timeTravelling} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
@@ -361,6 +361,8 @@ function TestSurface({ definitionId }: TestTabProps) {
         tokens={view.tokens}
         eventCount={events.length}
         shownCount={controller.viewCount}
+        viewLabel={timeTravelling ? (shownEvent ? `Viewing event #${shownEvent.seq}` : 'Viewing the state before the first event') : null}
+        onGoLive={goLive}
         runId={controller.runId}
       />
     </div>
