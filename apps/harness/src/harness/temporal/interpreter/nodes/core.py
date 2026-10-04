@@ -27,7 +27,6 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 from collections.abc import Callable
@@ -58,6 +57,7 @@ from harness.temporal.interpreter.compose_messages import (
     compose_messages,
     platform_rules,
 )
+from harness.temporal.interpreter.data_contract import outputs_view
 from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
@@ -100,7 +100,7 @@ from harness.temporal.interpreter.prompt_composition import (
     PromptCompositionEmpty,
     build_prompt_scope,
 )
-from harness.temporal.interpreter.templating import PromptVariableUnresolved
+from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
 
 _LOGGER = structlog.get_logger(__name__)
 
@@ -123,14 +123,62 @@ def _config(payload: NodeActivityInput) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
+#: TASK-1036 §9.1 — a `core.agent`'s NodeIO inputs whose value the agent arms read as `in`:
+#: a text agent's `message`, a speech / entity agent's `text` (`bindings.legacyInputName`).
+_AGENT_PRIMARY_INPUTS = ("message", "text")
+
+
 def _bound(payload: NodeActivityInput) -> dict[str, Any]:
     bound = getattr(payload, "bound_inputs", None)
-    return bound if isinstance(bound, dict) else {}
+    if not isinstance(bound, dict):
+        return {}
+    if getattr(payload, "node_type", None) == "core.agent" and "in" not in bound:
+        # A node bound by NodeIO name (compiled `bindings`) hands its primary text over as
+        # `message` / `text`; the agent arms read the legacy port name. Same value, one place.
+        for name in _AGENT_PRIMARY_INPUTS:
+            if name in bound:
+                return {**bound, "in": bound[name]}
+    return bound
 
 
 def _run_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context `{trigger, vars, nodes}`. Under run protocol v2 (`nodeMeta` present) each
+    `nodes.<id>` also serves its NodeIO `outputs` — the dual scope, one release (TASK-1036): a
+    PROJECTION of the stored output built here, never a second copy carried in history."""
     context = getattr(payload, "run_context", None)
-    return context if isinstance(context, dict) else {}
+    if not isinstance(context, dict):
+        return {}
+    meta = context.get("nodeMeta")
+    nodes = context.get("nodes")
+    if not isinstance(meta, dict) or not isinstance(nodes, dict):
+        return context
+    served: dict[str, Any] = {}
+    for node_id, output in nodes.items():
+        info = meta.get(node_id) if isinstance(meta.get(node_id), dict) else {}
+        if isinstance(output, dict) and "outputs" not in output:
+            view = outputs_view(str(info.get("type") or ""), output, task=info.get("task"))
+            served[node_id] = {**output, "outputs": view}
+        else:
+            served[node_id] = output
+    return {**context, "nodes": served}
+
+
+def _scope_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context plus the v2 prompt roots (`consultation`, `run`) and the marker that turns
+    on override rendering (TASK-1036). Byte-identical to `_run_context` off protocol v2."""
+    context = _run_context(payload)
+    if getattr(payload, "protocol", None) != 2:
+        return context
+    extra: dict[str, Any] = {_V2_SCOPE: True}
+    if isinstance(payload.consultation, dict):
+        extra["consultation"] = payload.consultation
+    if isinstance(payload.run_fields, dict):
+        extra["run"] = payload.run_fields
+    return {**context, **extra}
+
+
+#: Marks a scope context built under run protocol v2 (`_scope_context`).
+_V2_SCOPE = "$hopeV2Scope"
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -776,13 +824,37 @@ def _agent_prompt_scope(
         context_view = unwrapped if isinstance(unwrapped, dict) else trigger_view
     vars_root = run_context.get("vars")
     nodes_root = run_context.get("nodes")
-    return build_prompt_scope(
-        variables=_agent_variables(resolved, config),
-        trigger=trigger_view,
-        context=context_view,
-        vars=vars_root if isinstance(vars_root, dict) else None,
-        nodes=nodes_root if isinstance(nodes_root, dict) else None,
-    )
+    variables = _agent_variables(resolved, config)
+    roots = {
+        "trigger": trigger_view,
+        "context": context_view,
+        "vars": vars_root if isinstance(vars_root, dict) else None,
+        "nodes": nodes_root if isinstance(nodes_root, dict) else None,
+    }
+    if run_context.get(_V2_SCOPE) is not True:
+        return build_prompt_scope(variables=variables, **roots)
+    # TASK-1036 (lane B1) — under run protocol v2 the scope also carries the `consultation` and
+    # `run` roots, and an `overrides.promptVariables` string containing `{{…}}` is RENDERED
+    # against the run scope (it used to be bound LITERALLY: `{{nodes.x.text}}` reached the model
+    # as those characters). An unresolved, undefaulted path raises `PromptVariableUnresolved`
+    # naming it, exactly like the instruction's own placeholders.
+    extra_roots = {
+        name: run_context[name]
+        for name in ("consultation", "run")
+        if isinstance(run_context.get(name), dict)
+    }
+    base = {**build_prompt_scope(**roots), **extra_roots}
+    overrides = config.get("overrides")
+    prompt_variables = overrides.get("promptVariables") if isinstance(overrides, dict) else None
+    for key, value in (prompt_variables or {}).items():
+        if isinstance(value, str) and "{{" in value:
+            variables[key] = render_template(
+                value, base, template_ref=f"overrides.promptVariables.{key}"
+            )
+    scope = build_prompt_scope(variables=variables, **roots)
+    for name, root in extra_roots.items():
+        scope.setdefault(name, root)
+    return scope
 
 
 def _agent_resolved_prompt(resolved: ResolvedAgent) -> Any | None:
@@ -1428,7 +1500,7 @@ async def _run_text_generation(
     # activity out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation
     # that already completed. Never start a candidate whose call cannot finish in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
-    run_context = _run_context(payload)
+    run_context = _scope_context(payload)
     known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
     # TASK-1001 (OD-12) — the platform-default note OUTPUT language, read ONCE for the whole walk
     # (every candidate that selects no tenant policy states the same default). Read HERE, inside
@@ -1776,6 +1848,33 @@ async def _run_transcription(
     return NodeActivityResult(status="SUCCEEDED", output=output)
 
 
+#: `output.audio.delta.format` is one of four; a TTS format or content type maps onto it.
+_PROTOCOL_AUDIO_FORMATS = {
+    "wav": "wav",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "mp3": "mp3",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "ogg": "ogg",
+    "opus": "ogg",
+    "audio/ogg": "ogg",
+    "pcm": "pcm",
+    "audio/pcm": "pcm",
+    "audio/l16": "pcm",
+}
+
+
+def _protocol_audio_format(declared: Any, content_type: Any) -> str | None:
+    for candidate in (declared, content_type):
+        if isinstance(candidate, str):
+            found = _PROTOCOL_AUDIO_FORMATS.get(candidate.split(";")[0].strip().lower())
+            if found is not None:
+                return found
+    return None
+
+
 async def _run_speech(
     payload: NodeActivityInput, resolved: ResolvedAgent, started: Any
 ) -> NodeActivityResult:
@@ -1841,17 +1940,23 @@ async def _run_speech(
     # allowed to fail a synthesis that already succeeded, and a run with no `run_id` (the field
     # is additive-optional) simply does not stream. MEASURED by
     # `test_task849_audio_two_lane_split.py`.
-    if payload.run_id:
+    #
+    # TASK-1038 R6 — the frames are run-protocol v2 `output.audio.delta { field: 'audio' }`,
+    # appended through the ONE sequencer (no dedupe key: a retried synthesis is new audio, and the
+    # retry's `node.started` tells clients to discard). A format the protocol cannot name is not
+    # streamed — the stored `audio` reference still carries the whole result.
+    audio_format = _protocol_audio_format(params.get("format"), synthesis.content_type)
+    if payload.run_id and audio_format is not None:
         from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
 
         producer = run_event_producer()
-        for sequence, frame in enumerate(synthesis.chunks):
-            await producer.emit_token_delta(
-                tenant_id=payload.tenant_id,
+        for frame in synthesis.chunks:
+            await producer.audio_delta(
                 run_id=payload.run_id,
                 node_id=payload.node_id,
-                sequence=sequence,
-                text=base64.b64encode(frame).decode("ascii"),
+                field="audio",
+                chunk=frame,
+                audio_format=audio_format,
             )
 
     settings = get_settings()

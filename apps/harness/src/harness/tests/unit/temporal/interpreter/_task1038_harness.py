@@ -178,6 +178,7 @@ async def run_graph(
     during: Any = None,
     run_id: str | None = None,
     worker_options: dict[str, Any] | None = None,
+    retention_seconds: int | None = None,
 ) -> tuple[Any, dict[str, Any], Any]:
     """Run to completion. ``during(env, handle)`` runs once the workflow has started (signals).
 
@@ -207,6 +208,7 @@ async def run_graph(
                     payload=payload or {},
                     subject=subject,
                     limits=limits,
+                    retention_seconds=retention_seconds,
                 ),
                 id=f"wf-task1038-{run_id}",
                 task_queue=tq,

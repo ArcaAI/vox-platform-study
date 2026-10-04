@@ -1266,6 +1266,39 @@ class ApiClient:
             params["nodeIds"] = ",".join(node_ids)
         return await self._get(f"/consultations/{consultation_id}/live-handoff", params)
 
+    async def read_consultation(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        run_id: str,
+        node_id: str,
+        paths: list[str],
+    ) -> dict[str, Any]:
+        """TASK-1036 §9.3 — the DECLARED `consultation.*` reads of one node (lane B3b's route).
+
+        ``POST {internal_prefix}/consultations/{id}/read`` with ``{runId, nodeId, paths}`` and the
+        mandatory ``X-Tenant-Id`` answers ``{values: {path: value|null}, readAt, schemaVersion}``.
+        The gateway serves only paths the run's compiled workflow declares (400 otherwise) and
+        answers 404 for another tenant's consultation. **The response carries PHI**: never logged.
+
+        Raises :class:`ApiClientError` on a refusal (4xx) and :class:`ApiServiceError` on a
+        transport error.
+        """
+        path = f"/consultations/{consultation_id}/read"
+        body = {"runId": run_id, "nodeId": node_id, "paths": list(paths)}
+        headers = self._headers()
+        headers["X-Tenant-Id"] = tenant_id
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+            try:
+                resp = await client.post(
+                    self._url(path), json=body, headers=headers, timeout=self._timeout
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error(path, exc) from exc
+            return cast("dict[str, Any]", resp.json())
+
     async def live_documentation_stop(
         self,
         consultation_id: str,
