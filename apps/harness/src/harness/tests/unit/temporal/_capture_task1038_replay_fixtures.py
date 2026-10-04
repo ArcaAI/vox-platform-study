@@ -31,6 +31,11 @@ Usage (from the repo root, conda env ``arcaenv``)::
     PYTHONPATH=apps/harness/src python -m \\
         harness.tests.unit.temporal._capture_task1038_replay_fixtures \\
         apps/harness/src/harness/tests/unit/temporal/fixtures
+
+``--task1038`` instead records the TASK-1038 era itself on the POST-change definition (forward
+guards for its markers): ``interpreter_task1038_v1_history`` (payload references, a kept degraded
+output, the retry policy, the deadline, a review), ``interpreter_task1038_timed_out_history``,
+``interpreter_task1038_cancelled_history`` and ``interpreter_task1038_loop_ref_history``.
 """
 
 from __future__ import annotations
@@ -402,10 +407,155 @@ async def capture(out_dir: Path) -> None:
         await capture_core_children(env, out_dir)
 
 
-if __name__ == "__main__":
-    target = (
-        Path(sys.argv[1])
-        if len(sys.argv) > 1
-        else Path("apps/harness/src/harness/tests/unit/temporal/fixtures")
+# ---------------------------------------------------------------------------------------------
+# The TASK-1038 era itself (`--task1038`): FORWARD guards for the new markers, captured on the
+# post-change definition so a later ungated change to any of these paths fails a replay.
+# ---------------------------------------------------------------------------------------------
+
+
+async def capture_task1038_era(out_dir: Path) -> None:
+    from datetime import timedelta
+
+    from harness.temporal.interpreter.models import CancelSignal, RunLimits
+    from harness.tests.unit.temporal.interpreter import _task1038_harness as h
+
+    fast_heartbeats = {
+        "max_heartbeat_throttle_interval": timedelta(milliseconds=200),
+        "default_heartbeat_throttle_interval": timedelta(milliseconds=200),
+    }
+    limits = RunLimits(activityInputMaxBytes=1_572_864)
+
+    # 1. Payload refs + degraded output kept + retry policy + deadline + review, one happy walk.
+    review = _node(
+        "n_review",
+        "core.humanReview",
+        "interpreter.core_human_review",
+        config={"timeoutSeconds": 600},
+        inputs=[_edge("n_finalize", "out", "in")],
+        timeout=3600,
     )
-    asyncio.run(capture(target))
+    era = h.body(
+        [
+            {"stageIndex": 0, "nodes": [h.trigger()]},
+            {
+                "stageIndex": 1,
+                "nodes": [
+                    h.agent(
+                        "n_big",
+                        _stub="big",
+                        _stub_bytes=60_000,
+                        inputs=[h.edge("n_trigger", "out", "in")],
+                    ),
+                    h.agent(
+                        "n_finalize",
+                        _stub="degraded_with_output",
+                        inputs=[h.edge("n_trigger", "out", "in")],
+                    ),
+                ],
+            },
+            {"stageIndex": 2, "nodes": [review]},
+            {"stageIndex": 3, "nodes": [h.output([h.edge("n_big", "out", "in")])]},
+        ]
+    )
+    _, _, history = await h.run_graph(era, payload={"note": "n" * 30_000}, limits=limits)
+    _write(out_dir, "interpreter_task1038_v1_history", history)
+
+    # 2. The deadline firing on a node still in flight.
+    slow = h.body(
+        [
+            {"stageIndex": 0, "nodes": [h.trigger()]},
+            {
+                "stageIndex": 1,
+                "nodes": [
+                    h.agent(
+                        "n_slow",
+                        _stub="sleep",
+                        _stub_seconds=60,
+                        _timeout=600,
+                        inputs=[h.edge("n_trigger", "out", "in")],
+                    )
+                ],
+            },
+        ]
+    )
+    slow["caps"]["maxTotalSeconds"] = 5
+    _, _, history = await h.run_graph(
+        slow, payload={"q": 1}, limits=limits, worker_options=fast_heartbeats
+    )
+    _write(out_dir, "interpreter_task1038_timed_out_history", history)
+
+    # 3. A cancel landing on a node still in flight.
+    slow["caps"]["maxTotalSeconds"] = 3600
+
+    async def cancel_once_running(env, handle):  # noqa: ANN001
+        while h.ATTEMPTS["n_slow"] < 1:
+            await asyncio.sleep(0.05)
+        await handle.signal(WorkflowInterpreter.cancel, CancelSignal(reason="fixture"))
+
+    h.reset()
+    _, _, history = await h.run_graph(
+        slow,
+        payload={"q": 1},
+        limits=limits,
+        during=cancel_once_running,
+        worker_options=fast_heartbeats,
+    )
+    _write(out_dir, "interpreter_task1038_cancelled_history", history)
+
+    # 4. A foreach over a claim-checked trigger (`interpreter.resolve_context_path`).
+    loop = h.body(
+        [
+            {"stageIndex": 0, "nodes": [h.trigger()]},
+            {
+                "stageIndex": 1,
+                "nodes": [
+                    _node(
+                        "n_loop",
+                        "core.loop",
+                        "interpreter.core_loop",
+                        config={
+                            "mode": "foreach",
+                            "over": "trigger.items",
+                            "bounds": {
+                                "maxIterations": 5,
+                                "maxDurationSeconds": 600,
+                                "maxTotalTokens": 100000,
+                            },
+                            "collect": "text",
+                        },
+                        inputs=[_edge("n_trigger", "out", "in")],
+                        timeout=3600,
+                    )
+                ],
+            },
+        ],
+        loops=[
+            {
+                "nodeId": "n_loop",
+                "body": {
+                    "stages": [
+                        {
+                            "stageIndex": 0,
+                            "nodes": [
+                                h.agent("n_body", inputs=[h.edge("n_loop", "each", "context")])
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+    items = [f"item-{i}-" + "w" * 9_000 for i in range(3)]
+    _, _, history = await h.run_graph(loop, payload={"items": items}, limits=limits)
+    _write(out_dir, "interpreter_task1038_loop_ref_history", history)
+
+
+if __name__ == "__main__":
+    args = [a for a in sys.argv[1:] if a != "--task1038"]
+    target = (
+        Path(args[0]) if args else Path("apps/harness/src/harness/tests/unit/temporal/fixtures")
+    )
+    if "--task1038" in sys.argv[1:]:
+        asyncio.run(capture_task1038_era(target))
+    else:
+        asyncio.run(capture(target))

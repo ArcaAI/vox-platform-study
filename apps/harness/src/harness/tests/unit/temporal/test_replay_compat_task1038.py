@@ -14,6 +14,11 @@ in-flight run of that era looks like when a later definition is deployed under i
 
 Any change to the command sequence of one of these paths that is not behind its own
 ``workflow.patched`` fails here rather than wedging a live run.
+
+The ``interpreter_task1038_*`` fixtures are the FORWARD guards of the TASK-1038 era itself
+(``_capture_task1038_replay_fixtures.py --task1038``, recorded on the post-change definition):
+payload references, a kept degraded output, the node retry policy, the run deadline (fired and
+not), and a cancel landing on an in-flight node.
 """
 
 from __future__ import annotations
@@ -47,6 +52,10 @@ INTERPRETER_FAMILY_FIXTURES = (
     "review_gate_task864_history",
     "loop_workflow_task864_first_run_history",
     "loop_workflow_task864_last_run_history",
+    "interpreter_task1038_v1_history",
+    "interpreter_task1038_timed_out_history",
+    "interpreter_task1038_cancelled_history",
+    "interpreter_task1038_loop_ref_history",
 )
 
 
@@ -88,6 +97,24 @@ class TestChildWorkflowFixtures:
     @pytest.mark.asyncio
     async def test_the_last_generation_of_a_loop_chain_replays(self):
         await _replayer().replay_workflow(_history("loop_workflow_task864_last_run_history"))
+
+
+class TestTask1038EraFixtures:
+    @pytest.mark.asyncio
+    async def test_a_payload_refs_degraded_output_review_run_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1038_v1_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_timed_out_run_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1038_timed_out_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_in_flight_run_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1038_cancelled_history"))
+
+    @pytest.mark.asyncio
+    async def test_a_loop_over_a_reference_replays(self):
+        await _replayer().replay_workflow(_history("interpreter_task1038_loop_ref_history"))
 
 
 class TestEveryInterpreterFamilyFixture:
