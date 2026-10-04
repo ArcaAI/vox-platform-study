@@ -17,10 +17,15 @@
  * input is red ("can't run without it") — the canvas raises the same problem; an unbound optional
  * one says it renders empty (OD-10). An input fed by a legacy data link is shown bound, "from a
  * link", until the author binds it explicitly.
+ *
+ * TASK-1036 review R-C: a template row carries "+ Insert field" (the same picker, written at the
+ * cursor — #5); a fixed value stays mounted while the author empties it, so focus is never lost
+ * mid-edit, and leaves only on Clear (#11); `hidePhi` masks PHI samples in the picker and the
+ * `{{` completion (#7).
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Badge, Button, Input, cn } from '@arcaai/ui';
-import { TemplateEditor, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
+import { TemplateEditor, type TemplateEditorHandle, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import { IconPlus, IconX } from '@tabler/icons-react';
 import type { AgentIOResolver, Binding, WorkflowSettings } from '@arcaai/workflow-contract';
 import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
@@ -29,6 +34,7 @@ import { pickerGroups, type PickerGroup } from '../../lib/picker-model';
 import { ioTypeLabel } from '../../lib/composer-io';
 import { BindingChip } from './binding-chip';
 import { FieldPicker } from './field-picker';
+import { InsertFieldButton } from './insert-field-button';
 
 export interface ComposerGraph {
   nodes: readonly GraphStoreNode[];
@@ -51,6 +57,8 @@ export interface InputsSectionProps {
   disabled?: boolean;
   /** Server findings for one input (`/inputs/<name>`, `/overrides/promptVariables/<name>`). */
   errorsFor?: (row: InputRow) => string[];
+  /** TASK-1036 R-C #7 — the studio's Hide PHI: PHI samples in the picker and the completion are masked. */
+  hidePhi?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,8 +103,11 @@ function RowStatus({ row }: { row: InputRow }) {
 
 type InputRowItemProps = InputsSectionProps & { row: InputRow };
 
-function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, contextSchema, contextSchemaName, contextSchemaVersion, samples, errorsFor }: InputRowItemProps) {
+function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, contextSchema, contextSchemaName, contextSchemaVersion, samples, errorsFor, hidePhi }: InputRowItemProps) {
+  // R-C #11 — once the author is typing a fixed value the box stays, even emptied (an empty value
+  // unbinds the input), until Clear or a field is chosen.
   const [fixedMode, setFixedMode] = useState(false);
+  const templateRef = useRef<TemplateEditorHandle>(null);
   const binding = row.binding;
   const isValue = binding !== null && 'value' in binding;
   const isTemplate = binding !== null && 'template' in binding;
@@ -115,7 +126,11 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
     targetType: row.type,
     purpose: row.origin === 'prompt' ? 'template' : 'binding',
     samples: samples,
+    hidePhi,
   });
+  const templateGroups = isTemplate
+    ? pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: contextSchema, contextSchemaName, contextSchemaVersion, purpose: 'template', samples: samples, hidePhi })
+    : [];
   const phi = groups.some((group) => group.items.some((item) => binding !== null && 'from' in binding && item.raw === binding.from && item.phiClass === 'PHI'));
   const write = (next: Binding | null) => onConfigChange(withRowBinding(node.config, row, next));
   const errors = errorsFor?.(row) ?? [];
@@ -158,7 +173,10 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
             aria-label={`Fixed value for ${row.name}`}
             value={isValue ? String((binding as { value: unknown }).value ?? '') : ''}
             disabled={disabled}
-            onChange={(event) => write(event.target.value === '' ? null : { value: row.type === 'number' && /^-?\d+(\.\d+)?$/.test(event.target.value) ? Number(event.target.value) : event.target.value })}
+            onChange={(event) => {
+              setFixedMode(true);
+              write(event.target.value === '' ? null : { value: row.type === 'number' && /^-?\d+(\.\d+)?$/.test(event.target.value) ? Number(event.target.value) : event.target.value });
+            }}
             className="h-8"
           />
           <Button
@@ -184,14 +202,18 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
             aria-label={`Text for ${row.name}`}
             value={(binding as { template: string }).template}
             onChange={(next) => write({ template: next })}
-            paths={groupsToVariablePaths(pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: contextSchema, purpose: 'template', samples: samples }))}
+            paths={groupsToVariablePaths(templateGroups)}
             minLines={2}
             readOnly={disabled}
             placeholder="Type text, and {{ or / to insert a field"
+            editorRef={templateRef}
           />
-          <Button type="button" variant="link" size="sm" className="self-start px-0" aria-label={`Clear ${row.name}`} disabled={disabled} onClick={() => write(null)}>
-            Remove text
-          </Button>
+          <div className="flex flex-wrap items-center gap-1">
+            <InsertFieldButton groups={templateGroups} fieldName={row.name} targetType="text" disabled={disabled} onPick={(item) => templateRef.current?.insertAtCursor(`{{${item.raw}}}`)} />
+            <Button type="button" variant="link" size="sm" className="px-0" aria-label={`Clear ${row.name}`} disabled={disabled} onClick={() => write(null)}>
+              Remove text
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -215,7 +237,10 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
               </span>
             )
           }
-          onPick={(item) => write({ from: item.raw })}
+          onPick={(item) => {
+            setFixedMode(false);
+            write({ from: item.raw });
+          }}
           onFixedValue={() => {
             setFixedMode(true);
             if (binding !== null) write(null);
@@ -252,7 +277,7 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
             }}
           />
         ) : null}
-        {row.type === 'text' && binding === null ? (
+        {row.type === 'text' && binding === null && !fixedMode ? (
           <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => write({ template: '' })}>
             Write text<span className="sr-only"> for {row.name}</span>
           </Button>

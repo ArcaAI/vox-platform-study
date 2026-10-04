@@ -48,7 +48,12 @@ export interface PickerModelInput {
   purpose?: PickerPurpose;
   /** Last-run values by stored path (`samplesFromRunOutputs`). */
   samples?: Readonly<Record<string, unknown>>;
+  /** TASK-1036 R-C #7 — the studio's "Hide PHI": a PHI-classed item's sample is masked. */
+  hidePhi?: boolean;
 }
+
+/** What a masked value reads as — the same words in the picker, the `{{` completion and Last run. */
+export const PHI_MASK = 'Hidden (PHI)';
 
 const SUBTITLES: Partial<Record<BindingSourceGroupKey, string>> = {
   steps: 'Outputs of steps that run before this one',
@@ -105,7 +110,8 @@ export function pickerGroups(input: PickerModelInput): PickerGroup[] {
     const items: PickerItem[] = group.items.map((item) => {
       const runBlock = purpose === 'condition' && item.raw.startsWith('run.') ? 'A condition can’t read run fields — only steps, the Input and variables.' : undefined;
       const disabledReason = item.disabledReason ?? block ?? runBlock;
-      const sample = input.samples && item.raw in input.samples ? formatSample(input.samples[item.raw]) : undefined;
+      const sample =
+        input.samples && item.raw in input.samples ? (input.hidePhi && item.phiClass === 'PHI' ? PHI_MASK : formatSample(input.samples[item.raw])) : undefined;
       return {
         ...item,
         scope: group.key,

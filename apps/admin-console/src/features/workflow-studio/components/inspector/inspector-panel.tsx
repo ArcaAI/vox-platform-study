@@ -91,6 +91,7 @@ import { BOUNDARY_DELETE_REASON, BOUNDARY_NODE_TYPES, selectSelectedEdge, useOpt
 import { nodeDisplayName } from '../../lib/node-identity';
 import { canvasPortsOf, ioTypeLabel } from '../../lib/composer-io';
 import { pickerGroups, samplesFromRunOutputs } from '../../lib/picker-model';
+import { lastRunPhiFields } from '../../lib/phi-mask';
 import type { PromptVariableInfo } from '../../lib/inputs-model';
 import { NodeLabelField } from './node-label-field';
 import { InputsSection } from './inputs-section';
@@ -177,6 +178,8 @@ export interface InspectorPanelProps {
   lastRun?: NodeLastRun;
   /** TASK-893 B4 — count badge on the Problems tab. */
   problemCount?: number;
+  /** TASK-1036 R-C #13 — switches the studio to its Test tab ("Open full trace in Test" on Last run). */
+  onOpenTest?: () => void;
   /** TASK-893 B5 — upstream nodes offered by the secondary-input pickers, in execution order. */
   upstreamNodes?: UpstreamNodeOption[];
   /** TASK-893 B5 — secondary data inputs to render as binding fields (from `secondaryInputsFor`). */
@@ -420,6 +423,7 @@ export function InspectorPanel({
   lastRunByNode,
   lastRun,
   problemCount,
+  onOpenTest,
   upstreamNodes,
   secondaryInputs,
   secondaryBindings,
@@ -464,6 +468,27 @@ export function InspectorPanel({
   const samples = lastRunByNode
     ? samplesFromRunOutputs(Object.fromEntries(Object.entries(lastRunByNode).map(([id, run]) => [id, run?.outputs])))
     : undefined;
+  // TASK-1036 R-C #7 — the studio's Hide PHI (view state in the store), and which of THIS step's
+  // last-run values it masks.
+  const hidePhi = composer?.hidePhi ?? false;
+  const phiFields = composer && node ? lastRunPhiFields({ node, nodes: composer.nodes, edges: composer.edges, agents: composer.agents, settings: composer.settings, contextSchema: composer.contextSchema }) : undefined;
+  // R-C #5 — the condition picker, for every CEL field's "+ Insert field" (a loop's `until`, …).
+  const conditionGroups =
+    composer && node
+      ? pickerGroups({
+          nodes: composer.nodes,
+          edges: composer.edges,
+          settings: composer.settings,
+          nodeId: node.id,
+          agents: composer.agents,
+          contextSchema: composer.contextSchema,
+          contextSchemaName: composer.contextSchemaName,
+          contextSchemaVersion: composer.contextSchemaVersion,
+          purpose: 'condition',
+          samples,
+          hidePhi,
+        })
+      : undefined;
 
   let configTabContent: ReactNode;
 
@@ -486,7 +511,7 @@ export function InspectorPanel({
           <IconLayoutBoard aria-hidden="true" />
         </EmptyMedia>
         <EmptyTitle>No node selected</EmptyTitle>
-        <EmptyDescription>Select a node on the canvas or in the list view to configure it.</EmptyDescription>
+        <EmptyDescription>Select a step or a link on the canvas to configure it. With the keyboard, Tab to a step, or use “Node actions” in the toolbar.</EmptyDescription>
       </Empty>
     );
   } else if (loading) {
@@ -671,6 +696,7 @@ export function InspectorPanel({
             contextSchemaName={composer.contextSchemaName}
             contextSchemaVersion={composer.contextSchemaVersion}
             samples={samples}
+            hidePhi={hidePhi}
             onConfigChange={onConfigChange}
             disabled={readOnly}
             errorsFor={(row) =>
@@ -695,18 +721,7 @@ export function InspectorPanel({
             idPrefix={node.id}
             branches={conditionBranches}
             onChange={(branches) => onConfigChange({ ...node.config, branches })}
-            groups={pickerGroups({
-              nodes: composer.nodes,
-              edges: composer.edges,
-              settings: composer.settings,
-              nodeId: node.id,
-              agents: composer.agents,
-              contextSchema: composer.contextSchema,
-              contextSchemaName: composer.contextSchemaName,
-              contextSchemaVersion: composer.contextSchemaVersion,
-              purpose: 'condition',
-              samples,
-            })}
+            groups={conditionGroups ?? []}
             disabled={readOnly}
             errors={errorsForPath(problems, 'branches')}
           />
@@ -765,6 +780,7 @@ export function InspectorPanel({
             idPrefix={node.id}
             references={references}
             schemaPaths={triggerPaths}
+            pickerGroups={conditionGroups}
           />
         ))}
         {descriptors.map((descriptor) => (
@@ -777,6 +793,7 @@ export function InspectorPanel({
             idPrefix={node.id}
             references={references}
             schemaPaths={triggerPaths}
+            pickerGroups={conditionGroups}
             fieldOverrides={fieldOverrides}
           />
         ))}
@@ -796,6 +813,7 @@ export function InspectorPanel({
                     idPrefix={node.id}
                     references={references}
                     schemaPaths={triggerPaths}
+                    pickerGroups={conditionGroups}
                   />
                 ))}
             </div>
@@ -852,7 +870,13 @@ export function InspectorPanel({
         <TabsContent value="config">{configTabContent}</TabsContent>
         <TabsContent value="problems">{problemsSlot}</TabsContent>
         <TabsContent value="lastRun">
-          <LastRunTab lastRun={nodeLastRun} />
+          <LastRunTab
+            lastRun={nodeLastRun}
+            hidePhi={hidePhi}
+            phiFields={phiFields}
+            onHidePhiChange={composer ? (hide) => composer.storeApi.getState().setHidePhi(hide) : undefined}
+            onOpenTrace={onOpenTest}
+          />
         </TabsContent>
       </div>
     </Tabs>

@@ -67,6 +67,12 @@ export interface GraphState extends GraphSnapshot {
    *  change worth an undo step, even now that it marks the graph dirty (see `moveNode`). */
   undoStack: GraphSnapshot[];
   redoStack: GraphSnapshot[];
+  /**
+   * TASK-1036 R-C #7 — the studio's "Hide PHI" (§10.2 Privacy). VIEW state, like the selection:
+   * it masks PHI-classed test-run values in the Last run tab, the picker and the `{{` completion,
+   * and never dirties the graph or enters undo.
+   */
+  hidePhi: boolean;
 }
 
 export interface GraphActions {
@@ -148,6 +154,8 @@ export interface GraphActions {
    *  verbatim. Undoable, dirty. */
   setNodeParent: (nodeId: string, parentId: string | null, position: { x: number; y: number }) => void;
   selectNode: (nodeId: string | null) => void;
+  /** R-C #7 — view state only: never dirty, never undoable. */
+  setHidePhi: (hide: boolean) => void;
   setSaveState: (state: SaveState) => void;
   /** Reverts nodes/edges to `baseline`, clears both undo stacks and returns the machine to
    *  `clean`. A no-op when `baseline` is null. */
@@ -240,6 +248,9 @@ export function createGraphStore(): GraphStoreApi {
       baseline: null,
       undoStack: [],
       redoStack: [],
+      hidePhi: false,
+
+      setHidePhi: (hide) => set({ hidePhi: hide }),
 
       hydrate: (nodes, edges, settings) => {
         set({

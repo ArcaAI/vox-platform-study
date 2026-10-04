@@ -21,12 +21,13 @@
  * its own remove control, matching the disclosure discipline `DocumentBindingField` uses for an
  * unknown template id.
  */
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Button, Field, FieldDescription, FieldLabel, FieldLegend, FieldSet, Input } from '@arcaai/ui';
-import { TemplateEditor, type TemplateDiagnostic, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
+import { TemplateEditor, type TemplateDiagnostic, type TemplateEditorHandle, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import { IconTrash } from '@tabler/icons-react';
 import { declaredNamespacesFromPaths, templateLint, variableNamePaths } from '@/shared/template-editor';
 import { getAtPath, setAtPath } from './field-path';
+import { InsertFieldButton, groupsFromPaths } from './insert-field-button';
 
 const PROMPT_VARIABLES_PATH = 'overrides.promptVariables';
 
@@ -94,6 +95,9 @@ function VariableRow({
   lint: (content: string) => TemplateDiagnostic[];
 }) {
   const labelId = `${id}-label`;
+  const editorRef = useRef<TemplateEditorHandle>(null);
+  // TASK-1036 R-C #5 — the same picker as `{{`, written at the cursor.
+  const groups = useMemo(() => groupsFromPaths(paths), [paths]);
   function insert(token: string) {
     onChange(value.length === 0 || /\s$/.test(value) ? `${value}${token}` : `${value} ${token}`);
   }
@@ -113,6 +117,7 @@ function VariableRow({
           minLines={1}
           readOnly={disabled}
           placeholder="Uses the agent's own value — type {{ for paths"
+          editorRef={editorRef}
         />
         {onRemove ? (
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${name}`} onClick={onRemove} disabled={disabled}>
@@ -120,6 +125,9 @@ function VariableRow({
           </Button>
         ) : null}
       </div>
+      {groups.length > 0 ? (
+        <InsertFieldButton groups={groups} fieldName={name} targetType="text" disabled={disabled} onPick={(item) => editorRef.current?.insertAtCursor(`{{${item.raw}}}`)} />
+      ) : null}
       <div className="flex flex-wrap gap-1" aria-label={`Insert a reference into ${name}`}>
         {chips.map((chip) => (
           <Button key={chip.token} type="button" variant="secondary" size="xs" className="font-mono" disabled={disabled} onClick={() => insert(chip.token)}>

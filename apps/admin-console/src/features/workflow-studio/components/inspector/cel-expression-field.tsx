@@ -11,11 +11,18 @@
  * single-pointer alternative to typing. Type-checking against
  * the context schema stays SERVER-SIDE at publish (`expressionProblems`) — the same posture as
  * the rest of the inspector: the client decides how to RENDER, never whether a value is valid.
+ *
+ * TASK-1036 R-C #5 — "+ Insert field" opens the composer's four-group picker (`groups`, the
+ * condition picker; otherwise one built from the completion paths) and writes the picked field's
+ * CEL path at the cursor.
  */
 import { Button, Field, FieldError, FieldLabel } from '@arcaai/ui';
-import { TemplateEditor, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
-import { useId, useMemo } from 'react';
+import { TemplateEditor, type TemplateEditorHandle, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
+import { useId, useMemo, useRef } from 'react';
+import { celPathOf } from '../../lib/condition-builder';
+import type { PickerGroup } from '../../lib/picker-model';
 import { FieldCopy } from './field-copy';
+import { InsertFieldButton, groupsFromPaths } from './insert-field-button';
 
 export interface CelExpressionFieldProps {
   id: string;
@@ -32,6 +39,8 @@ export interface CelExpressionFieldProps {
   references?: readonly string[];
   /** The workflow's schema paths (`trigger.*` / `context.*`), offered as completions. */
   paths?: readonly VariablePath[];
+  /** TASK-1036 R-C #5 — the composer's condition picker groups; absent = built from `paths` + `references`. */
+  groups?: readonly PickerGroup[];
   disabled?: boolean;
 }
 
@@ -75,14 +84,17 @@ export function CelExpressionField({
   errors,
   references = NO_REFERENCES,
   paths = NO_PATHS,
+  groups,
   disabled,
 }: CelExpressionFieldProps) {
   const hintId = useId();
+  const editorRef = useRef<TemplateEditorHandle>(null);
   const labelId = `${id}-label`;
   const completionPaths = useMemo(
     () => [...paths, ...references.map((path) => ({ path, type: 'reference', required: false, phiClass: null, description: null, deprecated: false }))],
     [paths, references],
   );
+  const pickerGroups = useMemo(() => groups ?? groupsFromPaths(completionPaths), [groups, completionPaths]);
   const syntax = celSyntaxProblem(value);
   const allErrors = [...(syntax ? [syntax] : []), ...(errors ?? [])];
   return (
@@ -103,7 +115,11 @@ export function CelExpressionField({
         aria-labelledby={labelId}
         aria-describedby={hintId}
         aria-invalid={allErrors.length > 0}
+        editorRef={editorRef}
       />
+      {pickerGroups.length > 0 ? (
+        <InsertFieldButton groups={pickerGroups} fieldName={label} disabled={disabled} onPick={(item) => editorRef.current?.insertAtCursor(celPathOf(item.raw))} />
+      ) : null}
       <span id={hintId} className="text-muted-foreground text-xs">
         CEL over the run context — <code className="font-mono">trigger.*</code>, <code className="font-mono">vars.*</code>, <code className="font-mono">nodes.&lt;id&gt;.*</code>.
       </span>
