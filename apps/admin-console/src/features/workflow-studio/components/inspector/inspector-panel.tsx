@@ -86,11 +86,24 @@ import { PromptTemplatePicker } from './prompt-template-picker';
 import { PromptVariablesField } from './prompt-variables-field';
 import { NO_SCHEMA_REASON } from './raw-json-field';
 import { SecondaryInputBindingField, type UpstreamNodeOption } from './secondary-input-binding-field';
+import { useComposerData } from '../canvas/use-composer-data';
+import { BOUNDARY_DELETE_REASON, BOUNDARY_NODE_TYPES, selectSelectedEdge, useOptionalGraphStore } from '../../store';
+import { nodeDisplayName } from '../../lib/node-identity';
+import { canvasPortsOf, ioTypeLabel } from '../../lib/composer-io';
+import { pickerGroups, samplesFromRunOutputs } from '../../lib/picker-model';
+import type { PromptVariableInfo } from '../../lib/inputs-model';
+import { NodeLabelField } from './node-label-field';
+import { InputsSection } from './inputs-section';
+import { GenerationSection, useAgentModelCapabilities } from './generation-section';
+import { ConditionBranchesField, type ConditionBranch } from './condition-branches-field';
+import { EdgeInspector } from './edge-inspector';
+import { LastRunTab, type NodeLastRun } from './last-run-tab';
 
 const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
 /** TASK-864 B1 — `core.agent`'s reference, rendered as the agent picker instead of a slug box. */
 const AGENT_REF_PATH = 'agentRef';
 const AGENT_SLUG_PATH = 'agentRef.slug';
+const AGENT_VERSION_PATH = 'agentRef.versionNumber';
 /** TASK-864 B1 — `core.action`'s delegate key and the delegate's own sub-config. */
 const ACTION_KEY_PATH = 'actionKey';
 const ACTION_CONFIG_PATH = 'action';
@@ -121,8 +134,11 @@ const LLM_ONLY_NESTED_PATHS = [PROMPT_VARIABLES_PATH, 'overrides.generation', 'o
  *  itself is an edge (see the note above `SecondaryInputsSection`), so nothing is written here. */
 const SECONDARY_INPUTS_ROOT = 'inputs';
 
-/** TASK-893 B4 — the inspector's three tabs (INTERFACES.md Contract B §4.1). */
-export type InspectorTab = 'config' | 'problems' | 'run';
+/**
+ * The inspector's three tabs. TASK-1036: `run` left for the Studio's top-level Test tab (C2a);
+ * `lastRun` shows this step's inputs, outputs and duration from the latest test (OD-17).
+ */
+export type InspectorTab = 'config' | 'problems' | 'lastRun';
 
 export interface InspectorPanelProps {
   node: GraphStoreNode | null;
@@ -152,8 +168,13 @@ export interface InspectorPanelProps {
   onTabChange: (tab: InspectorTab) => void;
   /** TASK-893 B4 — rendered in the Problems tab (Lane E passes the existing `ValidationRail`). */
   problemsSlot?: ReactNode;
-  /** TASK-893 B4 — rendered in the Run tab (Lane C's `SandboxRunPanel`). */
-  runSlot?: ReactNode;
+  /**
+   * TASK-1036 OD-17 — the latest Test run, per node id (fed by the Test tab, lane C3). Drives the
+   * Last run tab and the picker's samples. See `last-run-tab.tsx` for the `NodeLastRun` shape.
+   */
+  lastRunByNode?: Readonly<Record<string, NodeLastRun>>;
+  /** TASK-1036 — this node's last run, when the caller has it directly (wins over `lastRunByNode`). */
+  lastRun?: NodeLastRun;
   /** TASK-893 B4 — count badge on the Problems tab. */
   problemCount?: number;
   /** TASK-893 B5 — upstream nodes offered by the secondary-input pickers, in execution order. */
@@ -396,7 +417,8 @@ export function InspectorPanel({
   tab,
   onTabChange,
   problemsSlot,
-  runSlot,
+  lastRunByNode,
+  lastRun,
   problemCount,
   upstreamNodes,
   secondaryInputs,
@@ -431,9 +453,33 @@ export function InspectorPanel({
     isCoreAgentNode && !agentDeclaresVariables ? (referencedAgentForNode?.instruction?.promptTemplateId ?? null) : null,
   );
 
+  // TASK-1036 — composing: the editor's store is mounted, so the graph, the agents and the
+  // context schema are known. Outside a store (a standalone render) every section below degrades
+  // to the pre-composer behaviour.
+  const composer = useComposerData();
+  const selectedEdge = useOptionalGraphStore(selectSelectedEdge, null);
+  const isTextAgent = isCoreAgentNode && referencedTask === 'TEXT_GENERATION';
+  const modelCapabilities = useAgentModelCapabilities(referencedAgentForNode, composer !== null && isTextAgent);
+  const nodeLastRun = lastRun !== undefined ? lastRun : node ? (lastRunByNode?.[node.id] ?? null) : null;
+  const samples = lastRunByNode
+    ? samplesFromRunOutputs(Object.fromEntries(Object.entries(lastRunByNode).map(([id, run]) => [id, run?.outputs])))
+    : undefined;
+
   let configTabContent: ReactNode;
 
-  if (!node) {
+  if (!node && composer && selectedEdge) {
+    configTabContent = (
+      <EdgeInspector
+        edge={selectedEdge}
+        nodes={composer.nodes}
+        edges={composer.edges}
+        agents={composer.agents}
+        readOnly={readOnly}
+        onDelete={(edgeId) => composer.storeApi.getState().disconnectEdge(edgeId)}
+        onSelectNode={(nodeId) => composer.storeApi.getState().selectNode(nodeId)}
+      />
+    );
+  } else if (!node) {
     configTabContent = (
       <Empty>
         <EmptyMedia variant="icon">
@@ -480,7 +526,16 @@ export function InspectorPanel({
     const isCoreAgent = node.type === 'core.agent';
     const isCoreAction = node.type === 'core.action' && actionOptions !== undefined;
     const isCoreTrigger = node.type === 'core.trigger';
+    const isCoreCondition = node.type === 'core.condition';
+    const composing = composer !== null;
     const withheld = new Set<string>([
+      // TASK-1036 — the two authoring keys every core node now declares (OD-20, OD-29): the
+      // label is the "Step name" field, the bindings are the Inputs panel. Neither may render as a
+      // generic text box / raw-JSON map.
+      ...(composing ? ['label', 'inputs'] : []),
+      ...(composing && isCoreCondition ? ['branches'] : []),
+      // Lane / cadence leave the default view (§8.4 item 5): kept under "Advanced", not removed.
+      ...(composing && isCoreAgent ? ['execution'] : []),
       ...DOCUMENT_BINDING_PATHS,
       ...(isCoreAgent ? [AGENT_REF_PATH] : []),
       ...(suppressLlmOnlyFields ? LLM_ONLY_TOP_LEVEL_PATHS : []),
@@ -521,6 +576,14 @@ export function InspectorPanel({
     const llmOnlySuppression = suppressLlmOnlyFields
       ? Object.fromEntries(LLM_ONLY_NESTED_PATHS.map((path) => [path, () => null]))
       : {};
+    const composerAgentOverrides: Record<string, (ctx: FieldRenderContext) => ReactNode> = composing
+      ? {
+          // The Inputs panel lists the prompt's variables as rows; the free-text map is gone.
+          [PROMPT_VARIABLES_PATH]: () => null,
+          // W2 — temperature and max output tokens only, capability-gated (GenerationSection).
+          'overrides.generation': () => null,
+        }
+      : {};
     const fieldOverrides = isCoreAgent
       ? {
           ...llmOnlySuppression,
@@ -537,19 +600,58 @@ export function InspectorPanel({
               disabled={readOnly}
             />
           ),
+          ...composerAgentOverrides,
           // Re-applied AFTER the named entry above, so suppression wins over it: the spread order
           // would otherwise hand `overrides.promptVariables` back to a non-LLM node.
           ...llmOnlySuppression,
         }
       : undefined;
 
+    // TASK-1036 §10.1 — what the prompt asks for: the agent's own declared variables (they carry a
+    // value, so optional here), else its template's declarations (with their required flags).
+    const promptVariables: PromptVariableInfo[] = isCoreAgent
+      ? declaredVariableNames.length > 0
+        ? declaredVariableNames.map((name) => ({ name, required: false }))
+        : (boundTemplate.data?.declaredVariables ?? []).map((declaration) => ({
+            name: declaration.name,
+            required: declaration.required,
+            type: declaration.type,
+            ...(declaration.description ? { description: declaration.description } : {}),
+          }))
+      : [];
+    const promptSource = boundTemplate.data ? `the prompt “${boundTemplate.data.name}” v${boundTemplate.data.approvedVersionNumber ?? boundTemplate.data.currentVersionNumber}` : declaredVariableNames.length > 0 ? 'the agent’s prompt' : undefined;
+    const isBoundary = BOUNDARY_NODE_TYPES.has(node.type);
+    const outputs = composing && isCoreAgent ? (canvasPortsOf(node, composer.agents)?.outputs ?? []) : [];
+    const conditionBranches = (Array.isArray(node.config.branches) ? node.config.branches : []) as ConditionBranch[];
+
     configTabContent = (
       <fieldset disabled={readOnly} className="flex flex-col gap-4">
+        {composing ? (
+          <NodeLabelField
+            idPrefix={node.id}
+            value={typeof node.config.label === 'string' ? node.config.label : ''}
+            placeholder={nodeDisplayName({ ...node, config: {} })}
+            disabled={readOnly}
+            onChange={(label) => composer.storeApi.getState().setNodeLabel(node.id, label)}
+          />
+        ) : null}
+        {isBoundary ? (
+          <p role="note" className="border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm">
+            {node.type === 'core.trigger' ? 'Start is the entry point' : 'End is the exit'}. {BOUNDARY_DELETE_REASON}
+          </p>
+        ) : null}
         {isCoreAgent ? (
           <AgentPickerField
             id={`${node.id}-${AGENT_SLUG_PATH}`}
             value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
-            onChange={(slug) => onConfigChange(setAtPath(node.config, AGENT_SLUG_PATH, slug))}
+            // TASK-1036 (lane C5's picker) — the pin is chosen with the agent: `onChange(slug,
+            // versionNumber?)` writes both, and no version clears the pin (follow the active one).
+            {...({ versionNumber: typeof getAtPath(node.config, AGENT_VERSION_PATH) === 'number' ? (getAtPath(node.config, AGENT_VERSION_PATH) as number) : undefined } as object)}
+            onChange={(slug: string, versionNumber?: number) => {
+              const current = getAtPath(node.config, AGENT_REF_PATH);
+              const { versionNumber: _pin, ...ref } = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+              onConfigChange({ ...node.config, [AGENT_REF_PATH]: typeof versionNumber === 'number' ? { ...ref, slug, versionNumber } : { ...ref, slug } });
+            }}
             errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
             disabled={readOnly}
           />
@@ -558,6 +660,80 @@ export function InspectorPanel({
             task-typed hyper-parameters, projected from the SAME `useAgentOptions` payload the
             picker reads. Read-only: the node references an agent, it does not own it. */}
         {isCoreAgent ? <AgentSummarySection agent={referencedAgent} config={node.config} /> : null}
+        {composing ? (
+          <InputsSection
+            node={node}
+            graph={{ nodes: composer.nodes, edges: composer.edges, settings: composer.settings }}
+            agents={composer.agents}
+            promptVariables={promptVariables}
+            promptSource={promptSource}
+            contextSchema={composer.contextSchema}
+            contextSchemaName={composer.contextSchemaName}
+            contextSchemaVersion={composer.contextSchemaVersion}
+            samples={samples}
+            onConfigChange={onConfigChange}
+            disabled={readOnly}
+            errorsFor={(row) =>
+              errorsForPath(problems, row.origin === 'io' ? `inputs.${row.name}` : `${PROMPT_VARIABLES_PATH}.${row.name}`)
+            }
+          />
+        ) : null}
+        {composing && isTextAgent ? (
+          <GenerationSection
+            idPrefix={node.id}
+            task={referencedTask}
+            capabilities={modelCapabilities.capabilities}
+            modelName={modelCapabilities.modelName}
+            config={node.config}
+            onConfigChange={onConfigChange}
+            disabled={readOnly}
+            errorsFor={(path) => errorsForPath(problems, path)}
+          />
+        ) : null}
+        {composing && isCoreCondition ? (
+          <ConditionBranchesField
+            idPrefix={node.id}
+            branches={conditionBranches}
+            onChange={(branches) => onConfigChange({ ...node.config, branches })}
+            groups={pickerGroups({
+              nodes: composer.nodes,
+              edges: composer.edges,
+              settings: composer.settings,
+              nodeId: node.id,
+              agents: composer.agents,
+              contextSchema: composer.contextSchema,
+              contextSchemaName: composer.contextSchemaName,
+              contextSchemaVersion: composer.contextSchemaVersion,
+              purpose: 'condition',
+              samples,
+            })}
+            disabled={readOnly}
+            errors={errorsForPath(problems, 'branches')}
+          />
+        ) : null}
+        {outputs.length > 0 ? (
+          <section aria-labelledby={`${node.id}-outputs-heading`} className="flex flex-col gap-1">
+            <h3 id={`${node.id}-outputs-heading`} className="text-sm font-medium">
+              Output · available to later steps
+            </h3>
+            <ul className="flex flex-col gap-1">
+              {outputs.map((output) => (
+                <li key={output.name} className="flex items-center gap-2 text-xs">
+                  <span className="font-mono">{output.name}</span>
+                  <Badge variant="outline" className="px-1 font-mono text-[10px]" title={ioTypeLabel(output.type)}>
+                    {output.type}
+                  </Badge>
+                  {output.phiClass === 'PHI' ? (
+                    <Badge variant="outline" className="border-destructive text-destructive px-1 text-[10px]">
+                      PHI
+                    </Badge>
+                  ) : null}
+                  <span className="text-muted-foreground truncate">{output.description}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         {isCoreTrigger ? (
           <ContextSchemaRefField
             idPrefix={node.id}
@@ -568,15 +744,17 @@ export function InspectorPanel({
           />
         ) : null}
         {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
-        <SecondaryInputsSection
-          node={node}
-          secondaryInputs={secondaryInputs}
-          upstreamNodes={upstreamNodes}
-          secondaryBindings={secondaryBindings}
-          onSecondaryInputChange={onSecondaryInputChange}
-          problems={problems}
-          readOnly={readOnly}
-        />
+        {!composing ? (
+          <SecondaryInputsSection
+            node={node}
+            secondaryInputs={secondaryInputs}
+            upstreamNodes={upstreamNodes}
+            secondaryBindings={secondaryBindings}
+            onSecondaryInputChange={onSecondaryInputChange}
+            problems={problems}
+            readOnly={readOnly}
+          />
+        ) : null}
         {actionDescriptors.map((descriptor) => (
           <FieldRenderer
             key={descriptor.path}
@@ -602,6 +780,27 @@ export function InspectorPanel({
             fieldOverrides={fieldOverrides}
           />
         ))}
+        {composing && isCoreAgent && allDescriptors.some((descriptor) => descriptor.path === 'execution') ? (
+          <details className="rounded-md border p-2">
+            <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+            <div className="mt-2 flex flex-col gap-4">
+              {allDescriptors
+                .filter((descriptor) => descriptor.path === 'execution')
+                .map((descriptor) => (
+                  <FieldRenderer
+                    key={descriptor.path}
+                    descriptor={descriptor}
+                    config={node.config}
+                    onConfigChange={onConfigChange}
+                    errorsFor={(path) => errorsForPath(problems, path)}
+                    idPrefix={node.id}
+                    references={references}
+                    schemaPaths={triggerPaths}
+                  />
+                ))}
+            </div>
+          </details>
+        ) : null}
         {/* TASK-949 D-6 — LLM-only values on a node whose agent cannot read them. Named, not
             dropped: a hidden field's value still rides along in the published graph. */}
         {suppressLlmOnlyFields && strandedLlmOnlyValues(node.config).length > 0 ? (
@@ -645,14 +844,16 @@ export function InspectorPanel({
           Problems
           {problemCount ? <Badge variant="destructive">{problemCount}</Badge> : null}
         </TabsTrigger>
-        <TabsTrigger value="run">Run</TabsTrigger>
+        <TabsTrigger value="lastRun">Last run</TabsTrigger>
       </TabsList>
       {/* The ONE scroll container for the panel (rule 11 §1) — the tab list above stays pinned;
           only this region scrolls, whichever tab is active. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <TabsContent value="config">{configTabContent}</TabsContent>
         <TabsContent value="problems">{problemsSlot}</TabsContent>
-        <TabsContent value="run">{runSlot}</TabsContent>
+        <TabsContent value="lastRun">
+          <LastRunTab lastRun={nodeLastRun} />
+        </TabsContent>
       </div>
     </Tabs>
   );

@@ -13,10 +13,14 @@
 /** The one format a palette drag is recognised by. Private to this app; never a wire contract. */
 export const PALETTE_DRAG_MIME = 'application/x-hope-workflow-node';
 
-/** Stamp a palette item's registry type onto an outgoing drag. */
-export function writePaletteDragType(dataTransfer: DataTransfer | null, type: string): void {
+/** TASK-1036 — a palette PRESET (`palette-presets.ts`, e.g. Merge) rides beside its registry type. */
+export const PALETTE_PRESET_DRAG_MIME = 'application/x-hope-workflow-preset';
+
+/** Stamp a palette item's registry type (and, for a preset, its key) onto an outgoing drag. */
+export function writePaletteDragType(dataTransfer: DataTransfer | null, type: string, presetKey?: string): void {
   if (!dataTransfer) return;
   dataTransfer.setData(PALETTE_DRAG_MIME, type);
+  if (presetKey) dataTransfer.setData(PALETTE_PRESET_DRAG_MIME, presetKey);
   dataTransfer.setData('text/plain', type);
   dataTransfer.effectAllowed = 'copy';
 }
@@ -31,6 +35,17 @@ export function readPaletteDragType(dataTransfer: DataTransfer | null): string |
   try {
     const type = dataTransfer.getData(PALETTE_DRAG_MIME);
     return typeof type === 'string' && type.length > 0 ? type : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The preset key a palette drag carries, or `null` for a plain node drag (or a foreign one). */
+export function readPaletteDragPreset(dataTransfer: DataTransfer | null): string | null {
+  if (!dataTransfer) return null;
+  try {
+    const key = dataTransfer.getData(PALETTE_PRESET_DRAG_MIME);
+    return typeof key === 'string' && key.length > 0 ? key : null;
   } catch {
     return null;
   }

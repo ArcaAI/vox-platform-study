@@ -9,6 +9,7 @@ export type {
   WorkflowCanvasNodeProblem,
   WorkflowCanvasNodeRendererProps,
   WorkflowCanvasNodeTypes,
+  WorkflowCanvasPort,
   WorkflowCanvasRunState,
   WorkflowCanvasStepMarker,
   WorkflowConnectRequest,

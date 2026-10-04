@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, ReactFlowInstance } from '@xyflow/react';
+import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, OnConnectEnd, ReactFlowInstance } from '@xyflow/react';
 import { Background, BackgroundVariant, MiniMap, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -146,9 +146,10 @@ function toXyNode(
   };
 }
 
-function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
+function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean, selected: boolean): Edge {
   const kind = edge.kind ?? 'wire';
   return {
+    selected,
     id: edge.id,
     type: 'workflowEdge',
     source: edge.source,
@@ -231,6 +232,10 @@ export function WorkflowCanvas({
   nodeTypes,
   selectedNodeId = null,
   selectedNodeIds,
+  selectedEdgeId = null,
+  onEdgeSelect,
+  onEdgeInsert,
+  onConnectEndOnPane,
   readOnly = false,
   overlay,
   onNodesChange,
@@ -284,7 +289,7 @@ export function WorkflowCanvas({
       ),
     [nodes, selectedNodeId, selectedSet, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
   );
-  const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly)), [edges, readOnly]);
+  const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly, edge.id === selectedEdgeId)), [edges, readOnly, selectedEdgeId]);
 
   const handleNodesChange = React.useCallback(
     (changes: NodeChange<Node<WorkflowNodeData>>[]) => {
@@ -368,11 +373,12 @@ export function WorkflowCanvas({
   // tore the canvas subtree down the moment a node was selected (observed against the running
   // stack, 2026-08-19).
   const handleSelectionChange = React.useCallback(
-    ({ nodes: selected }: { nodes: Node<WorkflowNodeData>[] }) => {
+    ({ nodes: selected, edges: selectedEdges }: { nodes: Node<WorkflowNodeData>[]; edges?: Edge[] }) => {
       onSelect?.(selected[0]?.id ?? null);
       onSelectionChange?.(selected.map((node) => node.id));
+      onEdgeSelect?.(selectedEdges?.[0]?.id ?? null);
     },
-    [onSelect, onSelectionChange],
+    [onSelect, onSelectionChange, onEdgeSelect],
   );
 
   const handleEdgeMouseEnter = React.useCallback<EdgeMouseHandler>((_event, edge) => setHoveredEdgeId(edge.id), []);
@@ -380,8 +386,8 @@ export function WorkflowCanvas({
 
   const nodeLabelById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node.label])), [nodes]);
   const edgeChrome = React.useMemo<WorkflowEdgeChrome>(
-    () => ({ readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById }),
-    [readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById],
+    () => ({ readOnly, onEdgeDelete, onEdgeInsert, hoveredEdgeId, nodeLabelById }),
+    [readOnly, onEdgeDelete, onEdgeInsert, hoveredEdgeId, nodeLabelById],
   );
 
   // React Flow hands this an `Edge | Connection`; both carry the four fields the guard needs.
@@ -440,6 +446,23 @@ export function WorkflowCanvas({
     [onConnect],
   );
 
+  /**
+   * TASK-1036 — a link dropped on EMPTY canvas (no target node) from a SOURCE handle. React Flow
+   * hands `onConnectEnd` the pointer event and the connection state; only the drop-on-pane case is
+   * reported, projected into flow coordinates the same way a palette drop is.
+   */
+  const handleConnectEnd = React.useCallback<OnConnectEnd>(
+    (event, state) => {
+      if (readOnly || !onConnectEndOnPane) return;
+      if (state.isValid || state.toNode || !state.fromNode || state.fromHandle?.type === 'target') return;
+      const point = 'changedTouches' in event && event.changedTouches.length > 0 ? event.changedTouches[0]! : (event as MouseEvent);
+      const screen = { x: point.clientX, y: point.clientY };
+      const position = instanceRef.current?.screenToFlowPosition(screen) ?? screen;
+      onConnectEndOnPane({ nodeId: state.fromNode.id, handleId: state.fromHandle?.id ?? null }, position);
+    },
+    [readOnly, onConnectEndOnPane],
+  );
+
   React.useEffect(() => {
     if (fitViewKey === undefined) return;
     instanceRef.current?.fitView({ duration: reducedMotion ? 0 : 400, padding: 0.2 });
@@ -472,6 +495,7 @@ export function WorkflowCanvas({
           onEdgeMouseEnter={handleEdgeMouseEnter}
           onEdgeMouseLeave={handleEdgeMouseLeave}
           onConnect={handleConnect}
+          onConnectEnd={onConnectEndOnPane && !readOnly ? handleConnectEnd : undefined}
           isValidConnection={handleIsValidConnection}
           onSelectionChange={handleSelectionChange}
           onInit={(instance) => {

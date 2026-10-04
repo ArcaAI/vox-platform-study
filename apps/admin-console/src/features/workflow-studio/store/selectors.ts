@@ -4,7 +4,7 @@
  */
 import type { WorkflowFinding } from '../api/types';
 import type { GraphStore } from './create-graph-store';
-import type { GraphStoreNode, SaveState } from './types';
+import type { GraphStoreEdge, GraphStoreNode, SaveState } from './types';
 
 export const selectNodes = (state: GraphStore): GraphStoreNode[] => state.nodes;
 export const selectEdges = (state: GraphStore) => state.edges;
@@ -19,6 +19,13 @@ export const selectCanSave = (state: GraphStore): boolean => state.dirty && stat
 /** Discard needs somewhere to revert TO: a graph that was never hydrated or saved has no
  *  baseline, and reverting to nothing would delete the user's only copy of it. */
 export const selectCanDiscard = (state: GraphStore): boolean => state.dirty && state.baseline !== null;
+
+export const selectSelectedEdgeId = (state: GraphStore) => state.selectedEdgeId;
+export const selectSettings = (state: GraphStore) => state.settings;
+
+export function selectSelectedEdge(state: GraphStore): GraphStoreEdge | null {
+  return state.edges.find((edge) => edge.id === state.selectedEdgeId) ?? null;
+}
 
 export function selectSelectedNode(state: GraphStore): GraphStoreNode | null {
   return state.nodes.find((node) => node.id === state.selectedNodeId) ?? null;

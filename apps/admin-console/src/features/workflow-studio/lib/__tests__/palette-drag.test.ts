@@ -45,3 +45,16 @@ describe('palette drag payload', () => {
     expect(readPaletteDragType(hostile)).toBeNull();
   });
 });
+
+describe('TASK-1036 — a preset drag carries the preset key beside the type', () => {
+  it('round-trips the preset key; a plain node drag has none', async () => {
+    const { readPaletteDragPreset, writePaletteDragType: write } = await import('../palette-drag');
+    const withPreset = transfer();
+    write(withPreset, 'core.data', 'merge');
+    expect(readPaletteDragType(withPreset)).toBe('core.data');
+    expect(readPaletteDragPreset(withPreset)).toBe('merge');
+    const plain = transfer();
+    write(plain, 'core.agent');
+    expect(readPaletteDragPreset(plain)).toBeNull();
+  });
+});

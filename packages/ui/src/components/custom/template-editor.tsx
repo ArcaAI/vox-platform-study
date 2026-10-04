@@ -29,6 +29,14 @@ import { cn } from '@/lib/utils';
  * render as squiggles in the editor AND as a text summary under it (a polite
  * live region), so they are not conveyed by colour or position alone.
  *
+ * TASK-1036 §10.1 — the same list is the composer's field PICKER: options may carry a display
+ * `label` (a step's name, `Transcribe › transcript`) and still insert their stored `path`; a
+ * `group` sorts them into sections in the order given (Earlier steps · Context · Consultation ·
+ * Run & variables); `bestMatch` / `convertNote` / `disabledReason` rank them by fit (a blocked
+ * option stays visible, says why, and inserts nothing); `sample` shows what the last run held. In
+ * template mode, `/` at the start of a word opens the same list (`slashCommand`), and
+ * `editorRef.insertAtCursor` lets an outside "+ Insert field" button write at the cursor.
+ *
  * Keyboard: Ctrl/Cmd-Space opens completion explicitly, arrows + Enter pick,
  * Escape closes. Tab is NOT bound — it moves focus out of the editor, so the
  * field is never a focus trap.
@@ -43,6 +51,27 @@ export interface VariablePath {
   readonly deprecated?: boolean;
   /** Where the path comes from: a context schema (the default) or the platform's own bound vocabulary. */
   readonly source?: 'schema' | 'platform';
+  /** TASK-1036 — what the option SHOWS (a step label path); `path` is still what is inserted. */
+  readonly label?: string;
+  /** TASK-1036 — the section the option is listed under; sections keep the order they first appear in. */
+  readonly group?: string;
+  /** TASK-1036 — the scope family (`steps`, `context`, `consultation`, `run`), exposed as `data-scope`. */
+  readonly scope?: string;
+  /** TASK-1036 — the first option that fits the target type as-is. */
+  readonly bestMatch?: boolean;
+  /** TASK-1036 — how a convertible option converts ("Formatted as text"). */
+  readonly convertNote?: string;
+  /** TASK-1036 — why the option cannot be used here; it stays listed and inserts nothing. */
+  readonly disabledReason?: string;
+  /** TASK-1036 — a short rendering of the value from the last test run. */
+  readonly sample?: string;
+}
+
+/** TASK-1036 — imperative access for a picker outside the editor ("+ Insert field"). */
+export interface TemplateEditorHandle {
+  /** Inserts `text` at the cursor (replacing the selection) and focuses the editor. */
+  insertAtCursor: (text: string) => void;
+  focus: () => void;
 }
 
 export type TemplateDiagnosticSeverity = 'error' | 'warning' | 'info';
@@ -79,6 +108,10 @@ export interface TemplateEditorProps {
   minLines?: number;
   placeholder?: string;
   className?: string;
+  /** TASK-1036 — template mode: `/` at the start of a word opens the field list. Default `true`. */
+  slashCommand?: boolean;
+  /** TASK-1036 — imperative handle (`insertAtCursor`, `focus`). */
+  editorRef?: React.Ref<TemplateEditorHandle>;
 }
 
 /** A completion source that answers synchronously. */
@@ -90,16 +123,49 @@ interface PathCompletion extends Completion {
 
 const COMPLETION_ROOTS = ['context', 'trigger', 'nodes'] as const;
 
-function pathOption(entry: VariablePath, apply?: Completion['apply']): PathCompletion {
+/** Ranking: best match first, then required, then the rest; a blocked option sinks to the bottom. */
+function boostOf(entry: VariablePath): number {
+  if (entry.disabledReason) return -99;
+  return (entry.bestMatch ? 50 : 0) + (entry.convertNote ? -1 : 0) + (entry.required ? 1 : 0);
+}
+
+/** One CodeMirror section per `group`, ranked by first appearance so the caller's order holds. */
+function sectionsOf(paths: readonly VariablePath[]): Map<string, { name: string; rank: number }> {
+  const sections = new Map<string, { name: string; rank: number }>();
+  for (const entry of paths) if (entry.group && !sections.has(entry.group)) sections.set(entry.group, { name: entry.group, rank: sections.size });
+  return sections;
+}
+
+/** A blocked option is listed but inserts nothing — choosing it only closes the list. */
+const NOOP_APPLY: Completion['apply'] = () => undefined;
+
+function pathOption(entry: VariablePath, apply?: Completion['apply'], sections?: Map<string, { name: string; rank: number }>): PathCompletion {
+  const section = entry.group ? sections?.get(entry.group) : undefined;
+  const resolvedApply = entry.disabledReason ? NOOP_APPLY : apply;
   return {
-    label: entry.path,
+    label: entry.label ?? entry.path,
     type: 'variable',
     detail: entry.deprecated ? 'deprecated' : undefined,
-    info: entry.description ?? undefined,
-    boost: entry.required ? 1 : 0,
+    info: [entry.label ? entry.path : null, entry.description].filter(Boolean).join(' — ') || undefined,
+    boost: boostOf(entry),
     variablePath: entry,
-    ...(apply ? { apply } : {}),
+    ...(section ? { section } : {}),
+    ...(entry.disabledReason ? { class: 'cm-completion-disabled' } : {}),
+    ...(resolvedApply ? { apply: resolvedApply } : entry.label ? { apply: entry.path } : {}),
   };
+}
+
+/** Options for `paths`, sorted so groups stay contiguous and ranked within each group. */
+function rankedOptions(paths: readonly VariablePath[], applyFor?: (entry: VariablePath) => Completion['apply']): PathCompletion[] {
+  const sections = sectionsOf(paths);
+  return paths
+    .map((entry, index) => ({
+      option: pathOption(entry, applyFor?.(entry), sections),
+      index,
+      rank: entry.group ? (sections.get(entry.group)?.rank ?? 0) : -1,
+    }))
+    .sort((a, b) => a.rank - b.rank || (b.option.boost ?? 0) - (a.option.boost ?? 0) || a.index - b.index)
+    .map((entry) => entry.option);
 }
 
 /**
@@ -113,19 +179,40 @@ export function templateCompletionSource(getPaths: () => readonly VariablePath[]
     const braceStart = match.from;
     const typed = match.text.slice(2).trimStart();
     const from = context.pos - typed.length;
-    const options = getPaths().map((entry) =>
-      pathOption(entry, (view: EditorView, completion: Completion, _from: number, to: number) => {
-        const closing = view.state.sliceDoc(to, to + 2) === '}}' ? 2 : 0;
-        const insert = `{{${entry.path}}}`;
-        view.dispatch({
-          changes: { from: braceStart, to: to + closing, insert },
-          selection: { anchor: braceStart + insert.length },
-          annotations: pickedCompletion.of(completion),
-          userEvent: 'input.complete',
-        });
-      }),
-    );
-    return { from, options, validFor: /^[\w.]*$/ };
+    const options = rankedOptions(getPaths(), (entry) => (view: EditorView, completion: Completion, _from: number, to: number) => {
+      const closing = view.state.sliceDoc(to, to + 2) === '}}' ? 2 : 0;
+      const insert = `{{${entry.path}}}`;
+      view.dispatch({
+        changes: { from: braceStart, to: to + closing, insert },
+        selection: { anchor: braceStart + insert.length },
+        annotations: pickedCompletion.of(completion),
+        userEvent: 'input.complete',
+      });
+    });
+    // A labelled option filters on its label, so the typed text must be allowed to hold spaces and `›`.
+    return { from, options, validFor: /^[^{}]*$/ };
+  };
+}
+
+/**
+ * TASK-1036 — `/` at the start of a word (Dify-style). The match starts AT the slash so the whole
+ * `/query` is replaced by the placeholder; `and/or` never opens it.
+ */
+export function slashCompletionSource(getPaths: () => readonly VariablePath[]): SyncCompletionSource {
+  return (context: CompletionContext): CompletionResult | null => {
+    const match = context.matchBefore(/(?:^|\s)\/[^\s/{}]*$/);
+    if (!match) return null;
+    const slash = match.from + match.text.indexOf('/');
+    const options = rankedOptions(getPaths(), (entry) => (view: EditorView, completion: Completion, _from: number, to: number) => {
+      const insert = `{{${entry.path}}}`;
+      view.dispatch({
+        changes: { from: slash, to, insert },
+        selection: { anchor: slash + insert.length },
+        annotations: pickedCompletion.of(completion),
+        userEvent: 'input.complete',
+      });
+    });
+    return { from: slash + 1, options, validFor: /^[^\s/{}]*$/ };
   };
 }
 
@@ -139,10 +226,10 @@ export function celCompletionSource(getPaths: () => readonly VariablePath[]): Sy
     if (!match) {
       if (!context.explicit) return null;
       const word = context.matchBefore(/[\w.]*$/);
-      return { from: word ? word.from : context.pos, options: getPaths().map((entry) => pathOption(entry)), validFor: /^[\w.]*$/ };
+      return { from: word ? word.from : context.pos, options: rankedOptions(getPaths()), validFor: /^[\w.]*$/ };
     }
     const typed = match[1] as string;
-    return { from: context.pos - typed.length, options: getPaths().map((entry) => pathOption(entry)), validFor: /^[\w.]*$/ };
+    return { from: context.pos - typed.length, options: rankedOptions(getPaths()), validFor: /^[\w.]*$/ };
   };
 }
 
@@ -160,10 +247,20 @@ export function renderVariablePathBadges(completion: Completion): Node | null {
     badge.textContent = text;
     row.appendChild(badge);
   };
+  if (entry.bestMatch && !entry.disabledReason) add('Best match', 'border-primary text-primary');
   if (entry.type) add(entry.type, 'border-border text-muted-foreground font-mono');
   if (entry.required) add('required', 'border-border text-foreground');
   if (entry.phiClass === 'PHI') add('PHI', 'border-destructive text-destructive');
   if (entry.source === 'platform') add('platform', 'border-border text-muted-foreground');
+  if (entry.convertNote && !entry.disabledReason) add(entry.convertNote, 'border-border text-muted-foreground');
+  if (entry.disabledReason) add(entry.disabledReason, 'border-border text-muted-foreground italic');
+  if (entry.sample) {
+    const sample = document.createElement('span');
+    sample.className = 'text-muted-foreground ml-1 max-w-[16rem] truncate text-[11px]';
+    sample.textContent = entry.sample;
+    row.appendChild(sample);
+  }
+  if (entry.scope) row.dataset.scope = entry.scope;
   return row;
 }
 
@@ -203,6 +300,14 @@ function editorTheme(minLines: number): Extension {
       color: 'var(--accent-foreground)',
     },
     '.cm-completionDetail': { color: 'var(--muted-foreground)', fontStyle: 'normal', marginLeft: '0.5rem' },
+    '.cm-completionSection': {
+      color: 'var(--muted-foreground)',
+      fontFamily: 'var(--font-sans)',
+      fontSize: '11px',
+      fontWeight: '600',
+      padding: '0.25rem 0.5rem',
+    },
+    '.cm-completion-disabled': { opacity: '0.6' },
     '.cm-completionInfo': { padding: '0.375rem 0.5rem', maxWidth: '20rem' },
     // Wavy underlines from tokens instead of CodeMirror's fixed-colour SVG.
     '.cm-lintRange': { backgroundImage: 'none', textDecorationLine: 'underline', textDecorationStyle: 'wavy', textUnderlineOffset: '3px' },
@@ -248,6 +353,8 @@ export function TemplateEditor({
   minLines = 3,
   placeholder,
   className,
+  slashCommand = true,
+  editorRef,
 }: TemplateEditorProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const viewRef = React.useRef<EditorView | null>(null);
@@ -288,12 +395,30 @@ export function TemplateEditor({
   const completionExtension = React.useMemo(
     () =>
       autocompletion({
-        override: [mode === 'cel' ? celCompletionSource(() => pathsRef.current) : templateCompletionSource(() => pathsRef.current)],
+        override:
+          mode === 'cel'
+            ? [celCompletionSource(() => pathsRef.current)]
+            : [templateCompletionSource(() => pathsRef.current), ...(slashCommand ? [slashCompletionSource(() => pathsRef.current)] : [])],
         activateOnTyping: true,
         icons: false,
         addToOptions: [{ render: renderVariablePathBadges, position: 80 }],
       }),
-    [mode],
+    [mode, slashCommand],
+  );
+
+  React.useImperativeHandle(
+    editorRef,
+    () => ({
+      insertAtCursor: (text: string) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const { from, to } = view.state.selection.main;
+        view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent: 'input' });
+        view.focus();
+      },
+      focus: () => viewRef.current?.focus(),
+    }),
+    [],
   );
 
   // Create the view once; later prop changes reconfigure compartments.

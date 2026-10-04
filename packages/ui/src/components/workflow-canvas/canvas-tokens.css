@@ -30,6 +30,16 @@
   --workflow-canvas-handle-control: var(--primary);
   --workflow-canvas-group-bg: color-mix(in oklab, var(--muted) 55%, transparent);
   --workflow-canvas-group-border: var(--border);
+  /* TASK-1036 — one colour family per port type (semantic tokens only). */
+  --workflow-canvas-port-text: var(--primary);
+  --workflow-canvas-port-number: var(--info, var(--primary));
+  --workflow-canvas-port-boolean: var(--info, var(--primary));
+  --workflow-canvas-port-date: var(--info, var(--primary));
+  --workflow-canvas-port-json: var(--ai, var(--muted-foreground));
+  --workflow-canvas-port-list: var(--warning, var(--muted-foreground));
+  --workflow-canvas-port-audio: var(--success, var(--muted-foreground));
+  --workflow-canvas-port-file: var(--success, var(--muted-foreground));
+  --workflow-canvas-port-any: var(--muted-foreground);
 }
 
 /* Pane geometry — React Flow requires a box with a real height; `min-h-0` on the wrapper
@@ -58,6 +68,36 @@
   position: absolute;
   pointer-events: all;
   transform-origin: 0 0;
+}
+
+/* Typed port handles (TASK-1036) — inline beside their field label like branch handles. Shape
+   encodes the family (round scalar, square list, diamond reference) so the kind is never
+   conveyed by colour alone (WCAG 1.4.1). */
+.workflow-canvas .react-flow__handle.workflow-canvas-port {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  transform: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--workflow-canvas-port-any);
+}
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='text'] { background: var(--workflow-canvas-port-text); }
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='number'],
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='boolean'],
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='date'] { background: var(--workflow-canvas-port-number); }
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='json'] { background: var(--workflow-canvas-port-json); }
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='list'] {
+  background: var(--workflow-canvas-port-list);
+  border-radius: 2px;
+}
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='audio'],
+.workflow-canvas .react-flow__handle.workflow-canvas-port[data-port-tone='file'] {
+  background: var(--workflow-canvas-port-audio);
+  border-radius: 1px;
+  transform: rotate(45deg);
 }
 
 /* Branch handles (TASK-893) sit inline beside their label rather than at React Flow's absolute
