@@ -118,7 +118,11 @@ function DetailBody({ id }: { id: string }) {
         <MetaItem label="Doctor">{doctorName(consultation)}</MetaItem>
         <MetaItem label="Department">{department ?? EM_DASH}</MetaItem>
         <MetaItem label="Status">
-          <ConsultationStatusBadge status={consultation.status} />
+          <ConsultationStatusBadge
+            status={consultation.status}
+            processing={consultation.processing}
+            processingReason={consultation.processingReason}
+          />
         </MetaItem>
         {/* Directly after Status, full width: which workflow governed this, and whether it worked. */}
         <ConsultationWorkflowMeta run={consultation.governingRun} />

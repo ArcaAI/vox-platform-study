@@ -82,6 +82,10 @@ export interface Consultation {
   parentConsultationId?: string;
   /** ConsultationStatus enum value (legacy rows may carry metadata strings). */
   status?: string;
+  /** Background work on the consultation (`IDLE`, `SUMMARIZING`, `AWAITING_REVIEW`, …). */
+  processing?: string;
+  /** Why `processing` is what it is — `NOTE_READY` on `IDLE` means a written note. */
+  processingReason?: string | null;
   metadata?: Record<string, unknown>;
   /** `null` = ungoverned; absent = a gateway that predates the field, read the same way. */
   governingRun?: GoverningRun | null;

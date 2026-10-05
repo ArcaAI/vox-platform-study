@@ -349,6 +349,9 @@ export class AgenticClient {
           const problems = errorData.problems.filter((p: unknown): p is string => typeof p === 'string');
           if (problems.length > 0) errorContext.problems = problems;
         }
+        // A throttled or unavailable route says when to come back; callers that retry honour it.
+        const retryAfter = response.headers.get('retry-after');
+        if (retryAfter) errorContext.retryAfter = retryAfter;
         throw new AgenticError(errorCode, errorMessage, { context: errorContext });
       }
 

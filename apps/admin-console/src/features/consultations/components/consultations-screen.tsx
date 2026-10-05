@@ -242,7 +242,13 @@ function ConsultationsScreenBody() {
         enableHiding: false,
         size: 140,
         meta: { label: 'Status', variant: 'select', options: STATUS_OPTIONS },
-        cell: ({ row }) => <ConsultationStatusBadge status={row.original.status} />,
+        cell: ({ row }) => (
+          <ConsultationStatusBadge
+            status={row.original.status}
+            processing={row.original.processing}
+            processingReason={row.original.processingReason}
+          />
+        ),
       },
       {
         accessorKey: 'updatedAt',
