@@ -96,7 +96,7 @@
 | H-91 | D2 | `app.module.ts` | orchestrator | register `ConsultationHistoryModule` | applied |
 | H-92 | D2 | business history access | follow-up (after CG-API) | swap `ConsultationHistoryController.verifyAccess` for the CG `consultation-access.helper.ts`; decide whether the shared-patient fallback applies to history (today narrower than `GET consultations/:id`) | pending (after CG-API) |
 | H-93 | CG-API | `consultation.module.ts` | orchestrator | register attachment + feedback controllers, `ConsultationAccessHelper`, service modules | applied `ee25418b5` |
-| H-94 | CG-API | rollup reader | G-READ | `IFeedbackRollupReader` implemented in applications (contract moved out of the controller); then register `AdminFeedbackRollupController` | pending (G-READ) |
+| H-94 | CG-API | rollup reader | G-READ | `IFeedbackRollupReader` implemented in applications (contract moved out of the controller); then register `AdminFeedbackRollupController` | applied (G-READ merged; controller registered) |
 | H-95 | U3 | ALaaS `useConsultationStream.js` / `AIFeedbackPanel.jsx` | orchestrator | expose `dispatch`; `readOnly` prop | applied ALaaS `086c961` |
 | H-96 | F0b | ALaaS `wallClock.js` / `reducer/lifecycle.js` | orchestrator | subtract `pausedTotalMs` | applied ALaaS `6222f70` |
 | H-97 | U3 | ALaaS `check_session_event` / `lastSavedAudio` | follow-up (U8) | encounter 2 on the same session/event is blocked by the legacy single-recording guard; Start disabled after a saved recording — must allow a second encounter | pending (U8 brief) |
