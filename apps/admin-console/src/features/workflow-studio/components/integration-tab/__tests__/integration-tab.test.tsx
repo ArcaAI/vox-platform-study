@@ -71,7 +71,12 @@ function useDefinition(overrides: DefinitionOverrides = {}): void {
         versionNumber: 3,
         status: overrides.status ?? 'PUBLISHED',
         isActive: overrides.isActive ?? true,
-        graph: { version: 1, nodes: overrides.nodes ?? [{ id: 'n_trigger', type: 'core.trigger', config: {} }], edges: [], ...(settings === undefined ? {} : { settings }) },
+        graph: {
+          version: 1,
+          nodes: overrides.nodes ?? [{ id: 'n_trigger', type: 'core.trigger', config: {} }],
+          edges: [],
+          ...(settings === undefined ? {} : { settings }),
+        },
       },
     },
   };
@@ -170,9 +175,12 @@ describe('IntegrationTab — the five steps', () => {
     for (const lane of [/vox-node/i, /vox \(browser\)/i, /raw/i]) {
       selectLane(lane);
       const steps = screen.getByRole('list', { name: /integration steps/i });
-      const items = within(steps).getAllByRole('listitem').filter((item) => item.parentElement === steps);
+      const items = within(steps)
+        .getAllByRole('listitem')
+        .filter((item) => item.parentElement === steps);
       expect(items).toHaveLength(5);
-      for (const item of items) expect(within(item).getAllByRole('group').length, `${item.textContent?.slice(0, 20)} / ${String(lane)}`).toBeGreaterThan(0);
+      for (const item of items)
+        expect(within(item).getAllByRole('group').length, `${item.textContent?.slice(0, 20)} / ${String(lane)}`).toBeGreaterThan(0);
     }
   });
 
@@ -325,7 +333,11 @@ describe('IntegrationTab — Input and Output shapes', () => {
   it('an inline schema in the settings is read without fetching anything', () => {
     schemaState.current = { definition: null, versionNumber: null, isLoading: false };
     useDefinition({
-      settings: { connections: ['api'], sources: [], contextSchema: { inline: { type: 'object', required: ['note'], properties: { note: { type: 'string' } } } } },
+      settings: {
+        connections: ['api'],
+        sources: [],
+        contextSchema: { inline: { type: 'object', required: ['note'], properties: { note: { type: 'string' } } } },
+      },
     });
     renderWithProviders(<IntegrationTab definitionId="def-1" />);
     const table = screen.getByRole('table', { name: /input shape/i });
@@ -349,7 +361,9 @@ describe('IntegrationTab — Input and Output shapes', () => {
     const send = screen.getByRole('heading', { name: '3. Send input' }).closest('li')!;
     expect(send.textContent).toMatch(/PCM16/);
     expect(send.textContent).toMatch(/mediaId/);
-    expect(codeOf('Send input — vox-node snippet')).toContain('hope.stt');
+    // TASK-1042 — the session is bound to the run: runWithAudio, on the schema's live-audio key.
+    expect(codeOf('Send input — vox-node snippet')).toContain('runWithAudio');
+    expect(codeOf('Send input — vox-node snippet')).toContain("audioField: 'audio'");
   });
 });
 

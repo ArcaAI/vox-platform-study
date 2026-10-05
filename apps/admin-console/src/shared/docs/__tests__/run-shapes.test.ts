@@ -56,6 +56,10 @@ describe('deriveRunShapes — a context-schema definition', () => {
     expect(shapes.streamAudioOut).toBe(true);
   });
 
+  it('names the single live-audio Input key the STT session id goes on (TASK-1042)', () => {
+    expect(shapes.streamAudioField).toBe('consult_audio');
+  });
+
   it('builds an example input from the REQUIRED kinds only and never invents the audio', () => {
     expect(shapes.exampleInput).toEqual({ patient: { age: 0 }, message: '…' });
   });
@@ -84,5 +88,28 @@ describe('deriveRunShapes — nothing declared', () => {
     expect(shapes.output).toEqual([]);
     expect(shapes.exampleInput).toBeNull();
     expect(shapes.streamAudioIn).toBe(false);
+    expect(shapes.streamAudioField).toBeNull();
+  });
+});
+
+describe('deriveRunShapes — streamAudioField (TASK-1042)', () => {
+  it('is null when more than one Input kind streams audio: the caller has to choose', () => {
+    const shapes = deriveRunShapes({
+      kinds: [
+        { key: 'mic_a', label: 'A', primitive: 'STREAM_AUDIO', phiClass: 'PHI' },
+        { key: 'mic_b', label: 'B', primitive: 'STREAM_AUDIO', phiClass: 'PHI' },
+      ],
+      outputs: [],
+    });
+    expect(shapes.streamAudioIn).toBe(true);
+    expect(shapes.streamAudioField).toBeNull();
+  });
+
+  it('ignores blob-delivered audio', () => {
+    const shapes = deriveRunShapes({
+      kinds: [{ key: 'clip', label: 'Clip', primitive: 'STREAM_AUDIO', delivery: 'blob', phiClass: 'PHI' }],
+      outputs: [],
+    });
+    expect(shapes.streamAudioField).toBeNull();
   });
 });
