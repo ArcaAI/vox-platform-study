@@ -26,13 +26,11 @@ function createTemplate() {
 
 async function buildService() {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const getEffectivePolicy = vi.fn(async () => ({ warmStartEnabled: true }));
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
   const service = new PromptAssemblyService(
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    { getEffectivePolicy } as never,
     cls as never,
   );
   return { service };

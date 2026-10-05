@@ -107,16 +107,13 @@ describe('PromptAssemblyService', () => {
     });
   });
 
-  // Warm-start is `HarnessPolicy.warmStartEnabled` (default OFF; TASK-882 removed the env
-  // fallback). Construct with a policy stub; pass `true` to enable.
-  const warmStartPolicy = (warmStartEnabled: boolean) => ({ getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled }) });
+  // Warm start is no longer an assembly decision (the note plan decides it); the flag is ignored.
   async function getService(warmStartEnabled = false) {
     const { PromptAssemblyService } = await import('../prompt-assembly.service');
     return new PromptAssemblyService(
       mockPromptResolutionService as any,
       mockPromptTemplateRepository as any,
       mockDnaWritingStyleRepository as any,
-      warmStartPolicy(warmStartEnabled) as any,
     );
   }
 
@@ -129,7 +126,6 @@ describe('PromptAssemblyService', () => {
       mockPromptResolutionService as any,
       mockPromptTemplateRepository as any,
       mockDnaWritingStyleRepository as any,
-      warmStartPolicy(warmStartEnabled) as any,
       undefined, // cls
       undefined, // exemplarRetriever
       mockSecretsService as any, // secretsService

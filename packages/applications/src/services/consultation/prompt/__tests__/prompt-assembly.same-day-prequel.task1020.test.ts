@@ -34,7 +34,6 @@ async function getService() {
     undefined,
     undefined,
     undefined,
-    undefined,
     mockDepartmentRepository as never,
   );
 }

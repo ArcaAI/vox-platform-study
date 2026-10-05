@@ -43,7 +43,6 @@ async function getService() {
     mockPromptResolutionService as any,
     mockPromptTemplateRepository as any,
     mockDnaWritingStyleRepository as any,
-    undefined, // harnessPolicyService
     undefined, // cls
     undefined, // exemplarRetriever
     undefined, // secretsService

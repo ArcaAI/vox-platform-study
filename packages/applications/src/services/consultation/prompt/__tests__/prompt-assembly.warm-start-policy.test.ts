@@ -32,7 +32,6 @@ async function buildService(policy: boolean | null) {
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    { getEffectivePolicy } as never,
     cls as never,
   );
   return { service, getEffectivePolicy };

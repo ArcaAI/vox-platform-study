@@ -1082,8 +1082,22 @@ const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'RECORDING',
  */
 const NOTE_PLAN_FAIL_CLOSED_CODES: ReadonlySet<string> = new Set([NOTE_INPUT_EXCEEDS_CONTEXT, 'NOTE_MODEL_CONTEXT_UNDECLARED']);
 
-/** The handoff record plus what {@link LiveDocumentationService.readLiveHandoff} learned composing it. */
-type LiveHandoffRecordWithPlan = LiveHandoffRecord & { notePlanRef?: NotePlanRef; notePlanError?: string };
+/**
+ * The handoff record plus what {@link LiveDocumentationService.readLiveHandoff} learned composing it,
+ * and the consultation's segment head it was composed for (`notePlanSegmentHead`).
+ */
+type LiveHandoffRecordWithPlan = LiveHandoffRecord & { notePlanRef?: NotePlanRef; notePlanError?: string; notePlanSegmentHead?: number };
+
+/**
+ * A remembered plan outcome is reused only while the consultation holds no newer speech: the record
+ * outlives its recording (2h), so after a later encounter it would hand the superseding run a plan
+ * of the earlier transcript.
+ */
+function rememberedPlanIsCurrent(record: LiveHandoffRecordWithPlan, consultation: ConsultationEntity | null): boolean {
+  if (!record.notePlanRef && !record.notePlanError) return false;
+  const head = consultation?.segmentSeqHead;
+  return typeof head !== 'number' || record.notePlanSegmentHead === head;
+}
 
 /** A live NOTE output — the summary node's `{ text, sections, … }`; the only kind a plan replaces. */
 function isNoteOutput(output: unknown): output is Record<string, unknown> {
@@ -7697,8 +7711,9 @@ return 0`;
    * (`noteNodeIds`) the live lane never reached — becomes `{ …, text: '', note_plan_ref }`:
    * the durable finalizer executes the plan — every encounter, the results, the earlier note,
    * budgeted against the model's window — and the live lane's running text is no longer the note's
-   * input. Other outputs pass through. The plan is composed ONCE per handoff record and remembered
-   * on it, so a second read (a retry, a slow first read) reuses it.
+   * input. Other outputs pass through. The plan is composed ONCE per handoff record and transcript
+   * (segment head) and remembered on it, so a second read (a retry, a slow first read) reuses it,
+   * while the run that supersedes it after a later encounter gets a plan of the whole consultation.
    *
    * A plan that cannot be composed — `NOTE_INPUT_EXCEEDS_CONTEXT`, `NOTE_MODEL_CONTEXT_UNDECLARED`
    * — fails the consultation's processing with that reason, and the note outputs are handed over
@@ -7717,7 +7732,7 @@ return 0`;
     for (const nodeId of noteNodeIds) withNoteNodes[nodeId] ??= {};
     const isNote = (nodeId: string, output: Record<string, unknown>): boolean => noteNodeIds.has(nodeId) || isNoteOutput(output);
     if (!this.notePlanComposer || !Object.entries(withNoteNodes).some(([nodeId, output]) => isNote(nodeId, output))) return outputs;
-    const planned = record.notePlanRef || record.notePlanError ? record : await this.composeHandoffNotePlan(consultationId, consultation, record);
+    const planned = rememberedPlanIsCurrent(record, consultation) ? record : await this.composeHandoffNotePlan(consultationId, consultation, record);
     return Object.fromEntries(
       Object.entries(withNoteNodes).map(([nodeId, output]) => {
         if (!isNote(nodeId, output)) return [nodeId, output];
@@ -7738,10 +7753,13 @@ return 0`;
     if (inFlight) return inFlight;
     const tenantId = record.tenantId || consultation?.tenantId || '';
     const composition = (async (): Promise<LiveHandoffRecordWithPlan> => {
+      // Stale outcomes from an earlier transcript are dropped, the head this one is for is kept.
+      const { notePlanRef: _staleRef, notePlanError: _staleError, ...fresh } = record;
+      const composedFor = typeof consultation?.segmentSeqHead === 'number' ? { notePlanSegmentHead: consultation.segmentSeqHead } : {};
       let planned: LiveHandoffRecordWithPlan;
       try {
         const summary = await this.notePlanComposer!.composeNotePlan(consultationId, { tenantId, mode: 'final' });
-        planned = { ...record, notePlanRef: summary.notePlanRef };
+        planned = { ...fresh, ...composedFor, notePlanRef: summary.notePlanRef };
         this.logger.log({
           message: 'Note plan composed for the live handoff',
           consultationId,
@@ -7752,7 +7770,7 @@ return 0`;
       } catch (error) {
         const code = refusalCode(error);
         if (!code || !NOTE_PLAN_FAIL_CLOSED_CODES.has(code)) throw error;
-        planned = { ...record, notePlanError: code };
+        planned = { ...fresh, ...composedFor, notePlanError: code };
         await this.failNotePath(consultationId, consultation, code);
       }
       try {

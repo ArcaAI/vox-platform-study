@@ -64,7 +64,6 @@ async function getService(withClone = true) {
     undefined,
     undefined,
     undefined,
-    undefined,
     mockDepartmentRepository as never,
     mockSchemaRepository as never,
     mockSchemaVersionRepository as never,

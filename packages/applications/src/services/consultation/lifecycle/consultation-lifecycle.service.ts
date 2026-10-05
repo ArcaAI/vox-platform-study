@@ -158,9 +158,10 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   /**
    * RECORDING / PAUSED → STOPPED with processing FINALIZING_TRANSCRIPT; finalize every live bound
    * STT session; hold the request (up to the tenant's timeout) for the final transcript. On
-   * `complete`, processing returns to what it was and `EncounterStopped` + `transcript_final`
-   * are emitted. On `pending` the transcript-record service completes the stop when the final
-   * transcript lands. Idempotent on STOPPED (D-28): the current state, nothing written.
+   * `complete`, processing returns to what it was — unless the note's re-finalisation already
+   * moved it during the wait — and `EncounterStopped` + `transcript_final` are emitted. On
+   * `pending` the transcript-record service completes the stop when the final transcript lands.
+   * Idempotent on STOPPED (D-28): the current state, nothing written.
    */
   async stop(consultationId: string, options: { waitForFinal?: boolean } = {}): Promise<StopResult> {
     const consultation = await this.load(consultationId);
@@ -197,8 +198,14 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       return this.stopResult(stopped, 'pending', ConsultationProcessing.FINALIZING_TRANSCRIPT);
     }
 
-    const restored = prior ?? ConsultationProcessing.IDLE;
-    await this.consultationRepository.setProcessing(consultationId, restored, { prior: null });
+    // A session final that landed during the wait may already have started the note's
+    // re-finalisation (processing SUMMARIZING): that value is newer than this stop's and stays.
+    const settled = await this.consultationRepository.findByIdOrNull(consultationId);
+    const stillFinalizing = !settled || settled.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT;
+    const restored = stillFinalizing ? (prior ?? ConsultationProcessing.IDLE) : settled.processing;
+    if (stillFinalizing) {
+      await this.consultationRepository.setProcessing(consultationId, restored, { prior: null });
+    }
     const payload: EncounterStoppedPayload = {
       consultationId,
       tenantId: stopped.tenantId,
@@ -210,7 +217,10 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     if (await this.claimEncounterStopped(consultationId, stopped.currentEncounterSeq)) {
       this.eventEmitter.emit(ConsultationPipelineEvent.EncounterStopped, payload);
     }
-    await this.events.publish(this.subject(stopped, { processing: restored, processingReason: null }), 'transcript_final');
+    await this.events.publish(
+      this.subject(stopped, { processing: restored, processingReason: stillFinalizing ? null : (settled.processingReason ?? null) }),
+      'transcript_final',
+    );
     return this.stopResult(stopped, 'complete', restored);
   }
 
