@@ -133,6 +133,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     if (options.sttSessionId) {
       await this.stampRecordingOffset(consultation, options.sttSessionId);
     }
+    await this.stampEncounterRecordingStart(consultation);
     if (options.sttSessionId && options.supersedeByDurableBinding) {
       await this.supersedeByDurableBinding(consultation, options.sttSessionId);
     }
@@ -419,6 +420,22 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       this.logger.warn({
         message: 'Re-opening the current encounter failed (the recording start stands)',
         consultationId: entity.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** The encounter's recording window opens at the cursor where its first capture starts. Never throws. */
+  private async stampEncounterRecordingStart(consultation: ConsultationEntity): Promise<void> {
+    try {
+      const encounter = await this.encounterRepository.findBySeq(consultation.id, consultation.currentEncounterSeq);
+      if (!encounter || encounter.recordingStartMs != null) return;
+      encounter.recordingStartMs = consultation.recordingCursorMs ?? 0;
+      await this.encounterRepository.update(encounter.id, encounter);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Encounter recording start not stamped (the recording start stands)',
+        consultationId: consultation.id,
         error: error instanceof Error ? error.message : String(error),
       });
     }

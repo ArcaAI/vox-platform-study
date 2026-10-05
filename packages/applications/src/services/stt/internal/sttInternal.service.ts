@@ -39,7 +39,7 @@ import { appendComputeAndByteUnits, IUsageLedgerService, UsageIdempotencyKey, ty
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 // TASK-999 — which chain entry served, and the ONE definition of transcript size.
-import { resolveServedBy, type ServedBy } from '../served-by';
+import { primaryServedBy, resolveServedBy, type ServedBy } from '../served-by';
 import { countTranscriptWords, measureTranscript } from '../transcript-size';
 import { ISttInternalService } from './ISttInternalService';
 import { computeSegmentOffsets, type TranscriptSegmentInputShape } from '../../consultation/lib/transcript-segments';
@@ -508,10 +508,12 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     if (sttSessionId !== null && this.transcriptRecord && dto.tenantId) {
       const startedAt = await this.streamSessionStartedAt(sttSessionId);
       const final = await this.transcriptRecord.onSessionFinal({ tenantId: dto.tenantId, consultationId, sttSessionId });
+      const encounterSeq = await this.currentEncounterSeq(consultationId);
       await this.recordRun({
         tenantId: dto.tenantId,
         runKey: sttStreamRunKey(sttSessionId),
         consultationId,
+        encounterSeq,
         activityKind: AiActivityKind.TRANSCRIBE_STREAM,
         status: AiActivityRunStatus.OK,
         startedAt: startedAt.at,
@@ -552,12 +554,24 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         sort: [{ createdAt: 'desc' }],
       });
       if (job?.startedAt) {
-        return { at: job.startedAt, known: true, servedBy: (job.servedBy as unknown as ServedBy | null) ?? null };
+        const servedBy = (job.servedBy as unknown as ServedBy | null) ?? primaryServedBy(job.resolvedSpec ?? null);
+        return { at: job.startedAt, known: true, servedBy };
       }
     } catch {
       // swallow-ok: bookkeeping only — the run record is written with what is known.
     }
     return { at: new Date(), known: false, servedBy: null };
+  }
+
+  /** The consultation's current encounter, for a run record; `null` when it cannot be read. */
+  private async currentEncounterSeq(consultationId: string): Promise<number | null> {
+    if (!this.consultationRepository) return null;
+    try {
+      return (await this.consultationRepository.findByIdOrNull(consultationId))?.currentEncounterSeq ?? null;
+    } catch {
+      // swallow-ok: bookkeeping only — the run record is written without the encounter.
+      return null;
+    }
   }
 
   /** Write one STT run record. Ids, enums and numbers only; a failure is logged, never thrown. */
