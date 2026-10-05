@@ -529,6 +529,8 @@ export function FloatingPane({
           hidden={collapsed}
           // A scrolling body is keyboard-scrollable even when everything in it is disabled (a locked palette) — WCAG 2.1.1.
           tabIndex={bodyScroll ? 0 : undefined}
+          // A name needs a role to hang on (axe `aria-prohibited-attr`): the scrolling body is a named group.
+          role={bodyScroll ? 'group' : undefined}
           aria-label={bodyScroll ? `${title} content` : undefined}
           className={cn(
             'min-h-0 flex-1 p-2',
