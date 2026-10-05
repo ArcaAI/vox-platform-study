@@ -74,3 +74,7 @@
 | H-70 | AB-3 | AB-4a | AB-4a | stop sets the current encounter's `endedAt`; the events publisher assigns stream `seq` for `LifecycleChanged` emitted by `open` (seq 0); `lifecycleView()` from the encounter service can build responses without a cycle | sent to AB-4a |
 | H-71 | AB-3 | AB-6 | AB-6 | `reopenConsultation(id, expectedVersion, {reason})`; `prime` no-op; `recording/start|stop` aliases return `ConsultationResponse`; response carries `lifecycle:{status, processing}` for the old-vocabulary projection | pending (AB-6 brief) |
 | H-72 | D1 | `@arcaai/types` EncounterRecap | orchestrator | `RecapCitation`, `RecapLine`, `RECAP_SECTION_KEYS`; sections carry `lines` | applied |
+| H-73 | F6 | ALaaS `medical-summary.module.ts`; broker `links.record` | orchestrator | provide `HopeSummaryCacheService`; `encounterSeq: handle.encounterSeq` | applied `36c38a1` (svc tsc clean; broker v4 + cache specs 40/40) |
+| H-74 | F6 | ALaaS deploy | rollout | apply `src/migrations/add-hope-cache-columns.sql` (additive) where TypeORM `synchronize` is off | rollout note |
+| H-75 | F6 | ALaaS F8 | F8 | the 5.x adapter must NOT declare `legacy4x`; port-path Copy to EMR (incl. late copy with changed text) activates only with it | pending (F8 brief) |
+| H-76 | F6 | ALaaS cache | follow-up | edits that exhaust sync retries stay `pending_sync`; add a re-queue sweep | follow-up |
