@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConsultationAttachmentServiceModule, ConsultationFeedbackServiceModule, TenantLockModule } from '@arcaai/applications';
+import {
+  ConsultationAttachmentServiceModule,
+  ConsultationFeedbackServiceModule,
+  FeedbackRollupServiceModule,
+  TenantLockModule,
+} from '@arcaai/applications';
 import {
   ConsultationServiceModule,
   ContextServiceModule,
@@ -52,6 +57,7 @@ import { ConsultationJobController } from './consultation-job.controller';
 import { HarnessInternalController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
 import { ConsultationReadInternalController } from './consultation-read-internal.controller';
+import { AdminFeedbackRollupController } from './admin-feedback-rollup.controller';
 import { ConsultationAccessHelper } from './consultation-access.helper';
 import { ConsultationAttachmentController } from './consultation-attachment.controller';
 import { ConsultationFeedbackController } from './consultation-feedback.controller';
@@ -120,6 +126,8 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     // Attachment intents/complete/content and clinician feedback (business plane).
     ConsultationAttachmentServiceModule,
     ConsultationFeedbackServiceModule,
+    // `IFeedbackRollupReaderToken` for the admin rollups read.
+    FeedbackRollupServiceModule,
   ],
   controllers: [
     ConsultationController,
@@ -135,6 +143,7 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     // `feedback/reason-codes` is a two-segment literal path, so it never binds as `:id`.
     ConsultationAttachmentController,
     ConsultationFeedbackController,
+    AdminFeedbackRollupController,
   ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's
