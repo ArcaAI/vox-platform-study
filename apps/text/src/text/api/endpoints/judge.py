@@ -57,7 +57,6 @@ from pydantic import BaseModel, Field
 # a second copy of `_credential_attribution` is exactly how a call site starts
 # stamping its own attribution.
 from text.api.endpoints.generate import _coerce_stats, _credential_attribution, _extract_usage
-from text.models.requests import MAX_PROMPT_CHARS
 from text.core.defaults import PENALTY_NEUTRAL
 from text.core.dependencies import (
     get_app_state,
@@ -82,6 +81,7 @@ from text.core.locality import CLOUD, resolve_locality
 from text.core.logging import get_logger
 from text.core.runtime_defaults import LaneBudget
 from text.models.requests import (
+    MAX_PROMPT_CHARS,
     GenerateRequest,
     ProviderLocalityStamp,
     ProviderOverride,
