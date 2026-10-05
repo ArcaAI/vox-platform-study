@@ -73,3 +73,4 @@
 | H-69 | AB-3 | 14 existing `consultation.service.*` tests | AB-8 | positional constructor fixtures broken (new required `encounters`, `lifecycle` args) | pending (AB-8) |
 | H-70 | AB-3 | AB-4a | AB-4a | stop sets the current encounter's `endedAt`; the events publisher assigns stream `seq` for `LifecycleChanged` emitted by `open` (seq 0); `lifecycleView()` from the encounter service can build responses without a cycle | sent to AB-4a |
 | H-71 | AB-3 | AB-6 | AB-6 | `reopenConsultation(id, expectedVersion, {reason})`; `prime` no-op; `recording/start|stop` aliases return `ConsultationResponse`; response carries `lifecycle:{status, processing}` for the old-vocabulary projection | pending (AB-6 brief) |
+| H-72 | D1 | `@arcaai/types` EncounterRecap | orchestrator | `RecapCitation`, `RecapLine`, `RECAP_SECTION_KEYS`; sections carry `lines` | applied |
