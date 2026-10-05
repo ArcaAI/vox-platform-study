@@ -48,3 +48,5 @@ export * from './workflow-dispatch';
 // directly (not a `./shared` wildcard barrel) so the other internal helpers
 // in `consultation/shared/` stay unexported.
 export * from './shared/nerUsageEvent';
+export * from './attachment';
+export * from './feedback';
