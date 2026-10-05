@@ -101,11 +101,20 @@ describe('ComposerCanvas — what the canvas is handed', () => {
     expect(edge).toMatchObject({ label: 'transcript → message', sourceHandle: 'out:transcript', targetHandle: 'in:message' });
   });
 
-  it('raises a canvas problem for a required input with no source', () => {
-    mount([START, ASR], [{ id: 'e1', source: 't', sourceHandle: 'next', target: 'asr1', targetHandle: 'after' }]);
+  it('raises a canvas problem for a required input with no source (a step that authors its inputs)', () => {
+    const authored = { ...ASR, config: { ...ASR.config, inputs: {} } };
+    mount([START, authored], [{ id: 'e1', source: 't', sourceHandle: 'next', target: 'asr1', targetHandle: 'after' }]);
     const asr = latest().nodes.find((candidate) => candidate.id === 'asr1');
     expect(asr?.problem).toMatchObject({ severity: 'ERROR' });
     expect(JSON.stringify(asr?.problem)).toMatch(/audio/);
+  });
+
+  // Same rule as the server's REQUIRED_INPUT_UNBOUND: a legacy step (no `config.inputs`) gets its
+  // value from the runtime — the realtime ASR agent reads the live session's audio — so the canvas
+  // must not put an error chip on a graph the publish gate accepts with 0 errors.
+  it('raises no problem for a legacy step whose required input the runtime supplies', () => {
+    mount([START, ASR], [{ id: 'e1', source: 't', sourceHandle: 'next', target: 'asr1', targetHandle: 'after' }]);
+    expect(latest().nodes.find((candidate) => candidate.id === 'asr1')?.problem).toBeUndefined();
   });
 });
 
