@@ -9,10 +9,12 @@
  * fanning out to the department's two agents (`else` → new-visit). DEPARTMENT-scope
  * `WorkflowAssignment` rows for all 11 and a TENANT-scope default → `arcaai-gen-consultation`.
  *
- * ArcaAI additionally receives the SYSTEM set through phase 26 (`realtime-transcription`,
- * `medical-ner`, `casenote-finalization`, `text-to-speech`, `general-medicine-summarization`,
- * the two library workflows, the schema, the templates). The graphs here reference those agents
- * by SLUG only — the lineage key resolves at run time, so seed ORDER is not a dependency.
+ * ArcaAI additionally receives the SYSTEM set through phase 26 (`medical-ner`, `text-to-speech`,
+ * `general-medicine-summarization`, `fact-ledger-extraction`, the two library workflows, the
+ * schema, the templates); its own `casenote-finalization` and `realtime-transcription` are seeded
+ * HERE, before 26, so the clone is skipped. The graphs name agents by slug, but publishing freezes
+ * each node's agent VERSION (v1 for every seeded agent), so every agent they name must still be at
+ * v1 once all phases have run — see {@link ARCAAI_TRANSCRIPTION_AGENT_SPEC}.
  *
  * `instruction.variables` is ABSENT on the department agents on purpose: the v3 department bodies
  * declare no variables and carry no `{{…}}` placeholder (`07b-arcaai-clinical-content-v3.ts` —
@@ -47,13 +49,15 @@ import {
   arcaaiSameDayReturnFragment,
 } from './07b-arcaai-clinical-templates';
 import { noteContextSchemaIdFor, noteContextSchemaVersionIdFor } from './07e-consultation-note-context-schema';
-import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION } from './07g-arcaai-two-schemas';
+import { ARCAAI_CONSULTATION_SCRIBE_DEFINITION, ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA } from './07g-arcaai-two-schemas';
 import {
+  ASR_AGENT_SLUG,
   CASENOTE_FINALIZATION_PARAMETERS,
   CASENOTE_FINALIZATION_SYSTEM_PROMPT,
   CASENOTE_OUTPUT_SCHEMA,
   CLINICAL_NOTE_FRAGMENT_KEY,
   PRE_SUMMARY_AGENT_SLUG,
+  PLATFORM_AGENT_SPECS,
   PRE_SUMMARY_PARAMETERS,
   summarizationParameters,
   arcaaiAgentId,
@@ -310,6 +314,57 @@ async function seedArcaaiFinalizationAgent(client: SeedArcaaiClient) {
   return seedAgentSpecs(client, [ARCAAI_FINALIZATION_AGENT_SPEC], 'ArcaAI finalization', 300);
 }
 
+/**
+ * ArcaAI's `realtime-transcription`, seeded ONCE, already bound to the tenant's
+ * `arcaai_realtime_transcription` schema (`07g`).
+ *
+ * Every consultation graph's `n_asr` node names this slug, and a published workflow freezes the
+ * agent version it runs (`agentRef.versionNumber`); the realtime lane and the harness both refuse
+ * a pin that is not the ACTIVE published version. The seeded workflows are compiled against
+ * version 1 of every seeded agent (`regen-workflow-seeds.ts`). The tenant used to receive this
+ * agent as the phase-26 clone (v1, unbound) and phase 07g then BRANCHED v2 to bind the schema —
+ * so a fresh database shipped all 11 ArcaAI workflows, and the cloned library consultation
+ * workflow, pinned to a deprecated version: every live flush degraded `n_asr` and the live note
+ * stayed empty.
+ *
+ * So the binding is made at CREATION instead: the platform row's model, fallback chain and authored
+ * config, with the schema pin and its frozen snapshot — byte-for-byte what 07g's branch produced,
+ * at version 1. Same id and provenance as the clone it replaces (`cloneId`), so anything that
+ * derives the tenant's ASR agent id is unchanged. Phase 29 runs before 26, and `copyAgents` skips a
+ * slug the tenant already has; 07g then finds it `already-bound` and branches nothing.
+ */
+const PLATFORM_TRANSCRIPTION_AGENT_SPEC = PLATFORM_AGENT_SPECS.find((spec) => spec.slug === ASR_AGENT_SLUG);
+if (!PLATFORM_TRANSCRIPTION_AGENT_SPEC) throw new Error(`The platform agent catalogue has no ${ASR_AGENT_SLUG}`);
+
+export const ARCAAI_TRANSCRIPTION_AGENT_SPEC: SeedAgentSpec = {
+  ...PLATFORM_TRANSCRIPTION_AGENT_SPEC,
+  id: cloneId(ARCAAI, 'agent', PLATFORM_TRANSCRIPTION_AGENT_SPEC.id),
+  tenantId: ARCAAI,
+  // The platform's tags assert something about the PLATFORM's row, not a tenant's copy (`copyAgents`).
+  tags: [],
+  provenance: {
+    sourceAgentId: PLATFORM_TRANSCRIPTION_AGENT_SPEC.id,
+    sourceTenantId: SYSTEM_TENANT_ID,
+    sourceSlug: PLATFORM_TRANSCRIPTION_AGENT_SPEC.slug,
+    sourceVersionNumber: 1,
+  },
+  contextSchema: {
+    schemaId: SEED_ARCAAI_CONTEXT_SCHEMA_IDS.REALTIME_TRANSCRIPTION,
+    versionNumber: 1,
+    frozen: ARCAAI_REALTIME_TRANSCRIPTION_FROZEN_CONTEXT_SCHEMA,
+  },
+};
+
+/** Seed {@link ARCAAI_TRANSCRIPTION_AGENT_SPEC} unless the tenant already has the slug (an earlier seed, or an admin's edit). */
+async function seedArcaaiTranscriptionAgent(client: SeedArcaaiClient) {
+  const existing = await client.agent.findFirst({ where: { tenantId: ARCAAI, slug: ASR_AGENT_SLUG }, select: { id: true } });
+  if (existing) {
+    console.log(`  ArcaAI ${ASR_AGENT_SLUG} already present — left as is`);
+    return { created: 0, skippedExisting: 1, skippedUnresolvable: 0, assignmentsCreated: 0 };
+  }
+  return seedAgentSpecs(client, [ARCAAI_TRANSCRIPTION_AGENT_SPEC], 'ArcaAI transcription', 400);
+}
+
 // =============================================================================
 // Workflows — 11
 // =============================================================================
@@ -432,6 +487,9 @@ export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | Se
   const agents = await seedAgentSpecs(typed, ARCAAI_AGENT_SPECS, 'ArcaAI department', 200);
   // TASK-1020 D2 — the tenant's own finalizer, before phase 26 would clone the platform row.
   const finalizer = await seedArcaaiFinalizationAgent(typed);
+  // The tenant's ASR agent, bound to its transcription schema at v1 — the version every seeded
+  // consultation graph pins — before phase 26 would clone the unbound platform row.
+  const transcription = await seedArcaaiTranscriptionAgent(typed);
   // TASK-932 §3.7 — the department note SHAPES, written HERE and not in phase 27: they are one
   // customer's content, and phase 27 runs in `safe` mode. The definitions below name their slugs,
   // so the rows must exist before a lane resolves one (`resolveForGeneration` falls open to the
@@ -447,7 +505,7 @@ export const seedArcaaiAgentsAndWorkflows = async (client: CorePrismaClient | Se
   const assignments = await writeWorkflowAssignments(typed, rows, changes);
 
   console.log(
-    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · finalizer: ${finalizer.created} created · document templates: ${documentTemplates} · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
+    `  ✓ ArcaAI agents: ${agents.created} created, ${agents.skippedExisting} skipped, ${agents.skippedUnresolvable} unresolvable · finalizer: ${finalizer.created} created · transcription: ${transcription.created} created · document templates: ${documentTemplates} · workflows: ${definitions.created} created, ${definitions.skipped} skipped · assignments: ${assignments}`,
   );
   return { success: true as const, agents, definitions, assignments, documentTemplates };
 };

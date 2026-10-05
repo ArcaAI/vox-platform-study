@@ -562,6 +562,11 @@ async function retireDepartmentSchemas(client: CorePrismaClient): Promise<number
  * Resolution is by slug, newest active version first, so the new row is served immediately. A tenant admin who pinned something ELSE
  * keeps their choice; a row already carrying the current frozen bytes is left alone (content
  * comparison — `jsonb` reorders keys); a seed-owned pin whose frozen bytes drifted branches again.
+ *
+ * On a fresh seed this BRANCHES NOTHING: phase 29 creates the tenant's agent already bound, at v1
+ * (`ARCAAI_TRANSCRIPTION_AGENT_SPEC`), so it answers `already-bound`. That is load-bearing — every
+ * seeded consultation workflow freezes `realtime-transcription` at v1, and a branch here would leave
+ * them all pinned to a deprecated version the live lane and the harness refuse to run.
  */
 async function bindTranscriptionAgent(client: CorePrismaClient): Promise<'branched' | 'already-bound' | 'absent'> {
   // The SERVABLE row, resolved the way `AgentAssignmentService` resolves it (slug + task +
