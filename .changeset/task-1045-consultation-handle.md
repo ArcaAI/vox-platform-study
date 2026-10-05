@@ -4,14 +4,16 @@
 '@arcaai/types': major
 ---
 
-TASK-1045 — consultation lifecycle simplification: one consultation handle, seven statuses, one processing marker. Ships in the 5.0.0 release shared with TASK-1039 (the fixed group moves together); if that release is cut as a major anyway, this entry adds no extra bump.
+TASK-1045 — consultation lifecycle simplification: one consultation handle, seven statuses, one processing marker. A major: the exported `ConsultationStatus` type changes meaning. If the same release also carries another major, this entry adds no extra bump (the fixed group moves together).
 
 **The lifecycle vocabulary (`@arcaai/types`, re-exported by both SDKs)**
 
 - `@arcaai/types` `ConsultationStatus` is now seven values: `OPEN`, `RECORDING`, `PAUSED`, `STOPPED`, `APPROVED`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`. The twelve-value status (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `PENDING_REVIEW`, `SIGNED`, `TIMED_OUT`, `REOPENED`, `CLOSED`) is `LegacyConsultationStatus`; the SDKs keep their own twelve-value `ConsultationStatus` marked `@deprecated` for one release.
-- Background work is a second field, `processing`: `IDLE`, `FINALIZING_TRANSCRIPT`, `SUMMARIZING`, `PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED` (with `processingReason`). "Is the note ready" is `status === 'STOPPED'` and `processing === 'AWAITING_REVIEW'`, not a status of its own.
+- Background work is a second field, `processing`: `IDLE`, `FINALIZING_TRANSCRIPT`, `SUMMARIZING`, `PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED` (with `processingReason`). "Is the note ready" is not a status of its own: a written note is `status === 'STOPPED'` with `processing === 'IDLE'` and `processingReason === 'NOTE_READY'`; `AWAITING_REVIEW` means a written note a human must look at (coverage gaps, escalation). Use `isNoteReady(state)` (exported by `@arcaai/types` and both SDKs) rather than comparing fields.
 - A closed consultation carries `closedReason` (`AUTO`, `MANUAL`, `APPROVED`) and `closedAt`; the response also carries `lastActivityAt`, `autoCloseAt`, `reopenCount`, `reopenAllowed`, `currentEncounterSeq`, `encounters` and `approval`.
 - `LifecycleEvent` (`opened`, `encounter_appended`, `started`, `paused`, `stopped`, `transcript_final`, `processing_changed`, `approved`, `closed`, `reopened`) is the frame of `GET consultations/:id/events`, which always speaks the seven-value vocabulary.
+
+- Inline citation labels in a generated note (`[S7 E1]`, `[A2]`) stay in HOPE's note; `stripCitationLabels(text)` and `citationLabelsOf(text)` (all three packages) give the EMR / export text and the chip labels.
 
 **`@arcaai/vox-node`**
 
