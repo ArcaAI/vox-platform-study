@@ -6,6 +6,7 @@ import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * AgentVersionInternalController — `GET /internal/agents/:slug/versions/:versionNumber/resolved`
@@ -31,7 +32,7 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 @ApiExcludeController()
 @ApiTags('internal-agents')
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/agents')
 export class AgentVersionInternalController {
   constructor(

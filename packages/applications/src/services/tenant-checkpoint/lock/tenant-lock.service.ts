@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ClsService } from 'nestjs-cls';
 import { TenantCheckpointRestoreRepository } from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
@@ -33,6 +34,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     @Optional() private readonly redisSubscriber?: RedisSubscriberService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
+    @Optional() private readonly cls?: ClsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -56,7 +58,7 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
 
   /** Reads and caches the lock state. `emitOnUnlock` makes an unlocked answer announce the restore's end. */
   private async read(tenantId: string, emitOnUnlock: boolean): Promise<TenantLockState> {
-    const active = await this.restores.findActiveByTenant(tenantId);
+    const active = await this.findActive(tenantId);
     const locked = !!active && (TENANT_LOCKING_STATUSES as readonly string[]).includes(active.status);
     const state: TenantLockState = locked
       ? {
@@ -68,6 +70,20 @@ export class TenantLockService implements ITenantLockService, OnModuleInit {
     this.cache.set(tenantId, { state, expiresAt: Date.now() + TENANT_LOCK_CACHE_TTL_MS });
     this.noteTransition(tenantId, locked, emitOnUnlock);
     return state;
+  }
+
+  /**
+   * The restore row is tenant-scoped, and callers often hold no CLS tenant yet — the lock guards
+   * run on `@Public()` internal routes before any handler pins one — so the tenant-scope extension
+   * would refuse the read. Run it in a child CLS store carrying the tenant being checked; the
+   * tenant never reaches the caller's store. Outside any CLS (workers) the extension passes through.
+   */
+  private findActive(tenantId: string) {
+    if (!this.cls?.isActive()) return this.restores.findActiveByTenant(tenantId);
+    return this.cls.run(() => {
+      this.cls!.set('tenantId', tenantId);
+      return this.restores.findActiveByTenant(tenantId);
+    });
   }
 
   async publishChange(tenantId: string): Promise<void> {

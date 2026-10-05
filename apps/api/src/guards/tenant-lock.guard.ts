@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ClsService } from 'nestjs-cls';
-import { ITenantLockService, TENANT_LOCK_RETRY_AFTER_SECONDS, assertTenantNotLocked } from '@arcaai/applications';
+import { ITenantLockService, SKIP_AUTH_KEY, TENANT_LOCK_RETRY_AFTER_SECONDS, assertTenantNotLocked } from '@arcaai/applications';
 import { isInternalPath } from './internal-path';
 import { TENANT_LOCK_EXEMPT_KEY } from '../decorators/tenant-lock-exempt.decorator';
 
@@ -15,9 +15,13 @@ const TENANT_HEADER = 'x-tenant-id';
  * contexts are delegated — the STT gateway checks the lock when it opens a session. When the
  * lock state cannot be read the request is refused with 503 rather than waved through.
  *
- * Internal service-token routes (`/internal/*`) are `@Public()`, so no CLS tenant exists when
- * this guard runs; most pin it later inside the handler. For those the guard falls back to the
- * `X-Tenant-Id` header, which internal calls must carry.
+ * Internal routes (`/internal/*`) carry the tenant in `X-Tenant-Id`, not in CLS. When such a route is
+ * authenticated by the global auth guard (STT's API-key route), this guard falls back to the header.
+ * When it is `@Public()` — authenticated by a CONTROLLER guard, which runs after every global guard —
+ * it does not: reading the lock there would answer a caller holding no credential (503 + restoreId
+ * for a locked tenant, 401 otherwise). Those controllers carry `InternalTenantLockGuard` after their
+ * token guard instead. `TenantLockService` runs its read under the tenant it is asked about, so the
+ * missing CLS tenant does not trip the tenant-scope extension.
  */
 @Injectable()
 export class TenantLockGuard implements CanActivate {
@@ -60,9 +64,15 @@ export class TenantLockGuard implements CanActivate {
       if (typeof fromUser === 'string' && fromUser.length > 0) return fromUser;
     }
     const req = context.switchToHttp().getRequest<{ originalUrl?: string; url?: string; headers?: Record<string, string | string[] | undefined> }>();
-    if (!isInternalPath(req)) return null;
+    if (!isInternalPath(req) || this.isPublic(context)) return null;
     const header = req.headers?.[TENANT_HEADER];
     const value = Array.isArray(header) ? header[0] : header;
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  }
+
+  /** `@Public()` (either marker the auth guard honours): not authenticated yet when global guards run. */
+  private isPublic(context: ExecutionContext): boolean {
+    const targets = [context.getHandler(), context.getClass()];
+    return !!(this.reflector.getAllAndOverride<boolean>(SKIP_AUTH_KEY, targets) || this.reflector.getAllAndOverride<boolean>('isPublic', targets));
   }
 }

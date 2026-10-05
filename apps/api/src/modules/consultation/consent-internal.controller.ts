@@ -6,6 +6,7 @@ import { ApiExcludeController, ApiOperation, ApiProperty, ApiPropertyOptional, A
 import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * Body for `POST /internal/consent/assert` (consent-abac Phase 4).
@@ -88,7 +89,7 @@ class ConsentAssertResponseBody {
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(HarnessServiceTokenGuard)
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/consent')
 export class ConsentInternalController {
   constructor(

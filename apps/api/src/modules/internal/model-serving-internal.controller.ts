@@ -5,6 +5,7 @@ import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * ModelServingInternalController — `GET /internal/models/:slug/serving-spec` (TASK-1021 C-2),
@@ -26,7 +27,7 @@ const SERVING_SPEC_CALLER = 'vllm';
 
 @ApiTags('internal-model-registry')
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/models')
 export class ModelServingInternalController {
   constructor(

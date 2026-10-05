@@ -139,3 +139,25 @@ describe('TenantLockService', () => {
     });
   });
 });
+
+describe('TenantLockService — reads under the checked tenant (TASK-1041)', () => {
+  it('runs the restore read in a child CLS store carrying the tenant, without leaking it', async () => {
+    const { ClsServiceManager } = await import('nestjs-cls');
+    const cls = ClsServiceManager.getClsService();
+    const seen: unknown[] = [];
+    const repo = { findActiveByTenant: vi.fn(async () => (seen.push(cls.get('tenantId')), null)) };
+    const service = new TenantLockService(repo as never, undefined, undefined, undefined, cls as never);
+    const after = await cls.runWith({} as never, async () => {
+      await service.state('T');
+      return cls.get('tenantId');
+    });
+    expect(seen).toEqual(['T']);
+    expect(after).toBeUndefined();
+  });
+
+  it('reads directly outside any CLS context and without a ClsService', async () => {
+    const repo = { findActiveByTenant: vi.fn().mockResolvedValue(null) };
+    await expect(new TenantLockService(repo as never).state('T')).resolves.toEqual({ locked: false });
+    expect(repo.findActiveByTenant).toHaveBeenCalledWith('T');
+  });
+});
