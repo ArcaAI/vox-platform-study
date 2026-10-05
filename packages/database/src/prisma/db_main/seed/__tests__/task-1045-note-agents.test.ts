@@ -5,15 +5,20 @@
  *    `case_note` is unchanged and `sources` is optional;
  *  - a `fact-ledger-extraction` agent exists in SYSTEM and Global (ArcaAI receives it by clone);
  *  - every seeded LLM agent samples at temperature 0;
- *  - the summarization model is served at 32768 with a q4_0 KV cache and flash attention.
+ *  - the summarization model is served at 32768 with a q4_0 KV cache and flash attention;
+ *  - multi-encounter recall: the ledger keys facts `<category>:<term>` with numbers, and both note
+ *    prompts (the finalizer agent and the SYSTEM catch-all SOAP template) carry allergies and current
+ *    medications of every encounter.
  */
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_PROMPT_TEMPLATES, TEMPLATE_IDS } from '../07-prompt-template';
 import {
   CASENOTE_FINALIZATION_SYSTEM_PROMPT,
   CASENOTE_OUTPUT_SCHEMA,
   FACT_LEDGER_AGENT_SLUG,
   FACT_LEDGER_OUTPUT_SCHEMA,
+  FACT_LEDGER_SYSTEM_PROMPT,
   GLOBAL_AGENT_SPECS,
   PLATFORM_AGENT_SPECS,
 } from '../25-agents';
@@ -73,6 +78,42 @@ describe('fact-ledger-extraction', () => {
     const items = (FACT_LEDGER_OUTPUT_SCHEMA as any).properties.facts.items; // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(items.required).toEqual(expect.arrayContaining(['key', 'kind', 'statement', 'citations']));
     expect(items.properties.kind.enum).toContain('dose_change');
+  });
+});
+
+describe('multi-encounter recall', () => {
+  it('the ledger keys every fact `<category>:<term>`, keeps a dose change on the drug key, and lists numbers', () => {
+    const prompt = FACT_LEDGER_SYSTEM_PROMPT;
+    expect(prompt).toContain('`key` is `<category>:<term>`');
+    expect(prompt).toContain('`allergy:penicillin`, `medication:metformin`');
+    expect(prompt).toContain('ONE fact of kind `dose_change` keyed with the drug');
+    expect(prompt).toContain('never a second key such as `metformin_dose_change`');
+    expect(prompt).toContain('A fact whose statement contains a number never has empty `numbers`');
+  });
+
+  it('the ledger keeps every allergy as its own critical fact', () => {
+    expect(FACT_LEDGER_SYSTEM_PROMPT).toContain('every allergy the transcript states is its own fact of kind `allergy` with `critical` true');
+  });
+
+  it('the finalizer carries allergies and current medications of every encounter, cited', () => {
+    const prompt = CASENOTE_FINALIZATION_SYSTEM_PROMPT;
+    expect(prompt).toContain('=== COMPLETENESS ===');
+    expect(prompt).toContain('The note covers EVERY encounter, not only the latest one.');
+    expect(prompt).toContain('begins with `Allergies:`');
+    expect(prompt).toContain('A fact from an earlier encounter stays in the note unless a later encounter changes it.');
+    // The block sits before the output contract, so the contract stays the prompt's last word.
+    expect(prompt.indexOf('=== COMPLETENESS ===')).toBeLessThan(prompt.indexOf('Return a JSON object with `case_note`'));
+  });
+
+  it('the SYSTEM catch-all SOAP template asks for allergies and current medications under Subjective', () => {
+    const soap = DEFAULT_PROMPT_TEMPLATES.find((row) => row.id === TEMPLATE_IDS.CATCHALL_SOAP)!;
+    const subjective = soap.content.slice(soap.content.indexOf('**Subjective**'), soap.content.indexOf('**Objective**'));
+    expect(subjective).toContain('- Allergies with the reaction, from every encounter (never omitted when stated)');
+    expect(subjective).toContain('- Current medications with dose and frequency, from every encounter');
+  });
+
+  it('no prompt names a ticket', () => {
+    for (const text of [FACT_LEDGER_SYSTEM_PROMPT, CASENOTE_FINALIZATION_SYSTEM_PROMPT]) expect(text).not.toMatch(/TASK-\d+/);
   });
 });
 

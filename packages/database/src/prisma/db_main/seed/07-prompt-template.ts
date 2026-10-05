@@ -853,6 +853,8 @@ When no department-specific template matches the current encounter's department,
 
 **Subjective**
 - Presenting complaints with duration
+- Allergies with the reaction, from every encounter (never omitted when stated)
+- Current medications with dose and frequency, from every encounter
 - Relevant symptom progression or changes since last visit
 - Associated positive or negative symptoms (only if explicitly mentioned)
 - Treatment adherence or response as stated by the patient
