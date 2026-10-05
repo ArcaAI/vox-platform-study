@@ -315,9 +315,13 @@ function FieldTable({ caption, schema, isStandard }: { caption: string; schema: 
   );
 }
 
-function InputsOutputsSection({ agent }: { agent: Agent }) {
-  const input = effectiveIoSchema(agent.task, 'input', agent.inputSchema);
-  const output = effectiveIoSchema(agent.task, 'output', agent.outputSchema);
+/**
+ * What the agent takes and returns, as two plain field tables. Exported for the agent wizard
+ * (via `shared/agent-wizard/agents-feature`), which shows the same view while creating.
+ */
+export function AgentIoSummary({ task, inputSchema, outputSchema }: { task: Agent['task']; inputSchema: Agent['inputSchema']; outputSchema: Agent['outputSchema'] }) {
+  const input = effectiveIoSchema(task, 'input', inputSchema);
+  const output = effectiveIoSchema(task, 'output', outputSchema);
   return (
     <SummarySection title="Inputs and outputs">
       <FieldTable caption="It takes" schema={input.schema} isStandard={input.isStandard} />
@@ -333,7 +337,7 @@ export function AgentConfigurationSummary({ agent }: { agent: Agent }) {
       <ModelSection agent={agent} />
       <PromptSection agent={agent} />
       <SettingsSection agent={agent} />
-      <InputsOutputsSection agent={agent} />
+      <AgentIoSummary task={agent.task} inputSchema={agent.inputSchema} outputSchema={agent.outputSchema} />
     </div>
   );
 }

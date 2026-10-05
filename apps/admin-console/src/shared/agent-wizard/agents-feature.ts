@@ -19,3 +19,5 @@ export {
   type InstructionBindingValue,
 } from '@/features/agents/components/instruction-binding-form';
 export { ParametersForm } from '@/features/agents/components/parameters-form';
+export { AgentIoSummary } from '@/features/agents/components/agent-overview';
+export { generationFacts, taskSwitchFacts, type Fact } from '@/features/agents/components/agent-summary';

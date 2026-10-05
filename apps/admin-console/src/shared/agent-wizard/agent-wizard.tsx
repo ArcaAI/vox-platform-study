@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AGENT_IO_DEFAULTS, AGENT_TAG_PATTERN } from '@arcaai/workflow-contract';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui';
@@ -13,6 +13,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { useSession } from '@/shared/auth';
 import { useContextSchemaOptions } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
@@ -21,14 +22,17 @@ import { TagsField } from '@/shared/tags-field';
 import {
   AGENT_TASKS,
   AGENT_TASK_LABEL,
+  AgentIoSummary,
   ContextSchemaField,
   InstructionBindingForm,
   JsonField,
   ModelPicker,
   fallbackModelOptionLabel,
+  generationFacts,
   getAgent,
   instructionFromBinding,
   instructionToBinding,
+  taskSwitchFacts,
   useAgentLineageBySlug,
   useAgentLineageVersions,
   useCreateAgent,
@@ -41,15 +45,22 @@ import {
   type AgentProblemBody,
   type AgentTask,
   type CreateAgentRequest,
+  type Fact,
   type InstructionBindingValue,
   type UpdateAgentRequest,
 } from './agents-feature';
 import { documentTemplateSlugOf, withDocumentTemplate } from './instruction-extras';
+import { capabilitiesOf, hasEditablePath, type WithCapabilities } from './capabilities';
 import { AgentSimpleParameters } from './simple-parameters';
 
-const CREATE_STEPS = ['Task', 'Model', 'Instruction', 'Settings', 'Input / Output contract', 'Review'] as const;
+/**
+ * TASK-1036 W2 (§8.6) — four plain steps. The raw "Input / Output contract" step is gone: a tenant
+ * sees the standard inputs and outputs as a table on Settings, a super admin also gets the JSON
+ * contract there, collapsed.
+ */
+const CREATE_STEPS = ['Basics', 'Model & prompt', 'Settings', 'Review'] as const;
 /** Editing a published agent (Studio, OD-12): the lineage, task and contract are fixed; model, prompt and settings change. */
-const EDIT_STEPS = ['Model', 'Instruction', 'Settings', 'Review'] as const;
+const EDIT_STEPS = ['Model & prompt', 'Settings', 'Review'] as const;
 type Step = (typeof CREATE_STEPS)[number];
 
 const TAG_GRAMMAR_HINT = 'Agent tags are key:value — lower-case letters, digits, "-" and "_" (the value also allows "."), e.g. dept:cardiology.';
@@ -150,11 +161,11 @@ export function buildCreateRequest(state: WizardState): CreateAgentRequest {
 }
 
 /** Why the Next button is disabled on `step` — the visible reason beside it (rule 11 §5). */
-const NEXT_BLOCKED_REASON: Partial<Record<Step, string>> = {
-  Task: 'Enter a name and a valid slug (2–80 lowercase letters, digits, "-" or "_") to continue.',
-  Model: 'Pick a model to continue.',
-  Instruction: 'Choose a prompt, or write an instruction, to continue.',
-};
+const NEXT_BLOCKED_REASON = {
+  Basics: 'Enter a name and a valid slug (2–80 lowercase letters, digits, "-" or "_") to continue.',
+  model: 'Pick a model to continue.',
+  prompt: 'Choose a prompt, or write an instruction, to continue.',
+} as const;
 
 function stringField(instruction: Record<string, unknown> | null, key: string): string {
   const value = instruction?.[key];
@@ -247,8 +258,8 @@ export interface AgentWizardProps {
 }
 
 /**
- * The agent wizard: Task (+ context schema) → Model → Instruction → Settings → Input / Output
- * contract → Review & publish; or, in `edit` mode, Model → Instruction → Settings → Review.
+ * The agent wizard: Basics (task + context schema) → Model & prompt → Settings → Review & publish;
+ * or, in `edit` mode, Model & prompt → Settings → Review (TASK-1036 W2: four steps at most).
  * The context schema is chosen ONCE, on the first step, because it decides what every later
  * prompt editor completes and lints against.
  *
@@ -311,6 +322,8 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
   // before publishing, and a UUID there says nothing about what they are agreeing to. The
   // catalogue is already loaded for the Task step's schema picker, so this costs no extra read.
   const contextSchemas = useContextSchemaOptions();
+  // Impersonation-aware super admin: the only audience for the JSON input/output contract.
+  const elevated = useSession().data?.effectiveIsElevated ?? false;
 
   const stepIndex = STEPS.indexOf(step);
   const patch = (next: Partial<WizardState>) => setState((current) => ({ ...current, ...next }));
@@ -320,20 +333,27 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
     [catalogue.models, state.modelId, state.fallbackModelIds],
   );
 
+  const hasModel = state.modelId.length > 0;
+  const hasPrompt =
+    state.task !== 'TEXT_GENERATION' ||
+    (state.binding.mode === 'template'
+      ? !!state.binding.promptTemplateId
+      : state.binding.mode === 'inline'
+        ? state.binding.systemPrompt.trim().length > 0
+        : state.binding.fragments.length > 0);
   const canAdvance: Record<Step, boolean> = {
-    Task: state.name.trim().length > 0 && /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/.test(state.slug),
-    Model: state.modelId.length > 0,
-    Instruction:
-      state.task !== 'TEXT_GENERATION' ||
-      (state.binding.mode === 'template'
-        ? !!state.binding.promptTemplateId
-        : state.binding.mode === 'inline'
-          ? state.binding.systemPrompt.trim().length > 0
-          : state.binding.fragments.length > 0),
+    Basics: state.name.trim().length > 0 && /^[a-z0-9][a-z0-9_-]{0,78}[a-z0-9]$/.test(state.slug),
+    'Model & prompt': hasModel && hasPrompt,
     Settings: true,
-    'Input / Output contract': true,
     Review: true,
   };
+  const modelName = (id: string) => catalogue.models.find((model) => model.id === id)?.name ?? id;
+  const reviewFacts: Fact[] = [
+    ...taskSwitchFacts(state.task, state.parameters, instructionOf(state) ?? null),
+    ...(state.task === 'TEXT_GENERATION'
+      ? generationFacts(state.parameters, (path) => hasEditablePath(state.task, capabilitiesOf(catalogue.models.find((model) => model.id === state.modelId) as WithCapabilities | undefined), path))
+      : []),
+  ];
 
   function goTo(next: Step) {
     setStep(next);
@@ -404,7 +424,15 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
   const title = editing ? `Edit agent — ${base.name}` : 'New agent';
   // Anything the author changed since opening: closing would throw it away, so it is asked first.
   const dirty = stableKey(state) !== stableKey(base ? stateFromAgent(base) : INITIAL);
-  const nextBlockedReason = !canAdvance[step] ? NEXT_BLOCKED_REASON[step] : undefined;
+  const nextBlockedReason = canAdvance[step]
+    ? undefined
+    : step === 'Basics'
+      ? NEXT_BLOCKED_REASON.Basics
+      : step === 'Model & prompt'
+        ? hasModel
+          ? NEXT_BLOCKED_REASON.prompt
+          : NEXT_BLOCKED_REASON.model
+        : undefined;
 
   function requestClose(next: boolean) {
     if (next) {
@@ -480,12 +508,13 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
         <p role="status" aria-live="polite" className="sr-only">
           {stepAnnouncement}
         </p>
-        {step === 'Task' ? (
+        {step === 'Basics' ? (
           <div className="flex flex-col gap-4">
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm font-medium">
-                Task <span aria-hidden>*</span>
+                What it does <span aria-hidden>*</span>
               </legend>
+              <p className="text-muted-foreground -mt-1 text-xs">Each agent does one job. This cannot change after it is created.</p>
               <RadioGroup
                 value={state.task}
                 onValueChange={(task) =>
@@ -532,7 +561,7 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
                 onChange={(event) => patch({ slug: event.target.value, slugTouched: true })}
               />
               <p className="text-muted-foreground text-xs">
-                Lineage key: 2–80 lowercase alphanumerics, `-` or `_`. Every version of this agent shares it.
+                Used in links and API calls, and shared by every version. 2–80 lower-case letters, digits, “-” or “_”.
               </p>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -551,104 +580,117 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
           </div>
         ) : null}
 
-        {step === 'Model' ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-muted-foreground text-sm">
-              Pick a provider, then a model of this task. Publish fails closed when the model is unusable.
-            </p>
-            <ModelPicker
-              task={state.task}
-              value={state.modelId}
-              onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })}
-            />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
-              <Select
-                value=""
-                onValueChange={(modelId) =>
-                  patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })
-                }
-              >
-                <SelectTrigger id="agent-fallbacks">
-                  <SelectValue placeholder="Add a fallback" />
-                </SelectTrigger>
-                <SelectContent>
-                  {/*
-                    TASK-958 D-10 — the CONNECTION, not just the model name. Two
-                    accounts of one vendor declaring the same wire model produce
-                    two rows called "GPT-5.4 mini"; which key each spends is the
-                    only thing that differs, and it is the point of a fallback.
-                  */}
-                  {fallbackCandidates.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {fallbackModelOptionLabel(model, catalogue.providers)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {state.fallbackModelIds.length ? (
-                <ol className="flex flex-wrap gap-2">
-                  {state.fallbackModelIds.map((id, index) => {
-                    const model = catalogue.models.find((candidate) => candidate.id === id);
-                    return (
-                      <li key={id}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          aria-label={`Remove fallback ${model?.name ?? id}`}
-                          onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}
-                        >
-                          {index + 1}. {model?.name ?? id} ×
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {step === 'Instruction' ? (
-          <div className="flex flex-col gap-4">
-            {state.task === 'TEXT_GENERATION' ? (
-              <InstructionBindingForm simple value={state.binding} onChange={(binding) => patch({ binding })} hideContextSchema={!editing} />
-            ) : state.task === 'SPEECH_TO_TEXT' ? (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="agent-initial-prompt">Initial prompt</Label>
-                  <Textarea
-                    id="agent-initial-prompt"
-                    rows={3}
-                    maxLength={1000}
-                    value={state.initialPrompt}
-                    onChange={(event) => patch({ initialPrompt: event.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="agent-hotwords">Hotwords</Label>
-                  <Input
-                    id="agent-hotwords"
-                    placeholder="comma-separated"
-                    value={state.hotwords}
-                    onChange={(event) => patch({ hotwords: event.target.value })}
-                  />
-                </div>
-              </>
-            ) : state.task === 'NAMED_ENTITY_RECOGNITION' ? (
+        {step === 'Model & prompt' ? (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-medium">
+                Model
+              </h3>
+              <p className="text-muted-foreground -mt-2 text-xs">Pick a provider, then a model. An unavailable model cannot be published.</p>
+              <ModelPicker
+                task={state.task}
+                value={state.modelId}
+                onChange={(modelId) => patch({ modelId, fallbackModelIds: state.fallbackModelIds.filter((id) => id !== modelId) })}
+              />
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="agent-labels">Entity labels</Label>
-                <Input id="agent-labels" placeholder="comma-separated" value={state.labels} onChange={(event) => patch({ labels: event.target.value })} />
-                <p className="text-muted-foreground text-xs">
-                  What to extract. Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set and ignores this.
+                <Label htmlFor="agent-fallbacks">Fallback models (in order)</Label>
+                <Select
+                  value=""
+                  onValueChange={(modelId) =>
+                    patch({ fallbackModelIds: state.fallbackModelIds.includes(modelId) ? state.fallbackModelIds : [...state.fallbackModelIds, modelId] })
+                  }
+                >
+                  <SelectTrigger id="agent-fallbacks" aria-describedby="agent-fallbacks-desc">
+                    <SelectValue placeholder="Add a fallback" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/*
+                      TASK-958 D-10 — the CONNECTION, not just the model name. Two
+                      accounts of one vendor declaring the same wire model produce
+                      two rows called "GPT-5.4 mini"; which key each spends is the
+                      only thing that differs, and it is the point of a fallback.
+                    */}
+                    {fallbackCandidates.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {fallbackModelOptionLabel(model, catalogue.providers)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p id="agent-fallbacks-desc" className="text-muted-foreground text-xs">
+                  Used in order when the main model is unavailable. Optional.
                 </p>
+                {state.fallbackModelIds.length ? (
+                  <ol className="flex flex-wrap gap-2">
+                    {state.fallbackModelIds.map((id, index) => {
+                      const model = catalogue.models.find((candidate) => candidate.id === id);
+                      return (
+                        <li key={id}>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Remove fallback ${model?.name ?? id}`}
+                            onClick={() => patch({ fallbackModelIds: state.fallbackModelIds.filter((other) => other !== id) })}
+                          >
+                            {index + 1}. {model?.name ?? id} ×
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : null}
               </div>
-            ) : (
-              <p className="text-muted-foreground text-sm">
-                A text-to-speech agent carries no instruction — the voice is a parameter on the next step.
-              </p>
-            )}
+            </div>
+
+            {state.task !== 'TEXT_TO_SPEECH' ? (
+              <div className="flex flex-col gap-4">
+                <h3 className="text-sm font-medium">
+                  Prompt
+                </h3>
+                {state.task === 'TEXT_GENERATION' ? (
+                  <InstructionBindingForm simple value={state.binding} onChange={(binding) => patch({ binding })} hideContextSchema={!editing} />
+                ) : state.task === 'SPEECH_TO_TEXT' ? (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="agent-initial-prompt">Context hint</Label>
+                      <Textarea
+                        id="agent-initial-prompt"
+                        rows={3}
+                        maxLength={1000}
+                        aria-describedby="agent-initial-prompt-desc"
+                        value={state.initialPrompt}
+                        onChange={(event) => patch({ initialPrompt: event.target.value })}
+                      />
+                      <p id="agent-initial-prompt-desc" className="text-muted-foreground text-xs">
+                        Optional. A short sentence in the style of the conversation, e.g. the clinic and its specialty.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="agent-hotwords">Key terms</Label>
+                      <Input
+                        id="agent-hotwords"
+                        placeholder="comma-separated"
+                        aria-describedby="agent-hotwords-desc"
+                        value={state.hotwords}
+                        onChange={(event) => patch({ hotwords: event.target.value })}
+                      />
+                      <p id="agent-hotwords-desc" className="text-muted-foreground text-xs">
+                        Optional. Names and terms the transcript should spell correctly, separated by commas.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="agent-labels">Entity labels</Label>
+                    <Input id="agent-labels" placeholder="comma-separated" aria-describedby="agent-labels-desc" value={state.labels} onChange={(event) => patch({ labels: event.target.value })} />
+                    <p id="agent-labels-desc" className="text-muted-foreground text-xs">
+                      What to look for, e.g. medication, condition. Some models always use their own fixed set.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -670,44 +712,45 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
               validate={validateAgentTag}
               description={TAG_GRAMMAR_HINT}
             />
-          </div>
-        ) : null}
-
-        {step === 'Input / Output contract' ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-muted-foreground text-sm">
-              The JSON shape this agent accepts and returns. Leave either empty to use the task default shown as placeholder.
-            </p>
-            <JsonField
-              label="Input schema"
-              value={state.inputSchema}
-              onChange={(inputSchema) => patch({ inputSchema })}
-              placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)}
-            />
-            <JsonField
-              label="Output schema"
-              value={state.outputSchema}
-              onChange={(outputSchema) => patch({ outputSchema })}
-              placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)}
-            />
+            {/* TASK-1036 W2 — what the agent takes and returns, in words. The JSON contract is a
+                platform-admin surface, and only while creating: an edit keeps the lineage's contract. */}
+            <AgentIoSummary task={state.task} inputSchema={state.inputSchema} outputSchema={state.outputSchema} />
+            {elevated && !editing ? (
+              <details className="rounded-md border px-3 py-2">
+                <summary className="cursor-pointer text-sm font-medium">Input and output contract (platform admin)</summary>
+                <div className="flex flex-col gap-3 pt-3">
+                  <p className="text-muted-foreground text-xs">Leave either empty to use the standard shape for this task, shown as the placeholder.</p>
+                  <JsonField
+                    label="Input schema"
+                    value={state.inputSchema}
+                    onChange={(inputSchema) => patch({ inputSchema })}
+                    placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].inputSchema, null, 2)}
+                  />
+                  <JsonField
+                    label="Output schema"
+                    value={state.outputSchema}
+                    onChange={(outputSchema) => patch({ outputSchema })}
+                    placeholder={JSON.stringify(AGENT_IO_DEFAULTS[state.task].outputSchema, null, 2)}
+                  />
+                </div>
+              </details>
+            ) : null}
           </div>
         ) : null}
 
         {step === 'Review' ? (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">Task</dt>
+            <dt className="text-muted-foreground">What it does</dt>
             <dd>{AGENT_TASK_LABEL[state.task]}</dd>
             <dt className="text-muted-foreground">Name</dt>
             <dd>{state.name}</dd>
             <dt className="text-muted-foreground">Slug</dt>
             <dd className="font-mono">{state.slug}</dd>
             <dt className="text-muted-foreground">Model</dt>
-            <dd className="font-mono">{catalogue.models.find((model) => model.id === state.modelId)?.slug ?? state.modelId}</dd>
-            <dt className="text-muted-foreground">Fallbacks</dt>
-            <dd className="font-mono">
-              {state.fallbackModelIds.map((id) => catalogue.models.find((model) => model.id === id)?.slug ?? id).join(', ') || '—'}
-            </dd>
-            <dt className="text-muted-foreground">Instruction</dt>
+            <dd>{modelName(state.modelId)}</dd>
+            <dt className="text-muted-foreground">Falls back to</dt>
+            <dd>{state.fallbackModelIds.map(modelName).join(' → ') || '—'}</dd>
+            <dt className="text-muted-foreground">Prompt</dt>
             <dd>
               {state.task === 'TEXT_GENERATION'
                 ? state.binding.mode === 'template'
@@ -716,11 +759,9 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
                     ? `${state.binding.systemPrompt.slice(0, 80)}${state.binding.systemPrompt.length > 80 ? '…' : ''}`
                     : `${state.binding.fragments.length} fragment(s): ${state.binding.fragments.map((fragment) => fragment.key || '(no key)').join(', ')}`
                 : state.task === 'SPEECH_TO_TEXT'
-                  ? state.initialPrompt || state.hotwords
-                    ? 'Initial prompt / hotwords'
-                    : '—'
+                  ? [state.initialPrompt && 'Context hint', state.hotwords && 'key terms'].filter(Boolean).join(' and ') || '—'
                   : state.task === 'NAMED_ENTITY_RECOGNITION'
-                    ? state.labels || '— (the checkpoint’s own labels)'
+                    ? state.labels || "— (the model's own labels)"
                     : 'None'}
             </dd>
             <dt className="text-muted-foreground">Context schema</dt>
@@ -729,18 +770,16 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
                 ? (contextSchemas.options.find((option) => option.value === state.binding.contextSchemaId)?.label ?? state.binding.contextSchemaId)
                 : '—'}
             </dd>
-            {state.task === 'TEXT_GENERATION' ? (
-              <>
-                <dt className="text-muted-foreground">Document template</dt>
-                <dd>{state.documentTemplateSlug ? `${state.documentTemplateSlug} (latest approved)` : 'Platform layout'}</dd>
-              </>
-            ) : null}
-            <dt className="text-muted-foreground">Settings</dt>
-            <dd className="font-mono text-xs">{Object.keys(state.parameters).length ? JSON.stringify(state.parameters) : 'defaults'}</dd>
+            {reviewFacts.map((fact) => (
+              <Fragment key={fact.label}>
+                <dt className="text-muted-foreground">{fact.label}</dt>
+                <dd>{fact.value}</dd>
+              </Fragment>
+            ))}
             <dt className="text-muted-foreground">Tags</dt>
             <dd className="font-mono text-xs">{state.tags?.length ? state.tags.join(', ') : '—'}</dd>
-            <dt className="text-muted-foreground">Input / Output contract</dt>
-            <dd>{state.inputSchema || state.outputSchema ? 'custom' : 'task defaults'}</dd>
+            <dt className="text-muted-foreground">Inputs and outputs</dt>
+            <dd>{state.inputSchema || state.outputSchema ? 'Custom' : 'Standard for this task'}</dd>
           </dl>
         ) : null}
         {step === 'Review' && editing ? (
@@ -763,7 +802,7 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
               ) : (
                 'The gateway refused to publish this draft.'
               )}
-              <span className="mt-2 block">Fix the cause (for example, approve the prompt on Hope Prompts) and publish again. Nothing was approved for you.</span>
+              <span className="mt-2 block">Fix the cause (for example, approve the prompt on the Prompts screen) and publish again. Nothing was approved for you.</span>
             </AlertDescription>
           </Alert>
         ) : null}
