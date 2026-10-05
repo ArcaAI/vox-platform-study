@@ -140,9 +140,43 @@ describe('step 3 — Send input', () => {
   it('stream audio goes up the STT socket, not in the JSON body', () => {
     const step = stepsOf({ connections: ['api', 'socket'], streamAudioIn: true })[2];
     expect(code(step, 'raw')).toContain('/audio/transcription-jobs/stream/session');
-    expect(code(step, 'vox-node')).toContain('hope.stt');
     expect(code(step, 'vox')).toContain('useRunAudio');
     expect(step.notes.join(' ')).toMatch(/PCM16/);
+  });
+
+  it('live audio is bound to the run: the session is created with workflowSlug and the run input carries sttSessionId (all three lanes)', () => {
+    const step = stepsOf({ connections: ['api', 'socket'], streamAudioIn: true, audioField: 'recording' })[2];
+
+    const raw = code(step, 'raw');
+    expect(raw).toContain('"workflowSlug": "discharge-summary"');
+    expect(raw).not.toContain('consultationId');
+    expect(raw).toContain('"recording"');
+    expect(raw).toContain('sttSessionId');
+    // The session exists BEFORE the run names it.
+    expect(raw.indexOf('/audio/transcription-jobs/stream/session')).toBeLessThan(raw.indexOf('/workflows/discharge-summary/runs'));
+    expect(raw).toMatch(/never cancel|carries on/i);
+
+    const node = code(step, 'vox-node');
+    expect(node).toContain("hope.workflows.runWithAudio('discharge-summary'");
+    expect(node).toContain("audioField: 'recording'");
+    expect(node).toContain('audio.finalize()');
+    expect(node).not.toContain('createStreamSession({})');
+
+    const browser = code(step, 'vox');
+    expect(browser).toContain("useRunAudio({ workflow: 'discharge-summary', audioField: 'recording' })");
+    expect(browser).toContain('audioField');
+    expect(browser).not.toContain('audio.start()');
+  });
+
+  it('without a known audio key the SDK snippets let the SDK resolve it from the published Input shape', () => {
+    const step = stepsOf({ connections: ['api', 'socket'], streamAudioIn: true })[2];
+    expect(code(step, 'vox-node')).not.toContain('audioField');
+    expect(code(step, 'raw')).toContain('<audioField>');
+  });
+
+  it('the live-audio notes say ending the audio never cancels the run', () => {
+    const step = stepsOf({ connections: ['api', 'socket'], streamAudioIn: true })[2];
+    expect(step.notes.join(' ')).toMatch(/never cancel/i);
   });
 
   it('attachments are referenced by mediaId and the allowed types are stated', () => {
