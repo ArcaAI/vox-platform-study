@@ -51,6 +51,7 @@ from harness.services.note_plan.executor import (
     note_run_stats,
     summed_usage,
 )
+from harness.services.note_plan.fallback import PlanAttempt, plan_attempts, walk_attempts
 from harness.services.note_plan.models import NotePlanRef
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
@@ -1591,6 +1592,7 @@ async def _run_note_plan_finalizer(
     started: Any,
     ref: NotePlanRef,
     primary: TextFallbackCandidate | None,
+    fallback: TextFallbackBlock | None = None,
 ) -> NodeActivityResult:
     """The consultation finalizer, driven by the NotePlan apps/api composed at the handoff.
 
@@ -1602,9 +1604,14 @@ async def _run_note_plan_finalizer(
     finalizer output keeps its ``{case_note, redactions, sources}`` shape, and ``case_note`` is
     persisted exactly as before (Copy to EMR reads it).
 
-    No fallback walk: the plan was budgeted for ONE model's context window, so a different
-    model would not fit it. A failed call degrades the node (never a raise: a retry would re-run
-    every call from the start).
+    Each call walks the agent's fallback chain NARROWED to the candidates that serve the PLAN's
+    model (another provider or connection for the same model): the plan was budgeted for ONE
+    model's context window, so a candidate on a different model would not fit it and is never
+    tried. Each call switches on its own, within the activity budget; the output names the
+    candidate that served. A call that lost on every allowed candidate degrades the node (never
+    a raise: a retry would re-run every call from the start).
+
+    Runs inside the node activity, so the walk is activity-level: the workflow sees one result.
     """
     config = _config(payload)
     settings = get_settings()
@@ -1659,29 +1666,49 @@ async def _run_note_plan_finalizer(
     provider_override = candidate.provider_override if same_model else None
     known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
+    primary_attempt = PlanAttempt(
+        provider=provider,
+        model=model,
+        funding_tier=candidate.funding_tier,
+        deployment_kind=deployment_kind,
+        provider_override=provider_override,
+    )
+    attempts = plan_attempts(plan, primary_attempt, chain_candidates(fallback))
+    # Run protocol v2 only: the admin trace names the composition once and every candidate tried.
+    trace = _GenerationTrace(payload) if payload.protocol == 2 and payload.run_id else None
+    if trace is not None:
+        await trace.composed(composed, 0)
 
-    async def _generate(request: NoteCallRequest) -> NoteCallResult:
+    async def _on_attempt(attempt: PlanAttempt, index: int) -> None:
+        if trace is not None:
+            await trace.model_request(attempt.provider, attempt.model, index, False, generation)
+
+    async def _generate(
+        request: NoteCallRequest, attempt: PlanAttempt, index: int
+    ) -> NoteCallResult:
         result = await _text_client(settings).generate(
             tenant_id=payload.tenant_id,
             prompt=request.user,
             system_prompt=request.system,
-            provider=provider,
-            model=model,
+            provider=attempt.provider,
+            model=attempt.model,
             temperature=generation.get("temperature"),
             max_tokens=request.max_tokens,
             top_p=generation.get("topP"),
             # Each plan call answers ITS sections, not the agent's whole-note contract.
             response_format=request.response_format,
-            provider_locality=provider_locality(provider, deployment_kind),
+            provider_locality=provider_locality(attempt.provider, attempt.deployment_kind),
             known_phi=known_phi,
-            provider_override=provider_override,
+            # Each candidate spends its own connection; the plan's own attempt carries the
+            # agent's only when the plan names the agent's model.
+            provider_override=attempt.provider_override,
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=payload.tenant_id,
             consultation_id=consultation_id,
             agent_slug=candidate.slug,
             phase=_record_phase(config),
-            provider=result.provider or provider,
+            provider=result.provider or attempt.provider,
             egress=getattr(result, "egress", None),
             system=request.system,
             user=request.user,
@@ -1689,10 +1716,13 @@ async def _run_note_plan_finalizer(
         return NoteCallResult(
             content=result.content,
             stats=_generation_stats(
-                result, provider=provider, model=model, funding_tier=candidate.funding_tier
+                result,
+                provider=attempt.provider,
+                model=attempt.model,
+                funding_tier=attempt.funding_tier,
             ),
-            provider=result.provider or provider,
-            model=result.model or model,
+            provider=result.provider or attempt.provider,
+            model=result.model or attempt.model,
             usage=result.usage,
         )
 
@@ -1705,7 +1735,12 @@ async def _run_note_plan_finalizer(
             plan,
             system=composed.system or None,
             user_prefix=composed.user,
-            generate=_generate,
+            generate=walk_attempts(
+                attempts,
+                _generate,
+                allows_another=budget.allows_another,
+                on_attempt=_on_attempt if trace is not None else None,
+            ),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
         )
@@ -1727,15 +1762,24 @@ async def _run_note_plan_finalizer(
 
     usage = summed_usage(execution.records)
     coverage = execution.coverage.to_wire()
+    # The candidate that served the first call answered (each call switches on its own).
+    served = next(
+        (
+            r.attempt
+            for r in execution.records
+            if r.result is not None and isinstance(r.attempt, PlanAttempt)
+        ),
+        primary_attempt,
+    )
     output: dict[str, Any] = {
         "text": json.dumps(execution.document, ensure_ascii=False),
         "data": execution.document,
-        "provider": provider,
-        "model": model,
+        "provider": served.provider,
+        "model": served.model,
         "usage": usage,
         "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
         "selectionSource": "agent",
-        "fundingTier": candidate.funding_tier,
+        "fundingTier": served.funding_tier,
         "guardrail": {"enabled": True, "source": "default"},
         "notePlan": {"planId": plan.plan_id, "mode": plan.mode, "coverage": coverage},
     }
@@ -1744,8 +1788,8 @@ async def _run_note_plan_finalizer(
         payload,
         candidate,
         output,
-        provider=provider,
-        model=model,
+        provider=served.provider,
+        model=served.model,
         coverage=coverage,
         persisted=persisted,
     )
@@ -1816,7 +1860,9 @@ async def _run_text_generation(
         except ValueError as exc:
             return await _degrade_note_plan(payload, started, "note_plan_ref_invalid", str(exc))
         if plan_ref is not None:
-            return await _run_note_plan_finalizer(payload, resolved, started, plan_ref, primary)
+            return await _run_note_plan_finalizer(
+                payload, resolved, started, plan_ref, primary, fallback
+            )
         # The handoff could not compose the plan and failed the note path by name: degrade with
         # THAT code, and never generate from whatever else is bound (a partial input).
         plan_error = _note_plan_error(bound.get("in"))
