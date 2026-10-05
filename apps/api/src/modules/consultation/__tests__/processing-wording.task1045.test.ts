@@ -1,7 +1,7 @@
 /** A written note is IDLE + NOTE_READY; AWAITING_REVIEW is reserved for a note a human must look at. */
 import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
-import { ConsultationResponse } from '../../../../../../packages/applications/src/services/consultation/consultation/dto/consultation.response';
+import { ConsultationResponse } from '@arcaai/applications';
 import { CaptureStateResponse } from '../dto/lifecycle.response';
 
 const described = (target: object, property: string): string =>

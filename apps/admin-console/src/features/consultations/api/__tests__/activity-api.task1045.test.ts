@@ -58,7 +58,13 @@ describe('activity URLs', () => {
 
   it('expands a segment run with ungrouped segment filters', () => {
     const f = segmentRunFilters({ encounterSeq: 1, firstSeq: 4, lastSeq: 9 });
-    expect(buildActivityParams(f)).toMatchObject({ grouping: 'none', kinds: 'TRANSCRIPT_SEGMENT', encounterSeq: 1, segmentSeqFrom: 4, segmentSeqTo: 9 });
+    expect(buildActivityParams(f)).toMatchObject({
+      grouping: 'none',
+      kinds: 'TRANSCRIPT_SEGMENT',
+      encounterSeq: 1,
+      segmentSeqFrom: 4,
+      segmentSeqTo: 9,
+    });
   });
 });
 
@@ -85,7 +91,7 @@ describe('status vocabulary', () => {
   });
 
   it('normalises legacy values for the badge and the scribe column', () => {
-    expect(normalizeConsultationStatus('PENDING_REVIEW')).toEqual({ status: 'STOPPED', processing: 'AWAITING_REVIEW' });
+    expect(normalizeConsultationStatus('PENDING_REVIEW')).toEqual({ status: 'STOPPED', processing: 'IDLE', processingReason: 'NOTE_READY' });
     expect(normalizeConsultationStatus('nope')).toBeNull();
     expect(normalizeScribeStatus('signed')).toEqual({ status: 'APPROVED', processing: 'IDLE' });
     expect(normalizeScribeStatus('COMPLETED')).toBeNull();

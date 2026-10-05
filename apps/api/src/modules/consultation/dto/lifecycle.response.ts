@@ -24,7 +24,11 @@ export class CaptureStateResponse {
   })
   status: string;
 
-  @ApiProperty({ enum: PROCESSING, description: 'What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).' })
+  @ApiProperty({
+    enum: PROCESSING,
+    description:
+      'What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).',
+  })
   processing: string;
 
   @ApiProperty({ description: 'The encounter (visit) the capture belongs to.' })

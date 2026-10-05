@@ -64,7 +64,8 @@ export class AdminConsultationController {
     name: 'processing',
     required: false,
     enum: ConsultationProcessing,
-    description: 'Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for a note a clinician must look at because of coverage gaps or an escalation, FAILED). A written note is IDLE with processingReason NOTE_READY.',
+    description:
+      'Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for a note a clinician must look at because of coverage gaps or an escalation, FAILED). A written note is IDLE with processingReason NOTE_READY.',
   })
   @ApiResponse({ status: 400, description: 'Unknown `status` or `processing` value, or a malformed `sort`.' })
   @ApiQuery({

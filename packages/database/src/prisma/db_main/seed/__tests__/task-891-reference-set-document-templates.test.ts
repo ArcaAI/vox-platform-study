@@ -73,6 +73,10 @@ class Table {
     return Promise.resolve(Object.fromEntries(Object.keys(select).map((key) => [key, row[key]])));
   }
 
+  findUnique({ where, select }: { where: Row; select?: Row }): Promise<Row | null> {
+    return this.findFirst({ where, select });
+  }
+
   create({ data }: { data: Row }): Promise<Row> {
     this.log.create += 1;
     if (this.rows.some((row) => row['id'] === data['id'])) {
