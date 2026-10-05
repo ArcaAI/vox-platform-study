@@ -33,7 +33,7 @@ import type { WorkflowNodeDescriptor } from '../api/types';
 import type { ConnectRequest, GraphStoreEdge, GraphStoreNode } from '../store/types';
 import { canvasPortsOf, hasExactIo, nodeIoOf, parsePortHandle } from './composer-io';
 import { branchHandlesOf } from './core-ports';
-import { nodeDisplayName } from './node-identity';
+import { nodeDisplayName, type NodeNaming } from './node-identity';
 import { checkPortCompatibility } from './port-compatibility';
 import { resolvePrimarySockets } from './socket-resolution';
 
@@ -93,6 +93,8 @@ export interface PlanConnectionInput {
   targetHandle?: string | null;
   /** Insert-on-edge: bindings of the target that read THIS step may be re-pointed at the new one. */
   replaceProducer?: string;
+  /** The agents' display names, so a refusal names each step the way the canvas does. */
+  naming?: NodeNaming;
 }
 
 export interface PlannedBinding {
@@ -195,10 +197,10 @@ export function planConnection(input: PlanConnectionInput): ConnectionPlan {
   if (!source || !target) return { ok: false, reason: 'Both steps must be on the canvas.' };
   if (source.id === target.id) return { ok: false, reason: 'A step cannot connect to itself.' };
   if (target.type === 'core.trigger') return { ok: false, reason: 'Start is the entry point: nothing can link into it.' };
-  if (source.type === 'core.output') return { ok: false, reason: 'End is the exit: nothing can link out of it.' };
+  if (source.type === 'core.output') return { ok: false, reason: 'Output is the exit: nothing can link out of it.' };
 
-  const sourceName = nodeDisplayName(source);
-  const targetName = nodeDisplayName(target);
+  const sourceName = nodeDisplayName(source, nodes, input.naming);
+  const targetName = nodeDisplayName(target, nodes, input.naming);
   const sourceField = parsePortHandle(input.sourceHandle);
   const targetField = parsePortHandle(input.targetHandle);
   const branchIds = [...branchHandlesOf(source.type, source.config), ...(source.type === 'core.loop' ? ['each', 'done'] : [])];

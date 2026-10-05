@@ -4,7 +4,7 @@
  */
 import type { BindingSourceGroupKey } from '@arcaai/workflow-contract';
 import type { GraphStoreNode } from '../store/types';
-import { nodeDisplayName } from './node-identity';
+import { nodeDisplayName, type NodeNaming } from './node-identity';
 
 export type BindingScope = BindingSourceGroupKey | 'value' | 'template';
 
@@ -16,11 +16,11 @@ export function scopeOfPath(path: string): BindingSourceGroupKey {
 }
 
 /** `nodes.<id>.outputs.a.b` → `Label › a › b`; every other root reads as its path. */
-export function pathLabel(path: string, nodes: ReadonlyArray<Pick<GraphStoreNode, 'id' | 'type' | 'config'>>): string {
+export function pathLabel(path: string, nodes: ReadonlyArray<Pick<GraphStoreNode, 'id' | 'type' | 'config'>>, naming?: NodeNaming): string {
   const match = /^nodes\.([^.]+)\.outputs\.(.+)$/.exec(path);
   if (!match) return path;
   const producer = nodes.find((node) => node.id === match[1]);
-  const name = producer ? nodeDisplayName(producer) : (match[1] as string);
+  const name = producer ? nodeDisplayName(producer, nodes, naming) : 'A removed step';
   return [name, ...(match[2] as string).split('.')].join(' › ');
 }
 
@@ -41,17 +41,17 @@ function literal(value: unknown): string {
   return typeof value === 'string' ? `“${value}”` : JSON.stringify(value) ?? String(value);
 }
 
-export function describeBinding(binding: unknown, nodes: ReadonlyArray<Pick<GraphStoreNode, 'id' | 'type' | 'config'>>): BindingChip | null {
+export function describeBinding(binding: unknown, nodes: ReadonlyArray<Pick<GraphStoreNode, 'id' | 'type' | 'config'>>, naming?: NodeNaming): BindingChip | null {
   if (!isRecord(binding)) return null;
   if (typeof binding.from === 'string') {
-    return { kind: 'from', label: pathLabel(binding.from, nodes), scope: scopeOfPath(binding.from), title: binding.from, paths: [binding.from] };
+    return { kind: 'from', label: pathLabel(binding.from, nodes, naming), scope: scopeOfPath(binding.from), title: binding.from, paths: [binding.from] };
   }
   if (Array.isArray(binding.firstOf)) {
     const paths = binding.firstOf.filter((path): path is string => typeof path === 'string');
     const scopes = new Set(paths.map(scopeOfPath));
     return {
       kind: 'firstOf',
-      label: `First of: ${paths.map((path) => pathLabel(path, nodes)).join(', ')}`,
+      label: `First of: ${paths.map((path) => pathLabel(path, nodes, naming)).join(', ')}`,
       scope: scopes.size === 1 ? [...scopes][0]! : 'steps',
       title: `firstOf: ${paths.join(' → ')}`,
       paths,

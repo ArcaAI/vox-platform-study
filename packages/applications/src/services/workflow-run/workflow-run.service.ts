@@ -23,7 +23,7 @@ import {
   WorkflowRunResponse,
 } from './dto';
 import { IWorkflowRunService } from './IWorkflowRunService';
-import { readRunStartedBy, type RunPrincipal } from './run-principal-access';
+import { readRunOnBehalfOf, readRunStartedBy, type RunPrincipal } from './run-principal-access';
 import { WorkflowRunDtoMapper } from './workflow-run.dto.mapper';
 
 /**
@@ -237,9 +237,9 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     return WorkflowRunDtoMapper.toResponse(entity);
   }
 
-  async getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null }> {
+  async getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null; onBehalfOf: RunPrincipal | null }> {
     const entity = await this.findRunOrThrow(tenantId, runId);
-    return { run: WorkflowRunDtoMapper.toResponse(entity), startedBy: readRunStartedBy(entity.metaData) };
+    return { run: WorkflowRunDtoMapper.toResponse(entity), startedBy: readRunStartedBy(entity.metaData), onBehalfOf: readRunOnBehalfOf(entity.metaData) };
   }
 
   async getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null> {

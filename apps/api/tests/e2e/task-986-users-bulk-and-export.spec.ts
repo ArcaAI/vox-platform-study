@@ -109,16 +109,20 @@ test.beforeAll(async ({ request }) => {
 test.describe.serial('TASK-986 R5 — DELETE /admin/users/bulk is not shadowed by /:id', () => {
   const BULK_URL = '/api/v1/admin/users/bulk';
 
-  test('R5 regression: an EMPTY id list answers the bulk ENVELOPE, not the 404 of the :id route', async ({ request }) => {
+  test('R5 regression: an UNKNOWN id answers the bulk ENVELOPE, not the 404 of the :id route', async ({ request }) => {
     // Deletes nothing by construction — the narrowest possible probe of which
     // HANDLER the router picked. Before the fix this was
     // `404 {"message":"User not found","code":"HTTP.NOT_FOUND"}` because
-    // `delete(id = 'bulk')` claimed the path.
-    const res = await request.delete(BULK_URL, { headers: bearer(saGlobalToken), data: { ids: [] } });
+    // `delete(id = 'bulk')` claimed the path. An EMPTY list is no longer a
+    // usable probe: `BulkDeleteUsersRequest.ids` carries `@ArrayMinSize(1)`, so
+    // it is refused by the validation pipe (400) before reaching any handler.
+    const unknownId = '00000000-0000-7000-8000-00000000d986';
+    const res = await request.delete(BULK_URL, { headers: bearer(saGlobalToken), data: { ids: [unknownId] } });
 
     expect(res.status(), 'DELETE /admin/users/bulk must reach bulkDelete').toBe(200);
     const body = (await res.json()) as BulkDeleteResult;
-    expect(body).toEqual({ succeeded: [], failed: [] });
+    expect(body.succeeded).toEqual([]);
+    expect(body.failed.map((row) => row.id)).toEqual([unknownId]);
   });
 
   test('R5 happy: a TENANT_ADMIN deletes several selected users in one call', async ({ request }) => {

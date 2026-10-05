@@ -39,7 +39,9 @@ interface ModelRow {
 }
 
 async function superAdminToken(request: APIRequestContext): Promise<string> {
-  const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
+  // Tenant-LESS: `admin/ai-models` is a platform route, and since TASK-1019 a
+  // super admin acting inside a working tenant is refused (403) there.
+  const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
   expect(login, 'the seeded super admin must log in').not.toBeNull();
   return login!.token;
 }

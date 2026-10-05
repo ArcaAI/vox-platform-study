@@ -26,13 +26,28 @@ function node(id: string, type: string, config: Record<string, unknown> = {}): G
 describe('NodeLabelField (OD-20)', () => {
   it('commits a trimmed label on blur, caps the length, and says references survive a rename', () => {
     const onChange = vi.fn();
-    renderWithProviders(<NodeLabelField idPrefix="n1" value="" placeholder="Agent · n1" onChange={onChange} />);
+    renderWithProviders(<NodeLabelField idPrefix="n1" value="" placeholder="Agent" onChange={onChange} />);
     const input = screen.getByRole('textbox', { name: /step name/i });
     expect(input.getAttribute('maxlength')).toBe('80');
     fireEvent.change(input, { target: { value: '  Draft note ' } });
     fireEvent.blur(input);
     expect(onChange).toHaveBeenLastCalledWith('Draft note');
     expect(screen.getByText(/renaming a step never breaks/i)).toBeTruthy();
+  });
+
+  // Owner, 2026-10-05 — the id is never part of a step's NAME; the inspector shows it as a muted,
+  // copyable detail instead.
+  it('shows the stored id as a muted, copyable detail — not in the placeholder name', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const { container } = renderWithProviders(<NodeLabelField idPrefix="n_asr" value="" placeholder="Realtime transcription" nodeId="n_asr" onChange={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: /step name/i }).getAttribute('placeholder')).toBe('Realtime transcription');
+    const detail = container.querySelector('[data-slot="node-id"]') as HTMLElement;
+    expect(detail.textContent).toContain('n_asr');
+    expect(detail.className).toContain('text-muted-foreground');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy step ID n_asr' }));
+    expect(writeText).toHaveBeenCalledWith('n_asr');
+    expect(await axe(container, AXE)).toHaveNoViolations();
   });
 });
 

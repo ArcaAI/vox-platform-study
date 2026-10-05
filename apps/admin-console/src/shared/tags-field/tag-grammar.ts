@@ -1,5 +1,5 @@
 /**
- * Hope Prompt tag grammar, as enforced by the gateway on create/update
+ * Prompt tag grammar, as enforced by the gateway on create/update
  * (`PROMPT_TAG_PATTERN` in `@arcaai/applications`). It is the agent tag grammar
  * (`AGENT_TAG_PATTERN`, `@arcaai/workflow-contract`) with the `:value` half optional,
  * because the behavioural tags the resolver selects on are bare (`pre-summary`,

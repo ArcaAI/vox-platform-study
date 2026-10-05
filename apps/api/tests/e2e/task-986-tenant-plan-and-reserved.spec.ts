@@ -14,6 +14,11 @@
  *    field is super-admin-only", so the depth test belongs here
  *    (rule 05 §API Test Standard).
  *
+ * Every PATCH body carries `expectedVersion`: `UpdateTenantRequest` declares
+ * it REQUIRED (`@IsInt() @Min(1)`), so a body without it is a 400 from the
+ * ValidationPipe before any guard runs — the `If-Match` header alone is not
+ * enough on this route.
+ *
  * Both checks answer 403, NOT the house 404-over-403 cross-tenant posture:
  * these are privilege boundaries over rows whose existence is a declared
  * constant, exactly like the platform-tier settings gates.
@@ -66,11 +71,11 @@ test.describe('TASK-986 — reserved tenants refuse every PATCH', () => {
     ['Global', GLOBAL_TENANT_ID],
   ] as const) {
     test(`${label} (${id}) — PATCH resourceStatus is 403, even for a super admin`, async ({ request }) => {
-      const { etag } = await readTenant(request, superAdminToken, id);
+      const { row, etag } = await readTenant(request, superAdminToken, id);
 
       const response = await request.patch(`/api/v1/admin/tenants/${id}`, {
         headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': etag },
-        data: { resourceStatus: 'DISABLED' },
+        data: { resourceStatus: 'DISABLED', expectedVersion: row.version },
       });
 
       // Before TASK-986 this was a 200 that DEACTIVATED the row.
@@ -78,11 +83,11 @@ test.describe('TASK-986 — reserved tenants refuse every PATCH', () => {
     });
 
     test(`${label} (${id}) — PATCH key is 403, so the guard cannot be renamed away`, async ({ request }) => {
-      const { etag } = await readTenant(request, superAdminToken, id);
+      const { row, etag } = await readTenant(request, superAdminToken, id);
 
       const response = await request.patch(`/api/v1/admin/tenants/${id}`, {
         headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': etag },
-        data: { key: `renamed-${label.toLowerCase()}` },
+        data: { key: `renamed-${label.toLowerCase()}`, expectedVersion: row.version },
       });
 
       expect(response.status(), `PATCH ${label}.key must be refused`).toBe(403);
@@ -108,11 +113,11 @@ test.describe('TASK-986 — reserved tenants refuse every PATCH', () => {
   });
 
   test('a reserved-key rename is refused by the DTO on an ORDINARY tenant too', async ({ request }) => {
-    const { etag } = await readTenant(request, superAdminToken, ARCAAI_TENANT_ID);
+    const { row, etag } = await readTenant(request, superAdminToken, ARCAAI_TENANT_ID);
 
     const response = await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': etag },
-      data: { key: '__GLOBAL__' },
+      data: { key: '__GLOBAL__', expectedVersion: row.version },
     });
 
     // 400 from the global ValidationPipe (`NotReservedTenantKeyConstraint`),
@@ -122,6 +127,10 @@ test.describe('TASK-986 — reserved tenants refuse every PATCH', () => {
 });
 
 test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
+  // SERIAL: every case here reads or writes the SAME seeded ARCAAI row (plan, name, version), and
+  // the file runs fully parallel — one case's "the row is untouched" read raced another's write.
+  test.describe.configure({ mode: 'serial' });
+
   let superAdminToken: string;
   let arcaaiAdminToken: string;
 
@@ -141,7 +150,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
 
     const response = await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${arcaaiAdminToken}`, 'If-Match': etag },
-      data: { plan: target },
+      data: { plan: target, expectedVersion: row.version },
     });
 
     expect(response.status(), 'a tenant admin must not set its own plan').toBe(403);
@@ -158,7 +167,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
 
     const response = await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${arcaaiAdminToken}`, 'If-Match': etag },
-      data: { name: `${original} ` },
+      data: { name: `${original} `, expectedVersion: row.version },
     });
 
     try {
@@ -167,7 +176,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
       const restore = await readTenant(request, arcaaiAdminToken, ARCAAI_TENANT_ID);
       await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
         headers: { Authorization: `Bearer ${arcaaiAdminToken}`, 'If-Match': restore.etag },
-        data: { name: original },
+        data: { name: original, expectedVersion: restore.row.version },
       });
     }
   });
@@ -180,7 +189,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
     try {
       const response = await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
         headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': etag },
-        data: { plan: target },
+        data: { plan: target, expectedVersion: row.version },
       });
 
       expect(response.status(), 'a super admin may set the plan').toBe(200);
@@ -191,7 +200,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
       if (current.row.plan !== original && original) {
         await request.patch(`/api/v1/admin/tenants/${ARCAAI_TENANT_ID}`, {
           headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': current.etag },
-          data: { plan: original },
+          data: { plan: original, expectedVersion: current.row.version },
         });
       }
     }
@@ -202,7 +211,7 @@ test.describe('TASK-986 — `plan` is a SUPER_ADMIN-only field', () => {
 
     const response = await request.patch(`/api/v1/admin/tenants/${unknownId}`, {
       headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': '"1"' },
-      data: { plan: 'ENTERPRISE' },
+      data: { plan: 'ENTERPRISE', expectedVersion: 1 },
     });
 
     expect(response.status(), 'privilege must never leak which tenant ids exist').toBe(404);
@@ -222,11 +231,11 @@ test.describe('TASK-986 — the Global tenant is reserved for its own admins too
     const admin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(admin, 'tenant_admin login failed').toBeTruthy();
 
-    const { etag } = await readTenant(request, admin!.token, GLOBAL_TENANT_ID);
+    const { row, etag } = await readTenant(request, admin!.token, GLOBAL_TENANT_ID);
 
     const response = await request.patch(`/api/v1/admin/tenants/${GLOBAL_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${admin!.token}`, 'If-Match': etag },
-      data: { description: 'edited by its own admin' },
+      data: { description: 'edited by its own admin', expectedVersion: row.version },
     });
 
     expect(response.status(), 'the Global playground row is write-locked for everyone').toBe(403);

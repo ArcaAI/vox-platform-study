@@ -16,7 +16,7 @@
  *  - ADD A STEP THREE WAYS (§8.4 item 7): the palette (drag, handled here), `+` on a link (insert
  *    and re-wire with auto-map), and a link dropped on empty canvas — both open the searchable
  *    `NodePickerMenu`; "Add a step" is the keyboard path to the same menu (WCAG 2.5.7).
- *  - W1: Start and End refuse deletion with the reason; a required input with no source raises a
+ *  - W1: Start and Output refuse deletion with the reason; a required input with no source raises a
  *    canvas problem (§10.1), merged with the server's findings.
  *
  * MOUNT CONTRACT (lane C2a / the editor): render inside `GraphStoreProvider` in place of
@@ -24,8 +24,9 @@
  * validation findings, the run overlay, the multi-selection and `fitViewKey`.
  *
  * TASK-1036 review R-C #1/#2/#9: `viewportInsets` (how far the studio's docked panes reach in) is
- * handed to the canvas — its controls, minimap and fit stay clear of the panes — and the canvas's
- * own chrome ("Add a step", the "Can't connect" status) is laid out in the free band between them.
+ * handed to the canvas for its FIT only. Every piece of chrome — the canvas's zoom controls and
+ * minimap, and this composer's "Add a step" and "Can't connect" status — is ANCHORED to the canvas
+ * and never moves when a pane moves, resizes, collapses or opens (owner, 2026-10-05).
  * `wheelZoom` passes through; a read-only canvas with none (the Test tab's Flow) lets the wheel
  * scroll the page and zooms on Ctrl/⌘+wheel.
  */
@@ -59,11 +60,11 @@ import { branchHandlesFor, primaryIoFor } from '../../lib/canvas-handles';
 import { canvasPortsOf, ioTone, portHandleId, type PortView } from '../../lib/composer-io';
 import { edgeMappingLabels, planConnection, type ConnectionPlan } from '../../lib/connection-plan';
 import { inputRows } from '../../lib/inputs-model';
-import { nodeDisplayName } from '../../lib/node-identity';
+import { agentNamesOf, nodeDisplayNames } from '../../lib/node-identity';
 import { presetByKey } from '../../lib/palette-presets';
 import { readPaletteDragPreset, readPaletteDragType } from '../../lib/palette-drag';
 import { computeStepOrder } from '../../lib/step-order';
-import { CORE_NODE_RENDERERS } from './core-node-renderers';
+import { CORE_NODE_RENDERERS, NodeCaptionProvider } from './core-node-renderers';
 import { NodePickerMenu, type NodePickerChoice } from './node-picker-menu';
 import { useComposerAgents } from './use-composer-data';
 
@@ -88,18 +89,14 @@ export interface ComposerCanvasProps {
   onSelectionChange?: (nodeIds: string[]) => void;
   fitViewKey?: number;
   emptyState?: ReactNode;
-  /** R-C #1/#2 — px each docked pane reaches in from the canvas's left / right edge. */
+  /** R-C #2 — px each docked pane reaches in from the canvas's left / right edge; shapes the fit only. */
   viewportInsets?: WorkflowCanvasInsets;
   /** R-C #9 — what the wheel does (the canvas defaults a read-only one to `modifier`). */
   wheelZoom?: 'scroll' | 'modifier';
   className?: string;
 }
 
-/**
- * Where "Add a step" sits within its band. R-C #1: the band is the FREE strip between the docked
- * panes (`left` / `right` = their footprints), so the corner or the centre is measured there rather
- * than across the whole canvas.
- */
+/** Where "Add a step" sits along the canvas's top edge — fixed, never measured from a pane. */
 const ADD_STEP_PLACEMENT: Record<NonNullable<ComposerCanvasProps['addStepPlacement']>, string> = {
   'top-left': 'justify-start',
   'top-center': 'justify-center',
@@ -136,14 +133,14 @@ export function ComposerCanvas({
   wheelZoom,
   className,
 }: ComposerCanvasProps) {
-  const insetLeft = viewportInsets?.left ?? 0;
-  const insetRight = viewportInsets?.right ?? 0;
   const storeApi = useGraphStoreApi();
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
   const selectedNodeId = useGraphStore(selectSelectedNodeId);
   const selectedEdgeId = useGraphStore(selectSelectedEdgeId);
-  const { agents } = useComposerAgents();
+  const { agents, agentOptions } = useComposerAgents();
+  /** Every step's friendly name (owner, 2026-10-05): authored label, agent name, or the type in words; repeats numbered. */
+  const naming = useMemo(() => agentNamesOf(agentOptions), [agentOptions]);
   const [announcement, setAnnouncement] = useState('');
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [offer, setOffer] = useState<CoalesceOffer | null>(null);
@@ -157,8 +154,8 @@ export function ComposerCanvas({
 
   const plan = useCallback(
     (request: { source: string; sourceHandle?: string | null; target: string; targetHandle?: string | null }, replaceProducer?: string, graph = storeApi.getState()): ConnectionPlan =>
-      planConnection({ nodes: graph.nodes, edges: graph.edges, descriptorByType, agents, ...request, ...(replaceProducer ? { replaceProducer } : {}) }),
-    [storeApi, descriptorByType, agents],
+      planConnection({ nodes: graph.nodes, edges: graph.edges, descriptorByType, agents, naming, ...request, ...(replaceProducer ? { replaceProducer } : {}) }),
+    [storeApi, descriptorByType, agents, naming],
   );
 
   /** Commits a planned link: the edge (with its binding, one undo step), or the binding alone. */
@@ -249,13 +246,13 @@ export function ComposerCanvas({
         const position = source && target ? { x: (source.position.x + target.position.x) / 2, y: (source.position.y + target.position.y) / 2 + 40 } : { x: 0, y: 0 };
         const planner = ({ nodes: draftNodes, edges: draftEdges, newNode }: { nodes: GraphStoreNode[]; edges: typeof state.edges; newNode: GraphStoreNode }): InsertPlan => {
           const draft = { nodes: draftNodes, edges: draftEdges };
-          const first = planConnection({ ...draft, descriptorByType, agents, source: edge.source, target: newNode.id, sourceHandle: edge.sourceHandle === 'next' || edge.sourceHandle === 'out' ? null : edge.sourceHandle });
+          const first = planConnection({ ...draft, descriptorByType, agents, naming, source: edge.source, target: newNode.id, sourceHandle: edge.sourceHandle === 'next' || edge.sourceHandle === 'out' ? null : edge.sourceHandle });
           if (!first.ok || first.request === null) return { error: first.ok ? 'That step cannot follow here.' : first.reason };
           const afterFirst = {
             nodes: first.binding ? draftNodes.map((candidate) => (candidate.id === newNode.id ? { ...candidate, config: { ...candidate.config, inputs: { [first.binding!.input]: first.binding!.binding } } } : candidate)) : draftNodes,
             edges: [...draftEdges, { id: '__planned__', ...first.request }],
           };
-          const second = planConnection({ ...afterFirst, descriptorByType, agents, source: newNode.id, target: edge.target, replaceProducer: edge.source });
+          const second = planConnection({ ...afterFirst, descriptorByType, agents, naming, source: newNode.id, target: edge.target, replaceProducer: edge.source });
           if (!second.ok || second.request === null) return { error: second.ok ? 'That step cannot lead into the next one.' : second.reason };
           const bindings = [
             ...(first.binding ? [{ nodeId: newNode.id, input: first.binding.input, binding: first.binding.binding }] : []),
@@ -275,7 +272,7 @@ export function ComposerCanvas({
       }
       storeApi.getState().selectNode(newId);
     },
-    [menu, readOnly, storeApi, descriptorByType, agents, addStep, plan, commitPlan, say],
+    [menu, readOnly, storeApi, descriptorByType, agents, naming, addStep, plan, commitPlan, say],
   );
 
   const handlePaneDrop = useCallback(
@@ -299,10 +296,8 @@ export function ComposerCanvas({
     [storeApi, say],
   );
 
-  const labelOf = useCallback((nodeId: string) => {
-    const found = storeApi.getState().nodes.find((candidate) => candidate.id === nodeId);
-    return found ? nodeDisplayName(found) : nodeId;
-  }, [storeApi]);
+  const names = useMemo(() => nodeDisplayNames(nodes, naming), [nodes, naming]);
+  const labelOf = useCallback((nodeId: string) => nodeDisplayNames(storeApi.getState().nodes, naming).get(nodeId) ?? 'a step', [storeApi, naming]);
 
   const stepOrder = useMemo(
     () => computeStepOrder(nodes.map((node) => ({ id: node.id, type: node.type })), edges.map((edge) => ({ source: edge.source, target: edge.target }))),
@@ -324,7 +319,7 @@ export function ComposerCanvas({
         return {
           id: node.id,
           type: node.type,
-          label: nodeDisplayName(node),
+          label: names.get(node.id) ?? '',
           position: node.position,
           safetyClasses: node.safetyClasses,
           config: node.config,
@@ -343,7 +338,7 @@ export function ComposerCanvas({
           problem: messages.length > 0 ? { severity, messages } : undefined,
         };
       }),
-    [nodes, edges, agents, stepOrder, descriptorByType, runStates, findings],
+    [nodes, edges, agents, names, stepOrder, descriptorByType, runStates, findings],
   );
 
   /**
@@ -379,57 +374,58 @@ export function ComposerCanvas({
 
   return (
     <div className={className ? `relative h-full min-h-0 ${className}` : 'relative h-full min-h-0'} data-slot="composer-canvas">
-      <WorkflowCanvas
-        aria-label={ariaLabel}
-        nodes={canvasNodes}
-        edges={canvasEdges}
-        nodeTypes={CORE_NODE_RENDERERS}
-        readOnly={readOnly}
-        selectedNodeId={selectedNodeId}
-        selectedNodeIds={selectedNodeIds}
-        selectedEdgeId={selectedEdgeId}
-        onSelectionChange={onSelectionChange}
-        onSelect={(nodeId) => {
-          if (nodeId !== null || storeApi.getState().selectedEdgeId === null) storeApi.getState().selectNode(nodeId);
-        }}
-        onEdgeSelect={(edgeId) => {
-          if (edgeId !== null || storeApi.getState().selectedNodeId === null) storeApi.getState().selectEdge(edgeId);
-        }}
-        onPaneDrop={handlePaneDrop}
-        isValidConnection={isValidConnection}
-        onConnect={connect}
-        onEdgeInsert={
-          readOnly
-            ? undefined
-            : (edgeId) => {
-                const edge = storeApi.getState().edges.find((candidate) => candidate.id === edgeId);
-                setMenu({ kind: 'insert', edgeId, description: edge ? `Insert a step between ${labelOf(edge.source)} and ${labelOf(edge.target)}.` : 'Insert a step.' });
-              }
-        }
-        onConnectEndOnPane={readOnly ? undefined : (from, position) => setMenu({ kind: 'connect', from, position, description: `Add a step after ${labelOf(from.nodeId)}.` })}
-        onDeleteRequest={handleDeleteRequest}
-        onEdgeDelete={(edgeId) => storeApi.getState().disconnectEdge(edgeId)}
-        onNodeParentChange={(nodeId, parentId, position) => storeApi.getState().setNodeParent(nodeId, parentId, position)}
-        onNodesChange={(next) => {
-          // Only a report that actually moves something may touch the store (TASK-890 J5).
-          const before = storeApi.getState().nodes;
-          const moved = next.some((candidate) => {
-            const current = before.find((node) => node.id === candidate.id);
-            return current !== undefined && (current.position.x !== candidate.position.x || current.position.y !== candidate.position.y);
-          });
-          if (!moved) return;
-          for (const candidate of next) storeApi.getState().moveNode(candidate.id, candidate.position);
-        }}
-        fitViewKey={fitViewKey}
-        emptyState={emptyState}
-        {...(viewportInsets ? { viewportInsets } : {})}
-        {...(wheelZoom ? { wheelZoom } : {})}
-      />
+      <NodeCaptionProvider agents={agents}>
+        <WorkflowCanvas
+          aria-label={ariaLabel}
+          nodes={canvasNodes}
+          edges={canvasEdges}
+          nodeTypes={CORE_NODE_RENDERERS}
+          readOnly={readOnly}
+          selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
+          selectedEdgeId={selectedEdgeId}
+          onSelectionChange={onSelectionChange}
+          onSelect={(nodeId) => {
+            if (nodeId !== null || storeApi.getState().selectedEdgeId === null) storeApi.getState().selectNode(nodeId);
+          }}
+          onEdgeSelect={(edgeId) => {
+            if (edgeId !== null || storeApi.getState().selectedNodeId === null) storeApi.getState().selectEdge(edgeId);
+          }}
+          onPaneDrop={handlePaneDrop}
+          isValidConnection={isValidConnection}
+          onConnect={connect}
+          onEdgeInsert={
+            readOnly
+              ? undefined
+              : (edgeId) => {
+                  const edge = storeApi.getState().edges.find((candidate) => candidate.id === edgeId);
+                  setMenu({ kind: 'insert', edgeId, description: edge ? `Insert a step between ${labelOf(edge.source)} and ${labelOf(edge.target)}.` : 'Insert a step.' });
+                }
+          }
+          onConnectEndOnPane={readOnly ? undefined : (from, position) => setMenu({ kind: 'connect', from, position, description: `Add a step after ${labelOf(from.nodeId)}.` })}
+          onDeleteRequest={handleDeleteRequest}
+          onEdgeDelete={(edgeId) => storeApi.getState().disconnectEdge(edgeId)}
+          onNodeParentChange={(nodeId, parentId, position) => storeApi.getState().setNodeParent(nodeId, parentId, position)}
+          onNodesChange={(next) => {
+            // Only a report that actually moves something may touch the store (TASK-890 J5).
+            const before = storeApi.getState().nodes;
+            const moved = next.some((candidate) => {
+              const current = before.find((node) => node.id === candidate.id);
+              return current !== undefined && (current.position.x !== candidate.position.x || current.position.y !== candidate.position.y);
+            });
+            if (!moved) return;
+            for (const candidate of next) storeApi.getState().moveNode(candidate.id, candidate.position);
+          }}
+          fitViewKey={fitViewKey}
+          emptyState={emptyState}
+          {...(viewportInsets ? { viewportInsets } : {})}
+          {...(wheelZoom ? { wheelZoom } : {})}
+        />
+      </NodeCaptionProvider>
       {!readOnly ? (
         <div
           data-slot="composer-add-step"
-          className={`pointer-events-none absolute top-2 z-10 flex px-2 ${ADD_STEP_PLACEMENT[addStepPlacement]}`}
-          style={{ left: insetLeft, right: insetRight }}
+          className={`pointer-events-none absolute inset-x-0 top-2 z-10 flex px-2 ${ADD_STEP_PLACEMENT[addStepPlacement]}`}
         >
           <Button type="button" size="sm" variant="secondary" className="shadow-raised pointer-events-auto" onClick={openAddMenu}>
             <IconPlus aria-hidden="true" />
@@ -437,13 +433,9 @@ export function ComposerCanvas({
           </Button>
         </div>
       ) : null}
-      {/* R-C #1 — centred in the FREE band, under "Add a step": never under a docked pane, and clear
-          of the zoom controls (bottom-left) and the minimap (bottom-right) a bottom corner shares. */}
-      <div
-        data-slot="composer-announcement"
-        className="pointer-events-none absolute top-12 z-10 flex justify-center px-2"
-        style={{ left: insetLeft, right: insetRight }}
-      >
+      {/* Anchored under "Add a step", centred on the canvas and clear of the bottom-centre
+          controls dock; it never follows a pane. */}
+      <div data-slot="composer-announcement" className="pointer-events-none absolute inset-x-0 top-12 z-10 flex justify-center px-2">
         <p role="status" aria-live="polite" className={announcement ? 'bg-background/95 text-foreground max-w-sm rounded-md border px-3 py-1.5 text-xs shadow-raised' : 'sr-only'}>
           {announcement}
         </p>

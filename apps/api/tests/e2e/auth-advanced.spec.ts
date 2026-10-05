@@ -13,7 +13,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, createTenantUser } from '../../../../tests/helpers';
 
 test.describe('Auth Advanced Controller', () => {
   // ---------------------------------------------------------------------------
@@ -216,13 +216,10 @@ test.describe('Auth Advanced Controller', () => {
       const fixtureHeaders = { Authorization: `Bearer ${saGlobal!.token}` };
 
       const unique = Date.now();
-      const create = await request.post('/api/v1/admin/users', {
-        headers: fixtureHeaders,
-        data: {
-          username: `authadv_sa2_${unique}`,
-          password: 'Password123!',
-          email: `authadv.sa2.${unique}@example.com`,
-        },
+      const create = await createTenantUser(request, saGlobal!.token, {
+        username: `authadv_sa2_${unique}`,
+        password: 'Password123!',
+        email: `authadv.sa2.${unique}@example.com`,
       });
       expect(create.status(), 'create throwaway super-admin-tier target').toBeLessThan(300);
       const targetId = ((await create.json()) as { id: string }).id;

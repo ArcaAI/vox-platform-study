@@ -162,8 +162,9 @@ test.describe('TASK-890 §3.4 — the agent`s context-schema pin at publish', ()
       versionId: expect.any(String),
       payloadSchema: expect.objectContaining({ type: 'object' }),
     });
-    // §3.14 — every published agent carries its guardrail decision; absent means ON.
-    expect(body.compiledConfig.guardrail).toEqual({ enabled: true });
+    // The §3.14 `compiledConfig.guardrail` stamp is no longer asserted: the agent-level guardrail
+    // opt-out was retired (TASK-1035 OD-1, "no guardrail opt-outs"), so publish no longer writes
+    // the decision onto the agent — guardrails are always on.
   });
 
   /**

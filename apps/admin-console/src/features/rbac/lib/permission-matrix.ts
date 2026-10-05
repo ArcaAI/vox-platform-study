@@ -75,7 +75,7 @@ const CURATED_SUBJECTS: readonly { subject: string; label: string }[] = [
   { subject: 'Consultation', label: 'Consultation' },
   { subject: 'Patient', label: 'Patient record' },
   { subject: 'Department', label: 'Department' },
-  { subject: 'PromptTemplate', label: 'Hope Prompt' },
+  { subject: 'PromptTemplate', label: 'Prompt' },
   { subject: 'Pipeline', label: 'Audio pipeline' },
   { subject: 'WritingStyle', label: 'DNA writing style' },
   { subject: 'Tenant', label: 'Tenant settings' },

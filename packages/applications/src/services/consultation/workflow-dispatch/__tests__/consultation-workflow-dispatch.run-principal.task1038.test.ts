@@ -89,7 +89,7 @@ const GOVERNED = {
 const stampedMeta = (deps: ReturnType<typeof service>['deps']) =>
   (deps.workflowRunService.recordRunStarted.mock.calls[0][0] as { metaData?: Record<string, unknown> }).metaData;
 
-describe('OD-35 — consultation dispatch stamps the starting principal', () => {
+describe('OD-35 — consultation dispatch stamps the starting principal and (follow-up) the clinician', () => {
   it('consultation open: the principal that opened it', async () => {
     const { svc, deps } = service({ principal: { type: 'serviceAccount', id: 'sa-alaas' } });
     await svc.dispatchForConsultation({
@@ -99,10 +99,10 @@ describe('OD-35 — consultation dispatch stamps the starting principal', () => 
       userId: 'u-1',
       externalPatientId: 'p-1',
     });
-    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'serviceAccount', id: 'sa-alaas' } });
+    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'serviceAccount', id: 'sa-alaas' }, onBehalfOf: { type: 'user', id: 'u-1' } });
   });
 
-  it('consultation open with no principal in context: no stamp (tenant-wide readers only)', async () => {
+  it('consultation open with no principal in context: no starter, only the clinician', async () => {
     const { svc, deps } = service({ principal: null });
     await svc.dispatchForConsultation({
       consultationId: CONSULTATION,
@@ -111,7 +111,7 @@ describe('OD-35 — consultation dispatch stamps the starting principal', () => 
       userId: 'u-1',
       externalPatientId: 'p-1',
     });
-    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION });
+    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, onBehalfOf: { type: 'user', id: 'u-1' } });
   });
 
   it('governed resume: the superseded run’s starter carries over, whoever triggers the resume', async () => {
@@ -122,12 +122,12 @@ describe('OD-35 — consultation dispatch stamps the starting principal', () => 
     });
     const result = await svc.supersedeGoverningRun({ consultationId: CONSULTATION, tenantId: TENANT, triggerId: 'trig-1' });
     expect(result.superseded).toBe(true);
-    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'apiKey', id: 'key-A' } });
+    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'apiKey', id: 'key-A' }, onBehalfOf: { type: 'user', id: 'doc-1' } });
   });
 
   it('governed resume of an unstamped run: the principal triggering the resume', async () => {
     const { svc, deps } = service({ consultation: structuredClone(GOVERNED), principal: { type: 'apiKey', id: 'key-B' }, governingStartedBy: null });
     await svc.supersedeGoverningRun({ consultationId: CONSULTATION, tenantId: TENANT, triggerId: 'trig-1' });
-    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'apiKey', id: 'key-B' } });
+    expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'apiKey', id: 'key-B' }, onBehalfOf: { type: 'user', id: 'doc-1' } });
   });
 });

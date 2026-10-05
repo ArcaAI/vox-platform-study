@@ -39,6 +39,14 @@ import { closeLedgerDb, ledgerRowsSince } from './helpers/usage-ledger.helper';
 test.describe.configure({ mode: 'serial' });
 
 const TENANT_GLOBAL = '50000000-0000-0000-0000-000000000000';
+/**
+ * The ARCAAI customer tenant and its seeded clinician (`seed/91-user.ts`). The exhausted-allowance
+ * case runs HERE: since TASK-986 the Global row is write-locked (a PATCH, even a super admin's, is
+ * 403 "The system tenant cannot be edited"), so a plan can no longer be stamped on it.
+ */
+const TENANT_ARCAAI = '50000000-0000-0000-0000-000000000001';
+const ARCAAI_TENANT_KEY = 'ARCAAI';
+const ARCAAI_DOCTOR_USERNAME = 'arcaai_doctor';
 /** A PUBLISHED SYSTEM TEXT_GENERATION agent, visible to every tenant (`seed/25-agents.ts`).
  *
  *  Was `platform-summarization` until TASK-930 D-8 deleted and rebuilt the seeds: the reference
@@ -95,8 +103,8 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
  * provoked. So the window is narrowed back here on the event's OWN
  * `occurredAt`, which the emitter stamps.
  */
-async function outboxSince(since: Date): Promise<Array<{ operation: string; trigger?: string }>> {
-  const rows = await ledgerRowsSince(since, { tenantId: TENANT_GLOBAL });
+async function outboxSince(since: Date, tenantId: string = TENANT_GLOBAL): Promise<Array<{ operation: string; trigger?: string }>> {
+  const rows = await ledgerRowsSince(since, { tenantId });
   return rows
     .filter((row) => new Date(row.occurredAt).getTime() >= since.getTime())
     .map((row) => ({ operation: row.operation, trigger: row.attributesJson?.trigger as string | undefined }));
@@ -118,14 +126,17 @@ async function waitForOutbox(since: Date, operation: string, timeoutMs = 15_000)
 }
 
 let doctorToken: string;
+let arcaaiDoctorToken: string;
 let adminToken: string;
 
 test.beforeAll(async ({ playwright }) => {
   const request = await playwright.request.newContext();
   const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
   const admin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
-  if (!doctor || !admin) throw new Error('TASK-890 metering spec could not log in the seeded doctor / super admin');
+  const arcaaiDoctor = await loginUser(request, ARCAAI_DOCTOR_USERNAME, SEEDED_USERS.doctor.password, ARCAAI_TENANT_KEY);
+  if (!doctor || !admin || !arcaaiDoctor) throw new Error('TASK-890 metering spec could not log in the seeded doctors / super admin');
   doctorToken = doctor.token;
+  arcaaiDoctorToken = arcaaiDoctor.token;
   adminToken = admin.token;
   await request.dispose();
 });
@@ -171,35 +182,19 @@ test.describe('TASK-890 — an agent invocation is metered', () => {
  * THE ZERO ALLOWANCE IS TENANT-WIDE, SO IT IS HELD FOR AS FEW LINES AS POSSIBLE.
  *
  * `monthlyLlmTokens = 0`, the entitlements kill-switch and the stamped plan are
- * all per-TENANT state on `__GLOBAL__`, which every other spec also bills
- * against — and Playwright runs spec FILES in parallel (`fullyParallel: true`),
- * which `test.describe.configure({ mode: 'serial' })` does not change: it
- * orders tests WITHIN this file and nothing outside it.
+ * per-TENANT state, and Playwright runs spec FILES in parallel
+ * (`fullyParallel: true`), which `test.describe.configure({ mode: 'serial' })`
+ * does not change. So the manipulation lives in the test BODY, set immediately
+ * before the refused call and restored in a `finally` — and the setup itself
+ * sits INSIDE the `try`, so a half-applied setup is still put back.
  *
- * Held in `beforeAll`/`afterAll`, the window spanned this whole describe, and a
- * sibling spec that invoked an LLM inside it was refused 429 for a ceiling it
- * never set. Observed 2026-09-13: `task-959-compute.spec.ts`'s stream
- * invocation failed with `Plan limit reached for 'monthlyLlmTokens' (0/0)` the
- * first time both files ran in ONE invocation. So the manipulation now lives in
- * the test BODY, set immediately before the refused call and restored in a
- * `finally`.
- *
- * A RESIDUAL WINDOW REMAINS, and it is deliberate. It is the duration of one
- * request plus the 2s settle below — seconds rather than the length of a
- * describe — but a sibling that invokes an LLM inside it will still see a 429.
- * Two things it is NOT worth trading for:
- *
- *   * a cross-file lock, which couples every spec in the suite to this one and
- *     turns a parallel run serial to protect a few seconds;
- *   * a second tenant. `50000000-…-0001` ("ARCAAI") exists and DOES carry the
- *     cloned `general-medicine-summarization` agent, but `tests/helpers`
- *     ships no credential that can reach it — measured 2026-09-13, all six
- *     seeded non-super-admin users answer "User does not have access to the
- *     specified tenant" against `tenantKey: 'ARCAAI'`. Moving this describe
- *     there means seeding a user first, which is not an e2e-spec change.
- *
- * If a sibling ever fails with `monthlyLlmTokens (0/0)`, this is the cause and
- * a seeded ARCAAI doctor is the fix — not a looser assertion over there.
+ * It runs against ARCAAI (`50000000-…-0001`), not `__GLOBAL__`: since TASK-986
+ * the Global row is write-locked, so no plan can be stamped there, and every
+ * other spec bills against Global anyway. ARCAAI carries the cloned
+ * `general-medicine-summarization` agent and a seeded clinician
+ * (`arcaai_doctor`). The entitlements kill-switch is still platform-wide, but
+ * it only gates tenants that resolve a limit, and Global (in
+ * `RESERVED_UNGATED_TENANT_IDS`, no plan) resolves none.
  */
 test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs', () => {
   let previousEnforcement: boolean | undefined;
@@ -207,9 +202,9 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
 
   /** `PUT admin/entitlements/tenants/:id/override` is OCC-guarded: `"0"` creates. */
   async function setLlmAllowance(request: APIRequestContext, value: number | null): Promise<void> {
-    const current = await request.get(`/api/v1/admin/entitlements/tenants/${TENANT_GLOBAL}/override`, { headers: bearer(adminToken) });
+    const current = await request.get(`/api/v1/admin/entitlements/tenants/${TENANT_ARCAAI}/override`, { headers: bearer(adminToken) });
     const etag = current.headers()['etag'] ?? '"0"';
-    const response = await request.put(`/api/v1/admin/entitlements/tenants/${TENANT_GLOBAL}/override`, {
+    const response = await request.put(`/api/v1/admin/entitlements/tenants/${TENANT_ARCAAI}/override`, {
       headers: { ...bearer(adminToken), 'If-Match': etag },
       data: { monthlyLlmTokens: value },
     });
@@ -235,14 +230,14 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
    * default, so a sibling worker sees no new throttle.
    */
   async function setPlan(request: APIRequestContext, plan: string | null): Promise<void> {
-    const current = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    const current = await request.get(`/api/v1/admin/tenants/${TENANT_ARCAAI}`, { headers: bearer(adminToken) });
     const etag = current.headers()['etag'];
     if (!etag) return;
     // This route wants BOTH halves of the OCC pair: `If-Match` (the guard) and
     // `expectedVersion` in the body (the validated DTO field). Sending only the
     // header is a 400, not a 412.
     const expectedVersion = Number(etag.replace(/[^0-9]/g, ''));
-    const response = await request.patch(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, {
+    const response = await request.patch(`/api/v1/admin/tenants/${TENANT_ARCAAI}`, {
       headers: { ...bearer(adminToken), 'If-Match': etag },
       data: { plan, expectedVersion },
     });
@@ -251,7 +246,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
 
   /** The tenant's stamped plan — readable by the tenant admin; the entitlements document is not. */
   async function stampedPlan(request: APIRequestContext): Promise<string | null> {
-    const response = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    const response = await request.get(`/api/v1/admin/tenants/${TENANT_ARCAAI}`, { headers: bearer(adminToken) });
     if (response.status() !== 200) return null;
     return ((await response.json()) as { plan?: string | null }).plan ?? null;
   }
@@ -260,10 +255,12 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
   async function exhaustAllowance(request: APIRequestContext): Promise<void> {
     const read = await request.get('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken) });
     previousEnforcement = ((await read.json()) as { enabled?: boolean }).enabled;
-    const tenant = await request.get(`/api/v1/admin/tenants/${TENANT_GLOBAL}`, { headers: bearer(adminToken) });
+    const tenant = await request.get(`/api/v1/admin/tenants/${TENANT_ARCAAI}`, { headers: bearer(adminToken) });
     previousPlan = ((await tenant.json()) as { plan?: string | null }).plan ?? null;
     await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: true } });
-    await setPlan(request, 'ENTERPRISE');
+    // ARCAAI is seeded ENTERPRISE, so normally nothing is stamped here — which also keeps this
+    // spec off the `plan` field `task-986-tenant-plan-and-reserved` asserts on the same row.
+    if (!previousPlan) await setPlan(request, 'ENTERPRISE');
     await setLlmAllowance(request, 0);
   }
 
@@ -275,7 +272,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
   async function restoreAllowance(request: APIRequestContext): Promise<void> {
     try {
       await setLlmAllowance(request, null);
-      await setPlan(request, previousPlan);
+      if (!previousPlan) await setPlan(request, previousPlan);
       if (previousEnforcement !== undefined) {
         await request.put('/api/v1/admin/entitlements/enabled', { headers: bearer(adminToken), data: { enabled: previousEnforcement } });
       }
@@ -290,11 +287,12 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
     // in the test body: Playwright resolves them against the running test, and
     // hoisting them into a helper is how a skip silently stops skipping.
     let ungated = false;
-    await exhaustAllowance(request);
     try {
+      // Inside the `try`: a setup that fails half-way must still be restored.
+      await exhaustAllowance(request);
       const since = new Date();
       const response = await request.post(`/api/v1/agents/${AGENT_SLUG}/invocations`, {
-        headers: bearer(doctorToken),
+        headers: bearer(arcaaiDoctorToken),
         data: { text: 'Summarise: patient reports a mild headache.', context: AGENT_CONTEXT },
       });
 
@@ -311,7 +309,7 @@ test.describe('TASK-890 — an exhausted allowance refuses BEFORE the model runs
         // The absence of a row is the real assertion: a 429 raised AFTER the model
         // ran would still have produced one.
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        const rows = await outboxSince(since);
+        const rows = await outboxSince(since, TENANT_ARCAAI);
         expect(rows.filter((row) => row.operation.startsWith('generate'))).toHaveLength(0);
       }
     } finally {

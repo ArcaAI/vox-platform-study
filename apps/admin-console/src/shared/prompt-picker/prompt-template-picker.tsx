@@ -118,7 +118,7 @@ export function PromptTemplateQuickView({ template }: { template: PromptPickerTe
           href={PROMPT_TEMPLATES_HREF(template.id)}
           className="text-muted-foreground hover:text-foreground ml-auto inline-flex items-center gap-1 text-xs underline underline-offset-2"
         >
-          Open in Hope Prompts <IconExternalLink aria-hidden="true" className="size-3" />
+          Open in Prompts <IconExternalLink aria-hidden="true" className="size-3" />
         </Link>
       </div>
       {(template.tags ?? []).length > 0 ? (
@@ -196,7 +196,7 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
   if (options.isPending) {
     return (
       <Field>
-        <FieldLabel htmlFor={fieldId}>Hope Prompt</FieldLabel>
+        <FieldLabel htmlFor={fieldId}>Prompt</FieldLabel>
         <Skeleton className="h-9 w-full" />
       </Field>
     );
@@ -205,9 +205,9 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
   if (options.isError || templates.length === 0) {
     return (
       <Field data-invalid={invalid}>
-        <FieldLabel htmlFor={fieldId}>Hope Prompt id</FieldLabel>
+        <FieldLabel htmlFor={fieldId}>Prompt id</FieldLabel>
         <FieldDescription>
-          {options.isError ? 'The prompt list is unavailable — enter the template’s id.' : 'No Hope Prompts yet — enter an id, or create one.'}{' '}
+          {options.isError ? 'The prompt list is unavailable — enter the template’s id.' : 'No prompts yet — enter an id, or create one.'}{' '}
           <Link href="/prompt-templates?create=1" className="inline-flex items-center gap-1 underline">
             Create template <IconExternalLink aria-hidden="true" className="size-3" />
           </Link>
@@ -226,7 +226,7 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
 
   return (
     <Field data-invalid={invalid}>
-      <FieldLabel htmlFor={fieldId}>Hope Prompt</FieldLabel>
+      <FieldLabel htmlFor={fieldId}>Prompt</FieldLabel>
       <FieldDescription>The bound prompt&apos;s approved version is what actually runs — see the quick view below.</FieldDescription>
       {tagOptions.length > 0 ? (
         <Select value={tag || ALL_TAGS} onValueChange={(next) => setTag(next === ALL_TAGS ? '' : next)} disabled={disabled}>
@@ -258,7 +258,7 @@ export function PromptTemplatePicker({ id, value, onChange, category, disabled, 
       ) : null}
       <Select value={known ? value! : ''} onValueChange={(next) => onChange(next || null)} disabled={disabled}>
         <SelectTrigger id={fieldId} className="w-full">
-          <SelectValue placeholder={value && !known ? `${value} (not in the list)` : 'Choose a Hope Prompt'} />
+          <SelectValue placeholder={value && !known ? `${value} (not in the list)` : 'Choose a prompt'} />
         </SelectTrigger>
         <SelectContent>
           {visible.map((template) => (

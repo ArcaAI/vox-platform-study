@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Hope Prompts (tier 30-49) — the tenant-admin
+ * Prompts (tier 30-49) — the tenant-admin
  * surface for viewing, creating, updating, versioning, diffing and approving
  * the prompts that drive pre-summary and summary generation.
  *
@@ -107,18 +107,18 @@ function PromptTemplatesScreenBody() {
         tabs={
           <TabsList variant="line">
             <TabsTrigger value="fallbacks">Fallbacks</TabsTrigger>
-            <TabsTrigger value="templates">Hope Prompts</TabsTrigger>
+            <TabsTrigger value="templates">Prompts</TabsTrigger>
             {/* Ability-gated (not elevation-gated); the 403 is server-side regardless. */}
             {canGovern ? <TabsTrigger value="governance">Governance</TabsTrigger> : null}
           </TabsList>
         }
         header={
           <PageHeader
-            title="Hope Prompts"
+            title="Prompts"
             meta={
               tab === 'templates' ? (
                 gridState.loaded ? (
-                  <span>{formatNumber(gridState.count)} Hope Prompts</span>
+                  <span>{formatNumber(gridState.count)} Prompts</span>
                 ) : (
                   <Skeleton className="h-4 w-24" />
                 )
@@ -130,7 +130,7 @@ function PromptTemplatesScreenBody() {
               tab === 'templates' ? (
                 <Button onClick={() => setCreating(true)}>
                   <IconPlus aria-hidden />
-                  New Hope Prompt
+                  New Prompt
                 </Button>
               ) : undefined
             }
@@ -166,13 +166,13 @@ function PromptTemplatesScreenBody() {
 export function PromptTemplatesScreen() {
   return (
     <WorkingTenantGate
-      title="Hope Prompts"
+      title="Prompts"
       meta={
         <span aria-hidden className="text-muted-foreground font-mono text-xs">
           GET /admin/prompt-templates
         </span>
       }
-      description="Hope Prompts are administered per tenant. Pick a working tenant from the switcher in the top bar to load its prompts."
+      description="Prompts are administered per tenant. Pick a working tenant from the switcher in the top bar to load its prompts."
     >
       <PromptTemplatesScreenBody />
     </WorkingTenantGate>

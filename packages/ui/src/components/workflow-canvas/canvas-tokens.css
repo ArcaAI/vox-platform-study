@@ -174,3 +174,25 @@
     }
   }
 }
+
+/* Owner, 2026-10-05 — the bottom-centre dock that holds the zoom controls and the minimap. It is
+   ANCHORED to the canvas: nothing about the floating panes moves it. React Flow renders each of
+   `<Controls>` / `<MiniMap>` as its own absolutely-positioned `.react-flow__panel`; inside the dock
+   they are laid out in flow, side by side, bottom-aligned. */
+.workflow-canvas .react-flow__panel.workflow-canvas-dock {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.workflow-canvas .workflow-canvas-dock > .react-flow__panel {
+  position: static;
+  margin: 0;
+  transform: none;
+  pointer-events: all;
+}
+.workflow-canvas .workflow-canvas-dock > .react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}

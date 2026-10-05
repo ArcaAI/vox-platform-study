@@ -204,6 +204,17 @@ describe('OD-35 — getRunStatus (also the SSE, socket and stream-ticket ownersh
     await expect(build().getRunStatus(SLUG, RUN)).resolves.toMatchObject({ status: 'COMPLETED' });
   });
 
+  it('follow-up: the consultation’s clinician reads a governed run a service account opened for them; another doctor does not', async () => {
+    mockWorkflowRunService.getRunForReader.mockResolvedValue({
+      ...row({ type: 'serviceAccount', id: 'sa-alaas' }),
+      onBehalfOf: { type: 'user', id: 'doctor-1' },
+    });
+    asHuman('doctor-1', ['DOCTOR']);
+    await expect(build().getRunStatus(SLUG, RUN)).resolves.toMatchObject({ status: 'COMPLETED' });
+    asHuman('doctor-2', ['DOCTOR']);
+    await expectUnknownRun(build().getRunStatus(SLUG, RUN));
+  });
+
   it('a run with no recorded starter (pre-OD-35, webhook) is tenant-admin-only', async () => {
     mockWorkflowRunService.getRunForReader.mockResolvedValue(row(null));
     asApiKey('key-A');

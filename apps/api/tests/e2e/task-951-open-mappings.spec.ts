@@ -16,8 +16,8 @@
  *    and a code is the only identifier it has;
  *  · the VISIT TYPE is recorded on the row, where every prompt and workflow selection reads it
  *    above the parent link;
- *  · the EXTERNAL REFERENCE is recorded as a label, and a re-open with the same patient/date/
- *    clinician still returns the SAME consultation;
+ *  · the EXTERNAL REFERENCE is recorded on the row and is the encounter KEY (TASK-1020 D-1): the
+ *    same id re-opens the same consultation, a new id opens a new one;
  *  · every validated kind is PERSISTED, and a kind marked `materializeAs` becomes one `CASE_NOTE`
  *    per entry — the read the warm-start pre-summary performs;
  *  · the refusals are the documented ones: 404 `DEPARTMENT_UNKNOWN`, 400 `DEPARTMENT_MISMATCH`,
@@ -317,29 +317,42 @@ test.describe('TASK-951 — a machine states the encounter once and HOPE maps ev
     );
   });
 
-  test('a re-open with a NEW event id still returns the SAME consultation — the reference is a label, not a key', async ({ request }) => {
+  test('the event id is the encounter KEY — the same id re-opens the visit, a new id opens a new one (TASK-1020 D-1)', async ({ request }) => {
+    // This used to pin "the reference is a label, not a key". TASK-1020 D-1 reversed that: the
+    // encounter key is `(patientId, doctorId, externalRef)` whenever the caller sends an id, so a
+    // NEW id is a new visit. Ids are run-unique: an id belongs to exactly one patient in the tenant
+    // (409 `EXTERNAL_REF_CONFLICT`), so a literal would collide with an earlier run's patient.
     const patient = patientId();
+    const firstRef = `EVT-${Date.now()}-FIRST`;
+    const secondRef = `EVT-${Date.now()}-SECOND`;
     const payload = (eventId: string) => ({
       patientId: patient,
       appointmentDate: '2026-03-04',
       context: { [ENCOUNTER]: encounter({ event_id: eventId }) },
     });
 
-    const first = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload('EVT-FIRST') });
+    const first = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload(firstRef) });
     expect(first.status(), await first.text()).toBe(201);
     const firstBody = await first.json();
 
-    const second = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload('EVT-SECOND') });
-    expect(second.status(), await second.text()).toBe(201);
-    const secondBody = await second.json();
-
-    expect(secondBody.id, 'the idempotency tuple is unchanged by the external reference').toBe(firstBody.id);
-    expect(secondBody.isNew).toBe(false);
-    // And the re-open appended nothing: get-or-create must not write a second copy of the
-    // client's PRE items.
+    // The SAME id re-opens the same visit, and appends nothing: get-or-create must not write a
+    // second copy of the client's PRE items.
+    const again = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload(firstRef) });
+    expect([200, 201], await again.text()).toContain(again.status());
+    const againBody = await again.json();
+    expect(againBody.id, 'the same encounter id is the same consultation').toBe(firstBody.id);
+    expect(againBody.isNew).toBe(false);
     const context = await request.get(`/api/v1/consultations/${firstBody.id}/context`, { headers: svcHeaders(svcToken) });
     expect(context.status()).toBe(200);
     expect(((await context.json()) as Array<{ type: string }>).filter((item) => item.type === 'STRUCTURED')).toHaveLength(1);
+
+    // A NEW id is a new encounter of the same patient.
+    const second = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload(secondRef) });
+    expect(second.status(), await second.text()).toBe(201);
+    const secondBody = await second.json();
+    expect(secondBody.id, 'a new encounter id opens a new consultation').not.toBe(firstBody.id);
+    expect(secondBody.isNew).toBe(true);
+    expect(secondBody.metadata?.externalRef).toBe(secondRef);
   });
 
   // -- 2. The refusals -------------------------------------------------------

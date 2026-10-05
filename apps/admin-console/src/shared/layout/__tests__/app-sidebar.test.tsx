@@ -113,10 +113,10 @@ describe('AppSidebar — scoped to the active domain', () => {
     // visible entry of this domain for this fixture is now `/prompt-templates`.
     usePathnameMock.mockReturnValue('/prompt-templates');
     renderInShell(<AppSidebar />, NARROW_TENANT_FIXTURE);
-    await screen.findByRole('link', { name: 'Hope Prompts' });
+    await screen.findByRole('link', { name: 'Prompts' });
 
     expect(within(scopedNav('Knowledge & Agents')).getAllByRole('link').map((link) => link.textContent)).toEqual([
-      'Hope Prompts',
+      'Prompts',
       'Knowledge Base',
     ]);
     expect(screen.queryByRole('link', { name: 'Context Schemas' })).toBeNull();

@@ -11,7 +11,7 @@
  * The Input shape is the workflow's context schema definition (`{ kinds: [...] }`,
  * `ConsultationContextSchema`), as the composer resolves it.
  */
-import { nodeDisplayName } from '../../../lib/node-identity';
+import { agentNamesOf, nodeDisplayName } from '../../../lib/node-identity';
 
 interface PlanNode {
   id: string;
@@ -22,6 +22,7 @@ interface PlanNode {
 interface PlanAgent {
   slug: string;
   task: string;
+  name?: string | null;
 }
 
 interface ContextKind {
@@ -82,7 +83,7 @@ export function planTestInputs(input: { nodes: readonly PlanNode[]; agentOptions
 
   let record: TestInputPlan['record'] = null;
   if (asrNode) {
-    const label = nodeDisplayName(asrNode);
+    const label = nodeDisplayName(asrNode, input.nodes, agentNamesOf(input.agentOptions));
     record = { agentSlug: (asrNode.config.agentRef as { slug: string }).slug, stepLabel: label, reason: `Shown because “${label}” is a speech-to-text step.` };
   } else if (audioKind) {
     record = { agentSlug: null, stepLabel: null, reason: `Shown because the Input shape takes live audio (“${audioKind.label}”).` };

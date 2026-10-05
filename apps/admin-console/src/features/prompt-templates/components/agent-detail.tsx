@@ -128,7 +128,7 @@ export function AgentDetailDrawer({
   // Create mode: a single form, no tabs, no detail read.
   if (creating) {
     return (
-      <DetailDrawer open={open} onOpenChange={onOpenChange} size="lg" title="New Hope Prompt">
+      <DetailDrawer open={open} onOpenChange={onOpenChange} size="lg" title="New Prompt">
         <CreateTemplateForm onCreated={onCreated} onCancel={() => onOpenChange(false)} />
       </DetailDrawer>
     );
@@ -140,7 +140,7 @@ export function AgentDetailDrawer({
         open={open}
         onOpenChange={onOpenChange}
         size="lg"
-        title={template ? template.name : 'Hope Prompt'}
+        title={template ? template.name : 'Prompt'}
         badges={
           template ? (
             <>

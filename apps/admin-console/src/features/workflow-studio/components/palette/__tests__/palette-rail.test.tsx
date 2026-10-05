@@ -6,7 +6,6 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { describe, expect, it, vi } from 'vitest';
 import { PaletteRail } from '../palette-rail';
-import { humanizeKey } from '../../../lib/schema-form';
 import type { WorkflowNodeDescriptor } from '../../../api/types';
 
 const NOOP: WorkflowNodeDescriptor = {
@@ -121,7 +120,8 @@ describe('PaletteRail', () => {
   it('TASK-893: the rail hides nothing — every registered type is offered — and the core group comes first', () => {
     const CORE: WorkflowNodeDescriptor = { ...NOOP, type: 'core.agent', paletteKey: 'core', classes: ['agent'] };
     render(<PaletteRail descriptors={[MANDATORY, CORE]} onAddNode={vi.fn()} />);
-    expect(screen.getByRole('button', { name: new RegExp(humanizeKey('core.agent'), 'i') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^agent/i })).toBeTruthy();
+    expect(screen.queryByText(/core\.agent/i)).toBeNull();
     const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
     expect(headings[0]).toMatch(/core/i);
     expect(screen.getByText(/2 of 2 node types/i)).toBeTruthy();

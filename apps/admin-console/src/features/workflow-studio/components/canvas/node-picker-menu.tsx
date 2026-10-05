@@ -22,12 +22,12 @@ import {
 } from '@arcaai/ui';
 import type { WorkflowNodeDescriptor } from '../../api/types';
 import { PALETTE_PRESETS, type PalettePreset } from '../../lib/palette-presets';
-import { humanizeKey } from '../../lib/schema-form';
+import { nodeTypeTitle } from '../../lib/node-identity';
 import { NodeTypeIcon } from '../palette/node-type-icon';
 
-/** The friendly name of a node type: `core.humanReview` → `Human Review`. */
+/** The friendly name of a node type — the SAME title the palette and the canvas use (`nodeTypeTitle`): `core.humanReview` → "Review". */
 export function stepTypeLabel(type: string): string {
-  return humanizeKey(type.startsWith('core.') ? type.slice('core.'.length) : type);
+  return nodeTypeTitle(type);
 }
 
 export interface NodePickerChoice {

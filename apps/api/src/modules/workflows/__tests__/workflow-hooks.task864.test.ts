@@ -55,6 +55,25 @@ describe('WorkflowsController.startRun (TASK-864)', () => {
     expect(completion.watch).toHaveBeenCalledWith('tenant-1', 'run-1');
     expect(result).toEqual(expect.objectContaining({ runId: 'run-1' }));
   });
+
+  // TASK-1036 live check: an API-key run's bound human carried `tenantId: ''`, the `??` chain kept
+  // the empty string, and the watcher wrote under no tenant — `TenantScope: tenant context
+  // required`, so the run's delivered result was never persisted (GET …/result answered 204).
+  // The watcher must use the tenant the run was started under: the request's CLS tenant.
+  it('attaches the watcher under the CLS tenant the run started in, never an empty one', async () => {
+    const exposure = { invoke: vi.fn().mockResolvedValue({ runId: 'run-1', status: 'started', statusUrl: '/x', streamUrl: '/x/stream' }) };
+    const completion = { watch: vi.fn().mockReturnValue(true) };
+    const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : undefined)) };
+    const controller = new WorkflowsController(
+      exposure as never,
+      { stream: vi.fn(), awaitTerminal: vi.fn() } as never,
+      completion as never,
+      undefined /* stream tickets */,
+      cls as never,
+    );
+    await controller.startRun('triage', { input: {} }, { user: { tenantId: '' }, apiKey: { id: 'key-1' } } as never, { status: vi.fn() } as never, 'async', undefined);
+    expect(completion.watch).toHaveBeenCalledWith('tenant-1', 'run-1');
+  });
 });
 
 describe('WorkflowRunCompletionService', () => {

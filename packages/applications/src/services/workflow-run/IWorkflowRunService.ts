@@ -57,7 +57,7 @@ export interface IWorkflowRunService {
    * run, a row written before OD-35). ONE row read, for the business-plane reads that must bind to
    * the starter. Cross-tenant / unknown id throws {@link workflowRunNotFound}.
    */
-  getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null }>;
+  getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null; onBehalfOf: RunPrincipal | null }>;
 
   /**
    * TASK-1022 A2 — close the row of a run another run superseded, without rewriting history: a

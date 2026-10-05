@@ -418,12 +418,14 @@ test.describe('API Key Authentication', () => {
       });
 
       expect(response.status()).toBe(200);
-      const body = await response.json();
-      expect(body).not.toHaveProperty('Admin');
-      expect(body).not.toHaveProperty('Webhook');
-      expect(body).toHaveProperty('Consultation');
+      // The families sit under `categories` (the envelope also carries `presets`).
+      const body = (await response.json()) as { categories: Record<string, Array<{ scope: string }>> };
+      const categories = body.categories;
+      expect(categories).not.toHaveProperty('Admin');
+      expect(categories).not.toHaveProperty('Webhook');
+      expect(categories).toHaveProperty('Consultation');
 
-      const wildcard = (body['Wildcard'] as Array<{ scope: string }>).map((s) => s.scope);
+      const wildcard = (categories['Wildcard'] as Array<{ scope: string }>).map((s) => s.scope);
       expect(wildcard).not.toContain('admin:*');
       expect(wildcard).not.toContain('webhook:*');
     });

@@ -328,11 +328,16 @@ test.describe('TASK-959 — a billed second reaches the screen', () => {
 
 test.describe('TASK-959 §3.4 — a run detail carries the worker CPU it consumed', () => {
   test('`cpuSeconds` is on the run detail, as a positive number', async ({ request }) => {
-    const list = await request.get('/api/v1/admin/workflow-runs?limit=1', { headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL } });
+    // The newest COMPLETED run, not merely the newest run: on a shared DB the newest row is often
+    // one a sibling spec started moments ago — still RUNNING, or failed before any worker picked
+    // it up — whose ledger is legitimately empty, so `cpuSeconds` is null for it by construction.
+    const list = await request.get('/api/v1/admin/workflow-runs?limit=1&status=COMPLETED', {
+      headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL },
+    });
     expect(list.status(), await list.text()).toBe(200);
     const listed = (await list.json()) as { data?: Array<{ id?: string; runId?: string }> };
     const run = listed.data?.[0];
-    test.skip(!run, 'no workflow run exists in this database to read — start one, or run task-959-workflow.spec.ts first');
+    test.skip(!run, 'no COMPLETED workflow run exists in this database — needs the harness + worker running (task-959-workflow.spec.ts)');
 
     const runId = run!.runId ?? run!.id;
     const detail = await request.get(`/api/v1/admin/workflow-runs/${runId}`, { headers: { ...bearer(), 'X-Tenant-Id': TENANT_GLOBAL } });

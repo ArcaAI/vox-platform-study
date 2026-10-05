@@ -5,7 +5,7 @@ import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowA
 import { IWorkflowRunCompletionPort } from '../../workflow-run/IWorkflowRunCompletionPort';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
-import { RUN_STARTED_BY_KEY, RunPrincipalAccessService, type RunPrincipal } from '../../workflow-run/run-principal-access';
+import { RUN_ON_BEHALF_OF_KEY, RUN_STARTED_BY_KEY, RunPrincipalAccessService, type RunPrincipal } from '../../workflow-run/run-principal-access';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
@@ -264,7 +264,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         // row names the consultation; governance is recorded AFTER the start, so without this the
         // run's first consultation read could be refused 404. Same stamp as the exposure plane.
         // OD-35 — and the principal that opened the consultation.
-        metaData: withStartedBy({ consultationId }, this.runAccess?.currentPrincipal() ?? null),
+        metaData: withStartedBy({ consultationId }, this.runAccess?.currentPrincipal() ?? null, userId),
       });
 
       // The identity every consultation node reads from `run_payload`
@@ -453,7 +453,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
           isSandbox: false,
           // TASK-1038 E2 (fix 3) — see `dispatchForConsultation`. OD-35 — the superseded run's
           // starter, else the principal triggering the resume.
-          metaData: withStartedBy({ consultationId }, governingStartedBy ?? this.runAccess?.currentPrincipal() ?? null),
+          metaData: withStartedBy({ consultationId }, governingStartedBy ?? this.runAccess?.currentPrincipal() ?? null, consultation.doctorId ?? input.userId),
         });
         await this.harnessGateway.startWorkflowRun({
           runId,
@@ -725,7 +725,15 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
   }
 }
 
-/** TASK-1038 OD-35 — `metaData` plus `startedBy` when a starter is known; unchanged otherwise. */
-function withStartedBy(metaData: Record<string, unknown>, startedBy: RunPrincipal | null): Record<string, unknown> {
-  return startedBy ? { ...metaData, [RUN_STARTED_BY_KEY]: startedBy } : metaData;
+/**
+ * TASK-1038 OD-35 — `metaData` plus `startedBy` when a starter is known, plus (owner follow-up,
+ * 2026-10-05) `onBehalfOf` = the consultation's clinician, so a doctor reads a governed run a
+ * machine opened for them. Each key is written only when known.
+ */
+function withStartedBy(metaData: Record<string, unknown>, startedBy: RunPrincipal | null, clinicianUserId?: string | null): Record<string, unknown> {
+  return {
+    ...metaData,
+    ...(startedBy ? { [RUN_STARTED_BY_KEY]: startedBy } : {}),
+    ...(clinicianUserId ? { [RUN_ON_BEHALF_OF_KEY]: { type: 'user', id: clinicianUserId } satisfies RunPrincipal } : {}),
+  };
 }

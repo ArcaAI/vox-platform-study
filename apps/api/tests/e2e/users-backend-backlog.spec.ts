@@ -27,7 +27,7 @@
  * rows are mutated destructively.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, createTenantUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -59,10 +59,7 @@ const CREATED_PW = 'Password123!';
 
 /** Create a throwaway user in __GLOBAL__ (mirrors). */
 async function createUser(request: APIRequestContext, username: string): Promise<CreatedUser> {
-  const res = await request.post('/api/v1/admin/users', {
-    headers: bearer(saGlobalToken),
-    data: { username, password: CREATED_PW },
-  });
+  const res = await createTenantUser(request, saGlobalToken, { username, password: CREATED_PW });
   expect(res.status(), `create throwaway user ${username}`).toBeLessThan(300);
   return (await res.json()) as CreatedUser;
 }
@@ -73,41 +70,16 @@ async function deleteUser(request: APIRequestContext, id: string | undefined): P
   await request.delete(`/api/v1/admin/users/${id}`, { headers: bearer(saGlobalToken) }).catch(() => undefined);
 }
 
-function asArray<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: T[] }).data)) return (raw as { data: T[] }).data;
-  return [];
-}
-
 /**
  * Create a throwaway user that can actually AUTHENTICATE into __GLOBAL__. Login
  * (non-super-admin) requires an active role AND an active department in the
- * tenant (auth.controller), so we mirror a/U11:
- * create → assign a role → assign a department. Used by #8 so the reset flows
- * can be proven by a real login without mutating any seeded account.
+ * tenant (auth.controller); since TASK-983 R6 / OD-4 both ride on the create
+ * itself (`createTenantUser`), so every user `createUser` makes is loginable.
+ * Used by #8 so the reset flows can be proven by a real login without mutating
+ * any seeded account.
  */
 async function createLoginableUser(request: APIRequestContext, username: string): Promise<CreatedUser> {
-  const u = await createUser(request, username);
-
-  const rolesRes = await request.get('/api/v1/admin/rbac/roles', { headers: bearer(saGlobalToken) });
-  expect(rolesRes.status(), 'list roles for loginable-user setup').toBe(200);
-  const roles = asArray<{ id: string; name: string }>(await rolesRes.json());
-  const role = roles.find((r) => r.name === 'DOCTOR') ?? roles.find((r) => r.name === 'NURSE') ?? roles[0];
-  expect(role, 'a seeded role exists to assign').toBeTruthy();
-  const assignRole = await request.post(`/api/v1/admin/users/${u.id}/roles`, { headers: bearer(saGlobalToken), data: { roleId: role.id } });
-  expect([200, 201], 'assign role to throwaway user').toContain(assignRole.status());
-
-  const deptRes = await request.get('/api/v1/admin/departments', { headers: bearer(saGlobalToken) });
-  expect(deptRes.status(), 'list departments for loginable-user setup').toBe(200);
-  const depts = asArray<{ id: string }>(await deptRes.json());
-  expect(depts.length, 'seed ships at least one department for tenant membership').toBeGreaterThan(0);
-  const assignDept = await request.post(`/api/v1/admin/users/${u.id}/departments`, {
-    headers: bearer(saGlobalToken),
-    data: { departmentId: depts[0].id, isPrimary: true },
-  });
-  expect([200, 201], 'assign department to throwaway user').toContain(assignDept.status());
-
-  return u;
+  return createUser(request, username);
 }
 
 test.beforeAll(async ({ request }) => {
