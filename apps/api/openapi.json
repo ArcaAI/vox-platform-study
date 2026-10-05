@@ -3866,7 +3866,7 @@
             "type": "boolean"
           },
           "processing": {
-            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "description": "What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).",
             "enum": [
               "IDLE",
               "FINALIZING_TRANSCRIPT",
@@ -5831,7 +5831,7 @@
             "type": "string"
           },
           "processingReason": {
-            "description": "Why processing is FAILED or AWAITING_REVIEW, or null.",
+            "description": "Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null.",
             "nullable": true,
             "type": "string"
           },
@@ -14191,6 +14191,10 @@
           },
           "error": {
             "description": "Error message if failed",
+            "type": "string"
+          },
+          "initiatorId": {
+            "description": "Principal (user or service account) that started the job (ownership check carry-through)",
             "type": "string"
           },
           "jobId": {
@@ -23039,6 +23043,10 @@
       },
       "ReopenConsultationRequest": {
         "properties": {
+          "clinicianUserId": {
+            "description": "The clinician this reopen is attributed to, under the attribution rule of `close`. Optional for every caller: a service account that omits it reopens for the clinician the consultation names (a machine is never the clinician); a human or API key acts for themselves.",
+            "type": "string"
+          },
           "reason": {
             "description": "Why the consultation is reopened (audited). At most 256 characters.",
             "maxLength": 256,
@@ -25521,7 +25529,7 @@
             "type": "boolean"
           },
           "processing": {
-            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "description": "What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).",
             "enum": [
               "IDLE",
               "FINALIZING_TRANSCRIPT",
@@ -40528,7 +40536,7 @@
             }
           },
           {
-            "description": "Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for drafts waiting on a clinician, FAILED).",
+            "description": "Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for a note a clinician must look at because of coverage gaps or an escalation, FAILED). A written note is IDLE with processingReason NOTE_READY.",
             "in": "query",
             "name": "processing",
             "required": false,
@@ -64208,6 +64216,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a pending or running async consultation job",
@@ -67530,7 +67541,7 @@
     },
     "/api/v1/consultations/{id}/reopen": {
       "post": {
-        "description": "CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.",
+        "description": "CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.\n\n`clinicianUserId` (optional) names the clinician the reopen is attributed to, under the rule of `close`. A service account that omits it reopens for the clinician the consultation names — a machine is never recorded as the clinician.",
         "operationId": "ConsultationController_reopen",
         "parameters": [
           {
@@ -67574,8 +67585,11 @@
             },
             "description": "Creating a ConsultationResponse by id"
           },
+          "400": {
+            "description": "`CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to."
+          },
           "404": {
-            "description": "Consultation not found"
+            "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
           },
           "409": {
             "description": "`CONSULTATION_REOPEN_NOT_ALLOWED` — the tenant does not allow reopening an approved consultation; `CONSULTATION_TRANSITION_ILLEGAL` — not closed."
@@ -67593,6 +67607,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -67829,6 +67846,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",

@@ -13738,7 +13738,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/reopen",
       "routePath": "/consultations/:id/reopen",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -13982,7 +13984,9 @@
       "method": "POST",
       "path": "/api/v1/consultations/{id}/summary/async",
       "routePath": "/consultations/:id/summary/async",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:report:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [
@@ -14176,7 +14180,9 @@
       "method": "PATCH",
       "path": "/api/v1/consultations/jobs/{jobId}/cancel",
       "routePath": "/consultations/jobs/:jobId/cancel",
-      "svcScopes": [],
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
       "apiKeyScopes": [

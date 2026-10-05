@@ -1386,7 +1386,7 @@ export interface ConsultationResponse {
   patientId: string;
   /** What the platform is doing in the background for this consultation. */
   processing: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
-  /** Why processing is FAILED or AWAITING_REVIEW, or null. */
+  /** Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null. */
   processingReason: string | null;
   /** Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED and STOPPED, false for APPROVED, CLOSED_COMPLETE and CLOSED_INCOMPLETE. Starting capture on a non-recordable consultation answers 409 `CONSULTATION_NOT_RECORDABLE`; reopen it, or open without the old visit id to start a new consultation. */
   recordable: boolean;

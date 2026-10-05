@@ -3866,7 +3866,7 @@
             "type": "boolean"
           },
           "processing": {
-            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "description": "What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).",
             "enum": [
               "IDLE",
               "FINALIZING_TRANSCRIPT",
@@ -5831,7 +5831,7 @@
             "type": "string"
           },
           "processingReason": {
-            "description": "Why processing is FAILED or AWAITING_REVIEW, or null.",
+            "description": "Why processing is FAILED or AWAITING_REVIEW (a note that needs a human), or NOTE_READY when a written note is waiting (processing IDLE); otherwise null.",
             "nullable": true,
             "type": "string"
           },
@@ -14191,6 +14191,10 @@
           },
           "error": {
             "description": "Error message if failed",
+            "type": "string"
+          },
+          "initiatorId": {
+            "description": "Principal (user or service account) that started the job (ownership check carry-through)",
             "type": "string"
           },
           "jobId": {
@@ -23039,6 +23043,10 @@
       },
       "ReopenConsultationRequest": {
         "properties": {
+          "clinicianUserId": {
+            "description": "The clinician this reopen is attributed to, under the attribution rule of `close`. Optional for every caller: a service account that omits it reopens for the clinician the consultation names (a machine is never the clinician); a human or API key acts for themselves.",
+            "type": "string"
+          },
           "reason": {
             "description": "Why the consultation is reopened (audited). At most 256 characters.",
             "maxLength": 256,
@@ -25521,7 +25529,7 @@
             "type": "boolean"
           },
           "processing": {
-            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "description": "What the platform is doing for the consultation, independent of `status`. A written note is IDLE with `processingReason` NOTE_READY; AWAITING_REVIEW means a human must look at it (coverage gaps or an escalation).",
             "enum": [
               "IDLE",
               "FINALIZING_TRANSCRIPT",
@@ -36464,7 +36472,7 @@
     },
     "/api/v1/consultations/jobs/{jobId}/cancel": {
       "patch": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:read`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationJobController_cancelJob",
         "parameters": [
           {
@@ -36491,6 +36499,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Cancel a pending or running async consultation job",
@@ -36503,12 +36514,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/jobs/{jobId}/stream": {
@@ -40587,7 +40601,7 @@
     },
     "/api/v1/consultations/{id}/reopen": {
       "post": {
-        "description": "CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.\n\n`clinicianUserId` (optional) names the clinician the reopen is attributed to, under the rule of `close`. A service account that omits it reopens for the clinician the consultation names — a machine is never recorded as the clinician.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:session:write`).\n\n**API key scopes** — `consultation:session:write`.\n\n**Concurrency** — requires `If-Match`. Omitting it is a `428`; a stale value is a `412`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_reopen",
         "parameters": [
           {
@@ -40631,8 +40645,11 @@
             },
             "description": "Creating a ConsultationResponse by id"
           },
+          "400": {
+            "description": "`CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to."
+          },
           "404": {
-            "description": "Consultation not found"
+            "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
           },
           "409": {
             "description": "`CONSULTATION_REOPEN_NOT_ALLOWED` — the tenant does not allow reopening an approved consultation; `CONSULTATION_TRANSITION_ILLEGAL` — not closed."
@@ -40650,6 +40667,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
@@ -40662,12 +40682,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": true,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:session:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/start": {
@@ -40895,7 +40918,7 @@
     },
     "/api/v1/consultations/{id}/summary/async": {
       "post": {
-        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token rejected.\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:consultation:report:write`).\n\n**API key scopes** — `consultation:report:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "ConsultationController_generateSummaryAsync",
         "parameters": [
           {
@@ -40945,6 +40968,9 @@
           },
           {
             "api-key": []
+          },
+          {
+            "service-account": []
           }
         ],
         "summary": "Creating a AsyncJobResponseDto by id",
@@ -40957,12 +40983,15 @@
         ],
         "x-hope-credentials": [
           "user-jwt",
-          "api-key"
+          "api-key",
+          "service-account"
         ],
         "x-hope-permission-mode": "AND",
         "x-hope-plane": "business",
         "x-hope-requires-if-match": false,
-        "x-hope-service-account-scopes": []
+        "x-hope-service-account-scopes": [
+          "svc:consultation:report:write"
+        ]
       }
     },
     "/api/v1/consultations/{id}/summary/comprehensive": {
