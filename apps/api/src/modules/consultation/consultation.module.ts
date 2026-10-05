@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { TenantLockModule } from '@arcaai/applications';
+import { ConsultationAttachmentServiceModule, ConsultationFeedbackServiceModule, TenantLockModule } from '@arcaai/applications';
 import {
   ConsultationServiceModule,
   ContextServiceModule,
@@ -52,6 +52,9 @@ import { ConsultationJobController } from './consultation-job.controller';
 import { HarnessInternalController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
 import { ConsultationReadInternalController } from './consultation-read-internal.controller';
+import { ConsultationAccessHelper } from './consultation-access.helper';
+import { ConsultationAttachmentController } from './consultation-attachment.controller';
+import { ConsultationFeedbackController } from './consultation-feedback.controller';
 
 @Module({
   imports: [
@@ -114,6 +117,9 @@ import { ConsultationReadInternalController } from './consultation-read-internal
     ConsultationTelemetryServiceModule,
     // TASK-1036 §9.3 / TASK-1038 — `IConsultationReadService` for the harness's declared reads.
     ConsultationReadServiceModule,
+    // Attachment intents/complete/content and clinician feedback (business plane).
+    ConsultationAttachmentServiceModule,
+    ConsultationFeedbackServiceModule,
   ],
   controllers: [
     ConsultationController,
@@ -126,10 +132,13 @@ import { ConsultationReadInternalController } from './consultation-read-internal
     HarnessInternalController,
     ConsentInternalController,
     ConsultationReadInternalController,
+    // `feedback/reason-codes` is a two-segment literal path, so it never binds as `:id`.
+    ConsultationAttachmentController,
+    ConsultationFeedbackController,
   ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's
   // own RedisSubscriberService provider; IConfigService is @Global).
-  providers: [RedisSubscriberService],
+  providers: [RedisSubscriberService, ConsultationAccessHelper],
 })
 export class ConsultationModule {}
