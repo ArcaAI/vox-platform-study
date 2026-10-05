@@ -166,6 +166,18 @@ export class EncounterRefinalizeService {
     // An explicit request on encounter 1 of a governed consultation belongs to the governing run
     // too — the default engine would write a second, ungoverned note beside it.
     const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);
+    // The stop of encounter 1 hands the transcript to the governing run, which writes the first note
+    // now; processing reports it (the harness settles it like any other note generation).
+    if (
+      input.trigger === 'stop' &&
+      kind === 'first' &&
+      item &&
+      tenantWorkflowGoverns(consultation.metadata) &&
+      governingRunOf(consultation.metadata)?.status === 'RUNNING' &&
+      consultation.processing === ConsultationProcessing.IDLE
+    ) {
+      await this.setProcessing(consultation.id, ConsultationProcessing.SUMMARIZING);
+    }
     if ((kind !== 'refinalize' && !governedFirst) || !item) {
       return { kind: 'not-refinalize', reason: kind === 'refinalize' ? 'not-full-transcript' : kind };
     }
