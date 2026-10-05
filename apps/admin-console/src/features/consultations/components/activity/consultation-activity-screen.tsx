@@ -38,7 +38,8 @@ function RestrictedCard() {
       <div className="flex flex-col gap-1">
         <p className="font-medium">Restricted</p>
         <p className="text-muted-foreground text-sm">
-          Consultation history includes decrypted patient data, so it is limited to platform and tenant administrators. Your account does not have access to it.
+          Consultation history includes decrypted patient data, so it is limited to platform and tenant administrators. Your account does not have
+          access to it.
         </p>
       </div>
     </Card>
@@ -90,7 +91,14 @@ function FilterToolbar({
       {shown.map((kind) => {
         const pressed = kinds.includes(kind);
         return (
-          <Button key={kind} type="button" size="sm" variant={pressed ? 'default' : 'outline'} aria-pressed={pressed} onClick={() => onKinds(pressed ? kinds.filter((k) => k !== kind) : [...kinds, kind])}>
+          <Button
+            key={kind}
+            type="button"
+            size="sm"
+            variant={pressed ? 'default' : 'outline'}
+            aria-pressed={pressed}
+            onClick={() => onKinds(pressed ? kinds.filter((k) => k !== kind) : [...kinds, kind])}
+          >
             {kindLabel(kind)}
           </Button>
         );
@@ -129,9 +137,9 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
     const merged = new Map<number, EncounterBlock>();
     for (const page of pages) for (const block of page.encounters) merged.set(block.seq, block);
     return [...merged.values()].sort((a, b) => a.seq - b.seq);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `pages` is rebuilt from `feed.data` every render; keying on the query data keeps the memo stable
   }, [feed.data]);
-  const built = useMemo(() => buildActivityRows({ items: pages.flatMap((page) => page.items), encounters }), [feed.data, encounters]); // eslint-disable-line react-hooks/exhaustive-deps
+  const built = useMemo(() => buildActivityRows({ items: pages.flatMap((page) => page.items), encounters }), [feed.data, encounters]); // eslint-disable-line react-hooks/exhaustive-deps -- `pages` derives from `feed.data` (see above)
 
   const presentKinds = useMemo(() => {
     const present = new Set<ActivityKind>();
@@ -188,11 +196,20 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
             height="calc(100svh - 24rem)"
           />
           {feed.hasNextPage ? (
-            <Button type="button" variant="outline" size="sm" className="self-center" disabled={feed.isFetchingNextPage} onClick={() => void feed.fetchNextPage()}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-center"
+              disabled={feed.isFetchingNextPage}
+              onClick={() => void feed.fetchNextPage()}
+            >
               Load more
             </Button>
           ) : null}
-          <p className="text-muted-foreground text-xs">Showing the latest version of every item. Items are decrypted for this view and the read is audited.</p>
+          <p className="text-muted-foreground text-xs">
+            Showing the latest version of every item. Items are decrypted for this view and the read is audited.
+          </p>
         </div>
         {selectedItemId !== null ? (
           <VersionHistoryPanel
