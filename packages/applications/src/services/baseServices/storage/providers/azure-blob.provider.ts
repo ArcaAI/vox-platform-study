@@ -4,13 +4,18 @@ import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
 import {
+  BlobObjectHead,
+  BlobObjectLocation,
   DeleteObjectParams,
   GetObjectParams,
+  GetObjectRangeParams,
   IBlobStorageProvider,
   LifecycleRule,
   ListObjectsParams,
   ListObjectsResult,
   PresignGetParams,
+  PresignedPutIntent,
+  PresignPutIntentParams,
   PresignPutParams,
   PutObjectParams,
   StorageNotSupportedError,
@@ -159,6 +164,40 @@ export class AzureBlobProvider implements IBlobStorageProvider {
     const sas = this.buildSas(params.bucket, params.key, BlobSASPermissions.parse('cw'), params.expiresInSeconds, params.contentType);
     const blobClient = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
     return `${blobClient.url}?${sas}`;
+  }
+
+  /**
+   * SAS with the same TTL as S3. Azure has no request-checksum header, so `checksumSha256` is not
+   * enforced at the store — callers must re-hash after upload. Content length is not signable in a
+   * SAS either; the size is checked via {@link headObject} on completion.
+   */
+  async presignPutIntent(params: PresignPutIntentParams): Promise<PresignedPutIntent> {
+    const sas = this.buildSas(params.bucket, params.key, BlobSASPermissions.parse('cw'), params.expiresSeconds, params.contentType);
+    const blobClient = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
+    return {
+      url: `${blobClient.url}?${sas}`,
+      headers: { 'x-ms-blob-type': 'BlockBlob', 'Content-Type': params.contentType, 'Content-Length': String(params.contentLength) },
+    };
+  }
+
+  async headObject(params: BlobObjectLocation): Promise<BlobObjectHead | null> {
+    const blob = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
+    try {
+      const props = await this.forContainer(params.bucket, () => blob.getProperties());
+      return {
+        sizeBytes: props.contentLength ?? 0,
+        contentType: props.contentType ?? 'application/octet-stream',
+        etag: (props.etag ?? '').replace(/"/g, ''),
+      };
+    } catch (error) {
+      if ((error as { statusCode?: number })?.statusCode === 404) return null;
+      throw error;
+    }
+  }
+
+  async getObjectRange(params: GetObjectRangeParams): Promise<Buffer> {
+    const blob = this.client.getContainerClient(params.bucket).getBlockBlobClient(params.key);
+    return this.forContainer(params.bucket, () => blob.downloadToBuffer(params.start, params.end - params.start + 1));
   }
 
   async createBucket(bucket: string): Promise<void> {

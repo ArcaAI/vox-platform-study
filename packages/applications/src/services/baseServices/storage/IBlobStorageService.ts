@@ -1,6 +1,7 @@
 import { Readable } from 'stream';
 
 import {
+  BlobObjectHead,
   DeleteObjectParams,
   GetObjectParams,
   LifecycleRule,
@@ -8,6 +9,8 @@ import {
   ListObjectsResult,
   PresignGetParams,
   PresignPutParams,
+  PresignedPutIntent,
+  PresignPutIntentParams,
   PutObjectParams,
   StorageDescriptor,
 } from './providers/IBlobStorageProvider';
@@ -28,6 +31,15 @@ export interface IBlobStorageService {
   listObjects(params: ListObjectsParams): Promise<ListObjectsResult>;
   presignGet(params: PresignGetParams): Promise<string>;
   presignPut(params: PresignPutParams): Promise<string>;
+  /** Presigned PUT with content type / length (and S3 checksum) signed. Refused up front when the declared size would exceed the tenant's storage quota. */
+  presignPutIntent(params: PresignPutIntentParams): Promise<PresignedPutIntent>;
+  headObject(bucket: string, key: string): Promise<BlobObjectHead | null>;
+  /** Inclusive byte range. */
+  getObjectRange(bucket: string, key: string, start: number, end: number): Promise<Buffer>;
+  /** Throws `QuotaExceededException` when storing `bytes` more would exceed the tenant's quota (fails open when usage is unreadable). */
+  assertCanStore(bucket: string, bytes: number): Promise<void>;
+  /** Adds bytes written straight to the store by a client (presigned PUT) to the cached tenant usage. */
+  recordExternalWrite(bucket: string, bytes: number): Promise<void>;
   createBucket(bucket: string): Promise<void>;
   deleteBucket(bucket: string): Promise<void>;
   bucketExists(bucket: string): Promise<boolean>;

@@ -23,16 +23,20 @@ import { Readable } from 'stream';
 
 import { StorageProvider } from '@arcaai/types';
 import {
+  BlobObjectHead,
   BlobObjectLocation,
   CompleteMultipartUploadParams,
   DeleteObjectParams,
   GetObjectParams,
+  GetObjectRangeParams,
   IBlobStorageProvider,
   LifecycleRule,
   ListObjectsParams,
   ListObjectsResult,
   MultipartUploadParams,
   PresignGetParams,
+  PresignedPutIntent,
+  PresignPutIntentParams,
   PresignPutParams,
   PresignUploadPartParams,
   PutObjectParams,
@@ -218,6 +222,61 @@ export class S3BlobProvider implements IBlobStorageProvider {
     return getSignedUrl(this.presignClient, new PutObjectCommand({ Bucket: params.bucket, Key: params.key, ContentType: params.contentType }), {
       expiresIn: params.expiresInSeconds,
     });
+  }
+
+  /**
+   * Content type and length are added to the signed headers (the presigner signs only `host`
+   * otherwise), so the store rejects a body that differs. The checksum stays a real header rather
+   * than being hoisted into the query, and no SSE header is sent — the bucket default applies.
+   */
+  async presignPutIntent(params: PresignPutIntentParams): Promise<PresignedPutIntent> {
+    const url = await getSignedUrl(
+      this.presignClient,
+      new PutObjectCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+        ContentType: params.contentType,
+        ContentLength: params.contentLength,
+        ...(params.checksumSha256 ? { ChecksumSHA256: params.checksumSha256 } : {}),
+      }),
+      {
+        expiresIn: params.expiresSeconds,
+        signableHeaders: new Set(['content-type', 'content-length']),
+        unhoistableHeaders: new Set(['x-amz-checksum-sha256']),
+      },
+    );
+    return {
+      url,
+      headers: {
+        'Content-Type': params.contentType,
+        'Content-Length': String(params.contentLength),
+        ...(params.checksumSha256 ? { 'x-amz-checksum-sha256': params.checksumSha256 } : {}),
+      },
+    };
+  }
+
+  async headObject(params: BlobObjectLocation): Promise<BlobObjectHead | null> {
+    try {
+      const head = await this.forBucket(params.bucket, () => this.client.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key, ChecksumMode: 'ENABLED' })));
+      return {
+        sizeBytes: head.ContentLength ?? 0,
+        contentType: head.ContentType ?? 'application/octet-stream',
+        etag: (head.ETag ?? '').replace(/"/g, ''),
+        ...(head.ChecksumSHA256 ? { checksumSha256: head.ChecksumSHA256 } : {}),
+      };
+    } catch (error) {
+      const e = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (e?.name === 'NotFound' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404) return null;
+      throw error;
+    }
+  }
+
+  async getObjectRange(params: GetObjectRangeParams): Promise<Buffer> {
+    const response = await this.forBucket(params.bucket, () =>
+      this.client.send(new GetObjectCommand({ Bucket: params.bucket, Key: params.key, Range: `bytes=${params.start}-${params.end}` })),
+    );
+    if (!response.Body) throw new Error(`Object not found: ${params.bucket}/${params.key}`);
+    return this.streamToBuffer(response.Body as unknown as NodeJS.ReadableStream);
   }
 
   async createBucket(bucket: string): Promise<void> {
