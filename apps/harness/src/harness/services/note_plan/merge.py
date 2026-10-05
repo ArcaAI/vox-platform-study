@@ -122,6 +122,13 @@ def _keyed_sections(
     return sections
 
 
+def _names_a_section(
+    data: Mapping[str, Any], plan: NotePlanV1, section_keys: Sequence[str]
+) -> bool:
+    titles = _title_index(plan)
+    return any(titles.get(_norm_title(name)) in section_keys for name in data)
+
+
 def parse_answer(content: str, plan: NotePlanV1, section_keys: Sequence[str]) -> ParsedAnswer:
     """One call's answer, whatever shape the model chose.
 
@@ -149,8 +156,10 @@ def parse_answer(content: str, plan: NotePlanV1, section_keys: Sequence[str]) ->
         answer = ParsedAnswer(sections=split_sections(data["case_note"], plan, section_keys))
     else:
         keyed = _keyed_sections(data, plan, section_keys)
-        if not keyed:
+        if not keyed and not _names_a_section(data, plan, section_keys):
             return ParsedAnswer(sections=split_sections(content, plan, section_keys))
+        # An object keyed by the call's sections whose values are all empty wrote nothing: it is
+        # never read as text (the raw JSON would become the first section's body).
         answer = ParsedAnswer(sections=keyed)
     redactions = data.get("redactions")
     if isinstance(redactions, list):

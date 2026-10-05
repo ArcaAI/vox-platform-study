@@ -47,8 +47,10 @@ from harness.services.note_plan.executor import (
     NoteCallRequest,
     NoteCallResult,
     NotePlanCallFailed,
+    NotePlanEmptyNote,
     execute_plan,
     note_run_stats,
+    stop_reason_of,
     summed_usage,
 )
 from harness.services.note_plan.fallback import PlanAttempt, plan_attempts, walk_attempts
@@ -1774,6 +1776,9 @@ async def _run_note_plan_finalizer(
             # Each candidate spends its own connection; the plan's own attempt carries the
             # agent's only when the plan names the agent's model.
             provider_override=attempt.provider_override,
+            # The agent's reasoning posture: a model that reasons unasked spends the section
+            # budget on thinking and the answer is cut off.
+            reasoning=generation.get("reasoning"),
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=payload.tenant_id,
@@ -1796,6 +1801,7 @@ async def _run_note_plan_finalizer(
             provider=result.provider or attempt.provider,
             model=result.model or attempt.model,
             usage=result.usage,
+            stop_reason=stop_reason_of(result),
         )
 
     agent_stats: dict[str, Any] = {
@@ -1820,18 +1826,26 @@ async def _run_note_plan_finalizer(
             allow_repair=budget.allows_another,
         )
     except NotePlanCallFailed as exc:
+        # No note is stored — not a cut-off one, not an empty one — and the consultation is told
+        # why, instead of reading the run's later `OUTPUT_INVALID`.
+        code = (
+            "note_empty"
+            if isinstance(exc, NotePlanEmptyNote)
+            else "note_output_truncated" if exc.truncated_only else "note_plan_call_failed"
+        )
         batch.record(
             step_type=STEP_NODE,
             name=payload.node_type,
             status=STATUS_DEGRADED,
             started=started,
-            error_code="note_plan_call_failed",
+            error_code=code,
         )
         record_note_plan_steps(
             batch, plan, exc.records, provider=provider, model=model, extra_stats=agent_stats
         )
         await batch.flush()
-        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {exc}")
+        await _report_finalizer_failure(payload, code)
+        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {code}: {exc}")
     except ValueError as exc:
         return await _degrade_note_plan(payload, started, "note_plan_invalid", str(exc))
 
@@ -2139,6 +2153,8 @@ async def _run_text_generation(
                 # candidate of the chain carries its own, so a fallback does not inherit the
                 # primary's.
                 provider_override=candidate.provider_override,
+                # THIS candidate's reasoning posture (`parameters.generation.reasoning`).
+                reasoning=generation.get("reasoning"),
             )
         except TextServiceError as exc:
             # A provider outage: switch to the next resolved candidate (a DIFFERENT engine —
