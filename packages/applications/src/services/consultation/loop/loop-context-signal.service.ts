@@ -1,7 +1,7 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { forwardRef, HttpException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationRepository } from '@arcaai/domains';
+import { ConsultationProcessing, ConsultationRepository } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
@@ -9,6 +9,12 @@ import { HARNESS_LOOP_EMERGENCY_STOP_KEY } from '../consultation-gates.constants
 import { tenantWorkflowGoverns } from '../governing-engine';
 import { ConsultationPipelineEvent, type ContextAddedPayload } from '../events';
 import { HarnessGatewayService, type HarnessConsultationEndingSignal, type HarnessLoopCancelSignal } from '../harness/harness-gateway.service';
+import { HarnessInternalService } from '../harness/harness-internal.service';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
+import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanRef } from '../note-composition/note-plan.types';
+
+/** Composer refusals that fail the note path by name: the loop still ends, with no plan. */
+const NOTE_PLAN_FAIL_CLOSED_CODES: ReadonlySet<string> = new Set([NOTE_INPUT_EXCEEDS_CONTEXT, 'NOTE_MODEL_CONTEXT_UNDECLARED']);
 
 /**
  * LoopContextSignalService — the `@OnEvent(ContextAdded)` consumer that
@@ -120,6 +126,14 @@ export class LoopContextSignalService {
     // `substrate-exclusivity.di-wiring.test.ts` pins that so the gate cannot go silently
     // inert the way `IGateEditExemplarRetriever` did.
     @Optional() @Inject(ConsultationRepository) private readonly consultationRepository?: ConsultationRepository,
+    // TASK-1045 — composes the note plan the loop's finalize child executes. Optional + trailing
+    // like every dependency above it; ABSENT ⇒ the ending signal carries no plan, as before.
+    // `forwardRef`: the harness-internal service file reaches this one through barrels.
+    @Optional()
+    @Inject(forwardRef(() => HarnessInternalService))
+    private readonly notePlanComposer?: Pick<HarnessInternalService, 'composeNotePlan'>,
+    // TASK-1045 — a plan that cannot be composed fails the consultation's processing by name.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
   ) {}
 
   /**
@@ -330,14 +344,57 @@ export class LoopContextSignalService {
     }
     if (gate !== 'signal') return;
 
+    const notePlanRef = await this.composeEndingNotePlan(consultationId);
     try {
-      await this.harnessGatewayService.signalConsultationEnding(consultationId, payload);
+      await this.harnessGatewayService.signalConsultationEnding(consultationId, notePlanRef ? { ...payload, notePlanRef } : payload);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to signal loop consultation-ending (best-effort)',
         consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * The note plan the loop's finalize child executes, composed at the ending signal — the same
+   * plan the harness-doc starter composes before a direct start. Never throws: the loop must end
+   * whatever happens here. A plan that cannot fit the model's window, or a model with no declared
+   * window, fails the consultation's processing with that reason and the loop ends WITHOUT a plan;
+   * any other failure ends it without a plan too (its `assemble` composes or refuses itself).
+   */
+  private async composeEndingNotePlan(consultationId: string): Promise<NotePlanRef | undefined> {
+    const tenantId = this.contextTenantId;
+    if (!this.notePlanComposer || !tenantId) return undefined;
+    const userId = this.clsService?.get('user')?.id;
+    try {
+      const summary = await this.notePlanComposer.composeNotePlan(consultationId, { tenantId, ...(userId ? { userId } : {}), mode: 'final' });
+      return summary.notePlanRef;
+    } catch (error) {
+      const body = error instanceof HttpException ? error.getResponse() : null;
+      const raw = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).code : undefined;
+      const code = typeof raw === 'string' ? raw : undefined;
+      if (code && NOTE_PLAN_FAIL_CLOSED_CODES.has(code)) {
+        this.logger.warn({ message: 'Note plan could not be composed at the loop ending — the note path fails closed', consultationId, code });
+        try {
+          await this.lifecycleGate?.setProcessing(consultationId, ConsultationProcessing.FAILED, code);
+        } catch (gateError) {
+          this.logger.warn({
+            message: 'Consultation processing could not be set FAILED after a note-plan refusal',
+            consultationId,
+            code,
+            error: gateError instanceof Error ? gateError.message : String(gateError),
+          });
+        }
+        return undefined;
+      }
+      this.logger.warn({
+        message: 'Note plan could not be composed at the loop ending — the loop finalizes without a plan',
+        consultationId,
+        code,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
     }
   }
 
