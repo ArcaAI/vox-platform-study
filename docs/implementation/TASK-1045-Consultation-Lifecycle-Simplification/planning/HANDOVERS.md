@@ -46,3 +46,4 @@
 | H-42 | F2 | ALaaS gate | orchestrator gate | run existing broker, gateway, stt-lane, visit-lifecycle, language, final-note-skew specs | pending (gate) |
 | H-43 | F2/F3 | ALaaS port | follow-up | move `FAKE_DEFAULT_FEEDBACK_REASONS` from the fake into the port file (shim/service import from the fake today) | follow-up |
 | H-44 | F2 | ALaaS `generation.cancel` | follow-up | port has no cancel verb → `note.progress {step:'cancel_unsupported'}` | follow-up (HOPE cancel route) |
+| H-45 | U7 | ALaaS U8 | U8 | workspace builds priorCaseNotes/priorVisits from its own patientData (no live context fetch, no fallbackNotes) — check parity when folding in | pending (U8 brief) |
