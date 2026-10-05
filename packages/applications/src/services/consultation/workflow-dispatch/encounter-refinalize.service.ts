@@ -9,7 +9,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { ConfigResolver } from '../../config-resolver';
 import { ConsultationPipelineEvent, type TranscriptionCreatedPayload } from '../events/consultation.events';
-import { tenantWorkflowGoverns } from '../governing-engine';
+import { governingRunOf, tenantWorkflowGoverns } from '../governing-engine';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessInternalService } from '../harness/harness-internal.service';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
@@ -150,7 +150,20 @@ export class EncounterRefinalizeService {
         : await this.contextItemRepository.findFullTranscript(consultation.id);
     const item = found && found.consultationId === consultation.id ? found : null;
     const kind = classifySessionFinal({ status: String(consultation.status), currentEncounterSeq: consultation.currentEncounterSeq }, item);
-    if (kind !== 'refinalize' || !item) return { kind: 'not-refinalize', reason: kind === 'refinalize' ? 'not-full-transcript' : kind };
+    // An explicit request on encounter 1 of a governed consultation belongs to the governing run
+    // too — the default engine would write a second, ungoverned note beside it.
+    const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);
+    if ((kind !== 'refinalize' && !governedFirst) || !item) {
+      return { kind: 'not-refinalize', reason: kind === 'refinalize' ? 'not-full-transcript' : kind };
+    }
+    if (governedFirst) {
+      const finalizing =
+        consultation.processing === ConsultationProcessing.SUMMARIZING || consultation.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT;
+      // The open-time run is still writing the first note: join it rather than supersede it.
+      if (finalizing || governingRunOf(consultation.metadata)?.status === 'RUNNING') {
+        return { kind: 'coalesced', lane: 'governed', jobId: null };
+      }
+    }
 
     const stateKey = refinalizeStateKey(item);
     const claimKey = noteRefinalizeClaimKey(consultation.id, stateKey);

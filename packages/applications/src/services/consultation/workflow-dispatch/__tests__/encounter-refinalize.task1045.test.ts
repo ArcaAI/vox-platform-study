@@ -257,6 +257,29 @@ describe('EncounterRefinalizeService — summary/async right after the stop', ()
     expect((h.harnessGateway.start.mock.calls[1] as [string, Record<string, unknown>])[1]).toMatchObject({ supersede: true });
   });
 
+  it('governed, encounter 1, the open-time run still running: summary/async joins it — no supersede, no default engine', async () => {
+    const h = build({ consultation: row({ currentEncounterSeq: 1, metadata: GOVERNED_META }), version: 1 });
+    const explicit = await h.service.onExplicitRequest({ consultationId: CID, tenantId: TENANT, userId: 'doctor-1', jobId: 'harness-doc-e1' });
+
+    expect(explicit).toEqual({ kind: 'coalesced', lane: 'governed', jobId: null });
+    expect(h.dispatch.supersedeGoverningRun).not.toHaveBeenCalled();
+    expect(h.harnessGateway.start).not.toHaveBeenCalled();
+    expect(h.gate.setProcessing).not.toHaveBeenCalled();
+  });
+
+  it('governed, encounter 1, the run ended and the note is written: summary/async is a governed regenerate', async () => {
+    const ended = { governingEngine: { ...GOVERNED_META.governingEngine, runStatus: 'COMPLETED' } };
+    const h = build({
+      consultation: row({ currentEncounterSeq: 1, metadata: ended, processing: 'IDLE', processingReason: 'NOTE_READY' }),
+      version: 1,
+    });
+    const regen = await h.service.onExplicitRequest({ consultationId: CID, tenantId: TENANT, userId: 'doctor-1', jobId: 'harness-doc-e1' });
+
+    expect(regen).toMatchObject({ kind: 'started', lane: 'governed' });
+    expect(h.dispatch.supersedeGoverningRun).toHaveBeenCalledTimes(1);
+    expect(h.harnessGateway.start).not.toHaveBeenCalled();
+  });
+
   it('on a first-encounter consultation summary/async is not ours (the seam proceeds as before)', async () => {
     const h = build({ consultation: row({ currentEncounterSeq: 1 }), version: 1 });
     expect(await h.service.onExplicitRequest({ consultationId: CID, tenantId: TENANT, jobId: 'j' })).toEqual({
