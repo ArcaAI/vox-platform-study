@@ -292,16 +292,17 @@ describe('TASK-951 OD-5 — formatted_previous_visits carries the client’s his
     expect(rendered.indexOf('undated A')).toBeLessThan(rendered.indexOf('undated B'));
   });
 
-  it('bounds the history at the prior-visit cap and MARKS the cut', async () => {
+  // The note composer budgets the history against the model window (note-composition/__tests__/
+  // note-budget-planner.task1045.test.ts); rendering itself never cuts it.
+  it('renders a long history whole, with no truncation marker', async () => {
     const { service } = buildService({
-      items: [item('previous_case_notes', { notes: [{ text: 'x'.repeat(20_000) }] })],
+      items: [item('previous_case_notes', { notes: [{ text: 'x'.repeat(30_000) }] })],
     });
 
     const rendered = (await contextOf(service, session())).formatted_previous_visits;
 
-    expect(rendered.length).toBeLessThan(20_000);
-    // A truncated history must never read as a complete one.
-    expect(rendered).toContain('[prior visit summary truncated]');
+    expect(rendered).toContain('x'.repeat(30_000));
+    expect(rendered).not.toMatch(/truncated/i);
   });
 
   it('stays the empty string when the client supplied no history — the declared default is unchanged', async () => {

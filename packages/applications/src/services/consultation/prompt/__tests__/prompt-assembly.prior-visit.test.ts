@@ -17,7 +17,6 @@
  *     marker, so a multi-visit episode cannot grow the prompt without limit.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PRIOR_VISIT_SUMMARY_MAX_CHARS, PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER } from '../../harness/prior-visit-summary';
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -102,14 +101,16 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
     expect(userPrompt.split('PRIOR-NOTE-MARKER stable').length - 1).toBe(1);
   });
 
-  it('truncates an oversized prior-visit summary with a visible marker', async () => {
+  // The note composer budgets the prior visit against the model window (note-composition/__tests__/
+  // note-budget-planner.task1045.test.ts); prompt assembly itself never cuts it.
+  it('renders an oversized prior-visit summary whole, with no truncation marker', async () => {
     const service = await buildService();
-    const long = 'x'.repeat(PRIOR_VISIT_SUMMARY_MAX_CHARS + 5_000);
+    const long = 'x'.repeat(50_000);
 
     const { userPrompt } = await assemble(service as never, { priorVisitSummary: long });
 
-    expect(userPrompt).toContain(PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER);
-    expect(userPrompt).not.toContain('x'.repeat(PRIOR_VISIT_SUMMARY_MAX_CHARS + 1));
+    expect(userPrompt).toContain(long);
+    expect(userPrompt).not.toMatch(/truncated/i);
   });
 
   it('fills {{context.same_day_prequel_summary}} from sameDayPrequelSummary — independent of the prior-visit carry-forward (TASK-1020)', async () => {

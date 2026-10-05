@@ -41,7 +41,9 @@ function buildController(opts: { principal?: Principal; userId?: string } = {}) 
   };
   const summaryService = {
     updateSummary: vi.fn().mockResolvedValue({ id: SUMMARY }),
-    approveSummary: vi.fn().mockResolvedValue({ contextItemId: SUMMARY, approvalStatus: 'APPROVED', approvedBy: DOCTOR, approvedAt: 'now' }),
+  };
+  const lifecycleService = {
+    approve: vi.fn().mockResolvedValue({ approval: { approvedBy: DOCTOR, approvedAt: 'now' } }),
   };
   const policyEngine = { can: vi.fn().mockReturnValue(false), cannot: vi.fn().mockReturnValue(true) };
   const cls = {
@@ -73,9 +75,10 @@ function buildController(opts: { principal?: Principal; userId?: string } = {}) 
     {} as any, // redisSubscriber
     {} as any, // loopContextSignalService
     {} as any, // documentSectionService
+    lifecycleService as any,
   );
 
-  return { controller, consultationService, summaryService };
+  return { controller, consultationService, summaryService, lifecycleService };
 }
 
 /** A request as `UnifiedAuthGuard` leaves it for each credential class. */
@@ -128,30 +131,31 @@ describe('TASK-972 Lane 4 — POST /consultations/:id/close', () => {
   });
 });
 
-describe('TASK-972 Lane 4 — POST /consultations/:id/summary/:contextItemId/approve', () => {
+describe('TASK-972 Lane 4 — POST /consultations/:id/summary/:contextItemId/approve (deprecated alias of the session approve)', () => {
   it('forwards `clinicianUserId` from the body beside the OCC predicate and the caller', async () => {
-    const { controller, summaryService } = buildController();
+    const { controller, lifecycleService } = buildController();
 
     await (controller as any).approveSummary(CONSULT, SUMMARY, { expectedVersion: 7, clinicianUserId: DOCTOR }, 9, svcReq());
 
-    expect(summaryService.approveSummary).toHaveBeenCalledWith(SUMMARY, {
-      overrideSafetyFlag: undefined,
+    expect(lifecycleService.approve).toHaveBeenCalledWith(CONSULT, {
       expectedVersion: 9,
       clinicianUserId: DOCTOR,
-      caller: { credentialClass: 'service-account', principalId: SVC_ACCOUNT_ID },
+      caller: { isMachine: true, serviceAccountId: SVC_ACCOUNT_ID },
+      legacyContextItemId: SUMMARY,
     });
   });
 
-  it('classifies an API-key sign-off as `api-key`, so the credential cannot exceed its human', async () => {
-    const { controller, summaryService } = buildController({ principal: 'user', userId: DOCTOR });
+  it('classifies an API-key sign-off as an api-key machine carrying its bound human, so the credential cannot exceed its human', async () => {
+    const { controller, lifecycleService } = buildController({ principal: 'user', userId: DOCTOR });
 
     await (controller as any).approveSummary(CONSULT, SUMMARY, { expectedVersion: 2, clinicianUserId: OTHER_DOCTOR }, undefined, keyReq(DOCTOR));
 
-    expect(summaryService.approveSummary.mock.calls[0][1].caller).toEqual({
-      credentialClass: 'api-key',
-      principalId: API_KEY_ID,
-      boundUserId: DOCTOR,
+    expect(lifecycleService.approve.mock.calls[0][1].caller).toEqual({
+      isMachine: true,
+      apiKeyId: API_KEY_ID,
+      userId: DOCTOR,
     });
+    expect(lifecycleService.approve.mock.calls[0][1].clinicianUserId).toBe(OTHER_DOCTOR);
   });
 });
 

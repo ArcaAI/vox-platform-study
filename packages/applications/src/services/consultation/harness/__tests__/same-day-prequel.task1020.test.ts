@@ -11,9 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ContextItemType } from '@arcaai/domains';
 
 import {
-  SAME_DAY_PREQUEL_BLOCK_MAX_CHARS,
   SAME_DAY_PREQUEL_MAX_DEPTH,
-  SAME_DAY_PREQUEL_TRUNCATION_MARKER,
   hasSameDayPrequel,
   resolveSameDayPrequel,
   resolveSameDayPrequelTimeZone,
@@ -242,18 +240,18 @@ describe('TASK-1020 — resolveSameDayPrequel', () => {
     expect(prequel.summary).toBe('');
   });
 
-  it('truncates a long note per block with a trailing marker', async () => {
+  // The note composer budgets the prequel against the model window (note-composition/__tests__/
+  // note-budget-planner.task1045.test.ts); the resolver itself never cuts a block.
+  it('carries a long note whole, with no truncation marker', async () => {
     const morning = row({ id: 'morning' });
-    const long = 'z'.repeat(SAME_DAY_PREQUEL_BLOCK_MAX_CHARS + 500);
+    const long = 'z'.repeat(50_000);
     const deps = readers([morning], { morning: { [ContextItemType.SIGNED_NOTE]: [note(long)] } });
 
     const prequel = await resolveSameDayPrequel(deps, row({ id: 'pm', parentConsultationId: 'morning' }));
 
     const body = prequel.summary.split('\n').slice(1).join('\n');
-    expect(body.endsWith(SAME_DAY_PREQUEL_TRUNCATION_MARKER)).toBe(true);
-    expect(body).toContain('z'.repeat(SAME_DAY_PREQUEL_BLOCK_MAX_CHARS));
-    expect(body).not.toContain('z'.repeat(SAME_DAY_PREQUEL_BLOCK_MAX_CHARS + 1));
-    expect(SAME_DAY_PREQUEL_TRUNCATION_MARKER).toBe('[truncated]');
+    expect(body).toBe(long);
+    expect(prequel.summary).not.toMatch(/truncated/i);
   });
 
   it('picks each ancestor note by AUTHORITY: signed > clinician-modified > raw, newest within a tier', async () => {

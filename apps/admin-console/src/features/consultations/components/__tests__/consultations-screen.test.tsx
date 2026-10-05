@@ -64,7 +64,7 @@ function consultation(overrides: Partial<Consultation> = {}): Consultation {
     departmentId: 'dep-card',
     department: { id: 'dep-card', code: 'CARD', name: 'Cardiology' },
     appointmentDate: '2026-07-04',
-    status: 'SIGNED',
+    status: 'APPROVED',
     createdAt: '2026-07-04T14:02:00.000Z',
     updatedAt: '2026-07-04T15:00:00.000Z',
     ...overrides,
@@ -78,7 +78,7 @@ const ROWS: Consultation[] = [
     doctorId: 'usr-chen',
     doctor: { id: 'usr-chen', username: 'dr.chen' },
     parentConsultationId: 'c_9f2ka7aa11',
-    status: 'CLOSED',
+    status: 'CLOSED_COMPLETE',
   }),
 ];
 
@@ -211,8 +211,8 @@ describe('ConsultationsScreen', () => {
     // Type derives from parentConsultationId (no dedicated DTO field).
     expect(within(table).getByText('New')).toBeDefined();
     expect(within(table).getByText('Revisit')).toBeDefined();
-    expect(within(table).getByText('Signed')).toBeDefined();
-    expect(within(table).getByText('Closed')).toBeDefined();
+    expect(within(table).getByText('Approved')).toBeDefined();
+    expect(within(table).getByText('Closed (approved)')).toBeDefined();
     expect(await screen.findByText(/1,842 consultations/)).toBeDefined();
     expect(screen.getByText(/871 new/)).toBeDefined();
     expect(screen.getByRole('button', { name: /refresh/i })).toBeDefined();
@@ -226,7 +226,7 @@ describe('ConsultationsScreen', () => {
         ['patientId', 'iLike', 'text', 'pt_44s1x9'],
         ['doctorId', 'iLike', 'text', 'usr-vasquez'],
         ['departmentId', 'iLike', 'text', 'dep-card'],
-        ['status', 'eq', 'select', 'SIGNED'],
+        ['status', 'eq', 'select', 'APPROVED'],
       ]),
     );
     const calls = stubConsultations();
@@ -236,7 +236,7 @@ describe('ConsultationsScreen', () => {
     const request = listCalls(calls)[0];
     expect(request).toBeDefined();
     const params = queryOf(request.url);
-    expect(params.get('status')).toBe('SIGNED');
+    expect(params.get('status')).toBe('APPROVED');
     expect(params.get('patientId')).toBe('pt_44s1x9');
     expect(params.get('doctorId')).toBe('usr-vasquez');
     expect(params.get('departmentId')).toBe('dep-card');
@@ -348,7 +348,7 @@ describe('ConsultationsScreen', () => {
       if (call.method === 'GET' && parsed.pathname === '/api/hope/admin/consultations') return listResponse([], 0);
       return undefined;
     });
-    const f = encodeURIComponent(JSON.stringify([['status', 'eq', 'select', 'REOPENED']]));
+    const f = encodeURIComponent(JSON.stringify([['status', 'eq', 'select', 'CLOSED_INCOMPLETE']]));
     renderWithProviders(<ConsultationsScreen />, { searchParams: `?f=${f}` });
 
     expect(await screen.findByText('No consultations in range')).toBeDefined();
