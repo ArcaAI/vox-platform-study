@@ -63,6 +63,12 @@ export interface ISecretsProvider {
   getSecrets(keys: string[], opts?: SecretFetchOptions): Promise<Record<string, string>>;
   rotateSecret(key: string): Promise<void>;
   health(): Promise<SecretsHealth>;
+  /**
+   * Transit BATCH encrypt: one round trip for many plaintexts, ciphertexts returned in input
+   * order. Only the Vault provider implements it; `SecretsService.encryptBatch` fails fast on a
+   * provider without it.
+   */
+  encryptBatch?(plaintexts: Buffer[], keyName?: string): Promise<string[]>;
 }
 
 export type SecretsProviderName = 'env' | 'vault' | 'aws' | 'azure' | 'in-memory';

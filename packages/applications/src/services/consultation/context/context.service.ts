@@ -25,6 +25,7 @@ import {
   SysEventType,
 } from '@arcaai/domains';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService, assertParentInScope, encryptPhiFields, parseStorageUri } from '../../../common';
@@ -35,7 +36,9 @@ import { IUsageLedgerService } from '../../usageLedger';
 import { IConsultationContextSchemaService, type ValidatedContextPayload } from '../../consultation-context-schema';
 import { buildLlmUsageInputFromTokenCounts } from '../summary/text-usage';
 import { contentCounters, stampContentCounters } from '../shared/contentCounters';
-import { IContextService } from './IContextService';
+import { AppendContextVersionInput, IContextService } from './IContextService';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
+import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
 import {
@@ -155,6 +158,15 @@ export class ContextService extends BaseService implements IContextService {
     @Optional()
     @Inject(IConsultationContextSchemaService)
     private readonly contextSchemaService?: IConsultationContextSchemaService,
+    // The consultation content lock (approved / closed ⇒ 409). Optional + trailing; absent,
+    // edits are not lifecycle-gated (direct-construction fixtures).
+    @Optional()
+    @Inject(IConsultationLifecycleGateToken)
+    private readonly lifecycleGate?: IConsultationLifecycleGate,
+    // Derives the FULL_TRANSCRIPT version when a transcript segment is edited.
+    @Optional()
+    @Inject(ITranscriptRecordServiceToken)
+    private readonly transcriptRecord?: ITranscriptRecordService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -458,6 +470,7 @@ export class ContextService extends BaseService implements IContextService {
     // (audit C-3) — verify the ContextItem being mutated
     // belongs to the caller's tenant before any version snapshot / update.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
+    await this.lifecycleGate?.assertContentWritable(contextItem.consultationId);
 
     const userId = this.requestUserId ?? 'system';
 
@@ -572,6 +585,79 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
+   * Append a new version to an item — the write path for corrections, feedback and segment
+   * edits. The version row is immutable; the item moves to it. `expectedVersion` is the item's
+   * `currentVersionNumber` the caller saw (drift ⇒ 412); a locked consultation ⇒ 409. A
+   * TRANSCRIPT_SEGMENT edit also appends the derived FULL_TRANSCRIPT version.
+   */
+  async appendVersion(input: AppendContextVersionInput): Promise<{ versionNumber: number }> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const contextItem = await assertParentInScope(this.contextItemRepository, input.contextItemId, tenantId);
+    await this.lifecycleGate?.assertContentWritable(contextItem.consultationId);
+
+    if (input.expectedVersion !== undefined && input.expectedVersion !== contextItem.currentVersionNumber) {
+      throw new OptimisticConcurrencyException('ContextItem', contextItem.id, {
+        expectedVersion: input.expectedVersion,
+        currentVersion: contextItem.currentVersionNumber,
+      });
+    }
+    if (!input.content && contextItem.requiresContent) {
+      throw new BadRequestException('Content is required for non-media types');
+    }
+
+    const latestVersionNumber = await this.contextItemVersionRepository.getLatestVersionNumber(contextItem.id);
+    const versionNumber = Math.max(latestVersionNumber, contextItem.currentVersionNumber ?? 0) + 1;
+
+    const version = ContextItemVersionFactory.CreateVersion({
+      contextItemId: contextItem.id,
+      versionNumber,
+      tenantId: contextItem.tenantId,
+      content: input.content,
+      changeReason: input.changeReason ?? input.changeSource,
+      changedBy: input.changedBy,
+      changeSource: input.changeSource,
+    });
+    if (input.metaData) version.metaData = input.metaData;
+    await this.encryptBestEffort('ContextItemVersion', () =>
+      this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
+    );
+
+    const expectedRowVersion = contextItem.version;
+    contextItem.content = input.content;
+    stampContentCounters(contextItem, input.content);
+    contextItem.currentVersionNumber = versionNumber;
+    contextItem.updatedBy = input.changedBy;
+    contextItem.markQdrantNeedsSync();
+    await this.encryptContent(contextItem);
+
+    const persist = async (tx?: CorePrisma.TransactionClient) => {
+      await this.contextItemVersionRepository.create(version, tx);
+      await this.contextItemRepository.updateWithVersion(contextItem.id, contextItem, expectedRowVersion, tx);
+    };
+    if (this.unitOfWorkService) {
+      await this.unitOfWorkService.runInTransaction((tx: CorePrisma.TransactionClient) => persist(tx));
+    } else {
+      await persist();
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: contextItem.id,
+      responsibleEntityId: this.requestUserId ?? undefined,
+      data: { consultationId: contextItem.consultationId, versionCreated: versionNumber, changeSource: input.changeSource },
+    });
+
+    if (contextItem.type === ContextItemType.TRANSCRIPT_SEGMENT && this.transcriptRecord) {
+      await this.transcriptRecord.onSegmentEdited(contextItem.id, versionNumber, input.changedBy);
+    }
+
+    return { versionNumber };
+  }
+
+  /**
    * Soft-delete a context item.
    *
    * Removes a note / case-note / work-note / attachment via the base
@@ -589,6 +675,7 @@ export class ContextService extends BaseService implements IContextService {
     }
 
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
+    await this.lifecycleGate?.assertContentWritable(contextItem.consultationId);
 
     const userId = this.requestUserId ?? 'system';
     await this.contextItemRepository.softDelete(contextItemId, userId);
