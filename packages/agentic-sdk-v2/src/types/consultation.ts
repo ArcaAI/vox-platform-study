@@ -421,12 +421,15 @@ export type ConsultationProcessingState = LifecycleProcessing;
 const LIFECYCLE_STATUSES: readonly string[] = ['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE'];
 
 /** Legacy value -> status + the processing marker it implied (mirror of `@arcaai/types` `LEGACY_STATUS_MAP`). */
-const LEGACY_TO_LIFECYCLE: Record<string, { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState }> = {
+const LEGACY_TO_LIFECYCLE: Record<
+  string,
+  { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState; processingReason?: string }
+> = {
   PRIMED: { status: 'OPEN', processing: 'IDLE' },
   REOPENED: { status: 'OPEN', processing: 'IDLE' },
   DRAINING: { status: 'STOPPED', processing: 'FINALIZING_TRANSCRIPT' },
   DRAFT_PENDING_SENSORS: { status: 'STOPPED', processing: 'SUMMARIZING' },
-  PENDING_REVIEW: { status: 'STOPPED', processing: 'AWAITING_REVIEW' },
+  PENDING_REVIEW: { status: 'STOPPED', processing: 'IDLE', processingReason: 'NOTE_READY' },
   SIGNED: { status: 'APPROVED', processing: 'IDLE' },
   TIMED_OUT: { status: 'CLOSED_INCOMPLETE', processing: 'IDLE' },
   CLOSED: { status: 'CLOSED_COMPLETE', processing: 'IDLE' },
@@ -437,16 +440,29 @@ const LEGACY_TO_LIFECYCLE: Record<string, { status: ConsultationLifecycleStatus;
 
 /**
  * Read a status from either vocabulary. An explicit `processing` wins over the one a legacy value
- * implied. Unknown values fall back to `OPEN` / `IDLE`.
+ * implied (and drops the reason that value implied). Unknown values fall back to `OPEN` / `IDLE`.
  */
 export function toLifecycleState(
   value: string | undefined,
   processing?: ConsultationProcessingState,
-): { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState } {
+  processingReason?: string | null,
+): { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState; processingReason?: string | null } {
   if (value && LIFECYCLE_STATUSES.includes(value)) {
-    return { status: value as ConsultationLifecycleStatus, processing: processing ?? 'IDLE' };
+    return {
+      status: value as ConsultationLifecycleStatus,
+      processing: processing ?? 'IDLE',
+      ...(processingReason !== undefined ? { processingReason } : {}),
+    };
   }
   const legacy = value ? LEGACY_TO_LIFECYCLE[value] : undefined;
-  if (legacy) return { status: legacy.status, processing: processing ?? legacy.processing };
-  return { status: 'OPEN', processing: processing ?? 'IDLE' };
+  if (legacy) {
+    const overridden = processing !== undefined && processing !== legacy.processing;
+    const reason = processingReason !== undefined ? processingReason : overridden ? undefined : legacy.processingReason;
+    return {
+      status: legacy.status,
+      processing: processing ?? legacy.processing,
+      ...(reason !== undefined ? { processingReason: reason } : {}),
+    };
+  }
+  return { status: 'OPEN', processing: processing ?? 'IDLE', ...(processingReason !== undefined ? { processingReason } : {}) };
 }

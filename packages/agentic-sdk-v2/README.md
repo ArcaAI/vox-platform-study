@@ -164,6 +164,14 @@ no knowledge of which lower-level hook owns which step. Statuses are `OPEN`, `RE
 `FINALIZING_TRANSCRIPT`, `SUMMARIZING`, `PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED`)
 alongside — typed `ConsultationLifecycleStatus` and `ConsultationProcessingState`.
 
+"The note is ready" is `noteReady` on the handle (also `isNoteReady({ status, processing, processingReason })`
+from `@arcaai/vox/core`): `STOPPED` with `processing` `IDLE` and `processingReason` `NOTE_READY`, or
+`AWAITING_REVIEW` when a human must look first — never inferred from `status` alone. Notes carry inline
+source labels (`[S7 E1]`); `stripCitationLabels(text)` removes them for text leaving HOPE for an EMR and
+`citationLabelsOf(text)` lists them. `history()` returns a `ConsultationActivityPage` and `recap(seq)` an
+`EncounterRecap` (`hope.encounter_recap.v2`); `sendAttachment` honours `Retry-After` on 429/503 when the
+client surfaces it.
+
 ```tsx
 const { open } = useArcaSession();
 const c = useConsultation();

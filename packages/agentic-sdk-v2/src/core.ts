@@ -206,6 +206,8 @@ export type {
 } from './hooks';
 export type { ConsultationLifecycleStatus, ConsultationProcessingState } from './types/consultation';
 export { toLifecycleState } from './types/consultation';
+// A note is ready when STOPPED + (IDLE with NOTE_READY | AWAITING_REVIEW); labels leave HOPE stripped.
+export { isNoteReady, NOTE_READY_REASON, stripCitationLabels, citationLabelsOf } from '@arcaai/types';
 export { LIFECYCLE_HEADER } from './core/constants';
 // TASK-890 (OD-F) — invoking a published agent from the browser.
 export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './types';
