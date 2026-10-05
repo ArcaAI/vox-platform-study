@@ -22,6 +22,7 @@ import { stampEncounterSeq } from './processors/attachment-processor';
 /** `metaData.origin` of the transcript an uploaded audio file produced (the full-transcript rebuild skips it). */
 export const ATTACHMENT_AUDIO_ORIGIN = 'attachment_audio';
 export const ATTACHMENT_TRANSCRIPT_EMPTY = 'ATTACHMENT_TRANSCRIPT_EMPTY';
+export const ATTACHMENT_TRANSCRIPTION_FAILED = 'ATTACHMENT_TRANSCRIPTION_FAILED';
 
 /**
  * Claims the batch-transcription callback of a job an audio attachment started. The result is ONE
@@ -57,6 +58,34 @@ export class AttachmentTranscriptSink extends BaseService implements IAttachment
       this.clsService.set('tenantId', row.tenantId);
       this.clsService.set('user', createWorkerSession({ userId: row.createdBy ?? undefined, tenantId: row.tenantId, kind: 'attachment-transcript' }));
       await this.write(row, input.text ?? '');
+    });
+    return true;
+  }
+
+  /**
+   * The batch job ended terminally (retries spent or retired) with no transcript. The attachment
+   * leaves PROCESSING as FAILED and the consultation's processing marker is released as failed;
+   * only the error code is kept — never the provider's message, which can quote content.
+   */
+  async onBatchFailure(input: { jobId: string; errorCode?: string }): Promise<boolean> {
+    const row = await this.attachmentRepository.findByTranscriptionJobId(input.jobId);
+    if (!row) return false;
+    if (row.status !== ConsultationAttachmentStatus.PROCESSING) return true;
+    const failureCode = input.errorCode || ATTACHMENT_TRANSCRIPTION_FAILED;
+
+    await this.clsService.run(async () => {
+      this.clsService.set('tenantId', row.tenantId);
+      this.clsService.set('user', createWorkerSession({ userId: row.createdBy ?? undefined, tenantId: row.tenantId, kind: 'attachment-transcript' }));
+      const won = await this.attachmentRepository.compareAndSetStatus(row.id, [ConsultationAttachmentStatus.PROCESSING], ConsultationAttachmentStatus.FAILED, {
+        completedAt: new Date(),
+        failureCode,
+      });
+      if (!won) return;
+      await this.lifecycleGate.endProcessing(row.consultationId, row.id, { failed: true, reason: failureCode });
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: row.id,
+        data: { consultationId: row.consultationId, status: ConsultationAttachmentStatus.FAILED, kind: row.kind, contextItemId: null, failureCode },
+      });
     });
     return true;
   }

@@ -69,6 +69,8 @@ export const ITranscriptRecordServiceToken = Symbol('ITranscriptRecordService');
  */
 export abstract class IAttachmentTranscriptSink {
   abstract onBatchTranscript(input: { jobId: string; text: string }): Promise<boolean>;
+  /** A batch job ended terminally without a transcript; `true` when an attachment owned it. */
+  abstract onBatchFailure(input: { jobId: string; errorCode?: string }): Promise<boolean>;
 }
 
 export const IAttachmentTranscriptSinkToken = Symbol('IAttachmentTranscriptSink');
