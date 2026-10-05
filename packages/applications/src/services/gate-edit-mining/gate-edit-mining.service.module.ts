@@ -10,6 +10,7 @@ import { IGateEditMiningQueue } from './IGateEditMiningQueue';
 import { VisitTypeServiceModule } from '../consultation/visit-type/visit-type.service.module';
 import { ConfigResolver } from '../config-resolver/config-resolver.service';
 import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
+import { IEvalGateCurationSink, NoopEvalGateCurationSink } from '../consultation/feedback/IEvalGateCurationSink';
 
 /**
  * GateEditMiningService DI module.
@@ -65,6 +66,8 @@ import { TenantLockModule } from '../tenant-checkpoint/lock/tenant-lock.module';
     ConfigResolver,
     GateEditMiningService,
     { provide: IGateEditExemplarRetriever, useExisting: GateEditMiningService },
+    // Feedback-mined exemplars are offered to eval-gate curation; the default sink does nothing.
+    { provide: IEvalGateCurationSink, useClass: NoopEvalGateCurationSink },
     GateEditMiningQueue,
     // Exported under the PORT token so the sign-off path injects an interface,
     // never BullMQ. `useExisting` (not `useClass`) so the processor and the
