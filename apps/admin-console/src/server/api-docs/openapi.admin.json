@@ -67098,7 +67098,7 @@
             "description": "The run: status, timings, the public error of a failed run, and its links."
           },
           "404": {
-            "description": "Another tenant’s run, or a runId that does not belong to this agent — one answer."
+            "description": "Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -67160,7 +67160,7 @@
             "description": "`{ runId, status }` after the cancel."
           },
           "404": {
-            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+            "description": "Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -67243,7 +67243,7 @@
             "description": "An unsupported protocol, or a malformed resume cursor."
           },
           "404": {
-            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+            "description": "Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -67308,7 +67308,7 @@
             "description": "The run is terminal and produced no output."
           },
           "404": {
-            "description": "Another tenant’s run, or a runId that does not belong to this agent."
+            "description": "Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all."
           },
           "409": {
             "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status."
@@ -67382,7 +67382,7 @@
             "description": "Scope violation."
           },
           "404": {
-            "description": "Another tenant’s run, or a runId that does not belong to this agent — one answer."
+            "description": "Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all."
           },
           "503": {
             "description": "Stream tickets or the agent run store are not available on this gateway."
@@ -78650,7 +78650,7 @@
             "description": ""
           },
           "404": {
-            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -78721,7 +78721,7 @@
             "description": ""
           },
           "404": {
-            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -78795,7 +78795,7 @@
             "description": "The run is terminal and delivered no result."
           },
           "404": {
-            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all."
           },
           "409": {
             "description": "`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`."
@@ -79101,7 +79101,7 @@
             "description": "Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`), or `MODE_UNSUPPORTED` — a `?ticket=` request for a workflow whose settings do not enable the `sse` connection."
           },
           "404": {
-            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
@@ -79174,7 +79174,7 @@
             "description": "Scope violation."
           },
           "404": {
-            "description": "Cross-tenant run id, or a runId that does not belong to slug's lineage."
+            "description": "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all."
           }
         },
         "security": [
