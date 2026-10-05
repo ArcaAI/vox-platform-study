@@ -1,5 +1,66 @@
 # @arcaai/vox — Changelog
 
+## 5.0.0
+
+### Major Changes
+
+- 020628b: TASK-1039 — one run handle, one protocol (run protocol v2, TASK-1038).
+
+  **`@arcaai/vox-node`**
+
+  - **Breaking:** `hope.workflows.run(slug, input, options?)` and `hope.agents.run(slug, input, options?)` now start a run and return a `RunHandle<TOutput>`. `input` is the workflow's input object itself (an agent's flat `{ text, context?, variables? }`), no longer wrapped in `{ input }`. The pre-5.0 `run()` (the bare 202 body) is now `start()`.
+  - `RunHandle`: `runId`, `kind`, `slug`, `joined`, `text({ field?, nodeId? })`, `events({ after?, autoResume? })` (typed protocol-v2 events, resume by `seq`, honours `run.resync`, never infers loss from a `seq` gap), `result()` (inline or a signed ref whose sha256 is checked; `null` when nothing was delivered; `RunFailedError` when the run did not complete), `wait({ poll?, intervalMs? })` → `RunOutcome`, idempotent `cancel()`, `status`, `lastSeq`, `outcome`. Breaking out of a loop, aborting or losing the connection never cancels a run.
+  - `hope.workflows.attach(slug, runId)` / `hope.agents.attach(slug, runId)` pick a run up by id without a request.
+  - Every start sends an `Idempotency-Key` (`options.idempotencyKey`, else a fresh UUIDv7); the same key joins the run in flight (`joined === true`).
+  - A normaliser maps the legacy workflow frame shapes onto protocol-v2 events for one release.
+  - `start()`, `runAndWait()`, `runAndStream()`, `streamRun()` and `waitForRun()` stay in 5.x, marked `@deprecated` where `RunHandle` supersedes them.
+
+  **`@arcaai/vox`**
+
+  - `useRun({ workflow | agent })` → `{ start, text, events, result, status, runId, lastSeq, cancel, error }`: Idempotency-Key on every start, protocol v2 over a run-scoped ticket (workflow) or a header-authenticated fetch stream (agent), resume on drop and on mount, `run.resync`, result via the result route. Exported from `@arcaai/vox/core`.
+  - `useRunAudio` (from `@arcaai/vox/plugins`) composes `useArcaAudio` + `useRun`: microphone and STT session first, run second.
+  - `useConsultationJob` mints the `consultation_job:<jobId>` ticket scope and reads the full-status named frames.
+  - `useWorkflowRun` is `@deprecated` for single runs. `AgenticClient.requestRaw` returns an unparsed `Response`. `AgentCompiledConfig.resolvedPrompt` carries prompt `variables` declarations.
+
+- e24c335: TASK-1045 — consultation lifecycle simplification: one consultation handle, seven statuses, one processing marker. A major: the exported `ConsultationStatus` type changes meaning. If the same release also carries another major, this entry adds no extra bump (the fixed group moves together).
+
+  **The lifecycle vocabulary (`@arcaai/types`, re-exported by both SDKs)**
+
+  - `@arcaai/types` `ConsultationStatus` is now seven values: `OPEN`, `RECORDING`, `PAUSED`, `STOPPED`, `APPROVED`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`. The twelve-value status (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `PENDING_REVIEW`, `SIGNED`, `TIMED_OUT`, `REOPENED`, `CLOSED`) is `LegacyConsultationStatus`; the SDKs keep their own twelve-value `ConsultationStatus` marked `@deprecated` for one release.
+  - Background work is a second field, `processing`: `IDLE`, `FINALIZING_TRANSCRIPT`, `SUMMARIZING`, `PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED` (with `processingReason`). "Is the note ready" is not a status of its own: a written note is `status === 'STOPPED'` with `processing === 'IDLE'` and `processingReason === 'NOTE_READY'`; `AWAITING_REVIEW` means a written note a human must look at (coverage gaps, escalation). Use `isNoteReady(state)` (exported by `@arcaai/types` and both SDKs) rather than comparing fields.
+  - A closed consultation carries `closedReason` (`AUTO`, `MANUAL`, `APPROVED`) and `closedAt`; the response also carries `lastActivityAt`, `autoCloseAt`, `reopenCount`, `reopenAllowed`, `currentEncounterSeq`, `encounters` and `approval`.
+  - `LifecycleEvent` (`opened`, `encounter_appended`, `started`, `paused`, `stopped`, `transcript_final`, `processing_changed`, `approved`, `closed`, `reopened`) is the frame of `GET consultations/:id/events`, which always speaks the seven-value vocabulary.
+
+  - Inline citation labels in a generated note (`[S7 E1]`, `[A2]`) stay in HOPE's note; `stripCitationLabels(text)` and `citationLabelsOf(text)` (all three packages) give the EMR / export text and the chip labels.
+
+  **`@arcaai/vox-node`**
+
+  - `hope.consultations.open(request)` now resolves a `ConsultationHandle` (also exported); `hope.consultations.attach(id)` builds one for a consultation you did not open. The handle carries the open response's fields and tracks `status`, `processing` and `version` as commands and events arrive. Verbs: `start`, `pause`, `stop`, `generateSummary({ sectionKeys, outputLanguage, wait })`, `sendAttachment`, `sendFeedback` (+ `feedbackReasonCodes`), `approve`, `close`, `reopen`, `history` (+ `historyAll`), `recap`, `on('transcript' | 'status' | 'capture-state' | 'error')` and `dispose()`. `approve` / `close` / `reopen` send `If-Match` from the handle's own version unless `ifMatch` is passed.
+  - Callers that run their own STT session bind it with `handle.startCapture(sttSessionId)` (no SDK socket); `handle.refresh()` re-reads the consultation and updates `status`, `processing` and `version`; `hope.consultations.feedbackReasonCodes()` reads the tenant's reason codes with no consultation open.
+  - `start` opens the STT session, binds it and connects the socket; call it again after `pause` to resume. `stop` waits for the final transcript by default (`waitForFinal`). `sendAttachment` uploads direct to storage with retries and resolves once the gateway has processed it; it throws `AttachmentUploadError` / `AttachmentFailedError`.
+  - Every call the handle makes sends `X-Hope-Lifecycle: 2` (`LIFECYCLE_HEADER`, `withLifecycleHeader`). Without that header the gateway projects `status` onto the old twelve values for one release.
+  - `@deprecated` in favour of the handle: `consultations.recording.{start,stop}` (use `start` / `pause` / `stop`), `consultations.waitForFinalNote` (use `stop` plus `generateSummary({ wait: true })`, or the `status` events), and the `(id, request, { ifMatch })` signature of `consultations.close` (use `handle.close()`).
+
+  **`@arcaai/vox`**
+
+  - New `useConsultation()` (from `@arcaai/vox` and `@arcaai/vox/core`): one hook over `useArcaSession`, `useArcaAudio` and `useArcaSummary` returning `status`, `processing`, `isCapturing`, `segments` and the verbs `start`, `pause`, `stop`, `generateSummary({ sectionKeys })`, `sendAttachment`, `sendFeedback`, `approve`, `close`, `reopen`, `history`, `recap`. Every command carries `X-Hope-Lifecycle: 2`.
+  - `audio.start` / `audio.stop` and the per-summary approve are `@deprecated` in favour of `useConsultation`; the per-summary approve now approves the whole consultation.
+  - New `ConsultationLifecycleStatus` / `ConsultationProcessingState` types and `toLifecycleState`, which splits an older status into `{ status, processing }`. The twelve-value `ConsultationStatus` is `@deprecated` and is removed in the release after 5.0.
+
+### Minor Changes
+
+- 020628b: TASK-1042 — live audio into a standalone workflow run.
+
+  - `@arcaai/vox-node`: `hope.workflows.runWithAudio(...)` opens a workflow-bound STT session (`CreateStreamSessionRequest.workflowSlug`), starts the run with `input.<audioField>.sttSessionId`, streams the audio, and finalizes the session (an already-ended session's 404 is tolerated). Ending the audio never cancels the run.
+  - `@arcaai/vox`: `useRunAudio({ workflow, audioField? })` runs standalone when no consultation is open; `audio.start({ workflowSlug })` passes the workflow to the STT session create; `RunAudioFieldError` is exported from `@arcaai/vox/plugins`.
+
+### Patch Changes
+
+- Updated dependencies [e24c335]
+  - @arcaai/types@5.0.0
+  - @arcaai/room@5.0.0
+  - @arcaai/stt@5.0.0
+
 ## 4.1.0
 
 ### Minor Changes

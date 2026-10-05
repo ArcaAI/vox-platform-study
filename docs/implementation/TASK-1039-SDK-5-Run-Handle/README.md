@@ -1,6 +1,6 @@
 # TASK-1039 — SDK 5.0: one run handle, one protocol
 
-**Status:** Pending. Approved on 2026-10-04 and scheduled for wave C of the TASK-1036 programme, after the TASK-1038 run protocol v2 is frozen and implemented.
+**Status:** Review. Implemented in TASK-1036 wave C (lanes S1 VOX-NODE-5 `77f8bd81f`, S2 VOX-5 `3c765098b`) and versioned as SDK 5.0.0 together with TASK-1042 and TASK-1045 (2026-10-06, owner: "increase the version number to 5.0"). Publishing follows the local runbook after the owner's go.
 **Type:** feature (SDK major)
 **Branch:** dev-2.2
 **Raised:** 2026-10-04
@@ -31,10 +31,11 @@ Lanes **S1 VOX-NODE-5** and **S2 VOX-5** (`sonnet`, wave C batch 1 and batch 2) 
 
 ## 4. Implementation Summary
 
-Not started. Wave C.
+Merged into `dev-2.2` in TASK-1036 wave C: vox-node `RunHandle` (`run()`/`attach()` on workflows and agents, protocol-v2 normaliser, auto-resume by `seq`; the old 202 `run()` is `start()`), vox `useRun` / `useRunAudio`, browser run-follow engine, `useConsultationJob` ticket scope. Changeset `task-1039-run-handle` (added 2026-10-06 so the 5.0.0 CHANGELOG records it); versioned 5.0.0 with TASK-1042 and TASK-1045.
 
 ## 5. Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-04 | Ticket raised from the TASK-1036 programme (OD-28, OD-23). Owner approved. |
+| 2026-10-06 | Status corrected to Review (code merged in TASK-1036 wave C); changeset added; SDK family versioned 5.0.0 with TASK-1042 + TASK-1045 (TASK-1045 D-41). |
