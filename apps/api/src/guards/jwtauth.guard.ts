@@ -161,6 +161,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (stored.tenantId) {
         this.clsService.set('tenantId', stored.tenantId);
       }
+      // TASK-1038 OD-35 — a run ticket carries the run reader its mint proved; run reads are bound
+      // to the run's starter, which the restored human above is not for an API-key ticket.
+      if (stored.runReader) {
+        this.clsService.set('runReader', stored.runReader);
+      }
     } catch {
       // best-effort; the JWT path remains the primary CLS populator.
     }

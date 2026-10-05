@@ -161,11 +161,15 @@ export class QueryBuilder<DataModel> {
       orderBy: this.orderByClauses,
       take: this.takeClause,
       skip: this.skipClause,
-      include: this.includeClause,
     };
 
+    // Prisma rejects `select` and `include` together, so an include is folded into the select
+    // (relations are selectable there too), and an empty include is never sent.
+    const hasInclude = Object.keys(this.includeClause).length > 0;
     if (this.selectClause) {
-      query.select = this.selectClause;
+      query.select = hasInclude ? ({ ...this.selectClause, ...this.includeClause } as SelectClause<DataModel>) : this.selectClause;
+    } else if (hasInclude) {
+      query.include = this.includeClause;
     }
 
     return query;

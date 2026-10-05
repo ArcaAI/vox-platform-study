@@ -5,6 +5,7 @@ import { IWorkflowAssignmentService } from '../../workflow-assignment/IWorkflowA
 import { IWorkflowRunCompletionPort } from '../../workflow-run/IWorkflowRunCompletionPort';
 import { IWorkflowRunService } from '../../workflow-run/IWorkflowRunService';
 import { consultationDispatchSessionId } from '../../workflow-run/workflow-run.service';
+import { RUN_STARTED_BY_KEY, RunPrincipalAccessService, type RunPrincipal } from '../../workflow-run/run-principal-access';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { IS3Service } from '../../baseServices/storage/s3/IS3Service';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from '../../workflow-exposure/claim-check';
@@ -68,6 +69,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     // dispatches against its published bytes — the behaviour a follow-latest workflow had
     // before this existed, never a failure.
     @Optional() private readonly effectiveTriggerSchema?: EffectiveTriggerSchemaService,
+    // TASK-1038 OD-35 — a governed run is readable on the business plane, and every business-plane
+    // run read is bound to the run's starter, so the row records it (`_metadata.startedBy`) like
+    // the exposure plane's. From `WorkflowRunServiceModule` (imported here). `@Optional()` so the
+    // positional fixtures keep constructing; absent, nothing is stamped (tenant-wide readers only).
+    @Optional() private readonly runAccess?: RunPrincipalAccessService,
   ) {}
 
   /**
@@ -257,7 +263,8 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
         // TASK-1038 E2 (fix 3) — the internal consultation-read route admits a run only when its
         // row names the consultation; governance is recorded AFTER the start, so without this the
         // run's first consultation read could be refused 404. Same stamp as the exposure plane.
-        metaData: { consultationId },
+        // OD-35 — and the principal that opened the consultation.
+        metaData: withStartedBy({ consultationId }, this.runAccess?.currentPrincipal() ?? null),
       });
 
       // The identity every consultation node reads from `run_payload`
@@ -388,7 +395,11 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
 
       // The version the parked run EXECUTED, not whatever is published now: a re-finalisation must
       // produce the note the same graph would have produced, not a different graph's.
-      const governing = await this.workflowRunService.getRun(tenantId, marker.workflowRunId);
+      // OD-35 — with the run's starter: a resume re-finalises the SAME visit, so whoever followed
+      // the governed run keeps following its successor.
+      const { run: governing, startedBy: governingStartedBy } = this.runAccess
+        ? await this.workflowRunService.getRunForReader(tenantId, marker.workflowRunId)
+        : { run: await this.workflowRunService.getRun(tenantId, marker.workflowRunId), startedBy: null };
       const definition = await this.definitionRepository.findById(governing.workflowVersionId);
       if (!definition?.compiledConfig) return failed('the governing definition version has no compiled configuration', marker.workflowRunId);
       if (!this.s3Service) return failed('no claim-check storage backend is configured', marker.workflowRunId);
@@ -440,8 +451,9 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
           runId,
           trigger: CONSULTATION_RESUME_TRIGGER,
           isSandbox: false,
-          // TASK-1038 E2 (fix 3) — see `dispatchForConsultation`.
-          metaData: { consultationId },
+          // TASK-1038 E2 (fix 3) — see `dispatchForConsultation`. OD-35 — the superseded run's
+          // starter, else the principal triggering the resume.
+          metaData: withStartedBy({ consultationId }, governingStartedBy ?? this.runAccess?.currentPrincipal() ?? null),
         });
         await this.harnessGateway.startWorkflowRun({
           runId,
@@ -711,4 +723,9 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
     });
     return [`visit-type:${visitType.key}`];
   }
+}
+
+/** TASK-1038 OD-35 — `metaData` plus `startedBy` when a starter is known; unchanged otherwise. */
+function withStartedBy(metaData: Record<string, unknown>, startedBy: RunPrincipal | null): Record<string, unknown> {
+  return startedBy ? { ...metaData, [RUN_STARTED_BY_KEY]: startedBy } : metaData;
 }

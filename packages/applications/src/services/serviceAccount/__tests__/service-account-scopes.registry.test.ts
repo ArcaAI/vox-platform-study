@@ -331,13 +331,15 @@ describe('hasServiceAccountScope', () => {
  * this ticket opens. Deny-by-default means that silence is a refusal, not an oversight.
  */
 describe('TASK-930 §3 — the agent/workflow business-plane family', () => {
-  it('names exactly the five business-plane scopes', () => {
+  it('names exactly the five business-plane scopes, plus the two OD-35 run read-all widenings (TASK-1038)', () => {
     expect([...AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES]).toEqual([
       'agent:definition:read',
       'agent:invocation:write',
       'workflow:definition:read',
       'workflow:run:read',
       'workflow:run:write',
+      'workflow:run:read-all',
+      'agent:run:read-all',
     ]);
   });
 

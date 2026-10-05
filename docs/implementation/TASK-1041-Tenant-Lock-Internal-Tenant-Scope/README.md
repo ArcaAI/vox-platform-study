@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review — fix committed in the worktree, awaiting merge into `dev-2.2` by the orchestrator |
+| Status | Completed — merged into `dev-2.2` at `608d5480d` |
 | Type | bugfix |
 | Branch | `agent/interesting-turing-c56b77` (worktree) → merge target to be confirmed (`dev-2.2` assumed) |
 | Found by | TASK-1036 e2e triage; reproduced live on the test API |
@@ -158,3 +158,4 @@ No migration, no API surface change, no artifact regeneration.
 | 2026-10-05 | Ticket created; plan + owner decisions drafted |
 | 2026-10-05 | Owner go (option A). TDD RED → GREEN, fix in `TenantLockService`, live before/after + e2e on the test infra; status Review |
 | 2026-10-05 | OD-4 (unauthenticated restore-lock oracle on `/internal/*`) split out and fixed as TASK-1043 |
+| 2026-10-05 | Merged into `dev-2.2` at `608d5480d` (--no-ff, orchestrator review; lock + guard tests 39/39 after merge); worktree and branch removed. Owner marked **Completed** |

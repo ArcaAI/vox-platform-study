@@ -11,6 +11,7 @@ import {
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
   WorkflowEntryGateService,
+  RunPrincipalAccessService,
   type WorkflowSchemaDescription,
 } from '@arcaai/applications';
 import {
@@ -108,6 +109,10 @@ export class WorkflowsController {
     // TASK-1036 (OD-4) — the socket ticket is refused unless the workflow's settings admit `socket`.
     // Optional so the positional unit fixtures keep constructing; absent, the settings are not read.
     @Optional() private readonly entryGate?: WorkflowEntryGateService,
+    // TASK-1038 OD-35 — the run reader the stream-ticket mint records, so the redeeming request is
+    // checked as the principal that minted it (not the API key's bound human). From
+    // `WorkflowRunServiceModule`; optional so the positional unit fixtures keep constructing.
+    @Optional() private readonly runAccess?: RunPrincipalAccessService,
   ) {}
 
   @Get()
@@ -265,7 +270,12 @@ export class WorkflowsController {
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
   @ApiResponse({ status: 200, type: WorkflowRunStatusResponse })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({
+    status: 404,
+    description:
+      "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — " +
+      'an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async getRunStatus(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunStatusResponse> {
     return this.workflowExposureService.getRunStatus(slug, runId);
   }
@@ -300,7 +310,12 @@ export class WorkflowsController {
     type: WorkflowRunResultRefResponse,
   })
   @ApiResponse({ status: 204, description: 'The run is terminal and delivered no result.' })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({
+    status: 404,
+    description:
+      "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — " +
+      'an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`.' })
   @ApiResponse({ status: 410, description: 'The result existed and has passed its retention window.' })
   @ApiResponse({ status: 503, description: 'A stored result exists but no object storage is configured to sign its URL.' })
@@ -334,7 +349,12 @@ export class WorkflowsController {
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
   @ApiResponse({ status: 200, type: WorkflowRunCancelResponse })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({
+    status: 404,
+    description:
+      "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — " +
+      'an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async cancelRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunCancelResponse> {
     return this.workflowExposureService.cancelRun(slug, runId);
   }
@@ -453,7 +473,12 @@ export class WorkflowsController {
   @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings enable neither the `sse` nor the `socket` connection.' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({
+    status: 404,
+    description:
+      "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — " +
+      'an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async issueRunStreamTicket(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunStreamTicketResponse> {
     if (!this.streamTicketService || !this.cls) {
       throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
@@ -473,12 +498,16 @@ export class WorkflowsController {
     const tenantId = this.cls.get('tenantId') || user.tenantId || null;
 
     const scope = `${WORKFLOW_RUN_TICKET_NAMESPACE}:${runId}`;
+    // OD-35 — `getRunStatus` above already refused a run this caller may not read (the unknown-run
+    // 404); the reader it proved rides on the ticket.
+    const runReader = await this.runAccess?.resolveReader('workflow');
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
       scope,
       // Carried so a ticket minted under impersonation restores the claim on the socket request.
       impersonatedBy: user.impersonatedBy ?? null,
+      ...(runReader ? { runReader } : {}),
     });
 
     const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
@@ -540,7 +569,12 @@ export class WorkflowsController {
     description:
       'Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`), or `MODE_UNSUPPORTED` — a `?ticket=` request for a workflow whose settings do not enable the `sse` connection.',
   })
-  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({
+    status: 404,
+    description:
+      "Cross-tenant run id, a runId that does not belong to slug's lineage, or (OD-35) a run another credential started — " +
+      'an API key or service account reads only the runs it started unless it holds `workflow:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async streamRunStatus(
     @Param('slug') slug: string,
     @Param('runId') runId: string,
