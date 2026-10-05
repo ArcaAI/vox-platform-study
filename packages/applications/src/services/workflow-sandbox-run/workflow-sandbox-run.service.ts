@@ -113,16 +113,27 @@ export class WorkflowSandboxRunService extends BaseService implements IWorkflowS
       ...(subject ? { metaData: { consultationId: subject.consultationId } } : {}),
     });
 
-    const started = await this.harnessGateway.startWorkflowRun({
-      runId,
-      sessionId,
-      workflowVersionId: compiled.workflowVersionId,
-      tenantId,
-      configRef,
-      sandbox: true,
-      payload,
-      ...(subject ? { subject } : {}),
-    });
+    let started: Awaited<ReturnType<HarnessGatewayService['startWorkflowRun']>>;
+    try {
+      started = await this.harnessGateway.startWorkflowRun({
+        runId,
+        sessionId,
+        workflowVersionId: compiled.workflowVersionId,
+        tenantId,
+        configRef,
+        sandbox: true,
+        payload,
+        ...(subject ? { subject } : {}),
+      });
+    } catch (error) {
+      // The anchor row exists, so a start that never reached the harness must not leave it RUNNING.
+      // Only a code is recorded — the error's message is never persisted.
+      await this.workflowRunService
+        .recordRunFinished({ tenantId, sessionId, runId, status: 'FAILED', firstErrorCode: 'RUN_START_FAILED' })
+        // swallow-ok: the start error below is the one the caller must see.
+        .catch(() => undefined);
+      throw error;
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: definitionId,
