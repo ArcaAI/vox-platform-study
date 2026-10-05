@@ -9,6 +9,10 @@ import {
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
   IProviderConnectionService,
+  InternalIngestSegmentsRequest,
+  InternalIngestSegmentsResponse,
+  ITranscriptRecordService,
+  ITranscriptRecordServiceToken,
   SecretsService,
   StreamingSessionService,
   SttInternalService,
@@ -33,7 +37,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController, ApiHeader, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { timingSafeEqual } from 'node:crypto';
 import { Authorize, RequiredScopes } from '../../decorators';
@@ -95,6 +99,9 @@ export class SttInternalController {
     // route to the HuggingFace token and the model-store S3 pair. Optional and
     // TRAILING so existing positional test construction is unaffected.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnections?: IProviderConnectionService,
+    // Backs `segments`, the streaming finals of a consultation's STT sessions. Optional and
+    // TRAILING for the same reason as the parameters above.
+    @Optional() @Inject(ITranscriptRecordServiceToken) private readonly transcriptRecord?: ITranscriptRecordService,
   ) {}
 
   /** The secret the STT worker presents as `X-Internal-Service-Key`. */
@@ -203,6 +210,50 @@ export class SttInternalController {
   ) {
     this.ensureInternalApiKey(request);
     return this.runTenantPinned(request, tenantId, () => this.sttInternalService.createTranscript(dto, idempotencyKey));
+  }
+
+  /**
+   * The streaming finals of a consultation's STT session, in batches from the STT segment outbox
+   * (≤ 25 per batch, session-relative milliseconds; the gateway places them on the consultation
+   * timeline). Idempotent on `(sttSessionId, utteranceIndex)`, so a redelivered batch is harmless.
+   * An EMPTY batch is a heartbeat: it only touches the consultation's activity clock.
+   *
+   * Gated like `transcripts` (the reserved-scope API key + `X-Internal-Service-Key` for the tenant
+   * pin), except that the tenant is MANDATORY here: every segment is tenant-scoped work, so
+   * `X-Internal-Tenant-Id` must be present and must name the body's `tenantId` (400 otherwise).
+   */
+  @Post('segments')
+  @ApiOperation({
+    summary: 'Ingest a batch of streaming transcript segments (STT segment outbox)',
+    description:
+      'Idempotent on `(sttSessionId, utteranceIndex)`; an empty `segments` array is a heartbeat that only touches the consultation activity clock. ' +
+      'Requires `X-Internal-Tenant-Id` equal to the body `tenantId`.',
+  })
+  @ApiHeader({ name: 'X-Internal-Tenant-Id', required: true, description: 'The tenant the batch belongs to; must equal the body `tenantId`.' })
+  @ApiOkResponse({ type: InternalIngestSegmentsResponse })
+  @ApiResponse({ status: 400, description: 'Missing `X-Internal-Tenant-Id`, or it names a different tenant than the body; or an invalid batch.' })
+  @ApiResponse({ status: 401, description: 'Not the internal API-key credential.' })
+  @ApiResponse({ status: 403, description: 'The tenant pin is honoured only for the platform internal STT credential.' })
+  @ApiResponse({ status: 404, description: 'The consultation does not exist in that tenant.' })
+  @ApiResponse({ status: 409, description: 'The consultation no longer accepts content (`CONSULTATION_APPROVED` / `CONSULTATION_CLOSED`).' })
+  async ingestSegments(
+    @Req() request: RequestWithAuth,
+    @Body() dto: InternalIngestSegmentsRequest,
+    @Headers('x-internal-tenant-id') tenantId?: string,
+  ): Promise<InternalIngestSegmentsResponse> {
+    this.ensureInternalApiKey(request);
+    const pinned = tenantId?.trim();
+    if (!pinned) {
+      throw new BadRequestException('X-Internal-Tenant-Id is required for segment ingest');
+    }
+    if (pinned !== dto.tenantId) {
+      throw new BadRequestException('X-Internal-Tenant-Id does not match the batch tenantId');
+    }
+    if (!this.transcriptRecord) {
+      throw new BadRequestException('Segment ingest is not configured on this gateway');
+    }
+    const transcriptRecord = this.transcriptRecord;
+    return this.runTenantPinned(request, pinned, () => transcriptRecord.ingestSegments(dto));
   }
 
   @Post('streaming/usage')

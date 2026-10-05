@@ -8,7 +8,7 @@ import {
   CONSULTATION_SORTABLE_FIELDS,
   parseConsultationSort,
 } from '@arcaai/applications';
-import { ConsultationStatus } from '@arcaai/domains';
+import { ConsultationProcessing, ConsultationStatus } from '@arcaai/domains';
 import { BadRequestException, Controller, Param, Inject, Query, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ApiEndpoint, CanManage, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
@@ -58,8 +58,15 @@ export class AdminConsultationController {
     name: 'status',
     required: false,
     enum: ConsultationStatus,
-    description: 'Filter by lifecycle status (e.g. RECORDING for in-progress live sessions).',
+    description: 'Filter by lifecycle status (e.g. RECORDING for in-progress live sessions, STOPPED for capture ended).',
   })
+  @ApiQuery({
+    name: 'processing',
+    required: false,
+    enum: ConsultationProcessing,
+    description: 'Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for drafts waiting on a clinician, FAILED).',
+  })
+  @ApiResponse({ status: 400, description: 'Unknown `status` or `processing` value, or a malformed `sort`.' })
   @ApiQuery({
     name: 'sort',
     required: false,
@@ -68,26 +75,21 @@ export class AdminConsultationController {
     description: `Sort order, "field:asc" or "field:desc". Allowed fields: ${CONSULTATION_SORTABLE_FIELDS.join(', ')}. Defaults to updatedAt:desc.`,
   })
   async list(
-    @Query() query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string; status?: string; sort?: string },
+    @Query()
+    query: PaginatedQuery & { patientId?: string; doctorId?: string; departmentId?: string; status?: string; processing?: string; sort?: string },
   ): Promise<PaginatedConsultationResponse> {
+    const processing = parseEnumFilter('processing', query.processing, ConsultationProcessing);
     return this.consultationService.listConsultationsForTenant({
       page: Number(query.page) || 1,
       pageSize: Number(query.limit) || 10,
       patientId: query.patientId,
       doctorId: query.doctorId,
       departmentId: query.departmentId,
-      status: this.parseStatus(query.status),
+      status: parseEnumFilter('status', query.status, ConsultationStatus),
+      // Applied once `listConsultationsForTenant` reads `processing` (it filters by `status` today).
+      ...(processing ? { processing } : {}),
       sort: parseConsultationSort(query.sort),
     });
-  }
-
-  /** Validate the optional `?status` query against the enum (avoids leaking a raw Prisma enum error). */
-  private parseStatus(status?: string): ConsultationStatus | undefined {
-    if (status === undefined || status === '') return undefined;
-    if (!Object.values(ConsultationStatus).includes(status as ConsultationStatus)) {
-      throw new BadRequestException(`Invalid status filter. Expected one of: ${Object.values(ConsultationStatus).join(', ')}.`);
-    }
-    return status as ConsultationStatus;
   }
 
   /**
@@ -135,4 +137,17 @@ export class AdminConsultationController {
     if (!result) throw new NotFoundException(`Consultation ${id} not found`);
     return result;
   }
+}
+
+/**
+ * Validate an optional enum query filter (avoids leaking a raw Prisma enum error). The admin plane
+ * speaks the seven-value lifecycle vocabulary only; an old status value is a 400.
+ */
+function parseEnumFilter<E extends string>(name: string, value: string | undefined, values: Record<string, E>): E | undefined {
+  if (value === undefined || value === '') return undefined;
+  const allowed = Object.values(values);
+  if (!allowed.includes(value as E)) {
+    throw new BadRequestException(`Invalid ${name} filter. Expected one of: ${allowed.join(', ')}.`);
+  }
+  return value as E;
 }
