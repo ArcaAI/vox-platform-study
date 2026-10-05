@@ -85,6 +85,17 @@ function makeHarness(row: ConsultationEntity, opts: { prepared?: PreparedSession
   };
   const contextItems = {
     findByConsultation: vi.fn(async () => items),
+    // The legacy per-summary route's note id: this consultation's note, another tenant's item, and
+    // another consultation's item of the same tenant.
+    findByIdOrNull: vi.fn(async (id: string) =>
+      id === NOTE
+        ? { id: NOTE, tenantId: TENANT, consultationId: ID }
+        : id === 'foreign-note'
+          ? { id, tenantId: 'tenant-2', consultationId: 'c-9' }
+          : id === 'other-consultation-note'
+            ? { id, tenantId: TENANT, consultationId: 'c-2' }
+            : null,
+    ),
     updateWithVersion: vi.fn(async (_id: string, e: unknown, expected: number) => (order.push(`note.cas@${expected}`), e)),
   };
   const contextItemWriter = contextItems;
@@ -331,6 +342,32 @@ describe('ConsultationApprovalService.approve — refusals', () => {
   it('answers 404 for another tenant', async () => {
     const h = makeHarness(consultation({ tenantId: 'tenant-2' }));
     expect(await rejectionOf(h.service.approve(ID, { expectedVersion: 5, caller }))).toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('ConsultationApprovalService.approve — legacy per-summary route: existence before legality', () => {
+  it.each([
+    ['an unknown summary id', 'missing-note'],
+    ["another tenant's summary id", 'foreign-note'],
+    ["another consultation's summary id", 'other-consultation-note'],
+  ])('answers 404 for %s even where the transition would be illegal (OPEN)', async (_label, noteId) => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.OPEN, processing: ConsultationProcessing.IDLE }));
+    const error = await rejectionOf(h.service.approve(ID, { expectedVersion: 1, legacyContextItemId: noteId, caller }));
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect(h.signer.prepareSessionSignature).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for an unknown summary id on an already-approved consultation (no idempotent 200 for a missing note)', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.APPROVED, processing: ConsultationProcessing.IDLE }));
+    expect(await rejectionOf(h.service.approve(ID, { expectedVersion: 1, legacyContextItemId: 'missing-note', caller }))).toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('a known summary id of this consultation still reaches the legality check (OPEN → 409)', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.OPEN, processing: ConsultationProcessing.IDLE }));
+    const error = await rejectionOf(h.service.approve(ID, { expectedVersion: 1, legacyContextItemId: NOTE, caller }));
+    expect(conflictCode(error)).toBe('CONSULTATION_TRANSITION_ILLEGAL');
   });
 });
 
