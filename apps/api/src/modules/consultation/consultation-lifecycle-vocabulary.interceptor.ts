@@ -1,4 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { SSE_METADATA } from '@nestjs/common/constants';
 import { map, type Observable } from 'rxjs';
 import { HOPE_LIFECYCLE_HEADER, projectLegacyConsultationStatus, wantsLifecycleVocabulary } from '@arcaai/applications';
 import { ConsultationProcessing, ConsultationStatus } from '@arcaai/domains';
@@ -89,6 +90,10 @@ export function projectLifecycleVocabulary(body: unknown): unknown {
 @Injectable()
 export class ConsultationLifecycleVocabularyInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    // An `@Sse()` handler streams event frames, not consultation bodies, and its headers are
+    // flushed before the first frame — projecting (or touching the response) there breaks the stream.
+    const handler = context.getHandler?.();
+    if (handler && Reflect.getMetadata(SSE_METADATA, handler)) return next.handle();
     const http = context.switchToHttp();
     const request = http.getRequest<{ headers?: Record<string, string | string[] | undefined> }>();
     const response = http.getResponse<{ vary?: (field: string) => unknown }>();

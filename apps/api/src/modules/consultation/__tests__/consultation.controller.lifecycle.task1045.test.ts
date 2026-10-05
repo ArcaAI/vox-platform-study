@@ -1,3 +1,4 @@
+import { SSE_METADATA } from '@nestjs/common/constants';
 /**
  * The consultation lifecycle on the API: the six commands, the episode reads, the lifecycle event
  * stream, the one-release aliases, the old-vocabulary projection, the admin status filter and the
@@ -393,6 +394,21 @@ describe('old-vocabulary projection', () => {
 
     await expect(lastValueFrom(interceptor.intercept(context({}), handler))).resolves.toMatchObject({ status: 'SIGNED' });
     await expect(lastValueFrom(interceptor.intercept(context({ 'x-hope-lifecycle': '2' }), handler))).resolves.toMatchObject({ status: 'APPROVED' });
+  });
+
+  it('the interceptor leaves @Sse() handlers alone (their frames are not consultation bodies)', async () => {
+    const interceptor = new ConsultationLifecycleVocabularyInterceptor();
+    const sseHandler = () => undefined;
+    Reflect.defineMetadata(SSE_METADATA, true, sseHandler);
+    const vary = vi.fn();
+    const frame = { data: { status: 'APPROVED', consultationId: 'c-1' } };
+    const context = {
+      getHandler: () => sseHandler,
+      switchToHttp: () => ({ getRequest: () => ({ headers: {} }), getResponse: () => ({ vary }) }),
+    } as never;
+
+    await expect(lastValueFrom(interceptor.intercept(context, { handle: () => of(frame) }))).resolves.toBe(frame);
+    expect(vary).not.toHaveBeenCalled();
   });
 });
 
