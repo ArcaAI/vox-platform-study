@@ -370,6 +370,28 @@ export class StreamingSessionManager {
     return this.sessionId;
   }
 
+  // ===========================================================================
+  // Capture control (pause / resume on the live socket)
+  // ===========================================================================
+
+  /** The socket that carries the control frames; bound by whoever builds both. */
+  private controlChannel: { pause(): void; resumeCapture(): void } | null = null;
+
+  /** Bind the WebSocket client that `pauseCapture` / `resumeCapture` drive. */
+  bindControlChannel(channel: { pause(): void; resumeCapture(): void } | null): void {
+    this.controlChannel = channel;
+  }
+
+  /** Ask the server to pause capture on the live session. No-op when no socket is bound. */
+  pauseCapture(): void {
+    this.controlChannel?.pause();
+  }
+
+  /** Ask the server to resume a paused capture on the live session. No-op when no socket is bound. */
+  resumeCapture(): void {
+    this.controlChannel?.resumeCapture();
+  }
+
   getStatus(): SessionManagerStatus {
     return this.status;
   }

@@ -4,7 +4,11 @@
  * Types for consultation/session management.
  */
 
-import type { GoverningRunSummary } from '@arcaai/types';
+import type {
+  ConsultationProcessing as LifecycleProcessing,
+  ConsultationStatus as LifecycleStatus,
+  GoverningRunSummary,
+} from '@arcaai/types';
 import type { ContextItem, AddContextInput } from './context';
 import type { LanguageModeId } from './language';
 
@@ -13,6 +17,10 @@ import type { LanguageModeId } from './language';
 // =============================================================================
 
 /**
+ * @deprecated The twelve-value pre-lifecycle vocabulary. The gateway now speaks the seven-value
+ * {@link ConsultationLifecycleStatus} plus an orthogonal {@link ConsultationProcessingState};
+ * map an old value with {@link toLifecycleState}. Removed in the release after 5.0.
+ *
  * Consultation lifecycle status — the gateway's `ConsultationStatus` column, all 12 values.
  *
  * - live: `OPEN` → `PRIMED` → `RECORDING` → `DRAINING` (a stop drains the tail; it does not revert)
@@ -365,9 +373,15 @@ export interface SessionActions {
    * checkpoint. Optimistically concurrent (`If-Match`), like close/reopen.
    */
   prime: () => Promise<Consultation>;
-  /** Close the current consultation (→ `CLOSED_COMPLETE` once signed, `CLOSED_INCOMPLETE` from `TIMED_OUT`) */
+  /**
+   * Close the current consultation (→ `CLOSED_COMPLETE` once approved, `CLOSED_INCOMPLETE` otherwise)
+   * @deprecated Use `useConsultation().close()`. Still works; removed in the release after 5.0.
+   */
   close: () => Promise<Consultation>;
-  /** Reopen a previously closed consultation (→ `REOPENED`) */
+  /**
+   * Reopen a previously closed consultation
+   * @deprecated Use `useConsultation().reopen()`. Still works; removed in the release after 5.0.
+   */
   reopen: () => Promise<Consultation>;
 }
 
@@ -397,3 +411,46 @@ export function isRevisit(consultation: Consultation | null): boolean {
 
 // Re-export AddContextInput from context.ts for convenience
 export type { AddContextInput } from './context';
+
+// =============================================================================
+// Lifecycle vocabulary (seven statuses + an orthogonal processing marker)
+// =============================================================================
+
+/** `OPEN | RECORDING | PAUSED | STOPPED | APPROVED | CLOSED_COMPLETE | CLOSED_INCOMPLETE`. */
+export type ConsultationLifecycleStatus = LifecycleStatus;
+
+/** What the platform is doing for a consultation, independent of its status. */
+export type ConsultationProcessingState = LifecycleProcessing;
+
+const LIFECYCLE_STATUSES: readonly string[] = ['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE'];
+
+/** Legacy value -> status + the processing marker it implied (mirror of `@arcaai/types` `LEGACY_STATUS_MAP`). */
+const LEGACY_TO_LIFECYCLE: Record<string, { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState }> = {
+  PRIMED: { status: 'OPEN', processing: 'IDLE' },
+  REOPENED: { status: 'OPEN', processing: 'IDLE' },
+  DRAINING: { status: 'STOPPED', processing: 'FINALIZING_TRANSCRIPT' },
+  DRAFT_PENDING_SENSORS: { status: 'STOPPED', processing: 'SUMMARIZING' },
+  PENDING_REVIEW: { status: 'STOPPED', processing: 'AWAITING_REVIEW' },
+  SIGNED: { status: 'APPROVED', processing: 'IDLE' },
+  TIMED_OUT: { status: 'CLOSED_INCOMPLETE', processing: 'IDLE' },
+  CLOSED: { status: 'CLOSED_COMPLETE', processing: 'IDLE' },
+  active: { status: 'OPEN', processing: 'IDLE' },
+  completed: { status: 'CLOSED_COMPLETE', processing: 'IDLE' },
+  cancelled: { status: 'CLOSED_INCOMPLETE', processing: 'IDLE' },
+};
+
+/**
+ * Read a status from either vocabulary. An explicit `processing` wins over the one a legacy value
+ * implied. Unknown values fall back to `OPEN` / `IDLE`.
+ */
+export function toLifecycleState(
+  value: string | undefined,
+  processing?: ConsultationProcessingState,
+): { status: ConsultationLifecycleStatus; processing: ConsultationProcessingState } {
+  if (value && LIFECYCLE_STATUSES.includes(value)) {
+    return { status: value as ConsultationLifecycleStatus, processing: processing ?? 'IDLE' };
+  }
+  const legacy = value ? LEGACY_TO_LIFECYCLE[value] : undefined;
+  if (legacy) return { status: legacy.status, processing: processing ?? legacy.processing };
+  return { status: 'OPEN', processing: processing ?? 'IDLE' };
+}
