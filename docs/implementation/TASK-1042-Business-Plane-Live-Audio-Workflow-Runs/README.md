@@ -167,6 +167,12 @@ integrator                      gateway (apps/api)                         harne
 
 **C6. ASR node output** (unchanged contract, `data_contract.py:94`): `{ transcript, segments, language }`, where `segments` = `finals` mapped to `{ text, start, end, speaker }`.
 
+**C7. Harness run start** (`POST /workflow-runs:start`, gateway → harness; L1 sends it, L2 accepts it).
+- New optional field `liveAudio: { sttSessionId: string, maxWaitSeconds?: integer > 0 }`.
+- It is a server-resolved channel, like `subject`: the gateway sets it only after the C3 checks pass, and a caller's `payload` can never create it.
+- `maxWaitSeconds` is the gateway-resolved `workflowRuns.liveAudioMaxSeconds`. The harness clamps it tighten-only to the module constant `LIVE_AUDIO_MAX_WAIT_SECONDS = 3600` (`caps.py`). If it is absent, the constant applies.
+- On `InterpreterInput` it becomes `live_audio: LiveAudioBinding | None = None`; the default keeps old histories deserialising.
+
 ## 4. Decisions (FINAL: owner approved 2026-10-05)
 
 The owner answered "approved, go after OD-35 merges". Every recommendation below is therefore final, as written.
@@ -177,6 +183,7 @@ The owner answered "approved, go after OD-35 merges". Every recommendation below
 | **OD-2** | Who may bind a session? | Same tenant only · same human · **same credential** | **Same credential:** the same JWT user, the same API key id, or the same service account id, stamped on the session at create. This matches OD-35 (runs bound to the starting principal). It also fixes G5: a service account can bind, and a second key of the same human cannot. Failure is 404. |
 | **OD-3** | What does the graph read? | The mirrored run events · **the session's finals through an internal route** · a new consultation-style read | **Internal route, finals from offset 0**, consumed by the STT `core.agent` node. Its output contract is unchanged, so downstream bindings work as they do for batch audio. |
 | **OD-4** | When does the ASR node finish? | When the session ends (client `finalize`/close), with a ceiling · at run start (partial) | **When the session ends**, inside a heartbeated activity, with ceiling `workflowRuns.liveAudioMaxSeconds` (default 3600). The wait counts against the run's own budget, and the run budget is not paused: pausing would add a workflow-level change behind a new marker. |
+| **OD-4a** (amends OD-4, owner 2026-10-05) | OD-4 is impossible as written: `caps.py` caps a node activity at 900 s and the run's compute budget at 3600 s. | Durable wait · inside the ASR step (≈15 min max) | **Durable wait (chosen).** It works like the consultation live-handoff wait. When `live_audio` is set, before the stage walk the workflow polls the short activity `interpreter.load_live_audio_state` (C5, state only) every 5 s until `ended`/`truncated`/`timeout`, or the clamped ceiling. The wait is not charged to `maxTotalSeconds`, and `execution_timeout_seconds` adds the ceiling to the backstop. It is guarded by `inp.live_audio and workflow.patched("task-1042-live-audio-wait")` (cheap operand first). The ASR node then reads the transcript once (C5). |
 | **OD-5** | Which ASR agent transcribes: the session's or the graph's node? | The session's, ignore the node · **the graph's node, enforced** | **The graph's node.** Session create takes `workflowSlug` and resolves the node's agent (TASK-1002: "workflow wins"). Binding a session served by a different agent is 409 `RUN_AUDIO_AGENT_MISMATCH`. |
 | **OD-6** | Cardinality? | **One stream-audio key per run, one run per session, exclusive** · several | **One and one, exclusive.** An idempotent retry of the same start is accepted. A second run on the same session is 409. |
 | **OD-7** | A `stream` Input kind not wired to an STT node: publish error or warning? | **ERROR (`WF-SET-005`)** · warning | **ERROR.** Otherwise integrators stream audio that nothing reads, which is G7 again. |
@@ -229,4 +236,5 @@ _Not started — awaiting the owner's decisions in §4._
 |---|---|
 | 2026-10-05 | Ticket raised from OD-37. Discovery by 3 sonnet scouts (gateway, harness, SDK); the orchestrator re-verified the sandbox ownership rule, the mirror's consultation-only resolution, the standalone `subject` limit, the harness `no_audio` path and the `useRunAudio` limit in code. Plan and OD-1..12 written. Status Pending. |
 | 2026-10-05 | **Owner approved** OD-1..12 as recommended. Start is gated on the OD-35 merge (OD-12). Status → Approved, waiting to start. |
+| 2026-10-05 | OD-35 is not yet merged (the lane is still running). On the owner's instruction the SDK lane (L3) and the harness lane (L2) start now and the gateway lane (L1) is held. Contract C1–C7 frozen. **OD-4a**: the owner chose the durable wait, because the 900 s / 3600 s caps make OD-4 impossible. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
