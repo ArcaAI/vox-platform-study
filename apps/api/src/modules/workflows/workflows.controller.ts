@@ -11,6 +11,7 @@ import {
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
   WorkflowEntryGateService,
+  RunPrincipalAccessService,
   type WorkflowSchemaDescription,
 } from '@arcaai/applications';
 import {
@@ -108,6 +109,10 @@ export class WorkflowsController {
     // TASK-1036 (OD-4) — the socket ticket is refused unless the workflow's settings admit `socket`.
     // Optional so the positional unit fixtures keep constructing; absent, the settings are not read.
     @Optional() private readonly entryGate?: WorkflowEntryGateService,
+    // TASK-1038 OD-35 — the run reader the stream-ticket mint records, so the redeeming request is
+    // checked as the principal that minted it (not the API key's bound human). From
+    // `WorkflowRunServiceModule`; optional so the positional unit fixtures keep constructing.
+    @Optional() private readonly runAccess?: RunPrincipalAccessService,
   ) {}
 
   @Get()
@@ -473,12 +478,16 @@ export class WorkflowsController {
     const tenantId = this.cls.get('tenantId') || user.tenantId || null;
 
     const scope = `${WORKFLOW_RUN_TICKET_NAMESPACE}:${runId}`;
+    // OD-35 — `getRunStatus` above already refused a run this caller may not read (the unknown-run
+    // 404); the reader it proved rides on the ticket.
+    const runReader = await this.runAccess?.resolveReader('workflow');
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
       scope,
       // Carried so a ticket minted under impersonation restores the claim on the socket request.
       impersonatedBy: user.impersonatedBy ?? null,
+      ...(runReader ? { runReader } : {}),
     });
 
     const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
