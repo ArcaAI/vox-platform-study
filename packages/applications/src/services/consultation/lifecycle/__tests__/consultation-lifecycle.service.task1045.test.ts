@@ -284,7 +284,10 @@ describe('ConsultationLifecycleService — start', () => {
     await h.service.start(ID, { sttSessionId: 'stt-a' });
 
     expect(h.transcriptionJobs.update).toHaveBeenCalledTimes(1);
-    expect(h.transcriptionJobs.update).toHaveBeenCalledWith('job-a', expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }));
+    expect(h.transcriptionJobs.update).toHaveBeenCalledWith(
+      'job-a',
+      expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }),
+    );
   });
 
   it('stamps the current encounter with the recording cursor as its recording start when it has none', async () => {
@@ -802,5 +805,61 @@ describe('DocumentSectionService — content lock', () => {
       NotFoundException,
     );
     expect(gate.assertContentWritable).not.toHaveBeenCalled();
+  });
+});
+
+describe('ConsultationLifecycleService — stop never restores the previous encounter’s note state (E2E-31)', () => {
+  // Live 2026-10-05: encounter 1's note left STOPPED + AWAITING_REVIEW (NOTE_COVERAGE_GAPS:3);
+  // the encounter-2 stop restored AWAITING_REVIEW with an empty reason for ~9 s, so a client
+  // reading isNoteReady showed encounter 1's note as the current one.
+  it.each([
+    [ConsultationProcessing.AWAITING_REVIEW, 'NOTE_COVERAGE_GAPS:3'],
+    [ConsultationProcessing.FAILED, 'OUTPUT_INVALID'],
+    [ConsultationProcessing.IDLE, NOTE_READY_REASON],
+  ])('a stop after new recording settles %s (%s) back to IDLE with no reason', async (processing, reason) => {
+    const h = makeHarness(
+      consultation({ status: ConsultationStatus.RECORDING, currentEncounterSeq: 2, processing, processingReason: reason } as Partial<Row>),
+    );
+
+    const result = await h.service.stop(ID);
+
+    const written = h.consultations.updateWithVersion.mock.calls[0][1] as ConsultationEntity;
+    expect(written.processingPrior ?? null).toBeNull();
+    expect(h.consultations.setProcessing).toHaveBeenCalledWith(ID, ConsultationProcessing.IDLE, expect.objectContaining({ prior: null }));
+    expect(result).toMatchObject({ status: 'STOPPED', processing: 'IDLE' });
+    const final = h.lifecycleEvents().find((e) => e.type === 'transcript_final') as unknown as {
+      processing: string;
+      processingReason: string | null;
+    };
+    expect(final.processing).toBe('IDLE');
+    expect(final.processingReason ?? null).toBeNull();
+  });
+
+  it.each([ConsultationProcessing.SUMMARIZING, ConsultationProcessing.PROCESSING_ATTACHMENT])(
+    'work still in flight (%s) is restored',
+    async (processing) => {
+      const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING, currentEncounterSeq: 2, processing }));
+
+      const result = await h.service.stop(ID);
+
+      expect(result.processing).toBe(processing);
+    },
+  );
+
+  it('a pending stop records no stale note state for the transcript record to restore', async () => {
+    const h = makeHarness(
+      consultation({
+        status: ConsultationStatus.RECORDING,
+        processing: ConsultationProcessing.AWAITING_REVIEW,
+        processingReason: 'NOTE_COVERAGE_GAPS:3',
+      } as Partial<Row>),
+    );
+    h.transcriptRecord.awaitFinal.mockResolvedValueOnce('pending');
+
+    await h.service.stop(ID);
+
+    const written = h.consultations.updateWithVersion.mock.calls[0][1] as ConsultationEntity;
+    expect(written.processing).toBe(ConsultationProcessing.FINALIZING_TRANSCRIPT);
+    expect(written.processingPrior ?? null).toBeNull();
   });
 });

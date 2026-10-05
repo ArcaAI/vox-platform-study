@@ -65,6 +65,12 @@ type ControlAction = 'finalize' | 'pause' | 'resume';
  * commands (pause / resume / finalize) go to the ones apps/stt reports as live, through the same
  * Redis control stream the WS gateway uses, so the server is authoritative across pods.
  */
+/** Processing a stop carries across the recording: background work that is still running. */
+const IN_FLIGHT_PROCESSING: ReadonlySet<ConsultationProcessing> = new Set([
+  ConsultationProcessing.SUMMARIZING,
+  ConsultationProcessing.PROCESSING_ATTACHMENT,
+]);
+
 @Injectable()
 export class ConsultationLifecycleService extends IConsultationLifecycleService {
   private readonly logger = new Logger(ConsultationLifecycleService.name);
@@ -172,8 +178,12 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     }
 
     applyLifecycleTransition(consultation, ConsultationStatus.STOPPED, this.actor(), 'stop');
-    const prior =
+    const previous =
       consultation.processing === ConsultationProcessing.FINALIZING_TRANSCRIPT ? (consultation.processingPrior ?? null) : consultation.processing;
+    // Only work still in flight survives a stop. A note outcome (AWAITING_REVIEW, FAILED, IDLE +
+    // NOTE_READY) belongs to the speech before this recording: restoring it would present the
+    // previous encounter's note as current until the re-finalisation moves processing on.
+    const prior = previous !== null && IN_FLIGHT_PROCESSING.has(previous) ? previous : null;
     consultation.setProcessing(ConsultationProcessing.FINALIZING_TRANSCRIPT);
     consultation.processingPrior = prior;
     const stopped = await this.persist(consultation, consultation.version);
