@@ -5,9 +5,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { ConsultationEntity } from '@arcaai/domains';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
 
-// Helper to create mock consultation entity
+// Helper to create a consultation entity. A REAL entity: the mapper reads derived lifecycle facts
+// (`isRecordable`, `reopenAllowed()`) and the defaulted lifecycle columns (`processing`,
+// `lastActivityAt`, `currentEncounterSeq`) that only the entity supplies.
 const createMockConsultationEntity = (
   overrides: Partial<{
     id: string;
@@ -25,22 +28,24 @@ const createMockConsultationEntity = (
     Department: any;
     ContextItems: any[];
   }> = {},
-) => ({
-  id: 'id' in overrides ? overrides.id : 'consultation-id-1',
-  tenantId: 'tenantId' in overrides ? overrides.tenantId : 'tenant-1',
-  patientId: 'patientId' in overrides ? overrides.patientId : 'patient-1',
-  doctorId: 'doctorId' in overrides ? overrides.doctorId : 'doctor-1',
-  appointmentDate: 'appointmentDate' in overrides ? overrides.appointmentDate : new Date('2026-01-29'),
-  departmentId: 'departmentId' in overrides ? overrides.departmentId : null,
-  parentConsultationId: 'parentConsultationId' in overrides ? overrides.parentConsultationId : null,
-  status: 'status' in overrides ? overrides.status : undefined,
-  metadata: 'metadata' in overrides ? overrides.metadata : null,
-  createdAt: 'createdAt' in overrides ? overrides.createdAt : new Date('2026-01-29T10:00:00Z'),
-  updatedAt: 'updatedAt' in overrides ? overrides.updatedAt : new Date('2026-01-29T10:30:00Z'),
-  Doctor: 'Doctor' in overrides ? overrides.Doctor : undefined,
-  Department: 'Department' in overrides ? overrides.Department : undefined,
-  ContextItems: 'ContextItems' in overrides ? overrides.ContextItems : [],
-});
+) =>
+  new ConsultationEntity({
+    id: 'id' in overrides ? overrides.id : 'consultation-id-1',
+    tenantId: 'tenantId' in overrides ? overrides.tenantId : 'tenant-1',
+    patientId: 'patientId' in overrides ? overrides.patientId : 'patient-1',
+    doctorId: 'doctorId' in overrides ? overrides.doctorId : 'doctor-1',
+    appointmentDate: 'appointmentDate' in overrides ? overrides.appointmentDate : new Date('2026-01-29'),
+    departmentId: 'departmentId' in overrides ? overrides.departmentId : null,
+    parentConsultationId: 'parentConsultationId' in overrides ? overrides.parentConsultationId : null,
+    status: 'status' in overrides ? overrides.status : undefined,
+    metadata: 'metadata' in overrides ? overrides.metadata : null,
+    createdAt: 'createdAt' in overrides ? overrides.createdAt : new Date('2026-01-29T10:00:00Z'),
+    updatedAt: 'updatedAt' in overrides ? overrides.updatedAt : new Date('2026-01-29T10:30:00Z'),
+    Doctor: 'Doctor' in overrides ? overrides.Doctor : undefined,
+    Department: 'Department' in overrides ? overrides.Department : undefined,
+    ContextItems: 'ContextItems' in overrides ? overrides.ContextItems : [],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
 
 // Helper to create mock context item entity
 const createMockContextItemEntity = (
@@ -259,19 +264,19 @@ describe('ConsultationDtoMapper', () => {
       expect(result.appointmentDate).toBe('2026-12-25');
     });
 
-    // `Consultation.status` is now the SOLE lifecycle tracker
-    // (`metadata.status` deleted; the mapper's former column-vs-metadata
-    // precedence dance is gone with it). The mapper does a bare pass-through
-    // of `entity.status` — every legality/idempotency/forgery-containment
-    // concern now lives in `ConsultationEntity.transitionTo`
-    // (packages/domains) and the service layer's `applyTransition`, not here.
-    it('passes the typed status column straight through, whatever its value', () => {
-      for (const status of ['OPEN', 'PRIMED', 'RECORDING', 'DRAINING', 'PENDING_REVIEW', 'SIGNED', 'TIMED_OUT', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE', 'REOPENED']) {
+    // `Consultation.status` is the SOLE lifecycle tracker (`metadata.status`
+    // deleted; the mapper's former column-vs-metadata precedence dance is gone
+    // with it), and `processing` its background axis. The mapper does a bare
+    // pass-through of both — every legality concern lives in the
+    // `ConsultationEntity` matrix and the lifecycle commands, not here.
+    it('passes the typed status column straight through, for every lifecycle status', () => {
+      for (const status of ['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE']) {
         const entity = createMockConsultationEntity({ status, metadata: null });
 
         const result = ConsultationDtoMapper.toResponse(entity as any);
 
         expect(result.status).toBe(status);
+        expect(result.lifecycle).toEqual({ status, processing: 'IDLE' });
       }
     });
 
@@ -279,23 +284,25 @@ describe('ConsultationDtoMapper', () => {
       // A stray `metadata.status` key (dead code elsewhere, a dirty row, or a
       // forged value) must never leak into the response now that the mapper
       // reads only the typed column.
-      const entity = createMockConsultationEntity({ status: 'PENDING_REVIEW', metadata: { status: 'SIGNED' } });
+      const entity = createMockConsultationEntity({ status: 'STOPPED', metadata: { status: 'APPROVED' } });
 
       const result = ConsultationDtoMapper.toResponse(entity as any);
 
-      expect(result.status).toBe('PENDING_REVIEW');
+      expect(result.status).toBe('STOPPED');
     });
 
-    it('surfaces whatever the column literally holds, including undefined on a bare mock', () => {
-      // The mock helper (unlike the real ConsultationEntity constructor,
-      // which always defaults `status` to OPEN) leaves `status` undefined
-      // when not overridden — this documents that the mapper does no
-      // defaulting of its own; defaulting is the entity's job.
+    it('surfaces the entity-defaulted lifecycle (OPEN / IDLE) when none was stated — defaulting is the entity\'s job', () => {
+      // The helper states no status; the ConsultationEntity constructor
+      // defaults it to OPEN (and processing to IDLE). The mapper reports the
+      // entity's values and does no defaulting of its own.
       const entity = createMockConsultationEntity({ metadata: null });
 
       const result = ConsultationDtoMapper.toResponse(entity as any);
 
-      expect(result.status).toBeUndefined();
+      expect(result.status).toBe(entity.status);
+      expect(result.status).toBe('OPEN');
+      expect(result.processing).toBe('IDLE');
+      expect(result.recordable).toBe(true);
     });
   });
 

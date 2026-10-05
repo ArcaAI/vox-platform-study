@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { ConsultationEntity } from '@arcaai/domains';
 
 // Mock only the version factory (echo args) so we can assert the row written;
@@ -93,7 +94,7 @@ const makeMocks = () => ({
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         createdBy: 'user-1',
-        status: 'PENDING_REVIEW',
+        status: 'STOPPED',
         version: 1,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
@@ -118,8 +119,8 @@ const makeMocks = () => ({
   harnessPolicy: { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
 });
 
-const build = (m: ReturnType<typeof makeMocks>) =>
-  new SummaryService(
+const build = (m: ReturnType<typeof makeMocks>) => {
+  const service = new SummaryService(
     m.contextItemRepository as any,
     m.consultationRepository as any,
     m.summaryMetaRepository as any,
@@ -136,6 +137,10 @@ const build = (m: ReturnType<typeof makeMocks>) =>
     undefined, // harnessGatewayService
     m.harnessPolicy as any, // harnessPolicyService
   );
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
+};
 
 describe('SummaryService — DNA edit-capture (Phase 6)', () => {
   let m: ReturnType<typeof makeMocks>;

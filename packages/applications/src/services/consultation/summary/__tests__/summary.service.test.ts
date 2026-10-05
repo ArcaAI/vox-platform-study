@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import {
   SysEventType,
   ContextItemVersionFactory,
@@ -18,16 +19,15 @@ import {
   ConsultationStatus,
   NamedEntityFactory,
   ConsultationEntity,
+  ConsultationProcessing,
 } from '@arcaai/domains';
 
 /**
- * `approveSummary` now calls the REAL
- * `ConsultationEntity.transitionTo` (so every
- * `mockConsultationRepository.findById` fixture must be a real entity
- * instance, not a duck-typed object. Defaults `status` to `PENDING_REVIEW`
- * (a legal predecessor of `SIGNED`) since most of this file's fixtures
- * predate the state machine and never specified one; call sites that need a
- * different predecessor (or a non-signing codepath) pass `status` explicitly.
+ * `approveSummary` runs the REAL session approve (the lifecycle matrix on
+ * `ConsultationEntity`), so every `mockConsultationRepository.findById` fixture
+ * must be a real entity instance, not a duck-typed object. Defaults to
+ * STOPPED + AWAITING_REVIEW (a draft awaiting the clinician — a legal
+ * predecessor of APPROVED); call sites that need another state pass it.
  */
 function consultationFixture(overrides: Record<string, unknown> = {}): ConsultationEntity {
   return new ConsultationEntity({
@@ -37,7 +37,8 @@ function consultationFixture(overrides: Record<string, unknown> = {}): Consultat
     doctorId: 'doctor-1',
     appointmentDate: new Date('2026-01-01'),
     metadata: null,
-    status: ConsultationStatus.PENDING_REVIEW,
+    status: ConsultationStatus.STOPPED,
+    processing: ConsultationProcessing.AWAITING_REVIEW,
     degradedReasons: [],
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
@@ -1939,14 +1940,16 @@ describe('SummaryService', () => {
     // ===================================================================
     // Attestation gate (confirm-before-commit)
     //
-    // approveSummary MUST, in one path that cannot be bypassed:
+    // approveSummary delegates to the session approve, which MUST, in one
+    // transaction that cannot be bypassed:
     //   1. write a SIGNED_NOTE ContextItemVersion carrying attestation fields,
-    //   2. append an ATTEST HarnessAuditEvent (Phase-0 WORM trail),
-    //   3. flip Consultation.status → SIGNED.
+    //   2. append the ATTEST (+ SESSION_APPROVED) HarnessAuditEvents (WORM trail),
+    //   3. move Consultation.status → APPROVED.
     // ===================================================================
     describe('approveSummary — attestation gate (Phase 1)', () => {
       let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
       let gatedService: SummaryService;
+      let approvalWiring: ReturnType<typeof wireSessionApproval>;
 
       const makeFinalSummary = () => ({
         id: 'ctx-item-123',
@@ -1979,17 +1982,26 @@ describe('SummaryService', () => {
           undefined, // userProfileRepository
           mockHarnessAuditService as any, // harnessAuditService (Phase-0 WORM)
         );
+        approvalWiring = wireSessionApproval(gatedService, {
+          consultationRepository: mockConsultationRepository,
+          contextItemRepository: mockContextItemRepository,
+          contextItemVersionRepository: mockContextItemVersionRepository,
+          harnessAuditService: mockHarnessAuditService,
+          cls: mockClsService,
+        });
       });
 
-      it('writes an attested SIGNED_NOTE version, appends an ATTEST WORM event, and sets status=SIGNED', async () => {
+      it('writes an attested SIGNED_NOTE version, appends an ATTEST WORM event, and sets status=APPROVED', async () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
-        mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
-        mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+        // The version store: the signature reads back once the approval has written it.
+        const written: unknown[] = [];
+        mockContextItemVersionRepository.getVersionsByChangeReason.mockImplementation(async () => written);
+        mockContextItemVersionRepository.create.mockImplementation(async (version: unknown) => (written.push(version), { id: 'signed-version-id-1' }));
         mockConsultationRepository.findById.mockResolvedValue(
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            status: ConsultationStatus.STOPPED, // OPEN cannot be approved; a STOPPED consultation can
             updatedBy: null,
           }),
         );
@@ -2008,8 +2020,11 @@ describe('SummaryService', () => {
         );
         expect(mockContextItemVersionRepository.create).toHaveBeenCalledTimes(1);
 
-        // 2. ATTEST WORM audit event referencing the signed version
-        expect(mockHarnessAuditService.append).toHaveBeenCalledTimes(1);
+        // 2. ATTEST WORM audit event referencing the signed version, then the session approval
+        expect(mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action)).toEqual([
+          HarnessAuditAction.ATTEST,
+          HarnessAuditAction.SESSION_APPROVED,
+        ]);
         expect(mockHarnessAuditService.append).toHaveBeenCalledWith(
           expect.objectContaining({
             tenantId: 'tenant-1',
@@ -2021,18 +2036,21 @@ describe('SummaryService', () => {
           }),
         );
 
-        // 3. consultation lifecycle → SIGNED
+        // 3. consultation lifecycle → APPROVED
         expect(mockConsultationRepository.update).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
         );
 
         expect(result.approvalStatus).toBe('APPROVED');
         expect(result.approvedBy).toBe('user-1');
       });
 
-      it('is idempotent — an already-approved summary does NOT re-attest, re-audit, or re-sign', async () => {
+      it('is idempotent — an already-approved consultation does NOT re-attest, re-audit, or re-sign', async () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', status: ConsultationStatus.APPROVED }),
+        );
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([
           { changedBy: 'user-9', createdAt: new Date('2026-06-01T00:00:00.000Z') },
         ]);
@@ -2052,10 +2070,17 @@ describe('SummaryService', () => {
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
         mockHarnessAuditService.append.mockRejectedValue(new Error('audit chain unavailable'));
 
-        await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow();
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', status: ConsultationStatus.STOPPED }),
+        );
 
-        // The consultation must NOT be flipped to SIGNED when the audit fails.
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        await expect(gatedService.approveSummary('ctx-item-123')).rejects.toThrow('audit chain unavailable');
+
+        // The WORM append runs INSIDE the approval transaction, so its failure rolls the status
+        // write back; nothing post-commit (lifecycle event, harness hand-off) runs.
+        expect(approvalWiring.unitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
+        await expect(approvalWiring.unitOfWork.runInTransaction.mock.results[0].value).rejects.toThrow('audit chain unavailable');
+        expect(approvalWiring.events.publish).not.toHaveBeenCalled();
       });
     });
 
@@ -2076,6 +2101,7 @@ describe('SummaryService', () => {
     describe('approveSummary — Phase D assurance guard', () => {
       let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
       let gatedService: SummaryService;
+      let approvalWiring: ReturnType<typeof wireSessionApproval>;
 
       const makeFinalSummary = () => ({
         id: 'ctx-item-123',
@@ -2108,6 +2134,13 @@ describe('SummaryService', () => {
           undefined, // userProfileRepository
           mockHarnessAuditService as any,
         );
+        approvalWiring = wireSessionApproval(gatedService, {
+          consultationRepository: mockConsultationRepository,
+          contextItemRepository: mockContextItemRepository,
+          contextItemVersionRepository: mockContextItemVersionRepository,
+          harnessAuditService: mockHarnessAuditService,
+          cls: mockClsService,
+        });
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
@@ -2115,7 +2148,7 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW,
+            status: ConsultationStatus.STOPPED,
             updatedBy: null,
           }),
         );
@@ -2136,7 +2169,7 @@ describe('SummaryService', () => {
         expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
         expect(mockConsultationRepository.update).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
         );
         // …but the WORM trail records BOTH the attestation AND that the sign
         // preceded assurance, so the late-verdict path can correlate.
@@ -2182,7 +2215,7 @@ describe('SummaryService', () => {
         expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
         expect(mockConsultationRepository.update).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
         );
         const actions = mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
         expect(actions).toContain(HarnessAuditAction.SAFETY_OVERRIDE);
@@ -2201,9 +2234,12 @@ describe('SummaryService', () => {
         // Fail the very first audit append (the SAFETY_OVERRIDE event).
         mockHarnessAuditService.append.mockRejectedValueOnce(new Error('audit chain unavailable'));
 
-        await expect(gatedService.approveSummary('ctx-item-123', { overrideSafetyFlag: true })).rejects.toThrow();
-        // The consultation must NOT be flipped to SIGNED when the override audit fails.
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        await expect(gatedService.approveSummary('ctx-item-123', { overrideSafetyFlag: true })).rejects.toThrow('audit chain unavailable');
+        // The override append runs INSIDE the approval transaction: its failure rolls the status
+        // write back, and no ATTEST follows it.
+        await expect(approvalWiring.unitOfWork.runInTransaction.mock.results[0].value).rejects.toThrow('audit chain unavailable');
+        expect(mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action)).toEqual([HarnessAuditAction.SAFETY_OVERRIDE]);
+        expect(approvalWiring.events.publish).not.toHaveBeenCalled();
       });
 
       it('ALLOWS sign-off when assured and safety is not FLAG (a groundedness FLAG alone does NOT block, no extra annotations)', async () => {
@@ -2219,7 +2255,7 @@ describe('SummaryService', () => {
         expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
         expect(mockConsultationRepository.update).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
         );
         const actions = mockHarnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
         expect(actions).not.toContain(HarnessAuditAction.SAFETY_OVERRIDE);
@@ -2276,6 +2312,13 @@ describe('SummaryService', () => {
           undefined, // userProfileRepository
           mockHarnessAuditService as any,
         );
+        wireSessionApproval(gatedService, {
+          consultationRepository: mockConsultationRepository,
+          contextItemRepository: mockContextItemRepository,
+          contextItemVersionRepository: mockContextItemVersionRepository,
+          harnessAuditService: mockHarnessAuditService,
+          cls: mockClsService,
+        });
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
@@ -2283,7 +2326,7 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW,
+            status: ConsultationStatus.STOPPED,
             updatedBy: null,
             version: 6,
           }),
@@ -2296,11 +2339,13 @@ describe('SummaryService', () => {
 
         await gatedService.approveSummary('ctx-item-123', { expectedVersion: 4 });
 
-        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-item-123', expect.objectContaining({ id: 'ctx-item-123' }), 4);
+        // Both compare-and-sets run on the approval transaction's client.
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-item-123', expect.objectContaining({ id: 'ctx-item-123' }), 4, 'tx');
         expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
           6,
+          'tx',
         );
         // CAS-only — the legacy non-versioned write MUST NOT fire on either row.
         expect(mockContextItemRepository.update).not.toHaveBeenCalled();
@@ -2377,6 +2422,13 @@ describe('SummaryService', () => {
           mockHarnessAuditService as any, // harnessAuditService (Phase-0 WORM)
           mockHarnessGateway as any, // harnessGatewayService (Lane G)
         );
+        wireSessionApproval(signalingService, {
+          consultationRepository: mockConsultationRepository,
+          contextItemRepository: mockContextItemRepository,
+          contextItemVersionRepository: mockContextItemVersionRepository,
+          harnessAuditService: mockHarnessAuditService,
+          cls: mockClsService,
+        });
 
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
@@ -2385,7 +2437,7 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+            status: ConsultationStatus.STOPPED, // OPEN cannot be approved; a STOPPED consultation can
             updatedBy: null,
           }),
         );
@@ -2407,7 +2459,7 @@ describe('SummaryService', () => {
         );
       });
 
-      it('signals AFTER the consultation is flipped to SIGNED (WORM is the source of truth)', async () => {
+      it('signals AFTER the consultation is moved to APPROVED (WORM is the source of truth)', async () => {
         const order: string[] = [];
         mockConsultationRepository.update.mockImplementation(async () => {
           order.push('status-signed');
@@ -2431,11 +2483,14 @@ describe('SummaryService', () => {
         expect(result.approvalStatus).toBe('APPROVED');
         expect(mockConsultationRepository.update).toHaveBeenCalledWith(
           'consultation-1',
-          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          expect.objectContaining({ status: ConsultationStatus.APPROVED }),
         );
       });
 
       it('does not signal on the idempotent already-approved path', async () => {
+        mockConsultationRepository.findById.mockResolvedValue(
+          consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', status: ConsultationStatus.APPROVED }),
+        );
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([
           { changedBy: 'user-9', createdAt: new Date('2026-06-01T00:00:00.000Z') },
         ]);
@@ -2450,7 +2505,7 @@ describe('SummaryService', () => {
     // updateSummary edit-signal SENDER.
     //
     // A clinician edit of an optimistically-delivered draft that is STILL
-    // under assurance (DRAFT_PENDING_SENSORS) is forwarded to the running
+    // under assurance (processing SUMMARIZING) is forwarded to the running
     // harness workflow's `edit` signal so assurance re-binds + re-runs on the
     // edited version (Q3) and silent regen-if-untouched is disabled (Q1).
     // Best-effort: the MODIFIED_SUMMARY version write is the source of truth;
@@ -2494,12 +2549,13 @@ describe('SummaryService', () => {
         );
       });
 
-      it('forwards the edit (content + new versionId + editor) when the draft is still DRAFT_PENDING_SENSORS', async () => {
+      it('forwards the edit (content + new versionId + editor) when the draft is still under assurance (processing SUMMARIZING)', async () => {
         mockConsultationRepository.findById.mockResolvedValue(
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+            status: ConsultationStatus.STOPPED,
+            processing: ConsultationProcessing.SUMMARIZING,
           }),
         );
 
@@ -2516,12 +2572,12 @@ describe('SummaryService', () => {
         );
       });
 
-      it('does NOT signal when the consultation is not in DRAFT_PENDING_SENSORS', async () => {
+      it('does NOT signal when the consultation is not SUMMARIZING (awaiting review)', async () => {
         mockConsultationRepository.findById.mockResolvedValue(
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.PENDING_REVIEW,
+            status: ConsultationStatus.STOPPED,
           }),
         );
 
@@ -2543,7 +2599,8 @@ describe('SummaryService', () => {
           consultationFixture({
             id: 'consultation-1',
             tenantId: 'tenant-1',
-            status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+            status: ConsultationStatus.STOPPED,
+            processing: ConsultationProcessing.SUMMARIZING,
           }),
         );
         mockHarnessGateway.signalEdit.mockRejectedValue(new Error('harness unreachable'));
@@ -2669,6 +2726,13 @@ describe('SummaryService', () => {
     it('encrypts the final content before persisting (approveSummary)', async () => {
       const mockHarnessAuditService = createMockHarnessAuditService();
       const serviceWithSecrets = buildServiceWithSecrets([mockHarnessAuditService as any]);
+      wireSessionApproval(serviceWithSecrets, {
+        consultationRepository: mockConsultationRepository,
+        contextItemRepository: mockContextItemRepository,
+        contextItemVersionRepository: mockContextItemVersionRepository,
+        harnessAuditService: mockHarnessAuditService,
+        cls: mockClsService,
+      });
       const finalSummary = {
         id: 'ctx-approve-enc',
         tenantId: 'tenant-1',
@@ -2689,7 +2753,7 @@ describe('SummaryService', () => {
         consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
-          status: ConsultationStatus.PENDING_REVIEW, // OPEN cannot legally reach SIGNED; PENDING_REVIEW can
+          status: ConsultationStatus.STOPPED, // OPEN cannot be approved; a STOPPED consultation can
           updatedBy: null,
         }),
       );

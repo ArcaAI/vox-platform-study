@@ -42,6 +42,8 @@ describe('BullMQ queue concurrency (TASK-993 lane D)', () => {
         JobQueue.MineGateEditExemplar,
         // TASK-1001 wave 6 — the consultation completion timeout.
         JobQueue.ConsultationCompletionTimeout,
+        // TASK-1045 — the per-encounter fact ledger + recap producer.
+        JobQueue.ExtractFactLedger,
         JobQueue.SyncTenantDirectoryUsers,
         JobQueue.DownloadAiModel,
         // TASK-1032 — tenant checkpoints: export/verify and restore each run one job at a time.

@@ -90,7 +90,7 @@ describe('TASK-1022 L-RESUME — a governed resumed recording is re-finalised by
   }
 
   beforeEach(() => {
-    consultation = { id: CID, tenantId: 'tenant-1', patientId: 'p-1', doctorId: 'doctor-1', metadata: GOVERNED, status: 'DRAINING' };
+    consultation = { id: CID, tenantId: 'tenant-1', patientId: 'p-1', doctorId: 'doctor-1', metadata: GOVERNED, status: 'STOPPED' };
     transcripts = [aggregate('agg-1', 'first recording', 2), aggregate('agg-2', 'after the resume', 20)];
     rawSummaries = [draft];
     structuredItems = [];
@@ -144,8 +144,8 @@ describe('TASK-1022 L-RESUME — a governed resumed recording is re-finalised by
     expect(generate).not.toHaveBeenCalled();
   });
 
-  it('never re-finalises a consultation whose status is SIGNED / CLOSED_COMPLETE', async () => {
-    for (const status of ['SIGNED', 'CLOSED_COMPLETE']) {
+  it('never re-finalises a consultation whose status is APPROVED / CLOSED_COMPLETE', async () => {
+    for (const status of ['APPROVED', 'CLOSED_COMPLETE']) {
       consultation.status = status;
       await handler.handleTranscriptionCreated(payload('agg-2'));
     }

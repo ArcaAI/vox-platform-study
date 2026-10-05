@@ -1,21 +1,23 @@
 /**
- * TASK-946 OD-4 — a governed consultation whose run ended FAILED/TIMED_OUT reaches a terminal
- * state instead of sitting in `DRAINING` until the 24h sweep.
+ * TASK-946 OD-4, re-pinned by TASK-1045 — a governed consultation whose run ended FAILED/TIMED_OUT
+ * stops looking like it is still being documented.
  *
- * Measured 2026-09-10: every consultation stopped that day (16 of them) was still `DRAINING`
- * eight hours after its interpreter workflow had closed FAILED. `CLOSED_INCOMPLETE` is the
- * honest state — a clinician cannot sign a note that was never written — and `reopen` exists.
+ * Measured 2026-09-10: every consultation stopped that day (16 of them) still looked in flight
+ * eight hours after its interpreter workflow had closed FAILED. Since TASK-1045 the harness never
+ * writes `status`: a STOPPED consultation whose note was never written is marked processing
+ * `FAILED` with the run's reason, and stays open — the clinician can record again or close it, and
+ * the auto-close sweep owns the idle case.
  *
- * The guard is deliberately an EXPLICIT `DRAINING` check rather than the broader
- * `canTransitionTo(CLOSED_INCOMPLETE)`: `DRAFT_PENDING_SENSORS` also legally reaches it, but a
- * consultation in that state HAS a draft, and closing it incomplete would discard a written note
- * because a later stage of the same run failed.
+ * A STOPPED consultation that already HOLDS the note (`AWAITING_REVIEW`, or `IDLE` with the harness
+ * draft) is left alone: marking it failed because a later node of the same run failed would
+ * misdescribe a written note.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
-import { ConsultationEntity, ConsultationStatus, ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, ContextItemType, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_PROGRESS_FAILED_STAGE } from '../dto';
+import { HARNESS_DRAFT_SUBTYPE } from '../harness-draft.constants';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const OTHER_TENANT = '50000000-0000-0000-0000-0000000000ff';
@@ -43,7 +45,13 @@ function consultationFixture(overrides: Record<string, unknown>): ConsultationEn
   } as any);
 }
 
-function build(consultation: ConsultationEntity | null) {
+function build(consultation: ConsultationEntity | null, opts: { ownDrafts?: Array<Record<string, unknown>> } = {}) {
+  // `failGovernedRun` asks whether the harness already wrote this consultation's note.
+  const contextItemRepository = {
+    findByType: vi.fn(async (_cid: string, type: ContextItemType) => (type === ContextItemType.RAW_SUMMARY ? (opts.ownDrafts ?? []) : [])),
+  };
+  // The processing axis moves through the lifecycle gate (no status write, no `_version` bump).
+  const lifecycleGate = { setProcessing: vi.fn().mockResolvedValue(true) };
   const consultationRepository = {
     findById: vi.fn().mockResolvedValue(consultation),
     updateWithVersion: vi.fn().mockImplementation(async (_id: string, entity: unknown) => entity),
@@ -58,7 +66,7 @@ function build(consultation: ConsultationEntity | null) {
   const eventEmitter = { emit: vi.fn() };
 
   const service = new HarnessInternalService(
-    undefined as never, // contextItemRepository
+    contextItemRepository as never,
     consultationRepository as never,
     undefined as never, // namedEntityRepository
     undefined as never, // summaryMetaRepository
@@ -83,46 +91,49 @@ function build(consultation: ConsultationEntity | null) {
     undefined, // aiModelRepository
     progressService as never,
     eventEmitter as never,
+    undefined, // routingPolicies
+    undefined, // effectiveSettings
+    undefined, // dnaReportRepository
+    lifecycleGate as never,
   );
 
-  return { service, consultationRepository, progressService, eventEmitter, cls };
+  return { service, consultationRepository, progressService, eventEmitter, cls, lifecycleGate };
 }
 
 const failedRun = { tenantId: TENANT, runId: RUN_ID, status: 'FAILED' as const, reason: 'n_output schema failure' };
 
-describe('HarnessInternalService.failGovernedRun (TASK-946 OD-4)', () => {
+describe('HarnessInternalService.failGovernedRun (TASK-946 OD-4, TASK-1045 processing axis)', () => {
   let consultation: ConsultationEntity;
   beforeEach(() => {
-    consultation = consultationFixture({ status: ConsultationStatus.DRAINING });
+    // Stopped, transcript final, no note written yet — the run was the thing writing it.
+    consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.IDLE });
   });
 
   it('ignores the failure of a SUPERSEDED run — the marker names a newer governing run (TASK-1022 resume)', async () => {
     const superseded = consultationFixture({
-      status: ConsultationStatus.DRAINING,
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.IDLE,
       metadata: { governingEngine: { engine: 'tenant-workflow', workflowRunId: 'run-new', workflowDefinitionSlug: 'wf', supersededRunId: RUN_ID } },
     });
-    const { service, consultationRepository } = build(superseded);
+    const { service, consultationRepository, lifecycleGate } = build(superseded);
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
 
-    expect(result).toEqual({ transitioned: false, status: ConsultationStatus.DRAINING });
+    expect(result).toEqual({ transitioned: false, status: ConsultationStatus.STOPPED });
+    expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
-    expect(superseded.status).toBe(ConsultationStatus.DRAINING);
   });
 
-  it('closes a DRAINING consultation as CLOSED_INCOMPLETE and stamps the terminal reason', async () => {
-    const { service, consultationRepository } = build(consultation);
+  it('marks a STOPPED consultation with no written note processing FAILED with the run reason — status untouched', async () => {
+    const { service, consultationRepository, lifecycleGate } = build(consultation);
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
 
-    expect(result.transitioned).toBe(true);
-    expect(result.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
-    expect(consultation.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
-    expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(CONSULTATION, consultation, 4);
-    expect(consultation.metadata).toMatchObject({
-      terminalReason: { runId: RUN_ID, status: 'FAILED', reason: 'n_output schema failure' },
-    });
-    expect((consultation.metadata as { terminalReason: { at: string } }).terminalReason.at).toEqual(expect.any(String));
+    expect(result).toEqual({ transitioned: true, status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.FAILED });
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CONSULTATION, ConsultationProcessing.FAILED, 'n_output schema failure');
+    expect(consultation.status).toBe(ConsultationStatus.STOPPED);
+    // No status write and no `_version` bump: the gate's writer is the only write.
+    expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 
   it('publishes a harness-progress FAILED event so the caller stops seeing heartbeats', async () => {
@@ -145,47 +156,56 @@ describe('HarnessInternalService.failGovernedRun (TASK-946 OD-4)', () => {
     const [type, event] = eventEmitter.emit.mock.calls[0]!;
     expect(type).toBe(SysEventType.ResourceUpdated);
     expect(event.resourceId).toBe(CONSULTATION);
-    expect(event.data).toMatchObject({ action: 'failGovernedRun', status: ConsultationStatus.CLOSED_INCOMPLETE, runId: RUN_ID });
+    expect(event.data).toMatchObject({
+      action: 'failGovernedRun',
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.FAILED,
+      runId: RUN_ID,
+    });
   });
 
-  it('closes on TIMED_OUT as well', async () => {
-    const { service } = build(consultation);
+  it('marks on a TIMED_OUT run as well — the named outcome stands in for a missing reason', async () => {
+    const { service, lifecycleGate } = build(consultation);
 
-    const result = await service.failGovernedRun(CONSULTATION, { ...failedRun, status: 'TIMED_OUT' });
+    const result = await service.failGovernedRun(CONSULTATION, { tenantId: TENANT, runId: RUN_ID, status: 'TIMED_OUT' });
 
-    expect(result.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+    expect(result.processing).toBe(ConsultationProcessing.FAILED);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CONSULTATION, ConsultationProcessing.FAILED, 'GOVERNED_RUN_TIMED_OUT');
   });
 
-  it('leaves a consultation already past DRAINING untouched — never regresses a review or a signature', async () => {
-    const pending = consultationFixture({ status: ConsultationStatus.PENDING_REVIEW });
-    const { service, consultationRepository, progressService, eventEmitter } = build(pending);
+  it.each([
+    ['a note awaiting review', { status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.AWAITING_REVIEW }, []],
+    ['a written harness draft', { status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.IDLE }, [{ id: 'd-1', metaData: { subType: HARNESS_DRAFT_SUBTYPE } }]],
+    ['an approved consultation', { status: ConsultationStatus.APPROVED, processing: ConsultationProcessing.IDLE }, []],
+  ])('leaves %s untouched — never misdescribes a written or signed note', async (_label, state, ownDrafts) => {
+    const written = consultationFixture(state);
+    const { service, consultationRepository, progressService, eventEmitter, lifecycleGate } = build(written, { ownDrafts });
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
 
-    expect(result.transitioned).toBe(false);
-    expect(result.status).toBe(ConsultationStatus.PENDING_REVIEW);
-    expect(pending.status).toBe(ConsultationStatus.PENDING_REVIEW);
+    expect(result).toEqual({ transitioned: false, status: state.status });
+    expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     expect(progressService.reportProgress).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 
-  it('is idempotent — a retry after the flip is a no-op', async () => {
+  it('is a no-op on a closed consultation', async () => {
     const closed = consultationFixture({ status: ConsultationStatus.CLOSED_INCOMPLETE });
-    const { service, consultationRepository } = build(closed);
+    const { service, lifecycleGate } = build(closed);
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
 
     expect(result.transitioned).toBe(false);
-    expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
   });
 
   it('a cross-tenant consultation id is a 404, never a 403', async () => {
-    const foreign = consultationFixture({ status: ConsultationStatus.DRAINING, tenantId: OTHER_TENANT });
-    const { service, consultationRepository } = build(foreign);
+    const foreign = consultationFixture({ status: ConsultationStatus.STOPPED, tenantId: OTHER_TENANT });
+    const { service, lifecycleGate } = build(foreign);
 
     await expect(service.failGovernedRun(CONSULTATION, failedRun)).rejects.toBeInstanceOf(NotFoundException);
-    expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
   });
 
   it('an unknown consultation id is a 404', async () => {
@@ -195,34 +215,33 @@ describe('HarnessInternalService.failGovernedRun (TASK-946 OD-4)', () => {
   });
 
   it('a soft-deleted consultation is a 404 (the writable guard every other callback applies)', async () => {
-    const deleted = consultationFixture({ status: ConsultationStatus.DRAINING, resourceStatus: ResourceStatusType.DELETED });
+    const deleted = consultationFixture({ status: ConsultationStatus.STOPPED, resourceStatus: ResourceStatusType.DELETED });
     const { service } = build(deleted);
 
     await expect(service.failGovernedRun(CONSULTATION, failedRun)).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('a failing progress publish never rolls back the persisted transition', async () => {
-    const { service, progressService, consultationRepository } = build(consultation);
+  it('a failing progress publish never rolls back the persisted outcome', async () => {
+    const { service, progressService, lifecycleGate } = build(consultation);
     progressService.reportProgress.mockRejectedValue(new Error('redis down'));
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
 
     expect(result.transitioned).toBe(true);
-    expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
+    expect(lifecycleGate.setProcessing).toHaveBeenCalled();
   });
 
-  it('preserves existing consultation metadata alongside the terminal reason', async () => {
+  it('leaves the consultation metadata (the governing marker) as it was — the reason lives on processingReason', async () => {
     const withMarker = consultationFixture({
-      status: ConsultationStatus.DRAINING,
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.IDLE,
       metadata: { governingEngine: { workflowRunId: RUN_ID, workflowDefinitionSlug: 'arcaai-consultation-v1' } },
     });
-    const { service } = build(withMarker);
+    const { service, lifecycleGate } = build(withMarker);
 
     await service.failGovernedRun(CONSULTATION, failedRun);
 
-    expect(withMarker.metadata).toMatchObject({
-      governingEngine: { workflowRunId: RUN_ID },
-      terminalReason: { runId: RUN_ID },
-    });
+    expect(withMarker.metadata).toEqual({ governingEngine: { workflowRunId: RUN_ID, workflowDefinitionSlug: 'arcaai-consultation-v1' } });
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CONSULTATION, ConsultationProcessing.FAILED, 'n_output schema failure');
   });
 });

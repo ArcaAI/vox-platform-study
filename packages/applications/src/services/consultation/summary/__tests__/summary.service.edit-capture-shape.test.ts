@@ -17,6 +17,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { ConsultationEntity } from '@arcaai/domains';
 import { compileDocumentTemplate } from '../../../document-template/document-template-compiler';
 import { SOAP_NOTE_SHAPE } from '../../../document-template/platform-document-shapes';
@@ -113,7 +114,7 @@ const makeMocks = () => ({
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         createdBy: 'user-1',
-        status: 'PENDING_REVIEW',
+        status: 'STOPPED',
         version: 1,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
@@ -148,8 +149,8 @@ const templateService = (shape: DocumentTemplateShape) => ({
   }),
 });
 
-const build = (m: ReturnType<typeof makeMocks>, docTemplates?: unknown) =>
-  new SummaryService(
+const build = (m: ReturnType<typeof makeMocks>, docTemplates?: unknown) => {
+  const service = new SummaryService(
     m.contextItemRepository as any,
     m.consultationRepository as any,
     m.summaryMetaRepository as any,
@@ -180,6 +181,10 @@ const build = (m: ReturnType<typeof makeMocks>, docTemplates?: unknown) =>
     undefined, // textRequestEnrichment
     docTemplates as any, // documentTemplateService
   );
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
+};
 
 const draftItem = (content: string) => ({
   id: 'ctx-1',

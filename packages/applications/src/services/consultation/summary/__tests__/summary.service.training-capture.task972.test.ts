@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { GateEditMiningQueue } from '../../../gate-edit-mining/gate-edit-mining.processor';
 import { ConsultationEntity, ConsultationStatus } from '@arcaai/domains';
 
@@ -64,7 +65,7 @@ const makeMocks = () => ({
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         createdBy: 'user-1',
-        status: ConsultationStatus.PENDING_REVIEW,
+        status: ConsultationStatus.STOPPED,
         version: 1,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
@@ -97,7 +98,10 @@ const build = (m: Mocks, miningQueue: unknown) => {
   args[9] = m.promptAssembly;
   args[12] = m.harnessAudit;
   args[26] = miningQueue;
-  return new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  const service = new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
 };
 
 describe('V5 — an opted-out clinician still signs, and yields no exemplar', () => {
@@ -125,7 +129,7 @@ describe('V5 — an opted-out clinician still signs, and yields no exemplar', ()
     expect(m.harnessAudit.append).toHaveBeenCalled();
     expect(m.consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
     const persisted = m.consultationRepository.updateWithVersion.mock.calls[0][1] as { status: string };
-    expect(persisted.status).toBe(ConsultationStatus.SIGNED);
+    expect(persisted.status).toBe(ConsultationStatus.APPROVED);
     // …and nothing was captured.
     expect(bullQueue.add).not.toHaveBeenCalled();
   });

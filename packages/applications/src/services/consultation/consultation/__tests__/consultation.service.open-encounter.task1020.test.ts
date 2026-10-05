@@ -1,34 +1,38 @@
 /**
- * TASK-1020 — one clinical encounter = one consultation (BP-1), and `open` is the only entry.
+ * TASK-1020 — `open` is the only entry, and a same-day return visit must never be lost —
+ * re-pinned on the TASK-1045 episode model (D-3: a consultation is an EPISODE of encounters; the
+ * TASK-1020 per-visit model and its OD-1/OD-3/OD-4 rules are reversed — see the TASK-1020 README
+ * Change History). The new rules themselves are pinned in
+ * `consultation.service.open-episode.task1045.test.ts`; this file keeps the TASK-1020 guarantees
+ * that survived, restated on the new key:
  *
- * What this file pins, each because it is a way the same-day return visit broke:
+ *  1. THE ENCOUNTER KEY. An `externalRef` (the EMR event id) names an ENCOUNTER: the same ref is the
+ *     same consultation (retries and reconnects are safe) — closed or not, `recordable` says which —
+ *     and a ref already used for another patient is 409 `EXTERNAL_REF_CONFLICT`. The ref is written
+ *     to the column on CREATE (and still to the metadata marker, for readers that predate it).
+ *  2. THE OPEN KEY. Without a ref, the non-closed consultation of (tenant, clinician, patient,
+ *     department) is returned; with none, a NEW consultation is chained to the latest CLOSED one of
+ *     the key (never an implicit reopen). An explicit parent wins. A lost unique-index race answers
+ *     with the winner.
+ *  3. THE PARENT IS THE SAME PATIENT (D-5): 400 `PARENT_PATIENT_MISMATCH`.
+ *  4. A RE-OPEN DOES NOT RE-GRANT CONSENT (D-6's intent: a revocation is honoured — the grant happens
+ *     when a NEW encounter is created), and the day stamped on a new consultation is the TENANT's
+ *     day (BP-5/OD-8).
  *
- *  1. THE ENCOUNTER KEY (D-2/D-3). With an `externalRef` (the EMR event id) `open` matches on
- *     `(tenant, patient, doctor, externalRef)`: the same ref is the same row (retries and reconnects
- *     are safe), a NEW ref is a NEW consultation even when a same-day row exists, and a ref already
- *     used for another patient is 409 `EXTERNAL_REF_CONFLICT`. The ref is written to the column on
- *     CREATE (and still to the metadata marker, for readers that predate the column).
- *  2. THE LEGACY KEY (D-3/OD-3). Without a ref, `(tenant, patient, appointmentDate, doctor)` still
- *     applies — except that a caller who names the match (or an unrelated row) as its parent is
- *     explicitly following up, which creates a child. A terminal match is RETURNED with
- *     `recordable: false`, never auto-forked.
- *  3. THE DERIVED PARENT (OD-4). A `revisit` opened with no parent is chained to the latest
- *     same-patient, same-day consultation of ANY clinician. An explicit parent always wins.
- *  4. THE PARENT IS THE SAME PATIENT (D-5): 400 `PARENT_PATIENT_MISMATCH`.
- *  5. SIGNED DOCUMENTATION IS NOT RECORDED OVER (D-4/BP-2): `recording/start` on a row the matrix
- *     cannot move to RECORDING is 409 `CONSULTATION_NOT_RECORDABLE` whatever the kill-switch says;
- *     the switch-OFF bypass survives for `OPEN` alone.
- *  6. A RE-OPEN DOES NOT RE-GRANT CONSENT (D-6's intent: a revocation is honoured — the grant
- *     happens when a NEW encounter is created), and the day is the TENANT's day (BP-5/OD-8).
+ * Removed (reversed by D-3): the same-day DERIVED parent of any clinician (OD-4 — chaining is to the
+ * latest closed consultation of the key), forking a child when the caller names a parent (OD-3 — a
+ * follow-up is an encounter appended to the open consultation), the 12-state recordability table,
+ * and `startRecording`'s kill-switch cases (PRIMED is gone; recordability is the lifecycle start's,
+ * pinned in `consultation.service.recording.test.ts`).
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble, type EncounterServiceDouble } from './consultation-service.fixture';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 import { readExternalRef } from '../open-markers';
-import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../../consultation-gates.constants';
 import {
   CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY,
   CONSULTATION_APPOINTMENT_DAY_SETTINGS,
@@ -37,7 +41,6 @@ import { HOPE_SETTINGS_REGISTRY } from '../../../settings-registry/registry';
 
 const TENANT = 'tenant-1';
 const DOCTOR = 'doctor-1';
-const OTHER_DOCTOR = 'doctor-2';
 const PATIENT = 'patient-1';
 
 let seq = 0;
@@ -68,13 +71,16 @@ function row(overrides: Partial<Record<string, unknown>> = {}): ConsultationEnti
   } as any);
 }
 
-describe('ConsultationService — TASK-1020 open encounter key and recordability', () => {
+const OPEN_KEY = { tenantId: TENANT, doctorId: DOCTOR, patientId: PATIENT, departmentId: null };
+const uniqueViolation = () => Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+
+describe('ConsultationService — TASK-1020 open guarantees on the episode model (TASK-1045 D-3)', () => {
   let consultationRepository: any;
+  let encounters: EncounterServiceDouble;
   let consentGrantService: any;
   let tenantSettings: any;
   let emit: ReturnType<typeof vi.fn>;
   let timeZone: unknown;
-  let requirePrimed: boolean;
 
   const buildService = () =>
     new ConsultationService(
@@ -92,8 +98,9 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
         }),
         set: vi.fn(),
       } as any,
+      encounters as any,
+      lifecycleDouble() as any,
       undefined, // entitlements
-      undefined, // harnessAuditService
       tenantSettings,
       undefined, // workflowDispatchService
       consentGrantService,
@@ -109,24 +116,22 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
     seq = 0;
     emit = vi.fn();
     timeZone = undefined;
-    requirePrimed = false;
     consultationRepository = {
-      findByExternalRef: vi.fn().mockResolvedValue([]),
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
-      findByPatientAndDate: vi.fn().mockResolvedValue([]),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
+      findLatestClosedByKey: vi.fn().mockResolvedValue(null),
       findById: vi.fn(),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: ConsultationEntity) => entity),
       updateWithVersion: vi.fn(async (_id: string, entity: ConsultationEntity) => entity),
     };
+    encounters = encounterServiceDouble(consultationRepository);
     consentGrantService = { ensureConsultationConsent: vi.fn().mockResolvedValue(undefined) };
     tenantSettings = {
       resolve: vi.fn((key: string) => ({
         key,
-        value: key === CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY ? (timeZone ?? 'UTC') : requirePrimed,
+        value: key === CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY ? (timeZone ?? 'UTC') : undefined,
         source: 'code-default',
       })),
-      resolvePlatform: vi.fn((key: string) => ({ key, value: key === CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY ? requirePrimed : undefined })),
     };
   });
 
@@ -136,14 +141,15 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
 
   // ── 1. The encounter key ──────────────────────────────────────────────────
   describe('with an externalRef', () => {
-    it('same ref → the same row (isNew false), nothing created, and the legacy key is not consulted', async () => {
+    it('same ref → the same consultation (isNew false), nothing created, and the open key is not consulted', async () => {
       const morning = row({ externalRef: 'EVT-1', metadata: { externalRef: 'EVT-1' } });
-      consultationRepository.findByExternalRef.mockResolvedValue([morning]);
+      encounters.matchExternalRef.mockResolvedValue({ own: { consultationId: morning.id, seq: 1, externalRef: 'EVT-1' }, conflict: false });
+      consultationRepository.findWithRelations.mockResolvedValue(morning);
 
       const result = await open({ metadata: { externalRef: 'EVT-1' } });
 
-      expect(consultationRepository.findByExternalRef).toHaveBeenCalledWith(TENANT, 'EVT-1');
-      expect(consultationRepository.findByUniqueKey).not.toHaveBeenCalled();
+      expect(encounters.matchExternalRef).toHaveBeenCalledWith(TENANT, 'EVT-1', { patientId: PATIENT, doctorId: DOCTOR });
+      expect(consultationRepository.findOpenByKey).not.toHaveBeenCalled();
       expect(consultationRepository.create).not.toHaveBeenCalled();
       expect(result.id).toBe(morning.id);
       expect(result.isNew).toBe(false);
@@ -151,53 +157,40 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
       expect(result.recordable).toBe(true);
     });
 
-    it('new ref on the same day → a NEW consultation chained to the latest same-day row (derived parent), even though a legacy match exists', async () => {
-      const morning = row({ externalRef: 'EVT-1', status: ConsultationStatus.SIGNED });
-      const otherClinicianLater = row({ doctorId: OTHER_DOCTOR, status: ConsultationStatus.CLOSED_COMPLETE });
-      consultationRepository.findByUniqueKey.mockResolvedValue(morning);
-      consultationRepository.findByPatientAndDate.mockResolvedValue([morning, otherClinicianLater]);
+    it('the same ref on a CLOSED consultation is returned as it is — recordable:false, never reopened or forked', async () => {
+      const closed = row({ externalRef: 'EVT-1', status: ConsultationStatus.CLOSED_COMPLETE });
+      encounters.matchExternalRef.mockResolvedValue({ own: { consultationId: closed.id, seq: 1, externalRef: 'EVT-1' }, conflict: false });
+      consultationRepository.findWithRelations.mockResolvedValue(closed);
 
+      const result = await open({ metadata: { externalRef: 'EVT-1' } });
+
+      expect(consultationRepository.create).not.toHaveBeenCalled();
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(result.id).toBe(closed.id);
+      expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
+      expect(result.recordable).toBe(false);
+    });
+
+    it('a new ref with no open consultation → a NEW consultation whose first encounter carries the ref (column + marker)', async () => {
       const result = await open({ metadata: { externalRef: 'EVT-2', visitType: 'revisit' } });
 
       expect(consultationRepository.create).toHaveBeenCalledTimes(1);
       expect(created().externalRef).toBe('EVT-2');
       // The marker is still written, for every reader that predates the column.
       expect(readExternalRef(created().metadata)).toBe('EVT-2');
-      // Latest same-patient same-day row, ANY clinician.
-      expect(consultationRepository.findByPatientAndDate).toHaveBeenCalledWith(TENANT, PATIENT, new Date('2026-09-29'));
-      expect(created().parentConsultationId).toBe(otherClinicianLater.id);
+      expect(encounters.createConsultation).toHaveBeenCalledWith(created(), expect.objectContaining({ externalRef: 'EVT-2', visitType: 'revisit' }));
       expect(result.isNew).toBe(true);
-      expect(result.visitType).toBe('revisit');
-      expect(result.parentConsultationId).toBe(otherClinicianLater.id);
       expect(result.status).toBe(ConsultationStatus.OPEN);
       expect(result.recordable).toBe(true);
     });
 
-    it('an explicit parent wins over the derived one', async () => {
-      const explicitParent = row({ id: 'c-explicit' });
-      consultationRepository.findById.mockResolvedValue(explicitParent);
-      consultationRepository.findByPatientAndDate.mockResolvedValue([row(), row()]);
-
-      await open({ parentConsultationId: 'c-explicit', metadata: { externalRef: 'EVT-3', visitType: 'revisit' } });
-
-      expect(created().parentConsultationId).toBe('c-explicit');
-      expect(consultationRepository.findByPatientAndDate).not.toHaveBeenCalled();
-    });
-
-    it('a new-visit derives no parent', async () => {
-      consultationRepository.findByPatientAndDate.mockResolvedValue([row()]);
-
-      const result = await open({ metadata: { externalRef: 'EVT-4' } });
-
-      expect(created().parentConsultationId).toBeNull();
-      expect(result.visitType).toBe('new-visit');
-      expect(consultationRepository.findByPatientAndDate).not.toHaveBeenCalled();
-    });
-
-    it('a racing open that loses the unique index returns the winner row (isNew false), not a 500', async () => {
+    it('a racing open that loses the unique index returns the winner (isNew false), not a 500', async () => {
       const winner = row({ externalRef: 'EVT-RACE', metadata: { externalRef: 'EVT-RACE' } });
-      consultationRepository.findByExternalRef.mockResolvedValueOnce([]).mockResolvedValueOnce([winner]);
-      consultationRepository.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }));
+      encounters.matchExternalRef
+        .mockResolvedValueOnce({ own: null, conflict: false })
+        .mockResolvedValueOnce({ own: { consultationId: winner.id, seq: 1, externalRef: 'EVT-RACE' }, conflict: false });
+      consultationRepository.findWithRelations.mockResolvedValue(winner);
+      consultationRepository.create.mockRejectedValueOnce(uniqueViolation());
 
       const result = await open({ metadata: { externalRef: 'EVT-RACE' } });
 
@@ -205,15 +198,8 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
       expect(result.isNew).toBe(false);
     });
 
-    it('a unique violation with no externalRef is rethrown untouched', async () => {
-      const failure = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
-      consultationRepository.create.mockRejectedValueOnce(failure);
-
-      await expect(open({})).rejects.toBe(failure);
-    });
-
     it('a ref already used for ANOTHER patient is 409 EXTERNAL_REF_CONFLICT and nothing is written', async () => {
-      consultationRepository.findByExternalRef.mockResolvedValue([row({ patientId: 'patient-9', externalRef: 'EVT-1' })]);
+      encounters.matchExternalRef.mockResolvedValue({ own: null, conflict: true });
 
       const error = await open({ metadata: { externalRef: 'EVT-1' } }).catch((caught: unknown) => caught);
 
@@ -223,79 +209,73 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
     });
   });
 
-  // ── 2. The legacy key ─────────────────────────────────────────────────────
+  // ── 2. The open key ───────────────────────────────────────────────────────
   describe('without an externalRef', () => {
-    it('a TERMINAL match is returned, not forked — with recordable:false', async () => {
-      const signed = row({ status: ConsultationStatus.SIGNED });
-      consultationRepository.findByUniqueKey.mockResolvedValue(signed);
+    it.each([
+      [ConsultationStatus.OPEN, true],
+      [ConsultationStatus.RECORDING, true],
+      [ConsultationStatus.PAUSED, true],
+      [ConsultationStatus.STOPPED, true],
+      [ConsultationStatus.APPROVED, false],
+    ])('a non-closed %s match is returned as it is (recordable: %s), never forked', async (status, recordable) => {
+      const match = row({ status });
+      consultationRepository.findOpenByKey.mockResolvedValue(match);
 
       const result = await open({});
 
+      expect(consultationRepository.findOpenByKey).toHaveBeenCalledWith(OPEN_KEY);
       expect(consultationRepository.create).not.toHaveBeenCalled();
-      expect(result.id).toBe(signed.id);
+      expect(result.id).toBe(match.id);
       expect(result.isNew).toBe(false);
-      expect(result.status).toBe(ConsultationStatus.SIGNED);
-      expect(result.recordable).toBe(false);
+      expect(result.recordable).toBe(recordable);
       expect(result.externalRef).toBeNull();
     });
 
-    it.each([
-      ConsultationStatus.SIGNED,
-      ConsultationStatus.CLOSED_COMPLETE,
-      ConsultationStatus.TIMED_OUT,
-      ConsultationStatus.REOPENED,
-      ConsultationStatus.CLOSED,
-    ])('%s is not recordable', async (status) => {
-      consultationRepository.findByUniqueKey.mockResolvedValue(row({ status }));
-      expect((await open({})).recordable).toBe(false);
-    });
+    it('no non-closed match → a NEW consultation chained to the latest CLOSED one of the key (never an implicit reopen)', async () => {
+      const closed = row({ status: ConsultationStatus.CLOSED_INCOMPLETE });
+      consultationRepository.findLatestClosedByKey.mockResolvedValue(closed);
 
-    it.each([ConsultationStatus.OPEN, ConsultationStatus.PENDING_REVIEW, ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.RECORDING])(
-      '%s is recordable',
-      async (status) => {
-        consultationRepository.findByUniqueKey.mockResolvedValue(row({ status }));
-        expect((await open({})).recordable).toBe(true);
-      },
-    );
+      const result = await open({});
 
-    it('parent === the match → a NEW child: the caller is explicitly following that row up', async () => {
-      const morning = row({ status: ConsultationStatus.SIGNED });
-      consultationRepository.findByUniqueKey.mockResolvedValue(morning);
-      consultationRepository.findById.mockResolvedValue(morning);
-
-      const result = await open({ parentConsultationId: morning.id });
-
-      expect(consultationRepository.create).toHaveBeenCalledTimes(1);
-      expect(created().parentConsultationId).toBe(morning.id);
+      expect(consultationRepository.findLatestClosedByKey).toHaveBeenCalledWith(OPEN_KEY);
+      expect(created().parentConsultationId).toBe(closed.id);
       expect(result.isNew).toBe(true);
-      expect(result.visitType).toBe('revisit');
+      expect(result.parentConsultationId).toBe(closed.id);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('a parent that is neither the match nor its parent → a NEW child', async () => {
-      const match = row({ parentConsultationId: 'c-root' });
-      const unrelated = row({ id: 'c-unrelated' });
-      consultationRepository.findByUniqueKey.mockResolvedValue(match);
-      consultationRepository.findById.mockResolvedValue(unrelated);
+    it('an explicit parent wins over the latest closed match', async () => {
+      const explicitParent = row({ id: 'c-explicit' });
+      consultationRepository.findById.mockResolvedValue(explicitParent);
+      consultationRepository.findLatestClosedByKey.mockResolvedValue(row({ status: ConsultationStatus.CLOSED_COMPLETE }));
 
-      const result = await open({ parentConsultationId: 'c-unrelated' });
+      await open({ parentConsultationId: 'c-explicit' });
 
-      expect(result.isNew).toBe(true);
-      expect(created().parentConsultationId).toBe('c-unrelated');
+      expect(created().parentConsultationId).toBe('c-explicit');
+      expect(consultationRepository.findLatestClosedByKey).not.toHaveBeenCalled();
     });
 
-    it("a parent equal to the MATCH's own parent → the match (a retry of the follow-up open)", async () => {
-      const followUp = row({ parentConsultationId: 'c-root' });
-      consultationRepository.findByUniqueKey.mockResolvedValue(followUp);
-      consultationRepository.findById.mockResolvedValue(row({ id: 'c-root' }));
+    it('a racing open that loses the open-key unique index answers with the winner', async () => {
+      const winner = row();
+      consultationRepository.findOpenByKey.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
+      consultationRepository.create.mockRejectedValueOnce(uniqueViolation());
 
-      const result = await open({ parentConsultationId: 'c-root' });
+      const result = await open({});
 
-      expect(consultationRepository.create).not.toHaveBeenCalled();
-      expect(result.id).toBe(followUp.id);
+      expect(result.id).toBe(winner.id);
+      expect(result.isNew).toBe(false);
+    });
+
+    it('a unique violation that persists after the one re-match is rethrown untouched', async () => {
+      const failure = uniqueViolation();
+      consultationRepository.create.mockRejectedValue(failure);
+
+      await expect(open({})).rejects.toBe(failure);
+      expect(consultationRepository.findOpenByKey).toHaveBeenCalledTimes(2);
     });
   });
 
-  // ── 4. Parent patient ─────────────────────────────────────────────────────
+  // ── 3. Parent patient ─────────────────────────────────────────────────────
   it('a parent of ANOTHER patient is 400 PARENT_PATIENT_MISMATCH, before anything is read or written', async () => {
     consultationRepository.findById.mockResolvedValue(row({ id: 'c-foreign-patient', patientId: 'patient-9' }));
 
@@ -303,27 +283,29 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
 
     expect(error).toBeInstanceOf(BadRequestException);
     expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'PARENT_PATIENT_MISMATCH' });
-    expect(consultationRepository.findByUniqueKey).not.toHaveBeenCalled();
+    expect(consultationRepository.findOpenByKey).not.toHaveBeenCalled();
     expect(consultationRepository.create).not.toHaveBeenCalled();
   });
 
-  // ── 6. Consent + the tenant's day ─────────────────────────────────────────
-  // DEVIATION from the brief (item 7), on purpose: `ensureConsultationConsent` GRANTS every purpose
-  // without an active grant, so calling it on a re-open would UNDO a revocation recorded since the
-  // first open. D-6's intent ("a revocation since the morning is honoured") is met by NOT calling it.
+  // ── 4. Consent + the tenant's day ─────────────────────────────────────────
+  // `ensureConsultationConsent` GRANTS every purpose without an active grant, so calling it on a
+  // re-open would UNDO a revocation recorded since the first open. D-6's intent ("a revocation since
+  // the morning is honoured") is met by NOT calling it.
   it('a RE-open does not re-grant consent — a revocation since the first open is honoured', async () => {
-    consultationRepository.findByUniqueKey.mockResolvedValue(row());
+    consultationRepository.findOpenByKey.mockResolvedValue(row());
 
     await open({});
 
     expect(consentGrantService.ensureConsultationConsent).not.toHaveBeenCalled();
   });
 
-  it('a NEW encounter (new ref on a day that already has a visit) records consent, as every create does', async () => {
-    consultationRepository.findByUniqueKey.mockResolvedValue(row());
+  it('a NEW encounter (a new ref on an open consultation) records consent, as every new visit does', async () => {
+    const morning = row();
+    consultationRepository.findOpenByKey.mockResolvedValue(morning);
 
     await open({ metadata: { externalRef: 'EVT-9' } });
 
+    expect(encounters.appendEncounter).toHaveBeenCalledWith(morning, expect.objectContaining({ externalRef: 'EVT-9' }));
     expect(consentGrantService.ensureConsultationConsent).toHaveBeenCalledWith(PATIENT);
   });
 
@@ -335,7 +317,9 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
     const result = await buildService().getOrCreate({ patientId: PATIENT } as OpenConsultationRequest, DOCTOR);
 
     expect(tenantSettings.resolve).toHaveBeenCalledWith(CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, TENANT);
-    expect(consultationRepository.findByUniqueKey).toHaveBeenCalledWith(TENANT, PATIENT, new Date('2026-09-30'), DOCTOR);
+    // The day is stamped on the new consultation; it is not part of the open key.
+    expect(consultationRepository.findOpenByKey).toHaveBeenCalledWith(OPEN_KEY);
+    expect(created().appointmentDate).toEqual(new Date('2026-09-30'));
     expect(result.appointmentDate).toBe('2026-09-30');
   });
 
@@ -359,46 +343,7 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
 
     await open({ appointmentDate: '2026-09-28' });
 
-    expect(consultationRepository.findByUniqueKey).toHaveBeenCalledWith(TENANT, PATIENT, new Date('2026-09-28'), DOCTOR);
-  });
-
-  // ── 5. Recording on a terminal row ────────────────────────────────────────
-  describe('startRecording', () => {
-    it.each([ConsultationStatus.SIGNED, ConsultationStatus.REOPENED])(
-      'on %s with the kill-switch OFF → 409 CONSULTATION_NOT_RECORDABLE, nothing written',
-      async (status) => {
-        consultationRepository.findWithRelations.mockResolvedValue(row({ status }));
-
-        const error = await buildService()
-          .startRecording('c-1')
-          .catch((caught: unknown) => caught);
-
-        expect(error).toBeInstanceOf(ConflictException);
-        expect((error as ConflictException).getResponse()).toMatchObject({ code: 'CONSULTATION_NOT_RECORDABLE' });
-        expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
-      },
-    );
-
-    it('on OPEN with the kill-switch OFF → still allowed (the one legacy bypass)', async () => {
-      consultationRepository.findWithRelations.mockResolvedValue(row({ status: ConsultationStatus.OPEN }));
-
-      const result = await buildService().startRecording('c-1');
-
-      expect(result.status).toBe(ConsultationStatus.RECORDING);
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-    });
-
-    it('on OPEN with the kill-switch ON → 409 CONSULTATION_TRANSITION_ILLEGAL (the bare matrix refusal now carries a code)', async () => {
-      requirePrimed = true;
-      consultationRepository.findWithRelations.mockResolvedValue(row({ status: ConsultationStatus.OPEN }));
-
-      const error = await buildService()
-        .startRecording('c-1')
-        .catch((caught: unknown) => caught);
-
-      expect(error).toBeInstanceOf(ConflictException);
-      expect((error as ConflictException).getResponse()).toMatchObject({ code: 'CONSULTATION_TRANSITION_ILLEGAL' });
-    });
+    expect(created().appointmentDate).toEqual(new Date('2026-09-28'));
   });
 });
 

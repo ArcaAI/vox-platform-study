@@ -1,16 +1,16 @@
 /**
- * TASK-1001 wave 5, owner decisions D-6 / D-7 (2026-09-23) — a late clinician sign-off still signs.
+ * TASK-1001 wave 5 (D-6 / D-7), re-pinned by TASK-1045 D-26 — a late clinician sign-off still signs.
  *
- * A terminal harness gate abandon now closes the consultation `CLOSED_INCOMPLETE` (closed,
- * unsigned). A clinician who presses Save AFTER that must still sign the note: the clock never
- * signs, a human still can — the same rule `TIMED_OUT → SIGNED` already encodes. So
- * `approveSummary` accepts `CLOSED_INCOMPLETE` as a predecessor of `SIGNED` exactly as it accepts
- * `TIMED_OUT`, with the WORM `ATTEST` row written as usual.
+ * An auto-closed consultation is `CLOSED_INCOMPLETE` (closed, unsigned). A clinician who presses
+ * Copy to EMR AFTER that must still sign the note: the clock never signs, a human still can. The
+ * per-summary approve delegates to the session approve, which atomically reopens, approves and
+ * closes → `CLOSED_COMPLETE`, writing the WORM `ATTEST` row and recording the late sign-off.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
-import { ConsultationEntity, ConsultationStatus, HarnessAuditAction } from '@arcaai/domains';
+import { wireSessionApproval } from './session-approval.fixture';
+import { ConsultationClosedReason, ConsultationEntity, ConsultationStatus, HarnessAuditAction } from '@arcaai/domains';
 
 vi.mock('@arcaai/domains', async () => {
   const actual = await vi.importActual('@arcaai/domains');
@@ -20,6 +20,7 @@ vi.mock('@arcaai/domains', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       CreateSignedNoteVersion: vi.fn((props: any) => ({
         ...props,
+        changedBy: props.attestedBy,
         id: 'signed-1',
         changeReason: 'approved',
         createdAt: new Date('2026-09-23T00:00:00.000Z'),
@@ -128,15 +129,18 @@ const build = (m: Mocks) => {
   args[32] = m.userRoleAssignmentRepository;
   args[33] = m.userDepartmentRepository;
   args[34] = m.userRepository;
-  return new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  const service = new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
 };
 
-describe('SummaryService.approveSummary — a late sign-off after a gate-abandon close (TASK-1001 wave 5, D-7)', () => {
+describe('SummaryService.approveSummary — a late sign-off after an incomplete close (TASK-1045 D-26)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('signs a note whose consultation is CLOSED_INCOMPLETE: → SIGNED, persisted, WORM ATTEST written', async () => {
+  it('signs a note whose consultation is CLOSED_INCOMPLETE: reopened, approved and closed in one write → CLOSED_COMPLETE, WORM ATTEST written', async () => {
     const consultation = consultationIn(ConsultationStatus.CLOSED_INCOMPLETE);
     const m = makeMocks(consultation);
     const service = build(m);
@@ -144,36 +148,47 @@ describe('SummaryService.approveSummary — a late sign-off after a gate-abandon
     const result = await service.approveSummary(CONTEXT_ITEM, { expectedVersion: 1 });
 
     expect(result.approvedBy).toBe(CLINICIAN);
-    expect(consultation.status).toBe(ConsultationStatus.SIGNED);
-    expect(consultation.lastTransition).toMatchObject({
-      from: ConsultationStatus.CLOSED_INCOMPLETE,
-      to: ConsultationStatus.SIGNED,
+    // ONE consultation write, against the version it was read at, carrying only the final state.
+    expect(m.consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+    const [id, written, expected] = m.consultationRepository.updateWithVersion.mock.calls[0] as unknown as [string, ConsultationEntity, number];
+    expect(id).toBe(CONSULTATION);
+    expect(expected).toBe(7);
+    expect(written.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
+    expect(written.closedReason).toBe(ConsultationClosedReason.APPROVED);
+    expect(written.approvedAt).toBeInstanceOf(Date);
+    expect(written.lastTransition).toMatchObject({
+      from: ConsultationStatus.APPROVED,
+      to: ConsultationStatus.CLOSED_COMPLETE,
       actor: CLINICIAN,
-      reason: 'approveSummary',
+      reason: 'late_sign_off',
     });
-    // The consultation CAS runs against the version it was read at.
-    expect(m.consultationRepository.updateWithVersion).toHaveBeenCalledWith(CONSULTATION, consultation, 7);
 
     const actions = m.harnessAudit.append.mock.calls.map((c) => c[0].action);
-    expect(actions).toContain(HarnessAuditAction.ATTEST);
+    expect(actions).toEqual([HarnessAuditAction.ATTEST, HarnessAuditAction.SESSION_APPROVED]);
     const attest = m.harnessAudit.append.mock.calls.find((c) => c[0].action === HarnessAuditAction.ATTEST)![0];
     expect(attest.clinicianId).toBe(CLINICIAN);
+    // The session row records it as a late sign-off.
+    const session = m.harnessAudit.append.mock.calls.find((c) => c[0].action === HarnessAuditAction.SESSION_APPROVED)![0];
+    expect(session.sensorScores).toMatchObject({ lateSignOff: true, fromStatus: ConsultationStatus.CLOSED_INCOMPLETE });
 
     const updated = m.eventEmitter.emit.mock.calls.map((c) => c[1]).find((p) => p?.data?.approvalStatus === 'APPROVED');
-    expect(updated.data.consultationStatus).toBe(ConsultationStatus.SIGNED);
+    expect(updated.data.consultationStatus).toBe(ConsultationStatus.CLOSED_COMPLETE);
   });
 
-  it('is the same path TIMED_OUT already takes (the pre-existing late-sign precedent)', async () => {
-    const consultation = consultationIn(ConsultationStatus.TIMED_OUT);
+  it('is an idempotent no-op on CLOSED_COMPLETE (D-29): a retried Copy to EMR never fails, nothing is re-signed', async () => {
+    const consultation = consultationIn(ConsultationStatus.CLOSED_COMPLETE);
     const m = makeMocks(consultation);
 
-    await build(m).approveSummary(CONTEXT_ITEM, { expectedVersion: 1 });
+    const result = await build(m).approveSummary(CONTEXT_ITEM, { expectedVersion: 1 });
 
-    expect(consultation.status).toBe(ConsultationStatus.SIGNED);
+    expect(result.approvalStatus).toBe('APPROVED');
+    expect(m.consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(m.contextItemVersionRepository.create).not.toHaveBeenCalled();
+    expect(m.harnessAudit.append).not.toHaveBeenCalled();
   });
 
-  it('still refuses a predecessor the matrix does not allow (CLOSED_COMPLETE → SIGNED is a 409)', async () => {
-    const consultation = consultationIn(ConsultationStatus.CLOSED_COMPLETE);
+  it('still refuses a state the matrix does not allow (OPEN → APPROVED is a 409)', async () => {
+    const consultation = consultationIn(ConsultationStatus.OPEN);
     const m = makeMocks(consultation);
 
     await expect(build(m).approveSummary(CONTEXT_ITEM, { expectedVersion: 1 })).rejects.toBeInstanceOf(ConflictException);

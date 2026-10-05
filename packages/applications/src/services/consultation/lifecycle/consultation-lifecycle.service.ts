@@ -14,6 +14,7 @@ import {
   TranscriptionJobType,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
+import { IRedisCacheService } from '../../baseServices/redis';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import {
   CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_KEY,
@@ -27,6 +28,7 @@ import type { ConsultationResponse } from '../consultation/dto/consultation.resp
 import { STT_SESSION_SUPERSEDED_EVENT, type SttSessionSupersededEvent } from '../consultation/stt-session-superseded.event';
 import { ConsultationPipelineEvent, type EncounterStoppedPayload } from '../events/consultation.events';
 import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
+import { TRANSCRIPT_RECORD_MARKER_TTL_SECONDS, encounterStoppedRedisKey } from '../transcript-record/transcript-record.keys';
 import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../encounter/IConsultationEncounterService';
 import { toCaptureState } from './capture-state';
 import { ConsultationApprovalService, type ApproveOptions } from './consultation-approval.service';
@@ -72,7 +74,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     private readonly clsService: ClsService<IActiveUserContext>,
     @Optional()
     @Inject(TranscriptionJobRepository)
-    private readonly transcriptionJobs?: Pick<TranscriptionJobRepository, 'findAll'>,
+    private readonly transcriptionJobs?: Pick<TranscriptionJobRepository, 'findAll' | 'update'>,
     @Optional()
     @Inject(StreamingSessionService)
     private readonly streamingSessions?: Pick<IStreamingSessionService, 'getSessionStatus'>,
@@ -83,6 +85,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     @Optional()
     @Inject(IConsultationEncounterServiceToken)
     private readonly encounterService?: Pick<IConsultationEncounterService, 'lifecycleView'>,
+    // The once-only claim on `EncounterStopped` (SET NX), shared with the transcript record's
+    // session-final path. Unwired ⇒ `stop` announces the encounter unconditionally.
+    @Optional() @Inject(IRedisCacheService) private readonly markers?: Pick<IRedisCacheService, 'eval'>,
   ) {
     super();
   }
@@ -112,6 +117,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     }
     if (changed && from === ConsultationStatus.PAUSED) {
       await this.sendControl(await this.liveBoundSessions(consultation), 'resume', consultationId);
+    }
+    if (options.sttSessionId) {
+      await this.stampRecordingOffset(consultation, options.sttSessionId);
     }
     if (options.sttSessionId && options.supersedeByDurableBinding) {
       await this.supersedeByDurableBinding(consultation, options.sttSessionId);
@@ -186,7 +194,10 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       timestamp: new Date().toISOString(),
       encounterSeq: stopped.currentEncounterSeq,
     };
-    this.eventEmitter.emit(ConsultationPipelineEvent.EncounterStopped, payload);
+    // The session final that lands during the wait may have announced this encounter already.
+    if (await this.claimEncounterStopped(consultationId, stopped.currentEncounterSeq)) {
+      this.eventEmitter.emit(ConsultationPipelineEvent.EncounterStopped, payload);
+    }
     await this.events.publish(this.subject(stopped, { processing: restored, processingReason: null }), 'transcript_final');
     return this.stopResult(stopped, 'complete', restored);
   }
@@ -303,6 +314,57 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
         consultationId: entity.id,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /**
+   * Bind the STT session to the recording timeline: its job's `metaData.recordingOffsetMs` is the
+   * recording cursor as it stands at `start`, so its session-relative times land after the audio
+   * already captured. An offset the job already carries is kept. Never throws.
+   */
+  private async stampRecordingOffset(consultation: ConsultationEntity, sttSessionId: string): Promise<void> {
+    if (!this.transcriptionJobs) return;
+    try {
+      const [job] = await this.transcriptionJobs.findAll({
+        // STREAMING rows carry no transcript ciphertext, so this read decrypts nothing.
+        filters: { streamSessionId: sttSessionId } as never,
+        limit: 1,
+        sort: [{ createdAt: 'desc' }],
+      });
+      if (!job) return;
+      const meta = (job.metaData ?? {}) as Record<string, unknown>;
+      if (typeof meta.recordingOffsetMs === 'number') return;
+      job.metaData = { ...meta, recordingOffsetMs: consultation.recordingCursorMs ?? 0 };
+      await this.transcriptionJobs.update(job.id, job);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Recording offset not stamped on the STT session job (the transcript record binds it at the first final)',
+        consultationId: consultation.id,
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** SET NX on the encounter's marker; `true` when this caller announces it. Redis down ⇒ announce. */
+  private async claimEncounterStopped(consultationId: string, encounterSeq: number): Promise<boolean> {
+    if (!this.markers) return true;
+    try {
+      const result = await this.markers.eval(
+        "return redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2])",
+        1,
+        encounterStoppedRedisKey(consultationId, encounterSeq),
+        '1',
+        TRANSCRIPT_RECORD_MARKER_TTL_SECONDS,
+      );
+      return result === 'OK';
+    } catch (error) {
+      this.logger.warn({
+        message: 'EncounterStopped claim failed — announcing anyway (consumers dedupe)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return true;
     }
   }
 

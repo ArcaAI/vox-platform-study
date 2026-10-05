@@ -29,9 +29,15 @@ import {
 // =============================================================================
 
 describe('ConsultationPipelineEvent', () => {
-  it('should export exactly 7 event types', () => {
+  it('should export exactly 10 event types', () => {
     const values = Object.values(ConsultationPipelineEvent);
-    expect(values).toHaveLength(7);
+    expect(values).toHaveLength(10);
+  });
+
+  it('should have the three lifecycle events with correct dot-notation values', () => {
+    expect(ConsultationPipelineEvent.EncounterStopped).toBe('consultation.encounter.stopped');
+    expect(ConsultationPipelineEvent.FullTranscriptRebuilt).toBe('consultation.transcript.rebuilt');
+    expect(ConsultationPipelineEvent.LifecycleChanged).toBe('consultation.lifecycle.changed');
   });
 
   it('should have TranscriptionCreated with correct dot-notation value', () => {

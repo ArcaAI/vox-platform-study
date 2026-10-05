@@ -2,12 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClsService, ClsServiceManager } from 'nestjs-cls';
 import type { Job } from 'bullmq';
 import { UsageOutboxProcessor } from '../usage-outbox.processor';
-import { ConsultationCompletionTimeoutProcessor } from '../../consultation/completion-timeout/consultation-completion-timeout.processor';
 
-// Both jobs are cross-tenant system work. The tenant-scope extension passes a
+// The outbox drain is cross-tenant system work. The tenant-scope extension passes a
 // query through only when NO CLS scope is active; an open scope without a
-// tenant makes it refuse ("tenant context required"). So these processors must
-// run their body outside any CLS scope — the trace is still restored.
+// tenant makes it refuse ("tenant context required"). So the processor must
+// run its body outside any CLS scope — the trace is still restored.
 const clsActive = (): boolean => {
   try {
     return ClsServiceManager.getClsService().isActive();
@@ -30,23 +29,5 @@ describe('cross-tenant processors run outside any CLS scope', () => {
 
     expect(drainer.drainBatch).toHaveBeenCalledOnce();
     expect(activeDuringDrain).toBe(false);
-  });
-
-  it('ConsultationCompletionTimeoutProcessor closes with no CLS scope active', async () => {
-    let activeDuringClose: boolean | undefined;
-    const harnessInternal = { closeOnCompletionTimeout: vi.fn(async () => void (activeDuringClose = clsActive())) };
-    // The second constructor argument is the restore lock (TASK-1032), not the CLS service: the lock
-    // check is tenant-explicit (it takes the job's tenantId), so it also runs with no CLS scope.
-    const tenantLock = { state: vi.fn().mockResolvedValue({ locked: false }), publishChange: vi.fn() };
-    const processor = new (ConsultationCompletionTimeoutProcessor as unknown as new (...args: unknown[]) => ConsultationCompletionTimeoutProcessor)(
-      harnessInternal,
-      tenantLock,
-    );
-
-    await processor.process(job({ tenantId: 't-1', consultationId: 'c-1' }));
-
-    expect(tenantLock.state).toHaveBeenCalledWith('t-1');
-    expect(harnessInternal.closeOnCompletionTimeout).toHaveBeenCalledWith('c-1', 't-1');
-    expect(activeDuringClose).toBe(false);
   });
 });

@@ -22,8 +22,9 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { ResourceStatusType } from '@arcaai/domains';
+import { ConsultationEntity, ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 
 vi.mock('@arcaai/domains', async () => {
   const actual = await vi.importActual('@arcaai/domains');
@@ -49,7 +50,7 @@ const ACCEPTS_ENCOUNTER_ONLY = {
 function makeMocks() {
   return {
     consultationRepository: {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
       findById: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
@@ -108,8 +109,9 @@ function makeService(m: ReturnType<typeof makeMocks>) {
     m.userRepository as never,
     m.eventEmitter as never,
     m.clsService as never,
+    encounterServiceDouble(m.consultationRepository), // encounters
+    lifecycleDouble(), // lifecycle
     m.entitlements as never,
-    undefined, // harnessAudit
     undefined, // tenantSettings
     m.workflowDispatchService as never,
     undefined, // consentGrantService
@@ -197,8 +199,9 @@ describe('the check never blocks an open it cannot conclude', () => {
       m.userRepository as never,
       m.eventEmitter as never,
       m.clsService as never,
+      encounterServiceDouble(m.consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
       m.entitlements as never,
-      undefined,
       undefined,
       undefined, // no dispatcher
       undefined,
@@ -227,7 +230,7 @@ describe('the RE-OPEN path is never checked', () => {
   });
 
   it('returns the existing consultation without previewing anything, even for a context the workflow would refuse', async () => {
-    const existing = {
+    const existing = new ConsultationEntity({
       id: 'existing-1',
       tenantId: TENANT,
       version: 1,
@@ -235,8 +238,8 @@ describe('the RE-OPEN path is never checked', () => {
       appointmentDate: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(existing);
+    } as never);
+    m.consultationRepository.findOpenByKey.mockResolvedValue(existing);
     m.consultationRepository.findWithRelations.mockResolvedValue(existing);
 
     const result = await openWith(m, { encounter: { note: 'x' }, referral: { reason: 'y' } });

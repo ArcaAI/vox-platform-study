@@ -20,6 +20,7 @@ import { ConsultationLifecycleGate } from '../consultation-lifecycle.gate';
 import { ConsultationLifecycleEventPublisher, LIFECYCLE_REPLAY_SIZE, lifecycleChannel } from '../lifecycle-event.publisher';
 import { projectLegacyConsultationStatus } from '../legacy-status-projection';
 import { DocumentSectionService } from '../../document-section/document-section.service';
+import { encounterStoppedRedisKey } from '../../transcript-record/transcript-record.keys';
 
 const TENANT = 'tenant-1';
 const OTHER_TENANT = 'tenant-2';
@@ -91,6 +92,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
       { streamSessionId: 'stt-a', createdAt: new Date('2026-10-05T08:01:00Z') },
       { streamSessionId: 'stt-dead', createdAt: new Date('2026-10-05T08:00:30Z') },
     ]),
+    update: vi.fn(async (_id: string, job: unknown) => job),
   };
   const streamingSessions = {
     getSessionStatus: vi.fn(async (sessionId: string) => ({ status: sessionId === 'stt-dead' ? 'closed' : 'active' })),
@@ -110,6 +112,9 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     incr: vi.fn(async () => 7),
     eval: vi.fn(async () => 1),
   };
+  // The SET NX marker store `stop` claims before announcing the encounter (shared with the
+  // transcript record's session-final path).
+  const markers = { eval: vi.fn(async () => 'OK' as string | null) };
   const eventEmitter = { emit: vi.fn() };
   const clsService = cls(opts.tenantId === undefined ? TENANT : opts.tenantId);
 
@@ -131,6 +136,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     transcriptRecord as never,
     settings as never,
     encounterService as never,
+    markers as never,
   );
 
   const lifecycleEvents = () =>
@@ -154,6 +160,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     contextItems,
     settings,
     cache,
+    markers,
     eventEmitter,
     approval,
     lifecycleEvents,
@@ -258,6 +265,42 @@ describe('ConsultationLifecycleService — start', () => {
     const h = makeHarness(consultation({ tenantId: OTHER_TENANT }));
     expect(await rejectionOf(h.service.start(ID))).toBeInstanceOf(NotFoundException);
   });
+
+  it('stamps the bound session job with recordingOffsetMs = the recording cursor when it has none', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, recordingCursorMs: 61_500 } as Partial<Row>));
+    const job = { id: 'job-a', streamSessionId: 'stt-a', metaData: { agentSlug: 'asr' } as Record<string, unknown> };
+    h.transcriptionJobs.findAll.mockImplementation(async (query?: { filters?: { streamSessionId?: string } }) =>
+      query?.filters?.streamSessionId === 'stt-a' ? [job] : [{ streamSessionId: 'stt-a', createdAt: new Date('2026-10-05T08:01:00Z') }],
+    );
+
+    await h.service.start(ID, { sttSessionId: 'stt-a' });
+
+    expect(h.transcriptionJobs.update).toHaveBeenCalledTimes(1);
+    expect(h.transcriptionJobs.update).toHaveBeenCalledWith('job-a', expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }));
+  });
+
+  it('never overwrites a recordingOffsetMs the session job already carries', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, recordingCursorMs: 61_500 } as Partial<Row>));
+    const job = { id: 'job-a', streamSessionId: 'stt-a', metaData: { recordingOffsetMs: 12_000 } };
+    h.transcriptionJobs.findAll.mockImplementation(async (query?: { filters?: { streamSessionId?: string } }) =>
+      query?.filters?.streamSessionId === 'stt-a' ? [job] : [],
+    );
+
+    await h.service.start(ID, { sttSessionId: 'stt-a' });
+
+    expect(h.transcriptionJobs.update).not.toHaveBeenCalled();
+  });
+
+  it('a failed offset stamp never fails the start', async () => {
+    const h = makeHarness(consultation());
+    h.transcriptionJobs.findAll.mockImplementation(async (query?: { filters?: { streamSessionId?: string } }) =>
+      query?.filters?.streamSessionId === 'stt-a' ? [{ id: 'job-a', streamSessionId: 'stt-a', metaData: null }] : [],
+    );
+    h.transcriptionJobs.update.mockRejectedValueOnce(new Error('db down'));
+
+    const state = await h.service.start(ID, { sttSessionId: 'stt-a' });
+    expect(state.status).toBe('RECORDING');
+  });
 });
 
 describe('ConsultationLifecycleService — pause', () => {
@@ -325,6 +368,35 @@ describe('ConsultationLifecycleService — stop', () => {
     expect(h.lifecycleEvents().map((e) => e.type)).toEqual(['stopped']);
   });
 
+  it('claims encounterStoppedRedisKey with SET NX before emitting EncounterStopped', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING, currentEncounterSeq: 2 }));
+    const order: string[] = [];
+    h.markers.eval.mockImplementation(async () => (order.push('claim'), 'OK'));
+    h.eventEmitter.emit.mockImplementation((name: string) => {
+      if (name === ConsultationPipelineEvent.EncounterStopped) order.push('emit');
+      return true;
+    });
+
+    await h.service.stop(ID);
+
+    const [script, numKeys, key] = h.markers.eval.mock.calls[0] as unknown as [string, number, string];
+    expect(script).toContain("'NX'");
+    expect(numKeys).toBe(1);
+    expect(key).toBe(encounterStoppedRedisKey(ID, 2));
+    expect(order).toEqual(['claim', 'emit']);
+  });
+
+  it('emits no EncounterStopped when the session final already claimed the encounter (fires once), and still answers complete', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING, currentEncounterSeq: 2 }));
+    h.markers.eval.mockResolvedValue(null);
+
+    const result = await h.service.stop(ID);
+
+    expect(h.eventEmitter.emit.mock.calls.some(([name]) => name === ConsultationPipelineEvent.EncounterStopped)).toBe(false);
+    expect(result.finalTranscript.state).toBe('complete');
+    expect(h.lifecycleEvents().map((e) => e.type)).toEqual(['stopped', 'transcript_final']);
+  });
+
   it('waitForFinal=false never waits and answers pending', async () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING }));
     const result = await h.service.stop(ID, { waitForFinal: false });
@@ -366,6 +438,16 @@ describe('ConsultationLifecycleService — close', () => {
     const response = await h.service.close(ID);
     expect(response.status).toBe('CLOSED_COMPLETE');
     expect(h.current()?.closedReason).toBe(ConsultationClosedReason.APPROVED);
+  });
+
+  // TASK-972 OD-7 (re-homed from consultation.service.test.ts): a never-recorded OPEN
+  // consultation can be closed by hand — cancelling it — rather than stranding forever.
+  it('a manual close of a never-recorded OPEN consultation → CLOSED_INCOMPLETE (MANUAL), persisted', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.OPEN }));
+    const response = await h.service.close(ID);
+    expect(response.status).toBe('CLOSED_INCOMPLETE');
+    expect(h.current()?.closedReason).toBe(ConsultationClosedReason.MANUAL);
+    expect(h.consultations.updateWithVersion).toHaveBeenCalledTimes(1);
   });
 
   it('an auto close stamps closedReason AUTO', async () => {

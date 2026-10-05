@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { ResourceStatusType } from '@arcaai/domains';
 
 vi.mock('@arcaai/domains', async () => {
@@ -30,7 +31,7 @@ const SLUG = 'caller_picked_v1';
 
 function makeMocks() {
   const consultationRepository = {
-    findByUniqueKey: vi.fn().mockResolvedValue(null),
+    findOpenByKey: vi.fn().mockResolvedValue(null),
     findById: vi.fn().mockResolvedValue(null),
     findWithRelations: vi.fn().mockResolvedValue(null),
     create: vi.fn(async (entity: unknown) => entity),
@@ -72,8 +73,9 @@ function makeService(m: ReturnType<typeof makeMocks>) {
     m.userRepository as never,
     m.eventEmitter as never,
     m.clsService as never,
+    encounterServiceDouble(m.consultationRepository), // encounters
+    lifecycleDouble(), // lifecycle
     undefined, // entitlements
-    undefined, // harnessAudit
     undefined, // tenantSettings
     m.workflowDispatchService as never,
     undefined, // consentGrantService
@@ -143,7 +145,7 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
   });
 
   it('authorizes the selection even when the consultation already exists — the answer must not depend on whether a row happens to be there', async () => {
-    m.consultationRepository.findByUniqueKey = vi.fn().mockResolvedValue({ id: 'existing', patientId: 'p-1' });
+    m.consultationRepository.findOpenByKey = vi.fn().mockResolvedValue({ id: 'existing', patientId: 'p-1' });
     m.workflowDispatchService.assertSelectableForConsultation = vi.fn().mockRejectedValue(new NotFoundException('Workflow definition not found'));
 
     await expect(makeService(m).getOrCreate({ patientId: 'p-1', workflowDefinitionSlug: 'foreign' } as never, 'doctor-1')).rejects.toBeInstanceOf(
@@ -161,7 +163,8 @@ describe('ConsultationService.getOrCreate — workflow selection (OD-1)', () => 
       withoutDispatcher.userRepository as never,
       withoutDispatcher.eventEmitter as never,
       withoutDispatcher.clsService as never,
-      undefined,
+      encounterServiceDouble(withoutDispatcher.consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
       undefined,
       undefined,
       undefined, // dispatcher NOT wired
@@ -284,7 +287,8 @@ describe('ConsultationService.listSelectableWorkflows — discovery of the selec
       withoutDispatcher.userRepository as never,
       withoutDispatcher.eventEmitter as never,
       withoutDispatcher.clsService as never,
-      undefined,
+      encounterServiceDouble(withoutDispatcher.consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
       undefined,
       undefined,
       undefined, // dispatcher NOT wired

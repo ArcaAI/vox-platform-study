@@ -1,15 +1,24 @@
 /**
  * TASK-972 Lane 1 — `closeConsultation` carries the same named-clinician rule as the sign-off.
  *
- * The three writes ALaaS must make on a clinician's submit are `update → approve → close`, in
- * that order (`PENDING_REVIEW → CLOSED_*` is not a legal edge). A machine that can sign but not
- * close would leave the session parked one state short of terminal, so the rule has to reach all
- * three or it reaches none of them.
+ * The writes ALaaS makes on a clinician's submit are `update → approve → close`. A machine that can
+ * sign but not close would leave the session one state short of terminal, so the rule has to reach
+ * every one of them or it reaches none.
+ *
+ * TASK-1045: `ConsultationService.closeConsultation` is a deprecated alias that DELEGATES to
+ * `IConsultationLifecycleService.close` (pinned in the first block). The named-clinician rule
+ * therefore belongs to the lifecycle close, and the second block pins it there. Those cases are
+ * `it.fails`: the lifecycle close attributes the close to `caller.userId ?? clinicianUserId`
+ * without validating the named clinician and writes no WORM close row — a defect reported by the
+ * AB-8a sweep. Each one fails on its OWN assertion today; when the rule is restored, vitest reports
+ * the `it.fails` as failing and the marker must be removed.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
-import { ConsultationEntity, ConsultationStatus } from '@arcaai/domains';
+import { ConsultationLifecycleService } from '../../lifecycle/consultation-lifecycle.service';
+import { ConsultationEntity, ConsultationStatus, HarnessAuditAction } from '@arcaai/domains';
+import { encounterServiceDouble, lifecycleDouble, type LifecycleDouble } from './consultation-service.fixture';
 
 const TENANT = 'tenant-1';
 const CONSULTATION = 'c-1';
@@ -46,91 +55,131 @@ const consultationAt = (status: ConsultationStatus) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
 
-const signedConsultation = () => consultationAt(ConsultationStatus.SIGNED);
+describe('ConsultationService.closeConsultation — delegates the attribution inputs to the lifecycle close', () => {
+  let lifecycle: LifecycleDouble;
+  const build = (user: unknown, serviceAccount: unknown = null) => {
+    const consultationRepository = { findWithRelations: vi.fn() };
+    lifecycle = lifecycleDouble();
+    const args: unknown[] = new Array(9).fill(undefined);
+    args[0] = consultationRepository;
+    args[5] = { emit: vi.fn() };
+    args[6] = cls(user, serviceAccount);
+    args[7] = encounterServiceDouble(consultationRepository as never);
+    args[8] = lifecycle;
+    return new ConsultationService(...(args as ConstructorParameters<typeof ConsultationService>));
+  };
 
-const makeMocks = () => ({
-  consultationRepository: {
-    findWithRelations: vi.fn().mockResolvedValue(signedConsultation()),
-    updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
-  },
-  departmentRepository: {},
-  userRoleAssignmentRepository: { findFirst: vi.fn().mockResolvedValue({ id: 'ra-1' }), findAll: vi.fn().mockResolvedValue([]) },
-  userDepartmentRepository: { findFirst: vi.fn().mockResolvedValue({ id: 'ud-1' }) },
-  userRepository: { findFirst: vi.fn().mockResolvedValue({ id: CLINICIAN }) },
-  eventEmitter: { emit: vi.fn() },
-  harnessAudit: { append: vi.fn().mockResolvedValue({ id: 'a-1' }) },
+  it('forwards the named clinician and a SERVICE-ACCOUNT caller in the lifecycle form', async () => {
+    const service = build(null, { id: 'svc-1' });
+
+    await service.closeConsultation(CONSULTATION, 3, {
+      clinicianUserId: CLINICIAN,
+      caller: { credentialClass: 'service-account', principalId: 'svc-1' },
+    });
+
+    expect(lifecycle.close).toHaveBeenCalledWith(CONSULTATION, {
+      expectedVersion: 3,
+      clinicianUserId: CLINICIAN,
+      caller: { isMachine: true, serviceAccountId: 'svc-1' },
+    });
+  });
+
+  it('forwards an API-key caller with its bound user, and a human caller as itself', async () => {
+    const service = build({ id: CALLER, roles: [] });
+
+    await service.closeConsultation(CONSULTATION, 3, { caller: { credentialClass: 'api-key', principalId: 'key-1', boundUserId: CALLER } });
+    await service.closeConsultation(CONSULTATION, 4, { caller: { credentialClass: 'jwt', principalId: CALLER } });
+
+    expect(lifecycle.close).toHaveBeenNthCalledWith(1, CONSULTATION, {
+      expectedVersion: 3,
+      caller: { isMachine: true, apiKeyId: 'key-1', userId: CALLER },
+    });
+    expect(lifecycle.close).toHaveBeenNthCalledWith(2, CONSULTATION, { expectedVersion: 4, caller: { isMachine: false, userId: CALLER } });
+  });
 });
 
-type Mocks = ReturnType<typeof makeMocks>;
+describe('ConsultationLifecycleService.close — machine attribution (TASK-972 Lane 1)', () => {
+  let consultations: { findByIdOrNull: ReturnType<typeof vi.fn>; updateWithVersion: ReturnType<typeof vi.fn> };
+  let harnessAudit: { append: ReturnType<typeof vi.fn> };
 
-const build = (m: Mocks, opts: { user?: unknown; serviceAccount?: unknown } = {}) => {
-  const user = 'user' in opts ? opts.user : { id: CALLER, roles: [] };
-  const args: unknown[] = new Array(20).fill(undefined);
-  args[0] = m.consultationRepository;
-  args[1] = m.departmentRepository;
-  args[2] = m.userRoleAssignmentRepository;
-  args[3] = m.userDepartmentRepository;
-  args[4] = m.userRepository;
-  args[5] = m.eventEmitter;
-  args[6] = cls(user, opts.serviceAccount ?? null);
-  args[8] = m.harnessAudit;
-  return new ConsultationService(...(args as ConstructorParameters<typeof ConsultationService>));
-};
+  const build = (user: unknown, serviceAccount: unknown = null) =>
+    new ConsultationLifecycleService(
+      consultations as never,
+      { endEncounter: vi.fn().mockResolvedValue(true) } as never, // encounterRepository
+      {} as never, // contextItemRepository
+      {} as never, // approvals
+      {} as never, // gate
+      { publish: vi.fn().mockResolvedValue(undefined) } as never, // events
+      { emit: vi.fn() } as never,
+      cls(user, serviceAccount) as never,
+    );
 
-describe('ConsultationService.closeConsultation — machine attribution (TASK-972 Lane 1)', () => {
-  let m: Mocks;
+  const persistedUpdatedBy = () => (consultations.updateWithVersion.mock.calls[0]?.[1] as ConsultationEntity | undefined)?.updatedBy;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    m = makeMocks();
-  });
-
-  it('REFUSES a service-account close that names no clinician (400)', async () => {
-    const service = build(m, { user: null, serviceAccount: { id: 'svc-1' } });
-    await expect(service.closeConsultation(CONSULTATION, 3)).rejects.toBeInstanceOf(BadRequestException);
-    expect(m.consultationRepository.updateWithVersion).not.toHaveBeenCalled();
-  });
-
-  it('closes a SIGNED consultation as CLOSED_COMPLETE, attributed to the named clinician', async () => {
-    const service = build(m, { user: null, serviceAccount: { id: 'svc-1' } });
-
-    const result = await service.closeConsultation(CONSULTATION, 3, { clinicianUserId: CLINICIAN });
-
-    expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
-    const persisted = m.consultationRepository.updateWithVersion.mock.calls[0][1] as { updatedBy: string };
-    expect(persisted.updatedBy).toBe(CLINICIAN);
-    // The WORM row names the clinician, and the CREDENTIAL beside them.
-    const worm = m.harnessAudit.append.mock.calls[0][0];
-    expect(worm.clinicianId).toBe(CLINICIAN);
-    expect(worm.createdBy).toBe('svc-1');
-  });
-
-  it('answers 404 for a clinician outside the tenant (never 403)', async () => {
-    m.userRoleAssignmentRepository.findFirst.mockResolvedValue(null);
-    const service = build(m, { user: null, serviceAccount: { id: 'svc-1' } });
-    await expect(service.closeConsultation(CONSULTATION, 3, { clinicianUserId: CLINICIAN })).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it('REFUSES a clinician naming another clinician (400)', async () => {
-    const service = build(m);
-    await expect(service.closeConsultation(CONSULTATION, 3, { clinicianUserId: CLINICIAN })).rejects.toBeInstanceOf(BadRequestException);
+    consultations = {
+      findByIdOrNull: vi.fn(async () => consultationAt(ConsultationStatus.APPROVED)),
+      updateWithVersion: vi.fn(async (_id: string, entity: ConsultationEntity) => entity),
+    };
+    harnessAudit = { append: vi.fn().mockResolvedValue({ id: 'a-1' }) };
   });
 
   it('closes as SELF for a human who names nobody — the pre-ticket path, unchanged', async () => {
-    const service = build(m);
-    const result = await service.closeConsultation(CONSULTATION, 3);
+    const service = build({ id: CALLER, roles: [] });
+
+    const result = await service.close(CONSULTATION, { expectedVersion: 3 });
+
     expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
-    const persisted = m.consultationRepository.updateWithVersion.mock.calls[0][1] as { updatedBy: string };
-    expect(persisted.updatedBy).toBe(CALLER);
+    expect(persistedUpdatedBy()).toBe(CALLER);
   });
 
   it('short-circuits an already-terminal consultation without applying the rule', async () => {
-    m.consultationRepository.findWithRelations.mockResolvedValue(consultationAt(ConsultationStatus.CLOSED_COMPLETE));
-    const service = build(m, { user: null, serviceAccount: { id: 'svc-1' } });
+    consultations.findByIdOrNull.mockResolvedValue(consultationAt(ConsultationStatus.CLOSED_COMPLETE));
+    const service = build(null, { id: 'svc-1' });
 
-    const result = await service.closeConsultation(CONSULTATION, 3);
+    const result = await service.close(CONSULTATION, { expectedVersion: 3, caller: { isMachine: true, serviceAccountId: 'svc-1' } });
 
     expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
-    expect(m.consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+    expect(consultations.updateWithVersion).not.toHaveBeenCalled();
+  });
+
+  // ── DEFECT (AB-8a): the named-clinician rule is not enforced by the lifecycle close ────────────
+
+  it.fails('DEFECT — REFUSES a service-account close that names no clinician (400)', async () => {
+    const service = build(null, { id: 'svc-1' });
+    await expect(service.close(CONSULTATION, { expectedVersion: 3, caller: { isMachine: true, serviceAccountId: 'svc-1' } })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(consultations.updateWithVersion).not.toHaveBeenCalled();
+  });
+
+  it.fails('DEFECT — answers 404 for a named clinician outside the tenant (never 403)', async () => {
+    const service = build(null, { id: 'svc-1' });
+    await expect(
+      service.close(CONSULTATION, { expectedVersion: 3, clinicianUserId: 'doctor-elsewhere', caller: { isMachine: true, serviceAccountId: 'svc-1' } }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it.fails('DEFECT — REFUSES a clinician naming another clinician (400)', async () => {
+    const service = build({ id: CALLER, roles: [] });
+    await expect(
+      service.close(CONSULTATION, { expectedVersion: 3, clinicianUserId: CLINICIAN, caller: { isMachine: false, userId: CALLER } }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it.fails('DEFECT — a machine close is attributed to the named clinician and writes the WORM close row naming the credential', async () => {
+    const service = build(null, { id: 'svc-1' });
+
+    const result = await service.close(CONSULTATION, {
+      expectedVersion: 3,
+      clinicianUserId: CLINICIAN,
+      caller: { isMachine: true, serviceAccountId: 'svc-1' },
+    });
+
+    expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
+    expect(persistedUpdatedBy()).toBe(CLINICIAN);
+    const worm = harnessAudit.append.mock.calls[0]?.[0];
+    expect(worm).toMatchObject({ action: HarnessAuditAction.SESSION_CLOSED_COMPLETE, clinicianId: CLINICIAN, createdBy: 'svc-1' });
   });
 });

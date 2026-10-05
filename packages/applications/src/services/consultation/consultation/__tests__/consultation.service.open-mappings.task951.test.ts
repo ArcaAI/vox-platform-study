@@ -32,8 +32,9 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ContextItemType, ResourceStatusType } from '@arcaai/domains';
+import { ConsultationEntity, ContextItemType, ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble, type EncounterServiceDouble } from './consultation-service.fixture';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 import { CONSULTATION_EXTERNAL_REF_MARKER, CONSULTATION_VISIT_TYPE_MARKER, readRecordedVisitType } from '../open-markers';
 import { DEFAULT_VISIT_TYPE_SERVICE } from '../../visit-type';
@@ -125,6 +126,7 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
   let userIdentityService: any;
   let contextService: any;
   let workflowDispatchService: any;
+  let encounters: EncounterServiceDouble;
 
   const buildService = (principal: 'serviceAccount' | 'user' = 'serviceAccount') =>
     new ConsultationService(
@@ -143,8 +145,9 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
         }),
         set: vi.fn(),
       } as any,
-      // entitlements, harnessAudit, tenantSettings
-      undefined,
+      encounters as any,
+      lifecycleDouble(), // lifecycle
+      // entitlements, tenantSettings
       undefined,
       undefined,
       workflowDispatchService as any,
@@ -180,14 +183,15 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
   beforeEach(() => {
     vi.clearAllMocks();
     consultationRepository = {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
-      // TASK-1020 — the encounter-key lookup (a payload carrying `event_id` keys on it) and the
-      // same-day parent derivation for a stated `revisit`. Default: nothing found.
-      findByExternalRef: vi.fn().mockResolvedValue([]),
-      findByPatientAndDate: vi.fn().mockResolvedValue([]),
+      // TASK-1045 — the open key (no non-closed consultation) and the closed one to chain to (none).
+      findOpenByKey: vi.fn().mockResolvedValue(null),
+      findLatestClosedByKey: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
     };
+    // The encounters of the episode: a payload carrying `event_id` is matched by its encounter ref
+    // first. Default: no encounter carries it.
+    encounters = encounterServiceDouble(consultationRepository);
     departmentRepository = {
       // Echo the id asked for, so `assertParentInScope` accepts whichever department resolution
       // produced — the guard's own behaviour is TASK-933's and is not what this file pins.
@@ -376,14 +380,16 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
 
   // ── 3. External reference (D-4) ───────────────────────────────────────────
 
-  it('records the external reference on the marker AND the column, and keys the open on it (TASK-1020 D-2)', async () => {
+  it('records the external reference on the marker AND the column, and keys the encounter on it (TASK-1045 D-3)', async () => {
     await buildService().getOrCreate(openRequest(), null as unknown as string);
 
     expect(writtenMetadata()[CONSULTATION_EXTERNAL_REF_MARKER]).toBe('EVT-88213');
     expect((consultationRepository.create.mock.calls[0][0] as any).externalRef).toBe('EVT-88213');
-    // TASK-1020 reversed D-4: the event id IS the encounter key now; the legacy tuple is not consulted.
-    expect(consultationRepository.findByExternalRef).toHaveBeenCalledWith(TENANT, 'EVT-88213');
-    expect(consultationRepository.findByUniqueKey).not.toHaveBeenCalled();
+    // The event id is the ENCOUNTER key: matched first, for the same patient and clinician…
+    expect(encounters.matchExternalRef).toHaveBeenCalledWith(TENANT, 'EVT-88213', { patientId: 'p-1', doctorId: CLINICIAN });
+    // …and, with no encounter carrying it and no open consultation of the key, it is encounter 1's ref.
+    expect(consultationRepository.findOpenByKey).toHaveBeenCalledWith({ tenantId: TENANT, doctorId: CLINICIAN, patientId: 'p-1', departmentId: GEN_DEPARTMENT });
+    expect(encounters.createConsultation).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ externalRef: 'EVT-88213' }));
   });
 
   it('preserves caller-supplied metadata alongside every marker', async () => {
@@ -461,17 +467,20 @@ describe('ConsultationService.getOrCreate — the TASK-951 open-time mappings', 
   });
 
   it('persists nothing on a RE-open — get-or-create must not append a second copy', async () => {
-    // TASK-1020 — the payload carries `event_id`, so the re-open is found by the encounter key.
-    consultationRepository.findByExternalRef.mockResolvedValue([{
-      id: 'existing-id',
-      tenantId: TENANT,
-      doctorId: CLINICIAN,
-      patientId: 'p-1',
-      appointmentDate: new Date('2026-01-29'),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1,
-    }]);
+    // The payload carries `event_id`, so the re-open is found by the encounter key.
+    encounters.matchExternalRef.mockResolvedValue({ own: { consultationId: 'existing-id', seq: 1, externalRef: 'EVT-88213' }, conflict: false });
+    consultationRepository.findWithRelations.mockResolvedValue(
+      new ConsultationEntity({
+        id: 'existing-id',
+        tenantId: TENANT,
+        doctorId: CLINICIAN,
+        patientId: 'p-1',
+        appointmentDate: new Date('2026-01-29'),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      } as never),
+    );
 
     await buildService().getOrCreate(openRequest(), null as unknown as string);
 

@@ -12,10 +12,10 @@
  * `HarnessDocWorkflow` can run a second execution for the same consultation, and `persistDraft`
  * ADOPTS its own prior RAW_SUMMARY row. The question this probe answers: does a late re-delivery
  * overwrite a note the clinician has already APPROVED (an `approved` ContextItemVersion exists and
- * the consultation is SIGNED)? Signed documentation is immutable (BP-2), so it must not.
+ * the consultation is APPROVED)? Signed documentation is immutable (BP-2), so it must not.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { ConsultationEntity, ConsultationStatus, ContextItemType, ResourceStatusType } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, ContextItemType, ResourceStatusType } from '@arcaai/domains';
 
 import { HarnessInternalService } from '../harness-internal.service';
 
@@ -73,7 +73,7 @@ function build(wiring: Wiring = {}) {
   const parent =
     wiring.parent === null
       ? null
-      : consultation({ id: PARENT, status: ConsultationStatus.SIGNED, createdAt: new Date('2026-09-29T04:15:00.000Z'), ...wiring.parent });
+      : consultation({ id: PARENT, status: ConsultationStatus.APPROVED, createdAt: new Date('2026-09-29T04:15:00.000Z'), ...wiring.parent });
 
   const contextItemRepository = {
     findTranscripts: vi.fn().mockResolvedValue([{ id: 'tx-1', content: 'Patient returns with the lab results.' }]),
@@ -174,7 +174,7 @@ describe('TASK-1020 — HarnessInternalService.assemble carries the same-day pre
     await service.assemble(CID, assembleDto);
 
     const params = paramsOf(promptAssemblyService.assemble);
-    expect(params.sameDayPrequelSummary).toBe('### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-SIGNED plan: CBC');
+    expect(params.sameDayPrequelSummary).toBe('### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-SIGNED plan: CBC');
     // carryForward still governs prior_visit_summary exactly as before.
     expect(params).not.toHaveProperty('priorVisitSummary');
   });
@@ -237,9 +237,9 @@ describe('TASK-1020 probe — persistDraft never overwrites an APPROVED (signed)
     },
   ];
 
-  it('leaves the signed note untouched when the consultation is SIGNED and the note has an approved version', async () => {
+  it('leaves the signed note untouched when the consultation is APPROVED and the note has an approved version', async () => {
     const { service, contextItemRepository, summaryMetaRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.SIGNED },
+      child: { parentConsultationId: null, status: ConsultationStatus.APPROVED },
       ownDrafts: ownDraft(),
       approvedVersions: [{ id: 'ver-approved', changeReason: 'approved' }],
     });
@@ -267,7 +267,7 @@ describe('TASK-1020 probe — persistDraft never overwrites an APPROVED (signed)
 
   it('still adopts (updates in place) an UNAPPROVED draft — the existing re-delivery contract', async () => {
     const { service, contextItemRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED },
       ownDrafts: ownDraft(),
       approvedVersions: [],
     });
@@ -312,7 +312,7 @@ describe('TASK-1022 — a skipped adoption is never logged as "Harness draft per
 
   it('keeps "Harness draft persisted" when the content WAS applied (adoption of an unapproved draft)', async () => {
     const { service } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED },
       ownDrafts: ownDraft(),
       approvedVersions: [],
     });
@@ -349,7 +349,7 @@ describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion'
   it('different content → a new version row with the AI-draft convention, numbered currentVersionNumber + 1, and the counter advanced', async () => {
     const order: string[] = [];
     const { service, contextItemRepository, contextItemVersionRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED },
       ownDrafts: ownDraft(),
       approvedVersions: [],
     });
@@ -381,7 +381,7 @@ describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion'
 
   it('numbers from the CURRENT counter — a draft the clinician already edited (v2) gets v3', async () => {
     const { service, contextItemVersionRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.PENDING_REVIEW },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.AWAITING_REVIEW },
       ownDrafts: ownDraft('FIRST AI DRAFT, edited', 2),
       approvedVersions: [],
     });
@@ -394,7 +394,7 @@ describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion'
 
   it('identical content → no version row, counter unchanged', async () => {
     const { service, contextItemRepository, contextItemVersionRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.DRAINING },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED },
       ownDrafts: ownDraft(REDRAFT),
       approvedVersions: [],
     });
@@ -408,7 +408,7 @@ describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion'
 
   it('an approved note → the existing guard skips, and no version row is written', async () => {
     const { service, contextItemRepository, contextItemVersionRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.SIGNED },
+      child: { parentConsultationId: null, status: ConsultationStatus.APPROVED },
       ownDrafts: ownDraft(),
       approvedVersions: [{ id: 'ver-approved', changeReason: 'approved' }],
     });
@@ -422,7 +422,7 @@ describe('TASK-1022 A3 — an in-place AI re-draft appends a ContextItemVersion'
   it('OCC drift (a clinician edited meanwhile) → the adoption is skipped and no version row is written', async () => {
     const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
     const { service, contextItemRepository, contextItemVersionRepository } = build({
-      child: { parentConsultationId: null, status: ConsultationStatus.PENDING_REVIEW },
+      child: { parentConsultationId: null, status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.AWAITING_REVIEW },
       ownDrafts: ownDraft(),
       approvedVersions: [],
     });

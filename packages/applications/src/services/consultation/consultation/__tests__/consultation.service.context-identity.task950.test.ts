@@ -27,6 +27,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 
 const TENANT = 'tenant-1';
@@ -112,9 +113,10 @@ describe('ConsultationService.getOrCreate — the context-schema user identity',
         }),
         set: vi.fn(),
       } as any,
-      // entitlements, harnessAudit, tenantSettings, workflowDispatch, consentGrant,
+      encounterServiceDouble(consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
+      // entitlements, tenantSettings, workflowDispatch, consentGrant,
       // workflowDefinitionRepository — then the three this block needs.
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -136,7 +138,7 @@ describe('ConsultationService.getOrCreate — the context-schema user identity',
   beforeEach(() => {
     vi.clearAllMocks();
     consultationRepository = {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
     };

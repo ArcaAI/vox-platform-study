@@ -12,7 +12,7 @@
  * `GateEditMiningProcessor`, the real `GateEditMiningService` and the real
  * `PromptAssemblyService` against each other:
  *
- *   clinician signs -> approveSummary enqueues
+ *   clinician signs -> approveSummary -> session approve -> signing core enqueues
  *                    -> processor reads the ai_draft_v1 baseline + signed note
  *                    -> mining service redacts BOTH halves and persists
  *                    -> retriever serves the APPROVED_CLEAN exemplar
@@ -26,6 +26,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ConsultationEntity, ConsultationStatus } from '@arcaai/domains';
 import { SummaryService } from '../../consultation/summary/summary.service';
+import { wireSessionApproval } from '../../consultation/summary/__tests__/session-approval.fixture';
 import { PromptAssemblyService } from '../../consultation/prompt/prompt-assembly.service';
 import { GateEditMiningService } from '../gate-edit-mining.service';
 import { GateEditMiningProcessor } from '../gate-edit-mining.processor';
@@ -101,10 +102,13 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
       version: 2,
     };
 
-    const summaryService = new SummaryService(
-      { findById: vi.fn().mockResolvedValue(contextItem), updateWithVersion: vi.fn(async () => contextItem), encryptContentIntoEntity: vi.fn() } as never,
-      {
-        findById: vi.fn().mockResolvedValue(
+    const contextItemRepository = {
+      findById: vi.fn().mockResolvedValue(contextItem),
+      updateWithVersion: vi.fn(async () => contextItem),
+      encryptContentIntoEntity: vi.fn(),
+    };
+    const consultationRepository = {
+      findById: vi.fn().mockResolvedValue(
           new ConsultationEntity({
             id: CONSULTATION,
             tenantId: TENANT,
@@ -118,20 +122,24 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
             createdAt: new Date('2026-01-01'),
             updatedAt: new Date('2026-01-01'),
             createdBy: 'u-1',
-            status: ConsultationStatus.PENDING_REVIEW,
+            status: ConsultationStatus.STOPPED,
             version: 1,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any),
         ),
-        updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
-      } as never,
+      updateWithVersion: vi.fn(async (_id: string, e: unknown) => e),
+    };
+    const contextItemVersionRepository = { create: vi.fn(async (e: unknown) => e), getVersionsByChangeReason: vi.fn().mockResolvedValue([]) };
+    const summaryService = new SummaryService(
+      contextItemRepository as never,
+      consultationRepository as never,
       { findByContextItem: vi.fn().mockResolvedValue(null) } as never,
       { create: vi.fn() } as never,
       { axiosRef: { post: vi.fn() } } as never,
       { get: vi.fn(() => undefined) } as never,
       { emit: vi.fn() } as never,
       cls() as never,
-      { create: vi.fn(async (e: unknown) => e), getVersionsByChangeReason: vi.fn().mockResolvedValue([]) } as never,
+      contextItemVersionRepository as never,
       { assemble: vi.fn() } as never,
       undefined, undefined,
       { append: vi.fn().mockResolvedValue({ id: 'a-1' }) } as never,
@@ -139,6 +147,7 @@ describe('clinician edit -> mined exemplar -> assembled prompt', () => {
       undefined, undefined, undefined, undefined, undefined, undefined,
       miningQueue as never,
     );
+    wireSessionApproval(summaryService, { consultationRepository, contextItemRepository, contextItemVersionRepository, cls: cls() });
 
     await summaryService.approveSummary(CONTEXT_ITEM, { expectedVersion: 2 });
 

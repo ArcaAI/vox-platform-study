@@ -24,6 +24,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { WORKFLOW_SELECTION_METADATA_KEY } from '../workflow-selection';
 import { ResourceStatusType } from '@arcaai/domains';
 
@@ -44,7 +45,7 @@ const SLUG = 'arcaai-rheum-consultation-soap';
 function makeMocks() {
   return {
     consultationRepository: {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
       findById: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
@@ -85,8 +86,9 @@ function makeService(m: ReturnType<typeof makeMocks>) {
     m.userRepository as never,
     m.eventEmitter as never,
     m.clsService as never,
+    encounterServiceDouble(m.consultationRepository), // encounters
+    lifecycleDouble(), // lifecycle
     undefined, // entitlements
-    undefined, // harnessAudit
     undefined, // tenantSettings
     m.workflowDispatchService as never,
     undefined, // consentGrantService

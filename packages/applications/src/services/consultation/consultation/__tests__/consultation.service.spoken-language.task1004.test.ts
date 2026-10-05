@@ -15,8 +15,9 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { BadRequestException } from '@nestjs/common';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { ConsultationEntity, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 import { UpdateConsultationRequest } from '../dto/update-consultation.request';
@@ -35,8 +36,9 @@ vi.mock('@arcaai/domains', async () => {
 
 const TENANT = 'tenant-1';
 
+// A REAL entity, as the repository answers: the response mapper reads its lifecycle facts.
 function existingRow(overrides: Record<string, unknown> = {}) {
-  return {
+  return new ConsultationEntity({
     id: 'existing-1',
     tenantId: TENANT,
     patientId: 'p-1',
@@ -49,17 +51,21 @@ function existingRow(overrides: Record<string, unknown> = {}) {
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
-  };
+  } as never);
 }
+
+/** What `updateWithVersion` answers: the entity as persisted, `_version` bumped by the database. */
+const persisted = (entity: ConsultationEntity) =>
+  Object.assign(Object.create(Object.getPrototypeOf(entity)), entity, { _version: entity.version + 1, _changes: {} }) as ConsultationEntity;
 
 function makeMocks() {
   return {
     consultationRepository: {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
       findById: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
-      updateWithVersion: vi.fn(async (_id: string, entity: Record<string, unknown>) => ({ ...entity, version: Number(entity.version) + 1 })),
+      updateWithVersion: vi.fn(async (_id: string, entity: ConsultationEntity) => persisted(entity)),
     },
     departmentRepository: { findById: vi.fn().mockResolvedValue({ id: 'dept-1', tenantId: TENANT }) },
     userRoleAssignmentRepository: {
@@ -86,6 +92,8 @@ function makeService(m: ReturnType<typeof makeMocks>) {
     m.userRepository as never,
     m.eventEmitter as never,
     m.clsService as never,
+    encounterServiceDouble(m.consultationRepository), // encounters
+    lifecycleDouble(), // lifecycle
   );
 }
 
@@ -125,7 +133,7 @@ describe('open — declares the spoken-language mode on the typed column', () =>
       BadRequestException,
     );
     expect(m.consultationRepository.create).not.toHaveBeenCalled();
-    expect(m.consultationRepository.findByUniqueKey).not.toHaveBeenCalled();
+    expect(m.consultationRepository.findOpenByKey).not.toHaveBeenCalled();
   });
 
   it('undeclared stays undeclared (null column, no legacy key)', async () => {
@@ -143,7 +151,7 @@ describe('open on an EXISTING consultation — an explicit, different mode updat
 
   it('updates spokenLanguageMode under OCC and audits ResourceUpdated', async () => {
     const row = existingRow();
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(row);
+    m.consultationRepository.findOpenByKey.mockResolvedValue(row);
 
     await makeService(m).getOrCreate({ patientId: 'p-1', languageMode: 'ml-en' } as never, 'doctor-1');
 
@@ -160,7 +168,7 @@ describe('open on an EXISTING consultation — an explicit, different mode updat
   });
 
   it('two concurrent re-opens: the loser of the CAS re-reads, and a row already at the mode is a no-op (never a 412 from open)', async () => {
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.findOpenByKey.mockResolvedValue(existingRow());
     m.consultationRepository.updateWithVersion.mockRejectedValueOnce(
       new OptimisticConcurrencyException('Consultation', 'existing-1', { expectedVersion: 4, currentVersion: 5 }),
     );
@@ -171,7 +179,7 @@ describe('open on an EXISTING consultation — an explicit, different mode updat
   });
 
   it('a lost CAS against a row at ANOTHER mode retries once on the fresh version', async () => {
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.findOpenByKey.mockResolvedValue(existingRow());
     m.consultationRepository.updateWithVersion.mockRejectedValueOnce(
       new OptimisticConcurrencyException('Consultation', 'existing-1', { expectedVersion: 4, currentVersion: 5 }),
     );
@@ -183,19 +191,19 @@ describe('open on an EXISTING consultation — an explicit, different mode updat
   });
 
   it('the same mode (after normalization) writes nothing', async () => {
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.findOpenByKey.mockResolvedValue(existingRow());
     await makeService(m).getOrCreate({ patientId: 'p-1', language: 'en-IN' } as never, 'doctor-1');
     expect(m.consultationRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 
   it('no declaration writes nothing — the consultation keeps its own', async () => {
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(existingRow());
+    m.consultationRepository.findOpenByKey.mockResolvedValue(existingRow());
     await makeService(m).getOrCreate({ patientId: 'p-1' } as never, 'doctor-1');
     expect(m.consultationRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 
   it('a row that only carries the legacy key is compared on that key', async () => {
-    m.consultationRepository.findByUniqueKey.mockResolvedValue(
+    m.consultationRepository.findOpenByKey.mockResolvedValue(
       existingRow({ spokenLanguageMode: null, metadata: { [SUMMARY_LANGUAGE_METADATA_KEY]: 'ml-en' } }),
     );
     await makeService(m).getOrCreate({ patientId: 'p-1', languageMode: 'ml-en' } as never, 'doctor-1');
