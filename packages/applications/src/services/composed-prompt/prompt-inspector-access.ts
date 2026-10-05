@@ -18,6 +18,12 @@ export interface PromptInspectorCaller {
   logger?: { warn(message: string): void };
 }
 
+/** The refusal a caller may brand as its own surface's; the default is the Prompt Inspector's. */
+export interface PromptInspectorRefusal {
+  code?: string;
+  message?: string;
+}
+
 /**
  * SUPER_ADMIN, or TENANT_ADMIN of THIS tenant; otherwise 403.
  *
@@ -31,7 +37,7 @@ export interface PromptInspectorCaller {
  * without the privilege gets the same 403 whether the id exists or not. Fails closed: no user, no
  * repository or an unreadable role list is a 403.
  */
-export async function assertPromptInspectorAccess(caller: PromptInspectorCaller): Promise<void> {
+export async function assertPromptInspectorAccess(caller: PromptInspectorCaller, refusal: PromptInspectorRefusal = {}): Promise<void> {
   if (caller.serviceAccount) return;
   if (isSuperAdmin(caller.user)) return;
 
@@ -48,7 +54,8 @@ export async function assertPromptInspectorAccess(caller: PromptInspectorCaller)
   }
 
   throw new ForbiddenException({
-    code: 'PROMPT_INSPECTOR_FORBIDDEN',
-    message: 'Composed prompts carry patient data and are readable only by a super administrator or a tenant administrator of this tenant.',
+    code: refusal.code ?? 'PROMPT_INSPECTOR_FORBIDDEN',
+    message:
+      refusal.message ?? 'Composed prompts carry patient data and are readable only by a super administrator or a tenant administrator of this tenant.',
   });
 }
