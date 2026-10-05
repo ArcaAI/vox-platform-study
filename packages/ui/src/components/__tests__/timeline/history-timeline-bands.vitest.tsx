@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 
+import { axe } from 'vitest-axe';
+import * as axeMatchers from 'vitest-axe/matchers';
+
 import { HistoryTimelineList } from '../../timeline/history-timeline-list';
 import type { TimelineBandModel, TimelineItemModel } from '../../timeline/types';
+
+expect.extend(axeMatchers);
 
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {
@@ -35,7 +40,8 @@ const item = (id: string, title: string, ts: string): TimelineItemModel => ({
 
 const oldestFirst = [item('a', 'Alpha', '2026-01-01T10:00:00Z'), item('b', 'Beta', '2026-01-01T11:00:00Z'), item('c', 'Gamma', '2026-01-01T12:00:00Z')];
 
-const titles = () => screen.getAllByRole('article').map((el) => el.querySelector('[id$="-title"]')?.textContent);
+const contentArticles = () => screen.getAllByRole('article').filter((el) => el.getAttribute('data-slot') !== 'timeline-band');
+const titles = () => contentArticles().map((el) => el.querySelector('[id$="-title"]')?.textContent);
 
 describe('HistoryTimelineList — ordering', () => {
   it('inputOrder="asc" renders the given oldest-first order without reversing', () => {
@@ -62,18 +68,23 @@ describe('HistoryTimelineList — bands', () => {
   const band: TimelineBandModel = { kind: 'band', id: 'enc-2', label: 'Encounter 2 - follow-up', tone: 'section' };
   const gap: TimelineBandModel = { kind: 'band', id: 'gap-1', label: 'Gap of 2 hours', tone: 'gap' };
 
-  it('renders band rows as labelled separators, not articles', () => {
+  it('renders band rows as named articles (a feed owns only articles), distinct from content rows', () => {
     render(<HistoryTimelineList items={[oldestFirst[0], gap, band, oldestFirst[1]]} inputOrder="asc" />);
-    const separators = screen.getAllByRole('separator');
-    expect(separators).toHaveLength(2);
-    expect(screen.getByRole('separator', { name: 'Encounter 2 - follow-up' })).toBeTruthy();
-    expect(screen.getByRole('separator', { name: 'Gap of 2 hours' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(2);
+    const bands = screen.getAllByRole('article').filter((el) => el.getAttribute('data-slot') === 'timeline-band');
+    expect(bands).toHaveLength(2);
+    expect(screen.getByRole('article', { name: 'Encounter 2 - follow-up' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Gap of 2 hours' })).toBeTruthy();
+    expect(contentArticles()).toHaveLength(2);
+  });
+
+  it('has no axe violations with bands inside the feed (feed owns only articles)', async () => {
+    const { container } = render(<HistoryTimelineList items={[oldestFirst[0], gap, band, oldestFirst[1]]} inputOrder="asc" />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it('numbers item positions among items only', () => {
     render(<HistoryTimelineList items={[oldestFirst[0], band, oldestFirst[1]]} inputOrder="asc" />);
-    const articles = screen.getAllByRole('article');
+    const articles = contentArticles();
     expect(articles[1].getAttribute('aria-posinset')).toBe('2');
     expect(articles[1].getAttribute('aria-setsize')).toBe('2');
   });
@@ -125,7 +136,7 @@ describe('HistoryTimelineList — actions slot', () => {
         )}
       />,
     );
-    const first = screen.getAllByRole('article')[0];
+    const first = contentArticles()[0];
     fireEvent.click(within(first).getByRole('button', { name: 'Edit Alpha' }));
     expect(onAct).toHaveBeenCalledWith('a');
     expect(onItemSelect).not.toHaveBeenCalled();

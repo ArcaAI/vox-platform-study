@@ -163,7 +163,7 @@ describe('ConsultationActivityScreen', () => {
     expect(titles.indexOf('Transcript segments')).toBeLessThan(titles.indexOf('Note'));
     expect(titles.indexOf('Note')).toBeLessThan(titles.indexOf('Encounter recap'));
     expect(titles.indexOf('Encounter recap')).toBeLessThan(titles.indexOf('Case note'));
-    const bands = screen.getAllByRole('separator').map((el) => el.getAttribute('aria-label'));
+    const bands = Array.from(document.querySelectorAll('[data-slot="timeline-band"]')).map((el) => el.getAttribute('aria-label'));
     expect(bands.filter((label) => /^Encounter \d/.test(label ?? ''))).toEqual(['Encounter 1 · new', 'Encounter 2 · revisit']);
   });
 
@@ -171,7 +171,7 @@ describe('ConsultationActivityScreen', () => {
     stub();
     renderWithProviders(<ConsultationActivityScreen consultationId="c-1" />);
     await screen.findAllByRole('article');
-    const labels = screen.getAllByRole('separator').map((el) => el.getAttribute('aria-label'));
+    const labels = Array.from(document.querySelectorAll('[data-slot="timeline-band"]')).map((el) => el.getAttribute('aria-label'));
     const gap = labels.findIndex((label) => /away 3h 05m/i.test(label ?? ''));
     expect(gap).toBeGreaterThan(-1);
     expect(labels[gap - 0]).toBeTruthy();
@@ -199,10 +199,7 @@ describe('ConsultationActivityScreen', () => {
     await waitFor(() => expect(panel.querySelector('ins')?.textContent).toContain('Plan: start statin'));
     expect(panel.querySelector('del')?.textContent).toContain('Plan: observe');
     expect(within(panel).getAllByRole('button', { name: /^v[12]\b/ })).toHaveLength(2);
-    // The shared timeline renders its `role=separator` bands directly inside `role=feed`, which axe
-    // flags under aria-required-children. That is a packages/ui defect, not this screen's; every
-    // other rule runs.
-    expect(await axe(container, { rules: { 'aria-required-children': { enabled: false } } })).toHaveNoViolations();
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it('closes the non-modal panel with Escape and the close button', async () => {
