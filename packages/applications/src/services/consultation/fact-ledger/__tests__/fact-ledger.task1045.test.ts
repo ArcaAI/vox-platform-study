@@ -499,6 +499,8 @@ describe('encounter recap — structured v2, pure template', () => {
       fact('E2-F1', 'complaint', 'Chest pain for two days.', ['seg-20']),
       fact('E2-F2', 'vital', 'BP 130/85.', ['seg-20'], { key: 'vital:bp', supersededBy: 'E2-F3' }),
       fact('E2-F3', 'vital', 'BP 128/80.', ['seg-21', 'seg-20'], { key: 'vital:bp', supersedes: ['E2-F2'] }),
+      // Earlier in transcript order than the result, yet rendered after it (D-31).
+      fact('E2-F12', 'diagnosis', 'Stable angina.', ['seg-21']),
       fact('E2-F4', 'history', 'Known hypertensive.', ['seg-20']),
       fact('E2-F5', 'result', 'Potassium 4.2.', ['att-during', 'seg-21']),
       fact('E2-F6', 'medication', 'Aspirin 75 mg daily.', ['seg-21']),
@@ -507,7 +509,7 @@ describe('encounter recap — structured v2, pure template', () => {
       fact('E2-F9', 'result', 'Troponin elevated.', ['att-late']),
       fact('E2-F10', 'follow_up', 'Cardiology review next week.', ['seg-21']),
       fact('E2-F11', 'red_flag', 'Return if pain at rest.', ['seg-21']),
-      fact('E2-F12', 'diagnosis', 'Stable angina.', ['seg-21']),
+      fact('E2-F13', 'negation', 'No fever.', ['seg-20']),
     ],
     stats: { segmentCount: 2, attachmentCount: 2, factCount: 12, criticalCount: 6, droppedUncited: 0, droppedInvalid: 0, callCount: 1 },
   };
@@ -533,6 +535,7 @@ describe('encounter recap — structured v2, pure template', () => {
           lines: [
             { text: 'BP 128/80.', citations: [s20, s21] },
             { text: 'Potassium 4.2.', citations: [s21, { itemId: 'att-during', versionNumber: 3, label: 'A2', kind: 'attachment' }] },
+            { text: 'Stable angina.', citations: [s21] },
           ],
         },
         {
@@ -571,6 +574,7 @@ describe('encounter recap — structured v2, pure template', () => {
         '## Findings',
         '- BP 128/80. [S20, S21]',
         '- Potassium 4.2. [S21, A2]',
+        '- Stable angina. [S21]',
         '',
         '## Medicines',
         '- Aspirin 75 mg daily. [S21]',

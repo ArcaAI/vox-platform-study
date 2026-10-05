@@ -37,13 +37,14 @@ export interface EncounterRecapV2 {
 }
 
 /**
- * The six fixed sections, in order. `since_then` takes no kinds: it holds any fact cited only by
- * uploaded transcripts that arrived after the encounter ended, whatever its kind. Kinds listed
- * nowhere (diagnosis, negation, other) are not part of the recap.
+ * The six fixed sections, in order. Lines keep transcript order, except that the working
+ * impression (`diagnosis`) is placed after the vitals, exam and results it rests on. `since_then` takes no kinds: it holds any
+ * fact cited only by uploaded transcripts that arrived after the encounter ended, whatever its
+ * kind. Kinds listed nowhere (negation, other) are not part of the recap.
  */
 const SECTIONS: ReadonlyArray<{ key: RecapSectionKey; label: string; kinds: ReadonlyArray<FactKind> }> = [
   { key: 'reason', label: 'Reason', kinds: ['complaint', 'history'] },
-  { key: 'findings', label: 'Findings', kinds: ['vital', 'exam', 'result'] },
+  { key: 'findings', label: 'Findings', kinds: ['vital', 'exam', 'result', 'diagnosis'] },
   { key: 'medicines', label: 'Medicines', kinds: ['medication', 'dose_change', 'allergy'] },
   { key: 'sent_for', label: 'Sent for', kinds: ['order'] },
   { key: 'since_then', label: 'Since then', kinds: [] },
@@ -76,7 +77,7 @@ export function renderEncounterRecap(ledger: FactLedgerV1): EncounterRecapV2 {
   const sections: RecapSection[] = SECTIONS.map((section) => ({ key: section.key, label: section.label, lines: [] }));
   const byKey = new Map(sections.map((section) => [section.key, section]));
 
-  for (const fact of ledger.facts) {
+  for (const fact of [...ledger.facts].sort(byKindGroup)) {
     if (fact.supersededBy) continue;
     const key = sectionFor(fact, late);
     if (!key) continue;
@@ -103,6 +104,11 @@ export function renderRecapText(recap: EncounterRecapV2): string {
 function lineText(line: RecapLine): string {
   const labels = [...new Set(line.citations.map((citation) => citation.label))];
   return `- ${line.text}${labels.length > 0 ? ` [${labels.join(', ')}]` : ''}`;
+}
+
+/** Only `diagnosis` trails its section's other kinds; every other fact keeps transcript order. */
+function byKindGroup(a: LedgerFact, b: LedgerFact): number {
+  return Number(a.kind === 'diagnosis') - Number(b.kind === 'diagnosis');
 }
 
 function sectionFor(fact: LedgerFact, late: ReadonlySet<string>): RecapSectionKey | null {
