@@ -708,3 +708,89 @@ function deepFreeze<T>(value: T): T {
   }
   return value;
 }
+
+describe('fact ledger — the drift a small model shows live (gemma-4-e2b, temperature 0)', () => {
+  async function build(modelFacts: unknown[], segments = E1_SEGMENTS, transcripts: unknown[] = []): Promise<FactLedgerV1> {
+    const h = harness({ segments, transcripts, modelFacts });
+    await h.service.buildForEncounter({ tenantId: TENANT, consultationId: CID, encounterSeq: 1 });
+    return storedLedger(h.upsert).content;
+  }
+
+  it('resolves a citation written as the full rendered label, bracketed or not, to its leading label', async () => {
+    const ledger = await build([
+      { key: 'med:metformin', kind: 'medication', statement: 'Metformin 500 mg.', citations: ['[S12 E1 Doctor 03:41]'] },
+      { key: 'allergy:penicillin', kind: 'allergy', statement: 'Allergic to penicillin.', citations: ['S13 E1 Patient 03:50'] },
+      { key: 'complaint:none', kind: 'complaint', statement: 'Nothing.', citations: ['[S99 E1 Doctor 09:00]'] },
+    ]);
+
+    expect(ledger.facts.map((f) => [f.key, f.citations])).toEqual([
+      ['med:metformin', ['seg-1']],
+      ['allergy:penicillin', ['seg-2']],
+    ]);
+    expect(ledger.stats.droppedUncited).toBe(1);
+  });
+
+  it('takes only the leading label of a rendered one, never a later token that happens to look like a label', async () => {
+    const ledger = await build(
+      [{ key: 'complaint:cough', kind: 'complaint', statement: 'Cough.', citations: ['[S12 E1 A1 03:41]'] }],
+      [seg('seg-1', 12, 1, 'A1', 221_000, 'I have a cough.')],
+      [attachmentTranscript('att-tx-1', 1, 'Unrelated upload.', '2026-10-05T10:00:00Z')],
+    );
+
+    expect(ledger.facts.map((f) => f.citations)).toEqual([['seg-1']]);
+  });
+
+  it('still reads several bare labels in one citation string', async () => {
+    const ledger = await build([{ key: 'complaint:x', kind: 'complaint', statement: 'X.', citations: ['S12, S13'] }]);
+
+    expect(ledger.facts.map((f) => f.citations)).toEqual([['seg-1', 'seg-2']]);
+  });
+
+  it('accepts a singular `citation` string as the one citation', async () => {
+    const ledger = await build([
+      { key: 'allergy:penicillin', kind: 'allergy', statement: 'Allergic to penicillin.', citation: '[S13 E1 Patient 00:03]' },
+    ]);
+
+    expect(ledger.facts.map((f) => [f.key, f.citations])).toEqual([['allergy:penicillin', ['seg-2']]]);
+    expect(ledger.stats.droppedInvalid).toBe(0);
+  });
+
+  it('parses numbers given as strings into value and unit, keeping a plain word as a value', async () => {
+    const ledger = await build([
+      {
+        key: 'med:metformin',
+        kind: 'medication',
+        statement: 'Metformin 500 mg twice daily, 1.5 tablets.',
+        citations: ['S12'],
+        numbers: ['500 mg', 'twice', '1.5', { value: '2', unit: 'weeks' }, '120/80', '37.5°C', ''],
+      },
+    ]);
+
+    expect(ledger.facts[0].numbers).toEqual([
+      { value: '500', unit: 'mg' },
+      { value: 'twice' },
+      { value: '1.5' },
+      { value: '2', unit: 'weeks' },
+      // A reading that is not one number and one unit is kept whole, never split.
+      { value: '120/80' },
+      { value: '37.5', unit: '°C' },
+    ]);
+    expect(ledger.stats.droppedInvalid).toBe(0);
+  });
+
+  it('never invents a missing kind: the fact stays invalid', async () => {
+    const ledger = await build([
+      { key: 'med:metformin', statement: 'Metformin 500 mg.', citation: 'S12', numbers: ['500 mg'] },
+      { key: 'allergy:penicillin', kind: 'allergy', statement: 'Allergic to penicillin.', citations: ['S13'] },
+    ]);
+
+    expect(ledger.facts.map((f) => f.key)).toEqual(['allergy:penicillin']);
+    expect(ledger.stats.droppedInvalid).toBe(1);
+  });
+
+  it('does not merge a singular citation into an explicit citations array', async () => {
+    const ledger = await build([{ key: 'complaint:x', kind: 'complaint', statement: 'X.', citations: ['S12'], citation: 'S13' }]);
+
+    expect(ledger.facts.map((f) => f.citations)).toEqual([['seg-1']]);
+  });
+});
