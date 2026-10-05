@@ -670,6 +670,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   private async retireExhaustedClaim(jobId: string, job: TranscriptionJobEntity, previousWorkerId?: string): Promise<void> {
     job.markAsDead();
     await this.jobRepository.update(jobId, job);
+    await this.releaseFailedAttachment(jobId, 'CLAIM_BUDGET_EXHAUSTED');
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: jobId,
       responsibleEntityId: job.createdBy || undefined,
@@ -916,6 +917,20 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     }
   }
 
+  /** Best-effort: lets an uploaded-audio attachment waiting on this job leave PROCESSING. */
+  private async releaseFailedAttachment(jobId: string, errorCode?: string): Promise<void> {
+    if (!this.attachmentTranscriptSink) return;
+    try {
+      await this.attachmentTranscriptSink.onBatchFailure({ jobId, errorCode });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Attachment not released after a failed batch job',
+        jobId,
+        error: error instanceof Error ? error.name : 'Error',
+      });
+    }
+  }
+
   /**
    * Fail a job
    */
@@ -929,6 +944,8 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     const updated = await this.jobRepository.update(jobId, job);
 
     await this.recordBatchRun(job, AiActivityRunStatus.ERROR, { errorCode: dto.errorCode });
+    // A failure the worker will retry is not the end of the job; only a spent budget is.
+    if (!job.canRetry) await this.releaseFailedAttachment(jobId, dto.errorCode);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: jobId,

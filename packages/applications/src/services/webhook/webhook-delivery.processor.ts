@@ -69,6 +69,10 @@ export interface WebhookDeliveryJobPayload {
   resourceId: string | null;
   /** ISO-8601 — the FACT time (`SysEvent.createdAt`), not enqueue time. */
   occurredAt: string;
+  /** Ids-only lifecycle discriminator lifted from the sys-event (`'lifecycle'`); absent otherwise. */
+  action?: string;
+  /** The lifecycle event type (`approved`, `closed`, ...); present only with `action: 'lifecycle'`. */
+  event?: string;
 }
 
 /** Distinct from `SYS_EVENT_JOB_OPTIONS` (`sysEvent.service.ts`, attempts:2) — an outbound
@@ -134,6 +138,29 @@ interface WebhookOutboundPayload {
   tenantId: string;
   occurredAt: string;
   fetchUrl: string | null;
+  /** Lifecycle discriminator so subscribers can filter; ids/enum names only, never content. */
+  data?: { action: string; event: string };
+}
+
+/** The only `SysEvent.data` fields that cross the egress boundary, and only these values. */
+const LIFECYCLE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'opened',
+  'started',
+  'paused',
+  'stopped',
+  'transcript_final',
+  'processing_changed',
+  'approved',
+  'closed',
+  'reopened',
+  'encounter_appended',
+]);
+
+function lifecycleDiscriminator(data: unknown): { action: string; event: string } | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const { action, event } = data as { action?: unknown; event?: unknown };
+  if (action !== 'lifecycle' || typeof event !== 'string' || !LIFECYCLE_EVENT_TYPES.has(event)) return undefined;
+  return { action, event };
 }
 
 /**
@@ -219,6 +246,7 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           // in the platform ever fired. Re-wrap so both shapes work (a `Date`
           // survives the round trip when a caller invokes this in-process).
           occurredAt: new Date(event.createdAt).toISOString(),
+          ...lifecycleDiscriminator(event.data),
         };
 
         await this.deliveryQueue.add(JobQueue.WebhookDelivery, attachJobTrace(payload), {
@@ -261,7 +289,7 @@ export class WebhookDeliveryDispatchProcessor extends WorkerHost {
   }
 
   async process(job: Job<WebhookDeliveryJobPayload>): Promise<void> {
-    const { webhookId, tenantId, sourceEnvelopeId, eventType, resourceType, resourceId, occurredAt } = job.data;
+    const { webhookId, tenantId, sourceEnvelopeId, eventType, resourceType, resourceId, occurredAt, action, event } = job.data;
 
     return runJobInContext(this.cls, job, async () => {
       this.cls.set('tenantId', tenantId);
@@ -310,6 +338,7 @@ export class WebhookDeliveryDispatchProcessor extends WorkerHost {
         tenantId,
         occurredAt,
         fetchUrl: buildFetchUrl(resourceType, resourceId),
+        ...(action === 'lifecycle' && event ? { data: { action, event } } : {}),
       };
       const body = JSON.stringify(payload);
       const signature = rawSecret ? createHmac('sha256', rawSecret).update(body).digest('hex') : null;
