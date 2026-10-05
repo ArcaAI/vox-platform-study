@@ -95,6 +95,7 @@ from stt.streaming.schemas import (
     SessionMetadata,
     SessionStatus,
 )
+from stt.streaming.segment_outbox import SegmentOutbox, drain_segment_outbox
 from stt.streaming.semantic_endpointer import SemanticEndpointer
 from stt.streaming.session import StreamSession
 from stt.streaming.usage_segments import (
@@ -725,6 +726,13 @@ class SessionManager:
         # ``_begin_tail_flush``), and the later trigger now has something to
         # AWAIT. Dropped in ``remove_session`` alongside the finalize lock.
         self._tail_flush_done: dict[str, asyncio.Event] = {}
+        # Per-session outbox shipping finals to the gateway as they happen
+        # (`segment_outbox.py`). Only sessions bound to a consultation have one.
+        self._segment_outboxes: dict[str, SegmentOutbox] = {}
+        # Held for the whole of a capture pause/resume. A finalize trigger waits
+        # on it before claiming the tail latch, so the pause's own flush of the
+        # open utterance can never interleave with the finalize flush.
+        self._capture_locks: dict[str, asyncio.Lock] = {}
         # Out-of-band finalizers (control FINALIZE, HTTP DELETE) wait on this for
         # the audio consumer to read what is already on `stt:audio`; set per
         # consumed batch, on the in-band terminal frame, and on removal. Only
@@ -793,6 +801,7 @@ class SessionManager:
                 1, int(_settings.streaming_transcript_outbox_max_attempts)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
+            self._pause_max_s = int(_settings.streaming_pause_max_s)
             # TASK-880 — the partial decode WINDOW was cached here from
             # `stt.streaming.partialWindowS`, one number per process for every engine.
             # It is the ASR row's force-emit window, so it now arrives per session on
@@ -820,6 +829,7 @@ class SessionManager:
             self._transcript_outbox_max_attempts = 10
             self._snapshot_interval_s = 30.0
             self._audio_trim_interval_s = 30.0
+            self._pause_max_s = 600
             # Semantic endpointing defaults (OFF).
 
     # ------------------------------------------------------------------
@@ -1970,6 +1980,7 @@ class SessionManager:
             self._dual_capture[session_id] = self._resolve_dual_capture(pipeline_config)
             self._publishers[session_id] = publisher
             self._preprocessors[session_id] = preprocessor
+            self._attach_segment_outbox(session)
             self._inference_workers[session_id] = inference_worker
             # TASK-874 — open the first engine-time span on whatever
             # `_assemble_session_runtime` actually loaded. That is the primary
@@ -2725,6 +2736,11 @@ class SessionManager:
         self._duplex_audio_seconds.pop(session_id, None)
         self._duplex_span_starts.pop(session_id, None)
         self._duplex_utterance_indices.pop(session_id, None)
+
+        # Normally already closed by the finalizer; this covers CANCEL, a
+        # create-time rollback and a finalize that raised.
+        await self._close_segment_outbox(session_id)
+        self._capture_locks.pop(session_id, None)
 
         self._publishers.pop(session_id, None)
         self._preprocessors.pop(session_id, None)
@@ -5173,6 +5189,14 @@ class SessionManager:
                     )
                 return
 
+            if session.capture_paused:
+                # Capture is paused: the frame is dropped and the audio clock does
+                # not move. Only the in-band terminal frame still means something.
+                session.drop_paused_frame(frame.seq)
+                if frame.final:
+                    await self._finalize_on_terminal_frame(session, preprocessor, frame)
+                return
+
             session.record_frame(seq=frame.seq, data=frame.data, sample_rate=frame.sr)
 
             # Feed audio through preprocessor for real-time VAD + utterance extraction
@@ -5251,46 +5275,55 @@ class SessionManager:
 
             # If final frame, trigger finalization
             if frame.final:
-                # TASK-985 M-29 — the terminal frame is the ORDERED stop signal:
-                # appended to `stt:audio` itself, it is reached strictly after
-                # every earlier entry, so the "unread audio at FINALIZE" window
-                # above is removed rather than narrowed. A zero-length body is
-                # deliberate — `record_frame` adds `len(data)//2 == 0` samples,
-                # so the marker cannot inflate `total_duration_seconds`, which
-                # is the BILLED quantity.
-                #
-                # Note the consequence for ordering, which is why the tail latch
-                # had to land first: once the gateway sends this instead of a
-                # control FINALIZE, `_on_frame` becomes the FIRST finalizer and
-                # the tail flush starts only after the whole audio backlog has
-                # drained — i.e. LATER, which WIDENS the window in which the
-                # SDK's DELETE overtakes it. Without `_run_tail_flush`'s
-                # completion latch this change makes M-04 more likely, not less.
-                logger.info(
-                    "Final frame received",
-                    session_id=session.session_id,
-                    seq=frame.seq,
-                    bytes=len(frame.data),
-                )
-                # Every frame sent before `stop` has now been read: release an
-                # out-of-band finalizer waiting on the backlog.
-                self._terminal_frame_seen.add(session.session_id)
-                self._signal_ingest_progress(session.session_id)
-                try:
-                    # F-32 / TASK-985 M-04 — one tail flush per session across
-                    # all triggers, and a bounded WAIT when another claimed it.
-                    await self._run_tail_flush(session, preprocessor)
-                    await self._finalize_session(session)
-                except Exception as exc:
-                    logger.error(
-                        "Final frame finalization failed; forcing session removal",
-                        session_id=session.session_id,
-                        seq=frame.seq,
-                        error=str(exc),
-                    )
-                    await self.remove_session(session.session_id)
+                await self._finalize_on_terminal_frame(session, preprocessor, frame)
 
         return _on_frame
+
+    async def _finalize_on_terminal_frame(
+        self,
+        session: StreamSession,
+        preprocessor: StreamingPreprocessor | None,
+        frame: AudioFrame,
+    ) -> None:
+        """Finalize on the in-band terminal frame (paused or capturing alike)."""
+        # TASK-985 M-29 — the terminal frame is the ORDERED stop signal:
+        # appended to `stt:audio` itself, it is reached strictly after
+        # every earlier entry, so the "unread audio at FINALIZE" window
+        # above is removed rather than narrowed. A zero-length body is
+        # deliberate — `record_frame` adds `len(data)//2 == 0` samples,
+        # so the marker cannot inflate `total_duration_seconds`, which
+        # is the BILLED quantity.
+        #
+        # Note the consequence for ordering, which is why the tail latch
+        # had to land first: once the gateway sends this instead of a
+        # control FINALIZE, `_on_frame` becomes the FIRST finalizer and
+        # the tail flush starts only after the whole audio backlog has
+        # drained — i.e. LATER, which WIDENS the window in which the
+        # SDK's DELETE overtakes it. Without `_run_tail_flush`'s
+        # completion latch this change makes M-04 more likely, not less.
+        logger.info(
+            "Final frame received",
+            session_id=session.session_id,
+            seq=frame.seq,
+            bytes=len(frame.data),
+        )
+        # Every frame sent before `stop` has now been read: release an
+        # out-of-band finalizer waiting on the backlog.
+        self._terminal_frame_seen.add(session.session_id)
+        self._signal_ingest_progress(session.session_id)
+        try:
+            # F-32 / TASK-985 M-04 — one tail flush per session across
+            # all triggers, and a bounded WAIT when another claimed it.
+            await self._run_tail_flush(session, preprocessor)
+            await self._finalize_session(session)
+        except Exception as exc:
+            logger.error(
+                "Final frame finalization failed; forcing session removal",
+                session_id=session.session_id,
+                seq=frame.seq,
+                error=str(exc),
+            )
+            await self.remove_session(session.session_id)
 
     def _make_control_handler(
         self,
@@ -5300,7 +5333,8 @@ class SessionManager:
         """Create an async callback for session control commands.
 
         On FINALIZE: flush the preprocessor, drain the inference queue,
-        then finalize the session.
+        then finalize the session. PAUSE / RESUME stop and restart capture
+        without ending the session (:meth:`_pause_capture`).
         """
 
         async def _on_control(control: SessionControl) -> None:
@@ -5359,25 +5393,10 @@ class SessionManager:
                         target=control.target,
                         error=str(exc),
                     )
-            elif control.action in (ControlAction.PAUSE, ControlAction.RESUME):
-                # PAUSE/RESUME have no backend implementation
-                # (the SDK halts audio at the source; only finalize/cancel reach
-                # here). Reject the frame LOUDLY rather than silently swallowing it
-                # as a no-op log: publish a client-visible error to the result
-                # stream so a future client that sends a backend PAUSE/RESUME fails
-                # visibly instead of assuming the session paused. Real pause/resume
-                # semantics are deferred to a follow-up control-frame effort;
-                # this only makes the current unsupported case honest.
-                logger.warning(
-                    "Unsupported control action rejected",
-                    session_id=session.session_id,
-                    action=control.action.value,
-                )
-                publisher = self._publishers.get(session.session_id)
-                if publisher:
-                    await publisher.publish_error(
-                        f"Control action '{control.action.value}' is not supported by the streaming backend"
-                    )
+            elif control.action == ControlAction.PAUSE:
+                await self._pause_capture(session, preprocessor)
+            elif control.action == ControlAction.RESUME:
+                await self._resume_capture(session)
             else:
                 logger.warning(
                     "Unknown control action",
@@ -5386,6 +5405,139 @@ class SessionManager:
                 )
 
         return _on_control
+
+    def _capture_lock(self, session_id: str) -> asyncio.Lock:
+        lock = self._capture_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._capture_locks[session_id] = lock
+        return lock
+
+    @staticmethod
+    def _audio_offset_ms(session: StreamSession) -> int:
+        """The session's audio clock in milliseconds (frozen while paused)."""
+        return int(round(session.total_duration_seconds * 1000))
+
+    async def _pause_capture(
+        self,
+        session: StreamSession,
+        preprocessor: StreamingPreprocessor | None,
+    ) -> None:
+        """Stop capture without ending the session.
+
+        Order is the contract: read the audio already written, stop accepting
+        frames, close the open utterance and wait for its final, push pending
+        finals to the gateway, and only THEN publish ``paused`` — so the last
+        final is on the result stream before the status that says capture
+        stopped. The once-per-session tail latch is NOT claimed: it belongs to
+        the finalize that may still follow, and after this flush the
+        preprocessor holds nothing for it to find.
+        """
+        session_id = session.session_id
+        async with self._capture_lock(session_id):
+            if session.status != SessionStatus.ACTIVE:
+                return
+            if not session.capture_paused:
+                await self._await_audio_backlog(session)
+                if session.status != SessionStatus.ACTIVE:
+                    return
+                session.capture_paused = True
+                session.capture_paused_at = datetime.utcnow()
+                self._cancel_partial(session_id)
+                await self._flush_final_utterance(session=session, preprocessor=preprocessor)
+                await self._drain_inference_queue_for_pause(session_id)
+                outbox = self._segment_outboxes.get(session_id)
+                if outbox is not None:
+                    await outbox.flush()
+                logger.info(
+                    "stt.stream.capture_paused",
+                    session_id=session_id,
+                    audio_offset_ms=self._audio_offset_ms(session),
+                )
+            # Re-published on a repeated PAUSE: the caller may be waiting for it.
+            publisher = self._publishers.get(session_id)
+            if publisher is not None:
+                await publisher.publish_status(
+                    "paused", audio_offset_ms=self._audio_offset_ms(session)
+                )
+
+    async def _resume_capture(self, session: StreamSession) -> None:
+        """Accept audio again after a pause; the audio clock resumes where it stopped."""
+        session_id = session.session_id
+        async with self._capture_lock(session_id):
+            if session.status != SessionStatus.ACTIVE:
+                return
+            if session.capture_paused:
+                session.capture_paused = False
+                session.capture_paused_at = None
+                # The idle reaper measures from here, not from the last frame
+                # before the pause.
+                session.touch_activity()
+                logger.info(
+                    "stt.stream.capture_resumed",
+                    session_id=session_id,
+                    audio_offset_ms=self._audio_offset_ms(session),
+                    frames_dropped_while_paused=session.frames_dropped_while_paused,
+                )
+            publisher = self._publishers.get(session_id)
+            if publisher is not None:
+                await publisher.publish_status(
+                    "capturing", audio_offset_ms=self._audio_offset_ms(session)
+                )
+
+    async def _drain_inference_queue_for_pause(self, session_id: str) -> None:
+        """Wait (bounded) for queued utterances to decode, leaving the loop running.
+
+        Unlike :meth:`_drain_inference_queue` a timeout does NOT settle the
+        inference loop: the session keeps capturing after a resume and needs it.
+        A final still decoding past the bound is published after ``paused``.
+        """
+        queue = self._inference_queues.get(session_id)
+        if queue is None:
+            return
+        try:
+            await asyncio.wait_for(queue.join(), timeout=self._inference_drain_timeout_s)
+        except TimeoutError:
+            logger.warning(
+                "stt.stream.pause_drain_timeout",
+                session_id=session_id,
+                remaining=queue.qsize(),
+                timeout_s=self._inference_drain_timeout_s,
+            )
+
+    def _attach_segment_outbox(self, session: StreamSession) -> None:
+        """Give a consultation-bound session its segment outbox (no-op otherwise)."""
+        consultation_id = session.consultation_id
+        if not consultation_id or session.session_id in self._segment_outboxes:
+            return
+
+        async def _post(body: dict[str, Any]) -> Any:
+            return await self._get_api_client().post_stt_segments(body)
+
+        outbox = SegmentOutbox(
+            redis=self._redis,
+            session_id=session.session_id,
+            tenant_id=session.tenant_id,
+            consultation_id=consultation_id,
+            post=_post,
+            audio_offset_ms=lambda: self._audio_offset_ms(session),
+        )
+        self._segment_outboxes[session.session_id] = outbox
+        session.final_listener = outbox.add
+
+    async def _close_segment_outbox(self, session_id: str) -> None:
+        """Flush and stop a session's segment outbox. Never raises."""
+        outbox = self._segment_outboxes.pop(session_id, None)
+        if outbox is None:
+            return
+        try:
+            await outbox.close()
+        except Exception as exc:  # noqa: BLE001 — teardown must complete
+            logger.error(
+                "stt.segments.outbox_close_failed",
+                session_id=session_id,
+                error_type=type(exc).__name__,
+            )
 
     async def _run_inline_inference(
         self,
@@ -5659,6 +5811,12 @@ class SessionManager:
         to finish.
         """
         session_id = session.session_id
+        capture_lock = self._capture_locks.get(session_id)
+        if capture_lock is not None and capture_lock.locked():
+            # A pause is mid-flush; let it finish so the open utterance is
+            # flushed once, by one of us, not interleaved by both.
+            async with capture_lock:
+                pass
         owned, tail_done = self._begin_tail_flush(session_id)
         if owned:
             try:
@@ -5823,32 +5981,26 @@ class SessionManager:
             processed_media_id: str | None = None
 
             if capture_raw:
-                raw_media = await gateway.create_media(
-                    tenant_id=session.tenant_id,
-                    name=f"{session.session_id}-raw.wav",
-                    uri=raw_audio_uri,
-                    extension="wav",
-                    mime_type="audio/wav",
-                    size=len(session.audio_buffer),
-                    hash="",
+                raw_media_id = await self._register_capture_media(
+                    session,
+                    gateway,
+                    side="raw",
+                    wav_uri=raw_audio_uri,
+                    pcm=bytes(session.audio_buffer),
+                    sample_rate=session.sample_rate,
                     created_by=created_by,
                 )
-                raw_media_id = (raw_media or {}).get("id") or (raw_media or {}).get("mediaId")
 
             if capture_processed:
-                processed_media = await gateway.create_media(
-                    tenant_id=session.tenant_id,
-                    name=f"{session.session_id}-processed.wav",
-                    uri=processed_audio_uri,
-                    extension="wav",
-                    mime_type="audio/wav",
-                    size=len(session.processed_audio_buffer),
-                    hash="",
+                processed_media_id = await self._register_capture_media(
+                    session,
+                    gateway,
+                    side="processed",
+                    wav_uri=processed_audio_uri,
+                    pcm=bytes(session.processed_audio_buffer),
+                    sample_rate=session.processed_sample_rate or session.sample_rate,
                     created_by=created_by,
                 )
-                processed_media_id = (processed_media or {}).get("id") or (
-                    processed_media or {}
-                ).get("mediaId")
 
             primary_media_id = processed_media_id or raw_media_id
             await gateway.create_audio_recording(
@@ -5874,6 +6026,63 @@ class SessionManager:
                 session_id=session.session_id,
                 error=str(exc),
             )
+
+    async def _register_capture_media(
+        self,
+        session: StreamSession,
+        gateway: Any,
+        *,
+        side: str,
+        wav_uri: str | None,
+        pcm: bytes,
+        sample_rate: int,
+        created_by: str | None,
+    ) -> str | None:
+        """Register one side of the consultation recording as a ``Media`` row.
+
+        The recording is stored as Ogg/Opus next to the consultation; the
+        ``complete.wav`` already uploaded stays as it is. If the Opus encode or
+        upload fails, the WAV is registered instead, exactly as before.
+        """
+        name = f"{session.session_id}-{side}"
+        try:
+            ogg = await asyncio.to_thread(session.encode_ogg_opus, pcm, sample_rate)
+            ogg_uri = await self._get_blob_service().upload_audio(
+                audio_bytes=ogg,
+                tenant_id=session.tenant_id,
+                job_id=session.session_id,
+                filename=f"{name}.ogg",
+                consultation_id=session.consultation_id,
+                content_type="audio/ogg",
+            )
+            media = await gateway.create_media(
+                tenant_id=session.tenant_id,
+                name=f"{name}.ogg",
+                uri=ogg_uri,
+                extension="ogg",
+                mime_type="audio/ogg",
+                size=len(ogg),
+                hash="",
+                created_by=created_by,
+            )
+        except Exception as exc:  # noqa: BLE001 — fall back to the WAV already stored
+            logger.warning(
+                "stt.stream.recording_opus_failed",
+                session_id=session.session_id,
+                side=side,
+                error_type=type(exc).__name__,
+            )
+            media = await gateway.create_media(
+                tenant_id=session.tenant_id,
+                name=f"{name}.wav",
+                uri=wav_uri,
+                extension="wav",
+                mime_type="audio/wav",
+                size=len(pcm),
+                hash="",
+                created_by=created_by,
+            )
+        return (media or {}).get("id") or (media or {}).get("mediaId")
 
     async def _persist_streaming_transcript(self, session: StreamSession) -> None:
         """Persist a streaming-session transcript as a TRANSCRIPT context item.
@@ -6528,6 +6737,11 @@ class SessionManager:
                         error=str(exc),
                     )
 
+            # The gateway rebuilds the consultation transcript from the segments
+            # when the aggregate transcript below lands, so every final must be
+            # delivered first.
+            await self._close_segment_outbox(session.session_id)
+
             # Upload audio + transcript + metadata
             has_processed = len(session.processed_audio_buffer) > 0
             has_raw = len(session.audio_buffer) > 0
@@ -6916,6 +7130,7 @@ class SessionManager:
                     self._control_listeners[meta.session_id] = control_listener
                     self._publishers[meta.session_id] = publisher
                     self._preprocessors[meta.session_id] = preprocessor
+                    self._attach_segment_outbox(session)
                     self._inference_workers[meta.session_id] = inference_worker
 
                     # Re-arm commit policy on recovery
@@ -6977,8 +7192,22 @@ class SessionManager:
                 await asyncio.sleep(self._reaper_interval_s)
                 await self._reap_expired_sessions(self._audio_idle_timeout_s)
                 await self._drain_transcript_outbox()
+                await self._drain_segment_outbox()
         except asyncio.CancelledError:
             pass
+
+    async def _drain_segment_outbox(self) -> None:
+        """Re-drive parked segment batches (shared Redis hash, any worker)."""
+
+        async def _post(body: dict[str, Any]) -> Any:
+            return await self._get_api_client().post_stt_segments(body)
+
+        await drain_segment_outbox(
+            self._redis,
+            _post,
+            worker_id=self._worker_id,
+            max_attempts=self._transcript_outbox_max_attempts,
+        )
 
     async def reap_expired_sessions(self, timeout_s: int) -> int:
         """Public helper to reap sessions on-demand."""
@@ -6991,9 +7220,18 @@ class SessionManager:
         """
         now = datetime.utcnow()
         to_reap: list[str] = []
+        pause_expired: set[str] = set()
 
         for session_id, active_session in list(self._sessions.items()):
             if active_session.status != SessionStatus.ACTIVE:
+                continue
+            if active_session.capture_paused:
+                # A paused session is silent by design: exempt from the idle
+                # reap until the pause itself outlives its limit.
+                paused_at = active_session.capture_paused_at
+                if paused_at is not None and (now - paused_at).total_seconds() > self._pause_max_s:
+                    to_reap.append(session_id)
+                    pause_expired.add(session_id)
                 continue
             try:
                 last = datetime.fromisoformat(active_session.last_activity)
@@ -7006,12 +7244,17 @@ class SessionManager:
         for session_id in to_reap:
             session = self._sessions.get(session_id)
             if session:
+                expired = session_id in pause_expired
                 logger.info(
                     "Reaping idle session",
                     session_id=session_id,
-                    timeout_s=timeout_s,
+                    timeout_s=self._pause_max_s if expired else timeout_s,
+                    reason="pause_expired" if expired else "audio_idle",
                 )
                 try:
+                    if expired:
+                        await self._finalize_pause_expired(session)
+                        continue
                     # F-32 / TASK-985 M-04 — one tail flush per session across
                     # all triggers, and a bounded WAIT when another claimed it.
                     await self._run_tail_flush(session, self._preprocessors.get(session_id))
@@ -7043,6 +7286,27 @@ class SessionManager:
                     await self.remove_session(session_id)
 
         return len(to_reap)
+
+    async def _finalize_pause_expired(self, session: StreamSession) -> None:
+        """Finalize a session whose capture pause outlived ``streaming_pause_max_s``.
+
+        ``pause_expired`` precedes the terminal ``closed`` so the client can
+        tell this apart from a stop. The gateway is alive here (unlike the idle
+        reap), so the summary is stashed for its DELETE rather than pushed back.
+        The metric outcome stays ``reaped``: that label set is closed.
+        """
+        publisher = self._publishers.get(session.session_id)
+        if publisher is not None:
+            try:
+                await publisher.publish_status("pause_expired")
+            except Exception as exc:  # noqa: BLE001 — the finalize still runs
+                logger.warning(
+                    "stt.stream.pause_expired_publish_failed",
+                    session_id=session.session_id,
+                    error=str(exc),
+                )
+        await self._run_tail_flush(session, self._preprocessors.get(session.session_id))
+        await self._finalize_session(session, outcome="reaped")
 
     def _stash_teardown_summary(
         self, session_id: str, summary: dict[str, Any], *, pushed_back: bool = False

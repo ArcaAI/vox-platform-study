@@ -622,6 +622,15 @@ class Settings(BaseSettings):
         default=300,
         description="Interval (seconds) between background reaper scans for expired sessions.",
     )
+    streaming_pause_max_s: int = Field(
+        validation_alias=moved_alias("streaming_pause_max_s"),
+        default=600,
+        description=(
+            "Seconds a streaming session may stay capture-PAUSED before the reaper "
+            "publishes `pause_expired` and finalizes it. A paused session is "
+            "exempt from the audio-idle reap until then."
+        ),
+    )
     streaming_transcript_persist_max_attempts: int = Field(
         validation_alias=moved_alias("streaming_transcript_persist_max_attempts"),
         default=3,

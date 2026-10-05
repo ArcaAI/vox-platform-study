@@ -517,6 +517,22 @@ class APIGatewayClient:
             headers=headers or None,
         )
 
+    async def post_stt_segments(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Deliver a batch of streaming finals to ``POST /internal/stt/segments``.
+
+        ``body`` is ``{tenantId, consultationId, sttSessionId, audioOffsetMs,
+        segments:[{utteranceIndex, text, speaker?, startMs, endMs, capturedAt,
+        language?}]}`` with session-relative milliseconds. The gateway dedups on
+        ``(sttSessionId, utteranceIndex)``, so a redelivered batch is harmless and
+        answers ``{accepted, duplicates, lastSegmentSeq}``.
+        """
+        return await self._request(
+            "POST",
+            "/internal/stt/segments",
+            json=body,
+            headers=self._tenant_headers(body.get("tenantId")),
+        )
+
     # =========================================================================
     # Audio Recording Creation
     # =========================================================================
