@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { IconBuilding, IconFilterOff, IconRefresh, IconStethoscope } from '@tabler/icons-react';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { VirtualizedDataGrid, type ColumnDef, type DataQueryState, type SortRule } from '@arcaai/ui';
@@ -182,9 +183,14 @@ function ConsultationsScreenBody() {
         minSize: 120,
         meta: { label: 'Consult' },
         cell: ({ row }) => (
-          <span className="block max-w-32 truncate font-mono text-xs" title={row.original.id}>
+          <Link
+            href={`/consultations/${encodeURIComponent(row.original.id)}`}
+            className="block max-w-32 truncate font-mono text-xs underline-offset-2 hover:underline focus-visible:underline"
+            title={`Open activity for ${row.original.id}`}
+            onClick={(event) => event.stopPropagation()}
+          >
             {row.original.id}
-          </span>
+          </Link>
         ),
       },
       {
