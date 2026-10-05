@@ -173,6 +173,13 @@ integrator                      gateway (apps/api)                         harne
 - `maxWaitSeconds` is the gateway-resolved `workflowRuns.liveAudioMaxSeconds`. The harness clamps it tighten-only to the module constant `LIVE_AUDIO_MAX_WAIT_SECONDS = 3600` (`caps.py`). If it is absent, the constant applies.
 - On `InterpreterInput` it becomes `live_audio: LiveAudioBinding | None = None`; the default keeps old histories deserialising.
 
+**C8. Session ownership** (OD-2, against the merged OD-35 helper `packages/applications/src/services/workflow-run/run-principal-access.ts`).
+- At session create, `TranscriptionJob.metaData.owner = RunPrincipalAccessService.currentPrincipal()`. That is `{ type: 'user'|'apiKey'|'serviceAccount', id }`, and for a machine caller `id` is the CREDENTIAL id.
+- At bind, the check is `sameRunPrincipal(readOwner(job.metaData), currentPrincipal())`. Otherwise the house 404, the same body as an unknown session.
+- A session without `owner` (created before this change) is never bindable.
+- `job.metaData.boundRun = { runId, workflowSlug, versionNumber, boundAt }`; the run row also carries `metaData.sttSessionId` beside OD-35's `startedBy`.
+- The idempotent-retry check compares `boundRun.runId` with the deterministic run id, which is already principal-scoped by `principalScopedIdempotencyKey`.
+
 ## 4. Decisions (FINAL: owner approved 2026-10-05)
 
 The owner answered "approved, go after OD-35 merges". Every recommendation below is therefore final, as written.
@@ -237,4 +244,5 @@ _Not started — awaiting the owner's decisions in §4._
 | 2026-10-05 | Ticket raised from OD-37. Discovery by 3 sonnet scouts (gateway, harness, SDK); the orchestrator re-verified the sandbox ownership rule, the mirror's consultation-only resolution, the standalone `subject` limit, the harness `no_audio` path and the `useRunAudio` limit in code. Plan and OD-1..12 written. Status Pending. |
 | 2026-10-05 | **Owner approved** OD-1..12 as recommended. Start is gated on the OD-35 merge (OD-12). Status → Approved, waiting to start. |
 | 2026-10-05 | OD-35 is not yet merged (the lane is still running). On the owner's instruction the SDK lane (L3) and the harness lane (L2) start now and the gateway lane (L1) is held. Contract C1–C7 frozen. **OD-4a**: the owner chose the durable wait, because the 900 s / 3600 s caps make OD-4 impossible. |
+| 2026-10-05 | L3 merged (`12d2ee1ac`). OD-35 merged on dev-2.2 (`ee31a7e67`, `71c3ebeda`) and brought in (`b263f0627`). C8 pins session ownership to the OD-35 principal helper. The service-account run-ticket gap does not affect this ticket: vox-node `RunHandle` streams SSE with header credentials and mints no ticket. L1 launched. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
