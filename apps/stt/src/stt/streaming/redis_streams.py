@@ -542,12 +542,20 @@ class ResultPublisher:
         entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
         return entry_id_str
 
-    async def publish_status(self, status: str) -> str:
-        """Publish a status update (e.g. 'finalizing', 'closed') to the result stream."""
+    async def publish_status(self, status: str, *, audio_offset_ms: int | None = None) -> str:
+        """Publish a status update (e.g. 'finalizing', 'closed') to the result stream.
+
+        ``audio_offset_ms`` (capture ``paused`` / ``capturing``) is the session's
+        audio clock at that moment, in session-relative milliseconds; omitted
+        from the entry when not given, so every other status is unchanged.
+        """
         key = result_stream_key(self._session_id)
+        fields = {"type": "status", "status": status}
+        if audio_offset_ms is not None:
+            fields["audioOffsetMs"] = str(int(audio_offset_ms))
         entry_id = await self._redis.xadd(
             key,
-            self._with_trace({"type": "status", "status": status}),
+            self._with_trace(fields),
             maxlen=self._resolve_maxlen(),
             approximate=True,
         )

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -162,6 +163,18 @@ class StreamSession:
         self.frames_redelivered: int = 0
         self.frames_missing: int = 0
         self._redelivery_warned: bool = False
+
+        # Capture pause (Tier-2). While ``capture_paused`` every audio frame is
+        # dropped WITHOUT advancing the audio clock, so the next utterance's
+        # session-relative times continue where capture stopped. Not persisted:
+        # a recovered session comes back capturing, and the gateway drops paused
+        # audio on its own side as well.
+        self.capture_paused: bool = False
+        self.capture_paused_at: datetime | None = None
+        self.frames_dropped_while_paused: int = 0
+
+        # Called with every accepted FINAL (the session manager's segment outbox).
+        self.final_listener: Callable[[SegmentResult], None] | None = None
 
         # Ring buffer overflow throttle state
         self._overflow_window_start: float = 0.0
@@ -334,6 +347,22 @@ class StreamSession:
                 self._overflow_acc_bytes += overflow
                 self._overflow_acc_events += 1
 
+    def drop_paused_frame(self, seq: int) -> None:
+        """Discard a frame received while capture is paused.
+
+        No samples, no duration, no buffers: the audio clock stays where the
+        pause left it. ``last_seq`` still advances, so the resumed stream is not
+        counted as a gap of audio the platform never saw, and a redelivery of a
+        dropped frame stays refused.
+        """
+        self.frames_dropped_while_paused += 1
+        if seq > self._metadata.last_seq:
+            self._metadata.last_seq = seq
+
+    def touch_activity(self) -> None:
+        """Stamp ``last_activity`` now (the idle reaper's clock)."""
+        self._metadata.last_activity = datetime.utcnow().isoformat()
+
     def append_processed_audio(self, pcm: bytes) -> None:
         """Append post-preprocess PCM, enforcing the same cap as ``audio_buffer``.
 
@@ -396,6 +425,15 @@ class StreamSession:
             return
 
         self.results.append(result)
+        if self.final_listener is not None:
+            try:
+                self.final_listener(result)
+            except Exception as exc:  # noqa: BLE001 — a listener never costs a final
+                logger.warning(
+                    "stt.stream.final_listener_failed",
+                    session_id=self.session_id,
+                    error_type=type(exc).__name__,
+                )
 
         if len(self.results) > _RESULTS_WARN_THRESHOLD and not self._results_warned:
             self._results_warned = True
@@ -438,6 +476,31 @@ class StreamSession:
             wf.setsampwidth(2)  # 16-bit
             wf.setframerate(sr)
             wf.writeframes(pcm)
+        return buf.getvalue()
+
+    def encode_ogg_opus(
+        self,
+        audio_data: bytes | None = None,
+        sample_rate: int | None = None,
+    ) -> bytes:
+        """Encode PCM s16le samples as Ogg/Opus (the consultation recording format).
+
+        CPU-bound (seconds per recorded hour): call it off the event loop.
+        Raises when the buffer is empty or libsndfile cannot encode the rate;
+        the caller falls back to the WAV it already uploaded.
+        """
+        import io
+
+        import numpy as np
+        import soundfile as sf
+
+        pcm = audio_data if audio_data is not None else bytes(self.audio_buffer)
+        sr = sample_rate if sample_rate is not None else self.sample_rate
+        samples = np.frombuffer(pcm[: len(pcm) - (len(pcm) % 2)], dtype=np.int16)
+        if samples.size == 0:
+            raise ValueError("no audio to encode")
+        buf = io.BytesIO()
+        sf.write(buf, samples, sr, format="OGG", subtype="OPUS")
         return buf.getvalue()
 
     def build_transcript_text(self) -> str:

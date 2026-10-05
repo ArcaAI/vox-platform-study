@@ -174,6 +174,7 @@ CONTROL_PLANE_KEYS: dict[str, str] = {
     "streaming_session_timeout_s": "stt.streaming.sessionTimeoutS",
     "streaming_audio_idle_timeout_s": "stt.streaming.audioIdleTimeoutS",
     "streaming_reaper_interval_s": "stt.streaming.reaperIntervalS",
+    "streaming_pause_max_s": "stt.streaming.pauseMaxSeconds",
     "streaming_transcript_persist_max_attempts": "stt.streaming.transcriptPersistMaxAttempts",
     "streaming_transcript_persist_backoff_s": "stt.streaming.transcriptPersistBackoffS",
     "streaming_transcript_outbox_max_attempts": "stt.streaming.transcriptOutboxMaxAttempts",

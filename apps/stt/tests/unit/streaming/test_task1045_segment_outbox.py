@@ -190,9 +190,7 @@ class TestRedrive:
         assert [s["utteranceIndex"] for s in entry["body"]["segments"]] == [0, 1]
 
         redrive_post = AsyncMock(return_value={"accepted": 2})
-        drained = await drain_segment_outbox(
-            redis, redrive_post, worker_id="w1", max_attempts=10
-        )
+        drained = await drain_segment_outbox(redis, redrive_post, worker_id="w1", max_attempts=10)
         assert drained == 1
         assert redrive_post.await_args.args[0] == entry["body"]
         assert redis.hashes[SEGMENT_OUTBOX_KEY] == {}
