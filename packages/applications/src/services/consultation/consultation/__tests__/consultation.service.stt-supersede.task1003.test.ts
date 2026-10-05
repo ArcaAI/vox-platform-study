@@ -8,6 +8,10 @@
  * other case — a restarted gateway, another replica, the live-documentation kill-switch — where
  * the only binding left is durable: the consultation's open STREAMING `TranscriptionJob` rows.
  *
+ * Since TASK-1045 the fallback lives in `ConsultationLifecycleService.start` (the deprecated
+ * `ConsultationService.startRecording` forwards `supersedeByDurableBinding` to it — pinned in
+ * `consultation.service.recording-stt-guard.task1001.test.ts`).
+ *
  * The rules pinned here:
  *   - only when the caller asks for it (`supersedeByDurableBinding`), and only after the
  *     RECORDING write succeeded — a refused start supersedes nothing;
@@ -22,7 +26,7 @@
 import { ConflictException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, ResourceStatusType, TranscriptionJobType } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConsultationService } from '../consultation.service';
+import { ConsultationLifecycleService } from '../../lifecycle/consultation-lifecycle.service';
 import { STT_SESSION_SUPERSEDED_EVENT } from '../stt-session-superseded.event';
 
 const TENANT = 'tenant-1';
@@ -31,13 +35,17 @@ const CID = 'c-1';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockConsultationRepository = {
-  findWithRelations: vi.fn(),
+  findByIdOrNull: vi.fn(),
   updateWithVersion: vi.fn(),
+  touchActivity: vi.fn(),
 };
 const mockStreamingSessions = { getSessionStatus: vi.fn() };
-const mockTranscriptionJobs = { findAll: vi.fn() };
+// `update` takes the recording-offset stamp `start` writes on the bound session's job.
+const mockTranscriptionJobs = { findAll: vi.fn(), update: vi.fn() };
+const mockEvents = { publish: vi.fn() };
 
-function makeEntity(status: ConsultationStatus = ConsultationStatus.RECORDING): ConsultationEntity {
+// OPEN: the start applies (OPEN → RECORDING), so the supersede is observed AFTER a real write.
+function makeEntity(status: ConsultationStatus = ConsultationStatus.OPEN): ConsultationEntity {
   return new ConsultationEntity({
     id: CID,
     tenantId: TENANT,
@@ -63,30 +71,23 @@ function makeEntity(status: ConsultationStatus = ConsultationStatus.RECORDING): 
 }
 
 function makeService() {
-  return new ConsultationService(
+  return new ConsultationLifecycleService(
     mockConsultationRepository as any,
-    {} as any, // departmentRepository
-    {} as any, // userRoleAssignmentRepository
-    {} as any, // userDepartmentRepository
-    {} as any, // userRepository
+    { findBySeq: vi.fn().mockResolvedValue(null), endEncounter: vi.fn() } as any, // encounterRepository
+    {} as any, // contextItemRepository
+    {} as any, // approvals
+    {} as any, // gate
+    mockEvents as any,
     mockEventEmitter as any,
     mockClsService as any,
-    undefined, // entitlements
-    undefined, // harnessAuditService
-    undefined, // tenantSettings
-    undefined, // workflowDispatchService
-    undefined, // consentGrantService
-    undefined, // workflowDefinitionRepository
-    undefined, // policyEngine
-    undefined, // contextSchemaService
-    undefined, // userIdentityService
-    undefined, // visitTypes
-    undefined, // contextService
-    mockStreamingSessions as any,
-    undefined, // completionTimeout
     mockTranscriptionJobs as any,
+    mockStreamingSessions as any,
   );
 }
+
+/** The consultation-scoped STREAMING-binding reads (the stamp reads the session's own row by `streamSessionId`). */
+const bindingReads = () =>
+  mockTranscriptionJobs.findAll.mock.calls.filter(([query]) => (query as { filters?: { consultationId?: string } })?.filters?.consultationId === CID);
 
 /** An open STREAMING row, the shape `createForStreamSession` writes. */
 function openRow(streamSessionId: string, createdAt: string) {
@@ -110,7 +111,7 @@ function sttStatuses(byId: Record<string, 'active' | 'finalizing' | 'closed' | n
   });
 }
 
-describe('ConsultationService.startRecording — TASK-1003 supersede by the durable binding', () => {
+describe('ConsultationLifecycleService.start — TASK-1003 supersede by the durable binding', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {
@@ -118,8 +119,11 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
       if (key === 'tenantId') return TENANT;
       return null;
     });
-    mockConsultationRepository.findWithRelations.mockResolvedValue(makeEntity());
+    mockConsultationRepository.findByIdOrNull.mockResolvedValue(makeEntity());
     mockConsultationRepository.updateWithVersion.mockImplementation(async (_id: string, entity: ConsultationEntity) => entity);
+    mockConsultationRepository.touchActivity.mockResolvedValue(true);
+    mockEvents.publish.mockResolvedValue(undefined);
+    mockTranscriptionJobs.update.mockImplementation(async (_id: string, job: unknown) => job);
     mockTranscriptionJobs.findAll.mockResolvedValue([
       openRow('stt-new', '2026-09-24T10:05:00Z'),
       openRow('stt-old', '2026-09-24T10:00:00Z'),
@@ -128,7 +132,7 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
   });
 
   it('announces the older live session exactly once, with the pinned payload, after the RECORDING write', async () => {
-    await makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
+    await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
 
     expect(supersedeEmits()).toEqual([
       [STT_SESSION_SUPERSEDED_EVENT, { tenantId: TENANT, consultationId: CID, supersededSessionId: 'stt-old', supersedingSessionId: 'stt-new' }],
@@ -144,16 +148,16 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
   });
 
   it('does nothing unless asked — live documentation re-binds (and supersedes) in memory when it holds the session', async () => {
-    await makeService().startRecording(CID, { sttSessionId: 'stt-new' });
+    await makeService().start(CID, { sttSessionId: 'stt-new' });
 
-    expect(mockTranscriptionJobs.findAll).not.toHaveBeenCalled();
+    expect(bindingReads()).toEqual([]);
     expect(supersedeEmits()).toEqual([]);
   });
 
   it('a re-sent session id supersedes nothing', async () => {
     mockTranscriptionJobs.findAll.mockResolvedValue([openRow('stt-new', '2026-09-24T10:05:00Z')]);
 
-    await makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
+    await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
 
     expect(supersedeEmits()).toEqual([]);
   });
@@ -167,7 +171,7 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
     ]);
     sttStatuses({ 'stt-new': 'active', 'stt-finalizing': 'finalizing', 'stt-gone': null, 'stt-live': 'active' });
 
-    await makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
+    await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
 
     expect(supersedeEmits().map(([, payload]) => payload.supersededSessionId)).toEqual(['stt-live']);
   });
@@ -180,7 +184,7 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
     ]);
     sttStatuses({ 'stt-newer': 'active', 'stt-new': 'active', 'stt-old': 'active' });
 
-    await makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
+    await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
 
     expect(supersedeEmits().map(([, payload]) => payload.supersededSessionId)).toEqual(['stt-old']);
   });
@@ -188,22 +192,38 @@ describe('ConsultationService.startRecording — TASK-1003 supersede by the dura
   it('a refused start (409 STT_SESSION_NOT_ACTIVE) supersedes nothing', async () => {
     sttStatuses({ 'stt-new': 'closed', 'stt-old': 'active' });
 
-    await expect(makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).rejects.toThrow(ConflictException);
+    await expect(makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).rejects.toThrow(ConflictException);
 
-    expect(mockTranscriptionJobs.findAll).not.toHaveBeenCalled();
+    expect(bindingReads()).toEqual([]);
     expect(supersedeEmits()).toEqual([]);
   });
 
   it('a failed row read or status lookup never fails the start', async () => {
-    mockTranscriptionJobs.findAll.mockRejectedValueOnce(new Error('db down'));
-    await expect(makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).resolves.toMatchObject({
+    mockTranscriptionJobs.findAll.mockImplementation(async (query: { filters?: { consultationId?: string } }) => {
+      if (query?.filters?.consultationId === CID) throw new Error('db down');
+      return [openRow('stt-new', '2026-09-24T10:05:00Z')];
+    });
+    await expect(makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).resolves.toMatchObject({
       status: ConsultationStatus.RECORDING,
     });
+    // A binding read that failed supersedes nothing.
+    expect(supersedeEmits()).toEqual([]);
 
+    mockTranscriptionJobs.findAll.mockResolvedValue([openRow('stt-new', '2026-09-24T10:05:00Z'), openRow('stt-old', '2026-09-24T10:00:00Z')]);
     sttStatuses({ 'stt-new': 'active', 'stt-old': new Error('connect ECONNREFUSED') });
-    await expect(makeService().startRecording(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).resolves.toMatchObject({
+    await expect(makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true })).resolves.toMatchObject({
       status: ConsultationStatus.RECORDING,
     });
+  });
+
+  // DEFECT (reported by the AB-8a sweep): `supersedeByDurableBinding` reuses the control-command
+  // reader `liveBoundSessions`, which KEEPS a session whose status lookup failed ("unknown ⇒ kept",
+  // right for a finalize/pause control). The TASK-1003 rule above says a row is a supersede candidate
+  // only while apps/stt REPORTS it active, so an unverifiable session must not be superseded.
+  it.fails('DEFECT — a session whose status lookup fails is not superseded (only a reported-active one is)', async () => {
+    sttStatuses({ 'stt-new': 'active', 'stt-old': new Error('connect ECONNREFUSED') });
+
+    await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });
 
     expect(supersedeEmits()).toEqual([]);
   });
