@@ -1,4 +1,5 @@
-import { IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import type { NotePlanRef } from '../../note-composition/note-plan.types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -154,6 +155,33 @@ export class HarnessAssembleRequest {
   @IsOptional()
   @IsString()
   conversationLanguage?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The model the note will be generated with (`AiModel` slug or wire id). Its row supplies the context window the note plan is budgeted against; absent ⇒ the platform default text model.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  model?: string;
+
+  @ApiPropertyOptional({ enum: ['final', 'section_regen'], description: 'Note plan mode (default final).' })
+  @IsOptional()
+  @IsIn(['final', 'section_regen'])
+  mode?: 'final' | 'section_regen';
+
+  @ApiPropertyOptional({ type: [String], description: 'Sections to regenerate (`mode: section_regen` only).' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(64)
+  @IsString({ each: true })
+  sectionKeys?: string[];
+
+  @ApiPropertyOptional({ description: 'A note plan already composed for this run: its blocks are reused instead of composing a new plan.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  notePlanId?: string;
 }
 
 /**
@@ -183,6 +211,20 @@ export interface HarnessAssembleResponse {
    * consultation has ≠1 transcript (same gate as citationsMap enrichment).
    */
   segmentCitations: HarnessSegmentCitationRef[];
+  /**
+   * The note plan composed for this consultation (`GET internal/consultations/:id/note-plans/:planId`);
+   * `null` when no composer is wired. With a plan, `userPrompt` is the plan's blocks in the shared
+   * data-block wrapping and `systemPrompt` is the plan's `system`.
+   */
+  notePlanRef: NotePlanRef | null;
+}
+
+/** What a run starter needs to hand the harness a plan: the ref plus its budget summary (no PHI). */
+export interface HarnessNotePlanSummary {
+  notePlanRef: NotePlanRef;
+  strategy: string;
+  callCount: number;
+  promptTokens: number;
 }
 
 // ---------------------------------------------------------------------------

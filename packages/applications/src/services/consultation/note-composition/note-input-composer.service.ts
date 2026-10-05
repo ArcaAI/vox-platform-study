@@ -43,7 +43,7 @@ import {
   resultLabel,
   segmentLabel,
 } from './labelled-transcript.renderer';
-import { planNoteBudget, planSectionGroups, type NoteBudgetSettings, type PlannerPriorEncounter } from './note-budget-planner';
+import { planNoteBudget, planSectionGroups, type BudgetPlan, type NoteBudgetSettings, type PlannerPriorEncounter } from './note-budget-planner';
 import {
   NOTE_INPUT_EXCEEDS_CONTEXT,
   NOTE_PLAN_EXCLUDED_ITEM_TYPES,
@@ -587,7 +587,10 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     tokenizer: { mode: counted.mode, id: counted.id },
     callIdPrefix: mode === 'section_regen' ? 'r' : 'c',
   });
-  if (!plan.ok) throw new NoteInputExceedsContextError(plan.reason, plan.contextWindow, plan.requiredTokens);
+  if (!plan.ok) {
+    const refused = plan as Extract<BudgetPlan, { ok: false }>;
+    throw new NoteInputExceedsContextError(refused.reason, refused.contextWindow, refused.requiredTokens);
+  }
 
   const reducedSet = new Set(plan.reducedSeqs);
   const dropped = new Set(model.priors.filter((encounter) => reducedSet.has(encounter.seq)).flatMap((encounter) => [...encounter.coveredAttachmentIds]));

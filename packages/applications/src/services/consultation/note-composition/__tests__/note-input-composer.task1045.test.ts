@@ -16,6 +16,8 @@ import {
 import { NOTE_PLAN_REDIS_PREFIX, NOTE_PLAN_TTL_SECONDS, notePlanV1Schema, type NotePlanV1 } from '../note-plan.types';
 import { estimateCounts, type TokenCountResult } from '../text-token-count.client';
 import type { FactLedgerV1 } from '../../fact-ledger/fact-ledger.schema';
+import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { HarnessInternalService } from '../../harness/harness-internal.service';
 
 const SETTINGS: NoteCompositionSettings = {
   singlePassRatio: 0.6,
@@ -550,3 +552,152 @@ describe('NoteInputComposerService', () => {
     expect(counter.count).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ tenantId: 't1', provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', allowEstimate: true }));
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// The consumers: prompt assembly renders the plan's blocks, the harness surface composes through it
+// ------------------------------------------------------------------------------------------------
+
+describe('PromptAssemblyService — a composed note plan IS the user message', () => {
+  it('renders the plan blocks byte-identically to the executor prefix, points the instruction at them, and adds no per-section data', async () => {
+    const plan = await compose(snapshot());
+    const resolution = {
+      resolve: vi.fn(async () => ({ resolvedFrom: 'SYSTEM', promptId: undefined, content: 'Write the SOAP note.\nTranscript:\n{{transcript}}', resolvedPrompt: null })),
+    };
+    const exemplars = { retrieveExemplars: vi.fn(async () => [{ redactedAfter: 'STYLE EXAMPLE' }]) };
+    const assembly = new PromptAssemblyService(resolution as never, { findById: vi.fn() } as never, {} as never, undefined, undefined, exemplars as never);
+
+    const assembled = await assembly.assemble({
+      tenantId: 't1',
+      transcript: 'LEGACY TRANSCRIPT',
+      conversationLanguage: 'en',
+      nerEntities: [{ text: 'metformin', type: 'DRUG' }],
+      attachments: ['LEGACY ATTACHMENT'],
+      noteInputBlocks: plan.blocks.map(({ key, label, content }) => ({ key, label, content })),
+    });
+
+    expect(assembled.userPrompt).toBe(renderNotePlanUserPrefix(plan));
+    expect(assembled.userPrompt).not.toContain('LEGACY');
+    expect(assembled.userPrompt).not.toContain('STYLE EXAMPLE');
+    expect(assembled.systemPrompt).toContain('Transcript:\n[see the note input data sections below]');
+    expect(assembled.systemPrompt).toContain('NOTE INPUTS');
+    expect(assembled.systemPrompt).toContain('PRIOR VISIT SUMMARY — REFERENCE ONLY');
+    expect(assembled.systemPrompt).not.toContain('STYLE REFERENCE');
+    expect(exemplars.retrieveExemplars).not.toHaveBeenCalled();
+  });
+
+  it('carries a long prior-visit summary whole — no character cut remains', async () => {
+    const resolution = { resolve: vi.fn(async () => ({ resolvedFrom: 'SYSTEM', content: 'Note.', resolvedPrompt: null })) };
+    const assembly = new PromptAssemblyService(resolution as never, { findById: vi.fn() } as never, {} as never);
+    const long = 'p'.repeat(40_000);
+    const assembled = await assembly.assemble({ tenantId: 't1', transcript: 'x', conversationLanguage: 'en', priorVisitSummary: long });
+    expect(assembled.userPrompt).toContain(long);
+  });
+});
+
+describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan through the composer', () => {
+  const CONSULTATION = { id: 'c1', tenantId: 't1', status: 'STOPPED', processing: 'SUMMARIZING', resourceStatus: 'ENABLED', departmentId: null, doctorId: null, metadata: null };
+
+  async function harness(overrides: { compose?: () => Promise<unknown>; cached?: unknown; recipe?: unknown } = {}) {
+    const plan = await compose(snapshot());
+    const envelope = { plan, preservedSections: [] };
+    const cls = { run: vi.fn((a: unknown, b?: unknown) => (typeof a === 'function' ? (a as () => unknown)() : (b as () => unknown)())), set: vi.fn(), get: vi.fn() };
+    const longAttachment = 'L'.repeat(30_000);
+    const contextItemRepository = {
+      findTranscripts: vi.fn(async () => []),
+      findCaseNotes: vi.fn(async () => [{ id: 'cn-1', currentVersionNumber: 2, content: 'Patient brought a glucose diary.' }]),
+      findWorknotes: vi.fn(async () => []),
+      findAttachments: vi.fn(async () => [{ id: 'doc-1', currentVersionNumber: 1, content: 'label', metaData: { extractedText: longAttachment } }]),
+      findLatestPreSummaryWithDecryptedContent: vi.fn(async () => ({ entity: { id: 'live', content: 'LIVE DRAFT', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' } }, plaintext: 'LIVE DRAFT' })),
+      findLatestByKindKey: vi.fn(async (_cid: string, kind: string) =>
+        kind === 'vitals' ? { id: 'vit-1', currentVersionNumber: 1, kindKey: 'vitals', content: JSON.stringify({ bloodPressure: '150/95' }), createdAt: new Date() } : null,
+      ),
+      findByType: vi.fn(async () => []),
+    };
+    const promptAssemblyService = { assemble: vi.fn(async () => ({ userPrompt: 'USER', systemPrompt: 'ASSEMBLED SYSTEM', hyperparameters: {}, responseFormat: null, resolvedFrom: 'SYSTEM', promptId: undefined })) };
+    const composer = {
+      compose: vi.fn(overrides.compose ?? (async () => envelope)),
+      loadEnvelope: vi.fn(async () => overrides.cached ?? null),
+      loadRecipe: vi.fn(async () => overrides.recipe ?? null),
+    };
+    const lifecycleGate = { setProcessing: vi.fn(async () => undefined), assertContentWritable: vi.fn(async () => undefined) };
+    const service = new HarnessInternalService(
+      contextItemRepository as never,
+      { findById: vi.fn(async () => CONSULTATION) } as never,
+      { findByConsultation: vi.fn(async () => []) } as never,
+      {} as never,
+      promptAssemblyService as never,
+      { findById: vi.fn() } as never,
+      {} as never,
+      cls as never,
+      ...(Array.from({ length: 20 }, () => undefined) as never[]),
+      lifecycleGate as never,
+      composer as never,
+    );
+    return { service, plan, envelope, composer, promptAssemblyService, lifecycleGate, longAttachment };
+  }
+
+  it('assemble composes the plan (no ledger wait, cached), sends its blocks and system, and returns notePlanRef', async () => {
+    const { service, plan, composer, promptAssemblyService, longAttachment } = await harness();
+    const response = await service.assemble('c1', { tenantId: 't1' });
+
+    expect(response.notePlanRef).toEqual({ consultationId: 'c1', mode: 'final', planId: plan.planId });
+    expect(response.systemPrompt).toBe(plan.system);
+    const request = composer.compose.mock.calls[0][0] as NoteComposeRequestLike;
+    expect(request).toMatchObject({ tenantId: 't1', consultationId: 'c1', mode: 'final', cache: true, waitForLedgers: false });
+    // the clinician's own items and the clinic's readings become cited results; nothing is cut
+    expect(request.extras.results).toEqual([
+      { itemId: 'cn-1', versionNumber: 2, text: 'Case note: Patient brought a glucose diary.' },
+      { itemId: 'vit-1', versionNumber: 1, text: 'Measured vitals: BP 150/95 mmHg' },
+    ]);
+    const params = promptAssemblyService.assemble.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(params.noteInputBlocks).toEqual(plan.blocks.map(({ key, label, content }) => ({ key, label, content })));
+    expect(params.preSummaryText).toBeUndefined();
+    expect(params.preSummaryLineage).toBeUndefined();
+    expect(params.attachments).toEqual([longAttachment]);
+    expect(JSON.stringify(params)).not.toContain('LIVE DRAFT');
+  });
+
+  it('assemble reuses the plan a run was started with instead of composing another', async () => {
+    const { service, envelope, composer } = await harness({ cached: undefined });
+    composer.loadEnvelope.mockResolvedValueOnce(envelope as never);
+    const response = await service.assemble('c1', { tenantId: 't1', notePlanId: envelope.plan.planId });
+    expect(composer.compose).not.toHaveBeenCalled();
+    expect(response.notePlanRef!.planId).toBe(envelope.plan.planId);
+  });
+
+  it('refuses a plan that cannot fit with 422 NOTE_INPUT_EXCEEDS_CONTEXT and fails the processing', async () => {
+    const { service, lifecycleGate } = await harness({
+      compose: async () => {
+        throw new NoteInputExceedsContextError('too big', 32768, 40000);
+      },
+    });
+    await expect(service.assemble('c1', { tenantId: 't1' })).rejects.toMatchObject({
+      status: 422,
+      response: expect.objectContaining({ code: 'NOTE_INPUT_EXCEEDS_CONTEXT', retryable: false }),
+    });
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('c1', 'FAILED', 'NOTE_INPUT_EXCEEDS_CONTEXT');
+  });
+
+  it('composeNotePlan waits for ledgers and returns the ref a run starter hands the harness', async () => {
+    const { service, plan, composer } = await harness();
+    const summary = await service.composeNotePlan('c1', { tenantId: 't1', model: 'lms-gemma-4-e2b-it-qat' });
+    expect(summary).toEqual({ notePlanRef: { consultationId: 'c1', mode: 'final', planId: plan.planId }, strategy: 'single_pass', callCount: 1, promptTokens: plan.calls[0].promptTokens });
+    expect(composer.compose.mock.calls[0][0]).toMatchObject({ waitForLedgers: true, cache: true, model: 'lms-gemma-4-e2b-it-qat' });
+  });
+
+  it('getNotePlan answers from the cache, recomposes a miss under the same id from its recipe, and hides another consultation’s plan', async () => {
+    const hit = await harness();
+    hit.composer.loadEnvelope.mockResolvedValueOnce(hit.envelope as never);
+    expect(await hit.service.getNotePlan('c1', hit.plan.planId, 't1')).toBe(hit.envelope);
+    expect(hit.composer.compose).not.toHaveBeenCalled();
+
+    const miss = await harness({ recipe: { consultationId: 'c1', tenantId: 't1', mode: 'section_regen', sectionKeys: ['plan'], model: 'm' } });
+    await miss.service.getNotePlan('c1', 'plan-x', 't1');
+    expect(miss.composer.compose.mock.calls[0][0]).toMatchObject({ planId: 'plan-x', mode: 'section_regen', sectionKeys: ['plan'], model: 'm', cache: true, waitForLedgers: false });
+
+    const foreign = await harness({ recipe: { consultationId: 'other', tenantId: 't1', mode: 'final', sectionKeys: [], model: null } });
+    await expect(foreign.service.getNotePlan('c1', 'plan-y', 't1')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+type NoteComposeRequestLike = { extras: { results: unknown[]; background: unknown[] } };

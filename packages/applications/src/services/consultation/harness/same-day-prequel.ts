@@ -40,12 +40,6 @@ import { selectAuthoritativeNoteText, type AuthoritativeNoteReader } from './pri
 /** How many ancestors the walk visits at most. */
 export const SAME_DAY_PREQUEL_MAX_DEPTH = 5;
 
-/** Cap on each ancestor's note text inside its block. */
-export const SAME_DAY_PREQUEL_BLOCK_MAX_CHARS = 6_000;
-
-/** Appended when an ancestor's note is cut at the cap. */
-export const SAME_DAY_PREQUEL_TRUNCATION_MARKER = '[truncated]';
-
 /** The fields of a consultation row the walk reads. A `ConsultationEntity` satisfies it. */
 export interface SameDayPrequelSubject {
   id: string;
@@ -148,11 +142,8 @@ function isSameDaySibling(subject: SameDayPrequelSubject, candidate: SameDayPreq
 function renderBlock(ancestor: SameDayPrequelSubject, note: string, timeZone: string): string {
   const when = localTimeOf(ancestor.createdAt, timeZone) ?? 'time unknown';
   const status = ancestor.status ? String(ancestor.status) : 'unknown';
-  const body =
-    note.length > SAME_DAY_PREQUEL_BLOCK_MAX_CHARS
-      ? `${note.slice(0, SAME_DAY_PREQUEL_BLOCK_MAX_CHARS)}\n${SAME_DAY_PREQUEL_TRUNCATION_MARKER}`
-      : note;
-  return `### Earlier visit today (${when}, status ${status})\n${body}`;
+  // Whole: the note composer's token budget decides what fits, never a character cut.
+  return `### Earlier visit today (${when}, status ${status})\n${note}`;
 }
 
 /** Options for {@link resolveSameDayPrequel}. */
