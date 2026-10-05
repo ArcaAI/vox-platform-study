@@ -454,13 +454,13 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     configure_observability(app, _build_observability_config(settings))
 
     from text.api.endpoints.embeddings import router as embeddings_router
-    from text.api.endpoints.tokenize import router as tokenize_router
     from text.api.endpoints.generate import router as generate_router
     from text.api.endpoints.health import router as health_router
     from text.api.endpoints.judge import router as judge_router
     from text.api.endpoints.providers import router as providers_router
     from text.api.endpoints.stream import router as stream_router
     from text.api.endpoints.tasks import router as tasks_router
+    from text.api.endpoints.tokenize import router as tokenize_router
     from text.api.endpoints.translate import router as translate_router
 
     app.include_router(health_router, prefix="/api/v1")
