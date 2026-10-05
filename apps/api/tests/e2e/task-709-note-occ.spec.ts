@@ -383,9 +383,7 @@ test.describe('OCC on POST :id/summary/:contextItemId/approve', () => {
       ['STOPPED', 'CLOSED_INCOMPLETE'],
       'approve OCC is only observable from a legal predecessor of APPROVED — otherwise the 409 legality check fires first',
     ).toContain(status);
-    expect(['FINALIZING_TRANSCRIPT', 'SUMMARIZING'], 'approve is refused while the transcript or the note is in flight').not.toContain(
-      processing,
-    );
+    expect(['FINALIZING_TRANSCRIPT', 'SUMMARIZING'], 'approve is refused while the transcript or the note is in flight').not.toContain(processing);
   });
 
   test('POST :id/summary/:contextItemId/approve without If-Match returns 428', async ({ request }) => {

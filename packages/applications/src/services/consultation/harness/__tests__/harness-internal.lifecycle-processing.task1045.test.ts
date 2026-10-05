@@ -24,6 +24,7 @@ import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
 import { ConsultationEventHandler } from '../../events/consultation-event.handler';
 import { ConsultationPipelineEvent } from '../../events/consultation.events';
+import { NOTE_READY_REASON } from '../../lifecycle/legacy-status-projection';
 
 const TENANT = '50000000-0000-0000-0000-000000000045';
 const CID = '01a08a8d-651c-0000-0000-000000001045';
@@ -163,7 +164,7 @@ describe('TASK-1045 AB-4c — persistDraft drives processing, never status', () 
 
     await service.persistDraft(CID, draft());
 
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
     expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     expect(row.status).toBe(ConsultationStatus.STOPPED);
   });
@@ -194,7 +195,7 @@ describe('TASK-1045 AB-4c — persistDraft drives processing, never status', () 
 
     await service.finalizeAssurance(CID, { tenantId: TENANT, contextItemId: 'ctx-draft', gateDecision: 'PASS' } as never);
 
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
     expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 });

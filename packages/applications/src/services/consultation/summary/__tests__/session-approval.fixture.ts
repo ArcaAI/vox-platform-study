@@ -71,6 +71,16 @@ export function wireSessionApproval(summary: SummaryService, given: SessionAppro
     findByConsultation: async (...args: unknown[]) =>
       typeof deps.contextItemRepository.findByConsultation === 'function' ? ((await deps.contextItemRepository.findByConsultation(...args)) ?? []) : [],
     updateWithVersion: (...args: unknown[]) => deps.contextItemRepository.updateWithVersion(...args),
+    // The approval resolves a legacy summary id first (existence before legality); the specs'
+    // repositories answer `findById`, so a lookup that throws reads as "not found".
+    findByIdOrNull: async (id: string) => {
+      if (typeof deps.contextItemRepository.findByIdOrNull === 'function') return deps.contextItemRepository.findByIdOrNull(id);
+      try {
+        return (await deps.contextItemRepository.findById(id)) ?? null;
+      } catch {
+        return null;
+      }
+    },
   };
   // The version store behaves like the database it stands in for: a signature the approval writes
   // reads back (newest first) on the spec's own `getVersionsByChangeReason`.
