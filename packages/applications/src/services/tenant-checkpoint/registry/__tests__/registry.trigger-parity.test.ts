@@ -34,6 +34,8 @@ function guardedColumns(body: string): string[] {
 }
 
 const GUARDS: Record<string, string> = {
+  context_item_version_immutability_guard: 'ContextItemVersion',
+  consultation_approval_immutability_guard: 'ConsultationApproval',
   workflow_definition_immutability_guard: 'WorkflowDefinition',
   agent_immutability_guard: 'Agent',
   agent_model_fallback_immutability_guard: 'AgentModelFallback',
