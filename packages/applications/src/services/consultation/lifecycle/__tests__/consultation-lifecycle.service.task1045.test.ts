@@ -440,6 +440,16 @@ describe('ConsultationLifecycleService — close', () => {
     expect(h.current()?.closedReason).toBe(ConsultationClosedReason.APPROVED);
   });
 
+  // TASK-972 OD-7 (re-homed from consultation.service.test.ts): a never-recorded OPEN
+  // consultation can be closed by hand — cancelling it — rather than stranding forever.
+  it('a manual close of a never-recorded OPEN consultation → CLOSED_INCOMPLETE (MANUAL), persisted', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.OPEN }));
+    const response = await h.service.close(ID);
+    expect(response.status).toBe('CLOSED_INCOMPLETE');
+    expect(h.current()?.closedReason).toBe(ConsultationClosedReason.MANUAL);
+    expect(h.consultations.updateWithVersion).toHaveBeenCalledTimes(1);
+  });
+
   it('an auto close stamps closedReason AUTO', async () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.OPEN }));
     await h.service.close(ID, { auto: true });
