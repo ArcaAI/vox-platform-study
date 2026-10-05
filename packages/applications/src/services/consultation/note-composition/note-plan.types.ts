@@ -194,6 +194,8 @@ export const coverageResultV1Schema = z
     schema: z.literal(NOTE_COVERAGE_SCHEMA),
     status: z.enum(NOTE_COVERAGE_STATUSES),
     repairPasses: z.number().int().min(0).max(1),
+    /** Why gaps went unrepaired; absent when no repair was needed or it ran. */
+    repairSkipped: z.enum(['budget', 'disabled']).optional(),
     criticalFacts: z.object({ total: z.number().int(), present: z.number().int(), missing: z.array(z.string()) }).strict(),
     numbers: z.object({ total: z.number().int(), matched: z.number().int(), unsupported: z.number().int() }).strict(),
     citations: z.object({ total: z.number().int(), resolved: z.number().int(), unresolved: z.array(z.string()) }).strict(),

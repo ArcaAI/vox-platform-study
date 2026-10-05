@@ -708,6 +708,43 @@
           }
         ]
       }
+    },
+    {
+      "name": "gaps_repair_skipped_budget",
+      "result": {
+        "schema": "hope.note_coverage.v1",
+        "status": "gaps",
+        "repairPasses": 0,
+        "repairSkipped": "budget",
+        "criticalFacts": {
+          "total": 2,
+          "present": 1,
+          "missing": [
+            "E1-F4"
+          ]
+        },
+        "numbers": {
+          "total": 1,
+          "matched": 1,
+          "unsupported": 0
+        },
+        "citations": {
+          "total": 3,
+          "resolved": 3,
+          "unresolved": []
+        },
+        "gaps": [
+          {
+            "kind": "missing_fact",
+            "factId": "E1-F4",
+            "sectionKey": "subjective",
+            "segmentIds": [
+              "0199a000-0000-7000-8000-000000000057"
+            ],
+            "detail": "Allergy to penicillin is not stated in the note."
+          }
+        ]
+      }
     }
   ],
   "harnessDelivery": {

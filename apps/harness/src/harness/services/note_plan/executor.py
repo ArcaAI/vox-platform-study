@@ -307,6 +307,9 @@ async def execute_plan(
         repair_skipped = "disabled"
     elif repair_keys and not allow_repair():
         repair_skipped = "budget"
+    if repair_skipped is not None:
+        # The coverage sent on carries the reason too, so review sees why the gaps stayed.
+        coverage = coverage.model_copy(update={"repair_skipped": repair_skipped})
     if repair_keys and repair_skipped is None:
         repair = NoteCallRequest(
             call_id="repair",

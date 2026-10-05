@@ -266,6 +266,9 @@ class CoverageResultV1(_Wire):
     )
     status: CoverageStatus
     repair_passes: int = Field(ge=0, le=1)
+    #: Why gaps went unrepaired — ``budget`` (no room left for the call) or ``disabled`` (the
+    #: plan allows no repair). Absent when no repair was needed or it ran.
+    repair_skipped: Literal["budget", "disabled"] | None = None
     critical_facts: CoverageFactCounts = Field(default_factory=CoverageFactCounts)
     numbers: CoverageNumberCounts = Field(default_factory=CoverageNumberCounts)
     citations: CoverageCitationCounts = Field(default_factory=CoverageCitationCounts)
