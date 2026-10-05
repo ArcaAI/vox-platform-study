@@ -1,6 +1,6 @@
 # TASK-1042 — Live audio into standalone workflow runs (business plane)
 
-**Status:** In Progress — all lanes merged into the orchestrator branch; artifacts + the single gate pass next.
+**Status:** In Progress — gate green; merging into dev-2.2. e2e and the live proof are still to run.
 **Previously:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
 **Type:** feature (gateway + harness + SDK + docs)
 **Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
@@ -286,11 +286,52 @@ Orchestrator commits:
 | D4 | `packages/domains` `TranscriptionJobEntity` / `Factory` gained `metaData`. | It is required for C8 to persist. |
 | D5 | The SDK lane edited `PluginManager`, `STTProcessor` and `StreamingBackendSTTProvider`. | These are pass-throughs; without them `workflowSlug` never reaches the wire. |
 
+### 6.5 Gate: one pass after the complete integration (orchestrator, 2026-10-05)
+
+Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm install --frozen-lockfile --prefer-offline`; the primary checkout's `node_modules` symlinks were checked afterwards and are untouched. The tree is dev-2.2 + every TASK-1042 commit, last at `f673e6abc` (which includes dev-2.2's `fe47d7d1a`).
+
+**Artifacts regenerated** (`5f80ef21c`): `route-manifest.json`, `openapi.json`, and the admin and business portal files. vox-node `gen:admin` reported no change, because no admin route changed.
+
+**Run 1 found:**
+- **Integration fixes, all made** (`fix(task-1042)` + `style(task-1042)`):
+  - the internal transcript controller lacked `InternalTenantLockGuard` (TASK-1043's coverage rule);
+  - a `useRunAudio` store-typing error (TS18046);
+  - WF-SET-005 test typing;
+  - the run-guide drift pin was missing `runWithAudio`;
+  - one prettier lint ERROR in `transcription-job.controller.ts`, plus prettier warnings across our files;
+  - a silent `catch` in the C5 timeout check, which now propagates per the config rule;
+  - the Integration-tab test expected `hope.stt` (the tab now passes `streamAudioField`, so the snippets name the real field).
+- **Not ours, fixed by their owners on dev-2.2:**
+  - `consultation-workflow-dispatch.consultation-metadata.task1038` (OD-35 `onBehalfOf`);
+  - the TASK-1043 coverage test's `import.meta.glob` TS1343.
+- **Environmental:** 208 console files could not load because the `@arcaai/ui` dist was cut off by the turbo abort. After a rebuild they pass.
+
+**Final results:**
+
+| Step | Result |
+|---|---|
+| TS lint (`turbo run lint --continue`) | rc 0 |
+| TS typecheck | rc 0 for every package; api rc 0 after merging dev-2.2 `fe47d7d1a` |
+| Python ruff (harness, py-workflow-contract) | rc 0 |
+| mypy harness | rc 0 |
+| docs, openapi, portal, `gen:admin`, `gen:check`, env-sync, python-surface checks | all rc 0 |
+| TS unit (root vitest, `.env.test`) | 30,841 passed. 6 files timed out at 30 s in the final run under machine load (duration 649 s vs 275 s, import 89%); the same 6 files pass alone, 143/143. Run 1 had no timeouts. |
+| `@arcaai/admin-console` | 4,511 passed |
+| `@arcaai/vox` | 3,398 passed |
+| `@arcaai/vox-node`, `@arcaai/stt` | rc 0 |
+| `py-workflow-contract` pytest | rc 0 |
+| Harness pytest, including replay-compat with `interpreter_task1042_live_audio_history` | rc 0 |
+| TASK-1043 lock coverage (after its fix) | 4 passed; our controller is covered |
+
+**Not yet run:**
+- The e2e spec `workflow-run-live-audio-cross-tenant.spec.ts` and the route-authz matrix, which need the test infrastructure owned by the e2e-repair session.
+- The live proof (vox-node `runWithAudio` with a WAV, browser `useRunAudio`), which needs the dev stack and STT.
+
 ### 6.4 Known limits and follow-ups
 
 - **Result-stream cap.** `stt.streaming.resultStreamMaxlen` defaults to 10000. Partials during speech run at about 2.5 entries/s, so the cap holds about 4000 s of continuous speech, just above the 3600 s ceiling. A session past it reads as `truncated` (fail-closed, never short). The owner decided (2026-10-05) to keep 10000.
 - After close, the result stream expires in 3600 s. A C5 read after that reads as `truncated` unless the row recorded zero characters. The harness reads within 5 s of the end, so only a much later re-read is affected.
-- The console Integration tab does not yet pass the real `audioField` into the snippets (`integration-tab.tsx` / `run-shapes.ts` are owned by the TASK-1036 canvas lane). Until then the raw snippet shows `<audioField>`.
+- The Integration tab passes the real `audioField` when the Input shape has exactly ONE live-audio kind (`RunShapes.streamAudioField`). With several, the snippets show the `<audioField>` placeholder.
 - The deprecated `:slug/invoke` alias also binds audio but carries no Swagger update.
 
 
@@ -303,4 +344,5 @@ Orchestrator commits:
 | 2026-10-05 | OD-35 is not yet merged (the lane is still running). On the owner's instruction the SDK lane (L3) and the harness lane (L2) start now and the gateway lane (L1) is held. Contract C1–C7 frozen. **OD-4a**: the owner chose the durable wait, because the 900 s / 3600 s caps make OD-4 impossible. |
 | 2026-10-05 | L3 merged (`12d2ee1ac`). OD-35 merged on dev-2.2 (`ee31a7e67`, `71c3ebeda`) and brought in (`b263f0627`). C8 pins session ownership to the OD-35 principal helper. The service-account run-ticket gap does not affect this ticket: vox-node `RunHandle` streams SSE with header credentials and mints no ticket. L1 launched. |
 | 2026-10-05 | L2 and L1 merged; artifacts regenerated in the verify worktree `../hope-v2-task-1042-verify` (`5f80ef21c`). Owner: merge target dev-2.2; keep `resultStreamMaxlen` at 10000. Single gate pass running. |
+| 2026-10-05 | Single gate pass in the verify worktree; integration fixes made; the Integration tab wires `streamAudioField`; verify merged into the orchestrator branch (`e28fe7e8c`). |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
