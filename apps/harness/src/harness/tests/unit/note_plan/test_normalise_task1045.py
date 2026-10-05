@@ -236,3 +236,173 @@ def test_a_cited_source_spelled_differently_supports_the_note() -> None:
     plan = _plan([], "metformin 1,000 milligrams")
     result = _check(plan, "Metformin 1000 mg.")
     assert result.status == "complete", result.gaps
+
+
+# ---------------------------------------------------------------------------------------------
+# Normaliser limits found on the live run: thousands, hyphenated durations, "and a half",
+# "units", dosing frequencies — and the omissions they must not hide
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("one thousand mg", "1000 mg"),
+        ("a thousand mg", "1000 mg"),
+        ("two thousand five hundred units", "2500 iu"),
+        ("one thousand and fifty", "1050"),
+        ("ten thousand", "10000"),
+        ("twenty five thousand", "25000"),
+        ("a hundred thousand", "100000"),
+        ("1 thousand", "1000"),
+        ("two and a half thousand", "2500"),
+        ("a 4-week course", "a 4 weeks course"),
+        ("review in four weeks", "review in 4-week"),
+        ("for 5 days", "for 5-day"),
+        ("10-day course", "10 days course"),
+        ("every 2 months", "every 2-month"),
+        ("1 year", "1 years"),
+        ("24-hour urine", "24 hours urine"),
+        ("one and a half tablets", "1.5 tablets"),
+        ("two and a half mg", "2.5 mg"),
+        ("one-and-a-half tablets", "1.5 tablets"),
+        ("10 units of insulin", "10 IU of insulin"),
+        ("10 international units", "10 iu"),
+        ("metformin 500 mg BD", "metformin 500 mg twice daily"),
+        ("metformin 500 mg BID", "metformin 500 mg twice a day"),
+        ("metformin 500 mg b.i.d.", "metformin 500 mg twice daily"),
+        ("metformin 500 mg b.d.", "metformin 500 mg 2 times daily"),
+        ("metformin 500 mg two times a day", "metformin 500 mg twice daily"),
+        ("amoxicillin TDS", "amoxicillin three times daily"),
+        ("amoxicillin TID", "amoxicillin three times a day"),
+        ("amoxicillin t.d.s.", "amoxicillin 3 times per day"),
+        ("amoxicillin thrice daily", "amoxicillin tds"),
+        ("amlodipine OD", "amlodipine once daily"),
+        ("amlodipine o.d.", "amlodipine once a day"),
+        ("amlodipine one time daily", "amlodipine once daily"),
+        ("paracetamol QDS", "paracetamol four times daily"),
+        ("paracetamol QID", "paracetamol 4 times a day"),
+        ("paracetamol q.i.d.", "paracetamol four times per day"),
+        ("salbutamol PRN", "salbutamol as needed"),
+        ("salbutamol p.r.n.", "salbutamol as required"),
+        ("salbutamol when required", "salbutamol prn"),
+    ],
+)
+def test_live_run_spellings_normalise_together(left: str, right: str) -> None:
+    n = _n()
+    assert n.normalise_text(left) == n.normalise_text(right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("1 thousand", "1000000"),
+        ("two thousand", "200"),
+        ("one and a half", "1"),
+        ("4-week", "14 weeks"),
+        ("4 weeks", "4 months"),
+        ("4 days", "4 weeks"),
+        ("twice daily", "three times daily"),
+        ("once daily", "four times daily"),
+        ("prn", "once daily"),
+        ("bd", "tds"),
+        ("10 iu", "10 mg"),
+    ],
+)
+def test_live_run_spellings_never_merge_different_facts(left: str, right: str) -> None:
+    n = _n()
+    assert n.normalise_text(left) != n.normalise_text(right)
+
+
+def test_frequency_abbreviations_are_whole_words_only() -> None:
+    n = _n()
+    # "od" inside "food", "bd" inside "abdomen", "tid" inside "tidal" are not frequencies.
+    assert n.normalise_text("food diary; abdomen soft; tidal volume") == (
+        "food diary; abdomen soft; tidal volume"
+    )
+
+
+def test_the_normaliser_is_idempotent_on_the_new_spellings() -> None:
+    n = _n()
+    for text in (
+        "two thousand five hundred units BD for a 4-week course",
+        "one and a half tablets t.d.s. prn",
+        "amlodipine 5 mg OD, review in 4 weeks",
+    ):
+        once = n.normalise_text(text)
+        assert n.normalise_text(once) == once
+
+
+def test_canonical_number_reads_thousands_and_halves() -> None:
+    n = _n()
+    assert n.canonical_number("two thousand") == "2000"
+    assert n.canonical_number("one and a half") == "1.5"
+    assert n.canonical_number("2.5 thousand") == "2500"
+
+
+FREQ = {
+    "factId": "E1-F3",
+    "encounterSeq": 1,
+    "key": "frequency:metformin",
+    "kind": "medication",
+    "anchors": ["twice daily"],
+    "numbers": [{"value": "500", "unit": "mg"}],
+    "citations": ["S1"],
+}
+ALLERGY = {
+    "factId": "E1-F4",
+    "encounterSeq": 1,
+    "key": "allergy:penicillin",
+    "kind": "allergy",
+    "anchors": ["penicillin"],
+    "numbers": [],
+    "citations": ["S1"],
+}
+COURSE = {
+    "factId": "E1-F5",
+    "encounterSeq": 1,
+    "key": "plan:amoxicillin",
+    "kind": "plan",
+    "anchors": ["5 days"],
+    "numbers": [{"value": "1.5", "unit": "g"}],
+    "citations": ["S1"],
+}
+
+
+def test_a_frequency_written_as_an_abbreviation_is_not_a_gap() -> None:
+    plan = _plan([FREQ], "metformin 500 mg twice daily")
+    result = _check(plan, "Metformin 500 mg BD.")
+    assert result.status == "complete", result.gaps
+
+
+def test_a_different_frequency_is_still_a_gap() -> None:
+    plan = _plan([FREQ], "metformin 500 mg twice daily")
+    result = _check(plan, "Metformin 500 mg TDS.")
+    assert result.critical_facts.missing == ["E1-F3"]
+
+
+def test_hyphenated_durations_and_spoken_halves_are_not_gaps() -> None:
+    plan = _plan([COURSE], "amoxicillin one and a half grams for five days")
+    result = _check(plan, "Amoxicillin 1.5 g for a 5-day course.")
+    assert result.status == "complete", result.gaps
+
+
+def test_a_thousand_spoken_matches_the_written_dose() -> None:
+    plan = _plan([DOSE], "metformin 1000 mg")
+    result = _check(plan, "Increase metformin to one thousand milligrams.")
+    assert result.status == "complete", result.gaps
+
+
+def test_units_spoken_match_iu_written() -> None:
+    insulin = {**DOSE, "key": "med:insulin", "anchors": ["insulin"],
+               "numbers": [{"value": "10", "unit": "units"}]}  # fmt: skip
+    plan = _plan([insulin], "insulin glargine ten units at night")
+    result = _check(plan, "Insulin glargine 10 IU at night.")
+    assert result.status == "complete", result.gaps
+
+
+def test_a_missing_allergy_is_still_a_gap_however_the_rest_is_spelled() -> None:
+    plan = _plan([FREQ, ALLERGY], "metformin 500 mg twice daily; allergic to penicillin")
+    result = _check(plan, "Metformin 500 mg BD.")
+    assert result.critical_facts.missing == ["E1-F4"]
+    assert [g.kind for g in result.gaps] == ["missing_fact"]
