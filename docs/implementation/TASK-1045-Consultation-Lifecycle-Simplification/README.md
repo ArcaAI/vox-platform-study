@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** (planning wave) |
+| Status | **Review** — merged into `dev-2.2` (hope-v2) and `refactor-hope-integaration` (ALaaS); single gate green; live two-encounter proof run; owner confirmations open (§5) |
 | Type | feature (multi-repo) |
 | Repos | `hope-v2` (`dev-2.2`), `ALaaSv3.0` (`refactor-hope-integaration`; merge target confirmed at merge time), `hope-v2-deployment` (`main`, local) |
 | Owner go | 2026-10-05: "approve the recommendations and the plan … you can go ahead" |
@@ -199,6 +199,13 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | # | Question | Default until answered |
 |---|---|---|
 | Q-2 | Cluster rollout of the deployment change | Local `main` commit only; owner pushes |
+| Q-3 | D-32 warm start gates `draft_ai`, clinician edits always carried | as implemented |
+| Q-4 | D-33 tokenizer tiers: engine exact, else estimate (no HF hub download in apps/text) | as implemented |
+| Q-5 | D-34 a written note reads `PENDING_REVIEW` to older clients (`NOTE_READY` reason) | as implemented |
+| Q-6 | SDK changeset bump `major` for vox / vox-node / types (H-123) | `major`, rides 5.0.0 |
+| Q-7 | Sunset of the deprecated aliases: `Sun, 31 Jan 2027`, removeIn `R5` (H-124) | placeholder |
+| Q-8 | Inline citation labels (`[S4 E1]`) in the note text copied to the EMR (H-165) | kept |
+| Q-9 | Text-service `json_schema` envelope on non-LM-Studio providers (H-164, pre-existing) | follow-up ticket |
 
 ## 6. Implementation plan
 
@@ -225,7 +232,47 @@ Each planner returns: exact file list per lane, pinned contracts (types/DTOs/mes
 
 ## 8. Implementation summary
 
-_Pending._
+Merged 2026-10-05. hope-v2 `dev-2.2`: 249 commits since `3edd34a4f` (548 files, +71 029 / −7 389). ALaaSv3.0 `refactor-hope-integaration`: 49 commits since `5339f61` (122 files, +20 563 / −726). hope-v2-deployment `main` `ccab8bc` (local, owner pushes). Lane records: `planning/WAVE-3.md`, `WAVE-4.md`, `WAVE-5.md`; every hand-over, finding and its resolution: `planning/HANDOVERS.md` (H-1 … H-171).
+
+### What shipped
+
+| Area | Delivered |
+|---|---|
+| Lifecycle | 7 statuses + `processing` + `closedReason`; consultation = episode of encounters (open key clinician/patient/department; `externalRef` or `metadata.visitType=revisit` appends an encounter); `start / pause / stop / approve / close / reopen` commands with idempotency (D-28/D-29) and the content lock; session approval snapshot + WORM attestation; late Copy to EMR on CLOSED_INCOMPLETE (D-26); auto-close idle 12 h default or daily time (tenant setting); reopen policy; lifecycle SSE + sys-event fan-out; old-vocabulary projection for ALaaS 4.1 (`X-Hope-Lifecycle: 2`) incl. D-34 |
+| Record model | `TRANSCRIPT_SEGMENT` items (idempotent, recording-timeline offsets), derived `FULL_TRANSCRIPT` versions, one recording item with a parts manifest, immutable `ContextItemVersion` (trigger), `appendVersion`; STT pause/resume + segment outbox + Opus capture |
+| Attachments | intent → presigned PUT → complete (gateway fallback), quotas at intent and complete, Idempotency-Key, reaper; PDF supported, image 422 until TASK-1017 (D-25); uploaded audio → batch transcript → one cited context item (D-24) |
+| Feedback | thumbs / reasons / comments / corrections on note, section, segment, transcript, entity, recap; versioned corrections; provenance from the AI run record; daily rollup + admin report; feedback → gate-edit mining (corrections and thumbs-down) |
+| Summarization | fact ledger per encounter + structured recap v2 (display only, never an input); note composer with a fixed block order, exact/estimate token counts and a 32k budget: single pass → prior encounters reduced to ledger + cited segments → ≤10 section groups → fail closed (no silent truncation anywhere); harness executor with per-call section schema, coverage check (critical facts, numbers, citations) and one repair pass → `AWAITING_REVIEW` with the gap count; governed handoff, harness-doc starter and loop ending all carry the plan; warm start D-32; multi-encounter golden set (14 cases) + `note_completeness` eval mode |
+| Run record | `AiActivityRun` per STT / ledger / note call: model, agent, workflow, duration, tokens, context used/window, cost |
+| Console | `/consultations/[id]`: oldest-first activity timeline with encounter gap bands, run metadata per AI activity, version history with diffs, encounter recap; BFF sends `X-Hope-Lifecycle: 2` |
+| API / SDKs | 25 new routes (business + admin + 2 internal), deprecated aliases with Sunset headers, regenerated route manifest / OpenAPI / portal / vox-node admin; vox-node consultation handle and vox `useConsultation` (5.x) |
+| ALaaS | protocol v4 (`pausedTotalMs`), HOPE port + fake + 4.x shim (`legacy4x`, Copy to EMR byte-identical), Redis session store, root session controller, launch states + recap panel, note progress stepper, auto-generate after the final transcript, panels mounted across tab switches, hover thumbs + per-segment transcript edit + note correction, bell, workspace fold-in, encounter 2 on a linked session, function map L01–L71 / W01–W22 / O01–O72 (no function removed) |
+| Deployment / local | LM Studio Gemma 4 E2B 32 768 / q4_0 KV / parallel 10 (deployment `main`); local `dev-stack.sh` defaults aligned to 32 768 / 10 |
+
+### Gate (single pass after the full merge, orchestrator only)
+
+| Gate | Result |
+|---|---|
+| `pnpm typecheck:all` | TS green (36/36); Python `mypy apps/stt` 4 pre-existing errors in files TASK-1045 did not touch (H-171) |
+| `pnpm lint` (TS, 32 workspaces) + ruff (harness, text, stt) | green; no new warnings in ticket files |
+| Unit (root vitest) | **31 512 passed, 0 failed**; vox 3 405; admin-console 4 531; vox-node 743 |
+| Python | harness 3 425 (incl. replay-compat), text 2 059, stt 4 007 |
+| Database | TASK-1045 migrations on legacy-vocabulary data 24/24 (throwaway template DB); `migrate diff` ledger ↔ schema: empty; other postgres suites green except one stale pre-existing assertion (H-152) |
+| Integration (root config) | 111 passed, 33 skipped |
+| API e2e (Playwright, live test API) | **1 449 passed**, 88 skipped, 1 environment (task-933 needs a live harness — covered by the live proof) |
+| Generated artifacts | `api:openapi:check`, `api:portal:check`, vox-node `gen:admin:check` green; +25 routes, 0 removed/changed |
+| Builds | admin-console production build, vox + vox-node builds green |
+| ALaaS | svc tsc clean; every suite the ticket touched green; 17 failures in 4 untouched files identical at the pre-ticket base (H-150/H-151) |
+
+### Live proof (local stack, DB `hope_1045_live`; dev DB untouched)
+
+Gemma 4 E2B (QAT Q4_0) in LM Studio at 32 768 / parallel 10, temperature 0; api, text, guardrail, nlp, harness, Temporal worker. Encounter 1 (complaint, allergy, medication, BP, orders) → stop → revisit appends encounter 2 (normal ECG/troponin, metformin 500 → 1000 mg, amlodipine 5 mg, review 4 weeks) → stop → note. Run 5: ledgers E1 5 facts / E2 6 facts; well-formed 4-section note covering both encounters with every statement cited; coverage flagged one real omission (E1 penicillin allergy) → `AWAITING_REVIEW` (safety net held; prompt tuning is a rollout item, H-168). Defects the live runs found and fixed: governed handoff without a plan (H-166), coverage false positives (H-167), schema envelope never enforced on LM Studio (H-161, pre-existing), JSON note shape (H-163), IDLE reason (H-162), SSE interceptor (H-153).
+
+### Rollout items (not code)
+
+1. Cluster: fresh DB (D-20), deployment `main` push (Q-2), roll the harness worker before the API.
+2. `rollout.mjs`: republish finalizers, golden set + evalGate per tenant (H-136), KV f16 vs q4_0 A/B (H-138), finalizer prompt tuning for multi-encounter recall (H-168).
+3. Verify the ArcaAI governed tenant re-finalizes after an appended encounter (H-169); ALaaS end-to-end in the browser against the cluster (embedded EMR, Copy to EMR → CLOSED_COMPLETE).
 
 ## 9. Change history
 
@@ -236,3 +283,4 @@ _Pending._
 | 2026-10-05 | Merged into `dev-2.2`: AB-1 (schema + 2 migrations, fresh-DB D-20), AB-STT (pause/resume + segment outbox + Opus), AB-WS (gateway pause), AB-2 (domain layer), E1 (/tokenize), E7 (transcript finalizer, fact-ledger agent, gemma 32k/q4 seed), CG-STO, CG-SET, CG-POL, D3 (timeline bands), D7 (shared types), D4a (console data), D5 (vox-node handle), D6 (useConsultation); deployment `main` `ccab8bc` (gemma 32768 + q4_0, local). ALaaS `refactor-hope-integaration`: U6, F9, F5, F1, F0 (protocol v4), F3, U1. Wave-3 service contracts pinned (`94e277e29`, `planning/WAVE-3.md`); wave 3 launched (AB-3, AB-4a/b/c, AB-5, C-SVC, G-SVC, G-ROLL+MINE, E2, E4, D1) + ALaaS F2. Hand-overs tracked in `planning/HANDOVERS.md`. |
 | 2026-10-05 | Wave 3 merged into `dev-2.2`: AB-3 (open = episode), AB-4a (lifecycle commands, session approve, events), AB-4b (auto-close idle/daily), AB-4c (harness processing axis), AB-5 (transcript record, `appendVersion`, batched Transit), C-SVC (attachments + audio sink + reaper), G-SVC (feedback), G-ROLL+MINE (rollup + feedback mining), E2 (activity run record), E4 (fact ledger + structured recap v2, D-30/D-31), D1 (history read service). ALaaS: F2, F6, F7, U2, U4, U7. Integration commit `ebf0ed464`: module composition (H-32/37/49/53/58/62/66/67/77/83/90) and a module cycle Summary → WorkflowExposure → Consultation → Lifecycle → Summary broken with a lazily resolved note signer (H-88). Applications + `apps/api` type-check clean; 179 modules, no import cycles. Diagnostic applications run: 41 legacy test files pin the removed vocabulary (AB-8a). NotePlan v1 contract fixture pinned (`88c29844c`); wave 4 launched (`planning/WAVE-4.md`): AB-6, CG-API, D2, E3, E5, D4b, AB-8a, AB-8c, ALaaS F0b; ALaaS U3 still running. |
 | 2026-10-05 | Wave 4 merged: AB-6 (lifecycle routes, events SSE, old-vocabulary projection, segment ingest), CG-API (+ G-READ rollup reader), D2 (history API), D4b (console `/consultations/[id]`), E3 (note composer + budget planner + note-plan delivery), E5 (harness executor + coverage + one repair, `workflow.patched("task-1045-note-plan")`), AB-8a/AB-8c (legacy sweeps; H-78 stop claim + offset stamp). ALaaS: U3 (live screen), F0b (`pausedTotalMs`). Orchestrator fixes: TranscriptRecord dependency moved to the lifecycle module (integration slip, H-104), list `processing` filter, console BFF sends `X-Hope-Lifecycle: 2`, console vitest alias. Diagnostics after merge: applications 349 → 24 failing tests (the rest load flakes or the residual legacy pins below), apps/api 4. Two production defects found by the sweep (H-119 close attribution, H-120 supersede rule) → lane LF. Wave 5 launched (`planning/WAVE-5.md`): E6, LF, E8, UI-BAND, D8, U8, AB-8b. |
+| 2026-10-05 | Wave 5 + gate: E6/E6b (note path end to end), LF (close attribution, supersede), E8 (golden set), D8 (docs/changeset), UI-BAND, AB-8b/d/e sweeps, E3b (warm start D-32), E5b (coverage normalisation), ALaaS U8/U9/FD1/F0b merged. Gate run once by the orchestrator; defects it found fixed (API boot DI, SSE interceptor, legacy approve 404, D-33 tokenizer, D-34 PENDING_REVIEW, Python regressions, lint). Live two-encounter proof on Gemma 4 E2B; LIVE-FIX/2/3 merged. Status → Review. |
