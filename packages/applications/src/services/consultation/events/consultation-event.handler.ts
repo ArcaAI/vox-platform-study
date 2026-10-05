@@ -37,6 +37,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { tenantWorkflowGoverns } from '../governing-engine';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
+import { classifySessionFinal } from '../workflow-dispatch/encounter-refinalize';
 import { contextItemDecryptor } from '../context/client-clinical-context';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import {
@@ -143,6 +144,19 @@ export class ConsultationEventHandler {
       });
 
       try {
+        // A later stop that adds speech to a consultation whose note exists (encounter 2+, or a
+        // later FULL_TRANSCRIPT version) is re-finalised by `EncounterRefinalizeService`, which
+        // listens to the same event. Starting anything here as well would run the note twice.
+        if (await this.refinalizeOwnsSessionFinal(consultationId, contextItemId)) {
+          this.logger.log({
+            message: 'Session final re-finalises an existing note — left to the encounter re-finalisation',
+            consultationId,
+            contextItemId,
+            correlationId,
+          });
+          return;
+        }
+
         // TASK-1001 wave 4 (OD-14; owner decisions D-3/D-4) — a RESUMED recording. Its session's
         // aggregate transcript lands on a consultation whose first draft's document run is parked at
         // the clinician gate, so a plain start is a no-op and the final note would never see what was
@@ -538,6 +552,32 @@ export class ConsultationEventHandler {
       return { kind: 'supersede', transcriptText, sessions: aggregates.length };
     } catch (error) {
       return { kind: 'read_failed', error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * True when `EncounterRefinalizeService` owns this session final — the same classification it
+   * applies (`classifySessionFinal`). `false` when the context-item repository is not wired or a
+   * read fails: the auto-pipeline then proceeds as before.
+   */
+  private async refinalizeOwnsSessionFinal(consultationId: string, contextItemId: string): Promise<boolean> {
+    if (!this.contextItemRepository) return false;
+    try {
+      const consultation = await this.consultationRepository.findByIdOrNull(consultationId);
+      if (!consultation) return false;
+      const found = await this.contextItemRepository.findByIdOrNull(contextItemId);
+      const item = found && found.consultationId === consultationId ? found : null;
+      return (
+        classifySessionFinal({ status: String(consultation.status), currentEncounterSeq: consultation.currentEncounterSeq }, item) === 'refinalize'
+      );
+    } catch (error) {
+      this.logger.warn({
+        message: 'Encounter re-finalisation ownership could not be read — the auto-pipeline proceeds',
+        consultationId,
+        contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   }
 

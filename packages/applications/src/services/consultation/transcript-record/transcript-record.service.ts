@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   AudioRecordingRepository,
   ConsultationEntity,
+  ConsultationProcessing,
   ConsultationRepository,
   ConsultationStatus,
   ContextItemEntity,
@@ -26,7 +27,13 @@ import { SecretsService, parseKeyVersionFromCiphertext } from '../../baseService
 import { IRedisCacheService } from '../../baseServices/redis';
 import { countTranscriptWords } from '../../stt/transcript-size';
 import { stampContentCounters } from '../shared/contentCounters';
-import { ConsultationPipelineEvent, EncounterStoppedPayload, FullTranscriptRebuiltPayload, TranscriptionCreatedPayload } from '../events';
+import {
+  ConsultationPipelineEvent,
+  EncounterStoppedPayload,
+  FullTranscriptRebuiltPayload,
+  LifecycleChangedPayload,
+  TranscriptionCreatedPayload,
+} from '../events';
 import { IngestSegment, IngestSegmentsInput, IngestSegmentsResult, ITranscriptRecordService } from './ITranscriptRecordService';
 import {
   AMBIENT_TRANSACTION_CLS_KEY,
@@ -66,6 +73,14 @@ const AWAIT_FINAL_POLL_MS = 200;
 /** How long a segment-edit rebuild waits for the edit's own transaction to commit. */
 const SEGMENT_EDIT_COMMIT_WAIT_MS = 5_000;
 const SEGMENT_EDIT_POLL_MS = 100;
+
+/**
+ * Set while a lifecycle `stop()` waits in `awaitFinal`: that stop restores processing and
+ * announces `transcript_final` itself. Absent ⇒ a session final completes the stop.
+ */
+export function stopAwaitingFinalRedisKey(consultationId: string): string {
+  return `consultation:stop-awaiting-final:${consultationId}`;
+}
 
 type Tx = unknown;
 
@@ -211,6 +226,10 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
       metaData: { sttRunKey: runKey },
     });
 
+    // Before `TranscriptionCreated`: its listeners may start the note (processing SUMMARIZING),
+    // which this restore must never overwrite.
+    await this.completePendingStop(consultation.id);
+
     if (rebuilt?.appended) {
       const timestamp = new Date().toISOString();
       this.eventEmitter.emit(ConsultationPipelineEvent.FullTranscriptRebuilt, {
@@ -243,12 +262,23 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     if (sttSessionIds.length === 0) return 'complete';
     if (!this.redisCache) return 'pending';
     const deadline = Date.now() + Math.max(0, timeoutMs);
-    for (;;) {
-      const finals = await Promise.all(sttSessionIds.map((sid) => this.redisCache!.exists(sttFinalRedisKey(consultationId, sid))));
-      if (finals.every(Boolean)) return 'complete';
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) return 'pending';
-      await new Promise((resolve) => setTimeout(resolve, Math.min(AWAIT_FINAL_POLL_MS, remaining)));
+    const allFinal = async (): Promise<boolean> =>
+      (await Promise.all(sttSessionIds.map((sid) => this.redisCache!.exists(sttFinalRedisKey(consultationId, sid))))).every(Boolean);
+    await this.markStopAwaiting(consultationId, timeoutMs);
+    try {
+      for (;;) {
+        if (await allFinal()) return 'complete';
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          // Stop waiting BEFORE the last look: a final that lands after it finds no waiter and
+          // completes the stop itself, so a final is never left to nobody.
+          await this.clearStopAwaiting(consultationId);
+          return (await allFinal()) ? 'complete' : 'pending';
+        }
+        await new Promise((resolve) => setTimeout(resolve, Math.min(AWAIT_FINAL_POLL_MS, remaining)));
+      }
+    } finally {
+      await this.clearStopAwaiting(consultationId);
     }
   }
 
@@ -641,6 +671,76 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
       totalMs: typeof manifest?.totalMs === 'number' ? manifest.totalMs : 0,
       parts: Array.isArray(manifest?.parts) ? manifest.parts : [],
     };
+  }
+
+  /**
+   * A stop that returned `pending` (D-28) left processing at FINALIZING_TRANSCRIPT, which the note
+   * writer does not overwrite and the stop poll reads as `pending`. The session final that lands
+   * after it restores the processing the stop replaced (IDLE when none) and announces
+   * `transcript_final`, exactly as a `complete` stop does. Skipped while a stop still waits in
+   * `awaitFinal` — that stop does both itself. Best-effort: the transcript is already written.
+   */
+  private async completePendingStop(consultationId: string): Promise<void> {
+    try {
+      const consultation = await this.consultationRepository.findByIdOrNull(consultationId);
+      if (!consultation || consultation.status !== ConsultationStatus.STOPPED) return;
+      if (consultation.processing !== ConsultationProcessing.FINALIZING_TRANSCRIPT) return;
+      if (await this.isStopAwaiting(consultationId)) return;
+
+      const restored = consultation.processingPrior ?? ConsultationProcessing.IDLE;
+      await this.consultationRepository.setProcessing(consultationId, restored, { prior: null });
+      const at = new Date().toISOString();
+      const processingReason = ConsultationEntity.processingReasonFor(restored, null);
+      this.eventEmitter.emit(ConsultationPipelineEvent.LifecycleChanged, {
+        consultationId,
+        tenantId: consultation.tenantId,
+        timestamp: at,
+        event: {
+          type: 'transcript_final',
+          consultationId,
+          status: consultation.status as LifecycleChangedPayload['event']['status'],
+          processing: restored as LifecycleChangedPayload['event']['processing'],
+          ...(processingReason ? { processingReason } : {}),
+          encounterSeq: consultation.currentEncounterSeq,
+          version: consultation.version,
+          at,
+          // The lifecycle publisher assigns the stream sequence.
+          seq: 0,
+        },
+      } satisfies LifecycleChangedPayload);
+    } catch (error) {
+      this.logger.warn({
+        message: 'transcript_record.pending_stop_not_completed',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async markStopAwaiting(consultationId: string, timeoutMs: number): Promise<void> {
+    try {
+      await this.redisCache?.setex(stopAwaitingFinalRedisKey(consultationId), Math.ceil(Math.max(0, timeoutMs) / 1000) + 60, '1');
+    } catch (error) {
+      this.logger.warn({ message: 'transcript_record.stop_waiter_mark_failed', error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async clearStopAwaiting(consultationId: string): Promise<void> {
+    try {
+      await this.redisCache?.del(stopAwaitingFinalRedisKey(consultationId));
+    } catch (error) {
+      this.logger.warn({ message: 'transcript_record.stop_waiter_clear_failed', error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /** Unreadable ⇒ `false`: completing the stop twice is harmless, never completing it is not. */
+  private async isStopAwaiting(consultationId: string): Promise<boolean> {
+    if (!this.redisCache) return false;
+    try {
+      return Boolean(await this.redisCache.exists(stopAwaitingFinalRedisKey(consultationId)));
+    } catch {
+      return false;
+    }
   }
 
   /**

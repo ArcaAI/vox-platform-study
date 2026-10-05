@@ -165,11 +165,11 @@ const NOTE_INPUTS_POINTER = '[see the note input data sections below]';
  * written from every encounter: later encounters override earlier ones on the same point, a
  * clinician's edited wording is kept, and an earlier AI draft is never a source on its own.
  */
-const NOTE_INPUTS_GUIDANCE = [
+export const NOTE_INPUTS_GUIDANCE = [
   "NOTE INPUTS — the data sections below are this consultation's complete record, oldest first:",
   'background from earlier visits (reference only); each earlier encounter as its transcript, or as its fact ledger with the transcript lines that ledger cites;',
   'results [R<n>] and uploaded-audio transcripts [A<n>]; then the latest encounter in full. Transcript lines are labelled [S<n> E<encounter> <speaker> mm:ss].',
-  'Every encounter belongs in the note. Where a later encounter changes something an earlier one stated (a dose, a diagnosis, the plan), the later encounter wins.',
+  'Every encounter belongs in the note: carry every allergy (with its reaction), current medication (with its dose), abnormal vital or result, order and follow-up from EVERY encounter into the note, each with its label; a fact from an earlier encounter stays unless a later encounter changes it. Where a later encounter changes something an earlier one stated (a dose, a diagnosis, the plan), the later encounter wins.',
   'Clinician-edited sections are the clinician’s own wording: keep their meaning. The previous AI draft is a draft to check against the sources, never a source on its own.',
   'Cite every statement with the labels of the lines it comes from.',
 ].join('\n');

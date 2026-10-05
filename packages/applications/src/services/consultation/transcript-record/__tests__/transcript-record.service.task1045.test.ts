@@ -22,7 +22,7 @@ import {
   ContextItemVersionEntity,
 } from '@arcaai/domains';
 import { ConsultationPipelineEvent } from '../../events';
-import { TranscriptRecordService } from '../transcript-record.service';
+import { TranscriptRecordService, stopAwaitingFinalRedisKey } from '../transcript-record.service';
 import { sttBatchRunKey, sttFinalRedisKey, sttStreamRunKey } from '../transcript-record.keys';
 import { SttInternalService } from '../../../stt/internal/sttInternal.service';
 import { ContextService } from '../../context/context.service';
@@ -56,6 +56,7 @@ function redisDouble() {
     get: vi.fn(async (k: string) => store.get(k) ?? null),
     setex: vi.fn(async (k: string, _ttl: number, v: string) => void store.set(k, v)),
     exists: vi.fn(async (k: string) => store.has(k)),
+    del: vi.fn(async (k: string) => void store.delete(k)),
     eval: vi.fn(async (_script: string, _n: number, key: string, value: string) => {
       if (store.has(key)) return null;
       store.set(key, String(value));
@@ -72,6 +73,9 @@ interface ConsultationRow {
   segmentSeqHead: number;
   recordingCursorMs: number;
   lastActivityAt: Date;
+  processing?: string;
+  processingPrior?: string | null;
+  version?: number;
 }
 
 function world() {
@@ -162,6 +166,11 @@ function world() {
     allocateSegmentSeqs: vi.fn(async (_id: string, count: number) => {
       consultation.segmentSeqHead += count;
       return { first: consultation.segmentSeqHead - count + 1, last: consultation.segmentSeqHead };
+    }),
+    setProcessing: vi.fn(async (_id: string, processing: string, options: { prior?: string | null } = {}) => {
+      consultation.processing = processing;
+      if (options.prior !== undefined) consultation.processingPrior = options.prior;
+      return true;
     }),
     advanceRecordingCursor: vi.fn(async (_id: string, delta: number) => {
       consultation.recordingCursorMs += delta;
@@ -407,6 +416,78 @@ describe('TranscriptRecordService full transcript', () => {
     expect(stops[0][1]).toMatchObject({ consultationId: CID, tenantId: TENANT, encounterSeq: 1 });
     const order = emitted(w);
     expect(order.indexOf(ConsultationPipelineEvent.EncounterStopped)).toBeGreaterThan(order.indexOf(ConsultationPipelineEvent.TranscriptionCreated));
+  });
+
+  describe('a stop that returned `pending` (D-28) is completed by the late session final', () => {
+    const lifecycleFrames = () =>
+      w.emitter.emit.mock.calls
+        .filter((c) => c[0] === ConsultationPipelineEvent.LifecycleChanged)
+        .map((c) => c[1] as { event: Record<string, unknown> });
+
+    beforeEach(() => {
+      w.consultation.status = ConsultationStatus.STOPPED;
+      w.consultation.processing = 'FINALIZING_TRANSCRIPT';
+      w.consultation.processingPrior = null;
+      w.consultation.version = 3;
+    });
+
+    it('restores processing (IDLE when nothing was replaced) and announces transcript_final — before TranscriptionCreated', async () => {
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+
+      expect(w.consultationRepository.setProcessing).toHaveBeenCalledWith(CID, 'IDLE', { prior: null });
+      expect(w.consultation.processing).toBe('IDLE');
+      const frames = lifecycleFrames();
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({
+        consultationId: CID,
+        tenantId: TENANT,
+        event: { type: 'transcript_final', consultationId: CID, status: 'STOPPED', processing: 'IDLE', encounterSeq: 1, version: 3, seq: 0 },
+      });
+      const order = emitted(w);
+      expect(order.indexOf(ConsultationPipelineEvent.LifecycleChanged)).toBeLessThan(order.indexOf(ConsultationPipelineEvent.TranscriptionCreated));
+    });
+
+    it('restores the processing value the stop replaced', async () => {
+      w.consultation.processingPrior = 'AWAITING_REVIEW';
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+      expect(w.consultationRepository.setProcessing).toHaveBeenCalledWith(CID, 'AWAITING_REVIEW', { prior: null });
+      expect(lifecycleFrames()[0]!.event).toMatchObject({ type: 'transcript_final', processing: 'AWAITING_REVIEW' });
+    });
+
+    it('a second final (or one after the note started) changes nothing: only FINALIZING_TRANSCRIPT is restored', async () => {
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+      w.consultation.processing = 'SUMMARIZING';
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+      expect(w.consultationRepository.setProcessing).toHaveBeenCalledTimes(1);
+      expect(lifecycleFrames()).toHaveLength(1);
+    });
+
+    it('while the stop still waits in awaitFinal, the stop restores — the final does not', async () => {
+      const waiting = w.service.awaitFinal(CID, [SID], 2_000);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(w.redis.store.has(stopAwaitingFinalRedisKey(CID))).toBe(true);
+
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+
+      expect(await waiting).toBe('complete');
+      expect(w.consultationRepository.setProcessing).not.toHaveBeenCalled();
+      expect(lifecycleFrames()).toHaveLength(0);
+      expect(w.redis.store.has(stopAwaitingFinalRedisKey(CID))).toBe(false);
+    });
+
+    it('once the stop gave up waiting (pending), the late final restores', async () => {
+      expect(await w.service.awaitFinal(CID, [SID], 30)).toBe('pending');
+      expect(w.redis.store.has(stopAwaitingFinalRedisKey(CID))).toBe(false);
+
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+      expect(w.consultation.processing).toBe('IDLE');
+    });
+
+    it('never on a consultation that is not STOPPED', async () => {
+      w.consultation.status = ConsultationStatus.RECORDING;
+      await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+      expect(w.consultationRepository.setProcessing).not.toHaveBeenCalled();
+    });
   });
 
   it('returns no transcript (segmentCount 0) when the consultation has no segments', async () => {
