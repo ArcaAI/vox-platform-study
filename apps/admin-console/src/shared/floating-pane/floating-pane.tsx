@@ -29,9 +29,9 @@
  *    on a laptop. The clamp is display-only: the saved preference is left alone, so the author's
  *    own layout comes back on a bigger window. "Reset layout" restores the defaults, and a
  *    double-click on the header snaps the pane back to its edge.
- *  - **Reports its footprint** (R-C #1): `onFootprintChange` hears how far the pane reaches in
- *    from the stage's left / right edge, so the canvas can keep its zoom controls, minimap and
- *    fit clear of it. A collapsed pane, an unmounted one and the stacked (below `md`) layout report
+ *  - **Reports its footprint** (R-C #2): `onFootprintChange` hears how far the pane reaches in
+ *    from the stage's left / right edge, so the canvas can fit its graph clear of it. (Nothing
+ *    POSITIONS itself off it: the canvas chrome is anchored — owner, 2026-10-05.) A collapsed pane, an unmounted one and the stacked (below `md`) layout report
  *    none.
  *
  * Geometry reaches CSS through custom properties (`--fp-x`, …), because the numbers are runtime

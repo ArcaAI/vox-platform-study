@@ -230,9 +230,10 @@ export interface WorkflowCanvasProps {
   fitViewKey?: number;
   /**
    * TASK-1036 R-C — how much of the canvas, in px from each edge, something floats over (the
-   * Studio's docked palette and inspector). The zoom controls and the minimap move in by it, and
-   * `fitView` fits into the rectangle that is left, so neither the chrome nor the graph's ends sit
-   * under a pane. Absent = nothing floats over the canvas.
+   * Studio's docked palette and inspector). `fitView` fits into the rectangle that is left, so the
+   * graph's ends never sit under a pane. It never moves any control: the zoom controls and the
+   * minimap are anchored in a bottom-centre dock (owner, 2026-10-05). Absent = nothing floats over
+   * the canvas.
    */
   viewportInsets?: WorkflowCanvasInsets;
   /**

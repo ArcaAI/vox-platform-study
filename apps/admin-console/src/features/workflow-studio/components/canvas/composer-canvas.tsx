@@ -24,8 +24,9 @@
  * validation findings, the run overlay, the multi-selection and `fitViewKey`.
  *
  * TASK-1036 review R-C #1/#2/#9: `viewportInsets` (how far the studio's docked panes reach in) is
- * handed to the canvas — its controls, minimap and fit stay clear of the panes — and the canvas's
- * own chrome ("Add a step", the "Can't connect" status) is laid out in the free band between them.
+ * handed to the canvas for its FIT only. Every piece of chrome — the canvas's zoom controls and
+ * minimap, and this composer's "Add a step" and "Can't connect" status — is ANCHORED to the canvas
+ * and never moves when a pane moves, resizes, collapses or opens (owner, 2026-10-05).
  * `wheelZoom` passes through; a read-only canvas with none (the Test tab's Flow) lets the wheel
  * scroll the page and zooms on Ctrl/⌘+wheel.
  */
@@ -88,18 +89,14 @@ export interface ComposerCanvasProps {
   onSelectionChange?: (nodeIds: string[]) => void;
   fitViewKey?: number;
   emptyState?: ReactNode;
-  /** R-C #1/#2 — px each docked pane reaches in from the canvas's left / right edge. */
+  /** R-C #2 — px each docked pane reaches in from the canvas's left / right edge; shapes the fit only. */
   viewportInsets?: WorkflowCanvasInsets;
   /** R-C #9 — what the wheel does (the canvas defaults a read-only one to `modifier`). */
   wheelZoom?: 'scroll' | 'modifier';
   className?: string;
 }
 
-/**
- * Where "Add a step" sits within its band. R-C #1: the band is the FREE strip between the docked
- * panes (`left` / `right` = their footprints), so the corner or the centre is measured there rather
- * than across the whole canvas.
- */
+/** Where "Add a step" sits along the canvas's top edge — fixed, never measured from a pane. */
 const ADD_STEP_PLACEMENT: Record<NonNullable<ComposerCanvasProps['addStepPlacement']>, string> = {
   'top-left': 'justify-start',
   'top-center': 'justify-center',
@@ -136,8 +133,6 @@ export function ComposerCanvas({
   wheelZoom,
   className,
 }: ComposerCanvasProps) {
-  const insetLeft = viewportInsets?.left ?? 0;
-  const insetRight = viewportInsets?.right ?? 0;
   const storeApi = useGraphStoreApi();
   const nodes = useGraphStore(selectNodes);
   const edges = useGraphStore(selectEdges);
@@ -428,8 +423,7 @@ export function ComposerCanvas({
       {!readOnly ? (
         <div
           data-slot="composer-add-step"
-          className={`pointer-events-none absolute top-2 z-10 flex px-2 ${ADD_STEP_PLACEMENT[addStepPlacement]}`}
-          style={{ left: insetLeft, right: insetRight }}
+          className={`pointer-events-none absolute inset-x-0 top-2 z-10 flex px-2 ${ADD_STEP_PLACEMENT[addStepPlacement]}`}
         >
           <Button type="button" size="sm" variant="secondary" className="shadow-raised pointer-events-auto" onClick={openAddMenu}>
             <IconPlus aria-hidden="true" />
@@ -437,13 +431,9 @@ export function ComposerCanvas({
           </Button>
         </div>
       ) : null}
-      {/* R-C #1 — centred in the FREE band, under "Add a step": never under a docked pane, and clear
-          of the zoom controls (bottom-left) and the minimap (bottom-right) a bottom corner shares. */}
-      <div
-        data-slot="composer-announcement"
-        className="pointer-events-none absolute top-12 z-10 flex justify-center px-2"
-        style={{ left: insetLeft, right: insetRight }}
-      >
+      {/* Anchored under "Add a step", centred on the canvas and clear of the bottom-centre
+          controls dock; it never follows a pane. */}
+      <div data-slot="composer-announcement" className="pointer-events-none absolute inset-x-0 top-12 z-10 flex justify-center px-2">
         <p role="status" aria-live="polite" className={announcement ? 'bg-background/95 text-foreground max-w-sm rounded-md border px-3 py-1.5 text-xs shadow-raised' : 'sr-only'}>
           {announcement}
         </p>

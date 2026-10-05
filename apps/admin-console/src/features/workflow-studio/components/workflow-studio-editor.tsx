@@ -44,10 +44,11 @@
  * studio holds a minimum height (`md:min-h-[40rem]`): on a short window the shell scrolls instead
  * of squeezing the canvas to nothing. Never two nested scroll containers (rule 11 §1).
  *
- * PANES AND THE CANVAS (R-C #1/#2). Each floating pane reports its footprint (how far it reaches
- * in from the stage's edge); the canvas gets the widest per side as `viewportInsets`, so its zoom
- * controls, minimap, "Add a step" and fit stay in the free band between the panes — keyboard
- * focus on Zoom never lands under a pane and so never makes one yield.
+ * PANES AND THE CANVAS (R-C #2; owner, 2026-10-05). Each floating pane reports its footprint (how
+ * far it reaches in from the stage's edge); the canvas gets the widest per side as
+ * `viewportInsets`, which shapes its FIT only — the graph fits into the band the panes leave free.
+ * No control follows a pane: the zoom controls and minimap sit in an anchored bottom-centre dock
+ * and "Add a step" at the top centre, whatever the panes do (a moved pane floats above them).
  *
  * DECLUTTER (R-C #13). The header keeps the switcher, "Edit as new draft" (read-only) and the ⋯
  * menu, which holds the rare actions: New, Edit details, Clone, Template, Import. The toolbar's
@@ -219,8 +220,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const hidePhi = useGraphStore(selectHidePhi);
 
   /**
-   * R-C #1/#2 — each floating pane's footprint (px it reaches in from the stage's left / right
-   * edge). The canvas is inset by the widest per side. Callbacks are stable per pane id so a pane's
+   * R-C #2 — each floating pane's footprint (px it reaches in from the stage's left / right
+   * edge). The canvas FITS into what the widest per side leaves; no control position reads it. Callbacks are stable per pane id so a pane's
    * report effect does not re-run on every render of this editor.
    */
   const [footprints, setFootprints] = useState<Readonly<Record<string, FloatingPaneFootprint>>>({});
