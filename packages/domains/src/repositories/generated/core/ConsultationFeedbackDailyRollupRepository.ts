@@ -54,4 +54,27 @@ export class ConsultationFeedbackDailyRollupRepository extends Repository<Consul
     });
     return models.map((model: ConsultationFeedbackDailyRollup) => (this as any)._mapper.toDomainEntity(model));
   }
+  /**
+   * The tenant's rollup rows for days in `[from, to]`, optionally narrowed by agent slug and/or
+   * model name, bounded by `limit` source rows. Read-only; counts and dimensions only.
+   */
+  async findForReport(
+    tenantId: string,
+    from: Date,
+    to: Date,
+    filters: { agentSlug?: string; modelName?: string },
+    limit: number,
+  ): Promise<ConsultationFeedbackDailyRollupEntity[]> {
+    const models = await (this as any).db.findMany({
+      where: {
+        tenantId,
+        day: { gte: from, lte: to },
+        ...(filters.agentSlug ? { agentSlug: filters.agentSlug } : {}),
+        ...(filters.modelName ? { modelName: filters.modelName } : {}),
+      },
+      orderBy: [{ day: 'asc' }],
+      take: limit,
+    });
+    return models.map((model: ConsultationFeedbackDailyRollup) => (this as any)._mapper.toDomainEntity(model));
+  }
 }
