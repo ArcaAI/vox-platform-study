@@ -1,0 +1,34 @@
+{
+  "$comment": "Inline citation labels in a generated note ([S7 E1], [S8], [A2], [S4 E1 Patient 00:12]) and their removal for EMR / export text. The stored HOPE note, its versions and the console keep the labels; only text leaving HOPE for an EMR (Copy to EMR, Copy note, export) is stripped. Implementations: @arcaai/types citation-labels.ts (TS, re-exported by both SDKs), the ALaaS svc and web_ui ports, and the harness coverage regex (apps/harness/src/harness/services/note_plan/coverage.py _BRACKETED_LABEL). Every implementation must reproduce every case exactly.",
+  "version": 1,
+  "label": {
+    "pattern": "\\[[SAR]\\d+(?:[ \\t][^\\]\\n]*)?\\]",
+    "description": "A bracket that opens with S|A|R + digits (segment, attachment, recap source), optionally followed by a space and any text up to the closing bracket on the same line. Case-sensitive. Anything else in brackets is not a label."
+  },
+  "strip": {
+    "steps": [
+      "1. Leading labels: multiline replace ^([ \\t]*)(?:LABEL[ \\t]*)+ with $1 (keep the indentation, drop the labels and the spaces after them).",
+      "2. Every remaining label: replace [ \\t]*LABEL with the empty string (drop the label and the spaces before it).",
+      "Nothing else changes: line breaks, blank lines, markdown and other brackets are kept byte for byte."
+    ]
+  },
+  "labels": {
+    "description": "labelsOf(text) returns the inner text of every label occurrence, in order, not de-duplicated (what a hover chip shows)."
+  },
+  "cases": [
+    { "name": "trailing label before a full stop", "input": "Blood pressure noted as 150/95 at the initial visit [S7 E1].", "stripped": "Blood pressure noted as 150/95 at the initial visit.", "labels": ["S7 E1"] },
+    { "name": "two trailing labels", "input": "Metformin increased to 1000 mg twice daily [S3 E2] [S4 E2]", "stripped": "Metformin increased to 1000 mg twice daily", "labels": ["S3 E2", "S4 E2"] },
+    { "name": "label with speaker and time mid-sentence", "input": "Allergic to penicillin [S4 E1 Patient 00:12], causes rash.", "stripped": "Allergic to penicillin, causes rash.", "labels": ["S4 E1 Patient 00:12"] },
+    { "name": "bullets with bare and attachment labels", "input": "- ECG normal [S1]\n- Troponin 12 ng/L [A2]", "stripped": "- ECG normal\n- Troponin 12 ng/L", "labels": ["S1", "A2"] },
+    { "name": "leading label", "input": "[S2 E1] Chest tightness for two days.", "stripped": "Chest tightness for two days.", "labels": ["S2 E1"] },
+    { "name": "several leading labels keep indentation", "input": "  [S1][S2 E1] item", "stripped": "  item", "labels": ["S1", "S2 E1"] },
+    { "name": "label between words", "input": "BP [S7 E1] 150/95 today", "stripped": "BP 150/95 today", "labels": ["S7 E1"] },
+    { "name": "label glued to a word", "input": "dose[S3] confirmed", "stripped": "dose confirmed", "labels": ["S3"] },
+    { "name": "markdown heading", "input": "## Plan [S9 E2]\nReview in four weeks [S11 E2].", "stripped": "## Plan\nReview in four weeks.", "labels": ["S9 E2", "S11 E2"] },
+    { "name": "recap source label", "input": "Recap reviewed [R1].", "stripped": "Recap reviewed.", "labels": ["R1"] },
+    { "name": "blank lines and paragraphs kept", "input": "Subjective [S1]\n\nObjective [S2]\n", "stripped": "Subjective\n\nObjective\n", "labels": ["S1", "S2"] },
+    { "name": "non-labels untouched", "input": "Range [normal], fact [E1-F2], lower [s1], word [Sx], link [S](x)", "stripped": "Range [normal], fact [E1-F2], lower [s1], word [Sx], link [S](x)", "labels": [] },
+    { "name": "label text does not cross a line break", "input": "Open [S5 E1\nnot closed]", "stripped": "Open [S5 E1\nnot closed]", "labels": [] },
+    { "name": "empty", "input": "", "stripped": "", "labels": [] }
+  ]
+}

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** — merged into `dev-2.2` (hope-v2) and `refactor-hope-integaration` (ALaaS); single gate green; live two-encounter proof run; owner confirmations open (§5) |
+| Status | **In Progress** — wave 6 (owner decisions D-35…D-40, open hand-overs, ALaaS on the 5.x handle; `planning/WAVE-6.md`); waves 1–5 merged and gated green |
 | Type | feature (multi-repo) |
 | Repos | `hope-v2` (`dev-2.2`), `ALaaSv3.0` (`refactor-hope-integaration`; merge target confirmed at merge time), `hope-v2-deployment` (`main`, local) |
 | Owner go | 2026-10-05: "approve the recommendations and the plan … you can go ahead" |
@@ -193,19 +193,25 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-32 | Warm start in the note plan: `HarnessPolicy.warmStartEnabled` (tenant → SYSTEM) gates the previous **AI** draft block (`draft_ai`) — only an explicit `true` carries it; no opinion means OFF, matching the platform's existing reading of the key; clinician-edited sections (`draft_clinician`) are ALWAYS carried, because dropping a clinician's edit loses information. The live-snapshot text is never an input (P-E). Orchestrator decision 2026-10-05, found by the AB-8e sweep — owner to confirm. |
 | D-33 | Tokenizer tiers (amends D-23): the engine's exact count (LM Studio `tokenize` on the loaded model), else the conservative estimate `ceil(utf8Bytes/2)` (recorded `mode=estimate`). The Hugging Face `hf_hub_download` tier is REMOVED — apps/text's no-serving invariant forbids fetching model artifacts there (they live in MinIO, loaded by inference services). Found by the gate (`test_no_serving_invariant`). Orchestrator decision 2026-10-05. |
 | D-34 | A written final note leaves processing `IDLE` with `processingReason = NOTE_READY` (also after `finalizeAssurance`). `AWAITING_REVIEW` stays reserved for coverage gaps and escalations (the harness gate queue reads it as "escalated"). For older clients without `X-Hope-Lifecycle: 2`, `STOPPED + IDLE + NOTE_READY` projects to `PENDING_REVIEW` (the old "note ready" moment); `STOPPED + IDLE` with no note yet stays `DRAINING`. Found by the e2e gate (ALaaS 4.1 would otherwise read DRAINING with a ready note). Orchestrator decision 2026-10-05 — owner to confirm. |
+| D-35 | **Owner confirmed D-32, D-33 and D-34** (2026-10-05, "following the recommendations"). D-34 consequences: one helper `isNoteReady(state)` in `@arcaai/types` (re-exported by both SDKs) — note ready = `STOPPED` and either `IDLE` + `processingReason NOTE_READY` or `AWAITING_REVIEW` (a written note a human must look at); legacy `PENDING_REVIEW` normalises to `IDLE` + `NOTE_READY`; the console shows a "Note ready" chip; every doc that said "note ready = STOPPED + AWAITING_REVIEW" is corrected (rule 08, changeset, SDK READMEs/JSDoc). |
+| D-36 | **SDK bump stays `major`.** Whether 5.0.0 ships from TASK-1045 now or waits for TASK-1039 (D-19) is decided at release time, after implementation; the ALaaS 5.x pin + lockfile land with that release. |
+| D-37 | **Sunset:** `Sun, 31 Jan 2027`, removeIn `R5`, AND removal only after 30 consecutive days of zero requests on `hope_api_deprecated_requests_total` for the route (new gateway counter). |
+| D-38 | **Citation labels** stay in the stored note, its versions, history and the console; they are stripped only from text leaving HOPE for an EMR (ALaaS Copy to EMR, Copy note, export). ALaaS shows them as hover chips. One contract: `tests/contracts/citation-labels.fixture.json`. A Copy to EMR whose text differs from the note only by labels is not a correction. |
+| D-39 | **H-164 provider envelope** → its own ticket TASK-1046 (per-provider normalisation + contract tests); not in TASK-1045. |
+| D-40 | **E2E only after all implementation** (owner, 2026-10-05). |
 
 ## 5. Open questions
 
 | # | Question | Default until answered |
 |---|---|---|
 | Q-2 | Cluster rollout of the deployment change | Local `main` commit only; owner pushes |
-| Q-3 | D-32 warm start gates `draft_ai`, clinician edits always carried | as implemented |
-| Q-4 | D-33 tokenizer tiers: engine exact, else estimate (no HF hub download in apps/text) | as implemented |
-| Q-5 | D-34 a written note reads `PENDING_REVIEW` to older clients (`NOTE_READY` reason) | as implemented |
-| Q-6 | SDK changeset bump `major` for vox / vox-node / types (H-123) | `major`, rides 5.0.0 |
-| Q-7 | Sunset of the deprecated aliases: `Sun, 31 Jan 2027`, removeIn `R5` (H-124) | placeholder |
-| Q-8 | Inline citation labels (`[S4 E1]`) in the note text copied to the EMR (H-165) | kept |
-| Q-9 | Text-service `json_schema` envelope on non-LM-Studio providers (H-164, pre-existing) | follow-up ticket |
+| Q-3 | D-32 warm start gates `draft_ai`, clinician edits always carried | answered — D-35 |
+| Q-4 | D-33 tokenizer tiers: engine exact, else estimate (no HF hub download in apps/text) | answered — D-35 |
+| Q-5 | D-34 a written note reads `PENDING_REVIEW` to older clients (`NOTE_READY` reason) | answered — D-35 |
+| Q-6 | SDK changeset bump `major` for vox / vox-node / types (H-123) | answered — D-36 |
+| Q-7 | Sunset of the deprecated aliases: `Sun, 31 Jan 2027`, removeIn `R5` (H-124) | answered — D-37 |
+| Q-8 | Inline citation labels (`[S4 E1]`) in the note text copied to the EMR (H-165) | answered — D-38 (strip at the EMR boundary) |
+| Q-9 | Text-service `json_schema` envelope on non-LM-Studio providers (H-164, pre-existing) | answered — D-39 (TASK-1046) |
 
 ## 6. Implementation plan
 
@@ -284,3 +290,4 @@ Gemma 4 E2B (QAT Q4_0) in LM Studio at 32 768 / parallel 10, temperature 0; api,
 | 2026-10-05 | Wave 3 merged into `dev-2.2`: AB-3 (open = episode), AB-4a (lifecycle commands, session approve, events), AB-4b (auto-close idle/daily), AB-4c (harness processing axis), AB-5 (transcript record, `appendVersion`, batched Transit), C-SVC (attachments + audio sink + reaper), G-SVC (feedback), G-ROLL+MINE (rollup + feedback mining), E2 (activity run record), E4 (fact ledger + structured recap v2, D-30/D-31), D1 (history read service). ALaaS: F2, F6, F7, U2, U4, U7. Integration commit `ebf0ed464`: module composition (H-32/37/49/53/58/62/66/67/77/83/90) and a module cycle Summary → WorkflowExposure → Consultation → Lifecycle → Summary broken with a lazily resolved note signer (H-88). Applications + `apps/api` type-check clean; 179 modules, no import cycles. Diagnostic applications run: 41 legacy test files pin the removed vocabulary (AB-8a). NotePlan v1 contract fixture pinned (`88c29844c`); wave 4 launched (`planning/WAVE-4.md`): AB-6, CG-API, D2, E3, E5, D4b, AB-8a, AB-8c, ALaaS F0b; ALaaS U3 still running. |
 | 2026-10-05 | Wave 4 merged: AB-6 (lifecycle routes, events SSE, old-vocabulary projection, segment ingest), CG-API (+ G-READ rollup reader), D2 (history API), D4b (console `/consultations/[id]`), E3 (note composer + budget planner + note-plan delivery), E5 (harness executor + coverage + one repair, `workflow.patched("task-1045-note-plan")`), AB-8a/AB-8c (legacy sweeps; H-78 stop claim + offset stamp). ALaaS: U3 (live screen), F0b (`pausedTotalMs`). Orchestrator fixes: TranscriptRecord dependency moved to the lifecycle module (integration slip, H-104), list `processing` filter, console BFF sends `X-Hope-Lifecycle: 2`, console vitest alias. Diagnostics after merge: applications 349 → 24 failing tests (the rest load flakes or the residual legacy pins below), apps/api 4. Two production defects found by the sweep (H-119 close attribution, H-120 supersede rule) → lane LF. Wave 5 launched (`planning/WAVE-5.md`): E6, LF, E8, UI-BAND, D8, U8, AB-8b. |
 | 2026-10-05 | Wave 5 + gate: E6/E6b (note path end to end), LF (close attribution, supersede), E8 (golden set), D8 (docs/changeset), UI-BAND, AB-8b/d/e sweeps, E3b (warm start D-32), E5b (coverage normalisation), ALaaS U8/U9/FD1/F0b merged. Gate run once by the orchestrator; defects it found fixed (API boot DI, SSE interceptor, legacy approve 404, D-33 tokenizer, D-34 PENDING_REVIEW, Python regressions, lint). Live two-encounter proof on Gemma 4 E2B; LIVE-FIX/2/3 merged. Status → Review. |
+| 2026-10-05 | Owner confirmed the seven open decisions (D-35…D-39) and asked to finish TASK-1045 completely, e2e only after all implementation (D-40). Code-verified sweep of every open hand-over (most were done). Citation-label contract pinned (`tests/contracts/citation-labels.fixture.json`); wave 6 planned and launched (`planning/WAVE-6.md`): W6-SDK, W6-REFIN, W6-BE1, W6-BE2, W6-PY, W6-PROMPT, W6-F8, W6-CITE, W6-ALX. Status → In Progress. |
