@@ -317,11 +317,13 @@ test.describe('TASK-951 — a machine states the encounter once and HOPE maps ev
     );
   });
 
-  test('the event id is the encounter KEY — the same id re-opens the visit, a new id opens a new one (TASK-1020 D-1)', async ({ request }) => {
-    // This used to pin "the reference is a label, not a key". TASK-1020 D-1 reversed that: the
-    // encounter key is `(patientId, doctorId, externalRef)` whenever the caller sends an id, so a
-    // NEW id is a new visit. Ids are run-unique: an id belongs to exactly one patient in the tenant
-    // (409 `EXTERNAL_REF_CONFLICT`), so a literal would collide with an earlier run's patient.
+  test('the event id is the encounter KEY — the same id re-opens the visit, a new id appends an encounter (TASK-1045 D-3)', async ({ request }) => {
+    // This used to pin "the reference is a label, not a key"; TASK-1020 D-1 made the id the
+    // encounter key and a NEW id a new consultation. TASK-1045 D-3 keeps the id as the ENCOUNTER
+    // key but makes the consultation an episode: a new id APPENDS an encounter to the open
+    // consultation of the key (tenant, doctor, patient, department). Ids are run-unique: an id
+    // belongs to exactly one patient in the tenant (409 `EXTERNAL_REF_CONFLICT`), so a literal
+    // would collide with an earlier run's patient.
     const patient = patientId();
     const firstRef = `EVT-${Date.now()}-FIRST`;
     const secondRef = `EVT-${Date.now()}-SECOND`;
@@ -346,13 +348,27 @@ test.describe('TASK-951 — a machine states the encounter once and HOPE maps ev
     expect(context.status()).toBe(200);
     expect(((await context.json()) as Array<{ type: string }>).filter((item) => item.type === 'STRUCTURED')).toHaveLength(1);
 
-    // A NEW id is a new encounter of the same patient.
+    // A NEW id is a new encounter of the same patient — appended to the open consultation.
     const second = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload(secondRef) });
-    expect(second.status(), await second.text()).toBe(201);
+    expect([200, 201], await second.text()).toContain(second.status());
     const secondBody = await second.json();
-    expect(secondBody.id, 'a new encounter id opens a new consultation').not.toBe(firstBody.id);
-    expect(secondBody.isNew).toBe(true);
-    expect(secondBody.metadata?.externalRef).toBe(secondRef);
+    expect(secondBody.id, 'a new encounter id appends an encounter to the open consultation').toBe(firstBody.id);
+    expect(secondBody.isNew).toBe(false);
+    expect(secondBody.encounterAppended).toBe(true);
+    expect(secondBody.currentEncounterSeq).toBe(2);
+    const encounters = secondBody.encounters as Array<{ seq: number; externalRef: string | null; endedAt: string | null }>;
+    expect(encounters.map((e) => [e.seq, e.externalRef])).toEqual([
+      [1, firstRef],
+      [2, secondRef],
+    ]);
+    expect(encounters[0].endedAt, 'appending ends the previous encounter').toBeTruthy();
+
+    // Re-sending the FIRST id still finds its consultation, and appends nothing more.
+    const back = await request.post(OPEN, { headers: svcHeaders(svcToken), data: payload(firstRef) });
+    expect([200, 201], await back.text()).toContain(back.status());
+    const backBody = await back.json();
+    expect(backBody.id).toBe(firstBody.id);
+    expect(backBody.currentEncounterSeq).toBe(2);
   });
 
   // -- 2. The refusals -------------------------------------------------------
