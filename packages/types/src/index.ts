@@ -54,3 +54,4 @@ export * from './llm-egress.js';
 // Consultation lifecycle vocabulary: seven-value status + processing marker, lifecycle events,
 // capture/stop results, feedback, attachments and the activity (history) read model.
 export * from './consultation-lifecycle.js';
+export * from './citation-labels.js';

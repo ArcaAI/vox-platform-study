@@ -12,6 +12,8 @@ import {
   FEEDBACK_TARGET_KINDS,
   LEGACY_STATUS_MAP,
   LIFECYCLE_EVENT_TYPES,
+  isNoteReady,
+  NOTE_READY_REASON,
   normalizeLegacyConsultationStatus,
 } from '../consultation-lifecycle.js';
 
@@ -127,7 +129,6 @@ describe('legacy status normalisation', () => {
     ['RECORDING', 'RECORDING', 'IDLE'],
     ['DRAINING', 'STOPPED', 'FINALIZING_TRANSCRIPT'],
     ['DRAFT_PENDING_SENSORS', 'STOPPED', 'SUMMARIZING'],
-    ['PENDING_REVIEW', 'STOPPED', 'AWAITING_REVIEW'],
     ['SIGNED', 'APPROVED', 'IDLE'],
     ['TIMED_OUT', 'CLOSED_INCOMPLETE', 'IDLE'],
     ['CLOSED', 'CLOSED_COMPLETE', 'IDLE'],
@@ -135,6 +136,14 @@ describe('legacy status normalisation', () => {
     ['CLOSED_INCOMPLETE', 'CLOSED_INCOMPLETE', 'IDLE'],
   ])('%s -> %s / %s', (legacy, status, processing) => {
     expect(normalizeLegacyConsultationStatus(legacy)).toEqual({ status, processing });
+  });
+
+  it('maps PENDING_REVIEW to a ready note: STOPPED, IDLE, NOTE_READY', () => {
+    expect(normalizeLegacyConsultationStatus('PENDING_REVIEW')).toEqual({
+      status: 'STOPPED',
+      processing: 'IDLE',
+      processingReason: NOTE_READY_REASON,
+    });
   });
 
   it('lets an explicit processing value win over the implied one', () => {
@@ -154,5 +163,24 @@ describe('legacy status normalisation', () => {
 
   it('returns null for an unknown value', () => {
     expect(normalizeLegacyConsultationStatus('NOPE')).toBeNull();
+  });
+});
+
+describe('isNoteReady', () => {
+  it('is true for STOPPED + IDLE + NOTE_READY and for STOPPED + AWAITING_REVIEW', () => {
+    expect(isNoteReady({ status: 'STOPPED', processing: 'IDLE', processingReason: 'NOTE_READY' })).toBe(true);
+    expect(isNoteReady({ status: 'STOPPED', processing: 'AWAITING_REVIEW' })).toBe(true);
+  });
+
+  it('is false otherwise', () => {
+    expect(isNoteReady({ status: 'STOPPED', processing: 'IDLE' })).toBe(false);
+    expect(isNoteReady({ status: 'STOPPED', processing: 'IDLE', processingReason: null })).toBe(false);
+    expect(isNoteReady({ status: 'STOPPED', processing: 'SUMMARIZING', processingReason: 'NOTE_READY' })).toBe(false);
+    expect(isNoteReady({ status: 'APPROVED', processing: 'IDLE', processingReason: 'NOTE_READY' })).toBe(false);
+    expect(isNoteReady({ status: 'OPEN', processing: 'AWAITING_REVIEW' })).toBe(false);
+  });
+
+  it('treats a normalised PENDING_REVIEW as ready', () => {
+    expect(isNoteReady(normalizeLegacyConsultationStatus('PENDING_REVIEW')!)).toBe(true);
   });
 });
