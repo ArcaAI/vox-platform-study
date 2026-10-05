@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import type { AcceptedCorrectionProposal } from '../endpoint/dto/endpoint.request';
 import { requestIdHeader } from '../../../common/internal-service-headers';
-import type { NotePlanRef } from '../note-composition/note-plan.types';
+import type { NotePlanRef, NotePlanV1 } from '../note-composition/note-plan.types';
 
 /**
  * Context for starting a durable harness document workflow. `tenantId` is
@@ -184,7 +184,10 @@ export interface HarnessEvalCaseInput {
 
 /** Body for `POST /api/v1/internal/eval/run`. */
 export interface HarnessEvalRunInput {
-  goldenSet: {
+  /** Absent ⇒ `pdsqi`. `note_completeness` runs composed note plans against a multi-encounter set. */
+  mode?: 'pdsqi' | 'note_completeness';
+  /** Required for `pdsqi`; absent for `note_completeness`. */
+  goldenSet?: {
     version: string;
     name?: string;
     description?: string;
@@ -195,6 +198,15 @@ export interface HarnessEvalRunInput {
   promptVersionNumber?: number | null;
   /** PDSQI-only by default (faithfulness needs a claim extractor/verifier). */
   noFaithfulness?: boolean;
+  /** `note_completeness` only: thresholds come from the settings registry, never constants. */
+  noteCompleteness?: {
+    version: string;
+    name?: string;
+    tenantId: string;
+    thresholds: { criticalFactRecallMin: number; doseAccuracyMin: number; unsupportedRateMax: number; latencyP95MaxMs: number };
+    temperature: number | null;
+    cases: { caseId: string; reference: unknown; plan: NotePlanV1 }[];
+  };
 }
 
 /** One flattened (case, metric) score row returned by the harness endpoint. */

@@ -7,7 +7,7 @@ import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/excepti
 import { IActiveUserContext } from '../../interfaces';
 import { BaseService } from '../../common/base.service';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { HarnessGatewayService, type HarnessEvalRunInput, type HarnessEvalRunResult } from '../consultation/harness/harness-gateway.service';
+import { HarnessGatewayService, type HarnessEvalRunResult } from '../consultation/harness/harness-gateway.service';
 import { FACT_LEDGER_SCHEMA, computeInputDigest, ledgerFactSchema, type FactLedgerV1 } from '../consultation/fact-ledger/fact-ledger.schema';
 import {
   composeFromSnapshot,
@@ -335,8 +335,7 @@ export class EvalRunService extends BaseService {
     let harnessError: string | undefined;
     try {
       result = request
-        ? // The gateway's request type still names only the PDSQI body; the harness accepts both.
-          await this.harnessGateway.runEval(request as unknown as HarnessEvalRunInput)
+        ? await this.harnessGateway.runEval(request)
         : await this.harnessGateway.runEval({
             goldenSet: {
               version: set.pinnedVersion ?? 'v0',
