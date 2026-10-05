@@ -1,6 +1,6 @@
 # TASK-1036 — Hope Prompt, agent configuration, workflow management, Studio and lifecycle
 
-**Status:** In Progress. Owner approved the plan, all decisions (§4) and the UX prototype on 2026-10-04. Wave A is starting (§5.4).
+**Status:** Review. Programme merged into dev-2.2, gated and live-proven on 2026-10-05 (§6.15–§6.17). Not pushed; cluster rollout after the owner pushes.
 **Type:** feature + refactor (with three lifecycle bugfixes)
 **Branch:** dev-2.2
 **Raised:** 2026-10-04
@@ -1098,6 +1098,21 @@ Live browser re-check (1440×900, super admin acting on Global): Studio shows "S
 
 Also fixed after the walkthrough: the step-ID copy button works on a published version (it sat inside the read-only `<fieldset>`), and the Studio breadcrumb shows the workflow name instead of its id.
 
+### 6.17 Final gate (orchestrator, 2026-10-05, after every merge incl. TASK-1041/1042/1043/1044)
+
+| Step | Result |
+|---|---|
+| TS lint (32 packages), TS typecheck | green (typecheck initially red on TASK-1043's `import.meta.glob` test — rewritten, `fe47d7d1a`) |
+| Python lint, mypy (harness, text) | green |
+| docs / openapi / portal / vox-node admin / gen:model / gen:entity / gen:factory / env:sync / python-env-surface checks | green |
+| TS unit (root vitest, `.env.test`) | 30,837 passed, 2 failed → the WS v2 frame tests saw the new connect ping; updated (`ae3e9a48b`), 4/4 |
+| vox, console (4,506), ui, vox-node | green (one console test failed only under full-suite CPU load in the first pass; 44/44 alone) |
+| py-workflow-contract, harness (incl. replay) | green |
+| text | 2,059 passed, 1 failed: `test_task990_health_contract::test_health_reports_the_build_info_version` — passes alone 9/9 and in the earlier gate; order-dependent build-info read, untouched by this programme |
+| Re-run after TASK-1042's post-gate commits (`c04d05eec`, `d12a90444`) | workflow-contract + contracts + api streaming/workflows 2,592/2,592; vox-node 712/712; py-workflow-contract 191; console Studio + shared 1,837/1,837; api/console/vox-node typecheck and lint exit 0 |
+| API e2e (run by the TASK-1042 session on dev-2.2 `c04d05eec`, non-watch test API, no reset) | 1,436 passed, 82 skipped, 2 failed: `task-933-service-account-consultation` (no harness on the test stack — environmental, as in §6.15) and `task-959-usage-surface` (shared state under parallel workers; passes alone 5/5) |
+| Live | OD-35 15/15; load test TASK-1038 §4.1; browser walkthrough §6.16; TASK-1042 live audio proof (its README) |
+
 ## 8. Discussion round 2 (2026-10-04)
 
 ### 8.1 Owner directions received
@@ -1484,3 +1499,4 @@ The data each event needs:
 | 2026-10-04 | **Owner approved** the plan, every recommendation, W1–W6, the ticket split and the prototype. §4 rewritten as the final decision register. §5 rewritten as the cross-ticket programme (TASK-1036/1038/1039, with 1040 separate): agent tier map, lane rules, waves A–D with file ownership, a 16.8M-token budget, and the verification list. OD-15 moved into scope (C3), because the approved prototype makes microphone input and attachments first-class. TASK-1037 was already taken by a parallel Prisma-8 session, so the split tickets are 1038–1040. Status → In Progress. |
 | 2026-10-04 | **Owner correction:** lanes must not run any gating test. Briefs for A1 and B1 (replay-compat), B5 ("all seed tests green") and the B4 follow-up (full `apps/text` suite) violated this. All running lanes were told to stop broad runs and keep to their own test files. §5.3 rules 3–4 were rewritten. The orchestrator's gate pass runs once, after the complete merge. Earlier lane-reported suite counts stay recorded as lane data, not as gate evidence. |
 | 2026-10-05 | OD-35/36/37 answered (OD-35 + clinician follow-up merged; OD-37 → TASK-1042). Peer tickets 1041/1043/1044 reviewed and merged. Live proof on the dev stack: OD-35 15/15; six live defects fixed (L-1 result loss for API-key runs, L-2 tag suggestions 400, L-3 keyboard rows, L-4..L-6 canvas/axe/tags). Owner UX fix-up: Prompts rename, plain-words agent screens and wizard, fixed canvas controls, panes keep size (incl. the focus-yield collapse), friendly step names. §6.16. |
+| 2026-10-05 | Final gate after all merges (§6.17): green apart from two order/load-dependent flakes that pass alone; e2e 1,436 passed, 2 known environmental/shared-state failures. Lane worktrees removed after merge. Status → Review. |
