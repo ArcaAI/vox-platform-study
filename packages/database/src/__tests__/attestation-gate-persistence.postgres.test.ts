@@ -11,7 +11,7 @@
  *      reads back intact.
  *   2. An `ATTEST` `HarnessAuditEvent` referencing that version persists
  *      (action enum + contextItemVersionId FK accepted) and reads back.
- *   3. `Consultation.status` flips to `SIGNED`.
+ *   3. `Consultation.status` flips to `APPROVED`.
  *   4. The ATTEST audit row CANNOT be UPDATEd / DELETEd by the app role
  *      (WORM — REVOKE UPDATE, DELETE) → the signed record cannot be tampered
  *      with or silently bypassed after the fact.
@@ -107,7 +107,7 @@ afterAll(async () => {
 });
 
 describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
-  it('persists a SIGNED_NOTE version + ATTEST audit event and flips the consultation to SIGNED', (ctx) => {
+  it('persists a SIGNED_NOTE version + ATTEST audit event and flips the consultation to APPROVED', (ctx) => {
     if (!available || !seed) return ctx.skip();
     return (async () => {
       const versionId = randomUUID();
@@ -149,8 +149,8 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
           [auditId, seed!.tenantId, seed!.consId, versionId, clinicianId, attestationHash, '0'.repeat(64), hex64()],
         );
 
-        // 3. Consultation lifecycle → SIGNED.
-        const upd = await admin.query(`UPDATE core."Consultation" SET "status" = 'SIGNED'::core."ConsultationStatus" WHERE "id" = $1`, [
+        // 3. Consultation lifecycle → APPROVED.
+        const upd = await admin.query(`UPDATE core."Consultation" SET "status" = 'APPROVED'::core."ConsultationStatus" WHERE "id" = $1`, [
           seed!.consId,
         ]);
         expect(upd.rowCount).toBe(1);
@@ -175,7 +175,7 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
         expect(a.rows[0].attestationHash).toBe(attestationHash);
 
         const c = await admin.query(`SELECT "status"::text AS status FROM core."Consultation" WHERE "id" = $1`, [seed!.consId]);
-        expect(c.rows[0].status).toBe('SIGNED');
+        expect(c.rows[0].status).toBe('APPROVED');
       } finally {
         await admin.query('ROLLBACK');
       }
