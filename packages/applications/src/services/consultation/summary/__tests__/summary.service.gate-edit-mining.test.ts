@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { ConsultationEntity, ConsultationStatus } from '@arcaai/domains';
 
 vi.mock('@arcaai/domains', async () => {
@@ -80,7 +81,7 @@ const makeMocks = () => ({
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         createdBy: 'user-1',
-        status: ConsultationStatus.PENDING_REVIEW,
+        status: ConsultationStatus.STOPPED,
         version: 1,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
@@ -101,8 +102,8 @@ const makeMocks = () => ({
 });
 
 /** Builds SummaryService with the mining queue in the LAST (trailing) slot. */
-const build = (m: ReturnType<typeof makeMocks>, miningQueue?: unknown) =>
-  new SummaryService(
+const build = (m: ReturnType<typeof makeMocks>, miningQueue?: unknown) => {
+  const service = new SummaryService(
     m.contextItemRepository as never,
     m.consultationRepository as never,
     m.summaryMetaRepository as never,
@@ -131,6 +132,10 @@ const build = (m: ReturnType<typeof makeMocks>, miningQueue?: unknown) =>
     undefined, // phiRedactor
     miningQueue as never, // gateEditMiningQueue
   );
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
+};
 
 describe('SummaryService.approveSummary — gate-edit mining enqueue (W1)', () => {
   let m: ReturnType<typeof makeMocks>;
@@ -179,8 +184,9 @@ describe('SummaryService.approveSummary — gate-edit mining enqueue (W1)', () =
   });
 
   it('does not enqueue on the idempotent replay of an already-approved summary', async () => {
-    // An already-signed item returns early — re-mining it would rewrite the
-    // exemplar for an encounter whose signature did not change.
+    // An already-approved consultation answers the existing signature — re-mining it would
+    // rewrite the exemplar for an encounter whose signature did not change.
+    m.consultationRepository.findById.mockResolvedValue(Object.assign(await m.consultationRepository.findById(), { status: ConsultationStatus.APPROVED }));
     m.contextItemVersionRepository.getVersionsByChangeReason.mockResolvedValueOnce([
       { changedBy: 'doctor-1', createdAt: new Date('2026-06-15T00:00:00.000Z') },
     ]);

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { ConsultationEntity, ConsultationStatus } from '@arcaai/domains';
 
 vi.mock('@arcaai/domains', async () => {
@@ -20,6 +21,7 @@ vi.mock('@arcaai/domains', async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       CreateSignedNoteVersion: vi.fn((props: any) => ({
         ...props,
+        changedBy: props.attestedBy,
         id: 'signed-1',
         changeReason: 'approved',
         createdAt: new Date('2026-06-15T00:00:00.000Z'),
@@ -58,7 +60,7 @@ const consultationWith = (metadata: unknown) =>
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     createdBy: 'user-1',
-    status: ConsultationStatus.PENDING_REVIEW,
+    status: ConsultationStatus.STOPPED,
     version: 1,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
@@ -122,7 +124,10 @@ const build = (m: Mocks, overrides: { workflowExposure?: unknown; workflowDefini
   args[13] = m.harnessGateway;
   args[35] = 'workflowExposure' in overrides ? overrides.workflowExposure : m.workflowExposure;
   args[36] = 'workflowDefinitionRepository' in overrides ? overrides.workflowDefinitionRepository : m.workflowDefinitionRepository;
-  return new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  const service = new SummaryService(...(args as ConstructorParameters<typeof SummaryService>));
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
 };
 
 describe('approveSummary — the harness-doc approval signal targets only the default engine (TASK-1022 R2)', () => {

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { wireSessionApproval } from './session-approval.fixture';
 import { DNA_MEMORY_CAPTURE_EVENT } from '../../../dna-writing-style/dna-memory.events';
 import { ConsultationEntity } from '@arcaai/domains';
 
@@ -81,7 +82,7 @@ const makeMocks = () => ({
         createdAt: new Date('2026-01-01'),
         updatedAt: new Date('2026-01-01'),
         createdBy: 'user-1',
-        status: 'PENDING_REVIEW',
+        status: 'STOPPED',
         version: 1,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any),
@@ -106,8 +107,8 @@ const makeMocks = () => ({
   harnessPolicy: { resolveTextSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
 });
 
-const build = (m: ReturnType<typeof makeMocks>) =>
-  new SummaryService(
+const build = (m: ReturnType<typeof makeMocks>) => {
+  const service = new SummaryService(
     m.contextItemRepository as any,
     m.consultationRepository as any,
     m.summaryMetaRepository as any,
@@ -124,6 +125,10 @@ const build = (m: ReturnType<typeof makeMocks>) =>
     undefined, // harnessGatewayService
     m.harnessPolicy as any, // harnessPolicyService
   );
+  // approveSummary delegates to the session approve; wire the real one behind ModuleRef.
+  wireSessionApproval(service);
+  return service;
+};
 
 describe('SummaryService — TASK-1034 DNA memory capture hook', () => {
   let m: ReturnType<typeof makeMocks>;
