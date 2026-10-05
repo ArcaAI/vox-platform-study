@@ -7,11 +7,9 @@
  *
  * TASK-1045: `ConsultationService.closeConsultation` is a deprecated alias that DELEGATES to
  * `IConsultationLifecycleService.close` (pinned in the first block). The named-clinician rule
- * therefore belongs to the lifecycle close, and the second block pins it there. Those cases are
- * `it.fails`: the lifecycle close attributes the close to `caller.userId ?? clinicianUserId`
- * without validating the named clinician and writes no WORM close row — a defect reported by the
- * AB-8a sweep. Each one fails on its OWN assertion today; when the rule is restored, vitest reports
- * the `it.fails` as failing and the marker must be removed.
+ * therefore belongs to the lifecycle close, and the second block pins it there: the same rule the
+ * sign-off applies (`summary/clinician-attribution.ts`), plus the `SESSION_CLOSED_*` WORM row
+ * naming the clinician and, beside them, the credential that submitted the close.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -101,6 +99,13 @@ describe('ConsultationService.closeConsultation — delegates the attribution in
 describe('ConsultationLifecycleService.close — machine attribution (TASK-972 Lane 1)', () => {
   let consultations: { findByIdOrNull: ReturnType<typeof vi.fn>; updateWithVersion: ReturnType<typeof vi.fn> };
   let harnessAudit: { append: ReturnType<typeof vi.fn> };
+  // Membership: CLINICIAN belongs to the tenant, anyone else does not; nobody holds an admin role.
+  const userRoleAssignments = {
+    findFirst: vi.fn(async ({ where }: { where: { userId: string } }) => (where.userId === CLINICIAN ? { id: 'ra-1' } : null)),
+    findAll: vi.fn(async () => []),
+  };
+  const userDepartments = { findFirst: vi.fn(async () => ({ id: 'ud-1' })) };
+  const users = { findFirst: vi.fn(async () => ({ id: CLINICIAN })) };
 
   const build = (user: unknown, serviceAccount: unknown = null) =>
     new ConsultationLifecycleService(
@@ -112,6 +117,11 @@ describe('ConsultationLifecycleService.close — machine attribution (TASK-972 L
       { publish: vi.fn().mockResolvedValue(undefined) } as never, // events
       { emit: vi.fn() } as never,
       cls(user, serviceAccount) as never,
+      ...new Array(7).fill(undefined), // transcriptionJobs … markers
+      harnessAudit as never,
+      userRoleAssignments as never,
+      userDepartments as never,
+      users as never,
     );
 
   const persistedUpdatedBy = () => (consultations.updateWithVersion.mock.calls[0]?.[1] as ConsultationEntity | undefined)?.updatedBy;
@@ -144,9 +154,7 @@ describe('ConsultationLifecycleService.close — machine attribution (TASK-972 L
     expect(consultations.updateWithVersion).not.toHaveBeenCalled();
   });
 
-  // ── DEFECT (AB-8a): the named-clinician rule is not enforced by the lifecycle close ────────────
-
-  it.fails('DEFECT — REFUSES a service-account close that names no clinician (400)', async () => {
+  it('REFUSES a service-account close that names no clinician (400)', async () => {
     const service = build(null, { id: 'svc-1' });
     await expect(service.close(CONSULTATION, { expectedVersion: 3, caller: { isMachine: true, serviceAccountId: 'svc-1' } })).rejects.toBeInstanceOf(
       BadRequestException,
@@ -154,21 +162,21 @@ describe('ConsultationLifecycleService.close — machine attribution (TASK-972 L
     expect(consultations.updateWithVersion).not.toHaveBeenCalled();
   });
 
-  it.fails('DEFECT — answers 404 for a named clinician outside the tenant (never 403)', async () => {
+  it('answers 404 for a named clinician outside the tenant (never 403)', async () => {
     const service = build(null, { id: 'svc-1' });
     await expect(
       service.close(CONSULTATION, { expectedVersion: 3, clinicianUserId: 'doctor-elsewhere', caller: { isMachine: true, serviceAccountId: 'svc-1' } }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it.fails('DEFECT — REFUSES a clinician naming another clinician (400)', async () => {
+  it('REFUSES a clinician naming another clinician (400)', async () => {
     const service = build({ id: CALLER, roles: [] });
     await expect(
       service.close(CONSULTATION, { expectedVersion: 3, clinicianUserId: CLINICIAN, caller: { isMachine: false, userId: CALLER } }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it.fails('DEFECT — a machine close is attributed to the named clinician and writes the WORM close row naming the credential', async () => {
+  it('a machine close is attributed to the named clinician and writes the WORM close row naming the credential', async () => {
     const service = build(null, { id: 'svc-1' });
 
     const result = await service.close(CONSULTATION, {

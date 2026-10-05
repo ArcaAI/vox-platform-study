@@ -216,11 +216,9 @@ describe('ConsultationLifecycleService.start — TASK-1003 supersede by the dura
     });
   });
 
-  // DEFECT (reported by the AB-8a sweep): `supersedeByDurableBinding` reuses the control-command
-  // reader `liveBoundSessions`, which KEEPS a session whose status lookup failed ("unknown ⇒ kept",
-  // right for a finalize/pause control). The TASK-1003 rule above says a row is a supersede candidate
-  // only while apps/stt REPORTS it active, so an unverifiable session must not be superseded.
-  it.fails('DEFECT — a session whose status lookup fails is not superseded (only a reported-active one is)', async () => {
+  // Unlike a finalize/pause control (which keeps a session it cannot check), a supersede needs
+  // apps/stt to REPORT the older session active: an unverifiable session is never superseded.
+  it('a session whose status lookup fails is not superseded (only a reported-active one is)', async () => {
     sttStatuses({ 'stt-new': 'active', 'stt-old': new Error('connect ECONNREFUSED') });
 
     await makeService().start(CID, { sttSessionId: 'stt-new', supersedeByDurableBinding: true });

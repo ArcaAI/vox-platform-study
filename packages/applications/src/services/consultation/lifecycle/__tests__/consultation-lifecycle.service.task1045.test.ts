@@ -11,6 +11,7 @@ import {
   ConsultationEntity,
   ConsultationProcessing,
   ConsultationStatus,
+  HarnessAuditAction,
   ResourceType,
   SysEventType,
 } from '@arcaai/domains';
@@ -55,15 +56,18 @@ function persisted(entity: ConsultationEntity): ConsultationEntity {
   return row;
 }
 
-function cls(tenantId: string | null = TENANT) {
+function cls(tenantId: string | null = TENANT, user: { id: string; roles: string[] } | null = { id: DOCTOR, roles: [] }) {
   return {
-    get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? { id: DOCTOR, roles: [] } : undefined)),
+    get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? (user ?? undefined) : undefined)),
     set: vi.fn(),
     getId: vi.fn(() => 'req-1'),
   };
 }
 
-function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string | null; settings?: Record<string, unknown> } = {}) {
+function makeHarness(
+  row: ConsultationEntity | null,
+  opts: { tenantId?: string | null; settings?: Record<string, unknown>; user?: { id: string; roles: string[] } | null } = {},
+) {
   let current = row;
   const consultations = {
     findByIdOrNull: vi.fn(async () => current),
@@ -116,7 +120,9 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
   // transcript record's session-final path).
   const markers = { eval: vi.fn(async () => 'OK' as string | null) };
   const eventEmitter = { emit: vi.fn() };
-  const clsService = cls(opts.tenantId === undefined ? TENANT : opts.tenantId);
+  const clsService = cls(opts.tenantId === undefined ? TENANT : opts.tenantId, opts.user === undefined ? { id: DOCTOR, roles: [] } : opts.user);
+  // The SESSION_CLOSED_* WORM trail.
+  const harnessAudit = { append: vi.fn(async () => ({ id: 'audit-1' })) };
 
   const publisher = new ConsultationLifecycleEventPublisher(eventEmitter as never, clsService as never, cache as never, undefined);
   const gate = new ConsultationLifecycleGate(consultations as never, publisher, clsService as never);
@@ -137,6 +143,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     settings as never,
     encounterService as never,
     markers as never,
+    harnessAudit as never,
   );
 
   const lifecycleEvents = () =>
@@ -161,6 +168,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     settings,
     cache,
     markers,
+    harnessAudit,
     eventEmitter,
     approval,
     lifecycleEvents,
@@ -454,6 +462,33 @@ describe('ConsultationLifecycleService — close', () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.OPEN }));
     await h.service.close(ID, { auto: true });
     expect(h.current()?.closedReason).toBe(ConsultationClosedReason.AUTO);
+  });
+
+  it('an auto close from the tenantless sweep is the system’s, and writes the SESSION_CLOSED_INCOMPLETE WORM row', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED }), { tenantId: null, user: null });
+    const response = await h.service.close(ID, { auto: true });
+    expect(response.status).toBe('CLOSED_INCOMPLETE');
+    expect(h.current()?.closedReason).toBe(ConsultationClosedReason.AUTO);
+    expect(h.harnessAudit.append).toHaveBeenCalledTimes(1);
+    expect(h.harnessAudit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT,
+        consultationId: ID,
+        action: HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
+        clinicianId: null,
+        createdBy: null,
+      }),
+    );
+  });
+
+  it('a manual close writes the WORM row naming the closing clinician; a failed append never fails the close', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.APPROVED }));
+    h.harnessAudit.append.mockRejectedValueOnce(new Error('audit down'));
+    const response = await h.service.close(ID);
+    expect(response.status).toBe('CLOSED_COMPLETE');
+    expect(h.harnessAudit.append).toHaveBeenCalledWith(
+      expect.objectContaining({ action: HarnessAuditAction.SESSION_CLOSED_COMPLETE, clinicianId: DOCTOR, createdBy: DOCTOR }),
+    );
   });
 
   it('RECORDING is flushed first (finalize control) and then closed', async () => {
