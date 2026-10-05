@@ -65,6 +65,8 @@ const DEFAULT_WIDTH = 320;
 const DEFAULT_HEIGHT = 420;
 /** The gap a docked pane keeps from the stage edge (`md:top-3` / `md:left-3` / `md:right-3`). */
 const DOCK_MARGIN = 12;
+/** How close to a side an undocked pane must sit to still reserve that side for the canvas fit. */
+const EDGE_RESERVE = 48;
 /** The widest a pane may be, as a share of the stage — two panes must still leave the canvas room. */
 const MAX_STAGE_SHARE = 0.45;
 /** How much of a pane's header must stay on the stage vertically. */
@@ -166,8 +168,12 @@ export function paneFootprint(geometry: Pick<PaneState, 'dock' | 'x' | 'width'>,
   if (geometry.dock === 'left') return { left: DOCK_MARGIN + geometry.width, right: 0 };
   if (geometry.dock === 'right') return { left: 0, right: DOCK_MARGIN + geometry.width };
   if (stage.width <= 0) return NO_FOOTPRINT;
-  const centre = geometry.x + geometry.width / 2;
-  return centre < stage.width / 2 ? { left: geometry.x + geometry.width, right: 0 } : { left: 0, right: Math.max(0, stage.width - geometry.x) };
+  // An undocked pane reserves a side only while it sits against that side. Dragged into the middle,
+  // it floats above the graph by the author's choice; squeezing the fit into what is left of it
+  // pushed half of the graph off-screen (TASK-1036 live check).
+  if (geometry.x <= EDGE_RESERVE) return { left: geometry.x + geometry.width, right: 0 };
+  if (geometry.x + geometry.width >= stage.width - EDGE_RESERVE) return { left: 0, right: Math.max(0, stage.width - geometry.x) };
+  return NO_FOOTPRINT;
 }
 
 function subscribeOverlay(onChange: () => void): () => void {
@@ -392,7 +398,18 @@ export function FloatingPane({
   }, [commit, currentRect, maxWidth, minHeight, minWidth, movedTo, state]);
 
   // --- WCAG 2.4.11: never cover the focused element -------------------------------------------
+  // Two cases never yield (TASK-1036 live check — dragging the inspector over the palette
+  // collapsed the palette): focus inside ANOTHER floating pane (panes overlap by the author's
+  // choice; stacking order handles that), and focus that came from a pointer (2.4.11 concerns
+  // keyboard focus; a click must not collapse the pane the author is working in).
   useEffect(() => {
+    let lastInput: 'keyboard' | 'pointer' = 'keyboard';
+    function onPointerDown() {
+      lastInput = 'pointer';
+    }
+    function onKeyDown() {
+      lastInput = 'keyboard';
+    }
     function onFocusIn(event: FocusEvent) {
       const pane = paneRef.current;
       const target = event.target;
@@ -402,14 +419,22 @@ export function FloatingPane({
         return;
       }
       if (!pane.parentElement?.contains(target)) return;
+      if (lastInput === 'pointer' || target.closest('[data-slot="floating-pane"]')) {
+        setYielding(false);
+        return;
+      }
       setYielding(overlaps(pane.getBoundingClientRect(), target.getBoundingClientRect()));
     }
     function onFocusOut() {
       setYielding(false);
     }
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
     return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown, true);
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
     };

@@ -95,8 +95,15 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
         <FieldLabel htmlFor="draft-test-input">Input text</FieldLabel>
         <Textarea id="draft-test-input" rows={4} value={inputText} onChange={(event) => setInputText(event.target.value)} />
       </div>
-      <JsonField label="Context" description="Validated against the agent's bound context schema, when it pins one." value={context} onChange={setContext} rows={4} />
-      <JsonField label="Variable overrides" description="Overlays the agent's own instruction bindings — these win." value={variables} onChange={setVariables} rows={4} />
+      {/* TASK-1036 W2 — the input text is what a tenant tests with; the JSON overrides are for
+          whoever needs to reproduce a specific consultation, so they start collapsed. */}
+      <details className="rounded-md border px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium">More test inputs</summary>
+        <div className="flex flex-col gap-3 pt-3">
+          <JsonField label="Context" description="Optional consultation context as JSON, checked against the agent's context schema when it has one." value={context} onChange={setContext} rows={4} />
+          <JsonField label="Prompt values" description="Optional values for the prompt's placeholders as JSON. They replace the agent's own values for this run." value={variables} onChange={setVariables} rows={4} />
+        </div>
+      </details>
 
       <Field orientation="horizontal">
         <FieldContent>
@@ -116,11 +123,11 @@ export function DraftTestPanel({ agent }: DraftTestPanelProps) {
       {findings?.length ? (
         <ul className="flex flex-col gap-1" aria-label="Findings">
           {findings.map((finding, index) => (
-            <li key={`${finding.path}-${index}`} className="flex items-start gap-2 text-sm">
-              <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'}>{finding.code}</Badge>
-              <span>
-                <span className="font-mono text-xs">{finding.path}</span> — {finding.message}
-              </span>
+            <li key={`${finding.path}-${index}`} className="flex flex-wrap items-start gap-2 text-sm">
+              <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'}>{finding.severity === 'ERROR' ? 'Must fix' : 'Warning'}</Badge>
+              <span>{finding.message}</span>
+              {/* The code is what support asks for; it stays, small, after the message. */}
+              <span className="text-muted-foreground font-mono text-xs">{finding.code}</span>
             </li>
           ))}
         </ul>

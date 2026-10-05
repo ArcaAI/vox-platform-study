@@ -172,9 +172,9 @@ describe('FragmentListEditor (rendered)', () => {
 
   it('toggling a row to inline reveals the inline textarea and hides the template picker for that row', async () => {
     renderWithProviders(<Host initial={[{ ...defaultFragmentRow(), key: 'base' }]} />);
-    expect(await screen.findByLabelText('Hope Prompt')).toBeTruthy();
+    expect(await screen.findByLabelText('Prompt')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Use an inline prompt'));
-    expect(screen.queryByLabelText('Hope Prompt')).toBeNull();
+    expect(screen.queryByLabelText('Prompt')).toBeNull();
     expect(screen.getByLabelText('Inline prompt *')).toBeTruthy();
   });
 
@@ -207,7 +207,7 @@ describe('FragmentListEditor (rendered)', () => {
     const { container } = renderWithProviders(
       <Host initial={[{ ...defaultFragmentRow(), key: 'base' }, { ...defaultFragmentRow(), key: 'revisit', when: 'has(context.x)' }]} />,
     );
-    expect((await screen.findAllByLabelText('Hope Prompt')).length).toBe(2);
+    expect((await screen.findAllByLabelText('Prompt')).length).toBe(2);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

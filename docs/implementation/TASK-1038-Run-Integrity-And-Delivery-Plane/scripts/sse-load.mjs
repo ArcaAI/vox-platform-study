@@ -137,7 +137,7 @@ async function watch(runId) {
     }
     if (result.terminalMs === null) result.error = 'stream ended before a terminal event';
   } catch (err) {
-    if (result.terminalMs === null) result.error = controller.signal.aborted ? `timed out after ${timeoutMs / 1000}s` : String(err?.message ?? err);
+    if (result.terminalMs === null) result.error = controller.signal.aborted ? `timed out after ${timeoutMs / 1000}s` : [err?.message ?? err, err?.cause?.code, err?.cause?.message].filter(Boolean).join(' — ');
   } finally {
     clearTimeout(timer);
   }

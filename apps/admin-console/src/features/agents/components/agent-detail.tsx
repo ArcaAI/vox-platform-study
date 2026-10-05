@@ -25,11 +25,11 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError, postJson } from '@/shared/api';
-import { useContextSchemaCatalog } from '@/shared/catalog';
+import { useSession } from '@/shared/auth';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
-import { formatDateTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
+import { usePromptTemplateOptions } from '@/shared/prompt-picker';
 import { EmptyState } from '@/shared/state/empty-state';
 import {
   ActivateVersionDialog,
@@ -66,15 +66,17 @@ import {
   type AgentAssignment,
   type AgentLineage,
   type AgentProblemBody,
-  type PromptFragment,
 } from '../api';
 import { AgentDeprecateDialog } from './agent-deprecate-dialog';
+import { AgentConfigurationSummary, AgentOverview, FindingsList } from './agent-overview';
+import { taskSwitchFacts } from './agent-summary';
+import { FallbackModelsField } from './fallback-models-field';
 import { AgentHiddenBadge, AgentTaskBadge } from './agent-status-badge';
 import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
-import { ModelPicker, fallbackModelOptionLabel, useTaskModelCatalogue } from './model-picker';
+import { ModelPicker, useTaskModelCatalogue } from './model-picker';
 import { AgentSimpleParameters } from '@/shared/agent-wizard/simple-parameters';
 import { documentTemplateSlugOf, withDocumentTemplate } from '@/shared/agent-wizard/instruction-extras';
 import { TagsField } from '@/shared/tags-field';
@@ -88,88 +90,6 @@ export function problemToast(error: unknown, fallback: string): void {
     return;
   }
   toast.error(fallback);
-}
-
-function JsonBlock({ label, value }: { label: string; value: unknown }) {
-  return (
-    <section className="flex flex-col gap-1">
-      <h3 className="text-sm font-medium">{label}</h3>
-      <pre className="bg-muted max-h-64 overflow-auto rounded-md p-3 font-mono text-xs">{value === null || value === undefined ? '—' : JSON.stringify(value, null, 2)}</pre>
-    </section>
-  );
-}
-
-/** TASK-947 §4.5 item 5 — a published composite agent's fragments, read-only: key, source, and its condition (or "Base" when unconditional). */
-function CompositeInstructionSummary({ fragments }: { fragments: PromptFragment[] }) {
-  return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">Instruction — composable fragments ({fragments.length})</h3>
-      <ol className="flex flex-col gap-2">
-        {fragments.map((fragment, index) => (
-          <li key={`${fragment.key}-${index}`} className="flex flex-col gap-1 rounded-md border p-2 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-muted-foreground font-mono text-xs">{index + 1}.</span>
-              <span className="font-mono font-medium">{fragment.key}</span>
-              <Badge variant="outline">{fragment.promptTemplateId ? 'Template' : 'Inline'}</Badge>
-              {!fragment.when ? <Badge variant="secondary">Base — always included</Badge> : null}
-            </div>
-            {fragment.when ? <p className="text-muted-foreground font-mono text-xs">when: {fragment.when}</p> : null}
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-/**
- * The schema `{{context.*}}` resolves against for this version: the gateway's
- * `effectiveContextSchema` when it sends one (which covers a schema lent by a workflow), else the
- * agent's own binding. Read-only — an inherited schema is changed on the workflow's trigger.
- */
-function EffectiveContextSchemaValue({ agent }: { agent: Agent }) {
-  const catalog = useContextSchemaCatalog();
-  const effective =
-    agent.effectiveContextSchema !== undefined
-      ? agent.effectiveContextSchema
-      : agent.contextSchemaId
-        ? { id: agent.contextSchemaId, versionNumber: agent.contextSchemaVersionNumber, inheritedFrom: 'agent' as const }
-        : null;
-  if (!effective) return <>None</>;
-  const name = (catalog.data ?? []).find((schema) => schema.id === effective.id)?.name;
-  return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      {name ? <span>{name}</span> : catalog.isLoading ? <Skeleton className="h-4 w-28" /> : <span className="font-mono text-xs">{effective.id}</span>}
-      {effective.versionNumber !== null ? <span className="font-mono text-xs">v{effective.versionNumber}</span> : <span className="text-muted-foreground text-xs">follows latest</span>}
-      {effective.inheritedFrom === 'workflow' ? <Badge variant="secondary">Inherited from workflow</Badge> : null}
-    </span>
-  );
-}
-
-function FindingsList({ agent }: { agent: Agent }) {
-  const report = agent.validationReport;
-  if (!report) return null;
-  return (
-    <section className="flex flex-col gap-2" aria-label="Validation findings">
-      <h3 className="flex items-center gap-2 text-sm font-medium">
-        {report.blocking ? <IconAlertTriangle aria-hidden className="text-destructive size-4" /> : <IconShieldCheck aria-hidden className="text-success size-4" />}
-        {report.blocking ? 'Blocking findings' : 'Validated'} · {formatDateTime(report.checkedAt)}
-      </h3>
-      {report.findings.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No findings.</p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {report.findings.map((finding, index) => (
-            <li key={`${finding.path}-${index}`} className="flex items-start gap-2 text-sm">
-              <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'}>{finding.code}</Badge>
-              <span>
-                <span className="font-mono text-xs">{finding.path}</span> — {finding.message}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
 }
 
 interface DraftState {
@@ -219,12 +139,22 @@ function draftFromAgent(agent: Agent): DraftState {
   };
 }
 
+/** Resolves ids to display names for the version rows and the compare view (TASK-1036 W2). */
+interface VersionNaming {
+  /** Super admin — sees the checksum, the editor's user id and the raw compiled config. */
+  elevated: boolean;
+  modelName: (modelId: string, slug: string | null | undefined) => string;
+  promptName: (templateId: string) => string | undefined;
+}
+
 /**
  * One version row in the KIT's vocabulary. Everything agent-specific — the model it binds, its
  * fallback chain — goes behind the panel's disclosure rather than into the row, so a lineage with
- * twelve versions still reads as a list of versions and not as twelve configuration dumps.
+ * twelve versions still reads as a list of versions and not as twelve configuration dumps. Models
+ * are named in words; the checksum and the editor's user id are support data (super admin only).
  */
-function toVersionRow(version: Agent): VersionRow {
+function toVersionRow(version: Agent, naming: VersionNaming): VersionRow {
+  const fallbacks = [...version.fallbacks].sort((a, b) => a.priority - b.priority);
   return {
     id: version.id,
     versionNumber: version.versionNumber,
@@ -236,14 +166,13 @@ function toVersionRow(version: Agent): VersionRow {
     publishedAt: version.publishedAt,
     deprecatedAt: version.deprecatedAt,
     updatedAt: version.updatedAt,
-    by: version.updatedBy ?? version.createdBy,
-    checksum: version.compiledConfigChecksum,
+    ...(naming.elevated ? { by: version.updatedBy ?? version.createdBy, checksum: version.compiledConfigChecksum } : {}),
     detail: (
       <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
         <dt className="text-muted-foreground">Model</dt>
-        <dd className="font-mono">{version.modelSlug ?? version.modelId}</dd>
-        <dt className="text-muted-foreground">Fallbacks</dt>
-        <dd className="font-mono">{version.fallbacks.length ? version.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId).join(' → ') : '—'}</dd>
+        <dd>{naming.modelName(version.modelId, version.modelSlug)}</dd>
+        <dt className="text-muted-foreground">Falls back to</dt>
+        <dd>{fallbacks.length ? fallbacks.map((fallback) => naming.modelName(fallback.modelId, fallback.modelSlug)).join(' → ') : '—'}</dd>
         <dt className="text-muted-foreground">Tags</dt>
         <dd className="font-mono">{version.tags.length ? version.tags.join(', ') : '—'}</dd>
       </dl>
@@ -251,23 +180,61 @@ function toVersionRow(version: Agent): VersionRow {
   };
 }
 
+function promptInWords(version: Agent, naming: VersionNaming): string {
+  const instruction = version.instruction;
+  if (version.task === 'SPEECH_TO_TEXT') {
+    const hint = typeof instruction?.initialPrompt === 'string' ? instruction.initialPrompt : '';
+    const terms = Array.isArray(instruction?.hotwords) ? (instruction.hotwords as unknown[]).join(', ') : '';
+    return [hint && `Context hint: ${hint}`, terms && `Key terms: ${terms}`].filter(Boolean).join('\n') || 'None';
+  }
+  const form = instructionForm(instruction);
+  if (form === 'template') {
+    const id = String(instruction?.promptTemplateId);
+    const pinned = typeof instruction?.promptVersionNumber === 'number' ? `pinned to v${instruction.promptVersionNumber}` : 'follows the approved version';
+    return `Library prompt "${naming.promptName(id) ?? 'unknown'}", ${pinned}`;
+  }
+  if (form === 'inline') return String(instruction?.systemPrompt);
+  if (form === 'fragments') return readFragments(instruction).map((fragment) => `${fragment.key}${fragment.when ? ` (when ${fragment.when})` : ''}`).join('\n');
+  return 'None';
+}
+
 /**
- * What "Compare with previous" diffs. The FROZEN compiled config when the version has one (that
- * is literally what the runtime executes); otherwise the editable body, so a draft can still be
- * compared with the published version it branched from.
+ * What "Compare with previous" diffs. A super admin gets the FROZEN compiled config when the
+ * version has one (that is literally what the runtime executes), else the editable body. Everyone
+ * else compares the same plain-words summary the Overview shows (TASK-1036 W2) — a diff of the
+ * parameter tree is exactly the database dump the owner asked to keep off tenant surfaces.
  */
-function comparable(version: Agent): unknown {
-  return (
-    version.compiledConfig ?? {
-      model: version.modelSlug ?? version.modelId,
-      fallbacks: version.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId),
-      instruction: version.instruction,
-      parameters: version.parameters,
-      inputSchema: version.inputSchema,
-      outputSchema: version.outputSchema,
-      tags: version.tags,
-    }
-  );
+function comparable(version: Agent, naming: VersionNaming): unknown {
+  if (naming.elevated) {
+    return (
+      version.compiledConfig ?? {
+        model: version.modelSlug ?? version.modelId,
+        fallbacks: version.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId),
+        instruction: version.instruction,
+        parameters: version.parameters,
+        inputSchema: version.inputSchema,
+        outputSchema: version.outputSchema,
+        tags: version.tags,
+      }
+    );
+  }
+  return {
+    Name: version.name,
+    Description: version.description ?? '',
+    Model: naming.modelName(version.modelId, version.modelSlug),
+    'Falls back to': [...version.fallbacks].sort((a, b) => a.priority - b.priority).map((fallback) => naming.modelName(fallback.modelId, fallback.modelSlug)),
+    Prompt: promptInWords(version, naming),
+    Settings: Object.fromEntries(taskSwitchFacts(version.task, version.parameters, version.instruction).map((fact) => [fact.label, fact.value])),
+    ...(version.task === 'TEXT_GENERATION'
+      ? {
+          Temperature: (version.parameters?.generation as { temperature?: number } | undefined)?.temperature ?? 'Model default',
+          'Max output tokens': (version.parameters?.generation as { maxTokens?: number } | undefined)?.maxTokens ?? 'Model default',
+        }
+      : {}),
+    Inputs: version.inputSchema ? 'Custom' : 'Standard for this task',
+    Outputs: version.outputSchema ? 'Custom' : 'Standard for this task',
+    Tags: version.tags,
+  };
 }
 
 /** The dialog a version row action opens. Carried with its row so a later refetch cannot swap the subject. */
@@ -339,6 +306,15 @@ export function AgentLineageDrawer({
   const removeAssignment = useRemoveAgentAssignment();
   const exportAgent = useExportAgent();
   const catalogue = useTaskModelCatalogue(lineage?.task ?? 'TEXT_GENERATION');
+  const session = useSession();
+  // Impersonation-aware, like the rest of the console: the effective identity decides what shows.
+  const elevated = session.data?.effectiveIsElevated ?? false;
+  const promptOptions = usePromptTemplateOptions();
+  const naming: VersionNaming = {
+    elevated,
+    modelName: (modelId, slug) => catalogue.models.find((model) => model.id === modelId)?.name ?? slug ?? 'Unknown model',
+    promptName: (templateId) => (promptOptions.data ?? []).find((template) => template.id === templateId)?.name,
+  };
 
   const [dialog, setDialog] = useState<LifecycleDialog>(null);
   const [editing, setEditing] = useState(false);
@@ -452,8 +428,10 @@ export function AgentLineageDrawer({
           tags,
           ...(instruction ? { instruction } : {}),
           ...(draftAgent.task === 'TEXT_GENERATION' ? { contextSchemaId: draft.binding.contextSchemaId, contextSchemaVersionNumber: draft.binding.contextSchemaVersionNumber } : {}),
-          ...(draft.inputSchema ? { inputSchema: draft.inputSchema } : {}),
-          ...(draft.outputSchema ? { outputSchema: draft.outputSchema } : {}),
+          // TASK-1036 W2 — the I/O contract is a platform-admin surface; a tenant's save never
+          // sends it, so the stored schemas stay exactly as they are (PATCH leaves absent keys).
+          ...(elevated && draft.inputSchema ? { inputSchema: draft.inputSchema } : {}),
+          ...(elevated && draft.outputSchema ? { outputSchema: draft.outputSchema } : {}),
         },
       });
       toast.success('Draft saved');
@@ -737,12 +715,12 @@ export function AgentLineageDrawer({
               {noneActive ? (
                 <p className="text-warning-strong flex items-start gap-2 text-sm">
                   <IconAlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                  No version of {lineage.slug} is active, so nothing assigned to it resolves. Activate a published version from the Versions tab.
+                  No version of this agent is live, so nothing assigned to it can run. Make a published version live from the Versions tab (Activate).
                 </p>
               ) : null}
               {agent && !inspectedIsActive && lineage.active ? (
                 <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-                  Showing v{agent.versionNumber}, which is not the version being served.
+                  Showing v{agent.versionNumber}, which is not the live version.
                   <Button type="button" variant="link" className="h-auto p-0" onClick={() => setInspectedId(lineage.active?.id ?? null)}>
                     Show active v{lineage.active.versionNumber}
                   </Button>
@@ -754,57 +732,14 @@ export function AgentLineageDrawer({
                   <Skeleton className="h-4 w-1/2" />
                 </div>
               ) : (
-                <>
-                  <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-                    <dt className="text-muted-foreground">Task</dt>
-                    <dd>{AGENT_TASK_LABEL[agent.task]}</dd>
-                    <dt className="text-muted-foreground">Version</dt>
-                    <dd className="font-mono">
-                      v{agent.versionNumber} of {lineage.versionCount}
-                      {lineage.deprecatedCount > 0 ? ` · ${lineage.deprecatedCount} deprecated` : ''}
-                    </dd>
-                    <dt className="text-muted-foreground">Model</dt>
-                    <dd className="font-mono">{agent.modelSlug ?? agent.modelId}</dd>
-                    <dt className="text-muted-foreground">Fallbacks</dt>
-                    <dd className="font-mono">{agent.fallbacks.length ? agent.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId).join(' → ') : '—'}</dd>
-                    <dt className="text-muted-foreground">Description</dt>
-                    <dd>{agent.description ?? '—'}</dd>
-                    {agent.task === 'TEXT_GENERATION' ? (
-                      <>
-                        <dt className="text-muted-foreground">Context schema</dt>
-                        <dd>
-                          <EffectiveContextSchemaValue agent={agent} />
-                        </dd>
-                      </>
-                    ) : null}
-                    <dt className="text-muted-foreground">Published</dt>
-                    <dd>{agent.publishedAt ? formatDateTime(agent.publishedAt) : '—'}</dd>
-                    <dt className="text-muted-foreground">Published by</dt>
-                    <dd className="font-mono text-xs">{lineage.active?.publishedBy ?? '—'}</dd>
-                    <dt className="text-muted-foreground">Updated</dt>
-                    <dd>{formatDateTime(agent.updatedAt)}</dd>
-                    <dt className="text-muted-foreground">Checksum</dt>
-                    <dd className="font-mono text-xs">{agent.compiledConfigChecksum ?? '—'}</dd>
-                  </dl>
-                  <FindingsList agent={agent} />
-                  {agent.task === 'TEXT_GENERATION' && instructionForm(agent.instruction) === 'fragments' ? (
-                    <CompositeInstructionSummary fragments={readFragments(agent.instruction)} />
-                  ) : (
-                    <JsonBlock label="Instruction" value={agent.instruction} />
-                  )}
-                  <JsonBlock label="Parameters" value={agent.parameters} />
-                  <JsonBlock label="Input schema" value={agent.inputSchema ?? 'task default'} />
-                  <JsonBlock label="Output schema" value={agent.outputSchema ?? 'task default'} />
-                  {agent.tools?.length ? <JsonBlock label="Tools" value={agent.tools} /> : null}
-                  {agent.compiledConfig ? <JsonBlock label="Compiled config (server-stamped at publish)" value={agent.compiledConfig} /> : null}
-                </>
+                <AgentOverview agent={agent} lineage={lineage} elevated={elevated} />
               )}
             </TabsContent>
 
             <TabsContent value="versions">
               <VersionHistoryPanel
                 aria-label={`Versions of ${lineage.slug}`}
-                versions={versionRows.map(toVersionRow)}
+                versions={versionRows.map((version) => toVersionRow(version, naming))}
                 isPending={versions.isPending}
                 error={versions.error}
                 onRetry={() => void versions.refetch()}
@@ -825,7 +760,7 @@ export function AgentLineageDrawer({
                 <EmptyState
                   icon={IconGitBranch}
                   title="No draft is open"
-                  description={`A published version is immutable. Branch a new draft from ${lineage.active ? `v${lineage.active.versionNumber}` : 'a published version'} to change the model, instruction, parameters or tags.`}
+                  description={`A published version is immutable. Branch a new draft from ${lineage.active ? `v${lineage.active.versionNumber}` : 'a published version'} to change the model, prompt, settings or tags.`}
                   action={
                     hidden ? undefined : (
                       <Button
@@ -872,35 +807,44 @@ export function AgentLineageDrawer({
                         void saveDraft();
                       }}
                     >
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="edit-name">
-                          Name <span aria-hidden>*</span>
-                        </Label>
-                        <Input id="edit-name" required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="edit-description">Description</Label>
-                        <Textarea id="edit-description" rows={2} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
-                      </div>
+                      {/* TASK-1036 W2 (§8.6) — four plain sections, nothing else: about, model,
+                          prompt, settings. Decoding, thresholds, top-p/k, penalties, seed and the
+                          reasoning budget are platform-managed (the gateway 403s a tenant write);
+                          the I/O contract is a platform-admin surface too. */}
+                      <fieldset className="flex flex-col gap-3">
+                        <legend className="mb-1 text-sm font-medium">About</legend>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="edit-name">
+                            Name <span aria-hidden>*</span>
+                          </Label>
+                          <Input id="edit-name" required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="edit-description">Description</Label>
+                          <Textarea id="edit-description" rows={2} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+                          <p className="text-muted-foreground text-xs">What this agent is for, in a sentence your colleagues will recognise.</p>
+                        </div>
+                      </fieldset>
 
-                      <ModelPicker id="edit-model" task={draftAgent.task} value={draft.modelId} onChange={(modelId) => setDraft({ ...draft, modelId, fallbackModelIds: draft.fallbackModelIds.filter((id) => id !== modelId) })} />
-                      {draft.fallbackModelIds.length ? (
-                        <p className="text-muted-foreground text-xs">
-                          Fallbacks:{' '}
-                          {draft.fallbackModelIds
-                            .map((id) => {
-                              const model = catalogue.models.find((candidate) => candidate.id === id);
-                              // TASK-958 — the connection is what distinguishes two same-named BYO
-                              // models; without it the chain reads as the same model listed twice.
-                              return model ? fallbackModelOptionLabel(model, catalogue.providers) : id;
-                            })
-                            .join(' → ')}
-                        </p>
-                      ) : null}
+                      <fieldset className="flex flex-col gap-3">
+                        <legend className="mb-1 text-sm font-medium">Model</legend>
+                        <ModelPicker
+                          id="edit-model"
+                          task={draftAgent.task}
+                          value={draft.modelId}
+                          onChange={(modelId) => setDraft({ ...draft, modelId, fallbackModelIds: draft.fallbackModelIds.filter((id) => id !== modelId) })}
+                        />
+                        <FallbackModelsField
+                          task={draftAgent.task}
+                          primaryModelId={draft.modelId}
+                          value={draft.fallbackModelIds}
+                          onChange={(fallbackModelIds) => setDraft({ ...draft, fallbackModelIds })}
+                        />
+                      </fieldset>
 
                       {draftAgent.task === 'TEXT_GENERATION' ? (
                         <fieldset className="flex flex-col gap-3">
-                          <legend className="text-sm font-medium">Instruction</legend>
+                          <legend className="mb-1 text-sm font-medium">Prompt</legend>
                           <InstructionBindingForm
                             simple
                             value={draft.binding}
@@ -911,46 +855,84 @@ export function AgentLineageDrawer({
                         </fieldset>
                       ) : draftAgent.task === 'SPEECH_TO_TEXT' ? (
                         <fieldset className="flex flex-col gap-3">
-                          <legend className="text-sm font-medium">Instruction</legend>
+                          <legend className="mb-1 text-sm font-medium">Prompt</legend>
                           <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="edit-initial-prompt">Initial prompt</Label>
-                            <Textarea id="edit-initial-prompt" rows={3} maxLength={1000} value={draft.initialPrompt} onChange={(event) => setDraft({ ...draft, initialPrompt: event.target.value })} />
+                            <Label htmlFor="edit-initial-prompt">Context hint</Label>
+                            <Textarea
+                              id="edit-initial-prompt"
+                              rows={3}
+                              maxLength={1000}
+                              aria-describedby="edit-initial-prompt-desc"
+                              value={draft.initialPrompt}
+                              onChange={(event) => setDraft({ ...draft, initialPrompt: event.target.value })}
+                            />
+                            <p id="edit-initial-prompt-desc" className="text-muted-foreground text-xs">
+                              Optional. A short sentence in the style of the conversation, e.g. the clinic and its specialty.
+                            </p>
                           </div>
                           <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="edit-hotwords">Hotwords</Label>
-                            <Input id="edit-hotwords" placeholder="comma-separated" value={draft.hotwords} onChange={(event) => setDraft({ ...draft, hotwords: event.target.value })} />
+                            <Label htmlFor="edit-hotwords">Key terms</Label>
+                            <Input
+                              id="edit-hotwords"
+                              placeholder="comma-separated"
+                              aria-describedby="edit-hotwords-desc"
+                              value={draft.hotwords}
+                              onChange={(event) => setDraft({ ...draft, hotwords: event.target.value })}
+                            />
+                            <p id="edit-hotwords-desc" className="text-muted-foreground text-xs">
+                              Optional. Names and terms the transcript should spell correctly, separated by commas.
+                            </p>
                           </div>
                         </fieldset>
                       ) : draftAgent.task === 'NAMED_ENTITY_RECOGNITION' ? (
                         <fieldset className="flex flex-col gap-3">
-                          <legend className="text-sm font-medium">Instruction</legend>
+                          <legend className="mb-1 text-sm font-medium">Prompt</legend>
                           <div className="flex flex-col gap-1.5">
                             <Label htmlFor="edit-labels">Entity labels</Label>
-                            <Input id="edit-labels" placeholder="comma-separated" value={draft.labels} onChange={(event) => setDraft({ ...draft, labels: event.target.value })} />
-                            <p className="text-muted-foreground text-xs">Honoured by zero-shot extractors; a fixed-label checkpoint emits its own set.</p>
+                            <Input
+                              id="edit-labels"
+                              placeholder="comma-separated"
+                              aria-describedby="edit-labels-desc"
+                              value={draft.labels}
+                              onChange={(event) => setDraft({ ...draft, labels: event.target.value })}
+                            />
+                            <p id="edit-labels-desc" className="text-muted-foreground text-xs">
+                              What to look for, e.g. medication, condition. Some models always use their own fixed set.
+                            </p>
                           </div>
                         </fieldset>
                       ) : null}
 
-                      <TagsField
-                        id="edit-tags"
-                        value={draft.tags}
-                        onChange={(tags) => setDraft({ ...draft, tags })}
-                        suggestionsPath="admin/agents/tags"
-                        validate={(tag) => (AGENT_TAG_PATTERN.test(tag) ? null : `"${tag}" is not a valid agent tag. Use key:value — lower-case letters, digits, "-" and "_" (the value also allows "."), e.g. dept:cardiology.`)}
-                        description="Agent tags are key:value, e.g. dept:cardiology. Suggestions come from tags already used by this tenant's agents."
-                      />
+                      <fieldset className="flex flex-col gap-3">
+                        <legend className="mb-1 text-sm font-medium">Settings</legend>
+                        <AgentSimpleParameters
+                          task={draftAgent.task}
+                          modelId={draft.modelId}
+                          value={draft.parameters}
+                          onChange={(parameters) => setDraft({ ...draft, parameters })}
+                          documentTemplateSlug={draft.documentTemplateSlug}
+                          onDocumentTemplateChange={(documentTemplateSlug) => setDraft({ ...draft, documentTemplateSlug })}
+                        />
+                        <TagsField
+                          id="edit-tags"
+                          value={draft.tags}
+                          onChange={(tags) => setDraft({ ...draft, tags })}
+                          suggestionsPath="admin/agents/tags"
+                          validate={(tag) => (AGENT_TAG_PATTERN.test(tag) ? null : `"${tag}" is not a valid agent tag. Use key:value — lower-case letters, digits, "-" and "_" (the value also allows "."), e.g. dept:cardiology.`)}
+                          description="Agent tags are key:value, e.g. dept:cardiology. Suggestions come from tags already used by this tenant's agents."
+                        />
+                      </fieldset>
 
-                      <AgentSimpleParameters
-                        task={draftAgent.task}
-                        modelId={draft.modelId}
-                        value={draft.parameters}
-                        onChange={(parameters) => setDraft({ ...draft, parameters })}
-                        documentTemplateSlug={draft.documentTemplateSlug}
-                        onDocumentTemplateChange={(documentTemplateSlug) => setDraft({ ...draft, documentTemplateSlug })}
-                      />
-                      <JsonField label="Input schema" value={draft.inputSchema} onChange={(inputSchema) => setDraft({ ...draft, inputSchema })} />
-                      <JsonField label="Output schema" value={draft.outputSchema} onChange={(outputSchema) => setDraft({ ...draft, outputSchema })} />
+                      {elevated ? (
+                        <details className="rounded-md border px-3 py-2">
+                          <summary className="cursor-pointer text-sm font-medium">Input and output contract (platform admin)</summary>
+                          <div className="flex flex-col gap-3 pt-3">
+                            <p className="text-muted-foreground text-xs">Leave empty to use the standard shape for this task.</p>
+                            <JsonField label="Input schema" value={draft.inputSchema} onChange={(inputSchema) => setDraft({ ...draft, inputSchema })} />
+                            <JsonField label="Output schema" value={draft.outputSchema} onChange={(outputSchema) => setDraft({ ...draft, outputSchema })} />
+                          </div>
+                        </details>
+                      ) : null}
                       <div className="flex justify-end gap-2">
                         <Button type="button" variant="outline" onClick={() => setEditing(false)}>
                           Cancel
@@ -963,13 +945,8 @@ export function AgentLineageDrawer({
                     </form>
                   ) : (
                     <>
-                      {draftAgent.task === 'TEXT_GENERATION' && instructionForm(draftAgent.instruction) === 'fragments' ? (
-                        <CompositeInstructionSummary fragments={readFragments(draftAgent.instruction)} />
-                      ) : (
-                        <JsonBlock label="Instruction" value={draftAgent.instruction} />
-                      )}
-                      <JsonBlock label="Parameters" value={draftAgent.parameters} />
                       <FindingsList agent={draftAgent} />
+                      <AgentConfigurationSummary agent={draftAgent} />
                     </>
                   )}
                 </>
@@ -990,7 +967,7 @@ export function AgentLineageDrawer({
                   // warning about refused requests, never "the platform has it covered".
                   <p className="text-warning-strong flex items-start gap-2 text-sm">
                     <IconAlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                    Nothing is assigned for {AGENT_TASK_LABEL[lineage.task].toLowerCase()}. Requests fail with AGENT_NOT_ASSIGNED until an agent is assigned — resolution is department → tenant, and there is no platform fallback.
+                    Nothing is assigned for {AGENT_TASK_LABEL[lineage.task].toLowerCase()}, so requests for it are refused (AGENT_NOT_ASSIGNED). Assign an agent to a department or to the whole tenant — a department&apos;s choice wins, and there is no platform fallback.
                   </p>
                 ) : (
                   <ul className="flex flex-col divide-y" aria-label="Assignments for this task">
@@ -1093,7 +1070,7 @@ export function AgentLineageDrawer({
                     <p id="assignment-selector-hint" className={selectorProblem ? 'text-destructive text-sm' : 'text-muted-foreground text-xs'}>
                       {selectorProblem
                         ? `“${selectorProblem}” is not a key:value tag — write it as key:value (for example specialty:${selectorProblem.toLowerCase()}).`
-                        : 'Comma-separated key:value tags. Leave empty for the tier’s default assignment; a tag-qualified one is matched first for requests carrying those tags.'}
+                        : 'Optional. Comma-separated key:value tags, e.g. specialty:cardiology. Requests carrying these tags use this assignment first; leave empty to cover every request.'}
                     </p>
                   </div>
                 </section>
@@ -1123,7 +1100,7 @@ export function AgentLineageDrawer({
                 <EmptyState
                   icon={IconRocket}
                   title="Not published yet"
-                  description={`Publish a version to expose ${lineage.slug} on the business plane. The endpoint and the @arcaai/vox-node snippet appear here once it is published.`}
+                  description={`Publish a version so your developers can call ${lineage.slug}. The endpoint and the @arcaai/vox-node snippet appear here once it is published.`}
                 />
               )}
             </TabsContent>
@@ -1149,8 +1126,8 @@ export function AgentLineageDrawer({
                   title="Test run"
                   description={
                     lineage.task !== 'TEXT_GENERATION'
-                      ? 'Direct test runs cover text-generation agents; every other task is exercised from the Playground.'
-                      : 'Activate a published version to run it through POST /agents/{slug}/invocations.'
+                      ? 'Text agents can be tried here; try speech and voice agents from the Playground.'
+                      : 'Make a published version live (Versions → Activate) to try it here.'
                   }
                 />
               )}
@@ -1239,8 +1216,8 @@ export function AgentLineageDrawer({
         <VersionCompareDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
-          from={{ label: `v${dialog.previous.versionNumber}`, value: comparable(dialog.previous) }}
-          to={{ label: `v${dialog.version.versionNumber}`, value: comparable(dialog.version) }}
+          from={{ label: `v${dialog.previous.versionNumber}`, value: comparable(dialog.previous, naming) }}
+          to={{ label: `v${dialog.version.versionNumber}`, value: comparable(dialog.version, naming) }}
           title={`Compare v${dialog.previous.versionNumber} with v${dialog.version.versionNumber}`}
           description={`What changed between these two versions of ${lineage?.slug ?? 'this agent'}. A published version compares its frozen compiled config; a draft compares its editable body.`}
         />

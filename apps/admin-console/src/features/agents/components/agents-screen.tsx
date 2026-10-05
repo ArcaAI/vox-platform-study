@@ -259,10 +259,10 @@ function AgentsBody() {
       {
         id: 'serves',
         accessorFn: (row) => (row.assignment.tenantDefault ? 'tenant' : row.assignment.departmentCount > 0 ? 'department' : 'unassigned'),
-        header: 'Serves',
+        header: 'Used by',
         enableSorting: false,
         size: 200,
-        meta: { label: 'Serves' },
+        meta: { label: 'Used by' },
         cell: ({ row }) => <AssignmentBadges {...row.original.assignment} />,
       },
       {
@@ -322,7 +322,7 @@ function AgentsBody() {
                 ) : (
                   <Skeleton className="h-4 w-40" />
                 )}
-                <span className="text-xs">one row per agent · versions, activation and assignment inside</span>
+                <span className="text-xs">Open an agent to see its versions, where it is used and how to call it</span>
               </>
             }
             actions={
@@ -378,7 +378,7 @@ function AgentsBody() {
             <EmptyState
               icon={IconRobot}
               title="No agents yet"
-              description="Create an agent: pick a task, bind a catalogue model, set its instruction and parameters, then publish it. A new tenant starts with the platform's default agents already cloned in — editable like any other."
+              description="Create an agent: choose what it does, pick a model, give it a prompt, then publish it. A new tenant starts with the platform's default agents already copied in — you can edit them like any other."
               action={
                 <Button onClick={() => setCreating(true)}>
                   <IconPlus aria-hidden className="size-4" />
