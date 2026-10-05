@@ -18,3 +18,9 @@
 | H-14 | AB-1 | Prisma client | orchestrator | `pnpm db:generate` + database build after merge | applied |
 | H-15 | AB-1 | seed `09-consultation.ts` | note | three chain parents set CLOSED_INCOMPLETE to satisfy `Consultation_openKey_uq`; ContextItemVersion seed upsert `update: {}` (trigger) | info |
 | H-16 | AB-1 | P-CG migration folder | note | P-CG + P-E tables live in M2 (one lifecycle migration), not a separate folder | info |
+| H-17 | D4a | `consultations-api.test.ts:48` | orchestrator | `'SIGNED'` → `'APPROVED'` | applied `c19c41747` |
+| H-18 | E7 | admin write path for an LM Studio row's `_metadata.serving` + `contextLength` | follow-up | `PATCH admin/ai-models/:id` cannot write the LM Studio profile; reset environments get it from the seed (D-20); non-reset ones need an out-of-band row change. `rollout.mjs` reports it only | follow-up |
+| H-19 | E7 | `lmstudio-serving.descriptors.ts` platform default `contextLength` 65536 / KV f16 | none | left unchanged: the gemma row declares 32768/q4_0/flash itself and D-10 makes gemma the only model | info |
+| H-20 | E7 | rollout order | rollout | deployment `main` (`ccab8bc`, local) lands before the hope seed is applied to a cluster — declared window must never exceed served | rollout note |
+| H-21 | E7 | ledger agent | E4 | `fact-ledger-extraction` has no assignment; the producer calls it by slug (`FACT_LEDGER_AGENT_SLUG`); `critical`, `factId`, supersession are set by code | pending (E4 brief) |
+| H-22 | E7 | count pins in `task-930-agents`, `task-1036-agent-prompt-pins`, `system-output-language-policy.task1001` | E7 | bumped for the 8th agent per tenant (`401f61387`) | applied |
