@@ -665,24 +665,21 @@ describe('HarnessInternalService', () => {
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ clinicianNotes: [], attachments: [] }));
     });
 
-    // F-03: an oversized attachment must not dominate the context window /
-    // injection surface — cap the per-attachment fold at 20000 chars with
-    // an explicit truncation marker (never silent).
-    it('caps an oversized attachment fold at 20000 chars with a truncation marker', async () => {
+    // An attachment is never cut at the harness boundary: the note budget decides what fits a model's
+    // window (see note-composition/__tests__/note-budget-planner.task1045.test.ts). The former 20000-char
+    // fold cap and its truncation marker are gone.
+    it('passes an oversized attachment through whole — no cap, no truncation marker', async () => {
       const oversized = 'x'.repeat(25_000);
       contextItemRepository.findAttachments.mockResolvedValue([{ id: 'at-big', metaData: { extractedText: oversized } }]);
 
       await service.assemble('consultation-1', { tenantId: 'tenant-1' });
 
       const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
-      expect(call.attachments).toHaveLength(1);
-      const folded = call.attachments[0] as string;
-      expect(folded.length).toBe(20_000 + '…[attachment truncated for context]'.length);
-      expect(folded.startsWith('x'.repeat(20_000))).toBe(true);
-      expect(folded.endsWith('…[attachment truncated for context]')).toBe(true);
+      expect(call.attachments).toEqual([oversized]);
+      expect(call.attachments[0]).not.toContain('truncated');
     });
 
-    it('does not truncate an attachment at or under the 20000-char cap', async () => {
+    it('does not alter an attachment of exactly the former 20000-char cap', async () => {
       const exact = 'y'.repeat(20_000);
       contextItemRepository.findAttachments.mockResolvedValue([{ id: 'at-exact', content: exact }]);
 
@@ -717,9 +714,11 @@ describe('HarnessInternalService', () => {
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ highlights: [] }));
     });
 
-    // ── Effective warm-start policy — the HarnessPolicy column alone (TASK-882) ──
-    // `HarnessPolicy.warmStartEnabled` is the authority, resolved per call; a null column is
-    // the code default (OFF). The env fallback is gone.
+    // ── Effective warm-start policy — the HarnessPolicy column alone ──
+    // The live snapshot's TEXT is no longer an assemble input, whatever the policy says: a prior draft
+    // reaches the prompt only as the note composer's draft blocks. The policy still governs the
+    // snapshot PROVENANCE `persistDraft` records on SummaryMeta (`preSummaryIds`); a null column is the
+    // code default (OFF), as is a failing lookup. Lineage on the snapshot records provenance regardless.
     describe('effective warmStartEnabled', () => {
       const withPolicy = (warmStartEnabled: boolean | null, policyThrows = false) => {
         const getEffectivePolicy = policyThrows
@@ -736,41 +735,58 @@ describe('HarnessInternalService', () => {
         createdAt: new Date(),
       };
 
-      const assembledPreSummary = () => (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].preSummaryText;
+      const draftBody = () =>
+        ({
+          tenantId: 'tenant-1',
+          userId: 'doctor-1',
+          jobId: 'job-1',
+          content: 'S: chest pain O: BP 120/80 A: stable P: review',
+          modelName: 'gpt-x',
+          promptTemplateId: 'prompt-tpl-1',
+          promptVersion: '3',
+          gateDecision: 'PASS',
+        }) as any;
+
+      const lastAssembleParams = () => (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+      const lastPreSummaryIds = () => (SummaryMetaFactory.CreateSummaryMeta as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].preSummaryIds;
 
       beforeEach(() => {
         contextItemRepository.findPreSummaries.mockResolvedValue([SNAPSHOT]);
       });
 
-      //: the snapshot LOAD is now unconditional — the load is
-      // what tells finalize whether a live agent ran at all (`metaData.agent`).
-      // The observable contract is unchanged and is what is asserted here: with
-      // no lineage on the row, flag=false still injects NOTHING.
-      it('policy=false → no prior draft (snapshot carries no agent lineage)', async () => {
+      it.each([[true], [false], [null]])('policy=%s → the snapshot text never reaches the assembled prompt', async (policy) => {
+        const { service: svc } = withPolicy(policy);
+        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+        const call = lastAssembleParams();
+        expect(call.preSummaryText).toBeUndefined();
+        expect(JSON.stringify(call)).not.toContain(SNAPSHOT.content);
+      });
+
+      it('policy=false → no snapshot provenance recorded (snapshot carries no agent lineage)', async () => {
         const { service: svc } = withPolicy(false);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBeUndefined();
+        await svc.persistDraft('consultation-1', draftBody());
+        expect(lastPreSummaryIds()).toEqual([]);
       });
 
-      it('policy=true → the prior draft is injected', async () => {
+      it('policy=true → persistDraft records the snapshot as provenance', async () => {
         const { service: svc } = withPolicy(true);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBe(SNAPSHOT.content);
+        await svc.persistDraft('consultation-1', draftBody());
+        expect(lastPreSummaryIds()).toEqual(['ps-live-1']);
       });
 
-      it('policy=null is the code default (OFF) — no env fallback (TASK-882)', async () => {
+      it('policy=null is the code default (OFF) — no env fallback', async () => {
         const { service: svc } = withPolicy(null);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBeUndefined();
+        await svc.persistDraft('consultation-1', draftBody());
+        expect(lastPreSummaryIds()).toEqual([]);
       });
 
-      it('a failing policy lookup degrades to OFF, never to an env value (TASK-882)', async () => {
+      it('a failing policy lookup degrades to OFF, never to an env value', async () => {
         const { service: svc } = withPolicy(null, true);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBeUndefined();
+        await svc.persistDraft('consultation-1', draftBody());
+        expect(lastPreSummaryIds()).toEqual([]);
       });
 
-      // ── Agent lineage supersedes the flag ──
+      // ── Agent lineage: only the pin survives as an assemble input ──
       const LINEAGE_SNAPSHOT = {
         id: 'ps-live-agent',
         content: 'S: chest pain O: BP 120/80',
@@ -788,32 +804,24 @@ describe('HarnessInternalService', () => {
         createdAt: new Date(),
       };
 
-      it('lineage present + policy=false ⇒ prior draft injected and the agent pinned (R-N2)', async () => {
+      it('lineage present + policy=false ⇒ the agent is pinned, the snapshot text is NOT injected (R-N2)', async () => {
         contextItemRepository.findPreSummaries.mockResolvedValue([LINEAGE_SNAPSHOT]);
         const { service: svc } = withPolicy(false, false);
 
         await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
 
-        const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
-        expect(call.preSummaryText).toBe(LINEAGE_SNAPSHOT.content);
+        const call = lastAssembleParams();
         expect(call.pinnedAgentId).toBe('agent-session');
-        expect(call.preSummaryLineage).toMatchObject({ agentId: 'agent-session', promptTemplateId: 'tpl-live', promptVersionNumber: 2 });
+        expect(call.preSummaryText).toBeUndefined();
+        expect(call.preSummaryLineage).toBeUndefined();
+        expect(JSON.stringify(call)).not.toContain(LINEAGE_SNAPSHOT.content);
       });
 
       it('persistDraft stamps the SAME lineage on SummaryMeta with the flag OFF', async () => {
         contextItemRepository.findPreSummaries.mockResolvedValue([LINEAGE_SNAPSHOT]);
         const { service: svc } = withPolicy(false, false);
 
-        await svc.persistDraft('consultation-1', {
-          tenantId: 'tenant-1',
-          userId: 'doctor-1',
-          jobId: 'job-1',
-          content: 'S: chest pain O: BP 120/80 A: stable P: review',
-          modelName: 'gpt-x',
-          promptTemplateId: 'prompt-tpl-1',
-          promptVersion: '3',
-          gateDecision: 'PASS',
-        } as any);
+        await svc.persistDraft('consultation-1', draftBody());
 
         expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -824,16 +832,18 @@ describe('HarnessInternalService', () => {
         );
       });
 
-      it('policy=true beats env unset → warm start ON', async () => {
+      it('policy=true beats env unset → provenance recorded', async () => {
         const { service: svc } = withPolicy(true, false);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(assembledPreSummary()).toBe(SNAPSHOT.content);
+        await svc.persistDraft('consultation-1', draftBody());
+        expect(lastPreSummaryIds()).toEqual(['ps-live-1']);
       });
 
-      it('resolves the policy for the request tenant, per call', async () => {
+      it('resolves the policy for the request tenant, per persistDraft call (assemble no longer consults it)', async () => {
         const { service: svc, getEffectivePolicy } = withPolicy(true);
         await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+        expect(getEffectivePolicy).not.toHaveBeenCalled();
+        await svc.persistDraft('consultation-1', draftBody());
+        await svc.persistDraft('consultation-1', draftBody());
         expect(getEffectivePolicy).toHaveBeenCalledWith('tenant-1');
         expect(getEffectivePolicy).toHaveBeenCalledTimes(2);
       });
@@ -845,8 +855,9 @@ describe('HarnessInternalService', () => {
       });
     });
 
-    // ── Warm-start from the live SOAP snapshot ──
-    it('injects the LIVE_SOAP_SNAPSHOT content as preSummaryText when a snapshot exists', async () => {
+    // ── The live SOAP snapshot is no longer an assemble input ──
+    // Only its agent lineage (`pinnedAgentId`) is read; its text never reaches the prompt params.
+    it('never injects the LIVE_SOAP_SNAPSHOT content as preSummaryText, even with warm-start ON', async () => {
       service = buildService(true); // warm-start ON
       contextItemRepository.findPreSummaries.mockResolvedValue([
         {
@@ -860,19 +871,20 @@ describe('HarnessInternalService', () => {
       await service.assemble('consultation-1', { tenantId: 'tenant-1' });
 
       expect(contextItemRepository.findPreSummaries).toHaveBeenCalledWith('consultation-1');
-      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'S: chest pain O: BP 120/80' }));
+      const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+      expect(call.preSummaryText).toBeUndefined();
+      expect(JSON.stringify(call)).not.toContain('S: chest pain O: BP 120/80');
     });
 
-    // B-02: the plaintext `content` column was dropped — only `encryptedContent`
-    // is persisted — so `preSummaryText` must come from `decryptContentFromEntity`,
-    // not the entity's raw (possibly-stale/empty) `.content`.
-    it('decrypts the snapshot via decryptContentFromEntity (B-02) — preSummaryText reflects the decrypted value, not the raw field', async () => {
-      service = buildService(true); // warm-start ON
+    // The snapshot row is still loaded (through the decrypting helper) because its lineage decides
+    // which agent finalize is pinned to; a Vault outage there is not swallowed.
+    it('still reads the snapshot lineage through the decrypting loader and pins the session agent', async () => {
+      service = buildService(true);
       contextItemRepository.findPreSummaries.mockResolvedValue([
         {
           id: 'ps-live-1',
           content: null, // plaintext column dropped — only ciphertext persists
-          metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+          metaData: { subType: 'LIVE_SOAP_SNAPSHOT', agent: { agentId: 'agent-session', promptTemplateId: 'tpl-live', promptVersionNumber: 2, resolvedFrom: 'agent' } },
           createdAt: new Date(),
         },
       ]);
@@ -880,14 +892,14 @@ describe('HarnessInternalService', () => {
 
       await service.assemble('consultation-1', { tenantId: 'tenant-1' });
 
-      expect(contextItemRepository.decryptContentFromEntity).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'ps-live-1' }),
-        expect.anything(),
-      );
-      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'S: decrypted from Vault Transit' }));
+      expect(contextItemRepository.decryptContentFromEntity).toHaveBeenCalledWith(expect.objectContaining({ id: 'ps-live-1' }), expect.anything());
+      const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+      expect(call.pinnedAgentId).toBe('agent-session');
+      expect(call.preSummaryText).toBeUndefined();
+      expect(JSON.stringify(call)).not.toContain('S: decrypted from Vault Transit');
     });
 
-    it('degrades to the raw entity content (no throw, no decrypt call) when no SecretsService is wired', async () => {
+    it('does not throw (and does not decrypt) when no SecretsService is wired', async () => {
       const svc = buildService(true, undefined, false); // withSecrets=false
       contextItemRepository.findPreSummaries.mockResolvedValue([
         { id: 'ps-live-1', content: 'already-plaintext', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: new Date() },
@@ -895,7 +907,7 @@ describe('HarnessInternalService', () => {
 
       await expect(svc.assemble('consultation-1', { tenantId: 'tenant-1' })).resolves.toBeDefined();
       expect(contextItemRepository.decryptContentFromEntity).not.toHaveBeenCalled();
-      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'already-plaintext' }));
+      expect((promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0].preSummaryText).toBeUndefined();
     });
 
     // A decrypt failure (e.g. Vault Transit outage) must propagate
@@ -938,17 +950,18 @@ describe('HarnessInternalService', () => {
       expect(call.preSummaryText).toBeUndefined();
     });
 
-    it('selects the latest LIVE_SOAP_SNAPSHOT when multiple PRE_SUMMARY rows exist (latest wins)', async () => {
+    it('pins the agent of the LATEST LIVE_SOAP_SNAPSHOT when several PRE_SUMMARY rows exist (latest wins)', async () => {
       service = buildService(true); // warm-start ON
+      const agent = (agentId: string) => ({ agentId, promptTemplateId: 'tpl', promptVersionNumber: 1, resolvedFrom: 'agent' });
       contextItemRepository.findPreSummaries.mockResolvedValue([
-        { id: 'ps-old', content: 'old', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: new Date('2026-01-01T00:00:00Z') },
-        { id: 'ps-legacy', content: 'legacy', metaData: { subType: 'CASE_NOTES' }, createdAt: new Date('2026-01-03T00:00:00Z') },
-        { id: 'ps-new', content: 'new', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: new Date('2026-01-02T00:00:00Z') },
+        { id: 'ps-old', content: 'old', metaData: { subType: 'LIVE_SOAP_SNAPSHOT', agent: agent('agent-old') }, createdAt: new Date('2026-01-01T00:00:00Z') },
+        { id: 'ps-legacy', content: 'legacy', metaData: { subType: 'CASE_NOTES', agent: agent('agent-legacy') }, createdAt: new Date('2026-01-03T00:00:00Z') },
+        { id: 'ps-new', content: 'new', metaData: { subType: 'LIVE_SOAP_SNAPSHOT', agent: agent('agent-new') }, createdAt: new Date('2026-01-02T00:00:00Z') },
       ]);
 
       await service.assemble('consultation-1', { tenantId: 'tenant-1' });
 
-      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'new' }));
+      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ pinnedAgentId: 'agent-new' }));
     });
 
     // ── Kill-switch OFF (default): no warm-start, no snapshot lookup ──
@@ -1169,7 +1182,7 @@ describe('HarnessInternalService', () => {
       expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
 
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     // ── DNA redaction/rewrite audit trail ──
@@ -1307,7 +1320,7 @@ describe('HarnessInternalService', () => {
 
       const result = await service.persistDraft('consultation-1', draftBody());
 
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
       expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
     });
 
@@ -1407,14 +1420,14 @@ describe('HarnessInternalService', () => {
       const body = draftBody();
       delete (body as any).jobId;
       const result = await service.persistDraft('consultation-1', body);
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
       expect(lifecycleGate.setProcessing).toHaveBeenCalled();
     });
 
     it('still persists the draft when the best-effort SSE notify throws', async () => {
       jobService.notifyProgress.mockRejectedValue(new Error('redis down'));
       const result = await service.persistDraft('consultation-1', draftBody());
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
       expect(lifecycleGate.setProcessing).toHaveBeenCalled();
     });
 
@@ -1537,7 +1550,7 @@ describe('HarnessInternalService', () => {
       // the clinical artifact still lands
       expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
       expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     it('leaves the consultation in the state it IS in — no status write, no version bump', async () => {
@@ -1572,7 +1585,7 @@ describe('HarnessInternalService', () => {
     it('skips (does not throw) from RECORDING too — the draft is kept and the ordering is logged, not lost', async () => {
       consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.RECORDING));
 
-      await expect(service.persistDraft('consultation-1', draftBody())).resolves.toEqual({ contextItemId: 'ctx-draft-1' });
+      await expect(service.persistDraft('consultation-1', draftBody())).resolves.toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     });
@@ -1582,6 +1595,7 @@ describe('HarnessInternalService', () => {
 
       await expect(service.persistDraft('consultation-1', { ...draftBody(), phase: HARNESS_DRAFT_PHASE.EARLY } as any)).resolves.toEqual({
         contextItemId: 'ctx-draft-1',
+        versionNumber: 1,
       });
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
@@ -1706,7 +1720,7 @@ describe('HarnessInternalService', () => {
 
     it('returns the new RAW_SUMMARY contextItemId (so the workflow can target finalizeAssurance)', async () => {
       const result = await service.persistDraft('consultation-1', earlyBody());
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     // ── [[seg:]] StrictCitations markers survive the EARLY withhold ──
@@ -2345,7 +2359,7 @@ describe('HarnessInternalService', () => {
 
       expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
       expect(second).toEqual(first);
-      expect(second).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(second).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     it('persistDraft: DIFFERENT key → NOT suppressed, but adopts the existing draft (never a second row)', async () => {
@@ -2370,7 +2384,7 @@ describe('HarnessInternalService', () => {
       redisCache.get.mockRejectedValueOnce(new Error('redis down'));
       const result = await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
       expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     it('persistDraft: records the key only AFTER a successful write (get-then-setex)', async () => {
@@ -2379,7 +2393,7 @@ describe('HarnessInternalService', () => {
       const [key, ttl, value] = redisCache.setex.mock.calls[0];
       expect(key).toContain('idempotency:');
       expect(ttl).toBe(86400);
-      expect(JSON.parse(value)).toEqual({ contextItemId: 'ctx-draft-1' });
+      expect(JSON.parse(value)).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
     });
 
     it('recordGateDecision: SAME key twice → ONE WORM append + identical replay', async () => {
