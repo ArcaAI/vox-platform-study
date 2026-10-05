@@ -33,6 +33,29 @@ export const RUN_COMPLETION_RETRY_CAP_MS = 30_000;
 /** Watchers per process. A run past the cap is reconciled by the next status read, as before. */
 export const RUN_COMPLETION_MAX_WATCHERS = 256;
 
+/** Status words a terminal path reports in place of a reason — never a run's error code. */
+const RUN_STATUS_WORDS: ReadonlySet<string> = new Set([
+  'COMPLETED',
+  'SUCCEEDED',
+  'DEGRADED',
+  'FAILED',
+  'TIMED_OUT',
+  'CANCELED',
+  'CANCELLED',
+  'TERMINATED',
+]);
+
+/**
+ * The run's own error code for the read model's `firstErrorCode`: a v2 `run.failed` names
+ * `error.code` (a fixed code, PHI-free) and the watcher hands it on as `reason`. Only a FAILED or
+ * TIMED_OUT run carries one, and only a code-shaped value is taken — a status word or free text is
+ * not a code (the read model then stamps the generic code for the status).
+ */
+function runErrorCodeOf(status: string, reason: string): string | undefined {
+  if (status !== 'FAILED' && status !== 'TIMED_OUT') return undefined;
+  return /^[A-Z][A-Z0-9_]{1,63}$/.test(reason) && !RUN_STATUS_WORDS.has(reason) ? reason : undefined;
+}
+
 /**
  * `WorkflowRunCompletionService` — TASK-864 §3.3, the fix for finding G9.
  *
@@ -235,6 +258,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ tenantId, kind: 'workflow-run-completion' }));
 
+      const firstErrorCode = runErrorCodeOf(status, reason);
       try {
         await this.workflowRunService.recordRunFinished({
           tenantId,
@@ -245,6 +269,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           status,
           endedAt: new Date(endedAt),
           terminalReason: reason,
+          ...(firstErrorCode ? { firstErrorCode } : {}),
           consultationId,
           nodeCount: counts.nodeCount,
           failedNodeCount: counts.failedNodeCount,

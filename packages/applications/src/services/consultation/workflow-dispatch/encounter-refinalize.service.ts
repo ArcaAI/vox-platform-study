@@ -20,6 +20,7 @@ import {
   classifySessionFinal,
   noteRefinalizeClaimKey,
   refinalizeStateKey,
+  transcriptFinalPending,
   type SessionFinalKind,
 } from './encounter-refinalize';
 import { IConsultationWorkflowDispatchService } from './IConsultationWorkflowDispatchService';
@@ -150,6 +151,18 @@ export class EncounterRefinalizeService {
         : await this.contextItemRepository.findFullTranscript(consultation.id);
     const item = found && found.consultationId === consultation.id ? found : null;
     const kind = classifySessionFinal({ status: String(consultation.status), currentEncounterSeq: consultation.currentEncounterSeq }, item);
+    // An explicit request that arrives before the stop's session final folded the new speech in
+    // would generate for a transcript state that is about to change (and the stop then generates
+    // again). The stop path owns that generation; the request joins it.
+    if (input.trigger === 'explicit' && String(consultation.status) === 'STOPPED' && transcriptFinalPending(consultation, item)) {
+      const pendingLane: RefinalizeLane = tenantWorkflowGoverns(consultation.metadata) ? 'governed' : 'harness-doc';
+      this.logger.log({
+        message: 'Note request joins the stop — its session final has not folded the new speech into the transcript yet',
+        consultationId: consultation.id,
+        lane: pendingLane,
+      });
+      return { kind: 'coalesced', lane: pendingLane, jobId: null };
+    }
     // An explicit request on encounter 1 of a governed consultation belongs to the governing run
     // too — the default engine would write a second, ungoverned note beside it.
     const governedFirst = input.trigger === 'explicit' && kind === 'first' && tenantWorkflowGoverns(consultation.metadata);

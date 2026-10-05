@@ -40,6 +40,22 @@ export function classifySessionFinal(
   return item.currentVersionNumber > 1 || consultation.currentEncounterSeq > 1 ? 'refinalize' : 'first';
 }
 
+/**
+ * Whether a stop's session final has yet to fold the newest speech into FULL_TRANSCRIPT.
+ *
+ * `segmentSeqHead` counts every segment ingested for the consultation; the FULL_TRANSCRIPT records
+ * how many it was built from (`metaData.segmentCount`). The head ahead of it — or speech with no
+ * transcript at all — means the session final is still coming, and the stop path generates for it.
+ * A transcript that records no count is read as folded (never "pending forever").
+ */
+export function transcriptFinalPending(consultation: { segmentSeqHead?: number | null }, item: { metaData?: unknown } | null): boolean {
+  const head = consultation.segmentSeqHead;
+  if (typeof head !== 'number' || head <= 0) return false;
+  if (!item) return true;
+  const covered = (item.metaData as Record<string, unknown> | null | undefined)?.segmentCount;
+  return typeof covered === 'number' && head > covered;
+}
+
 /** The transcript state a note is generated for: the FULL_TRANSCRIPT item at its current version. */
 export function refinalizeStateKey(item: { id: string; currentVersionNumber: number }): string {
   return `${item.id}:v${item.currentVersionNumber}`;

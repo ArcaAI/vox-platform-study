@@ -426,6 +426,11 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
         entity.metaData = { ...(entity.metaData ?? {}), skippedNodeCount: input.skippedNodeCount };
       }
       if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
+      // A failed run always says why: a writer with no code (the completion watcher on a path
+      // that carried none) gets the generic code of its status, and never clears a real one.
+      if (!entity.firstErrorCode && (input.status === 'FAILED' || input.status === 'TIMED_OUT')) {
+        entity.firstErrorCode = input.status === 'TIMED_OUT' ? 'RUN_TIMED_OUT' : 'RUN_FAILED';
+      }
       // (M-2). `undefined` means the caller reported no delivered output (a graph with no
       // `output.deliver` node) and must leave any existing value alone. TASK-1038 E2 (fix 5): an
       // explicit `null` no longer clears a result already persisted — a writer that has no result
