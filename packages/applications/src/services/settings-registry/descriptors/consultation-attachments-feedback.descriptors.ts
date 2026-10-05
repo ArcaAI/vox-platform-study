@@ -17,6 +17,8 @@ export interface FeedbackReasonCode {
 }
 
 export const FEEDBACK_REASON_CODES_KEY = 'consultation.feedback.reasonCodes';
+export const FEEDBACK_ROLLUP_CRON_KEY = 'consultation.feedback.rollupCron';
+export const FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY = 'consultation.feedback.rollupLookbackDays';
 
 /** The platform list a tenant sees until it writes its own (a tenant value replaces the list). */
 export const FEEDBACK_REASON_CODES_DEFAULT: readonly FeedbackReasonCode[] = [
@@ -168,7 +170,7 @@ export const CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS: SettingDescriptor[] = [
   },
   {
     ...PLATFORM,
-    key: 'consultation.feedback.rollupCron',
+    key: FEEDBACK_ROLLUP_CRON_KEY,
     dataType: 'string',
     label: 'Feedback rollup schedule',
     description: 'Cron expression for the job that rolls feedback events up into daily aggregates. Default 01:30 daily.',
@@ -177,7 +179,7 @@ export const CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS: SettingDescriptor[] = [
   },
   {
     ...PLATFORM,
-    key: 'consultation.feedback.rollupLookbackDays',
+    key: FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY,
     dataType: 'number',
     label: 'Feedback rollup lookback (days)',
     description: 'How many trailing days each rollup run recomputes, so late-arriving feedback lands in the right day. Default 2.',
