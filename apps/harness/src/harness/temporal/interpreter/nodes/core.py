@@ -1545,6 +1545,27 @@ def _note_plan_error(value: Any) -> str | None:
     return None
 
 
+def _carries_note_plan(item: Any) -> bool:
+    return isinstance(item, dict) and any(
+        item.get(key) is not None for key in (*_NOTE_PLAN_REF_KEYS, *_NOTE_PLAN_ERROR_KEYS)
+    )
+
+
+def _handoff_note_source(bound_in: Any, run_context: dict[str, Any]) -> list[Any]:
+    """Where the finalizer reads the handoff's plan pointer (or refusal code) from.
+
+    ``in`` when it carries one; otherwise the run context's node outputs that do — the live
+    handoff seeds each note node as ``{text: '', note_plan_ref | note_plan_error}`` and only the
+    handoff writes those keys, so every such output names the same plan.
+    """
+    if any(_carries_note_plan(item) for item in _as_list(bound_in)):
+        return _as_list(bound_in)
+    nodes = run_context.get("nodes")
+    if not isinstance(nodes, dict):
+        return []
+    return [output for output in nodes.values() if _carries_note_plan(output)]
+
+
 #: The harness progress stage that marks a consultation's note as not written (apps/api
 #: ``HARNESS_PROGRESS_FAILED_STAGE``).
 _PROGRESS_FAILED_STAGE = "failed"
@@ -1855,8 +1876,12 @@ async def _run_text_generation(
     # The finalizer of a consultation whose live handoff carries a NotePlan pointer executes
     # that plan instead of generating once from the bound text.
     if _is_consultation_finalizer(payload, config):
+        # `in` is read first; the handoff's seeded note outputs are the fallback, because the
+        # walk binds a note node's `out` socket — its `text`, empty on the plan path — and the
+        # pointer beside it never reaches `in`.
+        plan_source = _handoff_note_source(bound.get("in"), _run_context(payload))
         try:
-            plan_ref = _note_plan_ref(bound.get("in"))
+            plan_ref = _note_plan_ref(plan_source)
         except ValueError as exc:
             return await _degrade_note_plan(payload, started, "note_plan_ref_invalid", str(exc))
         if plan_ref is not None:
@@ -1865,7 +1890,7 @@ async def _run_text_generation(
             )
         # The handoff could not compose the plan and failed the note path by name: degrade with
         # THAT code, and never generate from whatever else is bound (a partial input).
-        plan_error = _note_plan_error(bound.get("in"))
+        plan_error = _note_plan_error(plan_source)
         if plan_error is not None:
             return await _degrade_note_plan(
                 payload, started, plan_error, "the note plan could not be composed"
