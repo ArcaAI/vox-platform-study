@@ -19,7 +19,7 @@ is in the source at all — a citation of that source in the note. A fact the no
 fails, because the source's own words and numbers are then missing.
 
 No ledger (``coverage.criticalFacts`` absent) means the note was not checked: ``unchecked``.
-The repair ONE call is the executor's; this module only says which sections need it.
+The repair ONE call is the executor's; this module says which sections need it and what to tell it.
 """
 
 from __future__ import annotations
@@ -352,32 +352,65 @@ def gap_section_keys(plan: NotePlanV1, result: CoverageResultV1) -> list[str]:
 
 
 def repair_directive(
-    plan: NotePlanV1, result: CoverageResultV1, section_keys: Sequence[str]
+    plan: NotePlanV1,
+    result: CoverageResultV1,
+    section_keys: Sequence[str],
+    drafts: Mapping[str, str] | None = None,
 ) -> str:
     """The directive of the ONE repair call: only the gap sections, and what each must fix.
 
-    It names facts by their anchors, values and source labels — never a sentence of the note.
+    ``drafts`` is the text the first pass wrote for those sections. The repair EDITS it — handed
+    back, kept sentence by sentence — rather than rewriting the section from a list: measured on
+    the summarization model against a live two-encounter replay, a rewrite from fact terms alone
+    dropped facts the section already had and rarely restored the missing one. Each missing fact
+    is quoted from the source line it cites (a fact naming no rendered line falls back to its
+    anchors and values).
     """
     wanted = set(section_keys)
-    titles = ", ".join(plan.heading_title(key) for key in _ordered(plan, wanted))
+    ordered = _ordered(plan, wanted)
+    titles = ", ".join(plan.heading_title(key) for key in ordered)
     facts = {fact.fact_id: fact for fact in plan.coverage.critical_facts or ()}
-    # Wording measured on LM Studio against the live run's inputs: it restores an omitted
-    # earlier-encounter fact where a bare "State: …" list did not.
-    lines = [
-        f"Rewrite only these sections: {titles}.",
-        "The previous draft of these sections left out the facts listed below. Write each listed "
-        "fact into its section, worded from its source line, and end it with that label. Keep "
-        "every other fact the section needs.",
+    texts, _ = _source_texts(plan)
+    # Blank lines dropped: the directive stays one paragraph after the shared prefix.
+    previous = [
+        (key, "\n".join(line for line in (drafts or {}).get(key, "").splitlines() if line.strip()))
+        for key in ordered
     ]
+    previous = [(key, text) for key, text in previous if text]
+    lines = [f"Rewrite only these sections: {titles}."]
+    if previous:
+        lines.append(
+            "Your previous draft of these sections is below. Keep every sentence of it, except what "
+            "a Fix line asks you to correct, and add each fact listed after it that the draft left "
+            "out: one sentence per fact, written in English from its quoted source line and ending "
+            "with that label."
+        )
+        lines.append("Previous draft:")
+        for key, text in previous:
+            lines.extend([f"## {plan.heading_title(key)}", text])
+        lines.append("Add these facts:")
+    else:
+        lines.append(
+            "The previous draft of these sections left out the facts listed below. Write each "
+            "listed fact into its section, worded from its source line, and end it with that "
+            "label. Keep every other fact the section needs."
+        )
     for gap in result.gaps:
         if gap.section_key not in wanted:
             continue
         if gap.kind == "missing_fact" and gap.fact_id in facts:
             fact = facts[gap.fact_id]
+            kind = fact.kind.replace("_", " ")
             labels = " ".join(f"[{label}]" for label in fact.citations)
-            lines.append(
-                f"- {fact.kind.replace('_', ' ')}: {'; '.join(_fact_terms(fact))} {labels}".rstrip()
-            )
+            quoted = " ".join(
+                " ".join(_strip_lead_label(line).split())
+                for label in fact.citations
+                for line in texts.get(label, ())
+            ).strip()
+            if quoted:
+                lines.append(f'- {kind} {labels}: "{quoted}"')
+            else:
+                lines.append(f"- {kind}: {'; '.join(_fact_terms(fact))} {labels}".rstrip())
         elif gap.kind in ("number_mismatch", "unresolved_citation"):
             lines.append(f"- Fix: {gap.detail}")
     return "\n".join(lines)
