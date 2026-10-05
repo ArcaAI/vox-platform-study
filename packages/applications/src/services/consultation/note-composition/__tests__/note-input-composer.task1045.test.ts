@@ -6,7 +6,10 @@ import {
   NoteInputComposerService,
   NoteInputExceedsContextError,
   NoteModelUnavailableError,
+  NoteTemplateUnresolvedError,
   composeFromSnapshot,
+  preservedSectionsOf,
+  renderNotePlanUserPrefix,
   type NoteCompositionSettings,
   type NoteSourceSnapshot,
 } from '../note-input-composer.service';
@@ -120,6 +123,7 @@ function snapshot(overrides: Partial<NoteSourceSnapshot> = {}): NoteSourceSnapsh
               numbers: [],
               aliases: ['four weeks'],
               citations: [SEG(5)],
+              sectionHint: 'plan',
             },
           ]),
         },
@@ -201,7 +205,7 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
     expect(plan.coverage.criticalFacts).toEqual([
       { factId: 'E1-F1', encounterSeq: 1, key: 'allergy:penicillin', kind: 'allergy', anchors: ['penicillin'], numbers: [], citations: ['S2'] },
       { factId: 'E2-F1', encounterSeq: 2, key: 'med:metformin', kind: 'dose_change', anchors: ['metformin'], numbers: [{ value: '1000', unit: 'mg' }], citations: ['S5'] },
-      { factId: 'E2-F2', encounterSeq: 2, key: 'follow_up:review', kind: 'follow_up', anchors: ['review', 'four weeks'], numbers: [], citations: ['S5'] },
+      { factId: 'E2-F2', encounterSeq: 2, key: 'follow_up:review', kind: 'follow_up', anchors: ['review', 'four weeks'], numbers: [], citations: ['S5'], sectionHint: 'plan' },
     ]);
     expect(plan.coverage.sourceIds).toEqual({
       S1: { id: SEG(1), v: 1, kind: 'segment' },
@@ -285,6 +289,43 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
     expect(a.calls[0].directive).toMatch(/^Write only these sections: Section 1, /);
   });
 
+  it('puts results and uploads BEFORE the latest encounter even when it is the only one', async () => {
+    const snap = snapshot();
+    snap.encounters = [snap.encounters[0]];
+    const plan = await compose(snap);
+    expect(keys(plan)).toEqual(['pre_summary', 'prior_visit_summary', 'results', 'attachment_audio', 'encounter_1']);
+  });
+
+  it('marks coverage unchecked (criticalFacts = null) when any spoken encounter has no current ledger', async () => {
+    const snap = snapshot();
+    snap.encounters[1].ledger = null;
+    const plan = await compose(snap);
+    expect(plan.coverage.criticalFacts).toBeNull();
+    expect(notePlanV1Schema.safeParse(plan).success).toBe(true);
+  });
+
+  it('keeps criticalFacts = [] when every ledger was checked and none holds a critical fact', async () => {
+    const snap = snapshot();
+    for (const encounter of snap.encounters) encounter.ledger!.ledger.facts = encounter.ledger!.ledger.facts.map((fact) => ({ ...fact, critical: false }));
+    expect((await compose(snap)).coverage.criticalFacts).toEqual([]);
+  });
+
+  it('renders the user prefix with the house data-block wrapping, and counts each block as it is sent', async () => {
+    const plan = await compose(snapshot(), { counter: async (texts) => estimateCounts(texts) });
+    const prefix = renderNotePlanUserPrefix(plan);
+    expect(prefix.startsWith('<<<EXTERNAL_DATA section="pre_summary">>>\n--- Pre-summary ---\nKnown type 2 diabetes on metformin.\n<<<END_EXTERNAL_DATA>>>\n\n')).toBe(true);
+    for (const block of plan.blocks) {
+      const wrapped = `<<<EXTERNAL_DATA section="${block.key}">>>\n--- ${block.label} ---\n${block.content}\n<<<END_EXTERNAL_DATA>>>`;
+      expect(prefix).toContain(wrapped);
+      // the wrapped bytes, plus one for the join
+      expect(block.tokens).toBe(Math.ceil(Buffer.byteLength(wrapped, 'utf8') / 2) + 1);
+    }
+  });
+
+  it('refuses to plan without any section headings', async () => {
+    await expect(compose(snapshot({ headings: [] }))).rejects.toMatchObject({ name: NoteTemplateUnresolvedError.name, code: 'NOTE_TEMPLATE_UNRESOLVED' });
+  });
+
   it('reads the legacy single transcript only when the consultation has no segment items', async () => {
     const plan = await compose(
       snapshot({
@@ -293,9 +334,10 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
         attachmentTranscripts: [],
       }),
     );
-    expect(keys(plan)).toEqual(['pre_summary', 'prior_visit_summary', 'encounter_1', 'results']);
+    expect(keys(plan)).toEqual(['pre_summary', 'prior_visit_summary', 'results', 'encounter_1']);
     expect(plan.blocks.find((block) => block.key === 'encounter_1')!.content).toBe('Doctor: hello. Patient: chest pain.');
     expect(plan.sources.encounters).toEqual([{ seq: 1, visitType: 'unknown', segmentCount: 0, rendered: 'verbatim' }]);
+    expect(plan.coverage.criticalFacts).toBeNull();
   });
 });
 
@@ -335,6 +377,22 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
     ]);
     expect(plan.preserve).toEqual({ contextItemId: 'draft-1', versionNumber: 4, sectionKeys: ['subjective', 'objective', 'assessment'] });
     expect(notePlanV1Schema.safeParse(plan).success).toBe(true);
+    expect(preservedSectionsOf(snapshot({ draft }), plan)).toEqual([
+      { key: 'subjective', content: 'Chest tightness.' },
+      { key: 'objective', content: 'Normal ECG.' },
+      { key: 'assessment', content: 'Non-cardiac chest pain.' },
+    ]);
+  });
+
+  it('preserves EVERY other heading — one the note lacks is preserved empty, so calls + preserve cover the template', async () => {
+    const short = { ...draft, latestText: '## Subjective\nChest tightness.\n## Plan\nMetformin.', aiText: null };
+    const plan = await compose(snapshot({ draft: short }), { mode: 'section_regen', sectionKeys: ['plan'] });
+    expect(plan.preserve!.sectionKeys).toEqual(['subjective', 'objective', 'assessment']);
+    expect(preservedSectionsOf(snapshot({ draft: short }), plan)).toEqual([
+      { key: 'subjective', content: 'Chest tightness.' },
+      { key: 'objective', content: '' },
+      { key: 'assessment', content: '' },
+    ]);
   });
 
   it('refuses a section regenerate with no note to regenerate, or a section the template does not declare', async () => {
@@ -344,6 +402,9 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
     });
     await expect(compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: ['nope'] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
     await expect(compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: [] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
+    // a heading the note has but the template does not declare cannot be regenerated alone
+    const extra = { ...draft, latestText: `${draft.latestText}\n## Addendum\nLate result.` };
+    await expect(compose(snapshot({ draft: extra }), { mode: 'section_regen', sectionKeys: ['addendum'] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
   });
 });
 
@@ -458,7 +519,7 @@ describe('NoteInputComposerService', () => {
 
   it('never reads the recap or the live snapshot into a plan (canary)', async () => {
     const { svc } = service({ items: baseItems() });
-    const plan = await svc.compose(request);
+    const { plan } = await svc.compose(request);
     expect(JSON.stringify(plan)).not.toContain(CANARY);
     expect(plan.sources.preSummary).toEqual({ contextItemId: 'pre-1', versionNumber: 1 });
     expect(plan.blocks.find((b) => b.key === 'attachment_audio')!.content).toBe('[A1] Phone call: BP 150/95 at home.');
@@ -469,11 +530,12 @@ describe('NoteInputComposerService', () => {
 
   it('caches the plan under note-plan:{planId} for two hours and reads it back for the same consultation only', async () => {
     const { svc, redis } = service({ items: baseItems() });
-    const plan = await svc.compose(request);
+    const { plan, preservedSections } = await svc.compose(request);
     expect(redis.get(`${NOTE_PLAN_REDIS_PREFIX}${plan.planId}`)).toMatchObject({ ttl: NOTE_PLAN_TTL_SECONDS });
-    expect(await svc.loadPlan('t1', 'c1', plan.planId)).toEqual(plan);
-    expect(await svc.loadPlan('t2', 'c1', plan.planId)).toBeNull();
-    expect(await svc.loadPlan('t1', 'other', plan.planId)).toBeNull();
+    expect(await svc.loadEnvelope('t1', 'c1', plan.planId)).toEqual({ plan, preservedSections });
+    expect(preservedSections).toEqual([]);
+    expect(await svc.loadEnvelope('t2', 'c1', plan.planId)).toBeNull();
+    expect(await svc.loadEnvelope('t1', 'other', plan.planId)).toBeNull();
     expect(await svc.loadRecipe(plan.planId)).toEqual({ consultationId: 'c1', tenantId: 't1', mode: 'final', sectionKeys: [], model: 'lms-gemma-4-e2b-it-qat' });
   });
 

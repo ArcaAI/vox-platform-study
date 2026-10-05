@@ -136,6 +136,8 @@ export const noteCriticalFactSchema = z
     anchors: z.array(z.string()),
     numbers: z.array(noteNumberSchema),
     citations: z.array(z.string()),
+    /** The heading the ledger says the fact belongs under, when it said one. */
+    sectionHint: z.string().optional(),
   })
   .strict();
 
@@ -146,7 +148,8 @@ export const noteSourceIdSchema = z.object({ id: z.string(), v: z.number().int()
 
 export const noteCoverageSchema = z
   .object({
-    criticalFacts: z.array(noteCriticalFactSchema),
+    /** `null` — a fact ledger was not ready, coverage is `unchecked`; `[]` — checked, no critical fact. */
+    criticalFacts: z.array(noteCriticalFactSchema).nullable(),
     sourceIds: z.record(z.string(), noteSourceIdSchema),
     repairPasses: z.number().int().min(0).max(1),
   })
@@ -170,7 +173,7 @@ export const notePlanV1Schema = z
     /** The system message for the harness-doc lane; the governed lane composes its own from the agent. */
     system: z.string().optional(),
     blocks: z.array(noteBlockSchema),
-    headings: z.array(noteHeadingSchema),
+    headings: z.array(noteHeadingSchema).min(1),
     calls: z.array(noteCallSchema).min(1).max(NOTE_PLAN_MAX_CALLS),
     coverage: noteCoverageSchema,
     preserve: notePreserveSchema.nullable(),
@@ -201,6 +204,12 @@ export const coverageResultV1Schema = z
   })
   .strict();
 
+/** A preserved section's current text, which a `section_regen` delivery must carry. */
+export const notePreservedSectionSchema = z.object({ key: z.string(), content: z.string() }).strict();
+
+/** The body of `GET internal/consultations/:id/note-plans/:planId`. */
+export const notePlanEnvelopeSchema = z.object({ plan: notePlanV1Schema, preservedSections: z.array(notePreservedSectionSchema) }).strict();
+
 /** What the assemble response hands the harness; the plan itself is fetched by `planId`. */
 export const notePlanRefSchema = z.object({ consultationId: z.string(), mode: z.enum(NOTE_PLAN_MODES), planId: z.string() }).strict();
 
@@ -216,3 +225,5 @@ export type NoteSourceId = z.infer<typeof noteSourceIdSchema>;
 export type NotePlanV1 = z.infer<typeof notePlanV1Schema>;
 export type CoverageResultV1 = z.infer<typeof coverageResultV1Schema>;
 export type NotePlanRef = z.infer<typeof notePlanRefSchema>;
+export type NotePreservedSection = z.infer<typeof notePreservedSectionSchema>;
+export type NotePlanEnvelope = z.infer<typeof notePlanEnvelopeSchema>;

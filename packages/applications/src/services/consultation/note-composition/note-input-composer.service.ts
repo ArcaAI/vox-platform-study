@@ -13,6 +13,7 @@ import {
   type AiModelEntity,
   type ContextItemEntity,
 } from '@arcaai/domains';
+import { composeMessages } from '@arcaai/workflow-contract';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
@@ -49,7 +50,7 @@ import {
   NOTE_PLAN_REDIS_PREFIX,
   NOTE_PLAN_SCHEMA,
   NOTE_PLAN_TTL_SECONDS,
-  notePlanV1Schema,
+  notePlanEnvelopeSchema,
   type NoteBlock,
   type NoteBlockRole,
   type NoteCriticalFact,
@@ -57,7 +58,9 @@ import {
   type NoteHeading,
   type NotePlanMode,
   type NotePlanModel,
+  type NotePlanEnvelope,
   type NotePlanV1,
+  type NotePreservedSection,
   type NoteSourceId,
 } from './note-plan.types';
 import { NoteTokenCounterToken, estimateTokens, type NoteTokenCounter, type TokenCountResult, type TokenizerSpec } from './text-token-count.client';
@@ -170,6 +173,14 @@ export class NoteModelUnavailableError extends Error {
   }
 }
 
+export class NoteTemplateUnresolvedError extends Error {
+  readonly code = 'NOTE_TEMPLATE_UNRESOLVED';
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoteTemplateUnresolvedError';
+  }
+}
+
 export class NoteCompositionRequestError extends Error {
   constructor(
     readonly code: 'NOTE_SECTION_REGEN_NO_DRAFT' | 'NOTE_SECTION_UNKNOWN',
@@ -212,7 +223,8 @@ interface InputModel {
   attachments: { label: string; lines: Array<{ itemId: string; line: string }> };
   drafts: BlockDraft[];
   sourceIds: Record<string, NoteSourceId>;
-  criticalFacts: NoteCriticalFact[];
+  /** `null` when any spoken encounter has no current ledger — coverage cannot be checked. */
+  criticalFacts: NoteCriticalFact[] | null;
 }
 
 const ATTACHMENT_BLOCK = { key: 'attachment_audio', label: 'Uploaded audio transcripts' } as const;
@@ -358,22 +370,25 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
         anchors: anchorsOf(fact),
         numbers: fact.numbers.map((n) => (n.unit ? { value: n.value, unit: n.unit } : { value: n.value })),
         citations: labelsFor(fact.citations),
+        ...(fact.sectionHint ? { sectionHint: fact.sectionHint } : {}),
       });
     }
   }
 
   const ordered = spoken.sort((a, b) => a.seq - b.seq);
+  // Coverage is only checkable when every encounter that has speech has a current ledger.
+  const ledgersComplete = ordered.length > 0 && ordered.every((encounter) => encounters.some((e) => e.seq === encounter.seq && e.ledger !== null));
   return {
     head,
-    // With one encounter it precedes the results; with several, results and uploads sit before the last.
-    priors: ordered.length >= 2 ? ordered.slice(0, -1) : ordered,
-    last: ordered.length >= 2 ? ordered[ordered.length - 1] : null,
+    // Every encounter before the latest, then results and uploads, then the latest encounter.
+    priors: ordered.slice(0, -1),
+    last: ordered.length > 0 ? ordered[ordered.length - 1] : null,
     silent,
     results,
     attachments,
     drafts,
     sourceIds,
-    criticalFacts,
+    criticalFacts: ledgersComplete ? criticalFacts : null,
   };
 }
 
@@ -389,7 +404,6 @@ function targetSections(snapshot: NoteSourceSnapshot, mode: NotePlanMode, sectio
     throw new NoteCompositionRequestError('NOTE_SECTION_REGEN_NO_DRAFT', 'There is no note to regenerate a section of.');
   }
   const known = new Map<string, NoteHeading>(snapshot.headings.map((heading) => [heading.key, heading]));
-  for (const [key, section] of noteSections(snapshot.draft.latestText, snapshot.headings)) if (!known.has(key)) known.set(key, { key, title: section.title });
   const keys = [...new Set(sectionKeys ?? [])];
   const unknown = keys.filter((key) => !known.has(key));
   if (keys.length === 0 || unknown.length > 0) {
@@ -433,6 +447,29 @@ function contentOf(block: BlockDraft): string {
   return block.lines.join('\n');
 }
 
+/**
+ * The user-message prefix every call of a plan shares: its blocks, in order, in the house
+ * `composeMessages` data-block wrapping — byte-identical to what the harness executor sends.
+ */
+export function renderNotePlanUserPrefix(plan: Pick<NotePlanV1, 'blocks'>): string {
+  return wrapBlocks(plan.blocks.map((block) => ({ key: block.key, label: block.label, content: block.content })));
+}
+
+function wrapBlocks(blocks: ReadonlyArray<{ key: string; label: string; content: string }>): string {
+  return composeMessages({ platformRules: '', resolvedPrompt: null, scope: {}, dataBlocks: blocks }).user;
+}
+
+function wrappedOf(block: BlockDraft): string {
+  return wrapBlocks([{ key: block.key, label: block.label, content: contentOf(block) }]);
+}
+
+/** The current text of every section a `section_regen` plan preserves (`''` for one the note lacks). */
+export function preservedSectionsOf(snapshot: NoteSourceSnapshot, plan: Pick<NotePlanV1, 'preserve'>): NotePreservedSection[] {
+  if (!plan.preserve || !snapshot.draft) return [];
+  const sections = noteSections(snapshot.draft.latestText, snapshot.headings);
+  return plan.preserve.sectionKeys.map((key) => ({ key, content: sections.get(key)?.text ?? '' }));
+}
+
 /** The verbatim blocks in their fixed order, uncounted — what the system message is composed beside. */
 export function previewNoteBlocks(snapshot: NoteSourceSnapshot): NoteBlock[] {
   return orderedBlocks(buildInputModel(snapshot), new Set()).map((block) => ({
@@ -466,6 +503,9 @@ function orderedBlocks(model: InputModel, reduced: ReadonlySet<number>): BlockDr
 
 export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options: ComposeFromSnapshotOptions): Promise<NotePlanV1> {
   const { mode, settings } = options;
+  if (snapshot.headings.length === 0) {
+    throw new NoteTemplateUnresolvedError('The note template declares no section headings; a note plan needs at least one.');
+  }
   const sections = targetSections(snapshot, mode, options.sectionKeys);
   const model = buildInputModel(snapshot);
 
@@ -490,27 +530,32 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     ...(model.results ? [model.results] : []),
     ...model.drafts,
   ];
-  const texts = new Set<string>([options.system, model.attachments.label, ...directives]);
-  for (const block of allBlocks) {
-    texts.add(block.label);
-    for (const line of block.lines) texts.add(line);
-  }
+  // Each block is counted exactly as it is sent — in its data-block wrapping — plus one for the join.
+  // The uploaded-audio block is counted whole and each of its lines alone, so a reduced variant
+  // (lines its encounter's ledger covers removed) is the whole minus those lines: never under.
+  const attachmentAll: BlockDraft | null =
+    model.attachments.lines.length > 0
+      ? { key: ATTACHMENT_BLOCK.key, role: 'attachment_transcript', label: model.attachments.label, lines: model.attachments.lines.map((e) => e.line) }
+      : null;
+  const texts = new Set<string>([options.system, ...directives]);
+  for (const block of allBlocks) texts.add(wrappedOf(block));
+  if (attachmentAll) texts.add(wrappedOf(attachmentAll));
   for (const entry of model.attachments.lines) texts.add(entry.line);
   const textList = [...texts];
   const counted = await options.counter(textList);
   const countOf = new Map<string, number>(textList.map((text, index) => [text, counted.counts[index] ?? estimateTokens(text)]));
   const tok = (text: string) => countOf.get(text) ?? estimateTokens(text);
-  // Label + each line + one join per line: the joined content never counts more than its parts.
-  const blockTokens = (block: BlockDraft) => tok(block.label) + block.lines.reduce((sum, line) => sum + tok(line) + 1, 0);
+  const blockTokens = (block: BlockDraft) => tok(wrappedOf(block)) + 1;
   const attachmentLineTokens = (itemIds: ReadonlySet<string>) =>
     model.attachments.lines.filter((entry) => itemIds.has(entry.itemId)).reduce((sum, entry) => sum + tok(entry.line) + 1, 0);
+  const attachmentBlockTokens = (dropped: ReadonlySet<string>) =>
+    attachmentAll ? (dropped.size === 0 ? blockTokens(attachmentAll) : Math.max(0, blockTokens(attachmentAll) - attachmentLineTokens(dropped))) : 0;
 
   const reducibleCover = new Set(model.priors.flatMap((encounter) => (encounter.reduced ? [...encounter.coveredAttachmentIds] : [])));
-  const uncoveredAttachmentIds = new Set(model.attachments.lines.map((entry) => entry.itemId).filter((id) => !reducibleCover.has(id)));
   const fixedBlocks: BlockDraft[] = [...model.head, ...(model.results ? [model.results] : []), ...(model.last?.verbatim ? [model.last.verbatim] : []), ...model.drafts];
   const attachmentsPresent = model.attachments.lines.length > 0;
   const fixed = {
-    tokens: fixedBlocks.reduce((sum, block) => sum + blockTokens(block), 0) + (attachmentsPresent ? tok(model.attachments.label) + attachmentLineTokens(uncoveredAttachmentIds) : 0),
+    tokens: fixedBlocks.reduce((sum, block) => sum + blockTokens(block), 0) + (attachmentsPresent ? attachmentBlockTokens(reducibleCover) : 0),
     blocks: fixedBlocks.length + (attachmentsPresent ? 1 : 0),
   };
   const priorEncounters: PlannerPriorEncounter[] = model.priors
@@ -545,12 +590,13 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
   if (!plan.ok) throw new NoteInputExceedsContextError(plan.reason, plan.contextWindow, plan.requiredTokens);
 
   const reducedSet = new Set(plan.reducedSeqs);
+  const dropped = new Set(model.priors.filter((encounter) => reducedSet.has(encounter.seq)).flatMap((encounter) => [...encounter.coveredAttachmentIds]));
   const blocks: NoteBlock[] = orderedBlocks(model, reducedSet).map((block) => ({
     key: block.key,
     role: block.role,
     label: block.label,
     content: contentOf(block),
-    tokens: blockTokens(block),
+    tokens: block.key === ATTACHMENT_BLOCK.key ? attachmentBlockTokens(dropped) : blockTokens(block),
   }));
 
   const encounterSources: NoteEncounterSource[] = [...model.priors, ...(model.last ? [model.last] : []), ...model.silent]
@@ -574,12 +620,8 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
       ? {
           contextItemId: snapshot.draft.itemId,
           versionNumber: snapshot.draft.versionNumber,
-          sectionKeys: (() => {
-            const present = noteSections(snapshot.draft.latestText, snapshot.headings);
-            const order = [...snapshot.headings.map((h) => h.key).filter((key) => present.has(key)), ...[...present.keys()].filter((key) => !snapshot.headings.some((h) => h.key === key))];
-            const targets = new Set(sections.map((s) => s.key));
-            return order.filter((key) => !targets.has(key));
-          })(),
+          // Every heading the call does not rewrite: calls + preserve always cover the template.
+          sectionKeys: snapshot.headings.map((heading) => heading.key).filter((key) => !sections.some((section) => section.key === key)),
         }
       : null;
 
@@ -699,7 +741,8 @@ export class NoteInputComposerService {
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
   ) {}
 
-  async compose(request: NoteComposeRequest): Promise<NotePlanV1> {
+  /** Compose (and, unless a preview, cache) the plan plus the preserved section text a regenerate needs. */
+  async compose(request: NoteComposeRequest): Promise<NotePlanEnvelope> {
     const settings = await this.resolveSettings(request.tenantId);
     const { model, tokenizer } = await this.resolveModel(request.tenantId, request.model ?? null);
     const snapshot = await this.gather(request, model, settings.ledgerWaitSeconds);
@@ -720,8 +763,9 @@ export class NoteInputComposerService {
           allowEstimate: settings.allowEstimate,
         }),
     });
+    const envelope: NotePlanEnvelope = { plan, preservedSections: preservedSectionsOf(snapshot, plan) };
     if (request.cache !== false) {
-      await this.store(plan, {
+      await this.store(envelope, {
         consultationId: request.consultationId,
         tenantId: request.tenantId,
         mode: request.mode,
@@ -729,17 +773,18 @@ export class NoteInputComposerService {
         model: request.model ?? null,
       });
     }
-    return plan;
+    return envelope;
   }
 
-  /** The cached plan, only for the consultation and tenant it was composed for; `null` on a miss. */
-  async loadPlan(tenantId: string, consultationId: string, planId: string): Promise<NotePlanV1 | null> {
+  /** The cached plan (+ preserved sections), only for the consultation and tenant it was composed for; `null` on a miss. */
+  async loadEnvelope(tenantId: string, consultationId: string, planId: string): Promise<NotePlanEnvelope | null> {
     const raw = await this.cacheGet(`${NOTE_PLAN_REDIS_PREFIX}${planId}`);
     if (!raw) return null;
     try {
-      const parsed = notePlanV1Schema.safeParse(JSON.parse(raw));
+      const parsed = notePlanEnvelopeSchema.safeParse(JSON.parse(raw));
       if (!parsed.success) return null;
-      return parsed.data.tenantId === tenantId && parsed.data.consultationId === consultationId ? parsed.data : null;
+      const { plan } = parsed.data;
+      return plan.tenantId === tenantId && plan.consultationId === consultationId ? parsed.data : null;
     } catch {
       return null;
     }
@@ -757,10 +802,11 @@ export class NoteInputComposerService {
 
   // ----------------------------------------------------------------------------------------------
 
-  private async store(plan: NotePlanV1, recipe: NotePlanRecipe): Promise<void> {
+  private async store(envelope: NotePlanEnvelope, recipe: NotePlanRecipe): Promise<void> {
+    const { plan } = envelope;
     if (!this.redisCache) return;
     try {
-      await this.redisCache.setex(`${NOTE_PLAN_REDIS_PREFIX}${plan.planId}`, NOTE_PLAN_TTL_SECONDS, JSON.stringify(plan));
+      await this.redisCache.setex(`${NOTE_PLAN_REDIS_PREFIX}${plan.planId}`, NOTE_PLAN_TTL_SECONDS, JSON.stringify(envelope));
       await this.redisCache.setex(`${NOTE_PLAN_RECIPE_REDIS_PREFIX}${plan.planId}`, NOTE_PLAN_RECIPE_TTL_SECONDS, JSON.stringify(recipe));
     } catch (error) {
       // A lost cache entry is recomposed on the harness's fetch; it must not fail the composition.

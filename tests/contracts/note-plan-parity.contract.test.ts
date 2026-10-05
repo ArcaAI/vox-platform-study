@@ -23,6 +23,7 @@ import {
   NOTE_GAP_KINDS,
   NOTE_TOKENIZER_MODES,
   coverageResultV1Schema,
+  notePlanEnvelopeSchema,
   notePlanRefSchema,
   notePlanV1Schema,
 } from '../../packages/applications/src/services/consultation/note-composition/note-plan.types';
@@ -53,6 +54,21 @@ describe('TASK-1045 — NotePlan v1 parity with the pinned fixture', () => {
   it('refuses a plan with an unknown field (strict on both sides)', () => {
     const plan = { ...fixture.notePlans[0].plan, extra: true };
     expect(notePlanV1Schema.safeParse(plan).success).toBe(false);
+  });
+
+  it('accepts coverage.criticalFacts = null (ledger not ready ⇒ unchecked), as the conventions state', () => {
+    const plan = fixture.notePlans[0].plan;
+    expect(notePlanV1Schema.safeParse({ ...plan, coverage: { ...plan.coverage, criticalFacts: null } }).success).toBe(true);
+  });
+
+  it('refuses a plan with no headings (the executor needs one per call section)', () => {
+    expect(notePlanV1Schema.safeParse({ ...fixture.notePlans[0].plan, headings: [] }).success).toBe(false);
+  });
+
+  it('parses the delivery envelope with preserved section text', () => {
+    const plan = fixture.notePlans[2].plan;
+    const envelope = { plan, preservedSections: plan.preserve.sectionKeys.map((key: string) => ({ key, content: `${key} text` })) };
+    expect(notePlanEnvelopeSchema.parse(envelope)).toEqual(envelope);
   });
 
   it('refuses more than the pinned maximum of calls', () => {
