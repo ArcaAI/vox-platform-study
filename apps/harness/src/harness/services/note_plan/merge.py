@@ -1,4 +1,4 @@
-"""Turn the plan's call answers into ONE note: split each answer by heading, merge in template order.
+"""Turn the plan's call answers into ONE note: split each answer by section, merge in template order.
 
 Pure and deterministic. A call writes only the sections the plan gave it — a heading it was not
 given is dropped, so two parallel groups can never overwrite each other. ``section_regen`` carries
@@ -21,6 +21,7 @@ NOT_DISCUSSED_MARKER = "Not discussed"
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<title>.+?)\s*#*\s*$")
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
+_BULLET = re.compile(r"^\s*(?:[-*\u2022]\s+)")
 
 
 @dataclass
@@ -95,17 +96,56 @@ def _refs_of(entry: Mapping[str, Any]) -> list[str]:
     )
 
 
+def _section_body(value: Any) -> str:
+    """A section value as note text: a string as-is, a list of strings as bullet lines."""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        items = (_BULLET.sub("", item).strip() for item in value if isinstance(item, str))
+        return "\n".join(f"- {item}" for item in items if item)
+    return ""
+
+
+def _keyed_sections(
+    data: Mapping[str, Any], plan: NotePlanV1, section_keys: Sequence[str]
+) -> dict[str, str]:
+    """``{sectionKey | heading title: body}`` (any case) restricted to the call's sections."""
+    titles = _title_index(plan)
+    sections: dict[str, str] = {}
+    for name, value in data.items():
+        key = titles.get(_norm_title(name))
+        if key is None or key not in section_keys:
+            continue
+        body = _section_body(value)
+        if body:
+            sections[key] = body
+    return sections
+
+
 def parse_answer(content: str, plan: NotePlanV1, section_keys: Sequence[str]) -> ParsedAnswer:
-    """One call's answer: the finalizer JSON ``{case_note, redactions, sources}`` or plain text."""
+    """One call's answer, whatever shape the model chose.
+
+    * the finalizer JSON ``{case_note, redactions, sources}`` — ``case_note`` is headed text;
+    * a JSON object keyed by section key or heading title (the per-call response format), each
+      value a string or a list of lines, beside optional ``redactions`` / ``sources``;
+    * plain headed Markdown.
+
+    A JSON object that names none of the call's sections is read as text.
+    """
     data: Any = None
     try:
         data = json.loads(_strip_fence(content))
     except (TypeError, ValueError):
         data = None
-    if not isinstance(data, dict) or not isinstance(data.get("case_note"), str):
+    if not isinstance(data, dict):
         return ParsedAnswer(sections=split_sections(content, plan, section_keys))
-
-    answer = ParsedAnswer(sections=split_sections(data["case_note"], plan, section_keys))
+    if isinstance(data.get("case_note"), str):
+        answer = ParsedAnswer(sections=split_sections(data["case_note"], plan, section_keys))
+    else:
+        keyed = _keyed_sections(data, plan, section_keys)
+        if not keyed:
+            return ParsedAnswer(sections=split_sections(content, plan, section_keys))
+        answer = ParsedAnswer(sections=keyed)
     redactions = data.get("redactions")
     if isinstance(redactions, list):
         answer.redactions = [item for item in redactions if isinstance(item, dict)]

@@ -243,7 +243,6 @@ def _note_generators(request: Request, spec: NoteCompletenessRequest) -> dict[st
     if all(case.output is not None for case in spec.cases):
         return {}
 
-    from harness.services.note_plan.executor import NOTE_PLAN_RESPONSE_FORMAT
     from harness.services.note_plan.models import NotePlanV1
     from harness.temporal.activities import _text_client
     from harness.temporal.interpreter.nodes._text_fallback import wire_provider
@@ -257,7 +256,6 @@ def _note_generators(request: Request, spec: NoteCompletenessRequest) -> dict[st
             provider=wire_provider(plan.model.provider) or plan.model.provider,
             model=plan.model.wire_model_id,
             temperature=spec.temperature,
-            response_format=NOTE_PLAN_RESPONSE_FORMAT,
         )
 
     return {"generate_for": _for}

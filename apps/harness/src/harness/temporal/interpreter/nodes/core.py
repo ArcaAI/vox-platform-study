@@ -1619,7 +1619,6 @@ async def _run_note_plan_finalizer(
     except PromptCompositionEmpty as exc:
         return await _degrade_note_plan(payload, started, "prompt_composition_empty", str(exc))
     generation = _generation_params(candidate, config)
-    wire_format = _candidate_wire_format(candidate, resolved)
     # The candidate's own connection and locality apply only when the plan names ITS model.
     same_model = plan.model.slug == candidate.model.slug
     deployment_kind = candidate.model.deployment_kind if same_model else None
@@ -1637,7 +1636,8 @@ async def _run_note_plan_finalizer(
             temperature=generation.get("temperature"),
             max_tokens=request.max_tokens,
             top_p=generation.get("topP"),
-            response_format=wire_format,
+            # Each plan call answers ITS sections, not the agent's whole-note contract.
+            response_format=request.response_format,
             provider_locality=provider_locality(provider, deployment_kind),
             known_phi=known_phi,
             provider_override=provider_override,
