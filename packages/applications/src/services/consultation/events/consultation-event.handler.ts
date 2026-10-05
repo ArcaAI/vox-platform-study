@@ -20,6 +20,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
+  ConsultationProcessing,
   ConsultationRepository,
   ConsultationStatus,
   ContextItemRepository,
@@ -37,6 +38,7 @@ import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import { tenantWorkflowGoverns } from '../governing-engine';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { contextItemDecryptor } from '../context/client-clinical-context';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import {
   ConsultationPipelineEvent,
   TranscriptionCreatedPayload,
@@ -88,6 +90,10 @@ export class ConsultationEventHandler {
     // governing graph (supersede the parked run). Optional + trailing like every dependency above;
     // absent ⇒ a governed resume is REPORTED as not re-finalised, never handed to the default engine.
     @Optional() @Inject(IConsultationWorkflowDispatchService) private readonly workflowDispatch?: IConsultationWorkflowDispatchService,
+    // Marks the consultation processing FAILED when the resumed-recording check cannot read what
+    // it needs. Optional + trailing like every dependency above; absent ⇒ the failure is still
+    // reported as `PipelineStepFailed`.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
   ) {
     this.logger.log('ConsultationEventHandler initialized — auto-pipeline enabled');
   }
@@ -143,6 +149,10 @@ export class ConsultationEventHandler {
         // said after the resume. Decided BEFORE the auto-summary gate on purpose: this path continues
         // a note the harness has already written, it does not start a new one.
         const resumed = await this.resumedSessionPlan(consultationId, contextItemId);
+        if (resumed?.kind === 'read_failed') {
+          await this.failResumeRead(consultationId, tenantId, payload.userId, contextItemId, correlationId, resumed.error);
+          return;
+        }
         if (resumed?.kind === 'signed') {
           this.logger.log({
             message: 'Resumed recording transcript on a SIGNED note — not re-finalised (a signed note is never replaced)',
@@ -482,12 +492,21 @@ export class ConsultationEventHandler {
    *  - `stale` — `contextItemId` is not the NEWEST recording's aggregate: a newer stop re-finalises,
    *    and superseding here would only start a run that is replaced a moment later.
    *
-   * Best-effort: a read failure answers `null`, i.e. today's behaviour — never a lost first note.
+   *  - `read_failed` — the check could not read what it needs. NOT `null`: falling back to the
+   *    first-session path would start a note over a partial view of the visit (or replace a signed
+   *    one), so the caller reports the failure and marks processing FAILED instead.
    */
   private async resumedSessionPlan(
     consultationId: string,
     contextItemId: string,
-  ): Promise<{ kind: 'signed' } | { kind: 'supersede'; transcriptText: string; sessions: number } | { kind: 'governed' } | { kind: 'stale' } | null> {
+  ): Promise<
+    | { kind: 'signed' }
+    | { kind: 'supersede'; transcriptText: string; sessions: number }
+    | { kind: 'governed' }
+    | { kind: 'stale' }
+    | { kind: 'read_failed'; error: string }
+    | null
+  > {
     if (!this.contextItemRepository) return null;
     try {
       const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
@@ -506,7 +525,7 @@ export class ConsultationEventHandler {
       const governed = tenantWorkflowGoverns(consultation?.metadata);
       if (!draft && !governed) return null;
 
-      const signedStatuses: readonly string[] = [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE];
+      const signedStatuses: readonly string[] = [ConsultationStatus.APPROVED, ConsultationStatus.CLOSED_COMPLETE];
       const approvals = draft ? ((await this.contextItemVersionRepository?.getVersionsByChangeReason(draft.id, 'approved')) ?? []) : [];
       if (signedStatuses.includes(String(consultation?.status)) || approvals.length > 0) return { kind: 'signed' };
 
@@ -518,13 +537,49 @@ export class ConsultationEventHandler {
         .join('\n\n');
       return { kind: 'supersede', transcriptText, sessions: aggregates.length };
     } catch (error) {
+      return { kind: 'read_failed', error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * The resumed-recording check could not read the consultation's transcripts, drafts or status.
+   * Nothing is generated: the failure is REPORTED (`PipelineStepFailed`) and the consultation's
+   * processing becomes FAILED `RESUME_READ_FAILED`, so the clinician sees why no note arrived.
+   * The processing write is best-effort — the event is the record.
+   */
+  private async failResumeRead(
+    consultationId: string,
+    tenantId: string,
+    userId: string | undefined,
+    contextItemId: string,
+    correlationId: string | undefined,
+    error: string,
+  ): Promise<void> {
+    this.logger.error({
+      message: 'Resumed-recording check failed — note generation not started',
+      consultationId,
+      contextItemId,
+      correlationId,
+      error,
+    });
+    this.emitPipelineStepFailed({
+      consultationId,
+      tenantId,
+      userId,
+      correlationId,
+      failedStep: 'summary',
+      contextItemId,
+      error: `Resumed-recording check failed: ${error}`,
+      willContinue: false,
+    });
+    try {
+      await this.lifecycleGate?.setProcessing(consultationId, ConsultationProcessing.FAILED, 'RESUME_READ_FAILED');
+    } catch (gateError) {
       this.logger.warn({
-        message: 'Resumed-recording check failed — continuing on the first-session path',
+        message: 'Could not mark the consultation processing FAILED after a resumed-recording read failure (best-effort)',
         consultationId,
-        contextItemId,
-        error: error instanceof Error ? error.message : String(error),
+        error: gateError instanceof Error ? gateError.message : String(gateError),
       });
-      return null;
     }
   }
 

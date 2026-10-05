@@ -443,7 +443,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   private async buildWarnings(toTenantId: string, targetAlreadyHasVersions: boolean): Promise<string[]> {
     if (!targetAlreadyHasVersions) return [];
     const running = await this.consultationRepository.count({
-      filters: { tenantId: toTenantId, status: ConsultationStatus.RECORDING },
+      filters: { tenantId: toTenantId, status: { in: [ConsultationStatus.RECORDING, ConsultationStatus.PAUSED] } },
     } as never);
     return running > 0 ? [liveConsultationsWarning(running)] : [];
   }

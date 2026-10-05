@@ -1061,12 +1061,13 @@ interface LiveSession {
 /**
  * TASK-932 R-16a — the consultation lifecycle states from which the live lane can STILL hand
  * something off. Everything else means capture is over, whether or not a handoff record exists.
+ * `PAUSED` is live: capture can resume.
  *
- * `DRAINING` is deliberately NOT here. It means "capture stopped, not yet drafted", so nothing
- * further is coming — and treating it as live would park a durable run for two hours whenever a
- * stop was routed to an instance that owned no session and therefore wrote no record.
+ * `STOPPED` is deliberately NOT here. It means "capture stopped", so nothing further is coming —
+ * and treating it as live would park a durable run for two hours whenever a stop was routed to an
+ * instance that owned no session and therefore wrote no record.
  */
-const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'PRIMED', 'RECORDING', 'REOPENED']);
+const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'RECORDING', 'PAUSED']);
 
 /**
  * TASK-1022 — the section titles of the template a live session FROZE, in checklist order,
@@ -7591,7 +7592,7 @@ return 0`;
    * Answers three states, and the distinction between the last two is the whole contract:
    *
    *  * **not ended** — a handoff record has not been written and the consultation can still
-   *    produce one (it is `OPEN` / `PRIMED` / `RECORDING` / `REOPENED`, or its stop is still
+   *    produce one (it is `OPEN` / `RECORDING` / `PAUSED`, or its stop is still
    *    draining — {@link markHandoffPending}). The caller polls.
    *  * **ended with outputs** — the live lane handed off. `outputs` is filtered to the node ids
    *    the caller asked about, so a graph is never told about a lane it does not have.
@@ -7609,7 +7610,7 @@ return 0`;
     const record = await this.readLiveHandoffRecord(consultationId);
     const consultation = await this.loadConsultationForHandoff(consultationId);
     // Capture is over the moment the consultation leaves the states that can still produce it.
-    // `DRAINING` counts as ended on purpose: it means capture stopped, so nothing more is
+    // `STOPPED` counts as ended on purpose: it means capture stopped, so nothing more is
     // coming, and a run must not wait two hours for a record that a non-owner stop never wrote.
     // The one exception is a stop still draining in the background: its record IS
     // coming, and the pending marker says so until it lands.
