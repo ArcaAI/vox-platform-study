@@ -1527,6 +1527,23 @@ def _note_plan_ref(value: Any) -> NotePlanRef | None:
     return None
 
 
+#: The keys a live-handoff summary output names the composer's refusal code under.
+_NOTE_PLAN_ERROR_KEYS = ("note_plan_error", "notePlanError")
+
+
+def _note_plan_error(value: Any) -> str | None:
+    """The first composer refusal code bound on ``in`` (a live handoff that could not compose the
+    plan hands its note outputs over EMPTY with this code), or ``None``."""
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        for key in _NOTE_PLAN_ERROR_KEYS:
+            code = item.get(key)
+            if isinstance(code, str) and code:
+                return code
+    return None
+
+
 async def _degrade_note_plan(
     payload: NodeActivityInput, started: Any, code: str, detail: str
 ) -> NodeActivityResult:
@@ -1766,6 +1783,13 @@ async def _run_text_generation(
             return await _degrade_note_plan(payload, started, "note_plan_ref_invalid", str(exc))
         if plan_ref is not None:
             return await _run_note_plan_finalizer(payload, resolved, started, plan_ref, primary)
+        # The handoff could not compose the plan and failed the note path by name: degrade with
+        # THAT code, and never generate from whatever else is bound (a partial input).
+        plan_error = _note_plan_error(bound.get("in"))
+        if plan_error is not None:
+            return await _degrade_note_plan(
+                payload, started, plan_error, "the note plan could not be composed"
+            )
     # TASK-1022 — a bound note keeps its headings; see `_render_input_for_generation`.
     input_text = "\n\n".join(_render_input_for_generation(bound.get("in")))
     context_values = [value for value in _as_list(bound.get("context")) if value is not None]

@@ -703,3 +703,85 @@ async def test_a_governed_plan_for_another_consultation_degrades(monkeypatch) ->
     assert result.status == "DEGRADED"
     assert "note_plan_mismatch" in (result.reason or "")
     assert text.calls == []
+
+
+async def test_a_handoff_note_plan_error_degrades_the_finalizer_with_that_code(monkeypatch) -> None:
+    """The handoff could not compose the plan: the finalizer degrades NAMING the composer's code
+    (not ``no_bound_text``) and writes nothing — even when a ``context`` value is bound, so the
+    note is never generated from a partial input."""
+    from harness.temporal.interpreter.models import NodeActivityInput
+    from harness.temporal.interpreter.nodes import core
+
+    class _GovApi(_Api):
+        async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+            return _governed_agent()
+
+    api, cap, text = _GovApi(_raw(GROUPS)), _CapTraj(), _Text()
+    monkeypatch.setattr(core, "_api_client", lambda _s: api)
+    monkeypatch.setattr(core, "_text_client", lambda _s: text)
+    monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: cap)
+
+    result = await _env().run(
+        core.interpreter_core_agent,
+        NodeActivityInput(
+            node_id="n_finalize",
+            node_type="core.agent",
+            config={
+                "agentRef": {"slug": "casenote-finalization"},
+                "execution": {"lane": "durable", "cadence": "onEnd"},
+            },
+            tenant_id=_GOV_TENANT,
+            bound_inputs={
+                "in": [{"text": "", "note_plan_error": "NOTE_INPUT_EXCEEDS_CONTEXT"}],
+                "context": [{"patient": "synthetic"}],
+            },
+            run_payload={"consultationId": _GOV_CONSULTATION, "userId": "doctor-1"},
+            run_context={"trigger": {"consultationId": _GOV_CONSULTATION}, "vars": {}, "nodes": {}},
+            run_id="run-1",
+            trajectory=TrajectoryContext(
+                tenant_id=_GOV_TENANT, consultation_id=_GOV_CONSULTATION, seq=48
+            ),
+        ),
+    )
+
+    assert result.status == "DEGRADED"
+    assert "NOTE_INPUT_EXCEEDS_CONTEXT" in (result.reason or "")
+    assert "no_bound_text" not in (result.reason or "")
+    assert text.calls == []
+    assert [s.error_code for s in cap.steps] == ["NOTE_INPUT_EXCEEDS_CONTEXT"]
+
+
+async def test_a_handoff_note_plan_error_alone_degrades_with_that_code(monkeypatch) -> None:
+    """Nothing else bound: still the composer's code, never ``no_bound_text``."""
+    from harness.temporal.interpreter.models import NodeActivityInput
+    from harness.temporal.interpreter.nodes import core
+
+    class _GovApi(_Api):
+        async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
+            return _governed_agent()
+
+    api, cap, text = _GovApi(_raw(GROUPS)), _CapTraj(), _Text()
+    monkeypatch.setattr(core, "_api_client", lambda _s: api)
+    monkeypatch.setattr(core, "_text_client", lambda _s: text)
+    monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: cap)
+
+    result = await _env().run(
+        core.interpreter_core_agent,
+        NodeActivityInput(
+            node_id="n_finalize",
+            node_type="core.agent",
+            config={
+                "agentRef": {"slug": "casenote-finalization"},
+                "execution": {"lane": "durable", "cadence": "onEnd"},
+            },
+            tenant_id=_GOV_TENANT,
+            bound_inputs={"in": [{"text": "", "note_plan_error": "NOTE_MODEL_CONTEXT_UNDECLARED"}]},
+            run_payload={"consultationId": _GOV_CONSULTATION, "userId": "doctor-1"},
+            run_context={"trigger": {"consultationId": _GOV_CONSULTATION}, "vars": {}, "nodes": {}},
+            run_id="run-1",
+        ),
+    )
+
+    assert result.status == "DEGRADED"
+    assert "NOTE_MODEL_CONTEXT_UNDECLARED" in (result.reason or "")
+    assert text.calls == []

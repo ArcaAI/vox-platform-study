@@ -1101,7 +1101,10 @@ export class HarnessInternalService extends BaseService {
         return { transitioned: false, status: consultation.status };
       }
 
-      const reason = input.reason ?? null;
+      // TASK-1045 — a consultation the note path already FAILED by name (`NOTE_INPUT_EXCEEDS_CONTEXT`
+      // at the handoff) keeps that reason: the run's own reason is downstream of it and less specific.
+      const keptReason = consultation.processing === ConsultationProcessing.FAILED ? consultation.processingReason || null : null;
+      const reason = keptReason ?? input.reason ?? null;
       // The interpreter's own reason (PHI-free) when it gave one, otherwise the named outcome.
       const processingReason = (reason ?? `GOVERNED_RUN_${input.status}`).slice(0, 256);
       if (!this.lifecycleGate || !HARNESS_WRITABLE_PROCESSING.has(consultation.processing)) {
