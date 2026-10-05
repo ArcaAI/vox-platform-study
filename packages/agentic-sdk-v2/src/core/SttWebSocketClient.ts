@@ -250,6 +250,7 @@ export class SttWebSocketClient {
 
   private onTranscriptCb?: (result: WsTranscriptResult) => void;
   private onStatusCb?: (status: WsStatusMessage) => void;
+  private captureStateListeners = new Set<(state: 'paused' | 'capturing' | 'pause_expired') => void>();
   private onWsErrorCb?: (error: WsErrorMessage) => void;
   private onDisconnectCb?: () => void;
   /**
@@ -639,6 +640,24 @@ export class SttWebSocketClient {
   }
 
   /**
+   * Pause capture: the gateway flushes the tail (last final first), drops frames without
+   * advancing the audio clock, and acknowledges with `status: 'paused'`.
+   */
+  pause(): void {
+    this.requireConnection();
+    this.ws!.send(JSON.stringify({ type: 'pause' }));
+  }
+
+  /**
+   * Resume a paused capture on the same session; acknowledged with `status: 'capturing'`.
+   * (`{type:'resume'}` is the reconnect handshake — a different frame.)
+   */
+  resumeCapture(): void {
+    this.requireConnection();
+    this.ws!.send(JSON.stringify({ type: 'resume-capture' }));
+  }
+
+  /**
    * Send close signal — tells server to close the session.
    */
   sendClose(): void {
@@ -859,6 +878,12 @@ export class SttWebSocketClient {
 
   onStatus(cb: (status: WsStatusMessage) => void): void {
     this.onStatusCb = cb;
+  }
+
+  /** Capture-control acknowledgements: `paused`, `capturing`, `pause_expired`. Returns an unsubscribe. */
+  onCaptureState(cb: (state: 'paused' | 'capturing' | 'pause_expired') => void): () => void {
+    this.captureStateListeners.add(cb);
+    return () => this.captureStateListeners.delete(cb);
   }
 
   onWsError(cb: (error: WsErrorMessage) => void): void {
@@ -1586,6 +1611,9 @@ export class SttWebSocketClient {
             return;
           }
           this.onStatusCb?.(msg);
+          if (msg.status === 'paused' || msg.status === 'capturing' || msg.status === 'pause_expired') {
+            for (const cb of this.captureStateListeners) cb(msg.status);
+          }
           // F-31: a pending stopAndDrain() resolves as soon as the server
           // confirms the session is genuinely finished, instead of waiting
           // out the full drain timeout.

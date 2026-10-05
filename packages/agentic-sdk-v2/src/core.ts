@@ -46,6 +46,8 @@ export {
   useArcaDevices,
   useArcaContext,
   useArcaSession,
+  // One handle over the whole consultation lifecycle (start/pause/stop/approve/close/reopen + attachments/feedback).
+  useConsultation,
   // Surface the dedicated summary hook from the core entry.
   useArcaSummary,
   useAudioRecordings,
@@ -191,6 +193,20 @@ export { CONSULTATION_STATUS_ORDER, isNewVisit, isRevisit, normalizeConsultation
 export type { AgentTask, SelectableAgent, SelectableAsrAgent } from './types';
 export type { NamedEntityRecognitionInput, NamedEntityRecognitionOutput, RecognizedEntity } from './types';
 export type { UseSelectableAsrAgentsReturn } from './hooks';
+export type {
+  UseConsultationOptions,
+  UseConsultationReturn,
+  ConsultationStartOptions,
+  ConsultationGenerateSummaryOptions,
+  ConsultationAttachmentInput,
+  ConsultationAttachmentResult,
+  ConsultationFeedbackInput,
+  FeedbackTargetInput,
+  SendAttachmentOptions,
+} from './hooks';
+export type { ConsultationLifecycleStatus, ConsultationProcessingState } from './types/consultation';
+export { toLifecycleState } from './types/consultation';
+export { LIFECYCLE_HEADER } from './core/constants';
 // TASK-890 (OD-F) — invoking a published agent from the browser.
 export type { AgentInvocationFrame, AgentInvocationInput, AgentInvocationResult } from './types';
 export type { UseAgentInvocationReturn, UseWorkflowReviewReturn } from './hooks';

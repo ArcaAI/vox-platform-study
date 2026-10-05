@@ -4,6 +4,18 @@
 
 // Session hook
 export { useArcaSession, type UseArcaSessionReturn } from './useArcaSession';
+export {
+  useConsultation,
+  type UseConsultationOptions,
+  type UseConsultationReturn,
+  type ConsultationStartOptions,
+  type ConsultationGenerateSummaryOptions,
+  type ConsultationAttachmentInput,
+  type ConsultationAttachmentResult,
+  type ConsultationFeedbackInput,
+  type FeedbackTargetInput,
+  type SendAttachmentOptions,
+} from './useConsultation';
 
 // Main hook with all functionality
 export { useArca, type UseArcaReturn, type UseArcaSession, type UseArcaAudio, type UseArcaContext, type UseArcaSummary } from './useArca';

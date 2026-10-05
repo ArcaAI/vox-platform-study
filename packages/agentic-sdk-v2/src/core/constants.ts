@@ -101,6 +101,28 @@ export const CONSULTATION_ENDPOINTS = {
    * (also the AI_DOCUMENTATION consent checkpoint). `@RequiresIfMatch()`.
    */
   PRIME: (id: string) => `/consultations/${encodeURIComponent(id)}/prime`,
+  /** Bind the live STT session and begin (or resume) capture. */
+  START: (id: string) => `/consultations/${encodeURIComponent(id)}/start`,
+  /** Pause capture. */
+  PAUSE: (id: string) => `/consultations/${encodeURIComponent(id)}/pause`,
+  /** Stop capture; waits for the final transcript by default. */
+  STOP: (id: string) => `/consultations/${encodeURIComponent(id)}/stop`,
+  /** Approve the consultation as a whole. `@RequiresIfMatch()`. */
+  APPROVE: (id: string) => `/consultations/${encodeURIComponent(id)}/approve`,
+  /** Latest-by-default activity feed (business plane). */
+  HISTORY: (id: string) => `/consultations/${encodeURIComponent(id)}/history`,
+  /** Display-only recap of one encounter. */
+  RECAP: (id: string, encounterSeq: number) => `/consultations/${encodeURIComponent(id)}/encounters/${encodeURIComponent(String(encounterSeq))}/recap`,
+  /** Attachment intent (declare kind, size, sha256). */
+  ATTACHMENTS_INTENT: (id: string) => `/consultations/${encodeURIComponent(id)}/attachments`,
+  /** Attachment status / poll. */
+  ATTACHMENT: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
+  /** Declare the upload finished. */
+  ATTACHMENT_COMPLETE: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/complete`,
+  /** Gateway-relayed multipart upload (used when the intent carries no presigned URL). */
+  ATTACHMENT_CONTENT: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/content`,
+  /** Ratings, comments and corrections. */
+  FEEDBACK: (id: string) => `/consultations/${encodeURIComponent(id)}/feedback`,
   /** Close consultation. `@RequiresIfMatch()`. */
   CLOSE: (id: string) => `/consultations/${encodeURIComponent(id)}/close`,
   /** Reopen consultation. `@RequiresIfMatch()`. */
@@ -784,3 +806,6 @@ export const AGENT_ENDPOINTS = {
   /** TASK-890 — submit a BATCH transcription to a `SPEECH_TO_TEXT` agent. Realtime capture stays `audio.start({ agentSlug })`. */
   TRANSCRIBE: (slug: string) => `/agents/${encodeURIComponent(slug)}/transcriptions`,
 } as const;
+
+/** Request header opting in to the seven-status lifecycle vocabulary. */
+export const LIFECYCLE_HEADER = { 'X-Hope-Lifecycle': '2' } as const;
