@@ -236,6 +236,51 @@ describe('FloatingPane — never obscures the focused element (WCAG 2.4.11)', ()
     expect(pane().getAttribute('data-yielding')).toBe('false');
   });
 
+  // TASK-1036 live check (owner: "the panes are resized to small when moving them"): dragging the
+  // inspector over the palette focused the inspector's move handle, and the palette yielded —
+  // collapsed to its header strip. Panes overlap each other by the author's choice; stacking
+  // order handles that, so focus inside ANOTHER floating pane never makes a pane yield.
+  it('does not yield to focus inside another floating pane', () => {
+    render(
+      <div className="relative">
+        <FloatingPane id="palette" title="Nodes" defaultDock="left" defaultWidth={260}>
+          <p>Palette body</p>
+        </FloatingPane>
+        <FloatingPane id="inspector" title="Inspector" defaultDock="right" defaultWidth={320}>
+          <p>Body copy</p>
+        </FloatingPane>
+      </div>,
+    );
+    const palette = screen.getByRole('region', { name: 'Nodes' });
+    vi.spyOn(palette, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 260, 400));
+    const handle = screen.getByRole('button', { name: 'Move Inspector' });
+    vi.spyOn(handle, 'getBoundingClientRect').mockReturnValue(rect(100, 10, 24, 24));
+    act(() => handle.focus());
+    expect(palette.getAttribute('data-yielding')).toBe('false');
+    expect(screen.getByText('Palette body')).toBeTruthy();
+  });
+
+  // 2.4.11 is about KEYBOARD focus. A mouse click on a canvas node under a pane must not collapse
+  // the pane the author is working in.
+  it('does not yield to focus that came from a pointer', () => {
+    renderPane();
+    vi.spyOn(pane(), 'getBoundingClientRect').mockReturnValue(rect(600, 0, 320, 400));
+    const node = screen.getByRole('button', { name: 'Canvas node' });
+    vi.spyOn(node, 'getBoundingClientRect').mockReturnValue(rect(650, 100, 80, 30));
+    act(() => {
+      fireEvent.pointerDown(node);
+      node.focus();
+    });
+    expect(pane().getAttribute('data-yielding')).toBe('false');
+    // …and keyboard focus afterwards still yields.
+    act(() => {
+      node.blur();
+      fireEvent.keyDown(document.body, { key: 'Tab' });
+      node.focus();
+    });
+    expect(pane().getAttribute('data-yielding')).toBe('true');
+  });
+
   it('does not yield to its own contents', () => {
     renderPane();
     vi.spyOn(pane(), 'getBoundingClientRect').mockReturnValue(rect(600, 0, 320, 400));
