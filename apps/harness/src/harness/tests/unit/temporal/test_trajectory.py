@@ -196,7 +196,15 @@ class TestActivityEmission:
         assert step.seq == 32
         # AD-1 stats embedded verbatim on the LLM_CALL step, alongside the
         # F-19 locally measured prompt size (chars + chars/4 token estimate).
-        assert step.stats == {**stats, "prompt_chars": 1, "prompt_tokens_est": 0}
+        # A single-call note is one section group of one call (the run-record stamps).
+        assert step.stats == {
+            **stats,
+            "prompt_chars": 1,
+            "prompt_tokens_est": 0,
+            "activity_kind": "NOTE_SECTION_GROUP",
+            "call_index": 1,
+            "call_count": 1,
+        }
 
     @pytest.mark.asyncio
     async def test_generate_backfills_provider_model_when_stats_omits_them(self, env, monkeypatch):
@@ -563,6 +571,8 @@ class TestWorkflowOrderedSpine:
             ("SENSOR", "run_sensors"),
             ("GUARDRAIL", "run_inferential_sensors"),
             ("PHASE", "persist_draft"),
+            # A note written without a note plan still gets its NOTE_GENERATE record.
+            ("NODE", "note"),
             ("GATE", "record_gate_decision"),
         ]
         # Workflow-owned seq is globally monotonic (deterministic stride allocation).

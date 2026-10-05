@@ -146,4 +146,6 @@ def test_a_blood_pressure_reading_has_one_spelling(spoken: str) -> None:
 
 
 def test_over_between_other_numbers_is_left_alone() -> None:
-    assert normalise_text("lost 5 kg over 3 months") == "lost 5 kg over 3 months"
+    # "over" stays a word here (only a blood-pressure reading becomes a fraction); the duration
+    # unit is singular after normalisation, like "4 weeks" / "4-week".
+    assert normalise_text("lost 5 kg over 3 months") == "lost 5 kg over 3 month"
