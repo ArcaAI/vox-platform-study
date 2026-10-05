@@ -310,7 +310,7 @@ export const DRAFT_CORE_RULE_SET: readonly DraftWorkflowRule[] = [
  * nothing that published before TASK-1036 stops publishing.
  */
 export interface DataContractRule {
-  /** `WF-PUB` for a publish finding; the four settings implications carry their own `WF-SET-00n`. */
+  /** `WF-PUB` for a publish finding; the five settings rules carry their own `WF-SET-00n`. */
   readonly ruleId: string;
   readonly code: string;
   readonly severity: 'ERROR' | 'WARNING' | 'INFO';
@@ -422,5 +422,13 @@ export const DATA_CONTRACT_RULES: readonly DataContractRule[] = Object.freeze([
     legacySeverity: 'WARNING',
     title: 'An uploaded audio file or an attachment in the Input shape needs the API connection.',
     fix: 'Enable the API connection.',
+  },
+  {
+    ruleId: 'WF-SET-005',
+    code: 'SETTINGS_LIVE_AUDIO_UNREAD',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'The Input shape streams audio that no speech-to-text step reads, so the audio would be captured and ignored.',
+    fix: 'Bind the streamed audio field to the audio input of a speech-to-text step, or remove it from the Input shape.',
   },
 ] satisfies DataContractRule[]);

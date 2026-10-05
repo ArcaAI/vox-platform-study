@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
     from harness.temporal.interpreter.activities import (
         emit_run_events,
         load_config,
+        load_live_audio_state,
         load_live_outputs,
         read_consultation,
         resolve_context_path,
@@ -74,6 +75,7 @@ with workflow.unsafe.imports_passed_through():
         InterpreterInput,
         InterpreterResult,
         InterpreterStateQueryResult,
+        LiveAudioStateRequest,
         LiveOutputsRequest,
         LiveOutputsResult,
         NodeActivityInput,
@@ -304,6 +306,21 @@ _LIVE_OUTPUTS_TIMEOUT = timedelta(seconds=30)
 #: One retry. The poll loop IS the retry policy — a read that fails is asked again in 15s — so
 #: spending a second attempt inside the activity buys only latency.
 _LIVE_OUTPUTS_RETRY = RetryPolicy(maximum_attempts=1)
+
+# TASK-1042 OD-4a — the LIVE AUDIO wait's patch marker. A run bound to a live STT session (C7
+# `liveAudio`) parks before its first stage until the session ends: NEW `execute_activity` and
+# timer commands, so gated. Cheap operand FIRST (`inp.live_audio is not None`): the field did not
+# exist before this marker, so no recorded history can carry one and `workflow.patched` is never
+# consulted when replaying an old run.
+_LIVE_AUDIO_PATCH = "task-1042-live-audio-wait"
+
+#: How long the walk parks between two state reads. One short activity plus one timer per
+#: interval: the 3600 s ceiling costs ~720 polls (~4,300 history events), well inside Temporal's
+#: 51,200-event ceiling, and the graph starts within 5 s of the integrator closing the session.
+_LIVE_AUDIO_POLL_INTERVAL = timedelta(seconds=5)
+_LIVE_AUDIO_STATE_TIMEOUT = timedelta(seconds=10)
+#: One attempt. The poll loop IS the retry policy — a failed read is asked again in 5 s.
+_LIVE_AUDIO_STATE_RETRY = RetryPolicy(maximum_attempts=1)
 
 # The parent-owned duration bound's own reason. It is NOT a `LoopStopReason`, because the loop
 # child never produces it: the child is cancelled by the parent's timer and never gets to say
@@ -707,6 +724,12 @@ class WorkflowInterpreter:
                 ],
             )
         await self._read_run_start(inp, config)
+
+        # TASK-1042 OD-4a — a run bound to a LIVE STT session waits for the audio to END before
+        # its first stage, so the ASR node reads a whole transcript once (C5) rather than waiting
+        # inside an activity the 900 s node cap would kill. Cheap operand first (see the marker).
+        if inp.live_audio is not None and workflow.patched(_LIVE_AUDIO_PATCH):
+            await self._await_live_audio(inp)
 
         run_failed = False
         run_degraded = False
@@ -1237,6 +1260,60 @@ class WorkflowInterpreter:
                     pass
             else:
                 await workflow.sleep(_LIVE_HANDOFF_POLL_INTERVAL)
+
+    async def _await_live_audio(self, inp: InterpreterInput) -> None:
+        """Park until the run's bound STT session is no longer live (TASK-1042 OD-4a).
+
+        The consultation live handoff's shape: a poll, not a signal — the fact waited on is
+        durable gateway state, so a read converges whatever any single delivery did. A timer and
+        an activity, nothing else, and the loop count is decided by recorded activity results, so
+        a replay takes the same path. The wait is a durable wait on a person, not compute: the
+        budget clock is paused across it, and its clamped ceiling is what the dispatcher added to
+        the `execution_timeout` backstop.
+
+        Nothing is threaded to the ASR node: it re-reads C5 once and turns the state it finds
+        (`ended` / `truncated` / `timeout` / still `live` past the ceiling / 404) into its own
+        outcome, so this wait adds no field to any activity input.
+        """
+        binding = inp.live_audio
+        if binding is None:
+            return
+        request = LiveAudioStateRequest(
+            run_id=inp.run_id, tenant_id=inp.tenant_id, stt_session_id=binding.stt_session_id
+        )
+        # Re-clamped here: the workflow never trusts its input to have been clamped already.
+        ceiling = timedelta(seconds=caps.live_audio_wait_seconds(binding.max_wait_seconds))
+        self._pause_clock()
+        try:
+            await self._poll_live_audio(request, ceiling)
+        finally:
+            self._resume_clock()
+
+    async def _poll_live_audio(self, request: LiveAudioStateRequest, ceiling: timedelta) -> None:
+        """The live-audio poll loop itself (see `_await_live_audio`)."""
+        deadline = workflow.now() + ceiling
+        while not self._cancelled:
+            try:
+                answer = await workflow.execute_activity(
+                    load_live_audio_state,
+                    request,
+                    start_to_close_timeout=_LIVE_AUDIO_STATE_TIMEOUT,
+                    retry_policy=_LIVE_AUDIO_STATE_RETRY,
+                )
+                state = answer.state
+            except ActivityError:
+                # Unreachable from here is indistinguishable from "still recording".
+                state = "live"
+            if state != "live" or workflow.now() >= deadline:
+                return
+            # A cancel ends the wait NOW, not at the next poll. Every run carrying `live_audio`
+            # postdates `_CANCEL_PATCH`, so there is no unbounded (sleep-only) era to preserve.
+            try:
+                await workflow.wait_condition(
+                    lambda: self._cancelled, timeout=_LIVE_AUDIO_POLL_INTERVAL
+                )
+            except TimeoutError:
+                pass
 
     def _preflight_skip(self, node: CompiledNode, inp: InterpreterInput) -> NodeResult | None:
         """Every reason this walk declines a node BEFORE dispatching anything (pure).

@@ -31,8 +31,18 @@
  * socket, not on the workflow's run socket. A TTS node and a STREAM audio kind keep the rule. The settings dialog applies the same list live (a locked
  * checkbox with its reason) — `settingsImplications` is the one derivation both read.
  *
+ * ## WF-SET-005 (TASK-1042 OD-7)
+ *
+ * A `stream`-delivery Input kind must be READ by a speech-to-text step — a `core.agent` whose task
+ * is `SPEECH_TO_TEXT`, through its `audio` input — or an integrator streams audio nothing reads.
+ * It names no connection, so it is `liveAudioUnread`, NOT a `settingsImplications` entry (the
+ * settings dialog turns every implication into a locked connection checkbox). A consultation-sourced
+ * workflow is exempt: its audio arrives on the consultation session, where that lane reads it.
+ *
  * Mirrored in Python (lane B1) against `tests/contracts/workflow-settings.fixture.json`.
  */
+// `bindings.ts` imports this module too; the cycle is call-time only (no module-init use).
+import { compiledBindings } from './bindings';
 import type { WorkflowGraph } from './graph-model';
 import { agentTaskOf, type AgentIOResolver } from './node-io';
 
@@ -305,6 +315,90 @@ export function settingsImplications(
         message: `The Input shape takes an uploaded file (\`${String(uploaded.key)}\`), which needs the API connection.`,
       });
     }
+  }
+  return found;
+}
+
+// =============================================================================================
+// WF-SET-005 — a streamed audio input must be read by a speech-to-text step (TASK-1042 OD-7)
+// =============================================================================================
+
+export interface LiveAudioUnreadFinding {
+  readonly ruleId: 'WF-SET-005';
+  readonly nodeId: null;
+  /** The Input-shape kind nobody reads. */
+  readonly kindKey: string;
+  readonly message: string;
+}
+
+function bindingPaths(binding: unknown): string[] {
+  const object = asObject(binding);
+  if (object === undefined) return [];
+  if (typeof object.from === 'string') return [object.from];
+  return Array.isArray(object.firstOf) ? object.firstOf.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+/**
+ * Whether a binding path carries the input field `key`: `context.<key>[.…]`, the whole `context`,
+ * or the trigger's `context` output (what a legacy data edge from the trigger carries).
+ */
+function readsKind(bindingPath: string, key: string, triggerIds: ReadonlySet<string>): boolean {
+  const segments = bindingPath.split('.');
+  let rest: string[];
+  if (segments[0] === 'context') {
+    rest = segments.slice(1);
+  } else if (
+    segments.length >= 4 &&
+    segments[0] === 'nodes' &&
+    triggerIds.has(segments[1] as string) &&
+    segments[2] === 'outputs' &&
+    segments[3] === 'context'
+  ) {
+    rest = segments.slice(4);
+  } else {
+    return false;
+  }
+  return rest.length === 0 || rest[0] === key;
+}
+
+/**
+ * WF-SET-005 — every `stream`-delivery Input kind that no speech-to-text step's `audio` input
+ * reads. An agent whose task the caller could not resolve implies nothing (it may be the reader),
+ * as in WF-SET-003. Without a resolved Input shape there is nothing to check.
+ */
+export function liveAudioUnread(
+  graph: WorkflowGraph,
+  settings: { readonly sources?: readonly WorkflowSource[] },
+  ctx: SettingsImplicationContext = {},
+): LiveAudioUnreadFinding[] {
+  if ((settings.sources ?? []).includes('consultation')) return [];
+  const kinds = asObject(ctx.contextSchemaDefinition)?.kinds;
+  const streamed = (Array.isArray(kinds) ? kinds : [])
+    .map((kind) => asObject(kind))
+    .filter((kind): kind is Record<string, unknown> => kind !== undefined && audioDelivery(kind) === 'stream' && typeof kind.key === 'string');
+  if (streamed.length === 0) return [];
+
+  const nodes = graph.nodes ?? [];
+  const triggerIds = new Set(nodes.filter((node) => node?.type === 'core.trigger').map((node) => node.id));
+  const bindings = compiledBindings(graph, ctx.agents);
+  const readerPaths: string[] = [];
+  for (const node of nodes) {
+    if (node?.type !== 'core.agent') continue;
+    const task = agentTaskOf(asObject(node.config), ctx.agents);
+    if (task !== undefined && task !== 'SPEECH_TO_TEXT') continue;
+    readerPaths.push(...bindingPaths(bindings[node.id]?.audio));
+  }
+
+  const found: LiveAudioUnreadFinding[] = [];
+  for (const kind of streamed) {
+    const key = kind.key as string;
+    if (readerPaths.some((bindingPath) => readsKind(bindingPath, key, triggerIds))) continue;
+    found.push({
+      ruleId: 'WF-SET-005',
+      nodeId: null,
+      kindKey: key,
+      message: `The Input shape streams audio (\`${key}\`), but no speech-to-text step reads it: bind it to a speech-to-text step's audio input.`,
+    });
   }
   return found;
 }

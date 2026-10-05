@@ -270,3 +270,89 @@ def settings_implications(
                 }
             )
     return found
+
+
+# ---------------------------------------------------------------------------------------------
+# WF-SET-005 (TASK-1042 OD-7) — a streamed audio input must be READ by a speech-to-text step.
+# ---------------------------------------------------------------------------------------------
+
+
+def _binding_paths(binding: Any) -> list[str]:
+    obj = _obj(binding)
+    if obj is None:
+        return []
+    if isinstance(obj.get("from"), str):
+        return [obj["from"]]
+    first_of = obj.get("firstOf")
+    return [p for p in first_of if isinstance(p, str)] if isinstance(first_of, list) else []
+
+
+def _reads_kind(path: str, key: str, trigger_ids: set[str]) -> bool:
+    """Whether a binding path carries the input field ``key``: ``context.<key>[.…]``, the whole
+    ``context``, or the trigger's ``context`` output (what a legacy data edge from it carries)."""
+    segments = path.split(".")
+    if segments[0] == "context":
+        rest = segments[1:]
+    elif (
+        len(segments) >= 4
+        and segments[0] == "nodes"
+        and segments[1] in trigger_ids
+        and segments[2] == "outputs"
+        and segments[3] == "context"
+    ):
+        rest = segments[4:]
+    else:
+        return False
+    return not rest or rest[0] == key
+
+
+def live_audio_unread(
+    graph: Mapping[str, Any], settings: Mapping[str, Any], ctx: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """WF-SET-005 — every ``stream``-delivery Input kind no speech-to-text step's ``audio`` reads.
+
+    Not a connection implication (it names no connection to add), so it is NOT part of
+    ``settings_implications``, whose every entry the settings dialog turns into a checkbox.
+    """
+    # Imported here: ``bindings`` imports this module (``effective_settings``).
+    from hope_workflow_contract.bindings import compiled_bindings
+
+    ctx = ctx or {}
+    if "consultation" in (settings.get("sources") or []):
+        # A consultation-sourced run receives its audio on the consultation session.
+        return []
+    kinds = (_obj(ctx.get("contextSchemaDefinition")) or {}).get("kinds")
+    streamed = [
+        k
+        for k in (kinds if isinstance(kinds, list) else [])
+        if isinstance(k, dict) and _audio_delivery(k) == "stream" and isinstance(k.get("key"), str)
+    ]
+    if not streamed:
+        return []
+    agents = ctx.get("agents")
+    nodes = [n for n in graph.get("nodes") or [] if isinstance(n, dict)]
+    trigger_ids = {n.get("id") for n in nodes if n.get("type") == "core.trigger"}
+    bindings = compiled_bindings(graph, agents)
+    reader_paths: list[str] = []
+    for node in nodes:
+        if node.get("type") != "core.agent":
+            continue
+        task = agent_task_of(_obj(node.get("config")), agents)
+        if task not in (None, "SPEECH_TO_TEXT"):
+            continue
+        reader_paths.extend(_binding_paths((bindings.get(node.get("id")) or {}).get("audio")))
+    found: list[dict[str, Any]] = []
+    for kind in streamed:
+        key = kind["key"]
+        if any(_reads_kind(path, key, trigger_ids) for path in reader_paths):
+            continue
+        found.append(
+            {
+                "ruleId": "WF-SET-005",
+                "nodeId": None,
+                "kindKey": key,
+                "message": f"The Input shape streams audio (`{key}`), but no speech-to-text step "
+                "reads it: bind it to a speech-to-text step's audio input.",
+            }
+        )
+    return found

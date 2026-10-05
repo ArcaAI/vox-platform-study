@@ -60,16 +60,35 @@ LIVE_HANDOFF_MAX_WAIT_SECONDS = 7200
 RUN_TIMEOUT_GRACE_SECONDS = 300
 
 
+#: TASK-1042 OD-4a — the longest a run bound to a LIVE STT session (C7 ``liveAudio``) parks
+#: before its stage walk, waiting for the integrator's audio to end. Like the live handoff it is a
+#: durable wait on a person, not compute: it is NOT charged to ``maxTotalSeconds``. The gateway's
+#: ``workflowRuns.liveAudioMaxSeconds`` may only TIGHTEN it (``live_audio_wait_seconds``).
+LIVE_AUDIO_MAX_WAIT_SECONDS = 3600
+
+
+def live_audio_wait_seconds(requested_seconds: int | None) -> int:
+    """Tighten-only: the gateway-resolved ceiling, never above the platform constant (which also
+    applies when the gateway sent none)."""
+    if requested_seconds is None:
+        return LIVE_AUDIO_MAX_WAIT_SECONDS
+    return max(1, min(requested_seconds, LIVE_AUDIO_MAX_WAIT_SECONDS))
+
+
 def run_budget_seconds(max_total_seconds: int) -> int:
     """The compute budget a run may spend (tighten-only, like every other cap; never < 1)."""
     return max(1, min(max_total_seconds, MAX_TOTAL_SECONDS))
 
 
-def execution_timeout_seconds(config: Any, *, consultation_bound: bool) -> int | None:
+def execution_timeout_seconds(
+    config: Any, *, consultation_bound: bool, live_audio_seconds: int | None = None
+) -> int | None:
     """The Temporal ``execution_timeout`` BACKSTOP for a run of ``config``, or ``None``.
 
     The primary bound is the in-workflow deadline (``workflow.py``), which charges compute only:
-    the live-handoff wait and every human review are excluded from ``maxTotalSeconds``. The
+    the live-handoff wait, the live-audio wait (TASK-1042, ``live_audio_seconds`` = the run's
+    already-clamped ceiling, ``None`` for a run with no live audio) and every human review are
+    excluded from ``maxTotalSeconds``. The
     backstop therefore adds the longest each of those may legitimately last, plus a grace — and
     is ``None`` when one of them has no ceiling the compiled config states:
 
@@ -89,6 +108,8 @@ def execution_timeout_seconds(config: Any, *, consultation_bound: bool) -> int |
                 seconds += review_wait_seconds(node)
     if consultation_bound:
         seconds += LIVE_HANDOFF_MAX_WAIT_SECONDS
+    if live_audio_seconds is not None:
+        seconds += live_audio_wait_seconds(live_audio_seconds)
     return seconds + RUN_TIMEOUT_GRACE_SECONDS
 
 

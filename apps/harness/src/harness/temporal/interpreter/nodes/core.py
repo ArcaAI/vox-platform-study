@@ -40,7 +40,7 @@ from temporalio import activity
 from harness.core.config import get_settings
 from harness.core.llm_egress import egress_counts, known_phi_from, provider_locality
 from harness.services import composed_prompt_recorder
-from harness.services.api_client import ApiServiceError
+from harness.services.api_client import ApiClientError, ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
@@ -2036,6 +2036,10 @@ async def _run_transcription(
         if audio_uri:
             break
     if audio_uri is None:
+        # TASK-1042 — no blob, but a LIVE STT session bound to this run: read its transcript.
+        session_id = _stt_session_id(audio)
+        if session_id is not None:
+            return await _run_session_transcript(payload, resolved, started, session_id)
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_audio"
         )
@@ -2080,6 +2084,92 @@ async def _run_transcription(
             output=output,
         )
     return NodeActivityResult(status="SUCCEEDED", output=output)
+
+
+def _stt_session_id(audio: Any) -> str | None:
+    """The live STT session id an `audio` port value names (TASK-1042), or `None`.
+
+    `{sttSessionId}` itself (a binding to the stream-audio input field), or one level inside the
+    bound value (a legacy edge from the trigger hands the whole run input to `audio`). Called
+    only when no blob reference was found, so a blob always wins.
+    """
+    for candidate in _as_list(audio):
+        if not isinstance(candidate, dict):
+            continue
+        for value in (candidate, *candidate.values()):
+            if isinstance(value, dict):
+                session_id = value.get("sttSessionId")
+                if isinstance(session_id, str) and session_id:
+                    return session_id
+    return None
+
+
+#: C5 state → the node's named failure (TASK-1042). `live` here means the walk's wait reached its
+#: ceiling with the audio still open, which is the same outcome as the gateway's own `timeout`.
+_SESSION_FAILURES = {
+    "truncated": "transcript_truncated",
+    "timeout": "live_audio_timeout",
+    "live": "live_audio_timeout",
+}
+
+
+async def _run_session_transcript(
+    payload: NodeActivityInput, resolved: ResolvedAgent, started: Any, session_id: str
+) -> NodeActivityResult:
+    """TASK-1042 — the transcript of the live STT session bound to this run (C5 → C6).
+
+    ONE read: by the time this node runs, the walk's durable wait (OD-4a) has already seen the
+    session leave `live`. The gateway serves finals from offset 0, so speech captured before the
+    run started is included (OD-9). A transport fault raises (Temporal retries the activity); a
+    refusal or a session that did not end cleanly degrades by NAME, never with a short transcript.
+    """
+    try:
+        answer = await _api_client(get_settings()).get_stt_session_transcript(
+            session_id, tenant_id=payload.tenant_id, run_id=payload.run_id
+        )
+    except ApiClientError as exc:
+        if exc.status_code != 404:
+            raise
+        state = "unbound"
+    else:
+        raw_state = answer.get("state") if isinstance(answer, dict) else None
+        state = raw_state if isinstance(raw_state, str) else "live"
+
+    if state != "ended":
+        code = _SESSION_FAILURES.get(state, "live_audio_unbound")
+        await record_and_flush(payload, status=STATUS_DEGRADED, started=started, error_code=code)
+        return NodeActivityResult(
+            status="DEGRADED",
+            reason=f"core.agent: {code}: live STT session is {state}",
+        )
+
+    finals = [f for f in _as_list(answer.get("finals")) if isinstance(f, dict)]
+    segments = [
+        {
+            "text": f.get("text") if isinstance(f.get("text"), str) else "",
+            "start": f.get("start"),
+            "end": f.get("end"),
+            "speaker": f.get("speaker"),
+        }
+        for f in finals
+    ]
+    transcript = answer.get("transcript")
+    if not isinstance(transcript, str):
+        transcript = " ".join(seg["text"] for seg in segments if seg["text"])
+    language = answer.get("language")
+    await record_and_flush(payload, status=STATUS_OK, started=started)
+    if transcript:
+        # TASK-1036 §10.3 — the transcript the harness sees, on the admin trace (as the blob path).
+        await _admin_event(payload, "transcript.final", {"text": transcript}, "transcript")
+    return NodeActivityResult(
+        status="SUCCEEDED",
+        output={
+            "transcript": transcript,
+            "segments": segments,
+            "language": language if isinstance(language, str) else None,
+            "agent": {"slug": resolved.slug, "versionNumber": resolved.version_number},
+        },
+    )
 
 
 #: `output.audio.delta.format` is one of four; a TTS format or content type maps onto it.
