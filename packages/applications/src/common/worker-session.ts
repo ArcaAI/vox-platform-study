@@ -9,6 +9,7 @@ import { UserSession } from '../services';
  */
 export type WorkerSessionKind =
   | 'audit'
+  | 'fact-ledger'
   | 'summary'
   | 'pre-summary'
   | 'ner'
