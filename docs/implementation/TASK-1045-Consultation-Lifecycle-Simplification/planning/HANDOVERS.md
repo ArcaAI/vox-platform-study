@@ -132,7 +132,7 @@
 | H-127 | E6 | `note-generation.service.ts` + module, `live-documentation.service.module.ts`, harness `assemble` `notePlanId` | orchestrator | hand-over patch | applied `111396a5a` |
 | H-128 | E6 | governed plan model | note | governed compose passes no model → platform default text model (gemma 4 E2B per D-10, so equivalent today); revisit if a tenant finalizer agent names another model | info |
 | H-129 | E6 | `harness-internal.service.test.ts` | AB-8e | `versionNumber` return + E3 legacy pins | pending (AB-8e) |
-| H-130 | E6 | loop lane compose at stop; `core.py` `note_plan_error` degrade; `failGovernedRun` keeps the specific FAILED reason | E6b | pending (E6b) |
+| H-130 | E6 | loop lane compose at stop; `core.py` `note_plan_error` degrade; `failGovernedRun` keeps the specific FAILED reason | E6b | applied `f5968a43c` |
 | H-131 | U8 | ALaaS `useConsultationWorkspace.js` | orchestrator | TDZ: `lifecycle` read after the clock effect used it (U7) | applied ALaaS `1a9b131` |
 | H-132 | U8 | ALaaS O68 `check_record_ready` | finding | browser helper `checkSummaryRecordReady` is exported but never called, and the svc never had the route (git history). Kept unchanged; no handler invented (owner: no fabrication) | info |
 | H-133 | U8 | ALaaS encounter 2 on the same session/event | note | cache design: only the current encounter's row reads/writes HOPE's note; the session/event row becomes the latest consultation-wide note; HOPE keeps every version | info |
@@ -145,3 +145,4 @@
 | H-140 | FD1 | ALaaS transcript edit | U9 | owner requirement "update the transcript … save as feedback" had no UI (protocol/reducer/model supported SEGMENT corrections; only NOTE wired) → lane U9 adds the hover edit on final segments | pending (U9) |
 | H-141 | FD1 | ALaaS `hope-codegen.mjs` header comment | follow-up | comment says `--check` exits 0 without credentials; `hope-codegen-lib.js` exits 1 (lib is right) | follow-up |
 | H-142 | FD1 | ALaaS 4.x shim header | note | ALaaS's 4.x shim sends no `X-Hope-Lifecycle`, so it reads the projected old vocabulary (intended); the 5.x adapter (F8) must send it | pending (F8) |
+| H-143 | E6b | fail-closed loop ending | gate check | after a loop ending fails closed (FAILED `NOTE_INPUT_EXCEEDS_CONTEXT`), the child still runs and `assemble` refuses; verify `reportProgress('failed')` (E6: sets `NOTE_GENERATION_FAILED` when STOPPED with no note) does not overwrite the specific reason — `failGovernedRun` already keeps it | pending (gate) |
