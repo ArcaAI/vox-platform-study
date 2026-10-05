@@ -1,5 +1,15 @@
 import { DNA_MEMORY_CAPTURE_EVENT, type DnaMemoryCaptureRequest } from '../../dna-writing-style/dna-memory.events';
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { BusinessException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
 import type { AxiosError } from 'axios';
@@ -24,8 +34,9 @@ import {
   NamedEntityFactory,
   ResourceType,
   SysEventType,
-  ConsultationStatus,
-  HarnessAuditAction,
+  ConsultationEntity,
+  ConsultationProcessing,
+  AiActivityKind,
   JsonValue,
   AgentSessionKind,
   AgentStepStatus,
@@ -60,8 +71,10 @@ import {
   parseTextUsageDetail,
   resolveDeployment,
   toLedgerProvider,
+  buildTextActivityRun,
   type TextUsageDetail,
 } from './text-usage';
+import { IAiActivityRunService, IAiActivityRunServiceToken } from '../../ai-activity-run/IAiActivityRunService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
 import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
@@ -100,6 +113,23 @@ import {
 import type { CompiledDocumentTemplate } from '../../document-template/document-template-compiler';
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService, type VisitTypeDefinition } from '../visit-type/visit-type.service';
 import { readRecordedVisitType } from '../consultation/open-markers';
+import {
+  IConsultationLifecycleGate,
+  IConsultationLifecycleGateToken,
+  IConsultationLifecycleService,
+  IConsultationLifecycleServiceToken,
+  type ClinicalCaller as LifecycleCaller,
+} from '../lifecycle/IConsultationLifecycleService';
+import { LifecycleConflictCode } from '../lifecycle/lifecycle-errors';
+import type { PreparedNoteSignature, PreparedSessionSignature, SessionSignerCaller } from '../lifecycle/session-note-signer';
+
+/** The attribution-form caller, as the lifecycle command service takes it. */
+function toLifecycleCaller(caller: ClinicalCaller | undefined): LifecycleCaller {
+  if (!caller) return { isMachine: false };
+  if (caller.credentialClass === 'service-account') return { serviceAccountId: caller.principalId, isMachine: true };
+  if (caller.credentialClass === 'api-key') return { apiKeyId: caller.principalId, userId: caller.boundUserId ?? undefined, isMachine: true };
+  return { userId: caller.principalId, isMachine: false };
+}
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -359,6 +389,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // `documents/sections` and the live flags already use. Optional + trailing like every
     // dependency above it; unwired ⇒ keys derived from the note's own headings.
     @Optional() @Inject(DocumentSectionRepository) private readonly documentSectionRepository?: DocumentSectionRepository,
+    // Run records for the generations this service performs, written in the usage transaction.
+    @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRuns?: IAiActivityRunService,
+    // The consultation-level content lock for summary edits. Optional + trailing; see `updateSummary`.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: Pick<IConsultationLifecycleGate, 'assertContentWritable'>,
+    // Resolves the lifecycle command service lazily for the per-summary approve: the lifecycle
+    // module imports this one (for the signing core), so this one cannot import it back.
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -671,6 +708,18 @@ export class SummaryService extends BaseService implements ISummaryService {
         for (const input of inputs) {
           await this.usageLedger!.recordUsage(input, tx);
         }
+        // The run record rides the same transaction as the usage it describes: both or neither.
+        const run = textResponse.usage
+          ? buildTextActivityRun({
+              usage: textResponse.usage,
+              tenantId: attribution.tenantId,
+              consultationId: attribution.consultationId,
+              activityKind: operation === 'presummarize' ? AiActivityKind.PRE_SUMMARY : AiActivityKind.NOTE_GENERATE,
+              contextItemId: summaryMeta.contextItemId,
+              outputVersionNumber: 1,
+            })
+          : null;
+        if (run) await this.activityRuns?.record(run, tx);
       });
     } catch (error) {
       this.logger.warn({
@@ -770,9 +819,17 @@ export class SummaryService extends BaseService implements ISummaryService {
     // version. Missing or cross-tenant both surface as NotFound.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
 
-    const approvals = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved');
-    if (approvals.length > 0) {
-      throw new BadRequestException('Summary is approved and locked');
+    // The content lock is the CONSULTATION's: approved / approved-and-closed ⇒ 409
+    // `CONSULTATION_APPROVED`, closed incomplete ⇒ 409 `CONSULTATION_CLOSED`. A reopened
+    // consultation is writable again even though its note carries an earlier signature. Without
+    // the gate wired, a signed note stays locked (the same 409).
+    if (this.lifecycleGate) {
+      await this.lifecycleGate.assertContentWritable(contextItem.consultationId);
+    } else {
+      const approvals = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved');
+      if (approvals.length > 0) {
+        throw new ConflictException({ code: LifecycleConflictCode.CONSULTATION_APPROVED, message: 'Summary is approved and locked' });
+      }
     }
 
     if (!contextItem.isSummary) {
@@ -864,15 +921,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
 
     // If this edit lands while the draft is still
-    // under optimistic assurance (DRAFT_PENDING_SENSORS), forward it to the
+    // under optimistic assurance (processing SUMMARIZING), forward it to the
     // harness so the running workflow re-binds + re-runs assurance on the edited
     // version (Q3) and permanently disables silent regen-if-untouched (Q1).
     // Best-effort: the MODIFIED_SUMMARY version write above is the source of
     // truth — a signal failure must never roll back the (committed) edit. Edits
-    // in any other consultation status have no assurance window, so they no-op.
+    // in any other processing state have no assurance window, so they no-op.
     try {
       const consultation = await this.consultationRepository.findById(contextItem.consultationId);
-      if (consultation?.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
+      if (consultation?.processing === ConsultationProcessing.SUMMARIZING) {
         await this.harnessGatewayService?.signalEdit(contextItem.consultationId, {
           content: contextItem.content ?? '',
           contextItemVersionId: savedVersion?.id ?? version.id,
@@ -891,28 +948,13 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * Approve and lock a summary (attestation gate /
-   * confirm-before-commit). This is the single, non-bypassable signing path:
+   * Approve and lock a summary — the per-summary route, kept one release for older clients.
    *
-   *   1. Writes a SIGNED_NOTE `ContextItemVersion` stamped with the clinician
-   *      attestation fields (attestedBy / attestedAt / attestationHash). The
-   *      version keeps `changeReason='approved'` so the existing idempotency
-   *      check still recognises a signed note.
-   *   2. Appends an `ATTEST` event to the Phase-0 WORM audit trail
-   *      (`HarnessAuditService`) — fail-closed: if the audit append throws, the
-   *      whole approval is rejected and the consultation is NOT signed.
-   *   3. Flips `Consultation.status` → `SIGNED` via `ConsultationEntity.transitionTo`
-   * a legality ASSERTION around the pre-existing write, never a
-   *      widening of it; an illegal predecessor throws (mapped to 409).
-   *
-   * RELAXED sign-off governance (clinician autonomy + full
-   * audit, doc 08):
-   *   Q2a — signing BEFORE assurance lands is allowed with no acknowledgement;
-   *         a `SIGNED_BEFORE_ASSURANCE` WORM annotation is appended so the
-   *         late-verdict path (`finalizeAssurance` Q2b) can correlate.
-   *   Q4 — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
-   *         explicit one-click `overrideSafetyFlag`, recorded (no free-text) as a
-   *         `SAFETY_OVERRIDE` WORM event. A REGEN/groundedness flag stays signable.
+   * Approval is a property of the whole consultation now: this delegates to the session approve
+   * (`IConsultationLifecycleService.approve` with `legacyContextItemId`), which signs this note
+   * through {@link prepareSessionSignature}, snapshots every item, locks the record and writes the
+   * WORM trail. The caller's If-Match stays the NOTE's version. Idempotent: an approved (or
+   * approved-and-closed) consultation answers the existing signature.
    */
   async approveSummary(
     contextItemId: string,
@@ -923,71 +965,118 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // (audit C-3) — assert the target summary belongs to
-    // the caller's tenant before any approval / lock state mutates.
+    // (audit C-3) — assert the target summary belongs to the caller's tenant before anything else.
     const contextItem = await assertParentInScope(this.contextItemRepository, contextItemId, tenantId);
-
     if (!contextItem.isFinalSummary) {
       throw new BadRequestException(`Context item ${contextItemId} is not a final summary`);
     }
 
-    const existingApprovals = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved');
-    if (existingApprovals.length > 0) {
-      const first = existingApprovals[0];
+    const lifecycle = this.lifecycleService();
+    if (!lifecycle) {
+      throw new ServiceUnavailableException('Consultation approval is unavailable: the lifecycle service is not wired.');
+    }
+    await lifecycle.approve(contextItem.consultationId, {
+      expectedVersion: options?.expectedVersion as number,
+      clinicianUserId: options?.clinicianUserId,
+      overrideSafetyFlag: options?.overrideSafetyFlag,
+      caller: toLifecycleCaller(options?.caller),
+      legacyContextItemId: contextItemId,
+    });
+
+    const [signed] = await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved');
+    return {
+      contextItemId,
+      approvalStatus: 'APPROVED',
+      approvedBy: signed?.changedBy ?? 'unknown',
+      approvedAt: (signed?.createdAt ?? new Date()).toISOString(),
+    };
+  }
+
+  /**
+   * The note-signing core of the session approve (`SessionNoteSigner`). Resolves WHO attests and
+   * readies the consultation's final note — `legacyContextItemId`, else the latest final summary —
+   * as an attested SIGNED_NOTE version. Writes NOTHING: the approval service persists the version,
+   * the note's compare-and-set and the WORM rows in one transaction.
+   *
+   * RELAXED sign-off governance (clinician autonomy + full audit, doc 08):
+   *   Q2a — signing BEFORE assurance lands is allowed; `signedBeforeAssurance` tells the caller
+   *         to annotate SIGNED_BEFORE_ASSURANCE so the late-verdict path can correlate.
+   *   Q4 — a COMPLETED safety FLAG hard-blocks (409) UNLESS `overrideSafetyFlag`, which the
+   *         caller records as SAFETY_OVERRIDE. A REGEN/groundedness flag stays signable.
+   *
+   * A note whose CURRENT version is already a signature (an approve → reopen → approve with no
+   * edit in between) is not signed again: `version` is null and the existing signature is reused.
+   */
+  async prepareSessionSignature(input: {
+    tenantId: string;
+    consultationId: string;
+    legacyContextItemId?: string;
+    clinicianUserId?: string;
+    caller?: SessionSignerCaller;
+    overrideSafetyFlag?: boolean;
+  }): Promise<PreparedSessionSignature> {
+    const { tenantId } = input;
+
+    let contextItem = input.legacyContextItemId
+      ? await assertParentInScope(this.contextItemRepository, input.legacyContextItemId, tenantId)
+      : ((await this.contextItemRepository.findLatestModifiedSummary(input.consultationId)) ??
+        (await this.contextItemRepository.findLatestRawSummary(input.consultationId)));
+    if (contextItem && (!contextItem.isFinalSummary || contextItem.consultationId !== input.consultationId)) {
+      throw new BadRequestException(`Context item ${contextItem.id} is not a final summary of this consultation`);
+    }
+
+    // TASK-972 Lane 1 — WHO attested (the resolved CLINICIAN), and WHICH credential submitted it.
+    const { clinicianId: approvedBy, caller: actor } = await this.resolveActingClinician(tenantId, input.clinicianUserId, input.caller);
+
+    if (!contextItem) {
+      return { approvedBy, actor, note: null };
+    }
+
+    const currentVersionNumber = (contextItem.currentVersionNumber as number) ?? 0;
+    const existing = (await this.contextItemVersionRepository.getVersionsByChangeReason(contextItem.id, 'approved')).find(
+      (version) => version.versionNumber === currentVersionNumber,
+    );
+    if (existing) {
       return {
-        contextItemId,
-        approvalStatus: 'APPROVED',
-        approvedBy: first.changedBy ?? 'unknown',
-        approvedAt: first.createdAt.toISOString(),
+        approvedBy,
+        actor,
+        note: {
+          contextItem,
+          version: null,
+          versionId: existing.id,
+          versionNumber: currentVersionNumber,
+          attestationHash: existing.attestationHash ?? '',
+          attestedAt: existing.attestedAt ?? existing.createdAt,
+          signedBeforeAssurance: false,
+          safetyOverride: false,
+        },
       };
     }
 
-    // RELAXED sign-off assurance guard (defense-in-depth; the
-    // UI mirrors this, but the API is the non-bypassable enforcement point). The
-    // draft's SummaryMeta carries the two-phase assurance state:
-    //   Q2a — signing while assurance is still running (`assuranceCompletedAt`
-    //         NULL, i.e. an optimistically-delivered DRAFT_PENDING_SENSORS draft)
-    //         is ALLOWED with no acknowledgement; we annotate the WORM trail with
-    //         SIGNED_BEFORE_ASSURANCE so the late-verdict path can correlate.
-    //   Q4 — a COMPLETED safety FLAG hard-blocks UNLESS the clinician supplies an
-    //         explicit one-click override, recorded as a SAFETY_OVERRIDE WORM
-    //         event. A REGEN/groundedness flag stays signable — those are review
-    //         prompts, not safety stops.
-    // Legacy single-shot drafts stamp `assuranceCompletedAt` at persist, and
-    // non-harness/manual summaries have no SummaryMeta at all — both have neither
-    // flag set, so they sign through unchanged with no extra annotations.
-    const draftMeta = await this.summaryMetaRepository.findByContextItem(contextItemId);
+    // The draft's SummaryMeta carries the two-phase assurance state. Legacy single-shot drafts
+    // stamp `assuranceCompletedAt` at persist and manual summaries have no SummaryMeta at all —
+    // neither flag is set for them, so they sign through with no annotations.
+    const draftMeta = await this.summaryMetaRepository.findByContextItem(contextItem.id);
     const signedBeforeAssurance = !!draftMeta && !draftMeta.assuranceCompletedAt;
-    const overridingSafetyFlag = !!draftMeta && SummaryService.hasSafetyFlag(draftMeta);
-    if (overridingSafetyFlag && !options?.overrideSafetyFlag) {
+    const safetyFlagged = !!draftMeta && SummaryService.hasSafetyFlag(draftMeta);
+    if (safetyFlagged && !input.overrideSafetyFlag) {
       throw new ConflictException(
         'This draft was flagged by the safety sensor and cannot be signed. Escalate for clinical review, or sign with an explicit safety override.',
       );
     }
 
-    // TASK-972 Lane 1 — WHO attested, and WHICH credential submitted it.
-    //
-    // This used to be `this.requestUserId`, which threw for a machine caller and would have
-    // recorded the MACHINE as the attesting clinician had it not. `approvedBy` is now the
-    // resolved CLINICIAN (the rule lives in `clinician-attribution.ts`), and `actor` is the
-    // credential that submitted the attestation — recorded BESIDE them on the WORM rows and the
-    // sys-event, never instead of them.
-    const { clinicianId: approvedBy, caller: actor } = await this.resolveActingClinician(tenantId, options?.clinicianUserId, options?.caller);
-
-    const versionNumber = ((contextItem.currentVersionNumber as number) ?? 0) + 1;
+    const versionNumber = currentVersionNumber + 1;
     const attestedAt = new Date();
     const attestationHash = this.computeAttestationHash({
-      contextItemId,
+      contextItemId: contextItem.id,
       versionNumber,
       content: contextItem.content ?? '',
       attestedBy: approvedBy,
       attestedAt,
     });
-
-    // 1. Persist the attested SIGNED_NOTE version.
     const version = ContextItemVersionFactory.CreateSignedNoteVersion({
       tenantId,
-      contextItemId,
+      contextItemId: contextItem.id,
       versionNumber,
       content: contextItem.content ?? undefined,
       attestedBy: approvedBy,
@@ -996,249 +1085,128 @@ export class SummaryService extends BaseService implements ISummaryService {
       changeSummary: 'Approved and locked',
     });
 
-    // Stamp the cumulative AI-draft → approved delta on
-    // the signed note so the final divergence is captured even when the doctor
-    // signs without an intermediate edit. Baseline = the immutable
-    // `ai_draft_v1` snapshot; skipped for legacy drafts that predate the
-    // snapshot mechanism (no v1 snapshot) so their signed note keeps the null
-    // delta columns. This is append-only and never blocks the sign-off below.
-    const draftBaseline = await this.resolveAiDraftBaseline(contextItemId);
+    // The cumulative AI-draft → approved delta, so the final divergence is captured even when the
+    // doctor signs without an intermediate edit. Skipped for drafts that predate the immutable
+    // `ai_draft_v1` snapshot (their signed note keeps null delta columns).
+    const draftBaseline = await this.resolveAiDraftBaseline(contextItem.id);
     if (draftBaseline !== null) {
       const signDelta = diffContent(draftBaseline, contextItem.content, await this.resolveDiffTemplate(tenantId));
       version.contentDiff = signDelta.contentDiff;
       version.fieldChanges = signDelta.fieldChanges as unknown as JsonValue | null;
     }
-
     await this.encryptBestEffort('ContextItemVersion', () =>
       this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
     );
-    const savedVersion = await this.contextItemVersionRepository.create(version);
-    const versionId = savedVersion?.id ?? version.id;
-
-    // 2a. Q4 — record the clinician's explicit safety-flag override FIRST, and
-    //     fail-closed: if this WORM write fails the sign-off aborts before the
-    //     consultation is flipped (a safety override is never silently dropped).
-    if (overridingSafetyFlag && options?.overrideSafetyFlag) {
-      await this.harnessAuditService?.append({
-        tenantId,
-        consultationId: contextItem.consultationId,
-        contextItemVersionId: versionId,
-        action: HarnessAuditAction.SAFETY_OVERRIDE,
-        modelName: 'clinician-override',
-        modelVersion: 'v1',
-        sensorScores: {},
-        citations: [],
-        clinicianId: approvedBy,
-        attestationHash,
-        // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
-        createdBy: actor.principalId || approvedBy,
-      });
-    }
-
-    // 2. Append the ATTEST event to the WORM audit trail. Fail-closed: any error
-    //    propagates and aborts the approval BEFORE the consultation is signed.
-    await this.harnessAuditService?.append({
-      tenantId,
-      consultationId: contextItem.consultationId,
-      contextItemVersionId: versionId,
-      action: HarnessAuditAction.ATTEST,
-      modelName: 'clinician-attestation',
-      modelVersion: 'v1',
-      sensorScores: {},
-      citations: [],
-      clinicianId: approvedBy,
-      attestationHash,
-      // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
-      createdBy: actor.principalId || approvedBy,
-    });
-
-    // 2b. Q2a — annotate that this sign preceded assurance completion so the
-    //     late-verdict path (finalizeAssurance Q2b) can correlate and surface an
-    //     amendment alert. Fail-closed, consistent with ATTEST.
-    if (signedBeforeAssurance) {
-      await this.harnessAuditService?.append({
-        tenantId,
-        consultationId: contextItem.consultationId,
-        contextItemVersionId: versionId,
-        action: HarnessAuditAction.SIGNED_BEFORE_ASSURANCE,
-        modelName: 'clinician-attestation',
-        modelVersion: 'v1',
-        sensorScores: {},
-        citations: [],
-        clinicianId: approvedBy,
-        attestationHash,
-        // The CREDENTIAL that submitted the row; `clinicianId` above is who ATTESTED it.
-        createdBy: actor.principalId || approvedBy,
-      });
-    }
 
     contextItem.currentVersionNumber = versionNumber;
     contextItem.updatedBy = approvedBy;
+    // Keep every ContextItem persist on this path running the same cipher call.
+    const note = contextItem;
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(note, this.secretsService!));
+    contextItem = note;
 
-    // Defense-in-depth: re-encrypt `content` into
-    // `encryptedContent` on this final update too — this lane doesn't itself
-    // reassign `content`, but keeping every ContextItem persist on this write
-    // path running the same cipher call closes off the whole class of "some
-    // future edit here forgets to encrypt" regressions (mirrors the other
-    // ContextItem write lanes in this service).
-    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
+    return {
+      approvedBy,
+      actor,
+      note: {
+        contextItem,
+        version,
+        versionId: version.id,
+        versionNumber,
+        attestationHash,
+        attestedAt,
+        signedBeforeAssurance,
+        safetyOverride: safetyFlagged,
+      },
+    };
+  }
 
-    // 3. Flip the consultation lifecycle → SIGNED, and persist BOTH
-    // the Consultation and the ContextItem rows as Compare-And-Sets. The
-    // `contextItem` CAS predicate is the caller-supplied `expectedVersion`
-    // (the `@RequiresIfMatch()`-gated header the client echoed back); the
-    // `consultation` CAS predicate is its own freshly-read `.version` — there
-    // is no client-observed value for that row, so this simply guards
-    // against a concurrent status change landing between our read and write.
-    // Two separate CAS calls on two different entities, so they run inside
-    // ONE `$transaction` (when a unit-of-work is wired) so a drift on either
-    // row aborts the whole approval rather than leaving one row updated and
-    // the other stale.
-    const consultation = await this.consultationRepository.findById(contextItem.consultationId);
-    // `expectedVersion` is REQUIRED end-to-end (the controller's
-    // `@RequiresIfMatch()` guarantees it); optional here only so the many
-    // pre-existing unit tests that call this method without an `options`
-    // object keep compiling.
-    const expectedVersion = options?.expectedVersion as number;
-    if (consultation) {
-      const consultationExpectedVersion = consultation.version;
-      // the sign legality ASSERTION, added around this write
-      // WITHOUT touching the write site's business gates above (the
-      // authenticated-user check, tenant assertion, idempotency read, safety
-      // FLAG hard block, fail-closed-ordered ATTEST WORM append are all
-      // unchanged). The matrix's legal predecessors of SIGNED are exactly
-      // the four states `approveSummary` can be reached from:
-      // DRAFT_PENDING_SENSORS (Q2a optimistic delivery), PENDING_REVIEW
-      // (the legacy path), TIMED_OUT ("the clock never signs, a human
-      // still can"), and CLOSED_INCOMPLETE (TASK-1001 wave 5, D-7 — a
-      // terminal gate abandon closed the consultation unsigned, and a
-      // clinician's late Save still signs it; the close that follows is the
-      // ordinary SIGNED → CLOSED_COMPLETE). Any other predecessor is a
-      // genuine ordering bug and `transitionTo` throws — mapped to 409 here
-      // rather than the domain `BusinessException`'s default 500, mirroring
-      // `ConsultationService.applyTransition`.
-      try {
-        consultation.transitionTo(ConsultationStatus.SIGNED, approvedBy, 'approveSummary');
-      } catch (err) {
-        if (err instanceof BusinessException) {
-          throw new ConflictException(err.message);
-        }
-        throw err;
-      }
-      consultation.updatedBy = approvedBy;
-      if (this.unitOfWork) {
-        await this.unitOfWork.runInTransaction(async (tx) => {
-          await this.consultationRepository.updateWithVersion(consultation.id, consultation, consultationExpectedVersion, tx);
-          await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion, tx);
-        });
-      } else {
-        await this.consultationRepository.updateWithVersion(consultation.id, consultation, consultationExpectedVersion);
-        await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion);
-      }
-    } else {
-      await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion);
+  /**
+   * The post-commit half of the signing core (`SessionNoteSigner`). Every step is best-effort and
+   * runs only after the approval committed — none can fail, delay or roll back a signature.
+   */
+  async afterSessionSigned(input: {
+    tenantId: string;
+    consultation: ConsultationEntity;
+    note: PreparedNoteSignature | null;
+    approvedBy: string;
+    actor: SessionSignerCaller;
+  }): Promise<void> {
+    const { tenantId, consultation, note, approvedBy, actor } = input;
+
+    if (note) {
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: note.contextItem.id,
+        responsibleEntityId: approvedBy,
+        data: {
+          approvalStatus: 'APPROVED',
+          consultationStatus: consultation.status,
+          attested: true,
+          // TASK-972 Lane 1 — the credential, named beside the clinician.
+          actorPrincipalId: actor.principalId,
+          actorCredentialClass: actor.credentialClass,
+        },
+      });
     }
 
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: contextItemId,
-      responsibleEntityId: approvedBy,
-      data: {
-        approvalStatus: 'APPROVED',
-        consultationStatus: ConsultationStatus.SIGNED,
-        attested: true,
-        // TASK-972 Lane 1 — the credential, named beside the clinician. `broadcastSysEvent`
-        // already stamps `responsibleServiceAccountId` from CLS for a service account; these two
-        // cover the API-key class as well, and say in one place which of the three signed.
-        actorPrincipalId: actor.principalId,
-        actorCredentialClass: actor.credentialClass,
-      },
-    });
-
-    // 4. Best-effort: forward the sign-off to the
-    //    harness so it can resolve the workflow's approval wait-condition. The
-    //    WORM ATTEST write above is the system-of-record; a signal failure here
-    //    MUST NOT block or roll back the (already-committed) sign-off.
-    //
-    //    TASK-1022 — ONLY for a default-engine consultation. The signal targets
-    //    `harness-doc-<consultationId>` (Substrate A), and a consultation governed by a tenant
-    //    workflow never starts one (its loop is cancelled, not ended), so every such sign-off
-    //    answered "workflow not found". Its review is released by step 4b instead. A missing or
-    //    malformed marker reads as the default engine, the same fail-safe as the loop gate.
-    if (!tenantWorkflowGoverns(consultation?.metadata)) {
+    // Forward the sign-off to the harness so it can resolve the workflow's approval wait. Only for
+    // a default-engine consultation (TASK-1022): a consultation governed by a tenant workflow never
+    // starts `harness-doc-<consultationId>`; its review is released below instead.
+    if (note && !tenantWorkflowGoverns(consultation.metadata)) {
       try {
-        await this.harnessGatewayService?.signalApproval(contextItem.consultationId, {
+        await this.harnessGatewayService?.signalApproval(consultation.id, {
           tenantId,
-          contextItemVersionId: versionId,
-          attestationHash,
+          contextItemVersionId: note.versionId,
+          attestationHash: note.attestationHash,
           clinicianId: approvedBy,
         });
       } catch (error) {
         this.logger.warn({
           message: 'Harness approval signal failed (best-effort, sign-off not rolled back)',
-          consultationId: contextItem.consultationId,
+          consultationId: consultation.id,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
-    // 4b. TASK-972 Lane 3 (TASK-933 H3-6) — release the GOVERNING run's review.
-    //
-    //     Step 4 above targets `harness-doc-<consultationId>`, which only exists on Substrate A
-    //     (and, since TASK-1022, is skipped for a governed consultation).
-    //     A consultation governed by a tenant workflow runs on Substrate B, where the sign-off
-    //     reached nothing at all and the run stayed parked. This releases that run's review
-    //     child through the existing decide path. Never throws — see the method.
-    await this.releaseGoverningWorkflowReview(tenantId, consultation ?? null);
+    // TASK-972 Lane 3 (TASK-933 H3-6) — release the GOVERNING run's review. Never throws.
+    await this.releaseGoverningWorkflowReview(tenantId, consultation);
 
-    // 5. — hand the sign-off to the gate-edit learning loop.
-    //
-    //    This is the ONLY live writer of `GateEditExemplar`: the miner compares
-    //    the immutable `ai_draft_v1` snapshot against the note the clinician
-    //    actually signed, and stores the PHI-REDACTED pair as a training /
-    //    few-shot exemplar. Both halves of that comparison already exist here —
-    //    this call is what stops them being discarded.
-    //
-    //    Deliberately LAST, deliberately best-effort, and deliberately AFTER the
-    //    sign-off has committed:
-    //      * it must never fail a signature (mirrors the harness signal above),
-    //      * it must never delay one — `enqueue` only adds a BullMQ job; the
-    //        comparison, redaction and persistence all happen in the worker,
-    //      * and it cannot alter consultation status, so R6's single-writer
-    //        property is untouched. Nothing on this path can reach SIGNED.
+    if (!note || !note.version) return;
+
+    // The gate-edit learning loop — the only live writer of `GateEditExemplar`. `enqueue` only
+    // adds a job; the comparison, redaction and persistence happen in the worker.
     try {
       await this.gateEditMiningQueue?.enqueue({
         tenantId,
-        consultationId: contextItem.consultationId,
-        contextItemId,
-        // TASK-972 Lane 2 — WHOSE writing this is, so the enqueue side can resolve the
-        // training-capture gate (tenant AND clinician) without a second consultation read. The
-        // consultation's own `doctorId`, not the signer: an administrator signing on a
-        // clinician's behalf does not make the note theirs.
-        doctorId: consultation?.doctorId ?? null,
-        // A clinician sign-off, not a harness gate verdict. 'SIGNED' is a
-        // CLEAN_DECISIONS token in `edit-burden.ts`, so a clean signature is
-        // never miscounted as a deferral.
+        consultationId: consultation.id,
+        contextItemId: note.contextItem.id,
+        // WHOSE writing this is: the consultation's own doctor, not the signer.
+        doctorId: consultation.doctorId ?? null,
+        // A clinician sign-off; 'SIGNED' is a CLEAN_DECISIONS token in `edit-burden.ts`.
         gateDecision: 'SIGNED',
-        signedAt: attestedAt.toISOString(),
+        signedAt: note.attestedAt.toISOString(),
       });
     } catch (error) {
       this.logger.warn({
         message: 'Gate-edit mining enqueue failed (best-effort, sign-off not rolled back)',
-        consultationId: contextItem.consultationId,
+        consultationId: consultation.id,
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
-    // 6. TASK-1034 — capture the signed note as DNA writing-style memory (SIGNOFF). Last, after
-    //    the commit, through an async event: it can never fail or delay a signature.
-    this.requestDnaMemoryCapture({ tenantId, consultationId: contextItem.consultationId, contextItemId, source: 'SIGNOFF' });
+    // TASK-1034 — capture the signed note as DNA writing-style memory (SIGNOFF).
+    this.requestDnaMemoryCapture({ tenantId, consultationId: consultation.id, contextItemId: note.contextItem.id, source: 'SIGNOFF' });
+  }
 
-    return {
-      contextItemId,
-      approvalStatus: 'APPROVED',
-      approvedBy,
-      approvedAt: version.createdAt.toISOString(),
-    };
+  /** The lifecycle command service, resolved lazily: the lifecycle module imports this one. */
+  private lifecycleService(): IConsultationLifecycleService | null {
+    if (!this.moduleRef) return null;
+    try {
+      return this.moduleRef.get<IConsultationLifecycleService>(IConsultationLifecycleServiceToken, { strict: false });
+    } catch {
+      return null;
+    }
   }
 
   /** TASK-1034 — fire-and-forget DNA memory capture; a throwing emitter is logged, never raised. */

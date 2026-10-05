@@ -10,6 +10,7 @@ import { DocumentSectionStore, type SectionWriteRefusal } from '../live-document
 import { IDocumentSectionService } from './IDocumentSectionService';
 import { DocumentSectionDtoMapper } from './document-section.dto.mapper';
 import { DocumentSectionResponse, UpdateDocumentSectionRequest } from './dto';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 
 /**
  * The REST half of the `DocumentSection` state machine — the clinician writer.
@@ -66,6 +67,9 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
     // tests still build; ABSENT ⇒ the store skips encryption exactly as it does
     // on the flush path, and reads surface no content rather than plaintext.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // The consultation-level content lock (approved / closed ⇒ 409). Optional + trailing so the
+    // positional fixtures keep their arity; unwired ⇒ only the section's own lock applies.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: Pick<IConsultationLifecycleGate, 'assertContentWritable'>,
   ) {
     // `ResourceType.Consultation`, not a DocumentSection member — there is none,
     // and `finalizeDocuments` (the LOCK half of this same state
@@ -143,6 +147,11 @@ export class DocumentSectionService extends BaseService implements IDocumentSect
 
     const tenantId = this.tenantId;
     const section = await this.requireSection(consultationId, documentKey, sectionKey);
+
+    // An approved or closed consultation locks every section, whatever the section's own state:
+    // 409 `CONSULTATION_APPROVED` / `CONSULTATION_CLOSED`. After the existence check, so an unknown
+    // or foreign section is still a 404 first.
+    await this.lifecycleGate?.assertContentWritable(consultationId);
 
     // Checked BEFORE the compare-and-set so a finalized encounter answers 409
     // rather than 412: the client's precondition may be perfectly fresh, and
