@@ -50,7 +50,7 @@ import { PrismaClient } from '../generated/core-prisma-client/client.js';
  * instead, but that would have been the wrong call.
  */
 export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
-  // consultation.prisma (7)
+  // consultation.prisma (9)
   'Consultation',
   'ContextItem',
   'ContextItemVersion',
@@ -58,6 +58,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'SummaryMeta',
   'NamedEntity',
   'Highlight', // doctor-authored highlight
+  'ConsultationEncounter',
+  'ConsultationApproval',
+  // consultation-attachment.prisma / consultation-feedback.prisma (3)
+  'ConsultationAttachment',
+  'ConsultationFeedback',
+  'ConsultationFeedbackDailyRollup',
+  // ai-activity-run.prisma (1)
+  'AiActivityRun',
   // audit.prisma (1)
   'AuditLog',
   // webhook.prisma (1)

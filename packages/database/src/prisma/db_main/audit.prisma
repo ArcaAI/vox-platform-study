@@ -433,6 +433,15 @@ enum ResourceType {
   DnaWritingSample
   // The composed prompt one LLM call was sent (OD-9 incident record) — every read is audited.
   ComposedPromptRecord
+  // Consultation record model: one row per encounter (visit) of a consultation, and the
+  // immutable approval snapshot written when a clinician approves the record.
+  ConsultationEncounter
+  ConsultationApproval
+  // Consultation attachments (uploads) and clinician feedback; the rollup is the derived
+  // per-day feedback aggregate (its recompute is an audited system mutation).
+  ConsultationAttachment
+  ConsultationFeedback
+  ConsultationFeedbackRollup
 
   @@schema("core")
 }

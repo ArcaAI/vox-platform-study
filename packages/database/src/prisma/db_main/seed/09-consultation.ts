@@ -29,7 +29,7 @@ import { encryptSeedRow } from './phi-encryption';
  * exercise the full clinical workflow without additional setup.
  *
  * Seeded entities:
- *   9 Consultations — full lifecycle coverage across 7 `ConsultationStatus` values
+ *   9 Consultations — lifecycle coverage across 5 `ConsultationStatus` values
  *     (the typed `status` column — TASK-972 OD-8; previously miswritten into the
  *     retired `metadata.status` JSON key, which the column default (`OPEN`) then
  *     silently masked) and 6 departments
@@ -92,7 +92,8 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR2,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
-    status: ConsultationStatus.PENDING_REVIEW,
+    // Closed unsigned: parent of the open CARD_CROSS_DEPT on the same open key (one non-closed per key).
+    status: ConsultationStatus.CLOSED_INCOMPLETE,
     metadata: {
       visitType: 'REVISIT',
       chiefComplaint: 'Follow-up for hypertension management and chest tightness',
@@ -108,7 +109,8 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
     departmentId: SEED_DEPARTMENT_IDS.PERI,
     parentConsultationId: null,
-    status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+    // Closed unsigned: parent of the open SURG_FOLLOWUP on the same open key.
+    status: ConsultationStatus.CLOSED_INCOMPLETE,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Right iliac fossa pain for 2 days with nausea and fever',
@@ -140,7 +142,7 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR_NEURO,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
-    status: ConsultationStatus.DRAINING,
+    status: ConsultationStatus.STOPPED,
     metadata: {
       visitType: 'REFERRAL',
       chiefComplaint: 'Recurrent headaches with visual disturbance — referred from General Practice',
@@ -193,7 +195,8 @@ export const DEFAULT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-    status: ConsultationStatus.REOPENED,
+    // Reopened after close — reopening returns a consultation to OPEN.
+    status: ConsultationStatus.OPEN,
     metadata: {
       visitType: 'REVISIT',
       chiefComplaint: 'Follow-up after pneumonia treatment — persistent mild cough',
@@ -245,7 +248,8 @@ export const CUSTOMER_TENANT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     parentConsultationId: null,
-    status: ConsultationStatus.OPEN,
+    // Closed unsigned: parent of the REVISIT below on the same open key.
+    status: ConsultationStatus.CLOSED_INCOMPLETE,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Sore throat and mild fever for 3 days',
@@ -261,7 +265,7 @@ export const CUSTOMER_TENANT_CONSULTATIONS = [
     doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
     departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     parentConsultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
-    status: ConsultationStatus.PENDING_REVIEW,
+    status: ConsultationStatus.STOPPED,
     metadata: {
       visitType: 'REVISIT',
       chiefComplaint: 'Follow-up: persistent sore throat, review of throat swab results',
@@ -1469,7 +1473,9 @@ export const seedConsultation = async (client: CorePrismaClient) => {
           versionNumber: version.versionNumber,
         },
       },
-      update: data,
+      // Versions are immutable (a DB trigger raises on any real UPDATE), so a re-seed
+      // leaves an existing version untouched.
+      update: {},
       create: data,
     });
   }

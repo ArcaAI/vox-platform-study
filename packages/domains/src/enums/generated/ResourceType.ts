@@ -176,4 +176,12 @@ export enum ResourceType {
   TenantCheckpointRestore = 'TenantCheckpointRestore',
   DnaWritingSample = 'DnaWritingSample',
   ComposedPromptRecord = 'ComposedPromptRecord',
+  // Consultation record model (encounters + the immutable approval snapshot),
+  // attachments, feedback and the derived feedback rollup. Parity with
+  // audit.prisma; see resourceType.enum-parity.test.ts.
+  ConsultationEncounter = 'ConsultationEncounter',
+  ConsultationApproval = 'ConsultationApproval',
+  ConsultationAttachment = 'ConsultationAttachment',
+  ConsultationFeedback = 'ConsultationFeedback',
+  ConsultationFeedbackRollup = 'ConsultationFeedbackRollup',
 }
