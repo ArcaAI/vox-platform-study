@@ -1,4 +1,14 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -51,11 +61,28 @@ import { HarnessAssuranceService } from './harness-assurance.service';
 import { HarnessProgressService } from './harness-progress.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
-import { selectAuthoritativeNoteText, truncatePriorVisitSummary } from './prior-visit-summary';
+import { selectAuthoritativeNoteText } from './prior-visit-summary';
 import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone } from './same-day-prequel';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { PromptAssemblyService, type AssembledPrompt, type NerEntityForPrompt, type PromptAssemblyParams } from '../prompt/prompt-assembly.service';
-import { clientClinicalContextReaderFor } from '../context/client-clinical-context';
+import {
+  CLIENT_INVESTIGATIONS_KIND_KEY,
+  CLIENT_VITALS_KIND_KEY,
+  clientCaseNoteRenderings,
+  clientClinicalContextReaderFor,
+} from '../context/client-clinical-context';
+import {
+  NoteCompositionRequestError,
+  NoteInputComposerService,
+  NoteInputExceedsContextError,
+  NoteModelUnavailableError,
+  NoteTemplateUnresolvedError,
+  type NoteComposeRequest,
+  type NoteSnapshotText,
+  type NoteSourceSnapshot,
+} from '../note-composition/note-input-composer.service';
+import { NoteTokenizerUnavailableError } from '../note-composition/text-token-count.client';
+import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanEnvelope, type NotePlanMode, type NotePlanV1 } from '../note-composition/note-plan.types';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import type { JobStatusType, SummaryJobResult } from '../jobs/dto';
@@ -87,6 +114,7 @@ import type {
   HarnessProgressRequest,
   HarnessResolvedModelResponse,
   HarnessSegmentCitationRef,
+  HarnessNotePlanSummary,
 } from './dto';
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
@@ -247,16 +275,6 @@ export class HarnessInternalService extends BaseService {
   // lookup fails safe to CREATE, exactly as `HARNESS_DRAFT_SUBTYPE` does.
   private readonly HARNESS_NER_MODEL_ID = 'HARNESS_NER';
 
-  // F-03: attachment text (metaData.extractedText or, absent that, the raw
-  // content label) is folded verbatim into the prompt with only a
-  // `[highlight]`-style label prefix — no other transformation. This caps the
-  // per-attachment contribution so one oversized upload can't dominate the
-  // context window / injection surface (SOTA; the explicit suffix
-  // marker keeps the truncation visible in the assembled prompt rather than
-  // silently cutting the text.
-  private static readonly ATTACHMENT_TEXT_MAX_LENGTH = 20_000;
-  private static readonly ATTACHMENT_TRUNCATION_MARKER = '…[attachment truncated for context]';
-
   constructor(
     private readonly contextItemRepository: ContextItemRepository,
     private readonly consultationRepository: ConsultationRepository,
@@ -385,6 +403,10 @@ export class HarnessInternalService extends BaseService {
     // (never `status`, never `_version`). Optional + trailing so every positional fixture keeps its
     // arity; absent ⇒ the note still persists and only the processing signal is skipped.
     @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
+    // The note input composer: plans what the summarizer sees across every encounter, within the
+    // model's window, and caches the plan for the harness. Optional + trailing so every positional
+    // fixture keeps its arity; absent ⇒ no plan, and assembly sends the per-section prompt.
+    @Optional() @Inject(NoteInputComposerService) private readonly noteComposer?: NoteInputComposerService,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -730,9 +752,8 @@ export class HarnessInternalService extends BaseService {
    *  * Anything else (store hiccup) ⇒ `null`. Carry-forward is an enhancement; it
    *    must never fail a clinician's note generation.
    *
-   * Content arrives already decrypted (repository decrypt-on-read) and is capped
-   * before it leaves this method, so an oversized prior note can never reach the
-   * assembler unbounded.
+   * Content arrives already decrypted (repository decrypt-on-read) and is carried
+   * whole — the note composer's budget decides what fits, never a character cut.
    */
   private async loadPriorVisitSummary(parentConsultationId: string, tenantId: string): Promise<string | null> {
     // Outside the try: a cross-tenant parent must surface as 404, not be swallowed.
@@ -750,7 +771,7 @@ export class HarnessInternalService extends BaseService {
       // TASK-1020 — the selection is shared with the same-day prequel, so the two never disagree
       // about which of a visit's notes is "the" note.
       const note = await selectAuthoritativeNoteText(this.contextItemRepository, parentConsultationId);
-      return note ? truncatePriorVisitSummary(note) : null;
+      return note ?? null;
     } catch (error) {
       this.logger.warn({
         message: 'Prior-visit summary lookup failed — the re-visit prompt proceeds without carry-forward',
@@ -1352,9 +1373,14 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * Resolve the prompt tier + assemble the TEXT payload (incl. Lane E's NER
-   * injection + SOAP responseFormat) — the single source of truth for prompt
-   * assembly. nerEntities are loaded via NamedEntityRepository.findByConsultation.
+   * Resolve the prompt tier + assemble the TEXT payload — the single source of truth for prompt
+   * assembly.
+   *
+   * With the note composer wired, the user message IS a composed note plan: every encounter, the
+   * results and uploads, the earlier note — budgeted against the model's declared window, never
+   * cut. The plan is cached for the harness (`notePlanRef`); a request naming `notePlanId` reuses
+   * that plan's blocks rather than composing another. A plan that cannot fit is refused
+   * (`NOTE_INPUT_EXCEEDS_CONTEXT`, 422, non-retryable) and the consultation's processing fails.
    */
   async assemble(consultationId: string, dto: HarnessAssembleRequest): Promise<HarnessAssembleResponse> {
     const tenantId = dto.tenantId;
@@ -1366,8 +1392,20 @@ export class HarnessInternalService extends BaseService {
       this.cls.set('tenantId', tenantId);
       this.cls.set('user', createWorkerSession({ userId: dto.userId, tenantId, kind: 'harness-internal' }));
 
-      const { params, transcripts } = await this.buildAssembleParams(consultationId, tenantId, dto);
-      const assembled = await this.promptAssemblyService.assemble(params);
+      const built = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const mode: NotePlanMode = dto.mode ?? 'final';
+      let envelope: NotePlanEnvelope | null = null;
+      if (this.noteComposer) {
+        envelope = dto.notePlanId ? await this.noteComposer.loadEnvelope(tenantId, consultationId, dto.notePlanId) : null;
+        // Harness-originated: never wait for a fact ledger inside the caller's request timeout.
+        envelope ??= await this.composeEnvelope(consultationId, tenantId, built, dto, {
+          mode,
+          cache: true,
+          waitForLedgers: false,
+          planId: dto.notePlanId,
+        });
+      }
+      const assembled = await this.promptAssemblyService.assemble(envelope ? withNoteInputs(built.params, envelope.plan) : built.params);
 
       const promptTemplateId = assembled.promptId ?? null;
       // Provenance must name the version whose content the LLM actually saw
@@ -1383,19 +1421,164 @@ export class HarnessInternalService extends BaseService {
       // PHI-safe segment refs for harness finalize StrictCitations.
       // Same single-transcript gate as citationsMap enrichment; empty when
       // ambiguous / absent so the prompt stays byte-identical to before.
-      const segmentCitations = await this.loadSegmentCitations(tenantId, transcripts);
+      const segmentCitations = await this.loadSegmentCitations(tenantId, built.transcripts);
 
       return {
         userPrompt: assembled.userPrompt,
-        systemPrompt: assembled.systemPrompt,
+        // The plan's own system message, so the single-prompt path and the plan path agree.
+        systemPrompt: envelope?.plan.system ?? assembled.systemPrompt,
         hyperparameters: assembled.hyperparameters,
         responseFormat: assembled.responseFormat,
         promptTemplateId,
         promptVersion,
         resolvedFrom: assembled.resolvedFrom,
         segmentCitations,
+        notePlanRef: envelope ? { consultationId, mode: envelope.plan.mode, planId: envelope.plan.planId } : null,
       };
     });
+  }
+
+  /**
+   * Compose (and cache) the note plan for a harness run that is about to START — the call a run
+   * starter makes before it hands the harness `note_plan_ref`. Unlike `assemble` this may wait,
+   * bounded by `consultation.note.ledger.waitSeconds`, for the encounters' fact ledgers to catch up
+   * (an encounter whose ledger is still missing stays verbatim and its coverage is unchecked).
+   *
+   * @throws UnprocessableEntityException `NOTE_INPUT_EXCEEDS_CONTEXT` (non-retryable; processing → failed).
+   * @throws ConflictException when a section regenerate targets an approved note or there is no note.
+   */
+  async composeNotePlan(consultationId: string, dto: HarnessAssembleRequest): Promise<HarnessNotePlanSummary> {
+    const tenantId = dto.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!this.noteComposer) {
+      throw new ServiceUnavailableException({ code: 'NOTE_COMPOSER_UNAVAILABLE', message: 'The note composer is not wired.' });
+    }
+    return this.cls.run({ ifNested: 'inherit' }, async () => {
+      this.cls.set('tenantId', tenantId);
+      const built = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const { plan } = await this.composeEnvelope(consultationId, tenantId, built, dto, {
+        mode: dto.mode ?? 'final',
+        cache: true,
+        waitForLedgers: true,
+      });
+      return {
+        notePlanRef: { consultationId, mode: plan.mode, planId: plan.planId },
+        strategy: plan.budget.strategy,
+        callCount: plan.calls.length,
+        promptTokens: Math.max(...plan.calls.map((call) => call.promptTokens)),
+      };
+    });
+  }
+
+  /**
+   * The plan the harness executes, for `GET internal/consultations/:id/note-plans/:planId`:
+   * `{ plan, preservedSections }`. A cache miss is recomposed under the SAME plan id from the
+   * recipe recorded with it (its mode, sections and model) and cached again; the harness never
+   * composes. A plan id of another consultation or tenant is a 404.
+   */
+  async getNotePlan(consultationId: string, planId: string, tenantId: string): Promise<NotePlanEnvelope> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId is required');
+    }
+    if (!this.noteComposer) {
+      throw new NotFoundException('Resource not found');
+    }
+    const composer = this.noteComposer;
+    return this.cls.run({ ifNested: 'inherit' }, async () => {
+      this.cls.set('tenantId', tenantId);
+      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
+      const consultation = await this.consultationRepository.findById(consultationId);
+      assertEqualTenants(consultation, { tenantId });
+
+      const cached = await composer.loadEnvelope(tenantId, consultationId, planId);
+      if (cached) return cached;
+
+      const recipe = await composer.loadRecipe(planId);
+      if (recipe && (recipe.consultationId !== consultationId || recipe.tenantId !== tenantId)) {
+        throw new NotFoundException('Resource not found');
+      }
+      const dto: HarnessAssembleRequest = {
+        tenantId,
+        mode: recipe?.mode ?? 'final',
+        ...(recipe?.sectionKeys.length ? { sectionKeys: recipe.sectionKeys } : {}),
+        ...(recipe?.model ? { model: recipe.model } : {}),
+      };
+      const built = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const envelope = await this.composeEnvelope(consultationId, tenantId, built, dto, {
+        mode: dto.mode ?? 'final',
+        cache: true,
+        waitForLedgers: false,
+        planId,
+      });
+      this.logger.warn({
+        message: 'Note plan was not cached — recomposed for the harness under the same plan id',
+        consultationId,
+        planId,
+        recipeFound: recipe !== null,
+        strategy: envelope.plan.budget.strategy,
+      });
+      return envelope;
+    });
+  }
+
+  /**
+   * Compose through the note composer, with the system message assembled beside the plan's blocks,
+   * mapping the composer's named refusals to the gateway's.
+   */
+  private async composeEnvelope(
+    consultationId: string,
+    tenantId: string,
+    built: Awaited<ReturnType<HarnessInternalService['buildAssembleParams']>>,
+    dto: HarnessAssembleRequest,
+    options: { mode: NotePlanMode; cache: boolean; waitForLedgers: boolean; planId?: string },
+  ): Promise<NotePlanEnvelope> {
+    const composer = this.noteComposer!;
+    if (options.mode === 'section_regen') {
+      // An approved note is locked: a section regenerate is refused before anything is composed.
+      await this.lifecycleGate?.assertContentWritable(consultationId);
+    }
+    const request: NoteComposeRequest = {
+      tenantId,
+      consultationId,
+      mode: options.mode,
+      sectionKeys: dto.sectionKeys,
+      model: dto.model ?? null,
+      extras: built.noteExtras,
+      system: async (blocks) => (await this.promptAssemblyService.assemble(withNoteInputs(built.params, { blocks }))).systemPrompt,
+      cache: options.cache,
+      waitForLedgers: options.waitForLedgers,
+      ...(options.planId ? { planId: options.planId } : {}),
+    };
+    try {
+      return await composer.compose(request);
+    } catch (error) {
+      if (error instanceof NoteInputExceedsContextError) {
+        if (built.consultation) {
+          await this.setHarnessProcessing(built.consultation, ConsultationProcessing.FAILED, 'note-plan', NOTE_INPUT_EXCEEDS_CONTEXT);
+        }
+        throw new UnprocessableEntityException({
+          code: NOTE_INPUT_EXCEEDS_CONTEXT,
+          message: error.message,
+          contextWindow: error.contextWindow,
+          requiredTokens: error.requiredTokens,
+          retryable: false,
+        });
+      }
+      if (
+        error instanceof NoteModelUnavailableError ||
+        error instanceof NoteTemplateUnresolvedError ||
+        error instanceof NoteTokenizerUnavailableError
+      ) {
+        throw new ServiceUnavailableException({ code: error.code, message: error.message });
+      }
+      if (error instanceof NoteCompositionRequestError) {
+        if (error.code === 'NOTE_SECTION_REGEN_NO_DRAFT') throw new ConflictException({ code: error.code, message: error.message });
+        throw new BadRequestException({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1403,7 +1586,8 @@ export class HarnessInternalService extends BaseService {
    * shaped for the inspector's `phase`, with an optional instruction override (its `agentSlug`),
    * and returned with the composition the harness response does not carry.
    *
-   *   - `finalize` — exactly what `assemble` sends;
+   *   - `finalize` — exactly what `assemble` sends: the composed note plan's blocks (composed for
+   *     the preview only — nothing is cached and no fact ledger is waited for);
    *   - `pre-summary` — the pre-summary chain's shape: the department-free body, NO transcript
    *     (that chain has no recording) and the case notes under their own section;
    *   - `live` — the governed live prompt over the transcript so far. An approximation of a live
@@ -1420,7 +1604,17 @@ export class HarnessInternalService extends BaseService {
     }
     return this.cls.run({ ifNested: 'inherit' }, async () => {
       this.cls.set('tenantId', tenantId);
-      const { params, caseNoteTexts } = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const built = await this.buildAssembleParams(consultationId, tenantId, dto);
+      const { params, caseNoteTexts } = built;
+      const override = options.instructionOverride ? { instructionOverride: options.instructionOverride } : {};
+      if (options.phase === 'finalize' && this.noteComposer) {
+        const { plan } = await this.composeEnvelope(consultationId, tenantId, { ...built, params: { ...params, ...override } }, dto, {
+          mode: dto.mode ?? 'final',
+          cache: false,
+          waitForLedgers: false,
+        });
+        return this.promptAssemblyService.assemble({ ...withNoteInputs(params, plan), ...override });
+      }
       const shaped: PromptAssemblyParams =
         options.phase === 'pre-summary'
           ? {
@@ -1430,33 +1624,31 @@ export class HarnessInternalService extends BaseService {
               transcript: '',
               caseNotes: caseNoteTexts,
               clinicianNotes: [],
-              preSummaryText: undefined,
-              preSummaryLineage: undefined,
               pinnedAgentId: undefined,
             }
           : options.phase === 'live'
             ? { ...params, promptType: 'live' }
             : params;
-      return this.promptAssemblyService.assemble({
-        ...shaped,
-        ...(options.instructionOverride ? { instructionOverride: options.instructionOverride } : {}),
-      });
+      return this.promptAssemblyService.assemble({ ...shaped, ...override });
     });
   }
 
   /**
    * Gather every input the consultation's prompt is assembled from — the ONE gathering both
    * `assemble` (the harness) and `previewAssembly` (the Prompt Inspector) run, so the inspector
-   * shows exactly what the harness would send.
+   * shows exactly what the harness would send. `noteExtras` is the part the note composer does not
+   * read itself: background history and the clinician's own cited items.
    */
   private async buildAssembleParams(
     consultationId: string,
     tenantId: string,
     dto: HarnessAssembleRequest,
   ): Promise<{
+    consultation: ConsultationEntity | null;
     params: PromptAssemblyParams;
     transcripts: Awaited<ReturnType<ContextItemRepository['findTranscripts']>>;
     caseNoteTexts: string[];
+    noteExtras: { background: NoteSourceSnapshot['background']; results: NoteSnapshotText[] };
   }> {
     const consultation = await this.consultationRepository.findById(consultationId);
     assertEqualTenants(consultation, { tenantId });
@@ -1481,14 +1673,15 @@ export class HarnessInternalService extends BaseService {
       ...caseNotes.filter((n) => n.content?.trim()).map((n) => `[case note] ${n.content!.trim()}`),
       ...workNotes.filter((n) => n.content?.trim()).map((n) => `[work note] ${n.content!.trim()}`),
     ];
+    // Whole: the note budget decides what fits a model's window — an attachment is never cut.
     const attachments = attachmentItems
       .map((a) => {
-        // Prefer the extracted file text (txt / csv / md /
-        // json, threaded onto `metaData.extractedText` at upload); fall back to
-        // the stored "Lab/exam result: <name>" filename label when none exists.
+        // Prefer the extracted file text (txt / csv / md / json, threaded onto
+        // `metaData.extractedText` at upload); fall back to the stored
+        // "Lab/exam result: <name>" filename label when none exists.
         const meta = a.metaData as Record<string, unknown> | undefined;
         const extracted = typeof meta?.extractedText === 'string' ? meta.extractedText.trim() : '';
-        return HarnessInternalService.truncateAttachmentText(extracted || a.content?.trim() || '');
+        return extracted || a.content?.trim() || '';
       })
       .filter((c): c is string => !!c);
 
@@ -1500,19 +1693,9 @@ export class HarnessInternalService extends BaseService {
     const highlightEntities = this.highlightRepository ? await this.highlightRepository.findByConsultation(consultationId) : [];
     const highlights = highlightEntities.filter((h) => h.exact?.trim()).map((h) => `[highlight] ${h.exact.trim()}`);
 
-    // Warm-start `generate` from the live SOAP
-    // snapshot instead of cold-generating: inject the running SOAP note as
-    // {pre_summary_text} so the model refines it. Cold path when absent.
-    // Gated behind the kill-switch (default OFF): when disabled we skip the
-    // snapshot lookup entirely so nothing is injected.
-    // The snapshot load is now UNCONDITIONAL, because the
-    // load is what tells us whether a live agent ran at all. Lineage present
-    // (the live loop stamped `metaData.agent`) ⇒ inject unconditionally, per
-    // R-N2 / DR-4; lineage absent ⇒ the flag gates the injection exactly as
-    // before, so the legacy case-notes path is byte-identical.
-    const liveSnapshot = await this.loadLiveSoapSnapshot(consultationId);
-    const liveLineage = readLiveAgentLineage(liveSnapshot);
-    const injectPriorDraft = liveLineage !== null || (await this.resolveWarmStartEnabled(tenantId));
+    // The live SOAP snapshot is no longer a note input (its text is retired as a source); only its
+    // agent LINEAGE is read, so the resolver still pins finalize to the agent that ran the session.
+    const liveLineage = readLiveAgentLineage(await this.loadLiveSoapSnapshot(consultationId));
 
     // Thread the doctor's preferred prompt id (Tier-0)
     // through the async/harness path too. Read-only from UserProfile via the
@@ -1568,9 +1751,8 @@ export class HarnessInternalService extends BaseService {
       previousVisits: client.previousVisits,
       ...(testResults ? { testResults } : {}),
       ...(sameDayPrequel.hasSameDayPrequel ? { sameDayPrequelSummary: sameDayPrequel.summary } : {}),
-      // Explicit tenant so prompt assembly resolves the SAME
-      // effective warm-start policy this method just gated the snapshot on
-      // (the harness runs outside the API-edge CLS middleware).
+      // Explicit tenant so prompt assembly resolves the SAME effective policy (the harness runs
+      // outside the API-edge CLS middleware).
       tenantId,
       departmentId: consultation?.departmentId ?? undefined,
       // The visit type comes from the shared vocabulary, not a literal: the value the caller
@@ -1590,11 +1772,8 @@ export class HarnessInternalService extends BaseService {
       clinicianNotes,
       attachments,
       highlights,
-      preSummaryText: injectPriorDraft ? (liveSnapshot?.content ?? undefined) : undefined,
-      // Same agent reviews and finalizes: unconditional
-      // injection on the lineage path + the resolver's agent tier pinned to
-      // that exact agent. Both absent for every non-live consultation.
-      preSummaryLineage: liveLineage ?? undefined,
+      // Same agent reviews and finalizes: the resolver's agent tier pinned to the live session's
+      // agent. Absent for every non-live consultation.
       pinnedAgentId: liveLineage?.agentId ?? undefined,
       // Spread rather than `?? undefined` so the key is ABSENT (not present-
       // and-undefined) when carry-forward is off — the assembler's regression
@@ -1603,7 +1782,49 @@ export class HarnessInternalService extends BaseService {
       ...(priorVisitSummary ? { priorVisitSummary } : {}),
     };
     const caseNoteTexts = caseNotes.map((note) => note.content?.trim() ?? '').filter((text) => text.length > 0);
-    return { params, transcripts, caseNoteTexts };
+
+    // What the note composer cannot read for itself. Background history is uncited reference;
+    // the clinician's notes, highlights and the clinic's measured readings are cited `R<n>` sources.
+    // Case notes the clinic materialised from its stated previous visits are already background.
+    const background: NoteSourceSnapshot['background'] = [
+      ...(priorVisitSummary ? [{ key: 'prior_visit_summary', label: 'Prior visit summary (reference only)', text: priorVisitSummary }] : []),
+      ...(client.previousVisits?.trim()
+        ? [{ key: 'previous_visits', label: 'Previous visits stated by the clinic', text: client.previousVisits }]
+        : []),
+      ...(sameDayPrequel.hasSameDayPrequel ? [{ key: 'same_day_prequel', label: 'Earlier visit(s) today', text: sameDayPrequel.summary }] : []),
+    ];
+    const materialised = clientCaseNoteRenderings(client.raw.previousVisits);
+    const results: NoteSnapshotText[] = [
+      ...caseNotes
+        .filter((note) => note.content?.trim() && !materialised.has(note.content.trim()))
+        .map((note) => ({ itemId: note.id, versionNumber: note.currentVersionNumber, text: `Case note: ${note.content!.trim()}` })),
+      ...workNotes
+        .filter((note) => note.content?.trim())
+        .map((note) => ({ itemId: note.id, versionNumber: note.currentVersionNumber, text: `Work note: ${note.content!.trim()}` })),
+      ...highlightEntities
+        .filter((h) => h.exact?.trim())
+        .map((h) => ({ itemId: h.id, versionNumber: h.version ?? 1, text: `Highlighted by the clinician: "${h.exact.trim()}"` })),
+    ];
+    if (client.vitals?.trim()) {
+      // swallow-ok: the id only labels the citation; the reading itself is already in hand and is never dropped
+      const item = await this.contextItemRepository.findLatestByKindKey(consultationId, CLIENT_VITALS_KIND_KEY).catch(() => null);
+      results.push({
+        itemId: item?.id ?? `${consultationId}:${CLIENT_VITALS_KIND_KEY}`,
+        versionNumber: item?.currentVersionNumber ?? 1,
+        text: `Measured vitals: ${client.vitals}`,
+      });
+    }
+    if (testResults?.trim()) {
+      // swallow-ok: the id only labels the citation; the reading itself is already in hand and is never dropped
+      const item = await this.contextItemRepository.findLatestByKindKey(consultationId, CLIENT_INVESTIGATIONS_KIND_KEY).catch(() => null);
+      results.push({
+        itemId: item?.id ?? `${consultationId}:${CLIENT_INVESTIGATIONS_KIND_KEY}`,
+        versionNumber: item?.currentVersionNumber ?? 1,
+        text: `Test results stated by the clinic: ${testResults}`,
+      });
+    }
+
+    return { consultation: consultation ?? null, params, transcripts, caseNoteTexts, noteExtras: { background, results } };
   }
 
   /**
@@ -2828,18 +3049,6 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * Fold-cap for a single attachment's text (F-03) — bounds the
-   * per-attachment contribution to the prompt at
-   * `ATTACHMENT_TEXT_MAX_LENGTH` chars, appending an explicit truncation
-   * marker so the cut is visible in the assembled prompt rather than silent.
-   * A no-op for text already at or under the cap.
-   */
-  private static truncateAttachmentText(text: string): string {
-    if (text.length <= HarnessInternalService.ATTACHMENT_TEXT_MAX_LENGTH) return text;
-    return text.slice(0, HarnessInternalService.ATTACHMENT_TEXT_MAX_LENGTH) + HarnessInternalService.ATTACHMENT_TRUNCATION_MARKER;
-  }
-
-  /**
    * True iff the inferential SAFETY dimension is a
    * FLAG, derived from the harness `guardrailDecisions`. Tolerant of the two
    * shapes the harness emits (`{ safety: 'FLAG' }` and
@@ -2855,4 +3064,9 @@ export class HarnessInternalService extends BaseService {
       typeof safety === 'string' ? safety : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
     return String(verdict).toUpperCase() === 'FLAG';
   }
+}
+
+/** The prompt params with a composed note plan's blocks as the user message. */
+function withNoteInputs(params: PromptAssemblyParams, plan: Pick<NotePlanV1, 'blocks'>): PromptAssemblyParams {
+  return { ...params, noteInputBlocks: plan.blocks.map(({ key, label, content }) => ({ key, label, content })) };
 }

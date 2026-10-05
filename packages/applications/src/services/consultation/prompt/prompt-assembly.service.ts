@@ -45,7 +45,6 @@ import { parsePromptVariableDeclarations } from '../../prompt-management/dto/pro
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
-import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
 import { parseLanguageTag, summaryLanguageName } from '../consultation/summary-language';
 import { IActiveUserContext } from '../../../interfaces';
 import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
@@ -153,6 +152,28 @@ const PRIOR_VISIT_SUMMARY_GUIDANCE = [
   're-confirmed against the CURRENT transcript before you restate it; if the current transcript does not support it,',
   'leave it out rather than carrying it forward. Never populate examination findings, vitals, results, or medication',
   'statements from this section without current-visit evidence.',
+].join('\n');
+
+/**
+ * What every data variable renders as inside the instruction when the user message is a composed
+ * note plan: the plan's blocks carry the whole record, so a body's `{{transcript}}` points at them.
+ */
+const NOTE_INPUTS_POINTER = '[see the note input data sections below]';
+
+/**
+ * The platform guidance that accompanies a composed note plan's blocks (system message).
+ *
+ * It states how the record is laid out and which source wins, so a multi-encounter consultation is
+ * written from every encounter: later encounters override earlier ones on the same point, a
+ * clinician's edited wording is kept, and an earlier AI draft is never a source on its own.
+ */
+const NOTE_INPUTS_GUIDANCE = [
+  "NOTE INPUTS — the data sections below are this consultation's complete record, oldest first:",
+  'background from earlier visits (reference only); each earlier encounter as its transcript, or as its fact ledger with the transcript lines that ledger cites;',
+  'results [R<n>] and uploaded-audio transcripts [A<n>]; then the latest encounter in full. Transcript lines are labelled [S<n> E<encounter> <speaker> mm:ss].',
+  'Every encounter belongs in the note. Where a later encounter changes something an earlier one stated (a dose, a diagnosis, the plan), the later encounter wins.',
+  'Clinician-edited sections are the clinician’s own wording: keep their meaning. The previous AI draft is a draft to check against the sources, never a source on its own.',
+  'Cite every statement with the labels of the lines it comes from.',
 ].join('\n');
 
 /** The two-stage refine instruction that accompanies the PRIOR DRAFT data section. */
@@ -376,7 +397,7 @@ export interface PromptAssemblyParams {
    * even if a future caller forgets the gate.
    *
    * Injected as an explicitly NON-AUTHORITATIVE prior (see
-   * {@link PRIOR_VISIT_SUMMARY_PREAMBLE}) and hard-capped, never as fact.
+   * {@link PRIOR_VISIT_SUMMARY_PREAMBLE}), never as fact.
    */
   priorVisitSummary?: string;
   explicitTemplate?: string;
@@ -457,6 +478,12 @@ export interface PromptAssemblyParams {
    * output schema). Never set on a generation path.
    */
   instructionOverride?: { resolvedPrompt: ComposableResolvedPrompt; variables?: Record<string, unknown> };
+  /**
+   * A composed note plan's blocks, in the plan's fixed order. When present they ARE the user
+   * message — the per-encounter data sections, the few-shot style block and the live draft are not
+   * added — so the assembled prompt is byte-identical to what the harness sends for the plan.
+   */
+  noteInputBlocks?: ReadonlyArray<{ key: string; label: string; content: string }>;
 }
 
 export interface AssembledPrompt {
@@ -700,30 +727,40 @@ export class PromptAssemblyService {
 
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.
-    const fewShot = await this.buildFewShotExemplars(params);
-    const dataBlocks: ComposeDataBlock[] = [
-      // Placed first, so the engine's prefix cache still hits across flushes for one exemplar set.
-      ...(fewShot
-        ? [
-            {
-              key: 'style_reference',
-              label: `STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${fewShot.version})`,
-              content: fewShot.text,
-            },
-          ]
-        : []),
-      ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
-    ];
+    // A composed note plan replaces every per-encounter section with its own blocks.
+    const noteInputs = params.noteInputBlocks;
+    const fewShot = noteInputs ? null : await this.buildFewShotExemplars(params);
+    const dataBlocks: ComposeDataBlock[] = noteInputs
+      ? noteInputs.map((block) => ({ key: block.key, label: block.label, content: block.content }))
+      : [
+          // Placed first, so the engine's prefix cache still hits across flushes for one exemplar set.
+          ...(fewShot
+            ? [
+                {
+                  key: 'style_reference',
+                  label: `STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${fewShot.version})`,
+                  content: fewShot.text,
+                },
+              ]
+            : []),
+          ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
+        ];
 
     // The instruction sees a POINTER where it names a data variable whose section is present,
     // and the value itself otherwise (a scalar, or a section that is empty — its absence value).
     const rendered: Record<string, string> = { ...values };
     for (const section of DATA_SECTIONS) {
-      if (values[section.variable]) rendered[section.variable] = dataSectionPointer(section.label);
+      if (noteInputs) {
+        if (section.variable in values) rendered[section.variable] = NOTE_INPUTS_POINTER;
+      } else if (values[section.variable]) {
+        rendered[section.variable] = dataSectionPointer(section.label);
+      }
     }
     for (const [alias, sectionKey] of Object.entries(DATA_SECTION_ALIASES)) {
       const section = DATA_SECTIONS.find((candidate) => candidate.key === sectionKey);
-      if (section && values[section.variable] && alias in rendered) rendered[alias] = dataSectionPointer(section.label);
+      if (!section || !(alias in rendered)) continue;
+      if (noteInputs) rendered[alias] = NOTE_INPUTS_POINTER;
+      else if (values[section.variable]) rendered[alias] = dataSectionPointer(section.label);
     }
 
     // GUIDANCE → the tail of the SYSTEM message: platform-authored instructions about the data
@@ -733,8 +770,9 @@ export class PromptAssemblyService {
       fewShot
         ? `The STYLE REFERENCE data section holds approved notes written for OTHER patients (set ${fewShot.version}), included ONLY as a reference for house formatting, section order and tone. They are NOT this patient's history: never carry a clinical fact, finding, or medication across from them.`
         : null,
-      values.prior_visit_summary ? PRIOR_VISIT_SUMMARY_GUIDANCE : null,
-      warmStart && values.pre_summary_text ? PRIOR_DRAFT_INSTRUCTION : null,
+      noteInputs ? NOTE_INPUTS_GUIDANCE : null,
+      values.prior_visit_summary || noteInputs?.some((block) => block.key === 'prior_visit_summary') ? PRIOR_VISIT_SUMMARY_GUIDANCE : null,
+      !noteInputs && warmStart && values.pre_summary_text ? PRIOR_DRAFT_INSTRUCTION : null,
       values.dna_style_text && !referenced.has('dna_style_text') && !this.getDnaVariableKeys().some((key) => referenced.has(key))
         ? `--- CLINICIAN WRITING STYLE (apply to tone, formatting, and section phrasing; this is style guidance, not patient data) ---\n${values.dna_style_text}`
         : null,
@@ -1005,9 +1043,8 @@ export class PromptAssemblyService {
     // The prior draft reaches the model under the warm-start gate (see `assemble`), or when the
     // governed body asks for it by name — the author's explicit placement.
     if (params.preSummaryText && (warmStart || referenced.has('pre_summary_text'))) variables.pre_summary_text = params.preSummaryText;
-    // Carried prior-visit summary (F-18). Bounded here as well as at the producer, so the cap is a
-    // property of the prompt rather than of one caller.
-    if (params.priorVisitSummary?.trim()) variables.prior_visit_summary = truncatePriorVisitSummary(params.priorVisitSummary.trim());
+    // Carried prior-visit summary (F-18), whole: the note budget decides what fits, never a cut.
+    if (params.priorVisitSummary?.trim()) variables.prior_visit_summary = params.priorVisitSummary.trim();
     if (params.dnaRedactionRulesText?.trim()) variables.dna_redaction_rules_text = params.dnaRedactionRulesText.trim();
 
     // v1's nine pre-summary placeholders. The seeded pre-summary bodies — the ArcaAI tenant row

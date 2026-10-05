@@ -3,6 +3,7 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   AgentTask,
+  AiActivityKind,
   AiDeploymentKind,
   ContextItemRepository,
   ConsultationRepository,
@@ -17,7 +18,15 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { assembleTranscriptFragments, readSpeakerId } from './transcript-assembly.util';
-import { buildLlmUsageBatches, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
+import {
+  buildLlmUsageBatches,
+  buildTextActivityRun,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from './text-usage';
+import { IAiActivityRunService, IAiActivityRunServiceToken } from '../../ai-activity-run/IAiActivityRunService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';
 import type { ComputeAugmentedBatch } from '../../usageLedger/compute-units';
@@ -106,6 +115,9 @@ export class ChainSummaryService extends BaseService {
     // language the chain summary is WRITTEN in (the agent's `language_name`). Optional + trailing;
     // unwired ⇒ the descriptor's code default (English).
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // The per-activity run record of this generation, written in the usage transaction so the run
+    // and the bill agree. Optional + trailing; unwired ⇒ the summary is metered without a run record.
+    @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRuns?: IAiActivityRunService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -519,6 +531,18 @@ export class ChainSummaryService extends BaseService {
         for (const input of inputs) {
           await this.usageLedger!.recordUsage(input, tx);
         }
+        // The run record rides the same transaction as the usage it describes: both or neither.
+        const run = usage
+          ? buildTextActivityRun({
+              usage,
+              tenantId: attribution.tenantId,
+              consultationId: attribution.consultationId,
+              activityKind: AiActivityKind.NOTE_GENERATE,
+              contextItemId: summaryMeta.contextItemId,
+              outputVersionNumber: 1,
+            })
+          : null;
+        if (run) await this.activityRuns?.record(run, tx);
       });
     } catch (error) {
       this.logger.warn({
