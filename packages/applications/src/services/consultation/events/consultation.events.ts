@@ -49,6 +49,18 @@ export enum ConsultationPipelineEvent {
    */
   ContextRemoved = 'consultation.context.removed',
 
+  /**
+   * Emitted once an encounter's speech has ended and its final transcript is in (after `stop`
+   * resolves). Drives the fact-ledger producer for that encounter.
+   */
+  EncounterStopped = 'consultation.encounter.stopped',
+
+  /** Emitted after the FULL_TRANSCRIPT item is rebuilt from the latest segment versions. */
+  FullTranscriptRebuilt = 'consultation.transcript.rebuilt',
+
+  /** Emitted on every lifecycle change (status, processing, encounter, approval, close, reopen). */
+  LifecycleChanged = 'consultation.lifecycle.changed',
+
   /** Emitted when an async summary job completes successfully */
   SummaryGenerated = 'consultation.summary.generated',
 
@@ -336,6 +348,23 @@ export const DEFAULT_PIPELINE_CONFIG: ConsultationPipelineConfig = {
  * Discriminated union mapping event names to their typed payloads.
  * Used by ConsultationEventHandler for type-safe event handling.
  */
+/** Payload for {@link ConsultationPipelineEvent.EncounterStopped}. */
+export interface EncounterStoppedPayload extends ConsultationPipelineEventBase {
+  encounterSeq: number;
+}
+
+/** Payload for {@link ConsultationPipelineEvent.FullTranscriptRebuilt}. */
+export interface FullTranscriptRebuiltPayload extends ConsultationPipelineEventBase {
+  contextItemId: string;
+  versionNumber: number;
+  segmentCount: number;
+}
+
+/** Payload for {@link ConsultationPipelineEvent.LifecycleChanged} — the wire `LifecycleEvent` plus tenancy. */
+export interface LifecycleChangedPayload extends ConsultationPipelineEventBase {
+  event: import('@arcaai/types').LifecycleEvent;
+}
+
 export type ConsultationPipelineEventPayloadMap = {
   [ConsultationPipelineEvent.TranscriptionCreated]: TranscriptionCreatedPayload;
   [ConsultationPipelineEvent.ContextAdded]: ContextAddedPayload;
@@ -344,4 +373,7 @@ export type ConsultationPipelineEventPayloadMap = {
   [ConsultationPipelineEvent.NerExtracted]: NerExtractedPayload;
   [ConsultationPipelineEvent.PipelineCompleted]: PipelineCompletedPayload;
   [ConsultationPipelineEvent.PipelineStepFailed]: PipelineStepFailedPayload;
+  [ConsultationPipelineEvent.EncounterStopped]: EncounterStoppedPayload;
+  [ConsultationPipelineEvent.FullTranscriptRebuilt]: FullTranscriptRebuiltPayload;
+  [ConsultationPipelineEvent.LifecycleChanged]: LifecycleChangedPayload;
 };

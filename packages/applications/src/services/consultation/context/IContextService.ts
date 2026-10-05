@@ -15,6 +15,18 @@ import {
   VersionDiffResponse,
 } from './dto';
 
+export type ContextVersionChangeSource = 'segment_edit' | 'feedback' | 'manual' | 'ai' | 'ai_section_regen';
+
+export interface AppendContextVersionInput {
+  contextItemId: string;
+  content: string;
+  expectedVersion?: number;
+  changeSource: ContextVersionChangeSource;
+  changeReason?: string;
+  changedBy: string;
+  metaData?: Record<string, unknown>;
+}
+
 export abstract class IContextService {
   // Context Item CRUD
   // `contextSchemaVersionId` — threaded from the
@@ -43,6 +55,12 @@ export abstract class IContextService {
   abstract getVersionHistory(contextItemId: string): Promise<ContextItemVersionResponse[]>;
   abstract getVersion(contextItemId: string, versionNumber: number): Promise<ContextItemVersionResponse | null>;
   abstract diffVersions(contextItemId: string, fromVersion: number, toVersion: number): Promise<VersionDiffResponse>;
+  /**
+   * Append a new version to an item (the only write path for edits). Refused with 409 when the
+   * consultation's content is locked (approved / closed). `expectedVersion` is the item's
+   * `currentVersionNumber` the caller saw (412 on drift).
+   */
+  abstract appendVersion(input: AppendContextVersionInput): Promise<{ versionNumber: number }>;
 
   // Query Methods
   abstract getContextItems(consultationId: string, filters?: ContextFiltersDto): Promise<ContextItemResponse[]>;
