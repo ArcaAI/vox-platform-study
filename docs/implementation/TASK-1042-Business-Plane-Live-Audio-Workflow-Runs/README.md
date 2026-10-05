@@ -1,0 +1,186 @@
+# TASK-1042 — Live audio into standalone workflow runs (business plane)
+
+**Status:** Pending. Plan written; owner decision round open (§4). No code before the owner's go.
+**Type:** feature (gateway + harness + SDK + docs)
+**Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
+**Raised:** 2026-10-05, from owner decision **OD-37** (TASK-1036 §6.13). It reverses that row's
+earlier "not now" recommendation.
+**Builds on:** TASK-1036 (the `graph.settings` connections, the Input shape `delivery: 'stream'`) ·
+TASK-1038 (protocol v2, the STT→run transcript mirror, sandbox recording ownership E2 fix 12,
+OD-35 principal-bound run reads) · TASK-1039 (SDK 5.0: `useRun`, `useRunAudio`, `RunHandle`) ·
+TASK-933 (machine credentials on the STT plane) · TASK-1002 (workflow-governed ASR agent selection).
+**Sequencing:** after the TASK-1038 **OD-35** lane merges. It edits the same files
+(`workflows.controller.ts`, `workflow-exposure/**`, `workflow-run/**`, the scope registries).
+
+> Ticket number: TASK-1041 was taken mid-session by the tenant-lock fix (`882d06579`). TASK-1042
+> was the next free number on 2026-10-05 (all refs + all worktrees). Re-check before the first commit.
+
+---
+
+## 1. Requirement Analysis
+
+An integrator streams microphone audio into a **standalone** workflow run (no consultation). The
+workflow's Input shape declares an `audio` kind with `delivery: 'stream'`, and its settings
+`connections` include `socket`. The run's ASR step turns that audio into text, and downstream
+nodes use the text.
+
+| # | Requirement |
+|---|---|
+| R1 | `POST /workflows/:slug/runs` honours `input.<audioKind>.sttSessionId` and binds that live STT session to the run. |
+| R2 | Ownership mirrors the sandbox rules: the same tenant, the same starting principal, and a live session that is not bound elsewhere. A cross-tenant or foreign session is 404 (404-over-403). |
+| R3 | It is settings-gated: live audio needs `socket` in `graph.settings.connections`. |
+| R4 | The harness reads the bound session's transcript for the graph's ASR node. |
+| R5 | SDKs: `useRunAudio` in `@arcaai/vox` works without a consultation, and a new `runWithAudio` helper ships in `@arcaai/vox-node`. |
+| R6 | A cross-tenant e2e spec, the route-authz matrix, and docs (Integration panel snippets, protocol note, SDK READMEs, rule 08). |
+
+## 2. Current State Evaluation (code-verified 2026-10-05, HEAD `92b21aee8`)
+
+### 2.1 What exists
+
+| Building block | Where | Status |
+|---|---|---|
+| Declared payload shape: `STREAM_AUDIO` (`delivery` `stream`, the default on input) maps to the open object `{ sttSessionId: string }` | `packages/applications/src/services/consultation-context-schema/context-schema-definition.ts:922-955` | Merged (F1) |
+| Settings rule `WF-SET-003`: a `stream` Input kind, or an STT/TTS agent node, needs `socket` (the STT-node arm is waived when `sources` includes `consultation`) | `packages/py-workflow-contract/.../workflow_settings.py:229-262`, TS `packages/workflow-contract/src/workflow-settings.ts:241` | Merged; publish-time only |
+| Sandbox recording: `recording.sttSessionId` with ownership (tenant + `createdBy === requestUserId`, 404), liveness (409 `SANDBOX_RECORDING_NOT_LIVE`), and not bound elsewhere (409 `SANDBOX_RECORDING_BOUND_ELSEWHERE`) | `packages/applications/src/services/workflow-sandbox-run/workflow-sandbox-run.service.ts:227-256` | Admin plane only (`@ForbidApiKey`) |
+| STT→run transcript mirror: appends `transcript.partial` / `transcript.final` (admin audience, no `nodeId`) through the one sequencer | `apps/api/src/modules/streaming/stt-run-transcript-mirror.ts:153-196` | Resolves runs **only through a consultation** (`if (!consultationId) return []`) |
+| STT session create: all three credential classes, owner = `cls.user.id` (for an API key, the bound human) or the service account id | `apps/api/src/modules/streaming/transcription-job.controller.ts:352-358, 902` | Body takes `consultationId`; there is no run or workflow field |
+| STT results: `stt:result:<sessionId>` Redis stream, approximate `MAXLEN` per `XADD`, `EXPIRE` after close | `apps/stt/src/stt/streaming/redis_streams.py:461-487` | Bounded, not durable |
+| `useRunAudio` (vox): mic + session first, then `useRun.start(…, { consultationId })` | `packages/agentic-sdk-v2/src/hooks/useRunAudio.ts` | Merged (S2). Its JSDoc says no business route binds a bare session, so it works only with an open consultation |
+| vox-node `hope.workflows.run` → `RunHandle`; `hope.stt.createStreamSession` / `socket()` / `closeStreamSession` | `packages/vox-node/src/resources/{workflows,stt}.ts` | Merged. `runWithAudio` does **not** exist |
+
+### 2.2 Gaps
+
+| # | Gap | Evidence |
+|---|---|---|
+| G1 | The business route forwards `input` verbatim. `sttSessionId` passes the trigger schema as a plain string; nothing checks ownership or liveness, and nothing binds the session. **Today any caller can name any string, and nothing happens.** | `workflow-exposure.service.ts` (`payload: dto.input`); reserved keys `exposure-palette-policy.ts:15` do not include it |
+| G2 | A standalone run has no `subject`. The harness requires `consultationId` on it, so the run cannot ride the consultation path. | `workflow-exposure.service.ts:884-896`; harness `interpreter/models.py:174` (`extra="forbid"`) |
+| G3 | **The graph never reads a session.** The STT `core.agent` node batch-transcribes a blob URI from its `audio` port. With `{sttSessionId}` it degrades `no_audio`. Even the sandbox only reaches the graph through declared `consultation.transcript` reads on the hidden sandbox consultation. | `apps/harness/.../nodes/core.py:2016-2046`; no non-test `sttSessionId` in `apps/harness/src` |
+| G4 | The interpreter has no "wait for audio to end" semantics. Its only signal is `cancel`. Sandbox runs start live, and their run-start reads see a partial transcript. | `workflow.py:2212-2218`, `:1129-1145` |
+| G5 | The sandbox ownership rule `createdBy === requestUserId` is unusable for a service account, which has no `requestUserId`. For an API key it compares the bound **human**, so two keys of one human would pass. OD-35 binds runs to the **credential**. | `workflow-sandbox-run.service.ts:236`; `transcription-job.controller.ts:352-358` |
+| G6 | Speech captured between session open and run start is never mirrored. The mirror resolves the binding at frame time, and the session opens first. | Mirror resolution (5 s cache) + Test-tab order `use-sandbox-recording.ts:5-10` |
+| G7 | Docs are wrong today. The Integration panel's stream-audio snippets open a session no run reads, and the vox snippet misstates `useRunAudio`'s API. TASK-1036 §8.7 promises a "run-bound WS with `runId`" that nothing implements. | `apps/admin-console/src/shared/docs/run-guide.ts:427-506` |
+| G8 | No e2e spec covers sandbox recording or any session→run binding (unit tests only). | `apps/api/tests/e2e` grep |
+
+## 3. Target Design (the recommendations in §4, as one picture)
+
+```
+integrator                      gateway (apps/api)                         harness
+──────────                      ──────────────────                         ───────
+1 POST stream/session  ───────► create job; stamp owner credential
+  { workflowSlug }               resolve ASR agent from the graph (OD-5)
+2 open /ws/stt/stream  ───────► audio → apps/stt → stt:result:<sid>
+3 POST workflows/:slug/runs ──► gate socket (OD-10); ownership + live +
+  input.audio.sttSessionId       unbound (OD-2/6); bind job↔run (OCC);
+                                 start run                          ──────► STT core.agent node, audio port
+                                 mirror: + run-bound sessions (admin)          = {sttSessionId}
+4 send PCM … finalize/close ──► job completed                               polls internal transcript route
+                                                                              (heartbeat) until ended (OD-4)
+                                 GET internal/stt/sessions/:sid/transcript ◄── returns finals from offset 0
+                                 ?runId= (job bound to that run, else 404)     → {transcript, segments, language}
+5 run.events()/result() ◄──────  protocol v2 run stream                     downstream nodes run
+```
+
+### 3.1 Gateway
+
+- **Binding service** (new, `workflow-exposure/run-audio-binding.service.ts`), called from `invoke` before the harness start:
+  1. Find the input keys whose frozen trigger schema is `STREAM_AUDIO` with stream delivery (reuse `isStreamAudioSchema` from `sandbox-input-shape.ts`). If `input` carries `sttSessionId` on any other key, or on more than one key, the answer is 400 `RUN_AUDIO_INPUT_UNDECLARED` / `RUN_AUDIO_MULTIPLE` (OD-6).
+  2. Settings gate: `socket` must be in the effective connections, else 400 `LIVE_AUDIO_UNSUPPORTED` (OD-10). A legacy definition without settings is refused the same way.
+  3. Ownership: the job is in this tenant, `STREAMING`, and its stamped owner credential equals the starter's (OD-2), else 404. The job is live (`QUEUED`/`PROCESSING`, no `completedAt`), else 409 `RUN_AUDIO_SESSION_NOT_LIVE`. It is unbound (no `consultationId`, no `metaData.boundRun`), else 409 `RUN_AUDIO_SESSION_BOUND_ELSEWHERE`. One exception: it is already bound to **this** deterministic `runId`, which is an idempotent retry and is accepted.
+  4. Agent agreement (OD-5): the session's resolved ASR agent must be the graph's STT node agent, else 409 `RUN_AUDIO_AGENT_MISMATCH`.
+  5. Bind with OCC (`updateWithVersion`): `job.metaData.boundRun = { runId, workflowSlug, versionNumber, boundAt }`. The run row gets `metaData.sttSessionId`. If the harness start fails, the job is unbound again. Two concurrent starts on one session: the loser gets 409.
+- **Session create** (`POST audio/transcription-jobs/stream/session`):
+  - It accepts an optional `workflowSlug`, mutually exclusive with `consultationId`. The ASR agent then resolves from that published graph's single STT node (`agentSource: 'workflow'`, TASK-1002 precedence; more than one STT node is 409 `WORKFLOW_ASR_AGENT_UNAVAILABLE`, as today).
+  - It stamps `metaData.ownerCredential = { class: 'user'|'apiKey'|'serviceAccount', id }`.
+- **Mirror:** `resolveRuns` also follows `job.metaData.boundRun.runId` (RUNNING, within `runStreamMaxOpenHours`). The admin trace then shows transcripts for these runs too. Mirrored events stay admin-audience (OD-8).
+- **Internal route** `GET internal/stt/sessions/:sessionId/transcript?runId=`:
+  - Auth: `X-Service-Token`, `X-Tenant-Id` mandatory.
+  - It answers 404 unless the job is in that tenant and `boundRun.runId === runId`.
+  - It returns `{ state: 'live'|'ended', finals: [...], language }`, with finals read from `stt:result:<sid>` from offset 0. Pre-bind speech is therefore included (G6, OD-9).
+  - If the stream was trimmed or expired before the end, it returns `state: 'truncated'` and never a silently short transcript.
+- **Consultation-bound route** (`consultations/:id/workflows`): `sttSessionId` in `input` stays refused (400). Consultation runs already get audio through the consultation.
+
+### 3.2 Harness
+
+- In `core.py` `_run_transcription`: when the `audio` port carries `{sttSessionId}` instead of a blob reference, a new branch `_run_session_transcript` takes over.
+  - It polls the internal route through the existing gateway client (cadence 2 s), heartbeating on each poll, until `ended`. It then returns `{transcript, segments, language}`, which is the same output contract as the batch path (`data_contract.py:94`).
+  - `truncated` → node `FAILED` with `transcript_truncated`. Reaching `workflowRuns.liveAudioMaxSeconds` → `FAILED` with `live_audio_timeout`. Cancel → the existing cancel-in-flight path.
+- **Replay:** the change lives inside an existing node activity, so it needs no `workflow.patched` marker and no vocabulary change. The only workflow-side change is the per-node activity options for this node (timeout = `liveAudioMaxSeconds`, plus a `heartbeat_timeout`). The lane must prove with `test_replay_compat` that the options do not affect determinism; if they do, they go behind a marker.
+
+### 3.3 Contract and settings
+
+- New publish rule **`WF-SET-005`** (TS + Python + fixture): a `stream`-delivery Input kind must be bound to the `audio` port of a `SPEECH_TO_TEXT` `core.agent` node. Otherwise the audio would be captured and read by nothing. Severity per OD-7.
+- New `global-kv` descriptor `workflowRuns.liveAudioMaxSeconds` (default 3600, `open-to-default`). It is the ceiling for the ASR node's wait.
+
+### 3.4 SDKs (ride 5.0.0, TASK-1039; released locally by the owner per the runbook)
+
+- **`@arcaai/vox` `useRunAudio({ workflow, audioField? })`:**
+  - With no consultation open, it opens the session with `workflowSlug`, then calls `run.start({ ...input, [audioField]: { sttSessionId } })`.
+  - `audioField` defaults to the single stream-audio key of the published Input shape; with zero or several keys it throws a typed error before any request.
+  - With a consultation open, it keeps today's consultation-bound behaviour.
+  - `stop()` finalizes and closes the session and never cancels the run. JSDoc rewritten.
+  - `StreamingSessionManager` / `useArcaAudio` gain a `workflowSlug` pass-through.
+- **`@arcaai/vox-node` `hope.workflows.runWithAudio(slug, input, { audioField?, language?, sampleRate?, idempotencyKey? })`** returns `{ run: RunHandle, audio: { sendPcm16, finalize(), close() } }`.
+  - Order: `stt.createStreamSession({ workflowSlug })` → `socket.connect()` → `workflows.run(...)`. On a start refusal, the socket and the session are closed.
+  - `finalize()` closes the session, and the run continues to its result.
+  - `CreateStreamSessionRequest` gains `workflowSlug`. Zero runtime dependencies stay; Node ≥ 22 (`globalThis.WebSocket`).
+- **Console docs** (`run-guide.ts`): rewrite the three stream-audio snippets (vox, vox-node, raw HTTP+WS) to bind the session to the run; fix the `useRunAudio` signature; update the test.
+
+## 4. Decisions for the owner (OD round, 2026-10-05)
+
+| Id | Question | Options | Recommendation |
+|---|---|---|---|
+| **OD-1** | How does a standalone run get the live audio? | **A** hidden run-owned consultation (reuse the sandbox path) · **B** bind the session to the run and let the ASR node read the session · **C** run first, then a run-bound STT socket keyed by `runId` (the §8.7 sketch) | **B.** A writes a fake clinical row, needs a clinician for service accounts, and triggers the live-handoff/realtime-skip logic (`workflow.py:396-414`, `:1129-1145`), which is a trap for a non-sandbox run. C needs a new socket route and ticket scope and duplicates the STT socket. B reuses the session, the socket and the mirror, and matches the Test-tab order. |
+| **OD-2** | Who may bind a session? | Same tenant only · same human · **same credential** | **Same credential:** the same JWT user, the same API key id, or the same service account id, stamped on the session at create. This matches OD-35 (runs bound to the starting principal). It also fixes G5: a service account can bind, and a second key of the same human cannot. Failure is 404. |
+| **OD-3** | What does the graph read? | The mirrored run events · **the session's finals through an internal route** · a new consultation-style read | **Internal route, finals from offset 0**, consumed by the STT `core.agent` node. Its output contract is unchanged, so downstream bindings work as they do for batch audio. |
+| **OD-4** | When does the ASR node finish? | When the session ends (client `finalize`/close), with a ceiling · at run start (partial) | **When the session ends**, inside a heartbeated activity, with ceiling `workflowRuns.liveAudioMaxSeconds` (default 3600). The wait counts against the run's own budget, and the run budget is not paused: pausing would add a workflow-level change behind a new marker. |
+| **OD-5** | Which ASR agent transcribes: the session's or the graph's node? | The session's, ignore the node · **the graph's node, enforced** | **The graph's node.** Session create takes `workflowSlug` and resolves the node's agent (TASK-1002: "workflow wins"). Binding a session served by a different agent is 409 `RUN_AUDIO_AGENT_MISMATCH`. |
+| **OD-6** | Cardinality? | **One stream-audio key per run, one run per session, exclusive** · several | **One and one, exclusive.** An idempotent retry of the same start is accepted. A second run on the same session is 409. |
+| **OD-7** | A `stream` Input kind not wired to an STT node: publish error or warning? | **ERROR (`WF-SET-005`)** · warning | **ERROR.** Otherwise integrators stream audio that nothing reads, which is G7 again. |
+| **OD-8** | Should the business-plane run stream show transcripts? | Keep `transcript.*` admin-only · make them public | **Admin-only (protocol v2 unchanged).** The integrator already receives transcripts on its own STT socket, and the run stream stays PHI-lean. |
+| **OD-9** | Speech before the run binds (session opens first) | **Included** · dropped | **Included:** the route reads finals from offset 0. If the result stream was trimmed (MAXLEN/EXPIRE), the node fails with `transcript_truncated` rather than return a short transcript. The lane verifies the `streaming_result_stream_maxlen` default against a `liveAudioMaxSeconds` session. |
+| **OD-10** | Gate error when settings lack `socket` (or a legacy definition has no settings) | 404 (hide) · **400 `LIVE_AUDIO_UNSUPPORTED`** | **400**, the same family as the existing `MODE_UNSUPPORTED`. The workflow is visible to the caller; only this mode is off. |
+| **OD-11** | Release vehicle for the SDK changes | **Ride 5.0.0 (TASK-1039, unreleased)** · a separate 5.1.0 | **Ride 5.0.0.** The changes are additive, and 5.0.0 is not yet published. The owner publishes locally per the runbook. |
+| **OD-12** | Sequencing with OD-35 | **After OD-35 merges** · in parallel | **After.** Same files, and this route depends on the principal-binding helpers OD-35 introduces. |
+
+## 5. Implementation Plan (after the go)
+
+### 5.1 Lanes (one worktree each, branched from dev-2.2 **after** OD-35 merges)
+
+| Lane | Tier | Owns (exclusive) | TDD list (own files only; no gate suites, per the owner rule) |
+|---|---|---|---|
+| L1 GATEWAY | opus | NEW `packages/applications/src/services/workflow-exposure/run-audio-binding.service.ts` (+`__tests__`); `workflow-exposure.service.ts` (the call site only); `apps/api/src/modules/streaming/{transcription-job.controller.ts,dto/transcription-job.dto.ts,stt-run-transcript-mirror.ts}`; the ASR agent resolver (`workflowSlug` arm); NEW `apps/api/src/modules/internal/stt-session-transcript-internal.controller.ts`; settings descriptor `workflowRuns.liveAudioMaxSeconds` | 404 cross-tenant / foreign credential / unknown; 409 not-live, bound-elsewhere, agent-mismatch, concurrent bind; 400 undeclared, multiple, socket off, legacy definition; idempotent retry accepted with a single bind; unbind on start failure; session create stamps credential + resolves by `workflowSlug`; mirror follows `boundRun`; internal route 404 on runId mismatch, `truncated` on a trimmed stream |
+| L2 HARNESS + CONTRACT | opus | `apps/harness/.../interpreter/nodes/core.py` (`_run_session_transcript`), the harness gateway client method, the per-node activity options; `packages/{workflow-contract,py-workflow-contract}` `WF-SET-005` + `tests/contracts/workflow-settings.fixture.json` | Session branch: polls until ended, heartbeats, output contract; `transcript_truncated`; `live_audio_timeout`; cancel; the blob path unchanged; `WF-SET-005` TS/Python parity on the fixture; `test_replay_compat` for the options change (the one replay test this lane runs, because the change touches the workflow) |
+| L3 SDK + DOCS | sonnet | `packages/agentic-sdk-v2/src/{hooks/useRunAudio.ts,core/StreamingSessionManager.ts,hooks/useArcaAudio.ts,types/*}`; `packages/vox-node/src/{resources/workflows.ts,resources/stt.ts,types/stt.ts}` + NEW `core/run-with-audio.ts`; `apps/admin-console/src/shared/docs/run-guide.ts` (+ test); the SDK READMEs and the vox-node guide | `useRunAudio` standalone order + `audioField` discovery + typed errors + stop never cancels; `runWithAudio` order, close-on-refusal, finalize; snippet test pins the binding |
+
+The orchestrator (this session) owns:
+- the e2e spec `apps/api/tests/e2e/workflow-run-live-audio-cross-tenant.spec.ts`: tenant B's session 404, a colleague's API key / service account 404, an ended session 409, a consultation-bound session 409, socket off 400, an idempotent retry, and the internal route runId mismatch 404;
+- regenerating all five artifacts (`api:build`, `api:route-manifest`, `api:openapi`, `api:portal`, `vox-node gen:admin`);
+- the docs: this README, TASK-1036 §6.13 OD-37 row → "superseded by TASK-1042", protocol-v2 §4 (transcripts of a run-bound session carry no `nodeId`), TASK-1036 §8.7 "Audio in" corrected, rule `08-vox-sdk.md`;
+- the merge, and the single gate pass afterwards.
+
+### 5.2 Order
+
+1. Wait for the OD-35 merge, then fast-forward.
+2. Freeze the error codes and the internal-route response shape in this README §3.1.
+3. Run L1 ∥ L2 ∥ L3 in parallel. L3 codes against the frozen contract.
+4. Merge into dev-2.2, then the single gate pass (TS lint, typecheck, unit; harness + contract pytest including replay-compat; `@arcaai/vox`, `@arcaai/vox-node`, `@arcaai/admin-console`; the five artifact checks).
+5. e2e against the test API (`RESET_DB=false`, test infra by arrangement with the e2e-repair session).
+6. Live proof on the dev stack, by arrangement with the TASK-1036 session that holds it: vox-node `runWithAudio` with a WAV fixture → result text; browser `useRunAudio` via the console.
+
+### 5.3 Verification criteria
+
+- Every §3.1 status code is pinned by a unit test, and the cross-tenant ones also by e2e.
+- A standalone run bound to a 60 s live session returns a transcript that includes speech captured before the run started.
+- Replay-compat is green, and old histories replay unchanged.
+- The route-authz matrix is green; no new route reachable by an API key on the admin plane.
+- The Integration panel snippets match the shipped SDK signatures (test-pinned).
+
+## 6. Implementation Summary
+
+_Not started — awaiting the owner's decisions in §4._
+
+## 7. Change History
+
+| Date | Change |
+|---|---|
+| 2026-10-05 | Ticket raised from OD-37. Discovery by 3 sonnet scouts (gateway, harness, SDK); the orchestrator re-verified the sandbox ownership rule, the mirror's consultation-only resolution, the standalone `subject` limit, the harness `no_audio` path and the `useRunAudio` limit in code. Plan and OD-1..12 written. Status Pending. |
