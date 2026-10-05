@@ -177,7 +177,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // tenant-owned rows (a checkpoint is never SYSTEM-shared).
     // +1 (89): TASK-1034 adds `DnaWritingSample` — a clinician's DNA memory sample, tenant-owned.
     // +1 (90): `ComposedPromptRecord` — the per-call composed-prompt incident record, tenant-owned PHI ciphertext.
-    expect(TENANT_SCOPED_MODELS.size).toBe(90);
+    // +6 (96): TASK-1045 ConsultationEncounter, ConsultationApproval, ConsultationAttachment, ConsultationFeedback,
+    // ConsultationFeedbackDailyRollup, AiActivityRun.
+    expect(TENANT_SCOPED_MODELS.size).toBe(96);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
