@@ -3,6 +3,7 @@ import { Body, Controller, Inject, Post, UseGuards } from '@nestjs/common';
 import { ApiExcludeController, ApiSecurity } from '@nestjs/swagger';
 import { Public } from '../../decorators';
 import { ServiceReleaseTokenGuard } from './service-release-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * ServiceReleaseInternalController.
@@ -15,7 +16,7 @@ import { ServiceReleaseTokenGuard } from './service-release-token.guard';
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(ServiceReleaseTokenGuard)
+@UseGuards(ServiceReleaseTokenGuard, InternalTenantLockGuard)
 @ApiSecurity('serviceToken')
 @Controller('internal/service-releases')
 export class ServiceReleaseInternalController {
