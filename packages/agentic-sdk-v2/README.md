@@ -155,6 +155,34 @@ validation said. `ContextItem.kindKey` has been declared for a while and is now 
 the wire — it names which declared kind an item is, so a consumer reads back what it sent instead
 of remembering it.
 
+### Consultation lifecycle — `useConsultation()`
+
+`useConsultation()` (from `@arcaai/vox` and `@arcaai/vox/core`) is one handle over a consultation's
+whole lifecycle. It composes `useArcaSession`, `useArcaAudio` and `useArcaSummary`, so a screen needs
+no knowledge of which lower-level hook owns which step. Statuses are `OPEN`, `RECORDING`, `PAUSED`,
+`STOPPED`, `APPROVED`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE`, with `processing` (`IDLE`,
+`FINALIZING_TRANSCRIPT`, `SUMMARIZING`, `PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED`)
+alongside — typed `ConsultationLifecycleStatus` and `ConsultationProcessingState`.
+
+```tsx
+const { open } = useArcaSession();
+const c = useConsultation();
+
+await open({ patientId });
+await c.start();            // capture + POST :id/start
+await c.pause();
+await c.stop();             // resolves once the final transcript is complete (or the wait times out)
+await c.generateSummary({ sectionKeys: ['plan'] });
+await c.approve();
+await c.close();            // or c.reopen({ reason })
+// c.status, c.processing, c.isCapturing, c.segments, c.error
+```
+
+Also `sendAttachment`, `sendFeedback`, `history` and `recap`. Every command carries
+`X-Hope-Lifecycle: 2`, and `approve` / `close` / `reopen` send `If-Match` from the version the hook
+last saw (a 412 surfaces as an optimistic-concurrency error). `audio.start` / `audio.stop` and the
+per-summary approve are `@deprecated` in favour of this hook.
+
 ### Business plane only — no management surface (TASK-890)
 
 `@arcaai/vox` carries no administration capability. `AgenticClient` enforces this at the
