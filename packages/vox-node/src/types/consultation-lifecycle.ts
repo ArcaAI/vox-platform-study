@@ -102,6 +102,11 @@ export interface CloseOptions extends ConsultationCommandOptions {
 export interface ReopenOptions extends ConsultationCommandOptions {
   /** At most 256 characters. */
   reason?: string;
+  /**
+   * A service-account caller may name the clinician the reopen is for; without it the gateway
+   * uses the consultation's own clinician. A human caller reopens as themselves.
+   */
+  clinicianUserId?: string;
 }
 
 /** Options for {@link ConsultationHandle.generateSummary}. */

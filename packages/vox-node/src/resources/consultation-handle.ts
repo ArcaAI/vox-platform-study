@@ -637,6 +637,7 @@ export class ConsultationHandle {
   reopen(options: ReopenOptions = {}): Promise<ConsultationState> {
     const body: Record<string, unknown> = {};
     if (options.reason !== undefined) body.reason = options.reason;
+    if (options.clinicianUserId !== undefined) body.clinicianUserId = options.clinicianUserId;
     return this.#occCommand('reopen', body, options);
   }
 
