@@ -81,6 +81,13 @@ export interface ConsultationJobStatus {
   completedAt?: Date;
   tenantId: string;
   userId: string;
+  /**
+   * The acting principal that STARTED the job — a user id or a service-account id. `userId` is
+   * the clinician the job belongs to (a machine-started note is still the doctor's job), so this
+   * is what the cancel route's creator check also accepts. Absent on rows written before it
+   * existed; never filled in from `userId`.
+   */
+  initiatorId?: string;
 }
 
 // =============================================================================
@@ -152,6 +159,9 @@ export class JobStatusResponse {
 
   @ApiProperty({ description: 'Owning user id (ownership check carry-through)' })
   userId: string;
+
+  @ApiPropertyOptional({ description: 'Principal (user or service account) that started the job (ownership check carry-through)' })
+  initiatorId?: string;
 }
 
 // =============================================================================

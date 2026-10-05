@@ -11,6 +11,7 @@ import { PATH_METADATA, METHOD_METADATA, SSE_METADATA } from '@nestjs/common/con
 import { RequestMethod } from '@nestjs/common';
 import { of } from 'rxjs';
 import { ConsultationJobController } from '../consultation-job.controller';
+import { API_KEY_REQUIRED_SCOPES, SERVICE_ACCOUNT_REQUIRED_SCOPES } from '@arcaai/applications';
 import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 
 type MockJobService = {
@@ -98,6 +99,20 @@ describe('ConsultationJobController', () => {
       const method = Reflect.getMetadata(METHOD_METADATA, ConsultationJobController.prototype.cancelJob);
       expect(path).toBe(':jobId/cancel');
       expect(method).toBe(RequestMethod.PATCH);
+    });
+
+    // TASK-1045 (owner decision 2026-10-06) — a service account may cancel the note jobs it
+    // started; the creator check (userId OR initiatorId) still confines it to those.
+    it('admits service accounts holding svc:consultation:session:write', () => {
+      const scopes = Reflect.getMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, ConsultationJobController.prototype.cancelJob);
+      expect(scopes).toEqual(['svc:consultation:session:write']);
+    });
+
+    it('keeps the API-key scope and the creator owner check unchanged', () => {
+      const apiKeyScopes = Reflect.getMetadata(API_KEY_REQUIRED_SCOPES, ConsultationJobController.prototype.cancelJob);
+      const owned = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, ConsultationJobController.prototype.cancelJob) as TenantOwnedResourceOptions;
+      expect(apiKeyScopes).toEqual(['consultation:session:read']);
+      expect(owned).toMatchObject({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' });
     });
   });
 

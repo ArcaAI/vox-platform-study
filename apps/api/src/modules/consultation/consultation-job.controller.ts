@@ -40,8 +40,8 @@ export class ConsultationJobController {
   // TASK-933 — the async note job is a REPORT read, which is what the machine class is granted
   // here (`svc:consultation:report:read`); the API-key scope stays the historical
   // `consultation:session:read` because narrowing a live key's reach is not this ticket's to do.
-  // `cancelJob` is deliberately NOT opened: it carries `scope: 'creator'`, so it is the
-  // clinician's own control over their own job, and deny-by-default keeps it that way.
+  // `cancelJob` is opened to the machine class too (owner decision 2026-10-06), but only for
+  // the jobs the service account itself started — see the creator check on that route.
   @RequiredSvcScopes('svc:consultation:report:read')
   @ApiOperation({ summary: 'Get the current status of an async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID returned by an async summary/pre-summary/comprehensive/NER endpoint' })
@@ -61,8 +61,13 @@ export class ConsultationJobController {
   // probing this jobId now 404s (DEF-C3) instead of cancelling someone
   // else's job. The read routes (`getJob`, `streamJob`) intentionally stay
   // tenant-only because shared-room reads from peer users are legitimate.
+  // The creator is the job's clinician (`userId`) or the principal that started it
+  // (`initiatorId`): a service account that started a clinician's note job may cancel that job,
+  // and no other job in the tenant (owner decision 2026-10-06). It drives consultations under
+  // `svc:consultation:session:write`, so that is the scope that reaches the cancel.
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' })
   @RequiredScopes('consultation:session:read')
+  @RequiredSvcScopes('svc:consultation:session:write')
   @ApiOperation({ summary: 'Cancel a pending or running async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID to cancel' })
   @ApiResponse({ status: 200, description: 'Cancellation acknowledgement' })

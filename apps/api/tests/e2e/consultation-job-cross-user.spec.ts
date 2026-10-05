@@ -49,7 +49,7 @@ const JOB_KEY_PREFIX = 'consultation_job:';
  * 404. `PRE_SUMMARY` is a live type, so the cancel arm below exercises the
  * ownership guard it is actually about rather than a dead job type.
  */
-function buildJobStatusJson(opts: { jobId: string; tenantId: string; userId: string }) {
+function buildJobStatusJson(opts: { jobId: string; tenantId: string; userId: string; initiatorId?: string }) {
   return JSON.stringify({
     jobId: opts.jobId,
     type: 'PRE_SUMMARY',
@@ -61,6 +61,7 @@ function buildJobStatusJson(opts: { jobId: string; tenantId: string; userId: str
     startedAt: new Date('2026-05-28T00:00:01Z').toISOString(),
     tenantId: opts.tenantId,
     userId: opts.userId,
+    ...(opts.initiatorId ? { initiatorId: opts.initiatorId } : {}),
   });
 }
 
@@ -245,5 +246,98 @@ test.describe('AC-4 — ConsultationJob cancel ownership (intra-tenant)', () => 
     expect(response.status()).toBe(200);
     const body = await response.json();
     expect(body).toEqual({ ok: true });
+  });
+});
+
+/**
+ * TASK-1045 (owner decision 2026-10-06) — a SERVICE ACCOUNT may cancel the note jobs it started.
+ *
+ * A machine-started job is filed under the clinician (`userId`, TASK-933) and records the machine
+ * as `initiatorId`. The cancel route's creator check accepts either, so the seeded ArcaAI service
+ * account cancels a job it initiated (200) and is 404 on a job of the same clinician that another
+ * principal initiated — never a wider reach than a colleague.
+ *
+ * Fixtures: the seeded ArcaAI service account (`SEED_SERVICE_ACCOUNT_IDS.ARCAAI_ADMIN`, its dev
+ * fixture secret, `svc:consultation:session:write` + `svc:consultation:report:read`) and
+ * `arcaai_doctor` as the clinician the rows are filed under. Rows are seeded straight into Redis
+ * exactly as above; the tenant is the one the token exchange binds.
+ */
+test.describe('TASK-1045 — a service account cancels only the jobs it initiated', () => {
+  const SVC_ACCOUNT_ID = 'e0000000-0000-0000-0000-000000000001';
+  const SVC_CLIENT_ID = 'hope_svc_a4ca1a11ad3141b0c0de0001';
+  const SVC_CLIENT_SECRET = 'hope_svcsec_test_4f0b1d7a2e6c48b39a15d0c7e2f83b6104d9a7c5e18f2b6039d4c8a71e0b5f2d';
+  const ARCAAI_DOCTOR = '70000000-0000-0000-0000-000000000040';
+  const OTHER_PRINCIPAL = 'e0000000-0000-0000-0000-0000000000ff';
+
+  const ownJobId = uuidv7();
+  const foreignJobId = uuidv7();
+  let svcToken: string;
+  let redis: Redis | null = null;
+  let fixtureVisible = false;
+  let fixtureReason = '';
+
+  const svcHeaders = () => ({ 'X-Service-Account-Token': svcToken });
+
+  test.beforeAll(async ({ request }) => {
+    const exchanged = await request.post('/api/v1/auth/service-token', {
+      data: { clientId: SVC_CLIENT_ID, clientSecret: SVC_CLIENT_SECRET },
+    });
+    expect(exchanged.status(), 'service-token exchange').toBe(200);
+    const token = await exchanged.json();
+    svcToken = token.accessToken as string;
+    const tenantId = token.tenantId as string;
+    expect(tenantId, 'the exchange binds a working tenant').toBeTruthy();
+
+    redis = buildRedisClient();
+    await redis.set(
+      `${JOB_KEY_PREFIX}${ownJobId}`,
+      buildJobStatusJson({ jobId: ownJobId, tenantId, userId: ARCAAI_DOCTOR, initiatorId: SVC_ACCOUNT_ID }),
+    );
+    await redis.set(
+      `${JOB_KEY_PREFIX}${foreignJobId}`,
+      buildJobStatusJson({ jobId: foreignJobId, tenantId, userId: ARCAAI_DOCTOR, initiatorId: OTHER_PRINCIPAL }),
+    );
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const probe = await request.get(`/api/v1/consultations/jobs/${ownJobId}`, { headers: svcHeaders() });
+      if (probe.status() === 200) {
+        fixtureVisible = true;
+        break;
+      }
+      fixtureReason = `service-account read of the seeded job returned ${probe.status()} — run via .env.test so client and API share one Redis`;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  });
+
+  test.afterAll(async () => {
+    if (redis) {
+      try {
+        await redis.del(`${JOB_KEY_PREFIX}${ownJobId}`, `${JOB_KEY_PREFIX}${foreignJobId}`);
+      } finally {
+        await redis.quit();
+      }
+    }
+  });
+
+  test('the job reads back filed under the clinician, initiated by the machine', async ({ request }) => {
+    test.skip(!fixtureVisible, fixtureReason);
+    const response = await request.get(`/api/v1/consultations/jobs/${ownJobId}`, { headers: svcHeaders() });
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body.userId).toBe(ARCAAI_DOCTOR);
+    expect(body.initiatorId).toBe(SVC_ACCOUNT_ID);
+  });
+
+  test('PATCH cancel on a job ANOTHER principal initiated is 404, never 403', async ({ request }) => {
+    test.skip(!fixtureVisible, fixtureReason);
+    const response = await request.patch(`/api/v1/consultations/jobs/${foreignJobId}/cancel`, { headers: svcHeaders() });
+    expect(response.status()).toBe(404);
+  });
+
+  test('PATCH cancel on the job it initiated is 200', async ({ request }) => {
+    test.skip(!fixtureVisible, fixtureReason);
+    const response = await request.patch(`/api/v1/consultations/jobs/${ownJobId}/cancel`, { headers: svcHeaders() });
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
   });
 });
