@@ -31,12 +31,12 @@ class TestPromptLimits:
         assert len(req.system_prompt) == 1_000
 
     def test_system_prompt_at_max_limit(self):
-        req = GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 50_000)
-        assert len(req.system_prompt) == 50_000
+        req = GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 200_000)
+        assert len(req.system_prompt) == 200_000
 
     def test_system_prompt_exceeds_limit(self):
         with pytest.raises(ValidationError) as exc_info:
-            GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 50_001)
+            GenerateRequest(provider="lm-studio", prompt="valid", system_prompt="s" * 200_001)
         errors = exc_info.value.errors()
         assert any(e["type"] == "string_too_long" for e in errors)
 

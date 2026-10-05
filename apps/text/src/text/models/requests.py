@@ -254,9 +254,18 @@ class ReasoningPosture(BaseModel):
     effort: ReasoningEffort | None = None
 
 
+#: The request-size envelope for ONE half of a prompt, system or user. It guards payload
+#: size only: whether the prompt fits is the model's context window, which the engine
+#: enforces and this service surfaces as ``CONTEXT_WINDOW_EXCEEDED`` (never a truncation).
+#: The system half shares the user half's envelope — a governed call carries the agent's
+#: instruction and the document template's section rules there, and a smaller cap refused
+#: prompts that fit the window with room to spare.
+MAX_PROMPT_CHARS = 200_000
+
+
 class GenerateRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, max_length=200_000)
-    system_prompt: str | None = Field(default=None, max_length=50_000)
+    prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARS)
+    system_prompt: str | None = Field(default=None, max_length=MAX_PROMPT_CHARS)
     # Selection is fail-closed: Text names no engine of its own, so a request that
     # omits `provider` is refused (422) exactly as one that omits `model` is
     # (`api/endpoints/generate.py`). The caller resolves both halves of the
