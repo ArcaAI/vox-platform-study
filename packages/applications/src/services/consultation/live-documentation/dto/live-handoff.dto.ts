@@ -68,4 +68,10 @@ export interface LiveHandoffRecord {
    * Published in the handoff `context` as `document_headings` / `document_heading_list`.
    */
   documentHeadings?: string[];
+  /**
+   * TASK-1045 — the frozen lane's note nodes (`RealtimeLane.handoffNoteNodeIds`): the ids the read
+   * hands the composed note plan on, whether or not the live lane produced an output for them.
+   * Absent when the lane has none (and on every record written before).
+   */
+  noteNodeIds?: string[];
 }
