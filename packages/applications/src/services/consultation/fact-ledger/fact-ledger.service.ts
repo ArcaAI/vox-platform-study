@@ -462,11 +462,37 @@ function parseModelOutput(text: string): { facts: ModelFact[]; droppedInvalid: n
   const facts: ModelFact[] = [];
   let droppedInvalid = 0;
   for (const candidate of envelope.data.facts) {
-    const parsed = modelFactSchema.safeParse(candidate);
+    const parsed = modelFactSchema.safeParse(normaliseDrift(candidate));
     if (parsed.success) facts.push(parsed.data);
     else droppedInvalid++;
   }
   return { facts, droppedInvalid };
+}
+
+/**
+ * The two shape drifts a small model shows even under the instruction, repaired only where the
+ * reading is unambiguous: a singular `citation` string (with no `citations`) is the one citation,
+ * and a `numbers` entry given as a string becomes `{ value, unit }` when it is a number followed by
+ * one unit token, else `{ value: <the string> }`. Nothing is invented — a missing `kind` stays missing.
+ */
+function normaliseDrift(candidate: unknown): unknown {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+  const fact = { ...(candidate as Record<string, unknown>) };
+  if (fact.citations === undefined && typeof fact.citation === 'string') fact.citations = [fact.citation];
+  if (Array.isArray(fact.numbers)) {
+    fact.numbers = fact.numbers.flatMap((entry) => (typeof entry === 'string' ? numberFromString(entry) : [entry]));
+  }
+  return fact;
+}
+
+const NUMBER_WITH_UNIT = /^(-?\d+(?:\.\d+)?)\s*([a-zA-Z%°µ]\S*)?$/;
+
+function numberFromString(raw: string): Array<{ value: string; unit?: string }> {
+  const text = raw.trim();
+  if (!text) return [];
+  const match = NUMBER_WITH_UNIT.exec(text);
+  if (!match) return [{ value: text }];
+  return [match[2] ? { value: match[1], unit: match[2] } : { value: match[1] }];
 }
 
 function stripFences(text: string): string {
@@ -475,6 +501,21 @@ function stripFences(text: string): string {
 }
 
 const CITED_LABEL = /\b([SA]\d+)\b/g;
+
+/** A rendered transcript label, as the model sometimes copies it whole: `S12 E1 Doctor 03:41`. */
+const RENDERED_LABEL = /^([SA]\d+)\s+E\d+\b/;
+
+/**
+ * The labels one citation names. A copied rendered label (bracketed or not) names only its leading
+ * `S<n>` — the speaker and time after it are never read as labels; anything else is scanned for
+ * every `S<n>` / `A<n>` token, so `S12, S13` names both.
+ */
+function citedLabels(citation: string): string[] {
+  const text = citation.toUpperCase().replace(/[[\]]/g, ' ').trim();
+  const rendered = RENDERED_LABEL.exec(text);
+  if (rendered) return [rendered[1]];
+  return [...text.matchAll(CITED_LABEL)].map((match) => match[1]);
+}
 
 /**
  * Map each fact's cited labels to the items of the call that saw them, drop facts with no
@@ -494,8 +535,8 @@ function mapFacts(
     for (const fact of outcome.facts) {
       const cited: LabelledLine[] = [];
       for (const citation of fact.citations) {
-        for (const match of citation.toUpperCase().matchAll(CITED_LABEL)) {
-          const line = byLabel.get(match[1]);
+        for (const label of citedLabels(citation)) {
+          const line = byLabel.get(label);
           if (line && !cited.includes(line)) cited.push(line);
         }
       }

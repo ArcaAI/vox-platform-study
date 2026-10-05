@@ -88,7 +88,11 @@ export class ConsultationLifecycleGate extends IConsultationLifecycleGate {
     const consultation = await this.load(consultationId);
     const next = processing as ConsultationProcessing;
     await this.consultationRepository.setProcessing(consultationId, next, { reason: reason ?? null });
-    if (consultation.processing !== next) {
+    // A reason change on an unchanged value is still a change a client must see (a note written
+    // on an already-IDLE consultation, a new gap count). Compared after the domain's reason rule,
+    // so a reason the writer drops is not announced.
+    const reasonChanged = ConsultationEntity.processingReasonFor(next, reason) !== (consultation.processingReason ?? null);
+    if (consultation.processing !== next || reasonChanged) {
       await this.announce(consultation, next, reason ?? null);
     }
   }

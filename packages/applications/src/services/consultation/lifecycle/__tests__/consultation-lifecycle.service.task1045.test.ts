@@ -632,6 +632,55 @@ describe('ConsultationLifecycleGate', () => {
     expect(h.lifecycleEvents().map((e) => e.processing)).toEqual(['SUMMARIZING']);
   });
 
+  it('setProcessing that changes only the reason persists it without a version bump and emits processing_changed', async () => {
+    const h = makeHarness(
+      consultation({
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.AWAITING_REVIEW,
+        processingReason: 'NOTE_COVERAGE_GAPS:2',
+      }),
+    );
+    await h.gate.setProcessing(ID, ConsultationProcessing.AWAITING_REVIEW, 'NOTE_COVERAGE_GAPS:1');
+    expect(h.consultations.setProcessing).toHaveBeenCalledWith(ID, ConsultationProcessing.AWAITING_REVIEW, { reason: 'NOTE_COVERAGE_GAPS:1' });
+    expect(h.consultations.updateWithVersion).not.toHaveBeenCalled();
+    expect(h.lifecycleEvents()).toEqual([
+      expect.objectContaining({ type: 'processing_changed', processing: 'AWAITING_REVIEW', processingReason: 'NOTE_COVERAGE_GAPS:1', version: 3 }),
+    ]);
+  });
+
+  it('setProcessing with the same processing and the same reason emits nothing', async () => {
+    const h = makeHarness(
+      consultation({
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.AWAITING_REVIEW,
+        processingReason: 'NOTE_COVERAGE_GAPS:2',
+      }),
+    );
+    await h.gate.setProcessing(ID, ConsultationProcessing.AWAITING_REVIEW, 'NOTE_COVERAGE_GAPS:2');
+    expect(h.consultations.setProcessing).toHaveBeenCalledTimes(1);
+    expect(h.lifecycleEvents()).toEqual([]);
+  });
+
+  it('a written note on an already-IDLE consultation passes NOTE_READY to the writer (D-34)', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.IDLE }));
+    await h.gate.setProcessing(ID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
+    expect(h.consultations.setProcessing).toHaveBeenCalledWith(ID, ConsultationProcessing.IDLE, { reason: NOTE_READY_REASON });
+    expect(h.consultations.updateWithVersion).not.toHaveBeenCalled();
+  });
+
+  // Live only once the domain's reason rule keeps a reason on IDLE (D-34): until then the writer
+  // clears NOTE_READY, so there is no reason change to announce.
+  it.skipIf(ConsultationEntity.processingReasonFor(ConsultationProcessing.IDLE, NOTE_READY_REASON) === null)(
+    'a written note on an already-IDLE consultation announces NOTE_READY (D-34)',
+    async () => {
+      const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.IDLE }));
+      await h.gate.setProcessing(ID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
+      expect(h.lifecycleEvents()).toEqual([
+        expect.objectContaining({ type: 'processing_changed', processing: 'IDLE', processingReason: NOTE_READY_REASON }),
+      ]);
+    },
+  );
+
   it('touchActivity and currentEncounterSeq', async () => {
     const h = makeHarness(consultation({ currentEncounterSeq: 3 }));
     await h.gate.touchActivity(ID);
