@@ -403,6 +403,9 @@ test.describe(' route authorization conformance matrix', () => {
     // (ConsultationReadInternalController, `@Public()` + HarnessServiceTokenGuard, X-Tenant-Id required).
     // TASK-1042 added the 41st: GET /internal/stt/sessions/{sessionId}/transcript
     // (SttSessionTranscriptInternalController, `@Public()` + HarnessServiceTokenGuard + InternalTenantLockGuard).
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(41);
+    // TASK-1045 added the 42nd: GET /internal/consultations/{consultationId}/note-plans/{planId}
+    // (HarnessNotePlanController, `@Public()` + HarnessServiceTokenGuard + InternalTenantLockGuard). Its
+    // sibling POST /internal/stt/segments is NOT `@Public()` (internal key, `internal:stt:worker`).
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(42);
   });
 });
