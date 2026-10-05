@@ -191,15 +191,18 @@ export interface HarnessAssembleResponse {
 
 /**
  * Two-phase (optimistic) delivery discriminator on the
- * persist-draft contract.
+ * persist-draft contract. The values are harness WIRE literals (sent by
+ * `apps/harness` `temporal/models.py`), kept verbatim for Temporal replay —
+ * `DRAFT_PENDING_SENSORS` is no longer a consultation status.
  *   - `DRAFT_PENDING_SENSORS` (early): persist the readable draft BEFORE the
  *     inferential assurance pass completes. Computational scores only; the
  *     gate verdict + assurance-complete marker are deliberately withheld
- *     (`gateDecision`/`assuranceCompletedAt` stay NULL) and status becomes
- *     `DRAFT_PENDING_SENSORS`. NO SENSOR_RUN audit (no verdict exists yet).
+ *     (`gateDecision`/`assuranceCompletedAt` stay NULL) and the consultation's
+ *     processing becomes `SUMMARIZING`. NO SENSOR_RUN audit (no verdict exists yet).
  *   - `FINALIZE` / absent (legacy): single-shot persist — assurance already
  *     complete, so the meta is fully scored, `assuranceCompletedAt` is stamped,
- *     status flips straight to `PENDING_REVIEW`, and SENSOR_RUN is recorded.
+ *     processing becomes `IDLE`, and SENSOR_RUN is recorded.
+ * Neither phase writes the consultation status.
  */
 export const HARNESS_DRAFT_PHASE = {
   EARLY: 'DRAFT_PENDING_SENSORS',
@@ -333,8 +336,8 @@ export interface HarnessDraftResponse {
 /**
  * Completes the two-phase delivery: the inferential assurance pass has finished,
  * so we backfill the early-persisted SummaryMeta with the inferential scores +
- * gate verdict, stamp `assuranceCompletedAt`, flip the consultation
- * `DRAFT_PENDING_SENSORS → PENDING_REVIEW`, and record the SENSOR_RUN (and
+ * gate verdict, stamp `assuranceCompletedAt`, move the consultation's
+ * processing `SUMMARIZING → IDLE`, and record the SENSOR_RUN (and
  * REDUCED_ASSURANCE) WORM audit. Targets the RAW_SUMMARY persisted in the early
  * phase by its `contextItemId`.
  */
@@ -541,7 +544,10 @@ export class HarnessGateDecisionRequest {
   @IsString()
   userId?: string;
 
-  @ApiPropertyOptional({ description: 'Clinician sign-off decision (e.g. SIGNED | REJECTED)' })
+  @ApiPropertyOptional({
+    description:
+      'Clinician sign-off decision (e.g. SIGNED | REJECTED). A harness wire literal recorded on the GATE_DECISION audit row only — it never changes the consultation lifecycle (approval is the lifecycle approve command).',
+  })
   @IsOptional()
   @IsString()
   decision?: string;
@@ -715,7 +721,7 @@ export interface HarnessAssuranceEventDto {
   /** True when assurance ran with reduced coverage (a sensor degraded). */
   reducedAssurance?: boolean;
   /**
-   * Q2b — the note was already SIGNED (early sign) when this adverse verdict
+   * Q2b — the note was already APPROVED (early sign) when this adverse verdict
    * landed; the UI raises an amendment/follow-up alert. Terminal event only.
    */
   postSignAlert?: boolean;

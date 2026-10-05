@@ -61,7 +61,8 @@ export interface ListEvalRunsOptions {
  *  - `listAuditEvents` pages the tenant's WORM audit trail (newest-first) and
  *    attaches a chain-global integrity verdict (`verifyChain`).
  *  - `listEvalRuns` / `getEvalRun` expose `EvalRun` + its `EvalScore` rows.
- *  - `gateQueue` projects `Consultation.status = PENDING_REVIEW` and computes
+ *  - `gateQueue` projects `Consultation.status = STOPPED` with
+ *    `processing = AWAITING_REVIEW` (an escalated gate) and computes
  *    SLA/escalation deadlines from the effective policy timers, clocking each
  *    item from its latest GENERATE audit event.
  *
@@ -161,11 +162,11 @@ export class HarnessObservabilityService {
    * deadlines computed from the effective policy timers, each clocked from its
    * latest GENERATE audit event (fallback: consultation `updatedAt`).
    *
-   * also surfaces `TIMED_OUT` rows (gate SLA already exhausted,
-   * `recordEscalation`'s terminal path). They must not silently drop out of
-   * this queue just because the clock moved them past PENDING_REVIEW — a
-   * TIMED_OUT item is, definitionally, already `slaBreached`/`escalated`,
-   * and `TIMED_OUT → SIGNED` stays legal (a human can still rescue it).
+   * The queue is the STOPPED consultations whose processing is
+   * `AWAITING_REVIEW` — the value `recordEscalation` sets when a review gate
+   * passes its SLA (terminal abandon included: an escalation never closes the
+   * consultation, so an abandoned item stays here until a human approves or
+   * closes it).
    */
   async gateQueue(tenantId: string): Promise<GateQueueResponse> {
     const policy = await this.policyRepository.findActiveForTenant(tenantId);
@@ -173,11 +174,7 @@ export class HarnessObservabilityService {
     const gateEscalationSeconds = policy?.gateEscalationSeconds ?? HARNESS_POLICY_DEFAULTS.gateEscalationSeconds;
     const policySource: HarnessPolicySource = !policy ? 'code-default' : policy.tenantId === tenantId ? 'tenant' : 'system-default';
 
-    const [pendingReview, timedOut] = await Promise.all([
-      this.consultationRepository.findPendingReviewForTenant(tenantId),
-      this.consultationRepository.findTimedOutForTenant(tenantId),
-    ]);
-    const pending = [...pendingReview, ...timedOut];
+    const pending = await this.consultationRepository.findPendingReviewForTenant(tenantId);
     const chain = await this.auditRepository.getChainForTenant(tenantId);
 
     // Latest GENERATE event timestamp + count per consultation (the wait clock).
