@@ -29,20 +29,14 @@ import { ConsultationStatusBadge } from './consultation-status-badge';
 const LIST_ENDPOINT_HINT = 'GET /admin/consultations';
 const AGGREGATE_ENDPOINT_HINT = 'aggregate: GET aggregate?from&to[&granularity]';
 
-// session state machine; mirrors ConsultationStatusBadge's STATUS_META.
 const STATUS_LABELS: Record<(typeof CONSULTATION_STATUSES)[number], string> = {
   OPEN: 'Open',
-  PRIMED: 'Primed',
   RECORDING: 'Recording',
-  DRAINING: 'Draining',
-  DRAFT_PENDING_SENSORS: 'Draft pending sensors',
-  PENDING_REVIEW: 'Pending review',
-  SIGNED: 'Signed',
-  TIMED_OUT: 'Timed out',
-  CLOSED: 'Closed',
-  REOPENED: 'Reopened',
-  CLOSED_COMPLETE: 'Closed (signed)',
-  CLOSED_INCOMPLETE: 'Closed (no sign-off)',
+  PAUSED: 'Paused',
+  STOPPED: 'Stopped',
+  APPROVED: 'Approved',
+  CLOSED_COMPLETE: 'Closed (approved)',
+  CLOSED_INCOMPLETE: 'Closed (no approval)',
 };
 
 const STATUS_OPTIONS: FilterOption[] = CONSULTATION_STATUSES.map((status) => ({ value: status, label: STATUS_LABELS[status] }));

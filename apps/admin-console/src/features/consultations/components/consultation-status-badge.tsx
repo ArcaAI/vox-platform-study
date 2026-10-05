@@ -3,34 +3,46 @@
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 
+import { CONSULTATION_PROCESSING, type ConsultationProcessing, type ConsultationStatus } from '@arcaai/types';
+import { normalizeConsultationStatus } from '../api/types';
+
 /**
- * ConsultationStatus lifecycle -> semantic roles (frame 40: status is never
- * color-only — the label always rides along). Unknown values fall back to a
- * neutral badge with the raw label.
- *
- * session state machine ( `CLOSED` is
- * SUPERSEDED (never written by any live path) but kept mapped since a stale
- * historical row could in principle still carry it. `PRIMED`/`DRAINING` are
- * new mid-session phases; `TIMED_OUT` is the "clock never signs" terminal
- * (still rescuable via sign-off); `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE`
- * replace `CLOSED` as the two real terminal-close outcomes.
+ * Seven-value lifecycle -> semantic roles (status is never color-only: the label always rides
+ * along). Legacy twelve-value rows are normalised first; a non-idle processing marker renders as
+ * a second chip beside the status. Values in neither vocabulary fall back to a neutral badge.
  */
-const STATUS_META: Record<string, { label: string; role: StatusColorRole }> = {
+export const STATUS_META: Record<ConsultationStatus, { label: string; role: StatusColorRole }> = {
   OPEN: { label: 'Open', role: 'info' },
-  PRIMED: { label: 'Primed', role: 'info' },
   RECORDING: { label: 'Recording', role: 'primary' },
-  DRAINING: { label: 'Draining', role: 'primary' },
-  DRAFT_PENDING_SENSORS: { label: 'Draft pending sensors', role: 'ai' },
-  PENDING_REVIEW: { label: 'Pending review', role: 'warning' },
-  SIGNED: { label: 'Signed', role: 'success' },
-  TIMED_OUT: { label: 'Timed out', role: 'destructive' },
-  CLOSED: { label: 'Closed', role: 'neutral' },
-  REOPENED: { label: 'Reopened', role: 'hope' },
-  CLOSED_COMPLETE: { label: 'Closed (signed)', role: 'success' },
-  CLOSED_INCOMPLETE: { label: 'Closed (no sign-off)', role: 'neutral' },
+  PAUSED: { label: 'Paused', role: 'warning' },
+  STOPPED: { label: 'Stopped', role: 'neutral' },
+  APPROVED: { label: 'Approved', role: 'success' },
+  CLOSED_COMPLETE: { label: 'Closed (approved)', role: 'success' },
+  CLOSED_INCOMPLETE: { label: 'Closed (no approval)', role: 'neutral' },
 };
 
-export function ConsultationStatusBadge({ status }: { status: string | undefined }) {
-  const meta = STATUS_META[status ?? ''] ?? { label: status || 'Unknown', role: 'neutral' as StatusColorRole };
-  return <StatusBadge label={meta.label} colorRole={meta.role} icon={<StatusDot colorRole={meta.role} size="sm" />} />;
+export const PROCESSING_META: Record<Exclude<ConsultationProcessing, 'IDLE'>, { label: string; role: StatusColorRole }> = {
+  FINALIZING_TRANSCRIPT: { label: 'Finalizing transcript', role: 'primary' },
+  SUMMARIZING: { label: 'Summarizing', role: 'ai' },
+  PROCESSING_ATTACHMENT: { label: 'Processing attachment', role: 'ai' },
+  AWAITING_REVIEW: { label: 'Awaiting review', role: 'warning' },
+  FAILED: { label: 'Processing failed', role: 'destructive' },
+};
+
+export function consultationStatusMeta(status: string | undefined, processing?: string) {
+  const explicit = (CONSULTATION_PROCESSING as readonly string[]).includes(processing ?? '') ? (processing as ConsultationProcessing) : undefined;
+  const normalized = normalizeConsultationStatus(status, explicit);
+  if (!normalized) return { status: { label: status || 'Unknown', role: 'neutral' as StatusColorRole }, processing: null };
+  const chip = normalized.processing === 'IDLE' ? null : PROCESSING_META[normalized.processing];
+  return { status: STATUS_META[normalized.status], processing: chip };
+}
+
+export function ConsultationStatusBadge({ status, processing }: { status: string | undefined; processing?: string }) {
+  const meta = consultationStatusMeta(status, processing);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
+      {meta.processing ? <StatusBadge label={meta.processing.label} colorRole={meta.processing.role} /> : null}
+    </span>
+  );
 }
