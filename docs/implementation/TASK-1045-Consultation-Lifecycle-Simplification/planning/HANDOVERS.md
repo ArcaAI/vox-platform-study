@@ -111,3 +111,8 @@
 | H-106 | AB-6 | console BFF | orchestrator | send `X-Hope-Lifecycle: 2` on every proxied call (SDKs already do) | applied `069538ac2` |
 | H-107 | AB-6 | deprecation register | D8 | rows: `recording/start` → `:id/start`; `recording/stop` (never waits) → `:id/stop`; `prime` (no-op) → `:id/start`; `summary/:contextItemId/approve` → `:id/approve`; Sunset placeholder `Sun, 31 Jan 2027 00:00:00 GMT`, removeIn `R5` — owner to confirm | pending (D8) |
 | H-108 | AB-6 | apps/api legacy consultation tests | AB-8b | old per-summary approve + descriptions | pending (AB-8b) |
+| H-109 | E5 | E3 | E3 | serve `GET internal/consultations/:id/note-plans/:planId` → plan or `{plan, preservedSections[]}` (required for section_regen); `planId` on every ref; `criticalFacts: null` when the ledger is not ready; render blocks via `composeMessages` | sent to E3 |
+| H-110 | E5 | E6 | E6 | `readLiveHandoff` emits `note_plan_ref:{consultationId,mode,planId}`; `persistDraft` accepts `coverage` (CoverageResultV1, camelCase) and returns `versionNumber` | pending (E6 brief) |
+| H-111 | E5 | harness-doc start + loop child finalize | E3/E6 | `HarnessDocWorkflowInput.note_plan_ref`; `LoopFinalizeRequest` does not pass it yet | pending (E3/E6) |
+| H-112 | E5 | follow-ups | follow-up | optimistic `_regen_compute` still calls `generate`; re-delivery may stamp a second NOTE_GENERATE step; governed plan path has no fallback walk / `_GenerationTrace`; repair skipped when `ActivityBudget` lacks room; repair directive + unit list live in harness code | follow-up |
+| H-113 | E5 | fixture conventions | orchestrator | block order text aligned with P-E §1b (prior encounters → results → attachments → latest encounter → drafts); `refs`/`ids`; `null` criticalFacts | applied `31217f4ac` |
