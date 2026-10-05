@@ -127,14 +127,15 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
         // 1. Attested SIGNED_NOTE version (the confirm-before-commit record).
         await admin.query(
           `INSERT INTO core."ContextItemVersion"
-             ("id","tenantId","contextItemId","versionNumber","content","changeReason","changeSummary","changedBy","changeSource","attestedAt","attestedBy","attestationHash","sensorScores")
-           VALUES ($1,$2,$3,$4,$5,'approved','Approved and locked',$6,'attestation',now(),$6,$7,$8::jsonb)`,
+             ("id","tenantId","contextItemId","versionNumber","encryptedContent","keyVersion","changeReason","changedBy","changeSource","attestedAt","attestedBy","attestationHash","sensorScores")
+           VALUES ($1,$2,$3,$4,$5,1,'approved',$6,'attestation',now(),$6,$7,$8::jsonb)`,
           [
             versionId,
             seed!.tenantId,
             seed!.ctxId,
             versionNumber,
-            'S:.. O:.. A:.. P:..',
+            // Content is Vault-Transit ciphertext at rest; the bytes are opaque to this schema test.
+            Buffer.from('vault:v1:ciphertext'),
             clinicianId,
             attestationHash,
             JSON.stringify({ coverage: 0.91 }),
