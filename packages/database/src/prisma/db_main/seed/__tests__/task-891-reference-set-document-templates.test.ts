@@ -74,7 +74,7 @@ class Table {
   }
 
   findUnique({ where, select }: { where: Row; select?: Row }): Promise<Row | null> {
-    return this.findFirst({ where, select });
+    return this.findFirst(select ? { where, select } : { where });
   }
 
   create({ data }: { data: Row }): Promise<Row> {
