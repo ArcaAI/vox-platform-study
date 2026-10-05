@@ -17,6 +17,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
+import { normalizeScribeStatus } from '../../api/types';
 import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
 import { formatDateTime } from '@/shared/format';
@@ -31,13 +32,18 @@ export interface ConsultationListRow {
 const STATUS_META: Record<string, { label: string; role: StatusColorRole }> = {
   OPEN: { label: 'Open', role: 'success' },
   RECORDING: { label: 'Recording', role: 'destructive' },
-  PENDING_REVIEW: { label: 'Pending review', role: 'warning' },
+  PAUSED: { label: 'Paused', role: 'warning' },
+  STOPPED: { label: 'Stopped', role: 'neutral' },
+  APPROVED: { label: 'Approved', role: 'success' },
+  CLOSED_COMPLETE: { label: 'Closed', role: 'neutral' },
+  CLOSED_INCOMPLETE: { label: 'Closed (no approval)', role: 'neutral' },
   COMPLETED: { label: 'Completed', role: 'success' },
-  CLOSED: { label: 'Closed', role: 'neutral' },
 };
 
 function statusMeta(status: string): { label: string; role: StatusColorRole } {
-  return STATUS_META[status.toUpperCase()] ?? { label: status, role: 'neutral' };
+  const normalized = normalizeScribeStatus(status);
+  const key = normalized?.status ?? status.toUpperCase();
+  return STATUS_META[key] ?? { label: status, role: 'neutral' };
 }
 
 /** Initials chip for a patient id (best-effort — ids are opaque). */

@@ -1,34 +1,22 @@
 import type { Paginated } from '@/shared/api';
 
-/**
- * ConsultationStatus gateway enum (packages/domains) — GET /admin/consultations
- * validates `?status` against exactly these and 400s on anything else.
- *
- * session state machine. `CLOSED` is SUPERSEDED (never written by
- * any live path — see
- * and split into `CLOSED_COMPLETE` (a human gave
- * clinical feedback) / `CLOSED_INCOMPLETE` (timeout or manual close with no
- * sign-off). Kept in this list only because the gateway's `Object.values(
- * ConsultationStatus)` validation (admin-consultation.controller.ts
- * `parseStatus`) still accepts it — a Postgres enum value can never be
- * dropped — so filtering by it is harmless (always zero rows), never a 400.
- */
-export const CONSULTATION_STATUSES = [
-  'OPEN',
-  'PRIMED',
-  'RECORDING',
-  'DRAINING',
-  'DRAFT_PENDING_SENSORS',
-  'PENDING_REVIEW',
-  'SIGNED',
-  'TIMED_OUT',
-  'CLOSED',
-  'REOPENED',
-  'CLOSED_COMPLETE',
-  'CLOSED_INCOMPLETE',
-] as const;
+import {
+  CONSULTATION_STATUSES,
+  normalizeLegacyConsultationStatus,
+  type ConsultationProcessing,
+  type ConsultationStatus,
+} from '@arcaai/types';
 
-export type ConsultationStatus = (typeof CONSULTATION_STATUSES)[number];
+export { CONSULTATION_STATUSES };
+export type { ActivityEntry, ActivityKind, ActivityRunRecord, ConsultationActivityPage, ConsultationProcessing, ConsultationStatus, EncounterBlock, ItemVersionDetail, ItemVersionSummary, RunSummary } from '@arcaai/types';
+
+/**
+ * Normalise a status string from either vocabulary (the seven-value lifecycle or a legacy
+ * twelve-value row still in flight) to `{ status, processing }`; null when it is in neither.
+ */
+export function normalizeConsultationStatus(value: string | undefined | null, processing?: ConsultationProcessing) {
+  return value ? normalizeLegacyConsultationStatus(value, processing) : null;
+}
 
 /** Embedded doctor info (DoctorInfo on the gateway). */
 export interface ConsultationDoctor {

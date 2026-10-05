@@ -1,3 +1,5 @@
+import { normalizeLegacyConsultationStatus } from '@arcaai/types';
+
 /**
  * Playground consultation wire types (frames 50 + 50.1, matrix row 34) —
  * client subsets of the END-USER consultation plane DTOs, verified against
@@ -109,6 +111,14 @@ export interface ConsultationJobStatus {
   errorMessage?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Normalise a consultation status from either vocabulary (seven-value lifecycle or a legacy
+ * twelve-value row, any casing); null when it is in neither.
+ */
+export function normalizeScribeStatus(status: string | null | undefined) {
+  return status ? normalizeLegacyConsultationStatus(status.toUpperCase()) : null;
 }
 
 /** True for COMPLETED/FAILED/CANCELLED in either wire spelling. */
