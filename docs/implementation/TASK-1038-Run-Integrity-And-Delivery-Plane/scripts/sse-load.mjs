@@ -85,7 +85,7 @@ async function startAll() {
 
 /** Open one SSE stream and time its frames until the terminal event, an error, or the timeout. */
 async function watch(runId) {
-  const result = { runId, firstFrameMs: null, firstPushMs: null, terminalMs: null, gaps: [], lags: [], frames: 0, error: null };
+  const result = { runId, firstFrameMs: null, firstPushMs: null, terminalMs: null, gaps: [], lags: [], frames: 0, error: null, resyncTerminal: false };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = performance.now();
@@ -113,7 +113,9 @@ async function watch(runId) {
         result.frames += 1;
         if (result.firstFrameMs === null) result.firstFrameMs = elapsed;
         const type = /^event: (.+)$/m.exec(frame)?.[1];
-        const pushed = /^id: /m.test(frame);
+        // In v2 every frame carries `id:`, keep-alives and resyncs included; only run events are
+        // "pushed" for the latency statistics (a ping's ts is "now" and would flatter the lag).
+        const pushed = /^id: /m.test(frame) && type !== 'ping' && type !== 'run.resync';
         const data = /^data: (.+)$/m.exec(frame)?.[1];
         if (pushed) {
           if (result.firstPushMs === null) result.firstPushMs = elapsed;
@@ -125,6 +127,21 @@ async function watch(runId) {
             if (Number.isFinite(occurredAt)) result.lags.push(Date.now() - occurredAt);
           } catch {
             /* a frame without a parseable envelope contributes no lag sample */
+          }
+        }
+        if (protocolV2 && type === 'run.resync') {
+          // A resync carries a snapshot; a terminal snapshot ends the run for the client (§6.3).
+          try {
+            const snapshotStatus = JSON.parse(data)?.data?.snapshot?.status;
+            if (snapshotStatus && snapshotStatus !== 'RUNNING') {
+              result.resyncTerminal = true;
+              if (snapshotStatus !== 'COMPLETED') result.error = `terminal resync ${snapshotStatus}`;
+              result.terminalMs = elapsed;
+              controller.abort();
+              return result;
+            }
+          } catch {
+            /* an unparseable resync is not terminal */
           }
         }
         if (terminalTypes.has(type)) {
@@ -197,6 +214,8 @@ console.log(
 );
 console.log('');
 console.log(`streams: ${results.length}  completed: ${ok.length}  failed: ${failed.length}  frames: ${results.reduce((n, r) => n + r.frames, 0)}`);
-for (const r of failed.slice(0, 10)) console.log(`  ${r.runId}: ${r.error}`);
-if (failed.length > 10) console.log(`  … ${failed.length - 10} more`);
+console.log(`terminal via run.resync snapshot (counted as completed): ${ok.filter((r) => r.resyncTerminal).length}`);
+const causes = new Map();
+for (const r of failed) causes.set(r.error, (causes.get(r.error) ?? 0) + 1);
+for (const [cause, count] of causes) console.log(`  ${count} × ${cause}`);
 process.exit(failed.length > 0 ? 1 : 0);
