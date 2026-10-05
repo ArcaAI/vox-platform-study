@@ -361,15 +361,23 @@ def repair_directive(
     wanted = set(section_keys)
     titles = ", ".join(plan.heading_title(key) for key in _ordered(plan, wanted))
     facts = {fact.fact_id: fact for fact in plan.coverage.critical_facts or ()}
-    lines = [f"Rewrite only these sections: {titles}."]
+    # Wording measured on LM Studio against the live run's inputs: it restores an omitted
+    # earlier-encounter fact where a bare "State: …" list did not.
+    lines = [
+        f"Rewrite only these sections: {titles}.",
+        "The previous draft of these sections left out the facts listed below. Write each listed "
+        "fact into its section, worded from its source line, and end it with that label. Keep "
+        "every other fact the section needs.",
+    ]
     for gap in result.gaps:
         if gap.section_key not in wanted:
             continue
         if gap.kind == "missing_fact" and gap.fact_id in facts:
             fact = facts[gap.fact_id]
             labels = " ".join(f"[{label}]" for label in fact.citations)
-            lines.append(f"- State: {'; '.join(_fact_terms(fact))} {labels}".rstrip())
+            lines.append(
+                f"- {fact.kind.replace('_', ' ')}: {'; '.join(_fact_terms(fact))} {labels}".rstrip()
+            )
         elif gap.kind in ("number_mismatch", "unresolved_citation"):
             lines.append(f"- Fix: {gap.detail}")
-    lines.append("State every listed item and cite its source label exactly as labelled.")
     return "\n".join(lines)

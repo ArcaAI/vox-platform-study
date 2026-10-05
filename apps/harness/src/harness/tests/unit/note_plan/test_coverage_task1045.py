@@ -182,6 +182,28 @@ def test_the_repair_directive_names_only_the_gap_sections_and_what_is_missing() 
     assert "[S5]" in directive
 
 
+def test_the_repair_directive_text_is_the_one_measured_to_restore_an_omitted_fact() -> None:
+    """Pinned wording: measured on LM Studio against the run-5 inputs, it restores the omitted
+    encounter-1 allergy where the previous "State: …" wording did not."""
+    plan = _plan(SINGLE)
+    sections = {**COMPLETE_SECTIONS, "plan": "Increase metformin to 1000 mg twice daily."}
+    result = check_coverage(plan, sections, COMPLETE_SOURCES)
+    fact = next(f for f in plan.coverage.critical_facts or () if f.fact_id == "E2-F3")
+
+    lines = repair_directive(plan, result, ["plan"]).splitlines()
+
+    assert lines[0] == "Rewrite only these sections: Plan."
+    assert lines[1] == (
+        "The previous draft of these sections left out the facts listed below. Write each listed "
+        "fact into its section, worded from its source line, and end it with that label. Keep "
+        "every other fact the section needs."
+    )
+    assert lines[2].startswith(f"- {fact.kind.replace('_', ' ')}: ")
+    assert lines[2].endswith("[S5]")
+    assert len(lines) == 3
+    assert not any("State every listed item" in line for line in lines)
+
+
 # ---------------------------------------------------------------------------------------------
 # One repair, never two
 # ---------------------------------------------------------------------------------------------
