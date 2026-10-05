@@ -1,0 +1,83 @@
+// =============================================================================
+// CONSULTATION FEEDBACK (append-only) + its daily rollup (derived)
+// =============================================================================
+
+// One clinician feedback fact on a consultation or on one target inside it (a
+// note, section, segment, entity, transcript or recap). Append-only: a changed
+// rating is a NEW row that supersedes the previous one (`supersedesId`), and
+// only the newest carries `isLatest` — one latest rating per (tenant, actor,
+// target) is the partial unique index `ConsultationFeedback_latest_uq` in the
+// migration. No `resourceStatus`, no `_version`. The free-text comment is
+// Vault-Transit (hope-phi) ciphertext; provenance columns are ids / versions
+// only. All references are soft (no FK).
+model ConsultationFeedback {
+  id                      String              @id @default(uuid(7))
+  tenantId                String
+  consultationId          String
+  encounterSeq            Int?
+  actorUserId             String // human; machine callers act as the row's doctorId
+  actorCredentialClass    String // jwt | api-key | service-account
+  actorPrincipalId        String?
+  clientApp               String?
+  clientSurface           String?
+  targetKind              FeedbackTargetKind? // null = consultation-level
+  targetContextItemId     String?
+  targetVersionNumber     Int?
+  targetSectionKey        String?
+  targetDocumentKey       String?
+  targetEntityRef         String?
+  entityLabel             String?
+  targetKey               String? // "kind|item|ver|section|entity"; null without a target
+  rating                  FeedbackRating? // null = comment / media / correction only
+  reasonCodes             String[]            @default([])
+  encryptedComment        Bytes?
+  keyVersion              Int?
+  mediaIds                String[]            @default([])
+  correctionContextItemId String?
+  correctionVersionNumber Int?
+  provenance              Json?               @db.JsonB
+  provAgentSlug           String?
+  provAgentVersion        Int?
+  provModelName           String?
+  provPromptVersion       String?
+  provWorkflowRunId       String?
+  provActivityRunId       String?
+  idempotencyKey          String?
+  isLatest                Boolean             @default(true)
+  supersedesId            String?
+  createdBy               String?             @default("60000000-0000-0000-0000-000000000000")
+  createdAt               DateTime            @default(now())
+
+  @@index([tenantId, consultationId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, actorUserId, targetKey, isLatest])
+  @@schema("core")
+}
+
+// Per-day feedback aggregate, recomputed (replaced) per (tenant, day). The ''
+// reasonCode row carries the rating counts; a row per reason code carries
+// `reasonedCount` only. Empty-string / 0 dimension defaults keep the unique key
+// total (NULLs would not collide).
+model ConsultationFeedbackDailyRollup {
+  id              String             @id @default(uuid(7))
+  tenantId        String
+  day             DateTime           @db.Date // UTC
+  targetKind      FeedbackTargetKind
+  agentSlug       String             @default("")
+  agentVersion    Int                @default(0)
+  modelName       String             @default("")
+  promptVersion   String             @default("")
+  sectionKey      String             @default("")
+  entityLabel     String             @default("")
+  reasonCode      String             @default("")
+  upCount         Int                @default(0)
+  downCount       Int                @default(0)
+  clearedCount    Int                @default(0)
+  commentCount    Int                @default(0)
+  correctionCount Int                @default(0)
+  reasonedCount   Int                @default(0)
+  computedAt      DateTime           @default(now())
+
+  @@unique([tenantId, day, targetKind, agentSlug, agentVersion, modelName, promptVersion, sectionKey, entityLabel, reasonCode], map: "ConsultationFeedbackDailyRollup_dim_uq")
+  @@schema("core")
+}

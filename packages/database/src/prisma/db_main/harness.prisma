@@ -43,6 +43,9 @@ enum HarnessAuditAction {
   // design's plain CLOSED, which reused ResourceUpdated only).
   SESSION_CLOSED_COMPLETE // SIGNED → CLOSED_COMPLETE (human closed with a signed note)
   SESSION_CLOSED_INCOMPLETE // TIMED_OUT|PRIMED|DRAINING|DRAFT_PENDING_SENSORS|REOPENED → CLOSED_INCOMPLETE (sweep or manual close, no signature)
+  // Session-level approval: the clinician approved the whole consultation record
+  // (a `ConsultationApproval` snapshot was written). Written beside ATTEST.
+  SESSION_APPROVED
 
   @@schema("core")
 }
@@ -507,6 +510,15 @@ model GateEditExemplar {
   // inert until an operator turns the gate on.
   curationStatus ExemplarCurationStatus @default(PENDING)
 
+  // Where the exemplar came from: GATE = mined from a gate decision (the
+  // historical source; `findByConsultation` reads only these), FEEDBACK = mined
+  // from a clinician feedback entry (`feedbackId`), with its de-identified
+  // reason codes and target kind.
+  source      String   @default("GATE")
+  feedbackId  String?
+  reasonCodes String[] @default([])
+  targetKind  String?
+
   // audit fields
   createdBy String?  @default("60000000-0000-0000-0000-000000000000")
   updatedBy String?
@@ -520,5 +532,6 @@ model GateEditExemplar {
   @@index([tenantId, departmentId, qualitySignal, createdAt], name: "GateEditExemplar_retrieval_idx")
   // Curation queue + enforce-mode retrieval filter.
   @@index([tenantId, curationStatus], name: "GateEditExemplar_tenant_curationStatus_idx")
+  @@index([tenantId, source], name: "GateEditExemplar_tenant_source_idx")
   @@schema("core")
 }

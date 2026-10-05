@@ -1,0 +1,69 @@
+// =============================================================================
+// AI ACTIVITY RUN (durable per-activity run record)
+// =============================================================================
+
+// One row per AI activity run (a transcription session, an NER call, a note
+// generation call, a sensor, ...). Ids, enums and numbers only — NO free text,
+// no PHI. `runKey` ("<producer>:<sessionId>:<runId>:<seq>") makes the write an
+// idempotent upsert. Append-only telemetry: no `resourceStatus` (never
+// soft-deleted) and, unlike AgentTrajectoryStep, not pruned with the
+// trajectory. `consultationId`, `contextItemId` and the agent / prompt / run
+// ids are soft references (no FK).
+model AiActivityRun {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields
+  runKey              String              @unique
+  consultationId      String?
+  encounterSeq        Int?
+  activityKind        AiActivityKind
+  status              AiActivityRunStatus
+  workflowSlug        String?
+  workflowVersion     Int?
+  workflowRunId       String?
+  nodeId              String?
+  agentId             String?
+  agentSlug           String?
+  agentVersion        Int?
+  promptTemplateId    String?
+  promptVersion       Int?
+  model               String?
+  provider            String?
+  deployment          AiDeploymentKind?
+  startedAt           DateTime
+  endedAt             DateTime?
+  durationMs          Int?
+  tokensIn            Int?
+  tokensOut           Int?
+  contextUsed         Int?
+  contextWindow       Int?
+  outputCap           Int?
+  stopReason          String?
+  budgetStrategy      String?
+  callIndex           Int?
+  callCount           Int?
+  costMicros          BigInt?
+  costBasis           AiCostBasis?
+  usageRequestId      String?
+  errorCode           String?
+  // The item + version this run produced (the "who made this" lookup).
+  contextItemId       String?
+  outputVersionNumber Int?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, consultationId, startedAt], name: "AiActivityRun_tenant_consultation_started_idx")
+  @@index([tenantId, workflowRunId], name: "AiActivityRun_tenant_workflowRun_idx")
+  @@index([tenantId, contextItemId, outputVersionNumber], name: "AiActivityRun_tenant_item_version_idx")
+  @@schema("core")
+}

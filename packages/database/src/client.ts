@@ -107,6 +107,20 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'AudioRecording',
   'SummaryMeta',
   'NamedEntity',
+  // Consultation record model: an encounter lives and dies with its
+  // consultation, and an approval snapshot is immutable (a DB trigger raises on
+  // UPDATE/DELETE) — neither carries a `resourceStatus` column.
+  'ConsultationEncounter',
+  'ConsultationApproval',
+  // Clinician feedback is append-only (a changed rating supersedes, never
+  // deletes) and its daily rollup is derived and replaced per day — no
+  // `resourceStatus` on either. `ConsultationAttachment` keeps the standard
+  // lifecycle and is deliberately NOT here.
+  'ConsultationFeedback',
+  'ConsultationFeedbackDailyRollup',
+  // AiActivityRun is append-only per-activity run telemetry (ids and numbers
+  // only), the AgentTrajectoryStep posture: no `resourceStatus`.
+  'AiActivityRun',
   // TranscriptionJob tracks lifecycle via its own `status` enum (QUEUED →
   // COMPLETED/FAILED/CANCELLED) and has no `resourceStatus` column, so the
   // soft-delete filter would otherwise emit an invalid Prisma `where`.

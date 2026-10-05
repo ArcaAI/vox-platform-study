@@ -39,10 +39,35 @@ model Consultation {
   // legacy (tenantId, patientId, appointmentDate, doctorId) key applies.
   externalRef String?
 
-  // Lifecycle state — typed promotion of the legacy free-form
-  // `metadata.status` JSON. Backfilled non-destructively; the attestation
-  // gate transitions PENDING_REVIEW → SIGNED.
+  // Lifecycle state — where the consultation is (seven states, see
+  // `ConsultationStatus`). Approval moves STOPPED → APPROVED.
   status ConsultationStatus @default(OPEN)
+
+  // Background processing — what the platform is doing, independent of
+  // `status`. `processingReason` is a machine code (never free text);
+  // `processingRefs` are the ids of the in-flight jobs; `processingPrior` is the
+  // value to restore when an overlapping job finishes. These and the activity /
+  // cursor columns below are written WITHOUT bumping `_version`.
+  processing          ConsultationProcessing  @default(IDLE)
+  processingReason    String?
+  processingRefs      String[]                @default([])
+  processingPrior     ConsultationProcessing?
+  processingUpdatedAt DateTime?
+
+  // Last clinician / capture activity — drives auto-close.
+  lastActivityAt DateTime @default(now())
+  reopenCount    Int      @default(0)
+
+  // Record cursors: the current encounter (visit), the last allocated
+  // transcript segment sequence, and the consultation-wide recording timeline
+  // position in milliseconds.
+  currentEncounterSeq Int @default(1)
+  segmentSeqHead      Int @default(0)
+  recordingCursorMs   Int @default(0)
+
+  approvedAt   DateTime?
+  closedAt     DateTime?
+  closedReason ConsultationClosedReason?
 
   // health-flag projection on the active phase, not a state of its
   // own — the reference model's `Degraded` state is REJECTED (see
@@ -79,8 +104,13 @@ model Consultation {
   // generated for this consultation (virtual relation; FK lives on
   // DocumentSection).
   DocumentSections DocumentSection[]
+  Encounters       ConsultationEncounter[]
+  Approvals        ConsultationApproval[]
 
-  // Indexes (no unique constraint - allows multiple visits same doctor/day)
+  // Indexes. The OPEN KEY's uniqueness — one non-closed consultation per
+  // (tenantId, doctorId, patientId, departmentId; null-safe) — is the partial
+  // expression index `Consultation_openKey_uq` in the migration (Prisma cannot
+  // express it); `Consultation_openKey_idx` below is its lookup twin.
   @@index([tenantId], name: "Consultation_tenantId_idx")
   @@index([patientId], name: "Consultation_patientId_idx")
   @@index([appointmentDate], name: "Consultation_appointmentDate_idx")
@@ -100,6 +130,88 @@ model Consultation {
   /// TASK-1020 D-2 — the encounter key `open` looks up. The UNIQUENESS is the partial index
   /// `Consultation_encounterKey_uq` in the migration (WHERE "externalRef" IS NOT NULL).
   @@index([tenantId, patientId, doctorId, externalRef], name: "Consultation_encounterKey_idx")
+  // The auto-close sweep and the stale-recording pause scan.
+  @@index([status, lastActivityAt], name: "Consultation_status_lastActivity_idx")
+  @@index([tenantId, doctorId, patientId, departmentId], name: "Consultation_openKey_idx")
+  @@schema("core")
+}
+
+// =============================================================================
+// CONSULTATION ENCOUNTER (one row per visit of a consultation)
+// =============================================================================
+
+// A consultation spans one or more encounters; `seq` starts at 1 and
+// `Consultation.currentEncounterSeq` names the open one. `externalRef` is the
+// caller's own id for the visit (an EMR event id); its uniqueness within a
+// consultation is the partial index `ConsultationEncounter_externalRef_uq` in
+// the migration. No soft delete: an encounter lives and dies with its
+// consultation.
+model ConsultationEncounter {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  consultationId String
+  Consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+  seq              Int
+  visitType        String
+  externalRef      String?
+  startedAt        DateTime  @default(now())
+  endedAt          DateTime?
+  // Position of this encounter on the consultation-wide recording timeline (ms).
+  recordingStartMs Int?
+  recordingEndMs   Int?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([consultationId, seq], map: "ConsultationEncounter_consultation_seq_key")
+  @@index([tenantId], name: "ConsultationEncounter_tenantId_idx")
+  @@index([consultationId], name: "ConsultationEncounter_consultationId_idx")
+  @@index([tenantId, externalRef], name: "ConsultationEncounter_tenant_externalRef_idx")
+  @@schema("core")
+}
+
+// =============================================================================
+// CONSULTATION APPROVAL (immutable approval snapshot)
+// =============================================================================
+
+// Written once when a clinician approves a consultation. `snapshot` lists the
+// approved record by reference only — `{items:[{contextItemId, type,
+// versionNumber, encounterSeq}]}`, never content — and `snapshotHash` pins it.
+// Immutable: a trigger in the migration raises on UPDATE and DELETE. A later
+// re-approval (after a reopen) is a new row.
+model ConsultationApproval {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  consultationId String
+  Consultation   Consultation @relation(fields: [consultationId], references: [id])
+
+  approvedBy          String
+  approvedAt          DateTime @default(now())
+  consultationVersion Int
+  encounterCount      Int
+  snapshot            Json     @db.JsonB
+  snapshotHash        String
+  attestationHash     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId], name: "ConsultationApproval_tenantId_idx")
+  @@index([consultationId, approvedAt], name: "ConsultationApproval_consultation_approvedAt_idx")
   @@schema("core")
 }
 
@@ -181,6 +293,25 @@ model ContextItem {
   // Soft reference (no FK), the same convention `kindKey` above uses.
   documentKey            String?
 
+  // Consultation record model. `encounterSeq` names the encounter the item
+  // belongs to. Transcript segments carry their consultation-wide `segmentSeq`,
+  // the idempotency key `segmentKey` ("<sttSessionId>:<utteranceIndex>", unique
+  // per consultation via the partial index `ContextItem_segmentKey_uq` in the
+  // migration), their position on the recording timeline (`t0Ms`/`t1Ms`), the
+  // speaker label and when it was captured. `occurredAt` is the clinical time
+  // of the item (the timeline sort key); it equals `createdAt` unless the
+  // writer knows better. One live FULL_TRANSCRIPT per consultation and one live
+  // FACT_LEDGER / ENCOUNTER_RECAP per encounter are partial unique indexes in
+  // the migration too.
+  encounterSeq Int?
+  segmentSeq   Int?
+  segmentKey   String?
+  t0Ms         Int?
+  t1Ms         Int?
+  speaker      String?
+  capturedAt   DateTime?
+  occurredAt   DateTime  @default(now())
+
   // Qdrant sync status (for semantic search). RESERVED, NO WRITER
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
@@ -239,6 +370,10 @@ model ContextItem {
   @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")
   // Tenant-leading composite for per-consultation reads
   @@index([tenantId, consultationId, type], name: "ContextItem_tenant_consultation_type_idx")
+  // Consultation timeline, segment reads and per-encounter reads.
+  @@index([consultationId, occurredAt, id], name: "ContextItem_consultation_occurred_idx")
+  @@index([consultationId, type, segmentSeq], name: "ContextItem_consultation_type_segmentSeq_idx")
+  @@index([consultationId, encounterSeq], name: "ContextItem_consultation_encounter_idx")
   @@schema("core")
 }
 
@@ -289,6 +424,14 @@ model AudioRecording {
 
   // Recording timestamp (when the audio was recorded, not created in system)
   recordedAt DateTime?
+
+  // Consultation record model: the encounter this part belongs to, where it
+  // starts on the consultation-wide recording timeline (ms), the STT session
+  // that captured it and the stored codec (e.g. "opus").
+  encounterSeq     Int?
+  recordingStartMs Int?
+  sttSessionId     String?
+  codec            String?
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -415,6 +558,17 @@ model SummaryMeta {
   // redaction ran (or a pre- history).
   redactionApplied           Boolean?
   encryptedRedactionManifest Bytes?
+
+  // Note coverage + budget provenance. `coverageStatus` is complete | gaps |
+  // unchecked; the coverage report DETAIL is Vault-Transit (hope-phi)
+  // ciphertext sharing `keyVersion` above. `budgetStrategy` names how the note
+  // input was fitted to the model's context; `noteInputDigest` is the digest of
+  // the note plan's inputs (ids + versions only).
+  coverageStatus          String?
+  coverageGapCount        Int?
+  encryptedCoverageReport Bytes?
+  budgetStrategy          String?
+  noteInputDigest         String?
 
   // Timestamps
   createdAt DateTime @default(now())

@@ -245,6 +245,13 @@ enum ContextItemType {
   // The tenant-facing discriminator is `ContextItem.kindKey`; this enum value
   // only says "the content is structured", never WHICH structure.
   STRUCTURED
+  // Consultation record model. A transcript is a sequence of versioned
+  // segments plus one rebuilt full transcript per consultation; the fact ledger
+  // and its rendered recap are one item per encounter.
+  TRANSCRIPT_SEGMENT // One finalized utterance (keyed by `segmentKey`)
+  FULL_TRANSCRIPT // The whole consultation's transcript, rebuilt from segments
+  FACT_LEDGER // Per-encounter structured fact ledger (encrypted JSON)
+  ENCOUNTER_RECAP // Per-encounter recap rendered from the ledger
 
   @@schema("core")
 }
@@ -289,32 +296,41 @@ enum WorkflowDefinitionStatus {
   @@schema("core")
 }
 
-// First-class consultation lifecycle state machine.
-// Previously the lifecycle lived in the free-form `Consultation.metadata.status`
-// JSON; this enum promotes it to a typed column so the clinical-documentation
-// harness can gate transitions (e.g. PENDING_REVIEW → SIGNED on attestation).
+// Consultation lifecycle — WHERE the consultation is. Seven states; the old
+// twelve-state vocabulary was mapped onto these by a type swap in the lifecycle
+// migration (PRIMED/REOPENED → OPEN; DRAINING/DRAFT_PENDING_SENSORS/
+// PENDING_REVIEW → STOPPED; SIGNED → APPROVED; TIMED_OUT → CLOSED_INCOMPLETE;
+// CLOSED → CLOSED_COMPLETE). WHAT the platform is doing in the background is a
+// separate axis, `ConsultationProcessing` below.
 enum ConsultationStatus {
-  OPEN // Active consultation, not yet under review
+  OPEN // Open, nothing captured yet in the current encounter
   RECORDING // Audio capture in progress
-  DRAFT_PENDING_SENSORS // Draft delivered early (visible/readable); assurance (inferential) pass running concurrently. Cannot be signed until it lands.
-  PENDING_REVIEW // Summary generated + assurance complete + gate verdict recorded; awaiting clinician review/attestation
-  SIGNED // Clinician-attested (immutable signed note committed)
-  CLOSED // SUPERSEDED — never a legal `transitionTo` target. Split into CLOSED_COMPLETE /
-  // CLOSED_INCOMPLETE below (owner decision, before this
-  // migration ever reached a live environment. Retained only because Postgres cannot drop an
-  // enum value; deliberately and permanently dead, unlike the pre-ticket A-46 finding this
-  // ticket otherwise closes.
-  REOPENED // Reopened after being closed
-  // session state machine additions. Appended (never renumbered/
-  // renamed) per `ALTER TYPE … ADD VALUE` migration discipline.
-  PRIMED // Consent asserted; the checkpoint RECORDING now requires
-  DRAINING // Capture stopped, not yet drafted — replaces the old revert-to-OPEN
-  TIMED_OUT // Gate SLA exhausted; terminal absent an explicit reopening, visibly unsigned
-  // follow-up: owner decision replacing the speculative "ABANDONED" state
-  // ( Q1) — a closed consultation now types whether a human ever gave clinical
-  // feedback (signed) before it closed. See
-  CLOSED_COMPLETE // Closed after SIGNED — a human attested the note before closure
-  CLOSED_INCOMPLETE // Closed from TIMED_OUT (or the session-timeout sweep) with no signature ever recorded
+  PAUSED // Capture paused (by the clinician, or automatically when no audio arrives)
+  STOPPED // Capture stopped; the note can be produced, reviewed and approved
+  APPROVED // A clinician approved the record (an immutable approval snapshot exists)
+  CLOSED_COMPLETE // Closed after approval
+  CLOSED_INCOMPLETE // Closed without approval (manual close or auto-close); reopenable
+
+  @@schema("core")
+}
+
+// Background processing on a consultation, independent of `ConsultationStatus`.
+enum ConsultationProcessing {
+  IDLE
+  FINALIZING_TRANSCRIPT // Waiting for the final transcript after a stop
+  SUMMARIZING // The note is being generated or assured
+  PROCESSING_ATTACHMENT // An uploaded attachment is being transcribed / extracted
+  AWAITING_REVIEW // A draft is ready and waits for the clinician
+  FAILED // The last background step failed; `processingReason` says why
+
+  @@schema("core")
+}
+
+// Why a consultation closed.
+enum ConsultationClosedReason {
+  AUTO // Closed by the auto-close sweep
+  MANUAL // Closed by a user
+  APPROVED // Closed after approval
 
   @@schema("core")
 }
@@ -1096,6 +1112,90 @@ enum DnaSampleSource {
   EDIT
   SIGNOFF
   INGEST
+
+  @@schema("core")
+}
+
+// =============================================================================
+// CONSULTATION ATTACHMENTS + FEEDBACK
+// =============================================================================
+
+enum ConsultationAttachmentKind {
+  DOCUMENT
+  IMAGE
+  AUDIO
+  CASE_NOTE
+
+  @@schema("core")
+}
+
+// ATTACHMENT = part of the consultation record; FEEDBACK = evidence attached to a feedback entry.
+enum ConsultationAttachmentPurpose {
+  ATTACHMENT
+  FEEDBACK
+
+  @@schema("core")
+}
+
+enum ConsultationAttachmentStatus {
+  INTENT
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+  EXPIRED
+
+  @@schema("core")
+}
+
+// CLEARED withdraws an earlier rating (it is a fact of its own, never a delete).
+enum FeedbackRating {
+  UP
+  DOWN
+  CLEARED
+
+  @@schema("core")
+}
+
+enum FeedbackTargetKind {
+  NOTE
+  SECTION
+  SEGMENT
+  ENTITY
+  TRANSCRIPT
+  RECAP
+
+  @@schema("core")
+}
+
+// =============================================================================
+// AI ACTIVITY RUN RECORD
+// =============================================================================
+
+// Which AI activity an `AiActivityRun` row records.
+enum AiActivityKind {
+  TRANSCRIBE_STREAM
+  TRANSCRIBE_BATCH
+  NER
+  LIVE_SUMMARY
+  PRE_SUMMARY
+  FACT_LEDGER
+  NOTE_GENERATE
+  NOTE_SECTION_GROUP
+  NOTE_SECTION_REGEN
+  NOTE_REPAIR
+  SENSOR
+  ATTACHMENT_EXTRACT
+
+  @@schema("core")
+}
+
+enum AiActivityRunStatus {
+  OK
+  ERROR
+  DEGRADED
+  TIMEOUT
+  SKIPPED
 
   @@schema("core")
 }
