@@ -286,6 +286,25 @@ class RunLimits(BaseModel):
     result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
 
 
+class LiveAudioBinding(BaseModel):
+    """TASK-1042 C7 — the LIVE STT session a standalone run is bound to (server-resolved).
+
+    Like :class:`RunSubject` this is a channel the GATEWAY fills, and only after its run-start
+    checks passed (C3: same tenant, same starting credential, live, unbound, the graph's own ASR
+    agent). Nothing in a caller's ``payload`` can create it. The walk waits on it before its first
+    stage (OD-4a) and the ASR node then reads the session's transcript once (C5).
+
+    ``max_wait_seconds`` is the gateway-resolved ``workflowRuns.liveAudioMaxSeconds``, already
+    clamped tighten-only to ``caps.LIVE_AUDIO_MAX_WAIT_SECONDS`` by the dispatcher (and re-clamped
+    by the workflow, which never trusts its input to have been).
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    stt_session_id: str = Field(alias="sttSessionId", min_length=1)
+    max_wait_seconds: int | None = Field(default=None, alias="maxWaitSeconds", gt=0)
+
+
 class InterpreterInput(BaseModel):
     """WorkflowInterpreter's ``@workflow.run`` input.
 
@@ -329,6 +348,11 @@ class InterpreterInput(BaseModel):
     # Absent on a run the gateway started before the injection: its terminal append then passes
     # `'0'` and the gateway's own `EXPIRE … NX` backstop starts the clock.
     retention_seconds: int | None = None
+    # TASK-1042 C7 / OD-4a, additive-optional. The live STT session this run is bound to. `None`
+    # on every run started before TASK-1042 (and on every run without live audio), which is what
+    # keeps those histories deserialising and replaying unchanged: the walk's live-audio wait is
+    # guarded on this field FIRST, so `workflow.patched` is never consulted for them.
+    live_audio: LiveAudioBinding | None = None
 
 
 class InterpreterResult(BaseModel):
@@ -974,6 +998,35 @@ class LiveOutputsResult(BaseModel):
     ended_at: str | None = Field(default=None, alias="endedAt")
     outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# TASK-1042 OD-4a — the LIVE AUDIO wait.
+# ---------------------------------------------------------------------------
+
+#: What the gateway says about a run-bound STT session (C5 ``state``), plus ``unbound``: the
+#: harness-internal name for a C5 404 (not bound to this run, another tenant, unknown). The wait
+#: stops on every state but ``live``; the ASR node re-reads C5 and decides what each one means.
+LiveAudioState = Literal["live", "ended", "truncated", "timeout", "unbound"]
+
+
+class LiveAudioStateRequest(BaseModel):
+    """``interpreter.load_live_audio_state`` — is the run's bound session still live?"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    stt_session_id: str
+
+
+class LiveAudioStateResult(BaseModel):
+    """The STATE only. The transcript is never carried here: this result is recorded in the
+    run's history on every poll, and the transcript is PHI the ASR node reads once, itself."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: LiveAudioState = "live"
 
 
 class ContextPathRequest(BaseModel):
