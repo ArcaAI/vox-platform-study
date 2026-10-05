@@ -8,6 +8,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { NotFoundError } from '../errors';
 import { RunAudioFieldError, resolveStreamAudioField, runWithAudio, type RunWithAudioDeps } from '../run-with-audio';
 
 const STREAM_AUDIO = { type: 'object', properties: { sttSessionId: { type: 'string', minLength: 1 } } };
@@ -170,6 +171,22 @@ describe('runWithAudio', () => {
     expect(socket.finalize).not.toHaveBeenCalled();
     expect(order).toEqual(['socket.close', 'session.close']);
     expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('finalize resolves when the session is already gone after the socket finalize (the gateway answers 404)', async () => {
+    // Live proof 2026-10-05: the socket `stop` ends the session server-side, so the DELETE that
+    // follows finds nothing. After a SUCCESSFUL finalize that is the expected end, not a failure.
+    const { deps } = makeDeps({ closeStreamSession: vi.fn(async () => Promise.reject(new NotFoundError({ message: 'Resource not found' }))) });
+    const { audio } = await runWithAudio(deps, 'live-note', {});
+
+    await expect(audio.finalize()).resolves.toBeUndefined();
+  });
+
+  it('a non-404 failure to close the session still surfaces from finalize', async () => {
+    const { deps } = makeDeps({ closeStreamSession: vi.fn(async () => Promise.reject(new Error('gateway down'))) });
+    const { audio } = await runWithAudio(deps, 'live-note', {});
+
+    await expect(audio.finalize()).rejects.toThrow('gateway down');
   });
 
   it('still closes the session when the socket finalize throws', async () => {
