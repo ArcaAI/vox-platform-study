@@ -46,7 +46,13 @@ export class ConsultationHistoryController {
     if (user?.id && consultation.doctorId === user.id) return;
 
     const ability = this.cls.get('userAbility') as AppAbility | undefined;
-    if (ability && this.policyEngine.can(ability, 'read', 'Consultation', { tenantId: this.cls.get('tenantId'), doctorId: consultation.doctorId } as Record<string, unknown>)) {
+    if (
+      ability &&
+      this.policyEngine.can(ability, 'read', 'Consultation', { tenantId: this.cls.get('tenantId'), doctorId: consultation.doctorId } as Record<
+        string,
+        unknown
+      >)
+    ) {
       return;
     }
     throw new ForbiddenException('You do not have access to this consultation');
@@ -73,7 +79,10 @@ export class ConsultationHistoryController {
   @Get(':id/encounters/:seq/recap')
   @RequiredScopes('consultation:session:read')
   @RequiredSvcScopes('svc:consultation:session:read')
-  @ApiOperation({ summary: 'Read the live recap of one encounter', description: 'Display-only: the recap the note composer was handed for that encounter. Audited.' })
+  @ApiOperation({
+    summary: 'Read the live recap of one encounter',
+    description: 'Display-only: the recap the note composer was handed for that encounter. Audited.',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'seq', description: 'Encounter sequence', type: Number })
   @ApiResponse({ status: 200, type: EncounterRecapResponse })

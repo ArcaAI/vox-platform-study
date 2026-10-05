@@ -38,9 +38,9 @@ function history() {
 describe('route metadata', () => {
   it('the admin controller forbids API keys and needs the admin service scope', () => {
     expect(meta(API_KEY_FORBIDDEN, AdminConsultationHistoryController)).toBeTruthy();
-    expect(JSON.stringify(Reflect.getMetadataKeys(AdminConsultationHistoryController).map((k) => meta(k, AdminConsultationHistoryController)))).toContain(
-      'svc:admin:consultation-admin:manage',
-    );
+    expect(
+      JSON.stringify(Reflect.getMetadataKeys(AdminConsultationHistoryController).map((k) => meta(k, AdminConsultationHistoryController))),
+    ).toContain('svc:admin:consultation-admin:manage');
     expect(meta('path', AdminConsultationHistoryController)).toBe('admin/consultations');
   });
 
@@ -50,7 +50,13 @@ describe('route metadata', () => {
       .filter((name) => name !== 'constructor')
       .map((name) => meta('path', proto[name as keyof typeof proto] as object));
     expect(paths.sort()).toEqual(
-      [':id/activity', ':id/items/:itemId/runs', ':id/items/:itemId/versions', ':id/items/:itemId/versions/:n', ':id/items/:itemId/versions/:n/diff'].sort(),
+      [
+        ':id/activity',
+        ':id/items/:itemId/runs',
+        ':id/items/:itemId/versions',
+        ':id/items/:itemId/versions/:n',
+        ':id/items/:itemId/versions/:n/diff',
+      ].sort(),
     );
   });
 

@@ -65,8 +65,12 @@ test.describe('Consultation history — gate and cross-tenant (404-over-403)', (
       expect(response.status(), url).not.toBe(403);
       expect(response.status(), url).toBe(404);
     }
-    expect((await request.get(`/api/v1/consultations/${real}/history`, { headers: { Authorization: `Bearer ${foreignAdminToken}` } })).status()).toBe(404);
-    expect((await request.get(`/api/v1/consultations/${real}/encounters/1/recap`, { headers: { Authorization: `Bearer ${foreignAdminToken}` } })).status()).toBe(404);
+    expect((await request.get(`/api/v1/consultations/${real}/history`, { headers: { Authorization: `Bearer ${foreignAdminToken}` } })).status()).toBe(
+      404,
+    );
+    expect(
+      (await request.get(`/api/v1/consultations/${real}/encounters/1/recap`, { headers: { Authorization: `Bearer ${foreignAdminToken}` } })).status(),
+    ).toBe(404);
   });
 
   test('the business routes answer 404 for an unknown consultation', async ({ request }) => {

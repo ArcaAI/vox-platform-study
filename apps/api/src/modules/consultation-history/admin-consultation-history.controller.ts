@@ -71,7 +71,10 @@ export class AdminConsultationHistoryController {
 
   // AUTH-NOTE: see getActivity — the service gate is the real one.
   @Get(':id/items/:itemId/versions/:n')
-  @ApiOperation({ summary: 'Read one version of an item, decrypted', description: 'The version`s content, decrypted from Vault-Transit ciphertext. Audited.' })
+  @ApiOperation({
+    summary: 'Read one version of an item, decrypted',
+    description: 'The version`s content, decrypted from Vault-Transit ciphertext. Audited.',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'itemId', description: 'Context item ID' })
   @ApiParam({ name: 'n', description: 'Version number', type: Number })
@@ -110,18 +113,17 @@ export class AdminConsultationHistoryController {
 
   // AUTH-NOTE: see getActivity — the service gate is the real one.
   @Get(':id/items/:itemId/runs')
-  @ApiOperation({ summary: 'List the AI runs behind an item version', description: 'The run that produced `version` (the current one when absent); empty when none is recorded. Audited.' })
+  @ApiOperation({
+    summary: 'List the AI runs behind an item version',
+    description: 'The run that produced `version` (the current one when absent); empty when none is recorded. Audited.',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'itemId', description: 'Context item ID' })
   @ApiResponse({ status: 200, type: ActivityRunRecordResponse, isArray: true })
   @ApiResponse({ status: 400, description: 'Invalid `version`.' })
   @ApiResponse({ status: 403, description: 'Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`).' })
   @ApiResponse({ status: 404, description: 'No such consultation or item in this tenant.' })
-  async listRuns(
-    @Param('id') id: string,
-    @Param('itemId') itemId: string,
-    @Query() query: ItemRunsQuery,
-  ): Promise<ActivityRunRecordResponse[]> {
+  async listRuns(@Param('id') id: string, @Param('itemId') itemId: string, @Query() query: ItemRunsQuery): Promise<ActivityRunRecordResponse[]> {
     return (await this.history.listItemRuns(id, itemId, query.version, ADMIN)) as ActivityRunRecordResponse[];
   }
 }
