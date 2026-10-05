@@ -212,6 +212,7 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
         resourceId: event.consultationId,
         resourceType: ResourceType.Consultation,
+        createdAt: new Date(event.at),
         data: {
           action: 'lifecycle',
           event: event.type,

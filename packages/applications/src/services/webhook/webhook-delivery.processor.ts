@@ -245,7 +245,8 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           // EVERY sys-event job before any delivery was enqueued, so no webhook
           // in the platform ever fired. Re-wrap so both shapes work (a `Date`
           // survives the round trip when a caller invokes this in-process).
-          occurredAt: new Date(event.createdAt).toISOString(),
+          // Plain broadcasts (BaseService.broadcastSysEvent) carry no createdAt; fall back to now.
+          occurredAt: (event.createdAt ? new Date(event.createdAt) : new Date()).toISOString(),
           ...lifecycleDiscriminator(event.data),
         };
 

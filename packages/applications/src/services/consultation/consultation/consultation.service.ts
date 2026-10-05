@@ -1338,7 +1338,6 @@ export class ConsultationService extends BaseService implements IConsultationSer
    */
   private async appendEncounter(open: ConsultationEntity, input: OpenEpisodeInput): Promise<ConsultationResponse> {
     const { tenantId, request, openContext, declaredLanguageMode, externalRef, metadata } = input;
-    const previousVersion = open.version;
     // A second encounter is a follow-up by definition: the stated visit type when there is one,
     // otherwise `revisit`.
     const visitType = resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, open.id);
@@ -1348,16 +1347,6 @@ export class ConsultationService extends BaseService implements IConsultationSer
       actor: input.userId ?? 'system',
     });
 
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: consultation.id,
-      data: {
-        action: 'lifecycle',
-        event: 'encounter_appended',
-        encounterSeq: consultation.currentEncounterSeq,
-        previousVersion,
-        newVersion: consultation.version,
-      },
-    });
     this.emitLifecycle(consultation, 'encounter_appended');
 
     await this.recordOpenConsent(consultation);
