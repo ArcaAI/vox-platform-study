@@ -1,5 +1,6 @@
 import { CursorPage } from '../../common/cursorPagination';
 import { ApproveRunGateInput, RunGateStateResponse } from './dto';
+import type { RunPrincipal } from './run-principal-access';
 import {
   GetRunTraceOptions,
   ListWorkflowRunsFilters,
@@ -49,6 +50,14 @@ export interface IWorkflowRunService {
    * started before fingerprints existed). Cross-tenant id throws `NotFoundException`.
    */
   getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null>;
+
+  /**
+   * TASK-1038 OD-35 — the run (as {@link getRun}) together with the principal recorded as having
+   * started it (`_metadata.startedBy`), or `startedBy: null` when the row carries none (a webhook
+   * run, a row written before OD-35). ONE row read, for the business-plane reads that must bind to
+   * the starter. Cross-tenant / unknown id throws {@link workflowRunNotFound}.
+   */
+  getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null }>;
 
   /**
    * TASK-1022 A2 — close the row of a run another run superseded, without rewriting history: a

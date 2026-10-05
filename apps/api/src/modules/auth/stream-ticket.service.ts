@@ -19,7 +19,7 @@
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { IRedisCacheService } from '@arcaai/applications';
+import { IRedisCacheService, isRunReader, type RunReader } from '@arcaai/applications';
 
 export const STREAM_TICKET_KEY_PREFIX = 'stream-ticket:';
 export const STREAM_TICKET_TTL_SECONDS = 30;
@@ -40,6 +40,13 @@ export interface IssueTicketInput {
    * receive non-impersonated tickets as before.
    */
   impersonatedBy?: string | null;
+  /**
+   * TASK-1038 OD-35 — on a RUN ticket (`workflow_run:` / `agent_run:`), the run reader the mint
+   * proved (`RunPrincipalAccessService.resolveReader`). Restored on CLS `runReader` at redemption,
+   * because the restored `user` is only the bound human — for an API key, not the principal the
+   * run is bound to. Omitted on every other ticket kind.
+   */
+  runReader?: RunReader;
 }
 
 export interface IssuedTicket {
@@ -55,6 +62,8 @@ export interface StoredTicket {
   exp: number; // epoch milliseconds
   /** Mirrors `IssueTicketInput.impersonatedBy`. Null when the request was not impersonated. */
   impersonatedBy: string | null;
+  /** Mirrors `IssueTicketInput.runReader`. ABSENT (not null) on a ticket minted without one. */
+  runReader?: RunReader;
 }
 
 @Injectable()
@@ -72,6 +81,7 @@ export class StreamTicketService {
       scope: input.scope,
       exp: expiresAt,
       impersonatedBy: input.impersonatedBy ?? null,
+      ...(input.runReader ? { runReader: input.runReader } : {}),
     };
 
     await this.cache.setex(this.key(ticket), STREAM_TICKET_TTL_SECONDS, JSON.stringify(payload));
@@ -100,6 +110,8 @@ export class StreamTicketService {
           // Backward-compatible: tickets minted before impersonation support lack this
           // field; default to null so non-impersonated requests still work.
           impersonatedBy: typeof candidate.impersonatedBy === 'string' ? candidate.impersonatedBy : null,
+          // A malformed reader is DROPPED, never trusted: the read then falls back to the restored user.
+          ...(isRunReader(candidate.runReader) ? { runReader: candidate.runReader } : {}),
         };
       }
     } catch (error) {

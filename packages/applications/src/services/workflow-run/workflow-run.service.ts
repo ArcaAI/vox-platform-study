@@ -23,6 +23,7 @@ import {
   WorkflowRunResponse,
 } from './dto';
 import { IWorkflowRunService } from './IWorkflowRunService';
+import { readRunStartedBy, type RunPrincipal } from './run-principal-access';
 import { WorkflowRunDtoMapper } from './workflow-run.dto.mapper';
 
 /**
@@ -49,6 +50,14 @@ export function interpreterSessionId(runId: string): string {
  * `workflows/{slug}/runs/{runId}/…` — the same row, unreachable by convention (TASK-933 H3-5).
  * Declared here, next to its sibling, so the two can no longer drift apart in silence.
  */
+/**
+ * The 404 an unknown or cross-tenant run id answers with — and, under TASK-1038 OD-35, the SAME
+ * 404 a run another principal started answers with, so the two can never be told apart.
+ */
+export function workflowRunNotFound(runId: string): NotFoundException {
+  return new NotFoundException(`WorkflowRun ${runId} not found`);
+}
+
 export const CONSULTATION_DISPATCH_SESSION_PREFIX = 'wf-';
 export function consultationDispatchSessionId(runId: string): string {
   return `${CONSULTATION_DISPATCH_SESSION_PREFIX}${runId}`;
@@ -226,6 +235,11 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
   async getRun(tenantId: string, runId: string): Promise<WorkflowRunResponse> {
     const entity = await this.findRunOrThrow(tenantId, runId);
     return WorkflowRunDtoMapper.toResponse(entity);
+  }
+
+  async getRunForReader(tenantId: string, runId: string): Promise<{ run: WorkflowRunResponse; startedBy: RunPrincipal | null }> {
+    const entity = await this.findRunOrThrow(tenantId, runId);
+    return { run: WorkflowRunDtoMapper.toResponse(entity), startedBy: readRunStartedBy(entity.metaData) };
   }
 
   async getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null> {
@@ -524,7 +538,7 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
   private async findRunOrThrow(tenantId: string, runId: string): Promise<WorkflowRunEntity> {
     const entity = await this.findRunByConventionalSessionKeys(tenantId, runId);
     if (!entity) {
-      throw new NotFoundException(`WorkflowRun ${runId} not found`);
+      throw workflowRunNotFound(runId);
     }
     return entity;
   }

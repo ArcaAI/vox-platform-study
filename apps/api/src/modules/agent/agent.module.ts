@@ -6,6 +6,7 @@ import {
   CommonServiceModule,
   EntitlementsServiceModule,
   MediaServiceModule,
+  RunPrincipalAccessService,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
   TenantBucketServiceModule,
@@ -57,7 +58,10 @@ import { AgentRunService } from './agent-run.service';
     // synthesis is stored in (`IBlobStorageService` itself is @Global).
     TenantBucketServiceModule,
   ],
-  providers: [TenantSettingsService, AgentRunService],
+  // TASK-1038 OD-35 — `RunPrincipalAccessService` binds agent run reads to the starting principal.
+  // Provided LOCALLY (it needs only the global `ClsService` and `UserRoleAssignmentRepository` from
+  // `CoreDatabaseModule` above) rather than importing the whole `WorkflowRunServiceModule`.
+  providers: [TenantSettingsService, AgentRunService, RunPrincipalAccessService],
   controllers: [AgentController],
 })
 export class AgentModule {}

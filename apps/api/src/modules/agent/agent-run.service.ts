@@ -9,7 +9,11 @@ import {
   WORKFLOW_RUNS_EVENT_RETENTION_HOURS_KEY,
   WORKFLOW_RUNS_TERMINAL_CHECK_SECONDS_KEY,
   readPersistedRunResult,
+  principalScopedIdempotencyKey,
+  readRunStartedBy,
+  RUN_STARTED_BY_KEY,
   type PersistedRunResult,
+  type RunPrincipal,
 } from '@arcaai/applications';
 import { WorkflowRunEntity, WorkflowRunFactory, WorkflowRunKind, WorkflowRunRepository, WorkflowRunStatus, generateId } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -49,6 +53,11 @@ export interface AgentRunState {
   error: RunError | null;
   /** sha-256 of the canonical request body, when the run was started with an `Idempotency-Key`. */
   bodyHash: string | null;
+  /**
+   * TASK-1038 OD-35 — the principal that started the run (`_metadata.startedBy`); every read of
+   * the run is bound to it. `null` on a row written before OD-35.
+   */
+  startedBy: RunPrincipal | null;
 }
 
 /** What one execution of the agent produced. */
@@ -72,6 +81,12 @@ export interface StartAgentRunInput {
   task: AgentRunTask;
   body: unknown;
   idempotencyKey?: string;
+  /**
+   * TASK-1038 OD-35 — who is starting the run (the API key, the service account, or the human of
+   * a JWT). Recorded on the row, and it scopes `idempotencyKey`: two principals sending the same
+   * key start two runs.
+   */
+  principal?: RunPrincipal | null;
   execute: AgentRunExecutor;
 }
 
@@ -162,6 +177,7 @@ export function agentRunStateOf(entity: WorkflowRunEntity): AgentRunState {
     result,
     error: code && (status === 'FAILED' || status === 'TIMED_OUT') ? { code, message: runErrorMessage(code) } : null,
     bodyHash: typeof bodyHash === 'string' ? bodyHash : null,
+    startedBy: readRunStartedBy(meta),
   };
 }
 
@@ -221,8 +237,14 @@ export class AgentRunService {
    * spend): a retry of an accepted request must reach its run, never a meter it already passed.
    * A different body under the key is the 409 `IDEMPOTENCY_KEY_REUSED`.
    */
-  async joinExisting(input: { tenantId: string; slug: string; idempotencyKey: string; body: unknown }): Promise<AgentRunState | null> {
-    const runId = deterministicAgentRunId(input.tenantId, input.slug, input.idempotencyKey);
+  async joinExisting(input: {
+    tenantId: string;
+    slug: string;
+    idempotencyKey: string;
+    body: unknown;
+    principal?: RunPrincipal | null;
+  }): Promise<AgentRunState | null> {
+    const runId = deterministicAgentRunId(input.tenantId, input.slug, principalScopedIdempotencyKey(input.principal ?? null, input.idempotencyKey));
     const existing = await this.runs.findAgentRun(input.tenantId, runId);
     return existing ? this.join(existing, input.slug, agentRunBodyHash(input.body)) : null;
   }
@@ -242,7 +264,11 @@ export class AgentRunService {
 
   async start(input: StartAgentRunInput): Promise<{ state: AgentRunState; created: boolean }> {
     const bodyHash = input.idempotencyKey !== undefined ? agentRunBodyHash(input.body) : null;
-    const runId = input.idempotencyKey !== undefined ? deterministicAgentRunId(input.tenantId, input.slug, input.idempotencyKey) : generateId();
+    const principal = input.principal ?? null;
+    const runId =
+      input.idempotencyKey !== undefined
+        ? deterministicAgentRunId(input.tenantId, input.slug, principalScopedIdempotencyKey(principal, input.idempotencyKey))
+        : generateId();
 
     if (bodyHash !== null) {
       const existing = await this.runs.findAgentRun(input.tenantId, runId);
@@ -256,7 +282,11 @@ export class AgentRunService {
       agentVersionId: input.agentVersionId,
       agentVersionNumber: input.versionNumber,
       startedAt: new Date(),
-      metaData: { agentTask: input.task, ...(bodyHash !== null ? { requestBodyHash: bodyHash } : {}) },
+      metaData: {
+        agentTask: input.task,
+        ...(bodyHash !== null ? { requestBodyHash: bodyHash } : {}),
+        ...(principal ? { [RUN_STARTED_BY_KEY]: principal } : {}),
+      },
     });
     let saved: WorkflowRunEntity;
     try {
