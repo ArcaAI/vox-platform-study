@@ -1,6 +1,6 @@
 # TASK-1042 — Live audio into standalone workflow runs (business plane)
 
-**Status:** Pending. Plan written; owner decision round open (§4). No code before the owner's go.
+**Status:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
 **Type:** feature (gateway + harness + SDK + docs)
 **Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
 **Raised:** 2026-10-05, from owner decision **OD-37** (TASK-1036 §6.13). It reverses that row's
@@ -125,7 +125,9 @@ integrator                      gateway (apps/api)                         harne
   - `CreateStreamSessionRequest` gains `workflowSlug`. Zero runtime dependencies stay; Node ≥ 22 (`globalThis.WebSocket`).
 - **Console docs** (`run-guide.ts`): rewrite the three stream-audio snippets (vox, vox-node, raw HTTP+WS) to bind the session to the run; fix the `useRunAudio` signature; update the test.
 
-## 4. Decisions for the owner (OD round, 2026-10-05)
+## 4. Decisions (FINAL: owner approved 2026-10-05)
+
+The owner answered "approved, go after OD-35 merges". Every recommendation below is therefore final, as written.
 
 | Id | Question | Options | Recommendation |
 |---|---|---|---|
@@ -184,4 +186,5 @@ _Not started — awaiting the owner's decisions in §4._
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket raised from OD-37. Discovery by 3 sonnet scouts (gateway, harness, SDK); the orchestrator re-verified the sandbox ownership rule, the mirror's consultation-only resolution, the standalone `subject` limit, the harness `no_audio` path and the `useRunAudio` limit in code. Plan and OD-1..12 written. Status Pending. |
+| 2026-10-05 | **Owner approved** OD-1..12 as recommended. Start is gated on the OD-35 merge (OD-12). Status → Approved, waiting to start. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
