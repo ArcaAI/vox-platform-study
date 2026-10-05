@@ -45,7 +45,7 @@ describe('consultations client', () => {
     const calls = installFetchMock();
     await listConsultations();
     await listConsultations({ page: 1, limit: 25 });
-    await listConsultations({ page: 2, limit: 50, patientId: 'pt_44s1x9', doctorId: 'usr-vasquez', departmentId: 'dep-card', status: 'SIGNED' });
+    await listConsultations({ page: 2, limit: 50, patientId: 'pt_44s1x9', doctorId: 'usr-vasquez', departmentId: 'dep-card', status: 'APPROVED' });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/hope/admin/consultations',
       'GET /api/hope/admin/consultations?page=1&limit=25',
