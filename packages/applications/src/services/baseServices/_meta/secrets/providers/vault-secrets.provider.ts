@@ -608,6 +608,31 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   }
 
   /**
+   * Vault Transit BATCH encrypt via `batch_input`/`batch_results`: one round trip for many
+   * plaintexts, ciphertexts in the SAME order as the input. Fail-closed on missing results, a
+   * count mismatch, or a per-item error; the error message never includes material.
+   */
+  async encryptBatch(plaintexts: Buffer[], keyName?: string): Promise<string[]> {
+    if (plaintexts.length === 0) return [];
+    this.ensureBooted();
+    const key = keyName ?? this.config.transitKey;
+    const path = `${this.config.transitMount}/encrypt/${key}`;
+    const res = await this.client.write(path, {
+      batch_input: plaintexts.map((plaintext) => ({ plaintext: plaintext.toString('base64') })),
+    });
+    const results = (res as { data?: { batch_results?: Array<{ ciphertext?: string; error?: string }> } })?.data?.batch_results;
+    if (!results || results.length !== plaintexts.length) {
+      throw new Error('VaultSecretsProvider.encryptBatch: missing or mismatched batch_results from transit');
+    }
+    return results.map((r, i) => {
+      if (r.error || !r.ciphertext) {
+        throw new Error(`VaultSecretsProvider.encryptBatch: transit failed to encrypt item ${i}`);
+      }
+      return r.ciphertext;
+    });
+  }
+
+  /**
    * Vault Transit BATCH decrypt. Decrypts many ciphertexts in
    * a single round-trip via Transit's `batch_input`/`batch_results`, returning
    * plaintext buffers in the SAME order as the input. Powers repository

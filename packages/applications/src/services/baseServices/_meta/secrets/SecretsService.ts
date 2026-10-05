@@ -522,6 +522,22 @@ export class SecretsService implements OnModuleDestroy {
   }
 
   /**
+   * Vault Transit BATCH encrypt. Encrypts many plaintexts in ONE round-trip, returning the
+   * ciphertexts in input order (high-volume writers such as transcript segment ingest).
+   * Capability-checked like encrypt/decrypt: requires the Vault provider; throws fail-fast
+   * otherwise (the error omits material).
+   */
+  async encryptBatch(plaintexts: Buffer[], keyName?: string): Promise<string[]> {
+    const maybe = this.provider as unknown as {
+      encryptBatch?: (pts: Buffer[], k?: string) => Promise<string[]>;
+    };
+    if (typeof maybe.encryptBatch !== 'function') {
+      throw new Error('SecretsService.encryptBatch() requires Vault provider (SECRETS_PROVIDER=vault); current provider has no transit support');
+    }
+    return maybe.encryptBatch(plaintexts, keyName);
+  }
+
+  /**
    * Vault Transit BATCH decrypt. Decrypts many ciphertexts in
    * ONE round-trip, preserving input order. Powers repository decrypt-on-read
    * for multi-row/list reads. Capability-checked like encrypt/decrypt: requires

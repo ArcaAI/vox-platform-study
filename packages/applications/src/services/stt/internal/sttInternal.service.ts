@@ -1,10 +1,13 @@
 import {
+  AiActivityKind,
+  AiActivityRunStatus,
   AiCapability,
   AiCostBasis,
   AiDeploymentKind,
   AiUsageUnit,
   AudioRecordingFactory,
   AudioRecordingRepository,
+  ConsultationRepository,
   ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
@@ -52,6 +55,14 @@ import {
   InternalUpdateProgressRequest,
 } from './dto';
 import { languageResolutionFromWire } from '../../../common/language';
+import { type AiActivityRunInput, IAiActivityRunService, IAiActivityRunServiceToken } from '../../ai-activity-run/IAiActivityRunService';
+import {
+  IAttachmentTranscriptSink,
+  IAttachmentTranscriptSinkToken,
+  ITranscriptRecordService,
+  ITranscriptRecordServiceToken,
+} from '../../consultation/transcript-record/ITranscriptRecordService';
+import { sttBatchRunKey, sttStreamRunKey } from '../../consultation/transcript-record/transcript-record.keys';
 
 @Injectable()
 export class SttInternalService extends BaseService implements ISttInternalService {
@@ -90,6 +101,16 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     // existing positional unit fixtures keep working. Supplies the reclaim
     // bound `stt.batch.maxReclaims`; absent, the code default applies.
     @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
+    // The consultation record (segments → FULL_TRANSCRIPT, recording manifest). Optional +
+    // trailing like everything above; absent, a streaming finalize keeps the aggregate-only
+    // behaviour and emits `TranscriptionCreated` itself.
+    @Optional() @Inject(ITranscriptRecordServiceToken) private readonly transcriptRecord?: ITranscriptRecordService,
+    // Lets the attachments feature claim a batch transcription it started (uploaded audio).
+    @Optional() @Inject(IAttachmentTranscriptSinkToken) private readonly attachmentTranscriptSink?: IAttachmentTranscriptSink,
+    // Durable STT run records (TRANSCRIBE_STREAM / TRANSCRIBE_BATCH). Never fails the caller.
+    @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRuns?: IAiActivityRunService,
+    // Reads the consultation's current encounter for a recording part.
+    @Optional() private readonly consultationRepository?: ConsultationRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -318,6 +339,13 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       return this.createStreamingTranscript(dto, idempotencyKey);
     }
 
+    // An uploaded-audio attachment owns its own transcript item: when the sink claims the job,
+    // nothing is written here and no `TranscriptionCreated` (auto-summary) fires.
+    if (this.attachmentTranscriptSink && (await this.attachmentTranscriptSink.onBatchTranscript({ jobId: dto.jobId, text: dto.transcriptText }))) {
+      const claimed = await this.jobRepository.findByIdOrNull(dto.jobId);
+      return { contextItemId: claimed?.contextItemId ?? '' };
+    }
+
     // Find the job (batch path)
     const job = await this.jobRepository.findById(dto.jobId);
     if (!job) {
@@ -341,8 +369,9 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     });
 
     // Mark this row as THE aggregate transcript, so a per-segment client write
-    // can never be mistaken for it (see `transcript-provenance.ts`).
-    contextItem.metaData = { subType: STT_AGGREGATE_SUBTYPE };
+    // can never be mistaken for it (see `transcript-provenance.ts`). `sttRunKey` resolves the
+    // batch run that produced it.
+    contextItem.metaData = { subType: STT_AGGREGATE_SUBTYPE, sttRunKey: sttBatchRunKey(dto.jobId) };
 
     // Encrypt the transcript text into `encryptedContent` before
     // persistence — the plaintext `content` column was dropped by the PHI
@@ -434,6 +463,11 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         (sttSessionId === null || (item.metaData as Record<string, unknown> | undefined)?.sttSessionId === sttSessionId),
     );
     if (existingAggregate) {
+      // A redelivered finalize: the aggregate exists, but the record fold may not have
+      // happened (the first attempt can fail after the insert). The fold is idempotent.
+      if (sttSessionId !== null && this.transcriptRecord && dto.tenantId) {
+        await this.transcriptRecord.onSessionFinal({ tenantId: dto.tenantId, consultationId, sttSessionId });
+      }
       return { contextItemId: existingAggregate.id };
     }
 
@@ -466,6 +500,34 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       },
     });
 
+    // The aggregate row is still written for one release. When the session's finals reached
+    // the consultation record, FULL_TRANSCRIPT is rebuilt and `onSessionFinal` emits
+    // `TranscriptionCreated` for it (so the note reads the rebuilt transcript). A session that
+    // produced no segments (an older STT without the segment outbox) falls back to announcing
+    // the aggregate here.
+    if (sttSessionId !== null && this.transcriptRecord && dto.tenantId) {
+      const startedAt = await this.streamSessionStartedAt(sttSessionId);
+      const final = await this.transcriptRecord.onSessionFinal({ tenantId: dto.tenantId, consultationId, sttSessionId });
+      await this.recordRun({
+        tenantId: dto.tenantId,
+        runKey: sttStreamRunKey(sttSessionId),
+        consultationId,
+        activityKind: AiActivityKind.TRANSCRIBE_STREAM,
+        status: AiActivityRunStatus.OK,
+        startedAt: startedAt.at,
+        endedAt: new Date(),
+        durationMs: startedAt.known ? Date.now() - startedAt.at.getTime() : null,
+        agentSlug: startedAt.servedBy?.agentSlug ?? null,
+        model: startedAt.servedBy?.modelSlug ?? null,
+        provider: startedAt.servedBy?.provider ?? startedAt.servedBy?.engine ?? null,
+        contextItemId: final.segmentCount > 0 ? final.contextItemId : savedContextItem.id,
+        outputVersionNumber: final.segmentCount > 0 ? final.versionNumber : 1,
+      });
+      if (final.segmentCount > 0) {
+        return { contextItemId: savedContextItem.id };
+      }
+    }
+
     // Emit pipeline event to trigger the harness auto-draft (GAP #1).
     this.eventEmitter.emit(ConsultationPipelineEvent.TranscriptionCreated, {
       consultationId,
@@ -478,6 +540,38 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     } satisfies TranscriptionCreatedPayload);
 
     return { contextItemId: savedContextItem.id };
+  }
+
+  /** When the session's `TranscriptionJob` row says it started (and what served it); now when unknown. */
+  private async streamSessionStartedAt(sttSessionId: string): Promise<{ at: Date; known: boolean; servedBy: ServedBy | null }> {
+    try {
+      const [job] = await this.jobRepository.findAll({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- streamSessionId is not in the generated filter type
+        filters: { streamSessionId: sttSessionId } as any,
+        limit: 1,
+        sort: [{ createdAt: 'desc' }],
+      });
+      if (job?.startedAt) {
+        return { at: job.startedAt, known: true, servedBy: (job.servedBy as unknown as ServedBy | null) ?? null };
+      }
+    } catch {
+      // swallow-ok: bookkeeping only — the run record is written with what is known.
+    }
+    return { at: new Date(), known: false, servedBy: null };
+  }
+
+  /** Write one STT run record. Ids, enums and numbers only; a failure is logged, never thrown. */
+  private async recordRun(input: AiActivityRunInput): Promise<void> {
+    if (!this.activityRuns) return;
+    try {
+      await this.activityRuns.record(input);
+    } catch (error) {
+      this.logger.warn({
+        message: 'stt.run_record_failed',
+        runKey: input.runKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -690,7 +784,35 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       data: { status: 'COMPLETED' },
     });
 
+    await this.recordBatchRun(job, AiActivityRunStatus.OK, { engine: dto.engine, deployment: dto.deployment, servedBy });
+
     return TranscriptionJobDtoMapper.toResponse(updated);
+  }
+
+  /** The TRANSCRIBE_BATCH run record of a job that just finished (completed or failed). */
+  private async recordBatchRun(
+    job: TranscriptionJobEntity,
+    status: AiActivityRunStatus,
+    facts: { engine?: string; deployment?: string; servedBy?: ServedBy | null; errorCode?: string },
+  ): Promise<void> {
+    const endedAt = job.completedAt ?? new Date();
+    const startedAt = job.startedAt ?? endedAt;
+    await this.recordRun({
+      tenantId: job.tenantId ?? '',
+      runKey: sttBatchRunKey(job.id),
+      consultationId: job.consultationId ?? null,
+      activityKind: AiActivityKind.TRANSCRIBE_BATCH,
+      status,
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, endedAt.getTime() - startedAt.getTime()),
+      agentSlug: facts.servedBy?.agentSlug ?? null,
+      model: facts.servedBy?.modelSlug ?? null,
+      provider: facts.engine ?? facts.servedBy?.provider ?? null,
+      deployment: facts.deployment ?? null,
+      errorCode: facts.errorCode ?? null,
+      contextItemId: job.contextItemId ?? null,
+    });
   }
 
   /**
@@ -806,6 +928,8 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     job.fail(dto.errorMessage, dto.errorCode);
     const updated = await this.jobRepository.update(jobId, job);
 
+    await this.recordBatchRun(job, AiActivityRunStatus.ERROR, { errorCode: dto.errorCode });
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: jobId,
       responsibleEntityId: job.createdBy || undefined,
@@ -902,9 +1026,17 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       language: dto.language,
       sequenceNumber,
       recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
+      sttSessionId: dto.sttSessionId,
+      codec: dto.codec,
     });
 
     const savedAudioRecording = await this.audioRecordingRepository.create(audioRecording);
+
+    // A streaming capture attached by consultation becomes the next part of the consultation's
+    // single recording (timeline position, manifest version).
+    if (!dto.contextItemId && dto.consultationId) {
+      await this.appendRecordingPart(dto.consultationId, savedAudioRecording.id, primaryMediaId, dto);
+    }
 
     // If associated with a job, update the job's mediaId
     if (dto.jobId) {
@@ -938,6 +1070,33 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       audioRecordingId: savedAudioRecording.id,
       mediaId: primaryMediaId,
     };
+  }
+
+  /**
+   * Fold a just-stored capture into the consultation recording manifest. Best-effort: the
+   * AudioRecording row is already persisted, so a manifest failure costs a log line, not the
+   * upload.
+   */
+  private async appendRecordingPart(consultationId: string, audioRecordingId: string, mediaId: string, dto: CreateAudioRecordRequest): Promise<void> {
+    if (!this.transcriptRecord || !this.consultationRepository) return;
+    try {
+      const consultation = await this.consultationRepository.findByIdOrNull(consultationId);
+      if (!consultation) return;
+      await this.transcriptRecord.appendRecordingPart({
+        consultationId,
+        audioRecordingId,
+        mediaId,
+        durationMs: dto.durationMs ?? 0,
+        encounterSeq: consultation.currentEncounterSeq,
+        sttSessionId: dto.sttSessionId ?? '',
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'stt.recording_part_not_appended — the audio is stored but missing from the consultation recording manifest',
+        audioRecordingId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**

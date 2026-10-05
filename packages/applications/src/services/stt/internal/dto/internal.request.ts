@@ -13,6 +13,7 @@ import {
   ValidateNested,
   IsInt,
   Matches,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { JsonValue } from '@arcaai/domains';
@@ -21,6 +22,9 @@ import { JsonValue } from '@arcaai/domains';
 // from being accepted here and rejected at emission (where the row is already
 // lost), and `usage-attributes.ts` imports nothing, so there is no cycle.
 import { BYTE_SOURCES, COMPUTE_DEVICES, type ByteSource, type ComputeDevice } from '../../../usageLedger/usage-attributes';
+
+/** Upper bound of one segment batch. The STT outbox sends at most 25; the bound only refuses a runaway body. */
+export const INTERNAL_SEGMENT_BATCH_MAX = 100;
 
 /**
  * one ordered transcript segment (a diarized turn / VAD segment) as
@@ -501,6 +505,21 @@ export class CreateAudioRecordRequest {
   @IsOptional()
   @IsUUID()
   processedMediaId?: string;
+
+  @ApiPropertyOptional({
+    description: 'STT streaming session that captured this audio (recording manifest part)',
+  })
+  @IsString()
+  @IsOptional()
+  sttSessionId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Stored audio codec (e.g. "opus", "pcm_s16le")',
+    example: 'opus',
+  })
+  @IsString()
+  @IsOptional()
+  codec?: string;
 }
 
 /**
@@ -569,4 +588,90 @@ export class InternalCreateMediaRequest {
 export class InternalCreateMediaResponse {
   @ApiProperty({ description: 'Created Media ID' })
   id: string;
+}
+
+/**
+ * One FINAL utterance as posted by the STT segment outbox. Times are milliseconds relative to
+ * the STT session; the gateway places them on the consultation timeline.
+ */
+export class InternalIngestSegment {
+  @ApiProperty({ description: 'Utterance ordinal within the STT session (idempotency key with sttSessionId)', minimum: 0 })
+  @IsInt()
+  @Min(0)
+  utteranceIndex: number;
+
+  @ApiProperty({ description: 'Final utterance text' })
+  @IsString()
+  @IsNotEmpty()
+  text: string;
+
+  @ApiPropertyOptional({ description: 'Diarization / speaker label' })
+  @IsString()
+  @IsOptional()
+  speaker?: string;
+
+  @ApiProperty({ description: 'Start, ms from the STT session start', minimum: 0 })
+  @IsInt()
+  @Min(0)
+  startMs: number;
+
+  @ApiProperty({ description: 'End, ms from the STT session start', minimum: 0 })
+  @IsInt()
+  @Min(0)
+  endMs: number;
+
+  @ApiProperty({ description: 'ISO-8601 wall-clock time the final was produced' })
+  @IsString()
+  @IsNotEmpty()
+  capturedAt: string;
+
+  @ApiPropertyOptional({ description: 'Detected language code' })
+  @IsString()
+  @IsOptional()
+  language?: string;
+}
+
+/**
+ * Body of `POST internal/stt/segments`. An empty `segments` array is a heartbeat: it only
+ * records activity on the consultation.
+ */
+export class InternalIngestSegmentsRequest {
+  @ApiProperty({ description: 'Owning tenant ID' })
+  @IsString()
+  @IsNotEmpty()
+  tenantId: string;
+
+  @ApiProperty({ description: 'Consultation the session is bound to' })
+  @IsString()
+  @IsUUID(7)
+  consultationId: string;
+
+  @ApiProperty({ description: 'STT streaming session ID' })
+  @IsString()
+  @IsNotEmpty()
+  sttSessionId: string;
+
+  @ApiProperty({ description: "The STT session's audio clock (ms) when the batch was sent", minimum: 0 })
+  @IsInt()
+  @Min(0)
+  audioOffsetMs: number;
+
+  @ApiProperty({ description: 'Final utterances (the STT outbox sends at most 25 per batch)', type: [InternalIngestSegment] })
+  @IsArray()
+  @ArrayMaxSize(INTERNAL_SEGMENT_BATCH_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => InternalIngestSegment)
+  segments: InternalIngestSegment[];
+}
+
+/** Response of `POST internal/stt/segments`. */
+export class InternalIngestSegmentsResponse {
+  @ApiProperty({ description: 'Segments written by this call' })
+  accepted: number;
+
+  @ApiProperty({ description: 'Segments already stored (redelivery) or repeated within the batch' })
+  duplicates: number;
+
+  @ApiProperty({ description: 'Highest segment sequence number allocated on the consultation' })
+  lastSegmentSeq: number;
 }
