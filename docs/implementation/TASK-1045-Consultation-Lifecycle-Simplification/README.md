@@ -188,6 +188,7 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-27 | ALaaS lane branches merge into `refactor-hope-integaration` (owner, 2026-10-05). |
 | D-28 | `POST :id/stop` on a STOPPED consultation is an idempotent no-op that returns the current `finalTranscript {state: complete|pending, …}` — SDKs poll by re-POSTing stop until `complete`. |
 | D-29 | `approve` / `close` on an already CLOSED_COMPLETE consultation is an idempotent no-op (a retried Copy to EMR never fails); closing an APPROVED consultation (manual or auto) → CLOSED_COMPLETE, `closedReason: approved`; reopen clears `approvedAt`. |
+| D-30 | The ENCOUNTER_RECAP item is STRUCTURED: content = JSON `{schema:'hope.encounter_recap.v2', sections:[{key, label, lines:[{text, citations:[{itemId, versionNumber, label, kind:'segment'|'attachment', t0Ms?}]}]}]}` with the six fixed keys in order `reason, findings, medicines, sent_for, since_then, still_open` (labels Reason · Findings · Medicines · Sent for · Since then · Still open; empty sections kept with `lines: []`), plus a derived plain-text rendering for the console. Consumers map by `key`, never by position; the broker forwards citations so each line links to the E1 transcript line or attachment. |
 
 ## 5. Open questions
 
