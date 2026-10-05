@@ -61,8 +61,12 @@ const INFERENCE_TEST_TIMEOUT_MS = 240_000;
  * inside the full suite even with a 120s window and a clean Redis. The
  * contended resource is finite and real, so the fix is exclusivity, not a
  * bigger number.
+ *
+ * `task-959-spend-limit` sets a tenant's monthly spend limit to 0 for its whole run, so any
+ * parallel spec that bills that tenant meanwhile answers 402 (seen as a task-950 failure). It
+ * needs the tenant to itself, which is the same exclusivity.
  */
-const EXCLUSIVE_SPECS = ['**/streaming-backpressure-recovery.spec.ts'];
+const EXCLUSIVE_SPECS = ['**/streaming-backpressure-recovery.spec.ts', '**/task-959-spend-limit.spec.ts'];
 
 /**
  * Specs that need a gateway configured DIFFERENTLY from the shared one, at BOOT.
