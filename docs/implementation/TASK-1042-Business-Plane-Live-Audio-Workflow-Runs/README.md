@@ -155,7 +155,7 @@ integrator                      gateway (apps/api)                         harne
 The orchestrator (this session) owns:
 - the e2e spec `apps/api/tests/e2e/workflow-run-live-audio-cross-tenant.spec.ts`: tenant B's session 404, a colleague's API key / service account 404, an ended session 409, a consultation-bound session 409, socket off 400, an idempotent retry, and the internal route runId mismatch 404;
 - regenerating all five artifacts (`api:build`, `api:route-manifest`, `api:openapi`, `api:portal`, `vox-node gen:admin`);
-- the docs: this README, TASK-1036 §6.13 OD-37 row → "superseded by TASK-1042", protocol-v2 §4 (transcripts of a run-bound session carry no `nodeId`), TASK-1036 §8.7 "Audio in" corrected, rule `08-vox-sdk.md`;
+- the docs: this README, protocol-v2 §4 (transcripts of a run-bound session carry no `nodeId`), rule `08-vox-sdk.md`. TASK-1036 §6.13 (OD-37 → "superseded by TASK-1042") and §8.7 "Audio in" are edited by the TASK-1036 session, not here (agreed 2026-10-05);
 - the merge, and the single gate pass afterwards.
 
 ### 5.2 Order
@@ -184,3 +184,4 @@ _Not started — awaiting the owner's decisions in §4._
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket raised from OD-37. Discovery by 3 sonnet scouts (gateway, harness, SDK); the orchestrator re-verified the sandbox ownership rule, the mirror's consultation-only resolution, the standalone `subject` limit, the harness `no_audio` path and the `useRunAudio` limit in code. Plan and OD-1..12 written. Status Pending. |
+| 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
