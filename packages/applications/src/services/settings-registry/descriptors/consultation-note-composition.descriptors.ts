@@ -134,8 +134,7 @@ export const CONSULTATION_NOTE_COMPOSITION_SETTINGS: SettingDescriptor[] = [
     key: NOTE_LEDGER_WAIT_SECONDS_KEY,
     dataType: 'number',
     label: 'Note fact-ledger wait (seconds)',
-    description:
-      "How long note composition waits for an encounter's fact ledger to be current before planning without it. Default 120.",
+    description: "How long note composition waits for an encounter's fact ledger to be current before planning without it. Default 120.",
     default: NOTE_COMPOSITION_DEFAULTS.ledgerWaitSeconds,
     validate: intBetween('Fact-ledger wait', 0, 600),
   },
@@ -154,7 +153,7 @@ export const CONSULTATION_NOTE_COMPOSITION_SETTINGS: SettingDescriptor[] = [
     dataType: 'number',
     label: 'Fact-ledger extractor input per call (tokens)',
     description:
-      "Estimated transcript tokens one fact-ledger extraction call reads; a longer encounter is extracted in several calls. Lines are never split. Default 12000.",
+      'Estimated transcript tokens one fact-ledger extraction call reads; a longer encounter is extracted in several calls. Lines are never split. Default 12000.',
     default: NOTE_COMPOSITION_DEFAULTS.ledgerChunkInputTokens,
     validate: intBetween('Fact-ledger extractor input per call', 512, 65536),
   },

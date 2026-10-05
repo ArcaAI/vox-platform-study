@@ -18,7 +18,14 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { assembleTranscriptFragments, readSpeakerId } from './transcript-assembly.util';
-import { buildLlmUsageBatches, buildTextActivityRun, parseTextUsageDetail, resolveDeployment, toLedgerProvider, type TextUsageDetail } from './text-usage';
+import {
+  buildLlmUsageBatches,
+  buildTextActivityRun,
+  parseTextUsageDetail,
+  resolveDeployment,
+  toLedgerProvider,
+  type TextUsageDetail,
+} from './text-usage';
 import { IAiActivityRunService, IAiActivityRunServiceToken } from '../../ai-activity-run/IAiActivityRunService';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../../usageLedger/compute-device.resolver';

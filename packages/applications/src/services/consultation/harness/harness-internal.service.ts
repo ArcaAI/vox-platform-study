@@ -1398,7 +1398,12 @@ export class HarnessInternalService extends BaseService {
       if (this.noteComposer) {
         envelope = dto.notePlanId ? await this.noteComposer.loadEnvelope(tenantId, consultationId, dto.notePlanId) : null;
         // Harness-originated: never wait for a fact ledger inside the caller's request timeout.
-        envelope ??= await this.composeEnvelope(consultationId, tenantId, built, dto, { mode, cache: true, waitForLedgers: false, planId: dto.notePlanId });
+        envelope ??= await this.composeEnvelope(consultationId, tenantId, built, dto, {
+          mode,
+          cache: true,
+          waitForLedgers: false,
+          planId: dto.notePlanId,
+        });
       }
       const assembled = await this.promptAssemblyService.assemble(envelope ? withNoteInputs(built.params, envelope.plan) : built.params);
 
@@ -1561,7 +1566,11 @@ export class HarnessInternalService extends BaseService {
           retryable: false,
         });
       }
-      if (error instanceof NoteModelUnavailableError || error instanceof NoteTemplateUnresolvedError || error instanceof NoteTokenizerUnavailableError) {
+      if (
+        error instanceof NoteModelUnavailableError ||
+        error instanceof NoteTemplateUnresolvedError ||
+        error instanceof NoteTokenizerUnavailableError
+      ) {
         throw new ServiceUnavailableException({ code: error.code, message: error.message });
       }
       if (error instanceof NoteCompositionRequestError) {
@@ -1779,7 +1788,9 @@ export class HarnessInternalService extends BaseService {
     // Case notes the clinic materialised from its stated previous visits are already background.
     const background: NoteSourceSnapshot['background'] = [
       ...(priorVisitSummary ? [{ key: 'prior_visit_summary', label: 'Prior visit summary (reference only)', text: priorVisitSummary }] : []),
-      ...(client.previousVisits?.trim() ? [{ key: 'previous_visits', label: 'Previous visits stated by the clinic', text: client.previousVisits }] : []),
+      ...(client.previousVisits?.trim()
+        ? [{ key: 'previous_visits', label: 'Previous visits stated by the clinic', text: client.previousVisits }]
+        : []),
       ...(sameDayPrequel.hasSameDayPrequel ? [{ key: 'same_day_prequel', label: 'Earlier visit(s) today', text: sameDayPrequel.summary }] : []),
     ];
     const materialised = clientCaseNoteRenderings(client.raw.previousVisits);
@@ -1795,10 +1806,16 @@ export class HarnessInternalService extends BaseService {
         .map((h) => ({ itemId: h.id, versionNumber: h.version ?? 1, text: `Highlighted by the clinician: "${h.exact.trim()}"` })),
     ];
     if (client.vitals?.trim()) {
+      // swallow-ok: the id only labels the citation; the reading itself is already in hand and is never dropped
       const item = await this.contextItemRepository.findLatestByKindKey(consultationId, CLIENT_VITALS_KIND_KEY).catch(() => null);
-      results.push({ itemId: item?.id ?? `${consultationId}:${CLIENT_VITALS_KIND_KEY}`, versionNumber: item?.currentVersionNumber ?? 1, text: `Measured vitals: ${client.vitals}` });
+      results.push({
+        itemId: item?.id ?? `${consultationId}:${CLIENT_VITALS_KIND_KEY}`,
+        versionNumber: item?.currentVersionNumber ?? 1,
+        text: `Measured vitals: ${client.vitals}`,
+      });
     }
     if (testResults?.trim()) {
+      // swallow-ok: the id only labels the citation; the reading itself is already in hand and is never dropped
       const item = await this.contextItemRepository.findLatestByKindKey(consultationId, CLIENT_INVESTIGATIONS_KIND_KEY).catch(() => null);
       results.push({
         itemId: item?.id ?? `${consultationId}:${CLIENT_INVESTIGATIONS_KIND_KEY}`,

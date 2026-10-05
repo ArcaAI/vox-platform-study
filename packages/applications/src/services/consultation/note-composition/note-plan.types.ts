@@ -155,9 +155,7 @@ export const noteCoverageSchema = z
   })
   .strict();
 
-export const notePreserveSchema = z
-  .object({ contextItemId: z.string(), versionNumber: z.number().int(), sectionKeys: z.array(z.string()) })
-  .strict();
+export const notePreserveSchema = z.object({ contextItemId: z.string(), versionNumber: z.number().int(), sectionKeys: z.array(z.string()) }).strict();
 
 export const notePlanV1Schema = z
   .object({

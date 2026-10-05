@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHAT_OVERHEAD_TOKENS_PER_MESSAGE, MIN_CALL_OUTPUT_TOKENS, planNoteBudget, type BudgetPlanInput, type NoteBudgetSettings } from '../note-budget-planner';
+import {
+  CHAT_OVERHEAD_TOKENS_PER_MESSAGE,
+  MIN_CALL_OUTPUT_TOKENS,
+  planNoteBudget,
+  type BudgetPlanInput,
+  type NoteBudgetSettings,
+} from '../note-budget-planner';
 import { NOTE_INPUT_EXCEEDS_CONTEXT } from '../note-plan.types';
 
 const SETTINGS: NoteBudgetSettings = {

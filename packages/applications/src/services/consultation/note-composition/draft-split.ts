@@ -97,5 +97,7 @@ export function splitDraft(latest: string, aiBaseline: string | null, headings: 
 }
 
 export function renderDraftSections(sections: readonly DraftSection[]): string {
-  return sections.map((section) => (section.removed ? `${section.title}: (removed by the clinician)` : `${section.title}: ${section.text}`)).join('\n\n');
+  return sections
+    .map((section) => (section.removed ? `${section.title}: (removed by the clinician)` : `${section.title}: ${section.text}`))
+    .join('\n\n');
 }

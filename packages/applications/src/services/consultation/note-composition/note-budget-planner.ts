@@ -113,7 +113,8 @@ export function planNoteBudget(input: BudgetPlanInput): BudgetPlan {
     let blockTokens = input.fixed.tokens;
     let blocks = input.fixed.blocks;
     for (const encounter of input.priorEncounters) {
-      const rendering = reduce.has(encounter.seq) && encounter.reduced ? encounter.reduced : { tokens: encounter.verbatimTokens, blocks: encounter.verbatimBlocks };
+      const rendering =
+        reduce.has(encounter.seq) && encounter.reduced ? encounter.reduced : { tokens: encounter.verbatimTokens, blocks: encounter.verbatimBlocks };
       blockTokens += rendering.tokens;
       blocks += rendering.blocks;
     }

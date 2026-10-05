@@ -281,15 +281,25 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
 
   const ledgers = encounters.flatMap((encounter) => (encounter.ledger ? [encounter.ledger.ledger] : []));
   const superseded = supersessionMap(ledgers);
-  const labelsFor = (citations: readonly string[]) => [...new Set(citations.map((id) => labelOf.get(id)).filter((label): label is string => !!label))];
+  const labelsFor = (citations: readonly string[]) => [
+    ...new Set(citations.map((id) => labelOf.get(id)).filter((label): label is string => !!label)),
+  ];
 
   const encounterModels: EncounterModel[] = encounters.map((encounter) => {
     const visitType = visitTypeOf(encounter.visitType);
     const lines = encounter.segments.map((segment) =>
-      renderSegmentLine({ segmentSeq: segment.segmentSeq, encounterSeq: encounter.seq, speaker: segment.speaker, t0Ms: segment.t0Ms, text: segment.text }),
+      renderSegmentLine({
+        segmentSeq: segment.segmentSeq,
+        encounterSeq: encounter.seq,
+        speaker: segment.speaker,
+        t0Ms: segment.t0Ms,
+        text: segment.text,
+      }),
     );
     const verbatim: BlockDraft | null =
-      lines.length > 0 ? { key: `encounter_${encounter.seq}`, role: 'encounter_transcript', label: `Encounter ${encounter.seq} transcript (${visitType})`, lines } : null;
+      lines.length > 0
+        ? { key: `encounter_${encounter.seq}`, role: 'encounter_transcript', label: `Encounter ${encounter.seq} transcript (${visitType})`, lines }
+        : null;
 
     let reduced: EncounterModel['reduced'] = null;
     const coveredAttachmentIds = new Set<string>();
@@ -299,14 +309,23 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
       const citedLines = encounter.segments.flatMap((segment, index) => (cited.has(segment.id) ? [lines[index]] : []));
       const ledgerLines = ledger.ledger.facts.map((fact) => renderLedgerFact(fact, labelsFor(fact.citations), superseded.get(fact.factId) ?? null));
       reduced = {
-        cited: citedLines.length > 0 ? { key: `encounter_${encounter.seq}`, role: 'encounter_transcript', label: `Encounter ${encounter.seq} — cited segments`, lines: citedLines } : null,
+        cited:
+          citedLines.length > 0
+            ? {
+                key: `encounter_${encounter.seq}`,
+                role: 'encounter_transcript',
+                label: `Encounter ${encounter.seq} — cited segments`,
+                lines: citedLines,
+              }
+            : null,
         ledger: { key: `ledger_${encounter.seq}`, role: 'encounter_ledger', label: `Encounter ${encounter.seq} fact ledger`, lines: ledgerLines },
         itemId: ledger.itemId,
         versionNumber: ledger.versionNumber,
       };
       for (const source of ledger.ledger.attachmentSources) {
         const attachment = snapshot.attachmentTranscripts.find((a) => a.itemId === source.itemId);
-        if (attachment && attachment.versionNumber === source.versionNumber && attachment.encounterSeq === encounter.seq) coveredAttachmentIds.add(attachment.itemId);
+        if (attachment && attachment.versionNumber === source.versionNumber && attachment.encounterSeq === encounter.seq)
+          coveredAttachmentIds.add(attachment.itemId);
       }
     }
     return { seq: encounter.seq, visitType, segmentCount: encounter.segments.length, verbatim, reduced, coveredAttachmentIds };
@@ -315,13 +334,21 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
   // D-12 — the pre-segment TRANSCRIPT only when the consultation has no segment items at all.
   const spoken = encounterModels.filter((encounter) => encounter.verbatim !== null);
   if (spoken.length === 0 && snapshot.legacyTranscripts.length > 0) {
-    const text = snapshot.legacyTranscripts.map((item) => item.text.trim()).filter(Boolean).join('\n\n');
+    const text = snapshot.legacyTranscripts
+      .map((item) => item.text.trim())
+      .filter(Boolean)
+      .join('\n\n');
     if (text) {
       const legacy: EncounterModel = {
         seq: 1,
         visitType: visitTypeOf(encounters.find((encounter) => encounter.seq === 1)?.visitType),
         segmentCount: 0,
-        verbatim: { key: 'encounter_1', role: 'encounter_transcript', label: `Encounter 1 transcript (${visitTypeOf(encounters.find((e) => e.seq === 1)?.visitType)})`, lines: [text] },
+        verbatim: {
+          key: 'encounter_1',
+          role: 'encounter_transcript',
+          label: `Encounter 1 transcript (${visitTypeOf(encounters.find((e) => e.seq === 1)?.visitType)})`,
+          lines: [text],
+        },
         reduced: null,
         coveredAttachmentIds: new Set(),
       };
@@ -354,7 +381,12 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
   if (snapshot.draft) {
     const split = splitDraft(snapshot.draft.latestText, snapshot.draft.aiText, snapshot.headings);
     if (split.clinician.length > 0)
-      drafts.push({ key: 'draft_clinician', role: 'draft_clinician', label: 'Clinician-edited sections (keep their meaning)', lines: [renderDraftSections(split.clinician)] });
+      drafts.push({
+        key: 'draft_clinician',
+        role: 'draft_clinician',
+        label: 'Clinician-edited sections (keep their meaning)',
+        lines: [renderDraftSections(split.clinician)],
+      });
     if (split.ai.length > 0) drafts.push({ key: 'draft_ai', role: 'draft_ai', label: 'Previous AI draft', lines: [renderDraftSections(split.ai)] });
   }
 
@@ -394,7 +426,8 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
 
 function directiveFor(mode: NotePlanMode, grouped: boolean, titles: readonly string[]): string {
   if (titles.length === 0) return 'Write the complete clinical note.';
-  if (mode === 'section_regen') return titles.length === 1 ? `Rewrite only this section: ${titles[0]}.` : `Rewrite only these sections: ${titles.join(', ')}.`;
+  if (mode === 'section_regen')
+    return titles.length === 1 ? `Rewrite only this section: ${titles[0]}.` : `Rewrite only these sections: ${titles.join(', ')}.`;
   return grouped ? `Write only these sections: ${titles.join(', ')}.` : `Write all sections: ${titles.join(', ')}.`;
 }
 
@@ -495,7 +528,8 @@ function orderedBlocks(model: InputModel, reduced: ReadonlySet<number>): BlockDr
   }
   if (model.results) blocks.push(model.results);
   const attachmentLines = model.attachments.lines.filter((entry) => !coveredByReduction.has(entry.itemId)).map((entry) => entry.line);
-  if (attachmentLines.length > 0) blocks.push({ key: ATTACHMENT_BLOCK.key, role: 'attachment_transcript', label: model.attachments.label, lines: attachmentLines });
+  if (attachmentLines.length > 0)
+    blocks.push({ key: ATTACHMENT_BLOCK.key, role: 'attachment_transcript', label: model.attachments.label, lines: attachmentLines });
   if (model.last?.verbatim) blocks.push(model.last.verbatim);
   blocks.push(...model.drafts);
   return blocks;
@@ -535,7 +569,12 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
   // (lines its encounter's ledger covers removed) is the whole minus those lines: never under.
   const attachmentAll: BlockDraft | null =
     model.attachments.lines.length > 0
-      ? { key: ATTACHMENT_BLOCK.key, role: 'attachment_transcript', label: model.attachments.label, lines: model.attachments.lines.map((e) => e.line) }
+      ? {
+          key: ATTACHMENT_BLOCK.key,
+          role: 'attachment_transcript',
+          label: model.attachments.label,
+          lines: model.attachments.lines.map((e) => e.line),
+        }
       : null;
   const texts = new Set<string>([options.system, ...directives]);
   for (const block of allBlocks) texts.add(wrappedOf(block));
@@ -552,7 +591,12 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     attachmentAll ? (dropped.size === 0 ? blockTokens(attachmentAll) : Math.max(0, blockTokens(attachmentAll) - attachmentLineTokens(dropped))) : 0;
 
   const reducibleCover = new Set(model.priors.flatMap((encounter) => (encounter.reduced ? [...encounter.coveredAttachmentIds] : [])));
-  const fixedBlocks: BlockDraft[] = [...model.head, ...(model.results ? [model.results] : []), ...(model.last?.verbatim ? [model.last.verbatim] : []), ...model.drafts];
+  const fixedBlocks: BlockDraft[] = [
+    ...model.head,
+    ...(model.results ? [model.results] : []),
+    ...(model.last?.verbatim ? [model.last.verbatim] : []),
+    ...model.drafts,
+  ];
   const attachmentsPresent = model.attachments.lines.length > 0;
   const fixed = {
     tokens: fixedBlocks.reduce((sum, block) => sum + blockTokens(block), 0) + (attachmentsPresent ? attachmentBlockTokens(reducibleCover) : 0),
@@ -593,7 +637,9 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
   }
 
   const reducedSet = new Set(plan.reducedSeqs);
-  const dropped = new Set(model.priors.filter((encounter) => reducedSet.has(encounter.seq)).flatMap((encounter) => [...encounter.coveredAttachmentIds]));
+  const dropped = new Set(
+    model.priors.filter((encounter) => reducedSet.has(encounter.seq)).flatMap((encounter) => [...encounter.coveredAttachmentIds]),
+  );
   const blocks: NoteBlock[] = orderedBlocks(model, reducedSet).map((block) => ({
     key: block.key,
     role: block.role,
@@ -650,7 +696,9 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
               aiSections: draftSplit.aiSections,
             }
           : null,
-      preSummary: snapshot.preSummary?.text.trim() ? { contextItemId: snapshot.preSummary.itemId, versionNumber: snapshot.preSummary.versionNumber } : null,
+      preSummary: snapshot.preSummary?.text.trim()
+        ? { contextItemId: snapshot.preSummary.itemId, versionNumber: snapshot.preSummary.versionNumber }
+        : null,
     },
     system: options.system,
     blocks,
@@ -827,7 +875,11 @@ export class NoteInputComposerService {
     try {
       return await this.redisCache.get(key);
     } catch (error) {
-      this.logger.warn({ message: 'Note plan cache read failed', key: key.split(':')[0], error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Note plan cache read failed',
+        key: key.split(':')[0],
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }
@@ -839,11 +891,18 @@ export class NoteInputComposerService {
         const { value } = await this.effectiveSettings.resolveEffective(key, { tenantId });
         return accept(value) ? value : fallback;
       } catch (error) {
-        this.logger.warn({ message: 'Note composition setting unresolved — using its default', key, error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          message: 'Note composition setting unresolved — using its default',
+          key,
+          error: error instanceof Error ? error.message : String(error),
+        });
         return fallback;
       }
     };
-    const int = (min: number, max: number) => (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+    const int =
+      (min: number, max: number) =>
+      (value: unknown): value is number =>
+        typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
     const isRatio = (value: unknown): value is number => typeof value === 'number' && value > 0 && value <= 1;
     const isBool = (value: unknown): value is boolean => typeof value === 'boolean';
     const d = NOTE_COMPOSITION_DEFAULTS;
@@ -870,11 +929,17 @@ export class NoteInputComposerService {
   private async resolveModel(tenantId: string, reference: string | null): Promise<{ model: NotePlanModel; tokenizer: TokenizerSpec | null }> {
     const row = reference ? await this.modelByReference(tenantId, reference) : await this.platformDefaultTextModel();
     if (!row) {
-      throw new NoteModelUnavailableError('NOTE_MODEL_UNRESOLVED', reference ? `Model '${reference}' is not visible to this tenant.` : 'No platform default text-generation model is elected.');
+      throw new NoteModelUnavailableError(
+        'NOTE_MODEL_UNRESOLVED',
+        reference ? `Model '${reference}' is not visible to this tenant.` : 'No platform default text-generation model is elected.',
+      );
     }
     const contextWindow = declaredContextLengthOf(row);
     if (contextWindow === null) {
-      throw new NoteModelUnavailableError('NOTE_MODEL_CONTEXT_UNDECLARED', `Model '${row.slug}' declares no context window; the note budget cannot be planned.`);
+      throw new NoteModelUnavailableError(
+        'NOTE_MODEL_CONTEXT_UNDECLARED',
+        `Model '${row.slug}' declares no context window; the note budget cannot be planned.`,
+      );
     }
     const provider = row.provider === 'azure' ? 'azure-openai' : row.provider;
     if (!row.wireModelId || !provider) {
@@ -884,18 +949,18 @@ export class NoteInputComposerService {
   }
 
   private async modelByReference(tenantId: string, reference: string): Promise<AiModelEntity | null> {
-    const bySlug = async (owner: string) => this.aiModelRepository.findBySlug(owner, reference).catch(() => null);
+    const bySlug = async (owner: string) => this.aiModelRepository.findBySlug(owner, reference);
     const own = tenantId === SYSTEM_TENANT_ID ? null : await bySlug(tenantId);
     if (own) return own;
     const shared = await bySlug(SYSTEM_TENANT_ID);
     if (shared) return shared;
-    const textModels = await this.aiModelRepository.findByTaskTypeSharedRead(ModelTaskType.TEXT_GENERATION).catch(() => [] as AiModelEntity[]);
+    const textModels = await this.aiModelRepository.findByTaskTypeSharedRead(ModelTaskType.TEXT_GENERATION);
     const matching = textModels.filter((row) => row.wireModelId === reference);
     return matching.find((row) => row.tenantId === tenantId) ?? matching.find((row) => row.tenantId === SYSTEM_TENANT_ID) ?? null;
   }
 
   private async platformDefaultTextModel(): Promise<AiModelEntity | null> {
-    const rows = await this.aiModelRepository.findPlatformDefaultsFor(SYSTEM_TENANT_ID, AiTaskKind.TEXT_GENERATION).catch(() => [] as AiModelEntity[]);
+    const rows = await this.aiModelRepository.findPlatformDefaultsFor(SYSTEM_TENANT_ID, AiTaskKind.TEXT_GENERATION);
     return rows[0] ?? null;
   }
 
@@ -903,9 +968,14 @@ export class NoteInputComposerService {
     if (!this.documentTemplates) return [];
     try {
       const resolved = await this.documentTemplates.resolveForGeneration(tenantId);
-      return (resolved.compiled?.checklist ?? []).filter((entry) => entry.key && entry.title).map((entry) => ({ key: entry.key, title: entry.title }));
+      return (resolved.compiled?.checklist ?? [])
+        .filter((entry) => entry.key && entry.title)
+        .map((entry) => ({ key: entry.key, title: entry.title }));
     } catch (error) {
-      this.logger.warn({ message: 'Document template unresolved — planning against the note’s own headings', error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Document template unresolved — planning against the note’s own headings',
+        error: error instanceof Error ? error.message : String(error),
+      });
       return [];
     }
   }
@@ -923,7 +993,12 @@ export class NoteInputComposerService {
     for (const item of audioItems) {
       const body = await text(item);
       if (!body) continue;
-      const seq = typeof item.encounterSeq === 'number' ? item.encounterSeq : typeof meta(item).encounterSeq === 'number' ? (meta(item).encounterSeq as number) : null;
+      const seq =
+        typeof item.encounterSeq === 'number'
+          ? item.encounterSeq
+          : typeof meta(item).encounterSeq === 'number'
+            ? (meta(item).encounterSeq as number)
+            : null;
       attachmentTranscripts.push({ itemId: item.id, versionNumber: item.currentVersionNumber, encounterSeq: seq, text: body });
     }
 
@@ -932,7 +1007,11 @@ export class NoteInputComposerService {
       try {
         for (const row of await this.encounterRepository.findByConsultation(consultationId)) visitTypes.set(row.seq, row.visitType ?? null);
       } catch (error) {
-        this.logger.warn({ message: 'Encounter rows unreadable — visit types unknown', consultationId, error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          message: 'Encounter rows unreadable — visit types unknown',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -950,7 +1029,14 @@ export class NoteInputComposerService {
       for (const item of items) {
         const body = await text(item);
         if (!body) continue;
-        segments.push({ id: item.id, versionNumber: item.currentVersionNumber, segmentSeq: item.segmentSeq ?? 0, speaker: item.speaker ?? null, t0Ms: item.t0Ms ?? null, text: body });
+        segments.push({
+          id: item.id,
+          versionNumber: item.currentVersionNumber,
+          segmentSeq: item.segmentSeq ?? 0,
+          speaker: item.speaker ?? null,
+          t0Ms: item.t0Ms ?? null,
+          text: body,
+        });
       }
       encounters.push({ seq, visitType: visitTypes.get(seq) ?? null, segments, ledger: null });
     }
@@ -965,7 +1051,9 @@ export class NoteInputComposerService {
     }
 
     const results: NoteSnapshotText[] = [];
-    for (const item of (await this.contextItemRepository.findAttachments(consultationId)).filter((candidate) => !isExcluded(candidate)).sort(byCreated)) {
+    for (const item of (await this.contextItemRepository.findAttachments(consultationId))
+      .filter((candidate) => !isExcluded(candidate))
+      .sort(byCreated)) {
       const extracted = typeof meta(item).extractedText === 'string' ? (meta(item).extractedText as string).trim() : '';
       const body = extracted || (await text(item));
       if (body) results.push({ itemId: item.id, versionNumber: item.currentVersionNumber, text: body });
@@ -989,7 +1077,10 @@ export class NoteInputComposerService {
       headings,
       encounters,
       legacyTranscripts,
-      preSummary: latestPreSummary && preSummaryText ? { itemId: latestPreSummary.id, versionNumber: latestPreSummary.currentVersionNumber, text: preSummaryText } : null,
+      preSummary:
+        latestPreSummary && preSummaryText
+          ? { itemId: latestPreSummary.id, versionNumber: latestPreSummary.currentVersionNumber, text: preSummaryText }
+          : null,
       background: (request.extras?.background ?? []).filter((entry) => entry.text.trim()),
       results,
       attachmentTranscripts,
@@ -1021,7 +1112,7 @@ export class NoteInputComposerService {
           segments.map((s) => ({ id: s.id, versionNumber: s.currentVersionNumber })),
           audio.map((a) => ({ id: a.id, versionNumber: a.currentVersionNumber })),
         );
-        const item = await this.contextItemRepository.findEncounterArtifact(consultationId, ContextItemType.FACT_LEDGER, encounter.seq).catch(() => null);
+        const item = await this.contextItemRepository.findEncounterArtifact(consultationId, ContextItemType.FACT_LEDGER, encounter.seq);
         const ledger = item && !isExcluded(item) ? parseStoredLedger(await decrypt(item)) : null;
         if (item && ledger && ledger.inputDigest === expected) {
           encounter.ledger = { itemId: item.id, versionNumber: item.currentVersionNumber, ledger };
@@ -1031,7 +1122,11 @@ export class NoteInputComposerService {
       }
       if (missing.length === 0 || Date.now() >= deadline) {
         if (missing.length > 0) {
-          this.logger.warn({ message: 'Fact ledger not current after the wait — those encounters stay verbatim and uncovered', consultationId, encounterSeqs: missing });
+          this.logger.warn({
+            message: 'Fact ledger not current after the wait — those encounters stay verbatim and uncovered',
+            consultationId,
+            encounterSeqs: missing,
+          });
         }
         return;
       }
@@ -1058,7 +1153,11 @@ export class NoteInputComposerService {
         const versions = await this.contextItemVersionRepository.getVersionsByChangeReason(note.id, AI_DRAFT_CHANGE_REASON);
         aiText = versions[0]?.content?.trim() || null;
       } catch (error) {
-        this.logger.warn({ message: 'AI draft baseline unreadable — every section is treated as the clinician’s', consultationId, error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          message: 'AI draft baseline unreadable — every section is treated as the clinician’s',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return { itemId: note.id, versionNumber: note.currentVersionNumber, latestText, aiText };

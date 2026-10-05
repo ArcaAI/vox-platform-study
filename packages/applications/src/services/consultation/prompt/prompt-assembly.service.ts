@@ -733,17 +733,17 @@ export class PromptAssemblyService {
     const dataBlocks: ComposeDataBlock[] = noteInputs
       ? noteInputs.map((block) => ({ key: block.key, label: block.label, content: block.content }))
       : [
-      // Placed first, so the engine's prefix cache still hits across flushes for one exemplar set.
-      ...(fewShot
-        ? [
-            {
-              key: 'style_reference',
-              label: `STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${fewShot.version})`,
-              content: fewShot.text,
-            },
-          ]
-        : []),
-      ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
+          // Placed first, so the engine's prefix cache still hits across flushes for one exemplar set.
+          ...(fewShot
+            ? [
+                {
+                  key: 'style_reference',
+                  label: `STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${fewShot.version})`,
+                  content: fewShot.text,
+                },
+              ]
+            : []),
+          ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
         ];
 
     // The instruction sees a POINTER where it names a data variable whose section is present,

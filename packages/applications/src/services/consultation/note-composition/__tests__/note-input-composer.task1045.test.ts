@@ -37,7 +37,11 @@ const SOAP = [
   { key: 'plan', title: 'Plan' },
 ];
 
-const exact = async (texts: readonly string[]): Promise<TokenCountResult> => ({ ...estimateCounts(texts), mode: 'exact', id: 'lm-studio:gemma-4-e2b-it-qat' });
+const exact = async (texts: readonly string[]): Promise<TokenCountResult> => ({
+  ...estimateCounts(texts),
+  mode: 'exact',
+  id: 'lm-studio:gemma-4-e2b-it-qat',
+});
 
 const SEG = (n: number) => `0199a000-0000-7000-8000-0000000000${String(50 + n).padStart(2, '0')}`;
 
@@ -69,8 +73,22 @@ function snapshot(overrides: Partial<NoteSourceSnapshot> = {}): NoteSourceSnapsh
         visitType: 'new-visit',
         segments: [
           { id: SEG(1), versionNumber: 1, segmentSeq: 1, speaker: 'doctor', t0Ms: 4000, text: 'What brings you in today?' },
-          { id: SEG(2), versionNumber: 1, segmentSeq: 2, speaker: 'patient', t0Ms: 9000, text: 'Chest tightness for two days.\nAnd I am allergic to penicillin.' },
-          { id: SEG(3), versionNumber: 1, segmentSeq: 3, speaker: 'doctor', t0Ms: 72000, text: 'You take metformin 500 mg. I am sending you for an ECG and troponin.' },
+          {
+            id: SEG(2),
+            versionNumber: 1,
+            segmentSeq: 2,
+            speaker: 'patient',
+            t0Ms: 9000,
+            text: 'Chest tightness for two days.\nAnd I am allergic to penicillin.',
+          },
+          {
+            id: SEG(3),
+            versionNumber: 1,
+            segmentSeq: 3,
+            speaker: 'doctor',
+            t0Ms: 72000,
+            text: 'You take metformin 500 mg. I am sending you for an ECG and troponin.',
+          },
         ],
         ledger: {
           itemId: 'ledger-1',
@@ -78,7 +96,16 @@ function snapshot(overrides: Partial<NoteSourceSnapshot> = {}): NoteSourceSnapsh
           ledger: ledger(
             1,
             [
-              { factId: 'E1-F1', key: 'allergy:penicillin', kind: 'allergy', statement: 'Allergic to penicillin.', critical: true, numbers: [], aliases: [], citations: [SEG(2)] },
+              {
+                factId: 'E1-F1',
+                key: 'allergy:penicillin',
+                kind: 'allergy',
+                statement: 'Allergic to penicillin.',
+                critical: true,
+                numbers: [],
+                aliases: [],
+                citations: [SEG(2)],
+              },
               {
                 factId: 'E1-F2',
                 key: 'med:metformin',
@@ -89,7 +116,16 @@ function snapshot(overrides: Partial<NoteSourceSnapshot> = {}): NoteSourceSnapsh
                 aliases: [],
                 citations: [SEG(3)],
               },
-              { factId: 'E1-F3', key: 'complaint:chest_tightness', kind: 'complaint', statement: 'Chest tightness for two days.', critical: false, numbers: [], aliases: [], citations: [SEG(2), 'att-1'] },
+              {
+                factId: 'E1-F3',
+                key: 'complaint:chest_tightness',
+                kind: 'complaint',
+                statement: 'Chest tightness for two days.',
+                critical: false,
+                numbers: [],
+                aliases: [],
+                citations: [SEG(2), 'att-1'],
+              },
             ],
             [{ itemId: 'att-1', versionNumber: 1, label: 'A1' }],
           ),
@@ -100,7 +136,14 @@ function snapshot(overrides: Partial<NoteSourceSnapshot> = {}): NoteSourceSnapsh
         visitType: 're-visit',
         segments: [
           { id: SEG(4), versionNumber: 1, segmentSeq: 4, speaker: 'doctor', t0Ms: 602000, text: 'Your ECG and troponin are normal.' },
-          { id: SEG(5), versionNumber: 2, segmentSeq: 5, speaker: 'doctor', t0Ms: 640000, text: 'Increase metformin to 1000 mg twice daily and review in four weeks.' },
+          {
+            id: SEG(5),
+            versionNumber: 2,
+            segmentSeq: 5,
+            speaker: 'doctor',
+            t0Ms: 640000,
+            text: 'Increase metformin to 1000 mg twice daily and review in four weeks.',
+          },
         ],
         ledger: {
           itemId: 'ledger-2',
@@ -194,7 +237,12 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
     expect(plan.sources.attachmentTranscripts).toEqual([{ contextItemId: 'att-1', versionNumber: 1 }]);
     expect(plan.sources.preSummary).toEqual({ contextItemId: 'pre-1', versionNumber: 1 });
     expect(plan.calls).toEqual([
-      expect.objectContaining({ callId: 'c1', sectionKeys: ['subjective', 'objective', 'assessment', 'plan'], directive: 'Write all sections: Subjective, Objective, Assessment, Plan.', maxTokens: 1792 }),
+      expect.objectContaining({
+        callId: 'c1',
+        sectionKeys: ['subjective', 'objective', 'assessment', 'plan'],
+        directive: 'Write all sections: Subjective, Objective, Assessment, Plan.',
+        maxTokens: 1792,
+      }),
     ]);
     expect(plan.preserve).toBeNull();
     expect(plan.coverage.repairPasses).toBe(1);
@@ -207,8 +255,25 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
 
     expect(plan.coverage.criticalFacts).toEqual([
       { factId: 'E1-F1', encounterSeq: 1, key: 'allergy:penicillin', kind: 'allergy', anchors: ['penicillin'], numbers: [], citations: ['S2'] },
-      { factId: 'E2-F1', encounterSeq: 2, key: 'med:metformin', kind: 'dose_change', anchors: ['metformin'], numbers: [{ value: '1000', unit: 'mg' }], citations: ['S5'] },
-      { factId: 'E2-F2', encounterSeq: 2, key: 'follow_up:review', kind: 'follow_up', anchors: ['review', 'four weeks'], numbers: [], citations: ['S5'], sectionHint: 'plan' },
+      {
+        factId: 'E2-F1',
+        encounterSeq: 2,
+        key: 'med:metformin',
+        kind: 'dose_change',
+        anchors: ['metformin'],
+        numbers: [{ value: '1000', unit: 'mg' }],
+        citations: ['S5'],
+      },
+      {
+        factId: 'E2-F2',
+        encounterSeq: 2,
+        key: 'follow_up:review',
+        kind: 'follow_up',
+        anchors: ['review', 'four weeks'],
+        numbers: [],
+        citations: ['S5'],
+        sectionHint: 'plan',
+      },
     ]);
     expect(plan.coverage.sourceIds).toEqual({
       S1: { id: SEG(1), v: 1, kind: 'segment' },
@@ -225,7 +290,14 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
     const long = 'The patient describes the chest tightness in detail. '.repeat(120);
     const snap = snapshot();
     snap.encounters[0].segments.push(
-      ...Array.from({ length: 12 }, (_, i) => ({ id: `filler-${i}`, versionNumber: 1, segmentSeq: 100 + i, speaker: 'patient', t0Ms: 80000 + i * 1000, text: long })),
+      ...Array.from({ length: 12 }, (_, i) => ({
+        id: `filler-${i}`,
+        versionNumber: 1,
+        segmentSeq: 100 + i,
+        speaker: 'patient',
+        t0Ms: 80000 + i * 1000,
+        text: long,
+      })),
     );
     snap.model = { ...snap.model, contextWindow: 16384 };
 
@@ -253,11 +325,16 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
     // the last encounter is always verbatim
     expect(plan.blocks.find((block) => block.key === 'encounter_2')!.content.split('\n')).toHaveLength(2);
 
-    expect(plan.sources.encounters[0]).toEqual({ seq: 1, visitType: 'new-visit', segmentCount: 15, ledgerItemId: 'ledger-1', ledgerVersion: 2, rendered: 'ledger_cited' });
+    expect(plan.sources.encounters[0]).toEqual({
+      seq: 1,
+      visitType: 'new-visit',
+      segmentCount: 15,
+      ledgerItemId: 'ledger-1',
+      ledgerVersion: 2,
+      rendered: 'ledger_cited',
+    });
     expect(plan.sources.encounters[1].rendered).toBe('verbatim');
-    expect(plan.budget.reductions).toEqual([
-      expect.objectContaining({ kind: 'prior_encounter_to_ledger', encounterSeq: 1 }),
-    ]);
+    expect(plan.budget.reductions).toEqual([expect.objectContaining({ kind: 'prior_encounter_to_ledger', encounterSeq: 1 })]);
     const [reduction] = plan.budget.reductions;
     expect(reduction.tokensAfter).toBeLessThan(reduction.tokensBefore);
     // every segment of every encounter stays citable
@@ -267,7 +344,11 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
   it('fails closed with NOTE_INPUT_EXCEEDS_CONTEXT when the last encounter alone cannot fit', async () => {
     const snap = snapshot();
     snap.encounters[1].segments.push({ id: 'huge', versionNumber: 1, segmentSeq: 6, speaker: 'doctor', t0Ms: 650000, text: 'x '.repeat(40000) });
-    await expect(compose(snap)).rejects.toMatchObject({ name: NoteInputExceedsContextError.name, code: 'NOTE_INPUT_EXCEEDS_CONTEXT', contextWindow: 32768 });
+    await expect(compose(snap)).rejects.toMatchObject({
+      name: NoteInputExceedsContextError.name,
+      code: 'NOTE_INPUT_EXCEEDS_CONTEXT',
+      contextWindow: 32768,
+    });
   });
 
   it('records the estimate tokenizer mode when the counter fell back to it', async () => {
@@ -309,14 +390,19 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
 
   it('keeps criticalFacts = [] when every ledger was checked and none holds a critical fact', async () => {
     const snap = snapshot();
-    for (const encounter of snap.encounters) encounter.ledger!.ledger.facts = encounter.ledger!.ledger.facts.map((fact) => ({ ...fact, critical: false }));
+    for (const encounter of snap.encounters)
+      encounter.ledger!.ledger.facts = encounter.ledger!.ledger.facts.map((fact) => ({ ...fact, critical: false }));
     expect((await compose(snap)).coverage.criticalFacts).toEqual([]);
   });
 
   it('renders the user prefix with the house data-block wrapping, and counts each block as it is sent', async () => {
     const plan = await compose(snapshot(), { counter: async (texts) => estimateCounts(texts) });
     const prefix = renderNotePlanUserPrefix(plan);
-    expect(prefix.startsWith('<<<EXTERNAL_DATA section="pre_summary">>>\n--- Pre-summary ---\nKnown type 2 diabetes on metformin.\n<<<END_EXTERNAL_DATA>>>\n\n')).toBe(true);
+    expect(
+      prefix.startsWith(
+        '<<<EXTERNAL_DATA section="pre_summary">>>\n--- Pre-summary ---\nKnown type 2 diabetes on metformin.\n<<<END_EXTERNAL_DATA>>>\n\n',
+      ),
+    ).toBe(true);
     for (const block of plan.blocks) {
       const wrapped = `<<<EXTERNAL_DATA section="${block.key}">>>\n--- ${block.label} ---\n${block.content}\n<<<END_EXTERNAL_DATA>>>`;
       expect(prefix).toContain(wrapped);
@@ -326,7 +412,10 @@ describe('composeFromSnapshot — inputs, order, labels', () => {
   });
 
   it('refuses to plan without any section headings', async () => {
-    await expect(compose(snapshot({ headings: [] }))).rejects.toMatchObject({ name: NoteTemplateUnresolvedError.name, code: 'NOTE_TEMPLATE_UNRESOLVED' });
+    await expect(compose(snapshot({ headings: [] }))).rejects.toMatchObject({
+      name: NoteTemplateUnresolvedError.name,
+      code: 'NOTE_TEMPLATE_UNRESOLVED',
+    });
   });
 
   it('reads the legacy single transcript only when the consultation has no segment items', async () => {
@@ -348,8 +437,10 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
   const draft = {
     itemId: 'draft-1',
     versionNumber: 4,
-    latestText: '## Subjective\nChest tightness.\n## Objective\nNormal ECG.\n## Assessment\nNon-cardiac chest pain.\n## Plan\nMetformin 1000 mg twice daily; repeat HbA1c.',
-    aiText: '## Subjective\nChest tightness.\n## Objective\nNormal ECG.\n## Assessment\nNon-cardiac chest pain.\n## Plan\nMetformin 1000 mg twice daily.',
+    latestText:
+      '## Subjective\nChest tightness.\n## Objective\nNormal ECG.\n## Assessment\nNon-cardiac chest pain.\n## Plan\nMetformin 1000 mg twice daily; repeat HbA1c.',
+    aiText:
+      '## Subjective\nChest tightness.\n## Objective\nNormal ECG.\n## Assessment\nNon-cardiac chest pain.\n## Plan\nMetformin 1000 mg twice daily.',
   };
 
   it('splits the latest note against its AI version: edited headings are the clinician’s, unchanged ones the AI draft', async () => {
@@ -363,7 +454,12 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
       label: 'Previous AI draft',
       content: 'Subjective: Chest tightness.\n\nObjective: Normal ECG.\n\nAssessment: Non-cardiac chest pain.',
     });
-    expect(plan.sources.draft).toEqual({ contextItemId: 'draft-1', versionNumber: 4, clinicianSections: ['plan'], aiSections: ['subjective', 'objective', 'assessment'] });
+    expect(plan.sources.draft).toEqual({
+      contextItemId: 'draft-1',
+      versionNumber: 4,
+      clinicianSections: ['plan'],
+      aiSections: ['subjective', 'objective', 'assessment'],
+    });
   });
 
   it('treats every section as the clinician’s when no AI baseline exists', async () => {
@@ -403,11 +499,15 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
       name: NoteCompositionRequestError.name,
       code: 'NOTE_SECTION_REGEN_NO_DRAFT',
     });
-    await expect(compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: ['nope'] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
+    await expect(compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: ['nope'] })).rejects.toMatchObject({
+      code: 'NOTE_SECTION_UNKNOWN',
+    });
     await expect(compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: [] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
     // a heading the note has but the template does not declare cannot be regenerated alone
     const extra = { ...draft, latestText: `${draft.latestText}\n## Addendum\nLate result.` };
-    await expect(compose(snapshot({ draft: extra }), { mode: 'section_regen', sectionKeys: ['addendum'] })).rejects.toMatchObject({ code: 'NOTE_SECTION_UNKNOWN' });
+    await expect(compose(snapshot({ draft: extra }), { mode: 'section_regen', sectionKeys: ['addendum'] })).rejects.toMatchObject({
+      code: 'NOTE_SECTION_UNKNOWN',
+    });
   });
 });
 
@@ -435,11 +535,15 @@ function service(opts: { items: Item[]; contextLength?: number | null; redis?: M
   const contextItemRepository = {
     findSegments: vi.fn(async (_cid: string, filters?: { encounterSeq?: number }) =>
       items
-        .filter((i) => i.type === ContextItemType.TRANSCRIPT_SEGMENT && (filters?.encounterSeq === undefined || i.encounterSeq === filters.encounterSeq))
+        .filter(
+          (i) => i.type === ContextItemType.TRANSCRIPT_SEGMENT && (filters?.encounterSeq === undefined || i.encounterSeq === filters.encounterSeq),
+        )
         .sort((a, b) => (a.segmentSeq ?? 0) - (b.segmentSeq ?? 0)),
     ),
     findTranscripts: vi.fn(async () => items.filter((i) => i.type === ContextItemType.TRANSCRIPT)),
-    findEncounterArtifact: vi.fn(async (_cid: string, type: ContextItemType, seq: number) => items.find((i) => i.type === type && i.encounterSeq === seq) ?? null),
+    findEncounterArtifact: vi.fn(
+      async (_cid: string, type: ContextItemType, seq: number) => items.find((i) => i.type === type && i.encounterSeq === seq) ?? null,
+    ),
     findAttachments: vi.fn(async () => items.filter((i) => i.type === ContextItemType.ATTACHMENT)),
     findPreSummaries: vi.fn(async () => items.filter((i) => i.type === ContextItemType.PRE_SUMMARY)),
     findByType: vi.fn(async (_cid: string, type: ContextItemType) => items.filter((i) => i.type === type)),
@@ -466,7 +570,9 @@ function service(opts: { items: Item[]; contextLength?: number | null; redis?: M
     setex: vi.fn(async (key: string, ttl: number, value: string) => void redis.set(key, { value, ttl })),
   };
   const counter = { count: vi.fn(async (texts: readonly string[]) => exact(texts)) };
-  const documentTemplates = { resolveForGeneration: vi.fn(async () => ({ compiled: { checklist: SOAP.map((s) => ({ ...s, form: 'PROSE', required: false })) } })) };
+  const documentTemplates = {
+    resolveForGeneration: vi.fn(async () => ({ compiled: { checklist: SOAP.map((s) => ({ ...s, form: 'PROSE', required: false })) } })),
+  };
   const svc = new NoteInputComposerService(
     contextItemRepository as never,
     aiModelRepository as never,
@@ -483,7 +589,17 @@ function service(opts: { items: Item[]; contextLength?: number | null; redis?: M
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 5, 9, minute));
 
 function seg(n: number, seq: number, text: string, encounterSeq = 1): Item {
-  return { id: SEG(n), type: ContextItemType.TRANSCRIPT_SEGMENT, content: text, currentVersionNumber: 1, encounterSeq, segmentSeq: seq, speaker: 'doctor', t0Ms: seq * 1000, createdAt: at(seq) };
+  return {
+    id: SEG(n),
+    type: ContextItemType.TRANSCRIPT_SEGMENT,
+    content: text,
+    currentVersionNumber: 1,
+    encounterSeq,
+    segmentSeq: seq,
+    speaker: 'doctor',
+    t0Ms: seq * 1000,
+    createdAt: at(seq),
+  };
 }
 
 describe('NoteInputComposerService', () => {
@@ -505,7 +621,14 @@ describe('NoteInputComposerService', () => {
       metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
       createdAt: at(6),
     },
-    { id: 'pre-1', type: ContextItemType.PRE_SUMMARY, content: 'Hypertension since 2019.', currentVersionNumber: 1, metaData: null, createdAt: at(0) },
+    {
+      id: 'pre-1',
+      type: ContextItemType.PRE_SUMMARY,
+      content: 'Hypertension since 2019.',
+      currentVersionNumber: 1,
+      metaData: null,
+      createdAt: at(0),
+    },
     {
       id: 'aud-1',
       type: ContextItemType.TRANSCRIPT,
@@ -515,10 +638,24 @@ describe('NoteInputComposerService', () => {
       metaData: { origin: 'attachment_audio' },
       createdAt: at(7),
     },
-    { id: 'doc-1', type: ContextItemType.ATTACHMENT, content: 'Lab/exam result: ecg.pdf', currentVersionNumber: 1, metaData: { extractedText: 'ECG sinus rhythm.' }, createdAt: at(8) },
+    {
+      id: 'doc-1',
+      type: ContextItemType.ATTACHMENT,
+      content: 'Lab/exam result: ecg.pdf',
+      currentVersionNumber: 1,
+      metaData: { extractedText: 'ECG sinus rhythm.' },
+      createdAt: at(8),
+    },
   ];
 
-  const request = { tenantId: 't1', consultationId: 'c1', mode: 'final' as const, model: 'lms-gemma-4-e2b-it-qat', system: async () => 'SYSTEM', waitForLedgers: false };
+  const request = {
+    tenantId: 't1',
+    consultationId: 'c1',
+    mode: 'final' as const,
+    model: 'lms-gemma-4-e2b-it-qat',
+    system: async () => 'SYSTEM',
+    waitForLedgers: false,
+  };
 
   it('never reads the recap or the live snapshot into a plan (canary)', async () => {
     const { svc } = service({ items: baseItems() });
@@ -539,7 +676,13 @@ describe('NoteInputComposerService', () => {
     expect(preservedSections).toEqual([]);
     expect(await svc.loadEnvelope('t2', 'c1', plan.planId)).toBeNull();
     expect(await svc.loadEnvelope('t1', 'other', plan.planId)).toBeNull();
-    expect(await svc.loadRecipe(plan.planId)).toEqual({ consultationId: 'c1', tenantId: 't1', mode: 'final', sectionKeys: [], model: 'lms-gemma-4-e2b-it-qat' });
+    expect(await svc.loadRecipe(plan.planId)).toEqual({
+      consultationId: 'c1',
+      tenantId: 't1',
+      mode: 'final',
+      sectionKeys: [],
+      model: 'lms-gemma-4-e2b-it-qat',
+    });
   });
 
   it('fails closed when the model row declares no context window — never a default', async () => {
@@ -550,7 +693,10 @@ describe('NoteInputComposerService', () => {
   it('counts every text through the injected counter with the model it plans for', async () => {
     const { svc, counter } = service({ items: baseItems() });
     await svc.compose(request);
-    expect(counter.count).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ tenantId: 't1', provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', allowEstimate: true }));
+    expect(counter.count).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ tenantId: 't1', provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', allowEstimate: true }),
+    );
   });
 });
 
@@ -562,10 +708,22 @@ describe('PromptAssemblyService — a composed note plan IS the user message', (
   it('renders the plan blocks byte-identically to the executor prefix, points the instruction at them, and adds no per-section data', async () => {
     const plan = await compose(snapshot());
     const resolution = {
-      resolve: vi.fn(async () => ({ resolvedFrom: 'SYSTEM', promptId: undefined, content: 'Write the SOAP note.\nTranscript:\n{{transcript}}', resolvedPrompt: null })),
+      resolve: vi.fn(async () => ({
+        resolvedFrom: 'SYSTEM',
+        promptId: undefined,
+        content: 'Write the SOAP note.\nTranscript:\n{{transcript}}',
+        resolvedPrompt: null,
+      })),
     };
     const exemplars = { retrieveExemplars: vi.fn(async () => [{ redactedAfter: 'STYLE EXAMPLE' }]) };
-    const assembly = new PromptAssemblyService(resolution as never, { findById: vi.fn() } as never, {} as never, undefined, undefined, exemplars as never);
+    const assembly = new PromptAssemblyService(
+      resolution as never,
+      { findById: vi.fn() } as never,
+      {} as never,
+      undefined,
+      undefined,
+      exemplars as never,
+    );
 
     const assembled = await assembly.assemble({
       tenantId: 't1',
@@ -596,25 +754,52 @@ describe('PromptAssemblyService — a composed note plan IS the user message', (
 });
 
 describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan through the composer', () => {
-  const CONSULTATION = { id: 'c1', tenantId: 't1', status: 'STOPPED', processing: 'SUMMARIZING', resourceStatus: 'ENABLED', departmentId: null, doctorId: null, metadata: null };
+  const CONSULTATION = {
+    id: 'c1',
+    tenantId: 't1',
+    status: 'STOPPED',
+    processing: 'SUMMARIZING',
+    resourceStatus: 'ENABLED',
+    departmentId: null,
+    doctorId: null,
+    metadata: null,
+  };
 
   async function harness(overrides: { compose?: () => Promise<unknown>; cached?: unknown; recipe?: unknown } = {}) {
     const plan = await compose(snapshot());
     const envelope = { plan, preservedSections: [] };
-    const cls = { run: vi.fn((a: unknown, b?: unknown) => (typeof a === 'function' ? (a as () => unknown)() : (b as () => unknown)())), set: vi.fn(), get: vi.fn() };
+    const cls = {
+      run: vi.fn((a: unknown, b?: unknown) => (typeof a === 'function' ? (a as () => unknown)() : (b as () => unknown)())),
+      set: vi.fn(),
+      get: vi.fn(),
+    };
     const longAttachment = 'L'.repeat(30_000);
     const contextItemRepository = {
       findTranscripts: vi.fn(async () => []),
       findCaseNotes: vi.fn(async () => [{ id: 'cn-1', currentVersionNumber: 2, content: 'Patient brought a glucose diary.' }]),
       findWorknotes: vi.fn(async () => []),
       findAttachments: vi.fn(async () => [{ id: 'doc-1', currentVersionNumber: 1, content: 'label', metaData: { extractedText: longAttachment } }]),
-      findLatestPreSummaryWithDecryptedContent: vi.fn(async () => ({ entity: { id: 'live', content: 'LIVE DRAFT', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' } }, plaintext: 'LIVE DRAFT' })),
+      findLatestPreSummaryWithDecryptedContent: vi.fn(async () => ({
+        entity: { id: 'live', content: 'LIVE DRAFT', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' } },
+        plaintext: 'LIVE DRAFT',
+      })),
       findLatestByKindKey: vi.fn(async (_cid: string, kind: string) =>
-        kind === 'vitals' ? { id: 'vit-1', currentVersionNumber: 1, kindKey: 'vitals', content: JSON.stringify({ bloodPressure: '150/95' }), createdAt: new Date() } : null,
+        kind === 'vitals'
+          ? { id: 'vit-1', currentVersionNumber: 1, kindKey: 'vitals', content: JSON.stringify({ bloodPressure: '150/95' }), createdAt: new Date() }
+          : null,
       ),
       findByType: vi.fn(async () => []),
     };
-    const promptAssemblyService = { assemble: vi.fn(async () => ({ userPrompt: 'USER', systemPrompt: 'ASSEMBLED SYSTEM', hyperparameters: {}, responseFormat: null, resolvedFrom: 'SYSTEM', promptId: undefined })) };
+    const promptAssemblyService = {
+      assemble: vi.fn(async () => ({
+        userPrompt: 'USER',
+        systemPrompt: 'ASSEMBLED SYSTEM',
+        hyperparameters: {},
+        responseFormat: null,
+        resolvedFrom: 'SYSTEM',
+        promptId: undefined,
+      })),
+    };
     const composer = {
       compose: vi.fn(overrides.compose ?? (async () => envelope)),
       loadEnvelope: vi.fn(async () => overrides.cached ?? null),
@@ -682,7 +867,12 @@ describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan th
   it('composeNotePlan waits for ledgers and returns the ref a run starter hands the harness', async () => {
     const { service, plan, composer } = await harness();
     const summary = await service.composeNotePlan('c1', { tenantId: 't1', model: 'lms-gemma-4-e2b-it-qat' });
-    expect(summary).toEqual({ notePlanRef: { consultationId: 'c1', mode: 'final', planId: plan.planId }, strategy: 'single_pass', callCount: 1, promptTokens: plan.calls[0].promptTokens });
+    expect(summary).toEqual({
+      notePlanRef: { consultationId: 'c1', mode: 'final', planId: plan.planId },
+      strategy: 'single_pass',
+      callCount: 1,
+      promptTokens: plan.calls[0].promptTokens,
+    });
     expect(composer.compose.mock.calls[0][0]).toMatchObject({ waitForLedgers: true, cache: true, model: 'lms-gemma-4-e2b-it-qat' });
   });
 
@@ -694,7 +884,14 @@ describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan th
 
     const miss = await harness({ recipe: { consultationId: 'c1', tenantId: 't1', mode: 'section_regen', sectionKeys: ['plan'], model: 'm' } });
     await miss.service.getNotePlan('c1', 'plan-x', 't1');
-    expect(miss.composer.compose.mock.calls[0][0]).toMatchObject({ planId: 'plan-x', mode: 'section_regen', sectionKeys: ['plan'], model: 'm', cache: true, waitForLedgers: false });
+    expect(miss.composer.compose.mock.calls[0][0]).toMatchObject({
+      planId: 'plan-x',
+      mode: 'section_regen',
+      sectionKeys: ['plan'],
+      model: 'm',
+      cache: true,
+      waitForLedgers: false,
+    });
 
     const foreign = await harness({ recipe: { consultationId: 'other', tenantId: 't1', mode: 'final', sectionKeys: [], model: null } });
     await expect(foreign.service.getNotePlan('c1', 'plan-y', 't1')).rejects.toMatchObject({ status: 404 });
@@ -747,6 +944,13 @@ describe('ChainSummaryService — the chain summary records its text run (H-89)'
     expect(activityRuns.record).toHaveBeenCalledTimes(1);
     const [[run, inTx]] = recorded as [[Record<string, unknown>, unknown]];
     expect(inTx).toBe(tx);
-    expect(run).toMatchObject({ tenantId: 't1', consultationId: 'c1', activityKind: 'NOTE_GENERATE', runKey: 'text:c1:task-9:0', contextItemId: 'note-9', outputVersionNumber: 1 });
+    expect(run).toMatchObject({
+      tenantId: 't1',
+      consultationId: 'c1',
+      activityKind: 'NOTE_GENERATE',
+      runKey: 'text:c1:task-9:0',
+      contextItemId: 'note-9',
+      outputVersionNumber: 1,
+    });
   });
 });
