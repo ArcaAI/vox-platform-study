@@ -26,7 +26,9 @@ import type { LanguageModeId, LanguageResolution } from './language';
  * Every field is optional. Sending `{}` is the intended default: the gateway
  * resolves the ASR agent in order — (1) {@link agentSlug}, when named; (2) if
  * {@link consultationId} is present, the speech-to-text agent named in that
- * consultation's governing workflow; (3) the tenant admin's assignment
+ * consultation's governing workflow — or, if {@link workflowSlug} is present
+ * instead (TASK-1042), the single speech-to-text node of that published
+ * workflow; (3) the tenant admin's assignment
  * (department first, then tenant default). Which rule won is echoed on
  * {@link StreamSessionResponse.agentSource}.
  */

@@ -10,7 +10,8 @@
  * It means naming an AGENT, or naming nothing. `agentSlug` is a lineage key for
  * a published `SPEECH_TO_TEXT` agent. Omit it and the gateway resolves one in
  * order: a `consultationId` here whose governing workflow names a
- * speech-to-text agent wins; otherwise the tenant admin's assignment
+ * speech-to-text agent wins (or, TASK-1042, a `workflowSlug` whose published
+ * graph has one speech-to-text node); otherwise the tenant admin's assignment
  * (department first, then tenant default) decides.
  * {@link StreamSessionResponse.agentSource} reports which rule won. There is
  * no engine, no model id and no pipeline to choose — the deprecated
