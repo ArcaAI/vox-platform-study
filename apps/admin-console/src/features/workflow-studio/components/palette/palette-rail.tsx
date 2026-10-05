@@ -15,6 +15,7 @@ import { useId, useMemo, useState } from 'react';
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle, Input, Label, Skeleton } from '@arcaai/ui';
 import { IconPuzzle, IconSearch } from '@tabler/icons-react';
 import { humanizeKey } from '../../lib/schema-form';
+import { nodeTypeTitle } from '../../lib/node-identity';
 import type { WorkflowNodeDescriptor } from '../../api/types';
 import { PALETTE_PRESETS, type PalettePreset } from '../../lib/palette-presets';
 import { writePaletteDragType } from '../../lib/palette-drag';
@@ -53,7 +54,7 @@ function groupByPalette(descriptors: WorkflowNodeDescriptor[]): Map<string, Work
 function matchesQuery(descriptor: WorkflowNodeDescriptor, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (needle === '') return true;
-  return [descriptor.type, humanizeKey(descriptor.type), descriptor.paletteKey ?? ''].some((haystack) => haystack.toLowerCase().includes(needle));
+  return [descriptor.type, humanizeKey(descriptor.type), nodeTypeTitle(descriptor.type), descriptor.paletteKey ?? ''].some((haystack) => haystack.toLowerCase().includes(needle));
 }
 
 export function PaletteRail({ descriptors, entitledFeatureKeys, loading, onAddNode }: PaletteRailProps) {

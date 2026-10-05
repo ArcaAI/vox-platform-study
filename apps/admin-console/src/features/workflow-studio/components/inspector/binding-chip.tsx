@@ -7,6 +7,7 @@
 import { Badge, cn } from '@arcaai/ui';
 import type { GraphStoreNode } from '../../store/types';
 import { describeBinding } from '../../lib/binding-display';
+import { useNodeNamingContext } from '../node-naming-context';
 import { SCOPE_CLASS, SCOPE_NAME } from './scope-style';
 
 export interface BindingChipProps {
@@ -17,7 +18,8 @@ export interface BindingChipProps {
 }
 
 export function BindingChip({ binding, nodes, phi, className }: BindingChipProps) {
-  const chip = describeBinding(binding, nodes);
+  const naming = useNodeNamingContext();
+  const chip = describeBinding(binding, nodes, naming);
   if (!chip) return null;
   return (
     <span className={cn('inline-flex max-w-full items-center gap-1', className)}>

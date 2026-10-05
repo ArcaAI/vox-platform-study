@@ -16,6 +16,7 @@ import {
 } from '@arcaai/workflow-contract';
 import type { GraphStoreEdge, GraphStoreNode } from '../store/types';
 import { contractGraphOf } from './connection-plan';
+import { nodeDisplayNames, type NodeNaming } from './node-identity';
 
 export type PickerPurpose = 'binding' | 'template' | 'condition';
 
@@ -50,6 +51,20 @@ export interface PickerModelInput {
   samples?: Readonly<Record<string, unknown>>;
   /** TASK-1036 R-C #7 — the studio's "Hide PHI": a PHI-classed item's sample is masked. */
   hidePhi?: boolean;
+  /** The agents' display names, so an earlier step reads by its friendly name ("Start › …"), never its id. */
+  naming?: NodeNaming;
+}
+
+/**
+ * An Earlier-steps item reads by the step's FRIENDLY name (owner, 2026-10-05): the contract labels
+ * an unnamed step by its raw id (`n_asr › transcript`); the Studio swaps in the name the canvas
+ * shows. The stored path (`raw`) is unchanged.
+ */
+function friendlyStepPath(item: { path: string; raw: string }, names: ReadonlyMap<string, string>): string {
+  const match = /^nodes\.([^.]+)\./.exec(item.raw);
+  const name = match ? names.get(match[1] as string) : undefined;
+  const cut = item.path.indexOf(' › ');
+  return name && cut >= 0 ? `${name}${item.path.slice(cut)}` : item.path;
 }
 
 /** What a masked value reads as — the same words in the picker, the `{{` completion and Last run. */
@@ -105,6 +120,7 @@ export function pickerGroups(input: PickerModelInput): PickerGroup[] {
     agentOutputs: input.agents,
     ...(targetType ? { targetType } : {}),
   });
+  const names = nodeDisplayNames(input.nodes, input.naming);
   return groups.map((group) => {
     const block = purpose === 'condition' ? CONDITION_BLOCKS[group.key] : undefined;
     const items: PickerItem[] = group.items.map((item) => {
@@ -114,6 +130,7 @@ export function pickerGroups(input: PickerModelInput): PickerGroup[] {
         input.samples && item.raw in input.samples ? (input.hidePhi && item.phiClass === 'PHI' ? PHI_MASK : formatSample(input.samples[item.raw])) : undefined;
       return {
         ...item,
+        path: friendlyStepPath(item, names),
         scope: group.key,
         ...(disabledReason ? { disabledReason, bestMatch: undefined } : {}),
         ...(sample !== undefined ? { sample } : {}),

@@ -105,8 +105,8 @@ import { GRAPH_EXPORT_FILENAME, exportGraphJson, parseGraphJson } from '../lib/g
 import { BUNDLE_EXPORT_FILENAME, downloadJson } from '../lib/bundle-io';
 import { readContextSchemaBinding } from '../lib/context-schema-ref';
 import { actionKeyOf } from '../lib/core-ports';
-import { nodeDisplayName } from '../lib/node-identity';
-import { humanizeKey } from '../lib/schema-form';
+import { agentNamesOf, nodeDisplayNames } from '../lib/node-identity';
+import { NodeNamingProvider } from './node-naming-context';
 import { planConnection } from '../lib/connection-plan';
 import { computeStepOrder } from '../lib/step-order';
 import {
@@ -308,7 +308,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   /** The latest Test run laid over the Composer: each step's state and the links that carried data. */
   const runOverlay = useMemo(() => runOverlayFromLastRuns(edges, lastRunByNode), [edges, lastRunByNode]);
   /** The composer's agent resolver — the SAME cached read `ComposerCanvas` types ports with. */
-  const { agents } = useComposerAgents();
+  const { agents, agentOptions } = useComposerAgents();
+  /** Owner, 2026-10-05 — every surface names a step in words: the agents' display names, provided once below. */
+  const naming = useMemo(() => agentNamesOf(agentOptions), [agentOptions]);
+  const nodeNames = useMemo(() => nodeDisplayNames(nodes, naming), [nodes, naming]);
   // TASK-965 WS-1 (WF-1, WF-26) — validate and publish go through the studio's TanStack mutations,
   // whose `onSuccess` invalidates the whole namespace (rule 13: mutations, never raw client calls).
   const validateMutation = useValidateWorkflowDefinition();
@@ -341,13 +344,13 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const actionOptions = useMemo(
     () =>
       Object.values(ACTION_CATALOGUE)
-        .map((action) => ({ key: action.key, label: humanizeKey(action.key) }))
+        .map((action) => ({ key: action.key, label: action.label }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [],
   );
   const selectedActionSchema = selectedNode?.type === ACTION_NODE_TYPE ? ACTION_CATALOGUE[actionKeyOf(selectedNode.config) ?? '']?.configSchema : undefined;
   const celReferences = useMemo(() => celReferencesOf(nodes), [nodes]);
-  const agentPins = useMemo(() => collectAgentPins(nodes), [nodes]);
+  const agentPins = useMemo(() => collectAgentPins(nodes, naming), [nodes, naming]);
   /**
    * TASK-890 black-box J4-F5 — what the trigger binds, so a `core.agent`'s prompt-variable chips
    * can offer this workflow's real `{{trigger.<kindKey>.<field>}}` paths. Read with the same
@@ -686,15 +689,16 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
    */
   const nodeCommands: StudioNodeCommands | null = useMemo(() => {
     if (!selectedNode) return null;
-    const label = (node: { id: string; type: string; config?: Record<string, unknown> }) => {
+    const nameOf = (node: { id: string }) => nodeNames.get(node.id) ?? '';
+    const label = (node: { id: string }) => {
       const step = stepOf(node.id);
-      return step === null ? nodeDisplayName(node) : `${step}. ${nodeDisplayName(node)}`;
+      return step === null ? nameOf(node) : `${step}. ${nameOf(node)}`;
     };
     return {
-      nodeLabel: nodeDisplayName(selectedNode),
+      nodeLabel: nameOf(selectedNode),
       connectTargets: orderedNodes.filter((node) => node.id !== selectedNode.id).map((node) => ({ id: node.id, label: label(node) })),
       onConnectTo: (targetId: string) => connectTo(selectedNode.id, targetId),
-      loopTargets: nodes.filter((node) => node.type === LOOP_NODE_TYPE && node.id !== selectedNode.id).map((node) => ({ id: node.id, label: nodeDisplayName(node) })),
+      loopTargets: nodes.filter((node) => node.type === LOOP_NODE_TYPE && node.id !== selectedNode.id).map((node) => ({ id: node.id, label: nameOf(node) })),
       currentParentId: selectedNode.parentId ?? null,
       onMoveToLoop: (loopId: string | null) => {
         // A group child's `position` is relative to its parent, a top-level node's is absolute —
@@ -734,7 +738,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       onDuplicate: () => handleDuplicate(selectedNode.id),
       onDelete: () => handleDeleteRequest(selectedNode.id),
     };
-  }, [selectedNode, selectedNodeIds, orderedNodes, nodes, stepOf, connectTo, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
+  }, [selectedNode, selectedNodeIds, orderedNodes, nodes, nodeNames, stepOf, connectTo, handleNodeParentChange, handleDuplicate, handleDeleteRequest, storeApi]);
 
   // TASK-864 B1 — auto layout (built-in layered engine; an ELK engine can be injected later),
   // JSON export and undoable JSON import. Layout moves mark the graph dirty like any other edit;
@@ -915,321 +919,323 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       : publishBlockedReason(report);
 
   return (
-    // R-C #3 — natural height below md (the shell scrolls once); a minimum height at md and up.
-    <Tabs value={tab} onValueChange={(next) => void setTab(next as StudioTab)} className="min-h-0 flex-1 gap-0 max-md:flex-none md:min-h-[40rem]">
-      <ScreenTemplate
-        contentMode="fill"
-        header={
-          <StudioHeader
-            name={name}
-            onNameChange={handleNameChange}
-            slug={definition.slug}
-            status={status}
-            versionNumber={definition.versionNumber}
-            versionCount={versionCount}
-            onOpenHistory={() => setHistoryOpen(true)}
-            pins={agentPins}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onValidate={() => void handleValidate()}
-            validating={validating}
-            onPublish={() => setPublishOpen(true)}
-            publishing={publishing}
-            publishDisabledReason={publishDisabledReason}
-            readOnly={readOnly}
-            needsReview={definition.needsReview}
-            actions={
-              <>
-                <WorkflowSwitcher current={definition} onNavigate={navigate} />
-                {readOnly ? (
-                  <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={draftFrom.isPending}>
-                    <IconPlus aria-hidden="true" />
-                    {draftFrom.isPending ? 'Creating…' : 'Edit as new draft'}
-                  </Button>
-                ) : null}
-                {/* R-C #13 — the rare actions live in one menu; the header keeps what is used every visit. */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="outline" size="icon-sm" aria-label="More workflow actions">
-                      <IconDots aria-hidden="true" />
+    <NodeNamingProvider naming={naming}>
+      {/* R-C #3 — natural height below md (the shell scrolls once); a minimum height at md and up. */}
+      <Tabs value={tab} onValueChange={(next) => void setTab(next as StudioTab)} className="min-h-0 flex-1 gap-0 max-md:flex-none md:min-h-[40rem]">
+        <ScreenTemplate
+          contentMode="fill"
+          header={
+            <StudioHeader
+              name={name}
+              onNameChange={handleNameChange}
+              slug={definition.slug}
+              status={status}
+              versionNumber={definition.versionNumber}
+              versionCount={versionCount}
+              onOpenHistory={() => setHistoryOpen(true)}
+              pins={agentPins}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onValidate={() => void handleValidate()}
+              validating={validating}
+              onPublish={() => setPublishOpen(true)}
+              publishing={publishing}
+              publishDisabledReason={publishDisabledReason}
+              readOnly={readOnly}
+              needsReview={definition.needsReview}
+              actions={
+                <>
+                  <WorkflowSwitcher current={definition} onNavigate={navigate} />
+                  {readOnly ? (
+                    <Button type="button" size="sm" onClick={() => void handleCreateNewVersion()} disabled={draftFrom.isPending}>
+                      <IconPlus aria-hidden="true" />
+                      {draftFrom.isPending ? 'Creating…' : 'Edit as new draft'}
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem onSelect={() => navigate('/workflow-studio/new')}>New workflow</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setMetadataOpen(true)}>Edit details</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => openClone(definition)}>Clone this workflow</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => openClone(null)}>Start from a template</DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        setImportError(null);
-                        setImportOpen(true);
-                      }}
-                    >
-                      Import a bundle…
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            }
-          />
-        }
-        statusBanner={
-          <>
-            {save.paused ? <OccConflictAlert error={save.lastError} onReload={() => void handleReloadLatest()} onOverwrite={() => void handleOverwriteAnyway()} /> : null}
-            {readOnly ? (
-              <div role="status" className="border-warning/40 bg-warning/10 text-warning-strong flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                <IconLock aria-hidden="true" className="size-4 shrink-0" />
-                <span>
-                  This version is {status.toLowerCase()}, so the canvas and palette are locked. Create a new draft to keep editing — the
-                  graph, its bindings and its history come with it.
-                </span>
-              </div>
-            ) : null}
-          </>
-        }
-        toolbar={
-          <StudioToolbar
-            saveState={saveState}
-            canSave={canSave}
-            canDiscard={canDiscard}
-            onSave={handleSave}
-            onDiscard={handleDiscard}
-            readOnly={readOnly}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            problemCount={findings.length}
-            onOpenProblems={() => openRail('problems')}
-            hidePhi={hidePhi}
-            onHidePhiChange={(hide) => storeApi.getState().setHidePhi(hide)}
-            onAutoLayout={() => void handleAutoLayout()}
-            onExport={handleExport}
-            onImport={handleImportGraph}
-            onExportBundle={() => void handleExportBundle()}
-            exportingBundle={exportBundle.isPending}
-            nodeCommands={nodeCommands}
-          />
-        }
-        tabs={
-          <TabsList variant="line" aria-label="Workflow studio views">
-            <TabsTrigger value="composer">Composer</TabsTrigger>
-            <TabsTrigger value="test">Test</TabsTrigger>
-            <TabsTrigger value="integration">Integration</TabsTrigger>
-          </TabsList>
-        }
-        footer={
-          <StatusFooter
-            start={
-              <>
-                <span>{readOnly ? 'Read-only version.' : dirty || metadataDirty ? 'Unsaved changes — press Save.' : 'All changes saved.'}</span>
-                <span>
-                  {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} connection{edges.length === 1 ? '' : 's'}
-                </span>
-                {/* The report summary is the Problems tab's opener, so the count is not a dead end. */}
-                <button
-                  type="button"
-                  onClick={() => openRail('problems')}
-                  className={`hover:text-foreground focus-visible:ring-ring rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none ${
-                    errorCount > 0 ? 'text-destructive' : ''
-                  }`}
-                >
-                  {report ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : 'Not yet validated'}
-                </button>
-              </>
-            }
-            end={
-              <span aria-hidden className="font-mono">
-                PATCH /admin/workflow-definitions/{definition.id}
-              </span>
-            }
-          />
-        }
-      >
-        {/* COMPOSER — kept mounted while another tab is open so the canvas keeps its viewport. At
-            `md`+ the stage is a positioned box the canvas fills and the panes float over; below it
-            the stage is one scrolling column (palette, canvas, inspector in DOM order). */}
-        <TabsContent value="composer" forceMount hidden={tab !== 'composer'} className={TAB_PANEL_CLASS}>
-          <div data-slot="composer-stage" className="relative flex flex-col gap-4 md:block md:min-h-0 md:flex-1 md:overflow-hidden">
-            <FloatingPane
-              id="studio-palette"
-              title="Nodes"
-              defaultDock="left"
-              defaultWidth={260}
-              minWidth={200}
-              keepMounted
-              onFootprintChange={reportFootprint.palette}
-            >
+                  ) : null}
+                  {/* R-C #13 — the rare actions live in one menu; the header keeps what is used every visit. */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button type="button" variant="outline" size="icon-sm" aria-label="More workflow actions">
+                        <IconDots aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onSelect={() => navigate('/workflow-studio/new')}>New workflow</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setMetadataOpen(true)}>Edit details</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => openClone(definition)}>Clone this workflow</DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openClone(null)}>Start from a template</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          setImportError(null);
+                          setImportOpen(true);
+                        }}
+                      >
+                        Import a bundle…
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+            />
+          }
+          statusBanner={
+            <>
+              {save.paused ? <OccConflictAlert error={save.lastError} onReload={() => void handleReloadLatest()} onOverwrite={() => void handleOverwriteAnyway()} /> : null}
               {readOnly ? (
-                <p className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
-                  <IconLock aria-hidden="true" className="size-3.5 shrink-0" />
-                  Palette locked on a {status.toLowerCase()} version.
-                </p>
+                <div role="status" className="border-warning/40 bg-warning/10 text-warning-strong flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                  <IconLock aria-hidden="true" className="size-4 shrink-0" />
+                  <span>
+                    This version is {status.toLowerCase()}, so the canvas and palette are locked. Create a new draft to keep editing — the
+                    graph, its bindings and its history come with it.
+                  </span>
+                </div>
               ) : null}
-              {/* `inert` (React 19) takes the whole rail out of the tab order and the accessibility
-                  tree on a read-only version, so a locked palette cannot be reached and then do
-                  nothing. The REASON stays announced above it, outside the inert subtree —
-                  `handleAddNode`'s own `readOnly` gate is the second layer. */}
-              <div inert={readOnly || undefined} className={readOnly ? 'opacity-60' : undefined}>
-                <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
-              </div>
-            </FloatingPane>
-
-            <div className="h-[26rem] shrink-0 md:absolute md:inset-0 md:h-auto">
-              {/* TASK-1036 C2c — the composer's canvas owns every canvas gesture against the store
-                  (typed ports, auto-mapped links, `+` on a link, drop, delete, re-parent, move); the
-                  editor hands it the registry, the server's findings and the selection. */}
-              <ComposerCanvas
-                aria-label={`${name} graph`}
-                descriptorByType={descriptorByType}
-                readOnly={readOnly}
-                findings={findings}
-                runStates={runOverlay.runStates}
-                edgeRunStates={runOverlay.edgeRunStates}
-                selectedNodeIds={selectedNodeIds}
-                onSelectionChange={handleSelectionChange}
-                fitViewKey={fitViewKey}
-                viewportInsets={canvasInsets}
-                // The Composer canvas fills its region: the wheel zooms it, published or not (R-C #9
-                // applies to read-only canvases embedded in a scrolling page, like the Test tab's Flow).
-                wheelZoom="scroll"
-                emptyState={
-                  <Empty>
-                    <EmptyMedia variant="icon">
-                      <IconTopologyStar3 aria-hidden="true" />
-                    </EmptyMedia>
-                    <EmptyTitle>No nodes yet</EmptyTitle>
-                    <EmptyDescription>
-                      Add a step — click a palette card, drag it onto the canvas, or use “Add a step”. Every action here also has a keyboard path
-                      under “Node actions”.
-                    </EmptyDescription>
-                  </Empty>
-                }
-              />
-            </div>
-
-            {railOpen ? (
+            </>
+          }
+          toolbar={
+            <StudioToolbar
+              saveState={saveState}
+              canSave={canSave}
+              canDiscard={canDiscard}
+              onSave={handleSave}
+              onDiscard={handleDiscard}
+              readOnly={readOnly}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              problemCount={findings.length}
+              onOpenProblems={() => openRail('problems')}
+              hidePhi={hidePhi}
+              onHidePhiChange={(hide) => storeApi.getState().setHidePhi(hide)}
+              onAutoLayout={() => void handleAutoLayout()}
+              onExport={handleExport}
+              onImport={handleImportGraph}
+              onExportBundle={() => void handleExportBundle()}
+              exportingBundle={exportBundle.isPending}
+              nodeCommands={nodeCommands}
+            />
+          }
+          tabs={
+            <TabsList variant="line" aria-label="Workflow studio views">
+              <TabsTrigger value="composer">Composer</TabsTrigger>
+              <TabsTrigger value="test">Test</TabsTrigger>
+              <TabsTrigger value="integration">Integration</TabsTrigger>
+            </TabsList>
+          }
+          footer={
+            <StatusFooter
+              start={
+                <>
+                  <span>{readOnly ? 'Read-only version.' : dirty || metadataDirty ? 'Unsaved changes — press Save.' : 'All changes saved.'}</span>
+                  <span>
+                    {nodes.length} node{nodes.length === 1 ? '' : 's'} · {edges.length} connection{edges.length === 1 ? '' : 's'}
+                  </span>
+                  {/* The report summary is the Problems tab's opener, so the count is not a dead end. */}
+                  <button
+                    type="button"
+                    onClick={() => openRail('problems')}
+                    className={`hover:text-foreground focus-visible:ring-ring rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:outline-none ${
+                      errorCount > 0 ? 'text-destructive' : ''
+                    }`}
+                  >
+                    {report ? `${errorCount} error${errorCount === 1 ? '' : 's'}, ${warningCount} warning${warningCount === 1 ? '' : 's'}` : 'Not yet validated'}
+                  </button>
+                </>
+              }
+              end={
+                <span aria-hidden className="font-mono">
+                  PATCH /admin/workflow-definitions/{definition.id}
+                </span>
+              }
+            />
+          }
+        >
+          {/* COMPOSER — kept mounted while another tab is open so the canvas keeps its viewport. At
+              `md`+ the stage is a positioned box the canvas fills and the panes float over; below it
+              the stage is one scrolling column (palette, canvas, inspector in DOM order). */}
+          <TabsContent value="composer" forceMount hidden={tab !== 'composer'} className={TAB_PANEL_CLASS}>
+            <div data-slot="composer-stage" className="relative flex flex-col gap-4 md:block md:min-h-0 md:flex-1 md:overflow-hidden">
               <FloatingPane
-                id="studio-inspector"
-                title="Inspector"
-                defaultDock="right"
-                defaultWidth={360}
-                minWidth={280}
-                bodyScroll={false}
-                onClose={closeRail}
-                onFootprintChange={reportFootprint.inspector}
+                id="studio-palette"
+                title="Nodes"
+                defaultDock="left"
+                defaultWidth={260}
+                minWidth={200}
+                keepMounted
+                onFootprintChange={reportFootprint.palette}
               >
-                <InspectorPanel
-                  node={selectedNode}
-                  configSchema={selectedNodeConfigSchema}
-                  problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
-                  onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
-                  readOnly={readOnly}
-                  references={celReferences}
-                  actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
-                  actionSchema={selectedActionSchema}
-                  triggerContextBinding={triggerContextBinding}
-                  tab={inspectorTab}
-                  onTabChange={setInspectorTab}
-                  problemCount={findings.length}
-                  lastRunByNode={lastRunByNode}
-                  onOpenTest={() => void setTab('test')}
-                  problemsSlot={
-                    <div className="flex flex-col gap-4">
-                      <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
-                      {/*
-                        DD-11 — the "new prompt version available" affordance, in the editor an admin
-                        already has open. An out-of-band prompt edit moves no node's pin by design;
-                        without this rail that guarantee is invisible and the two-path design decays
-                        into "nothing updates".
+                {readOnly ? (
+                  <p className="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+                    <IconLock aria-hidden="true" className="size-3.5 shrink-0" />
+                    Palette locked on a {status.toLowerCase()} version.
+                  </p>
+                ) : null}
+                {/* `inert` (React 19) takes the whole rail out of the tab order and the accessibility
+                    tree on a read-only version, so a locked palette cannot be reached and then do
+                    nothing. The REASON stays announced above it, outside the inert subtree —
+                    `handleAddNode`'s own `readOnly` gate is the second layer. */}
+                <div inert={readOnly || undefined} className={readOnly ? 'opacity-60' : undefined}>
+                  <PaletteRail descriptors={registryNodes} onAddNode={handleAddNode} />
+                </div>
+              </FloatingPane>
 
-                        It sits in the PROBLEMS tab rather than its own rail because the tabbed
-                        inspector keeps exactly one scroll container (rule 11 §1), and "a binding of
-                        yours has drifted" is the same class of thing as a validation finding: something
-                        about this workflow that wants your attention.
-                      */}
-                      <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
-                    </div>
+              <div className="h-[26rem] shrink-0 md:absolute md:inset-0 md:h-auto">
+                {/* TASK-1036 C2c — the composer's canvas owns every canvas gesture against the store
+                    (typed ports, auto-mapped links, `+` on a link, drop, delete, re-parent, move); the
+                    editor hands it the registry, the server's findings and the selection. */}
+                <ComposerCanvas
+                  aria-label={`${name} graph`}
+                  descriptorByType={descriptorByType}
+                  readOnly={readOnly}
+                  findings={findings}
+                  runStates={runOverlay.runStates}
+                  edgeRunStates={runOverlay.edgeRunStates}
+                  selectedNodeIds={selectedNodeIds}
+                  onSelectionChange={handleSelectionChange}
+                  fitViewKey={fitViewKey}
+                  viewportInsets={canvasInsets}
+                  // The Composer canvas fills its region: the wheel zooms it, published or not (R-C #9
+                  // applies to read-only canvases embedded in a scrolling page, like the Test tab's Flow).
+                  wheelZoom="scroll"
+                  emptyState={
+                    <Empty>
+                      <EmptyMedia variant="icon">
+                        <IconTopologyStar3 aria-hidden="true" />
+                      </EmptyMedia>
+                      <EmptyTitle>No nodes yet</EmptyTitle>
+                      <EmptyDescription>
+                        Add a step — click a palette card, drag it onto the canvas, or use “Add a step”. Every action here also has a keyboard path
+                        under “Node actions”.
+                      </EmptyDescription>
+                    </Empty>
                   }
                 />
-              </FloatingPane>
-            ) : null}
-          </div>
-        </TabsContent>
+              </div>
 
-        {visitedTabs.has('test') ? (
-          <TabsContent value="test" forceMount hidden={tab !== 'test'} className={TAB_PANEL_CLASS}>
-            <div className="flex flex-col gap-3 md:min-h-0 md:flex-1 md:overflow-y-auto">
-              {/* A run executes the SERVER's stored graph, not the editor buffer, so unsaved edits
-                  are a stated reason to distrust the result rather than a silent mismatch with
-                  what is on the canvas. The Save button stays in the toolbar above every tab. */}
-              {dirty || metadataDirty ? (
-                <p role="status" className="border-warning/40 bg-warning/10 text-warning-strong shrink-0 rounded-md border px-3 py-2 text-sm">
-                  Save your changes first — a test run executes the saved definition, not the unsaved edits on the canvas.
-                </p>
+              {railOpen ? (
+                <FloatingPane
+                  id="studio-inspector"
+                  title="Inspector"
+                  defaultDock="right"
+                  defaultWidth={360}
+                  minWidth={280}
+                  bodyScroll={false}
+                  onClose={closeRail}
+                  onFootprintChange={reportFootprint.inspector}
+                >
+                  <InspectorPanel
+                    node={selectedNode}
+                    configSchema={selectedNodeConfigSchema}
+                    problems={selectedNode ? (problemsByNodeId.get(selectedNode.id) ?? []) : []}
+                    onConfigChange={(config) => selectedNode && storeApi.getState().updateNodeConfig(selectedNode.id, config)}
+                    readOnly={readOnly}
+                    references={celReferences}
+                    actionOptions={selectedNode?.type === ACTION_NODE_TYPE ? actionOptions : undefined}
+                    actionSchema={selectedActionSchema}
+                    triggerContextBinding={triggerContextBinding}
+                    tab={inspectorTab}
+                    onTabChange={setInspectorTab}
+                    problemCount={findings.length}
+                    lastRunByNode={lastRunByNode}
+                    onOpenTest={() => void setTab('test')}
+                    problemsSlot={
+                      <div className="flex flex-col gap-4">
+                        <ValidationRail report={report} nodes={nodes} onActivate={(finding) => finding.nodeId && focusNode(finding.nodeId)} />
+                        {/*
+                          DD-11 — the "new prompt version available" affordance, in the editor an admin
+                          already has open. An out-of-band prompt edit moves no node's pin by design;
+                          without this rail that guarantee is invisible and the two-path design decays
+                          into "nothing updates".
+
+                          It sits in the PROBLEMS tab rather than its own rail because the tabbed
+                          inspector keeps exactly one scroll container (rule 11 §1), and "a binding of
+                          yours has drifted" is the same class of thing as a validation finding: something
+                          about this workflow that wants your attention.
+                        */}
+                        <PromptBindingsRail definitionId={definition.id} etag={currentEtag} readOnly={readOnly} onFocusNode={focusNode} />
+                      </div>
+                    }
+                  />
+                </FloatingPane>
               ) : null}
-              <TestTab definitionId={definition.id} />
             </div>
           </TabsContent>
-        ) : null}
-        {visitedTabs.has('integration') ? (
-          <TabsContent value="integration" forceMount hidden={tab !== 'integration'} className={TAB_PANEL_CLASS}>
-            <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
-              <IntegrationTab definitionId={definition.id} unsavedChanges={dirty || metadataDirty} />
-            </div>
-          </TabsContent>
-        ) : null}
 
-        <PublishDialog
-          open={publishOpen}
-          onOpenChange={(next) => {
-            setPublishOpen(next);
-            if (!next) setJustPublished(false);
-          }}
-          onConfirm={(activate) => void handlePublish(activate)}
-          confirming={publishing}
-          published={justPublished}
-          slug={definition.slug}
-          activated={publishedActive}
-          exposable={definition.paletteKey === CORE_PALETTE_KEY}
-          paletteKey={definition.paletteKey}
-        />
-        <VersionHistorySheet slug={definition.slug} currentDefinitionId={definition.id} open={historyOpen} onOpenChange={setHistoryOpen} />
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} readOnly={readOnly} />
-        <DefinitionMetadataForm
-          open={metadataOpen}
-          onOpenChange={setMetadataOpen}
-          name={name}
-          description={description}
-          onNameChange={handleNameChange}
-          onDescriptionChange={handleDescriptionChange}
-          readOnly={readOnly}
-        />
-        <CloneDefinitionDialog
-          open={cloneOpen}
-          onOpenChange={(next) => {
-            setCloneOpen(next);
-            if (!next) setCloneError(null);
-          }}
-          source={cloneSource}
-          templates={templatesQuery.data ?? []}
-          templatesLoading={templatesQuery.isLoading}
-          onConfirm={(submission) => void handleClone(submission)}
-          confirming={cloneMutation.isPending}
-          error={cloneError}
-        />
-        <ImportDefinitionDialog
-          open={importOpen}
-          onOpenChange={(next) => {
-            setImportOpen(next);
-            if (!next) setImportError(null);
-          }}
-          onConfirm={(submission) => void handleImportBundle(submission)}
-          confirming={importMutation.isPending}
-          error={importError}
-        />
-      </ScreenTemplate>
-    </Tabs>
+          {visitedTabs.has('test') ? (
+            <TabsContent value="test" forceMount hidden={tab !== 'test'} className={TAB_PANEL_CLASS}>
+              <div className="flex flex-col gap-3 md:min-h-0 md:flex-1 md:overflow-y-auto">
+                {/* A run executes the SERVER's stored graph, not the editor buffer, so unsaved edits
+                    are a stated reason to distrust the result rather than a silent mismatch with
+                    what is on the canvas. The Save button stays in the toolbar above every tab. */}
+                {dirty || metadataDirty ? (
+                  <p role="status" className="border-warning/40 bg-warning/10 text-warning-strong shrink-0 rounded-md border px-3 py-2 text-sm">
+                    Save your changes first — a test run executes the saved definition, not the unsaved edits on the canvas.
+                  </p>
+                ) : null}
+                <TestTab definitionId={definition.id} />
+              </div>
+            </TabsContent>
+          ) : null}
+          {visitedTabs.has('integration') ? (
+            <TabsContent value="integration" forceMount hidden={tab !== 'integration'} className={TAB_PANEL_CLASS}>
+              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
+                <IntegrationTab definitionId={definition.id} unsavedChanges={dirty || metadataDirty} />
+              </div>
+            </TabsContent>
+          ) : null}
+
+          <PublishDialog
+            open={publishOpen}
+            onOpenChange={(next) => {
+              setPublishOpen(next);
+              if (!next) setJustPublished(false);
+            }}
+            onConfirm={(activate) => void handlePublish(activate)}
+            confirming={publishing}
+            published={justPublished}
+            slug={definition.slug}
+            activated={publishedActive}
+            exposable={definition.paletteKey === CORE_PALETTE_KEY}
+            paletteKey={definition.paletteKey}
+          />
+          <VersionHistorySheet slug={definition.slug} currentDefinitionId={definition.id} open={historyOpen} onOpenChange={setHistoryOpen} />
+          <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} readOnly={readOnly} />
+          <DefinitionMetadataForm
+            open={metadataOpen}
+            onOpenChange={setMetadataOpen}
+            name={name}
+            description={description}
+            onNameChange={handleNameChange}
+            onDescriptionChange={handleDescriptionChange}
+            readOnly={readOnly}
+          />
+          <CloneDefinitionDialog
+            open={cloneOpen}
+            onOpenChange={(next) => {
+              setCloneOpen(next);
+              if (!next) setCloneError(null);
+            }}
+            source={cloneSource}
+            templates={templatesQuery.data ?? []}
+            templatesLoading={templatesQuery.isLoading}
+            onConfirm={(submission) => void handleClone(submission)}
+            confirming={cloneMutation.isPending}
+            error={cloneError}
+          />
+          <ImportDefinitionDialog
+            open={importOpen}
+            onOpenChange={(next) => {
+              setImportOpen(next);
+              if (!next) setImportError(null);
+            }}
+            onConfirm={(submission) => void handleImportBundle(submission)}
+            confirming={importMutation.isPending}
+            error={importError}
+          />
+        </ScreenTemplate>
+      </Tabs>
+    </NodeNamingProvider>
   );
 }
 

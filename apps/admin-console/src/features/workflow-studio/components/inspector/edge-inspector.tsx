@@ -13,6 +13,7 @@ import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
 import { edgeMappingLabels } from '../../lib/connection-plan';
 import { branchHandlesOf } from '../../lib/core-ports';
 import { nodeDisplayName } from '../../lib/node-identity';
+import { useNodeNamingContext } from '../node-naming-context';
 
 export interface EdgeInspectorProps {
   edge: GraphStoreEdge;
@@ -28,8 +29,9 @@ export function EdgeInspector({ edge, nodes, edges, agents, onDelete, onSelectNo
   const source = nodes.find((node) => node.id === edge.source);
   const target = nodes.find((node) => node.id === edge.target);
   const mapping = edgeMappingLabels(nodes, edges, agents).get(edge.id);
-  const sourceName = source ? nodeDisplayName(source) : edge.source;
-  const targetName = target ? nodeDisplayName(target) : edge.target;
+  const naming = useNodeNamingContext();
+  const sourceName = source ? nodeDisplayName(source, nodes, naming) : 'a removed step';
+  const targetName = target ? nodeDisplayName(target, nodes, naming) : 'a removed step';
   const branch = source && branchHandlesOf(source.type, source.config).includes(edge.sourceHandle) ? edge.sourceHandle : null;
   const condition =
     branch && source?.type === 'core.condition' && Array.isArray(source.config.branches)

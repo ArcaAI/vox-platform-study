@@ -76,7 +76,7 @@ export function ShapeTables({ input, output, loading = false }: ShapeTablesProps
   return (
     <div className="grid gap-4 @2xl:grid-cols-2">
       <ShapeTable title="Input shape" fields={input} emptyText="Input shape: not declared. This workflow’s context schema does not say what a run takes." />
-      <ShapeTable title="Output shape" fields={output} emptyText="Output shape: not declared. The result is whatever the End step produces." />
+      <ShapeTable title="Output shape" fields={output} emptyText="Output shape: not declared. The result is whatever the Output step produces." />
     </div>
   );
 }

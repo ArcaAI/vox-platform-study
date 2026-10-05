@@ -5,7 +5,7 @@
  * Prompt templates are not pinned on the node — they ride with the agent's own pin — so the rail
  * states that rather than inventing a second pin to show.
  */
-import { nodeDisplayName } from '../../lib/node-identity';
+import { nodeDisplayNames, type NodeNaming } from '../../lib/node-identity';
 
 export interface AgentPin {
   nodeId: string;
@@ -28,7 +28,8 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-export function collectAgentPins(nodes: readonly PinSourceNode[]): AgentPin[] {
+export function collectAgentPins(nodes: readonly PinSourceNode[], naming?: NodeNaming): AgentPin[] {
+  const names = nodeDisplayNames(nodes, naming);
   return nodes
     .filter((node) => node.type === AGENT_NODE_TYPE)
     .map((node) => {
@@ -37,7 +38,7 @@ export function collectAgentPins(nodes: readonly PinSourceNode[]): AgentPin[] {
       const version = ref?.versionNumber;
       return {
         nodeId: node.id,
-        nodeLabel: nodeDisplayName(node),
+        nodeLabel: names.get(node.id) ?? '',
         agentSlug: slug,
         versionNumber: typeof version === 'number' && Number.isInteger(version) && version > 0 ? version : null,
       };

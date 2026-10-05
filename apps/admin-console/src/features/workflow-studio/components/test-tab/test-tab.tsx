@@ -28,7 +28,8 @@ import { SandboxBanner } from '@/shared/page/sandbox-banner';
 import { useLatestSandboxRun } from '@/shared/sandbox/api/latest-run';
 import type { StartSandboxRunBody } from '@/shared/sandbox/api/types';
 import { useSandboxRecording } from '@/shared/sandbox/api/use-sandbox-recording';
-import { nodeDisplayName } from '../../lib/node-identity';
+import { nodeDisplayNames } from '../../lib/node-identity';
+import { useNodeNamingContext } from '../node-naming-context';
 import { selectHidePhi, selectSelectedNodeId, useGraphStore, useGraphStoreApi, useOptionalGraphStoreApi } from '../../store';
 import type { NodeLastRun } from '../inspector/last-run-tab';
 import { useComposerData } from '../canvas';
@@ -111,13 +112,9 @@ function TestSurface({ definitionId }: TestTabProps) {
   const taskBySlug = useMemo(() => new Map(agentOptions.map((agent) => [agent.slug, agent.task])), [agentOptions]);
   const { view, live, events } = controller;
 
-  const labelOf = useCallback(
-    (nodeId: string) => {
-      const node = nodeById.get(nodeId);
-      return node ? nodeDisplayName(node) : (live.nodes[nodeId]?.label ?? nodeId);
-    },
-    [nodeById, live.nodes],
-  );
+  const naming = useNodeNamingContext();
+  const names = useMemo(() => nodeDisplayNames(nodes, naming), [nodes, naming]);
+  const labelOf = useCallback((nodeId: string) => names.get(nodeId) ?? live.nodes[nodeId]?.label ?? nodeId, [names, live.nodes]);
 
   const agentSlugOf = useCallback(
     (nodeId: string): string | null => {

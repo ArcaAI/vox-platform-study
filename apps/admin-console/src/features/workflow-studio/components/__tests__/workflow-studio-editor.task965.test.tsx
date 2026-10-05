@@ -460,11 +460,13 @@ describe('WorkflowStudioEditor — secondary-input bindings are drawn (TASK-965)
     expect(screen.getByText('2 nodes · 1 connection')).toBeTruthy();
   });
 
-  it('names an authored node id whole in the canvas header, never a sliced "rigger"', () => {
+  // TASK-1036 (owner, 2026-10-05) — supersedes TASK-965's "show the authored id whole": a step is
+  // named in WORDS ("Start"), and no id — whole or sliced — reaches the canvas header.
+  it('names the seeded trigger "Start" in the canvas header — no id, whole or sliced', () => {
     installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={seeded} etag='"1"' registryNodes={[TRIGGER, AGENT]} />);
     const labels = ((capturedCanvasProps as { nodes?: { label?: string }[] } | null)?.nodes ?? []).map((node) => node.label);
-    expect(labels).toContain('Core.trigger · n_trigger');
-    expect(labels.some((label) => label?.includes('rigger') && !label.includes('n_trigger'))).toBe(false);
+    expect(labels).toContain('Start');
+    expect(labels.some((label) => /n_trigger|rigger|core\./i.test(label ?? ''))).toBe(false);
   });
 });

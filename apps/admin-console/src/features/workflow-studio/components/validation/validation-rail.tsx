@@ -8,7 +8,8 @@
  */
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from '@arcaai/ui';
 import { IconCircleCheck } from '@tabler/icons-react';
-import { humanizeKey } from '../../lib/schema-form';
+import { nodeDisplayName, type NodeNaming } from '../../lib/node-identity';
+import { useNodeNamingContext } from '../node-naming-context';
 import type { WorkflowFinding, WorkflowValidationReport } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
 import { ProblemRow } from './problem-row';
@@ -28,12 +29,14 @@ export function publishBlockedReason(report: WorkflowValidationReport | null): s
   return null;
 }
 
-function labelForNode(nodes: GraphStoreNode[], nodeId: string): string {
+/** A finding's step, named the way the canvas names it (owner, 2026-10-05) — never its raw type or id. */
+function labelForNode(nodes: GraphStoreNode[], nodeId: string, naming: NodeNaming): string {
   const node = nodes.find((candidate) => candidate.id === nodeId);
-  return node ? humanizeKey(node.type) : nodeId;
+  return node ? nodeDisplayName(node, nodes, naming) : 'A removed step';
 }
 
 export function ValidationRail({ report, nodes, onActivate }: ValidationRailProps) {
+  const naming = useNodeNamingContext();
   const findings = report?.findings ?? [];
   const errors = findings.filter((finding) => finding.severity === 'ERROR');
   const warnings = findings.filter((finding) => finding.severity === 'WARNING');
@@ -87,7 +90,7 @@ export function ValidationRail({ report, nodes, onActivate }: ValidationRailProp
       ) : null}
       {[...perNode.entries()].map(([nodeId, nodeFindings]) => (
         <div key={nodeId}>
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{labelForNode(nodes, nodeId)}</h3>
+          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{labelForNode(nodes, nodeId, naming)}</h3>
           <ul className="flex flex-col gap-1">
             {nodeFindings.map((finding) => (
               <ProblemRow key={`${finding.ruleId}-${finding.message}`} finding={finding} onActivate={onActivate} />

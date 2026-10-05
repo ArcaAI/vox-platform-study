@@ -88,7 +88,8 @@ import { NO_SCHEMA_REASON } from './raw-json-field';
 import { SecondaryInputBindingField, type UpstreamNodeOption } from './secondary-input-binding-field';
 import { useComposerData } from '../canvas/use-composer-data';
 import { BOUNDARY_DELETE_REASON, BOUNDARY_NODE_TYPES, selectSelectedEdge, useOptionalGraphStore } from '../../store';
-import { nodeDisplayName } from '../../lib/node-identity';
+import { nodeKindName } from '../../lib/node-identity';
+import { useNodeNamingContext } from '../node-naming-context';
 import { canvasPortsOf, ioTypeLabel } from '../../lib/composer-io';
 import { pickerGroups, samplesFromRunOutputs } from '../../lib/picker-model';
 import { lastRunPhiFields } from '../../lib/phi-mask';
@@ -471,6 +472,7 @@ export function InspectorPanel({
   // TASK-1036 R-C #7 — the studio's Hide PHI (view state in the store), and which of THIS step's
   // last-run values it masks.
   const hidePhi = composer?.hidePhi ?? false;
+  const naming = useNodeNamingContext();
   const phiFields = composer && node ? lastRunPhiFields({ node, nodes: composer.nodes, edges: composer.edges, agents: composer.agents, settings: composer.settings, contextSchema: composer.contextSchema }) : undefined;
   // R-C #5 — the condition picker, for every CEL field's "+ Insert field" (a loop's `until`, …).
   const conditionGroups =
@@ -487,6 +489,7 @@ export function InspectorPanel({
           purpose: 'condition',
           samples,
           hidePhi,
+          naming,
         })
       : undefined;
 
@@ -655,14 +658,15 @@ export function InspectorPanel({
           <NodeLabelField
             idPrefix={node.id}
             value={typeof node.config.label === 'string' ? node.config.label : ''}
-            placeholder={nodeDisplayName({ ...node, config: {} })}
+            placeholder={nodeKindName(node, naming)}
+            nodeId={node.id}
             disabled={readOnly}
             onChange={(label) => composer.storeApi.getState().setNodeLabel(node.id, label)}
           />
         ) : null}
         {isBoundary ? (
           <p role="note" className="border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm">
-            {node.type === 'core.trigger' ? 'Start is the entry point' : 'End is the exit'}. {BOUNDARY_DELETE_REASON}
+            {node.type === 'core.trigger' ? 'Start is the entry point' : 'Output is the exit'}. {BOUNDARY_DELETE_REASON}
           </p>
         ) : null}
         {isCoreAgent ? (
