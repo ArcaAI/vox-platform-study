@@ -20,6 +20,7 @@ from tokenizers.pre_tokenizers import Whitespace
 
 from text.core.config import InternalAccessConfig, Settings
 from text.main import create_app
+from text.models.requests import ProviderOverride
 from text.providers.base import ProviderRegistry
 from text.services.tokenizer_registry import TokenizerRegistry
 
