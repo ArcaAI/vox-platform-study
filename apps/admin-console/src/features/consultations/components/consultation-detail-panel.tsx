@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { IconExternalLink } from '@tabler/icons-react';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
+import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { CopyButton } from '@/shared/copy-button';
@@ -170,7 +173,19 @@ export function ConsultationDetailPanel({ consultationId, onOpenChange }: { cons
         }}
         size="xl"
         title={<span className="font-mono text-sm break-all">{consultationId}</span>}
-        badges={consultationId ? <CopyButton value={consultationId} label="Copy consultation id" /> : null}
+        badges={
+          consultationId ? (
+            <>
+              <CopyButton value={consultationId} label="Copy consultation id" />
+              <Button asChild variant="outline" size="xs">
+                <Link href={`/consultations/${encodeURIComponent(consultationId)}`}>
+                  <IconExternalLink aria-hidden />
+                  Open activity
+                </Link>
+              </Button>
+            </>
+          ) : null
+        }
         meta={
           <span>
             Read-only detail {'\u00b7'} <span className="font-mono">GET /admin/consultations/:id</span>
