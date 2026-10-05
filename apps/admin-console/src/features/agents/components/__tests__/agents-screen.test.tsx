@@ -297,6 +297,16 @@ describe('AgentsScreen', () => {
     expect(list?.url).not.toContain('includeTemplates');
   });
 
+  it('names its columns and explains itself in plain words (TASK-1036 W2)', async () => {
+    stubAgents();
+    renderWithProviders(<AgentsScreen />);
+    await screen.findByText('Clinic summarizer');
+    const grid = screen.getByRole('grid', { name: 'Agents' });
+    expect(within(grid).getByRole('columnheader', { name: /Used by/ })).toBeTruthy();
+    expect(within(grid).queryByRole('columnheader', { name: /Serves/ })).toBeNull();
+    expect(screen.queryByText(/one row per agent/)).toBeNull();
+  });
+
   it('opens the lineage slide-over for the clicked row with the six tabs and the publish action for its open draft', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);

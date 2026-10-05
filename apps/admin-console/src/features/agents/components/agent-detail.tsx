@@ -760,7 +760,7 @@ export function AgentLineageDrawer({
                 <EmptyState
                   icon={IconGitBranch}
                   title="No draft is open"
-                  description={`A published version is immutable. Branch a new draft from ${lineage.active ? `v${lineage.active.versionNumber}` : 'a published version'} to change the model, instruction, parameters or tags.`}
+                  description={`A published version is immutable. Branch a new draft from ${lineage.active ? `v${lineage.active.versionNumber}` : 'a published version'} to change the model, prompt, settings or tags.`}
                   action={
                     hidden ? undefined : (
                       <Button
@@ -967,7 +967,7 @@ export function AgentLineageDrawer({
                   // warning about refused requests, never "the platform has it covered".
                   <p className="text-warning-strong flex items-start gap-2 text-sm">
                     <IconAlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
-                    Nothing is assigned for {AGENT_TASK_LABEL[lineage.task].toLowerCase()}. Requests fail with AGENT_NOT_ASSIGNED until an agent is assigned — resolution is department → tenant, and there is no platform fallback.
+                    Nothing is assigned for {AGENT_TASK_LABEL[lineage.task].toLowerCase()}, so requests for it are refused (AGENT_NOT_ASSIGNED). Assign an agent to a department or to the whole tenant — a department&apos;s choice wins, and there is no platform fallback.
                   </p>
                 ) : (
                   <ul className="flex flex-col divide-y" aria-label="Assignments for this task">
@@ -1070,7 +1070,7 @@ export function AgentLineageDrawer({
                     <p id="assignment-selector-hint" className={selectorProblem ? 'text-destructive text-sm' : 'text-muted-foreground text-xs'}>
                       {selectorProblem
                         ? `“${selectorProblem}” is not a key:value tag — write it as key:value (for example specialty:${selectorProblem.toLowerCase()}).`
-                        : 'Comma-separated key:value tags. Leave empty for the tier’s default assignment; a tag-qualified one is matched first for requests carrying those tags.'}
+                        : 'Optional. Comma-separated key:value tags, e.g. specialty:cardiology. Requests carrying these tags use this assignment first; leave empty to cover every request.'}
                     </p>
                   </div>
                 </section>
@@ -1100,7 +1100,7 @@ export function AgentLineageDrawer({
                 <EmptyState
                   icon={IconRocket}
                   title="Not published yet"
-                  description={`Publish a version to expose ${lineage.slug} on the business plane. The endpoint and the @arcaai/vox-node snippet appear here once it is published.`}
+                  description={`Publish a version so your developers can call ${lineage.slug}. The endpoint and the @arcaai/vox-node snippet appear here once it is published.`}
                 />
               )}
             </TabsContent>
@@ -1126,8 +1126,8 @@ export function AgentLineageDrawer({
                   title="Test run"
                   description={
                     lineage.task !== 'TEXT_GENERATION'
-                      ? 'Direct test runs cover text-generation agents; every other task is exercised from the Playground.'
-                      : 'Activate a published version to run it through POST /agents/{slug}/invocations.'
+                      ? 'Text agents can be tried here; try speech and voice agents from the Playground.'
+                      : 'Make a published version live (Versions → Activate) to try it here.'
                   }
                 />
               )}
