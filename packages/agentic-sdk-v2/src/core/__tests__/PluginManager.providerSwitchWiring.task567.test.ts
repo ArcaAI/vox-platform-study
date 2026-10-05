@@ -20,6 +20,8 @@ const captured: Record<string, ((...args: any[]) => void) | undefined> = {};
 vi.mock('../StreamingSessionManager', () => ({
   StreamingSessionManager: class {
     refreshTicket = vi.fn(async () => 'ticket');
+    // The pause/resume control frames ride the same WS client.
+    bindControlChannel = vi.fn();
     // Captured like the ws-client callbacks below so the session-create
     // echo can be driven from a test.
     onSessionCreated(cb: (response: unknown) => void) {

@@ -119,14 +119,18 @@ describe('SES-01: endpoint constants existence', () => {
     expect(CONSULTATION_ENDPOINTS.TIMELINE('c1')).toBe('/consultations/c1/timeline');
   });
 
-  it('should NOT have deprecated CREATE, REVISIT, END, PAUSE, RESUME, BY_PATIENT_DATE', () => {
+  it('should NOT have deprecated CREATE, REVISIT, END, RESUME, BY_PATIENT_DATE', () => {
     const endpoints = CONSULTATION_ENDPOINTS as Record<string, unknown>;
     expect(endpoints.CREATE).toBeUndefined();
     expect(endpoints.REVISIT).toBeUndefined();
     expect(endpoints.END).toBeUndefined();
-    expect(endpoints.PAUSE).toBeUndefined();
+    // Resuming capture is `start` again; there is no resume route.
     expect(endpoints.RESUME).toBeUndefined();
     expect(endpoints.BY_PATIENT_DATE).toBeUndefined();
+  });
+
+  it('PAUSE is the lifecycle pause command (TASK-1045), not the retired session pause', () => {
+    expect(CONSULTATION_ENDPOINTS.PAUSE('c1')).toBe('/consultations/c1/pause');
   });
 
   it('should have CONTEXT_ENDPOINTS.UPDATE (SES-03 — fixed in Layer 0)', () => {
