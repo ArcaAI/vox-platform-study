@@ -27,3 +27,5 @@
 | H-23 | D6 | `PluginManager.ts`, `useArca.ts`, `useArcaSummary.ts` | orchestrator | `bindControlChannel(wsClient)`; `@deprecated` on audio start/stop + per-summary approve | applied `0492d1e2c` |
 | H-24 | D6 | browser SDK | follow-up | `history()`/`recap()` typed `unknown` until page types are wired; `sendAttachment` does not yet honour `Retry-After` | follow-up (D8/gate) |
 | H-25 | D6 | AB-6 / AB-4a | AB-6 | `stop` idempotent on STOPPED returning current `finalTranscript` state (D-28); lifecycle responses must stay shape-compatible with the stored `Consultation` | pending (AB-6 brief) |
+| H-26 | F1 | ALaaS F8 adapter | F8 | map HOPE 412 → `VERSION_CONFLICT`; translate `open({startNew})` (e.g. open without the ref so HOPE chains a new consultation); re-derive `launchState` from a fresh `lookup()` | pending (F8 brief) |
+| H-27 | F1 | HOPE AB-4a | AB-4a | D-29 idempotent approve/close on CLOSED_COMPLETE | pending (AB-4a brief) |

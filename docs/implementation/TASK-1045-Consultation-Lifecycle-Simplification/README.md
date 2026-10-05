@@ -187,6 +187,7 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-26 | **Late Copy to EMR** on an auto-closed (CLOSED_INCOMPLETE) consultation: HOPE atomically reopens, approves and closes → CLOSED_COMPLETE, audited as a late sign-off (owner, 2026-10-05). |
 | D-27 | ALaaS lane branches merge into `refactor-hope-integaration` (owner, 2026-10-05). |
 | D-28 | `POST :id/stop` on a STOPPED consultation is an idempotent no-op that returns the current `finalTranscript {state: complete|pending, …}` — SDKs poll by re-POSTing stop until `complete`. |
+| D-29 | `approve` / `close` on an already CLOSED_COMPLETE consultation is an idempotent no-op (a retried Copy to EMR never fails); closing an APPROVED consultation (manual or auto) → CLOSED_COMPLETE, `closedReason: approved`; reopen clears `approvedAt`. |
 
 ## 5. Open questions
 
