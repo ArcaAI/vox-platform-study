@@ -176,6 +176,42 @@ class LMStudioProvider(OpenAICompatProvider):
             )
             return {}
 
+    async def count_tokens(
+        self, texts: list[str], *, model: str, request: object
+    ) -> list[int] | None:
+        """Exact counts from LM Studio's own tokenizer, or ``None``.
+
+        LM Studio's REST surface (``/v1``, ``/api/v0``) exposes no tokenize or
+        count endpoint; tokenization is reachable only through its JS SDK
+        websocket. The one HTTP-reachable measurement of the engine's tokenizer is
+        the ``usage.prompt_tokens`` of a raw ``/v1/completions`` call, so that is
+        used: ``max_tokens=1`` bounds generation, and the constant per-request
+        overhead (BOS etc.) is calibrated away with a one-token probe. It is only
+        attempted for a model that is already resident, because a request to an
+        unloaded id would make the engine JIT-load it.
+        """
+        from text.core.connection import resolve_connection
+
+        connection = resolve_connection(request)
+        base_url = (connection.base_url or "").strip() if connection else ""
+        if not base_url:
+            return None
+        native = await self._native_models(base_url)
+        if (native.get(model) or {}).get("state") != "loaded":
+            return None
+        client = self._client_at(base_url, connection.api_key.get_secret_value())
+
+        async def _prompt_tokens(prompt: str) -> int:
+            resp = await client.completions.create(model=model, prompt=prompt, max_tokens=1)
+            return int(resp.usage.prompt_tokens)
+
+        try:
+            overhead = await _prompt_tokens("a") - 1
+            return [max(0, await _prompt_tokens(t) - overhead) if t else 0 for t in texts]
+        except Exception as exc:  # noqa: BLE001 — best-effort; caller falls through
+            logger.warning("count_tokens.failed", provider=self._provider_name, error=str(exc))
+            return None
+
     async def _enrich_models(self, models: list[ModelInfo], base_url: str | None) -> None:
         """Decorate the `/v1/models` listing with the native load state."""
         native = await self._native_models(base_url)
