@@ -1082,6 +1082,8 @@ The orchestrator confirmed:
 | L-5 | axe: palette/settings scroll bodies not keyboard-scrollable; React Flow attribution 52×12 px and 2.72:1 in light | focusable labelled bodies; attribution 24 px, `--muted-foreground` (`771b74e94`, `a859e6d06`) |
 | L-6 | Prompt tags wrapped past the 48 px virtual row and were clipped | one line, two tags + "+N", full list on hover (`a859e6d06`) |
 
+**Load test (200 and 100 concurrent SSE streams):** evidence and fixes in TASK-1038 §4.1. Before: 20 of 200 runs lost their result (P-1: the harness reported terminal before the execution closed, so the gateway closed the run's stream and refused the late `run.completed`). After: 0 lost; 100/100 streams clean; 24/200 connection resets at 200 streams are this Mac's dev-server capacity (re-run on the cluster). Also fixed: v2 connect ping (P-2). L-1 above is P-3.
+
 **Owner UX fix-up (owner message 2026-10-05: "Hope Prompts must be changed to Prompts"; agent studio too complicated; zoom controls move with the palette; panes shrink when moved; nodes named `Core.trigger · n_trigger`):**
 
 | Item | Done | Where |
