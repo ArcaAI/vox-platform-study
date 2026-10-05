@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Review — committed on the worktree branch, awaiting merge into `dev-2.2` by the orchestrator session |
+| Status | Completed — merged into `dev-2.2` at `ff4fbf897` |
 | Type | bugfix (security) |
 | Branch | `task-1043/internal-lock-after-auth` (worktree `../hope-v2-task-1043`) → `dev-2.2` |
 | Origin | TASK-1041 OD-4 (owner: "create the OD-4 ticket then work on it completely", 2026-10-05) |
@@ -152,3 +152,4 @@ build: no diff (it doesn't record controller guards). openapi untouched for the 
 |---|---|
 | 2026-10-05 | Ticket created from TASK-1041 OD-4; plan + decisions recorded |
 | 2026-10-05 | TDD RED → GREEN; fix committed; live before/after on the test infra; status Review |
+| 2026-10-05 | Merged into `dev-2.2` at `ff4fbf897` (--no-ff, orchestrator review; guards 121/121 after merge); worktree and branch removed. Owner marked **Completed** |
