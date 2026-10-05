@@ -61,7 +61,7 @@ function FootprintCard({ usage }: { usage: ReturnType<typeof useTenantUsage> }) 
     const rows: Array<[label: string, value: number]> = [
       ['Users', usage.data.totalUsers],
       ['Departments', usage.data.totalDepartments],
-      ['Hope Prompts', usage.data.totalPromptTemplates],
+      ['Prompts', usage.data.totalPromptTemplates],
     ];
     body = (
       <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">

@@ -138,7 +138,7 @@ export class PromptManagementController {
   @ApiOperation({
     summary: 'Distinct prompt tags with usage counts (autocomplete)',
     description:
-      "Distinct tags over the caller tenant's non-deleted Hope Prompts, ranked by how many prompts " +
+      "Distinct tags over the caller tenant's non-deleted prompts, ranked by how many prompts " +
       'carry them (descending) then alphabetically. `q` is a case-insensitive substring filter; ' +
       '`limit` defaults to 20 and is capped at 100.',
   })

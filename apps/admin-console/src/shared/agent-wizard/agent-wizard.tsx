@@ -763,7 +763,7 @@ function WizardBody({ open, onOpenChange, onCreated, base }: Omit<AgentWizardPro
               ) : (
                 'The gateway refused to publish this draft.'
               )}
-              <span className="mt-2 block">Fix the cause (for example, approve the prompt on Hope Prompts) and publish again. Nothing was approved for you.</span>
+              <span className="mt-2 block">Fix the cause (for example, approve the prompt on the Prompts screen) and publish again. Nothing was approved for you.</span>
             </AlertDescription>
           </Alert>
         ) : null}

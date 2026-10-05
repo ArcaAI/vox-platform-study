@@ -37,7 +37,7 @@ const PLAN_LABELS: Record<TenantPlan, string> = {
 const CAPABILITY_LABELS: Record<string, string> = {
   users: 'Users',
   departments: 'Departments',
-  promptTemplates: 'Hope Prompts',
+  promptTemplates: 'Prompts',
   apiKeys: 'API keys',
   storageBytes: 'Storage',
   concurrentSessions: 'Concurrent sessions',

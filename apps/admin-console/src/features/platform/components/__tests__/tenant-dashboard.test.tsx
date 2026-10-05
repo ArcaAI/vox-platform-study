@@ -125,7 +125,7 @@ describe('TenantDashboard', () => {
     expect(within(footprint).getByText('21')).toBeDefined();
     expect(within(footprint).getByText('Departments')).toBeDefined();
     expect(within(footprint).getByText('8')).toBeDefined();
-    expect(within(footprint).getByText('Hope Prompts')).toBeDefined();
+    expect(within(footprint).getByText('Prompts')).toBeDefined();
     expect(within(footprint).getByText('37')).toBeDefined();
 
     expect((await screen.findAllByText('Text')).length).toBeGreaterThan(0);

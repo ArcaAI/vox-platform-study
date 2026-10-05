@@ -80,7 +80,7 @@ describe('PromptVariablesEditor — create form', () => {
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
@@ -130,7 +130,7 @@ describe('PromptVariablesEditor — create form', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
     fireEvent.click(screen.getByRole('button', { name: /^remove topic$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');

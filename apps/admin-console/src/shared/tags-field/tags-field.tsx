@@ -19,11 +19,11 @@ export interface TagsFieldProps {
   description?: ReactNode;
   placeholder?: string;
   /**
-   * TASK-1036 C5 — where suggestions come from; defaults to the Hope Prompt tag route. The agent
+   * TASK-1036 C5 — where suggestions come from; defaults to the Prompt tag route. The agent
    * editor passes `admin/agents/tags` so it autocompletes over agent tags, not prompt tags.
    */
   suggestionsPath?: string;
-  /** Replaces the Hope Prompt grammar (`validateTag`) — agent tags are `key:value` only. `null` = valid. */
+  /** Replaces the Prompt grammar (`validateTag`) — agent tags are `key:value` only. `null` = valid. */
   validate?: (tag: string) => string | null;
 }
 

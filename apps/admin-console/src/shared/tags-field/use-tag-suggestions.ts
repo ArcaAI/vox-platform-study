@@ -11,7 +11,7 @@ export interface TagSuggestion {
 const TAGS_PATH = 'admin/prompt-templates/tags';
 
 /**
- * Ranked distinct tags over the caller tenant's Hope Prompts, filtered by `q`
+ * Ranked distinct tags over the caller tenant's prompts, filtered by `q`
  * (case-insensitive substring, server-side). Held off until the combobox opens.
  */
 export function useTagSuggestions(q: string, enabled: boolean, path: string = TAGS_PATH) {

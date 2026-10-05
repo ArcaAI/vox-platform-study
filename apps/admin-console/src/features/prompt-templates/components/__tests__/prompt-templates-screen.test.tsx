@@ -1,5 +1,5 @@
 /**
- * Hope Prompts screen — the tenant-admin surface
+ * Prompts screen — the tenant-admin surface
  * for the prompts behind pre-summary and summary generation.
  *
  * fetch is stubbed at the network boundary. Coverage: the working-tenant gate,
@@ -318,7 +318,7 @@ describe('PromptTemplatesScreen', () => {
       stubTemplates();
       renderWithProviders(<PromptTemplatesScreen />);
 
-      expect(await screen.findByRole('heading', { level: 1, name: 'Hope Prompts' })).toBeDefined();
+      expect(await screen.findByRole('heading', { level: 1, name: 'Prompts' })).toBeDefined();
       expect(await screen.findByRole('tab', { name: 'Fallbacks', selected: true })).toBeDefined();
       expect(await screen.findByText('Clinical Pre-Summary')).toBeDefined();
       // The shape statement itself, not just the template name.
@@ -396,7 +396,7 @@ describe('PromptTemplatesScreen', () => {
     expect(await screen.findByText('Cardiology Notes')).toBeDefined();
     expect(screen.getByText('Discharge Summary')).toBeDefined();
     expect(screen.getByText('Radiology Report')).toBeDefined();
-    expect(screen.getByText(/4 Hope Prompts/)).toBeDefined();
+    expect(screen.getByText(/4 Prompts/)).toBeDefined();
     expect(screen.getByText('CARD')).toBeDefined();
     expect(screen.getByText('Tenant default')).toBeDefined();
     expect(screen.getAllByText('Summary').length).toBeGreaterThanOrEqual(1);
@@ -509,11 +509,11 @@ describe('PromptTemplatesScreen', () => {
     });
     renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New Hope Prompt' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New Prompt' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
     setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Hope Prompt' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Prompt' }));
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
@@ -572,7 +572,7 @@ describe('PromptTemplatesScreen', () => {
     renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?create=1' });
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('New Hope Prompt')).toBeDefined();
+    expect(within(dialog).getByText('New Prompt')).toBeDefined();
   });
 
   /**
@@ -609,7 +609,11 @@ describe('PromptTemplatesScreen', () => {
       stubTemplates();
       renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
 
-      expect(await screen.findByText('pre-summary')).toBeDefined();
+      // One line in the 48px row: the first two tags, a "+N" count, and the full set on hover.
+      const first = await screen.findByText('arcaai');
+      expect(screen.getByText('clinical')).toBeDefined();
+      expect(screen.getByText('+2')).toBeDefined();
+      expect(first.closest('[title]')?.getAttribute('title')).toBe('arcaai, clinical, pre-summary, text-v1');
     });
 
     it('edits the tag set from the drawer and PATCHes it', async () => {
@@ -661,14 +665,14 @@ describe('PromptTemplatesScreen', () => {
       });
       renderWithProviders(<PromptTemplatesScreen />, { searchParams: '?tab=templates' });
 
-      fireEvent.click(await screen.findByRole('button', { name: 'New Hope Prompt' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'New Prompt' }));
       const dialog = await screen.findByRole('dialog');
       fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
       setTemplateEditorValue(within(dialog).getByRole('textbox', { name: /Prompt content/ }), 'You are a scribe.');
       const tagBox = within(dialog).getByRole('combobox', { name: 'Tags' });
       fireEvent.change(tagBox, { target: { value: 'dept:nephrology' } });
       fireEvent.keyDown(tagBox, { key: 'Enter' });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create Hope Prompt' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Create Prompt' }));
 
       await waitFor(() => {
         const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
@@ -708,7 +712,7 @@ describe('PromptTemplatesScreen', () => {
       renderWithProviders(<PromptTemplatesScreen />);
 
       await screen.findByRole('tab', { name: 'Fallbacks' });
-      expect(screen.getByRole('tab', { name: 'Hope Prompts' })).toBeDefined();
+      expect(screen.getByRole('tab', { name: 'Prompts' })).toBeDefined();
       expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
     });
 
