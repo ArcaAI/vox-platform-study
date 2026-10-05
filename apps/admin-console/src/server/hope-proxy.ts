@@ -75,6 +75,9 @@ function buildHeaders(request: Request, path: readonly string[], session: Sessio
   }
   const token = session.impersonation?.accessToken ?? session.accessToken;
   headers.set('authorization', `Bearer ${token}`);
+  // The console speaks the current consultation lifecycle vocabulary; without this header the
+  // gateway projects `status` onto the retired one for older integrators.
+  headers.set('x-hope-lifecycle', '2');
   // Tenant-bound users must never send X-Tenant-Id (gateway 400s on
   // mismatch); elevated users send it only after picking a working tenant.
   // While impersonating, the act-as JWT is already bound to the target's

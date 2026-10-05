@@ -120,6 +120,15 @@ describe('handleProxy', () => {
   // slashes. A plain `path.join('/')` forwards those as separators and the
   // gateway's single-segment `buckets/:name/files/:key` route 404s. The
   // segments must be re-encoded so the `%2F` reaches the gateway intact.
+  it('asks the gateway for the current consultation lifecycle vocabulary on every call', async () => {
+    await seedSession(baseSession);
+    const calls = installFetchMock(() => Response.json({}));
+
+    await handleProxy(new Request('http://console.local/api/hope/consultations/c-1'), ['consultations', 'c-1']);
+
+    expect(calls[0].headers.get('x-hope-lifecycle')).toBe('2');
+  });
+
   it('re-encodes slashes inside a decoded file-key segment so :key stays one segment', async () => {
     await seedSession(baseSession);
     const calls = installFetchMock(() => Response.json({ key: 'k', url: 'https://presigned' }));
