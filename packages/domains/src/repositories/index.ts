@@ -4,3 +4,4 @@ export * from './policy';
 export * from './role';
 export * from './role-policy';
 export * from './usage';
+export * from './consultation-history.read-repository';

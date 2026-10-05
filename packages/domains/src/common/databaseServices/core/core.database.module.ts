@@ -18,6 +18,7 @@ import { ConsultationAttachmentRepository } from '../../../repositories/generate
 import { ConsultationFeedbackRepository } from '../../../repositories/generated/core/ConsultationFeedbackRepository';
 import { ConsultationFeedbackDailyRollupRepository } from '../../../repositories/generated/core/ConsultationFeedbackDailyRollupRepository';
 import { AiActivityRunRepository } from '../../../repositories/generated/core/AiActivityRunRepository';
+import { ConsultationHistoryReadRepository } from '../../../repositories/consultation-history.read-repository';
 import { ModelResidencyPolicyRepository } from '../../../repositories/generated/core/ModelResidencyPolicyRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
@@ -326,6 +327,8 @@ const repositories = [
   ConsultationFeedbackDailyRollupRepository,
   // Durable per-AI-activity run records.
   AiActivityRunRepository,
+  // Consultation history / activity feed reads (no content columns; decrypts on demand).
+  ConsultationHistoryReadRepository,
 ];
 
 @Module({
