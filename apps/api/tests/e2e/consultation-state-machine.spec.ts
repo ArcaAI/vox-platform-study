@@ -26,10 +26,10 @@
  *
  * Cases covered :
  *   1. POST :id/close on a never-recorded (OPEN) consultation -> 200, CLOSED_INCOMPLETE (TASK-972 OD-7; was 409, the A-13 repro).
- *   2. Full walk: OPEN -> PRIMED -> RECORDING -> DRAINING -> PENDING_REVIEW -> SIGNED (RUN_FULL).
+ *   2. Full walk: OPEN -> RECORDING -> STOPPED (+ NOTE_READY) -> APPROVED -> CLOSED_COMPLETE (RUN_FULL).
  *   3. recording/start without prime: kill-switch OFF (default) -> 200 (logged, not blocked);
  *      kill-switch ON -> 409.
- *   4. close after SIGNED -> 200, status CLOSED_COMPLETE; reopen -> REOPENED (RUN_FULL, needs case 2's walk).
+ *   4. close after APPROVED -> 200, status CLOSED_COMPLETE (RUN_FULL, part of case 2's walk).
  *   5. Gate-SLA abandonment drives TIMED_OUT, visibly unsigned, notification recorded (RUN_FULL).
  *   6. TIMED_OUT -> SIGNED still commits (RUN_FULL, chained off case 5).
  * 7. PATCH :id with {"metadata":{"status":"SIGNED"}} -> response status unchanged ( fix, re-asserted).
@@ -283,83 +283,66 @@ test.describe('full lifecycle walk (RUN_FULL)', () => {
     walkTenantId = doctor!.user.tenantId;
   });
 
-  // ── Case 2 + 4: OPEN -> PRIMED -> RECORDING -> DRAINING -> PENDING_REVIEW ->
-  //    SIGNED -> CLOSED_COMPLETE -> REOPENED, asserted through GET :id after
-  //    each step.
+  // ── Case 2 + 4: OPEN -> RECORDING -> STOPPED -> (note written) -> APPROVED -> CLOSED_COMPLETE,
+  //    asserted through GET :id with `X-Hope-Lifecycle: 2` (the seven-value vocabulary) after each
+  //    step. A written note is processing IDLE + `processingReason` NOTE_READY, never a status.
   test('case 2/4: the full walk transitions status correctly end to end', async ({ request }) => {
-    const { id, version: v0 } = await openConsultation(request, doctorToken, uniquePatientId('case2'));
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('OPEN');
+    const lifecycleHeaders = (token: string, extra: Record<string, string> = {}) => ({ ...bearer(token), 'X-Hope-Lifecycle': '2', ...extra });
+    const read = async (id: string) => {
+      const res = await request.get(`/api/v1/consultations/${id}`, { headers: lifecycleHeaders(doctorToken) });
+      expect(res.status()).toBe(200);
+      return (await res.json()) as { status: string; version: number; processing: string; processingReason: string | null };
+    };
 
-    const primeRes = await request.post(`/api/v1/consultations/${id}/prime`, {
-      headers: { ...bearer(doctorToken), 'If-Match': `"${v0}"` },
-    });
-    expect(primeRes.status()).toBe(200);
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('PRIMED');
+    const patientId = uniquePatientId('case2');
+    const { id } = await openConsultation(request, doctorToken, patientId);
+    expect((await read(id)).status).toBe('OPEN');
 
-    const startRes = await request.post(`/api/v1/consultations/${id}/recording/start`, { headers: bearer(doctorToken) });
+    // `start` is behind the AI_DOCUMENTATION consent checkpoint, which only a tenant admin can record.
+    const admin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
+    expect(admin, 'tenant admin login failed').toBeTruthy();
+    await grantAiDocumentationConsent(request, admin!.token, patientId);
+
+    const startRes = await request.post(`/api/v1/consultations/${id}/start`, { headers: lifecycleHeaders(doctorToken) });
     expect(startRes.status()).toBe(200);
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('RECORDING');
+    expect((await read(id)).status).toBe('RECORDING');
 
-    const stopRes = await request.post(`/api/v1/consultations/${id}/recording/stop`, { headers: bearer(doctorToken) });
+    const stopRes = await request.post(`/api/v1/consultations/${id}/stop`, { headers: lifecycleHeaders(doctorToken), data: { waitForFinal: false } });
     expect(stopRes.status()).toBe(200);
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('DRAINING');
+    expect((await read(id)).status).toBe('STOPPED');
 
-    // TASK-869 — this step used to POST `:id/summary` and wait for
-    // `SummaryProcessor.applyLegacySafetyFloor` to flip DRAINING -> PENDING_REVIEW.
-    // THAT CODE NO LONGER EXISTS: `legacy-generator-absent.grep-gate.test.ts`
-    // asserts zero live-code references to `applyLegacySafetyFloor`, because the
-    // legacy generator was deleted with the epic that retired it. Nothing flips
-    // the status on that path any more, so the consultation sat in DRAINING and
-    // the poll always timed out — the test was asserting a mechanism the product
-    // had removed. Measured on a working stack: 17 consultations stuck in
-    // DRAINING, while every consultation driven through the harness reached
-    // PENDING_REVIEW.
-    //
-    // The supported producer is the harness draft write, which the gate-SLA
-    // describe below already exercises. Same walk, current architecture.
+    // The supported note producer is the harness draft write (the gate-SLA describe below uses the same call).
     const draftRes = await request.post(`/api/v1/internal/harness/consultations/${id}/draft`, {
       headers: { 'X-Service-Token': SERVICE_TOKEN },
       data: { tenantId: walkTenantId, content: '{"subjective":"better today","objective":"o","assessment":"a","plan":"p"}' },
     });
     expect(draftRes.status(), 'harness draft write must succeed').toBeLessThan(300);
 
-    let pendingReview = false;
-    for (let i = 0; i < 20 && !pendingReview; i++) {
-      const cur = await getConsultation(request, doctorToken, id);
-      if (cur.status === 'PENDING_REVIEW') pendingReview = true;
-      else await new Promise((r) => setTimeout(r, 500));
+    // A written note leaves processing IDLE with reason NOTE_READY (AWAITING_REVIEW is only for gaps or an escalation).
+    let current = await read(id);
+    for (let i = 0; i < 20 && current.processing !== 'IDLE'; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      current = await read(id);
     }
-    expect(pendingReview, 'consultation must reach PENDING_REVIEW after the harness draft').toBe(true);
+    expect(current.status).toBe('STOPPED');
+    expect(current.processing, 'the note is written, so the platform is idle').toBe('IDLE');
+    expect(current.processingReason).toBe('NOTE_READY');
 
-    const summariesRes = await request.get(`/api/v1/consultations/${id}/summary`, { headers: bearer(doctorToken) });
-    expect(summariesRes.status()).toBe(200);
-    const summaries = await summariesRes.json();
-    expect(summaries.length, 'the harness draft must have produced a summary row').toBeGreaterThan(0);
-    const summary = summaries[0];
-
-    const beforeApprove = await getConsultation(request, doctorToken, id);
-    const approveRes = await request.post(`/api/v1/consultations/${id}/summary/${summary.id}/approve`, {
-      headers: { ...bearer(doctorToken), 'If-Match': `"${summary.version}"` },
-      data: { expectedVersion: summary.version as number },
+    const approveRes = await request.post(`/api/v1/consultations/${id}/approve`, {
+      headers: lifecycleHeaders(doctorToken, { 'If-Match': `"${current.version}"` }),
     });
     expect(approveRes.status(), 'approve must succeed').toBe(200);
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('SIGNED');
+    const approved = await read(id);
+    expect(approved.status).toBe('APPROVED');
 
-    // Case 4: close after SIGNED -> CLOSED_COMPLETE; reopen -> REOPENED.
-    const signed = await getConsultation(request, doctorToken, id);
+    // Case 4: close after APPROVED -> CLOSED_COMPLETE. (Reopening a CLOSED_COMPLETE record is a tenant
+    // policy, off by default, so the walk stops here.)
     const closeRes = await request.post(`/api/v1/consultations/${id}/close`, {
-      headers: { ...bearer(doctorToken), 'If-Match': `"${signed.version}"` },
+      headers: lifecycleHeaders(doctorToken, { 'If-Match': `"${approved.version}"` }),
     });
     expect(closeRes.status()).toBe(200);
-    const closed = await getConsultation(request, doctorToken, id);
-    expect(closed.status, 'a signed consultation closes to CLOSED_COMPLETE, not the superseded CLOSED').toBe('CLOSED_COMPLETE');
-
-    const reopenRes = await request.post(`/api/v1/consultations/${id}/reopen`, {
-      headers: { ...bearer(doctorToken), 'If-Match': `"${closed.version}"` },
-    });
-    expect(reopenRes.status()).toBe(200);
-    expect((await getConsultation(request, doctorToken, id)).status).toBe('REOPENED');
-    void beforeApprove; // referenced for readability of the walk; no additional assertion needed
+    const closed = await read(id);
+    expect(closed.status, 'an approved consultation closes to CLOSED_COMPLETE').toBe('CLOSED_COMPLETE');
   });
 });
 
