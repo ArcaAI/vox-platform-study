@@ -112,15 +112,18 @@ export const CONSULTATION_ENDPOINTS = {
   /** Latest-by-default activity feed (business plane). */
   HISTORY: (id: string) => `/consultations/${encodeURIComponent(id)}/history`,
   /** Display-only recap of one encounter. */
-  RECAP: (id: string, encounterSeq: number) => `/consultations/${encodeURIComponent(id)}/encounters/${encodeURIComponent(String(encounterSeq))}/recap`,
+  RECAP: (id: string, encounterSeq: number) =>
+    `/consultations/${encodeURIComponent(id)}/encounters/${encodeURIComponent(String(encounterSeq))}/recap`,
   /** Attachment intent (declare kind, size, sha256). */
   ATTACHMENTS_INTENT: (id: string) => `/consultations/${encodeURIComponent(id)}/attachments`,
   /** Attachment status / poll. */
   ATTACHMENT: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
   /** Declare the upload finished. */
-  ATTACHMENT_COMPLETE: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/complete`,
+  ATTACHMENT_COMPLETE: (id: string, attachmentId: string) =>
+    `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/complete`,
   /** Gateway-relayed multipart upload (used when the intent carries no presigned URL). */
-  ATTACHMENT_CONTENT: (id: string, attachmentId: string) => `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/content`,
+  ATTACHMENT_CONTENT: (id: string, attachmentId: string) =>
+    `/consultations/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/content`,
   /** Ratings, comments and corrections. */
   FEEDBACK: (id: string) => `/consultations/${encodeURIComponent(id)}/feedback`,
   /** Close consultation. `@RequiresIfMatch()`. */

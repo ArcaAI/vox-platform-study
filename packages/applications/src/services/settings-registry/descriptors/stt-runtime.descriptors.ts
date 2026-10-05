@@ -340,7 +340,8 @@ const KNOBS: Record<string, SttKnob> = {
     label: 'Reaper scan interval (s)',
     description: 'Interval between background reaper scans for expired sessions.',
     category: 'STT Streaming',
-  },  'stt.streaming.pauseMaxSeconds': {
+  },
+  'stt.streaming.pauseMaxSeconds': {
     dataType: 'number',
     default: 600,
     label: 'Capture pause limit (s)',

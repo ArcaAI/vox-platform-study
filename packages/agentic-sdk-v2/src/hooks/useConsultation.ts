@@ -34,7 +34,7 @@ export interface UseConsultationOptions {
   maxRetries?: number;
 }
 
-export interface ConsultationStartOptions extends AudioStartOptions {}
+export type ConsultationStartOptions = AudioStartOptions;
 
 export interface ConsultationGenerateSummaryOptions {
   /** Regenerate only these sections; the others are preserved. */
@@ -210,13 +210,10 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
     return pm?.getTranscriptionPipeline?.()?.getStreamingSessionManager?.() ?? null;
   }, [store]);
 
-  const remember = useCallback(
-    (id: string, next: { status?: string; processing?: string; version?: number }) => {
-      const state = toLifecycleState(next.status, next.processing as ConsultationProcessingState | undefined);
-      setOverlay({ consultationId: id, status: state.status, processing: state.processing, version: next.version });
-    },
-    [],
-  );
+  const remember = useCallback((id: string, next: { status?: string; processing?: string; version?: number }) => {
+    const state = toLifecycleState(next.status, next.processing as ConsultationProcessingState | undefined);
+    setOverlay({ consultationId: id, status: state.status, processing: state.processing, version: next.version });
+  }, []);
 
   /** POST a lifecycle command; failures land in `error` and rethrow. */
   const command = useCallback(
@@ -341,22 +338,43 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       type Completed = { status: 'READY' | 'PROCESSING'; contextItemId: string | null; mediaId: string | null };
       let completed: Completed;
       if (intent.uploadUrl) {
-        await withRetry(async () => {
-          // The presigned URL is the credential: no Authorization header, no tenant header.
-          const res = await fetch(intent.uploadUrl as string, { method: 'PUT', headers: intent.uploadHeaders, body: bytes, signal: options.signal });
-          if (!res.ok) throw Object.assign(new Error(`Attachment upload failed (${res.status})`), { status: res.status });
-        }, maxRetries, options.signal);
+        await withRetry(
+          async () => {
+            // The presigned URL is the credential: no Authorization header, no tenant header.
+            const res = await fetch(intent.uploadUrl as string, {
+              method: 'PUT',
+              headers: intent.uploadHeaders,
+              body: bytes,
+              signal: options.signal,
+            });
+            if (!res.ok) throw Object.assign(new Error(`Attachment upload failed (${res.status})`), { status: res.status });
+          },
+          maxRetries,
+          options.signal,
+        );
         completed = await withRetry(
-          () => apiClient.postWithHeaders<Completed>(CONSULTATION_ENDPOINTS.ATTACHMENT_COMPLETE(id, intent.attachmentId), {}, { ...LIFECYCLE_HEADER }, { signal: options.signal }),
+          () =>
+            apiClient.postWithHeaders<Completed>(
+              CONSULTATION_ENDPOINTS.ATTACHMENT_COMPLETE(id, intent.attachmentId),
+              {},
+              { ...LIFECYCLE_HEADER },
+              { signal: options.signal },
+            ),
           maxRetries,
           options.signal,
         );
       } else {
-        completed = await withRetry(() => {
-          const form = new FormData();
-          form.append('file', new Blob([bytes], { type: input.mime }), input.name ?? 'attachment');
-          return apiClient.postFormData<Completed>(CONSULTATION_ENDPOINTS.ATTACHMENT_CONTENT(id, intent.attachmentId), form, { signal: options.signal });
-        }, maxRetries, options.signal);
+        completed = await withRetry(
+          () => {
+            const form = new FormData();
+            form.append('file', new Blob([bytes], { type: input.mime }), input.name ?? 'attachment');
+            return apiClient.postFormData<Completed>(CONSULTATION_ENDPOINTS.ATTACHMENT_CONTENT(id, intent.attachmentId), form, {
+              signal: options.signal,
+            });
+          },
+          maxRetries,
+          options.signal,
+        );
       }
 
       const pollMs = options.pollIntervalMs ?? 1000;
@@ -365,7 +383,12 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
         await sleep(pollMs);
         completed = await apiClient.get<Completed>(CONSULTATION_ENDPOINTS.ATTACHMENT(id, intent.attachmentId), { signal: options.signal });
       }
-      return { attachmentId: intent.attachmentId, status: completed.status, contextItemId: completed.contextItemId ?? null, mediaId: completed.mediaId ?? null };
+      return {
+        attachmentId: intent.attachmentId,
+        status: completed.status,
+        contextItemId: completed.contextItemId ?? null,
+        mediaId: completed.mediaId ?? null,
+      };
     },
     [requireContext, session, maxRetries, stopTimeoutMs],
   );
@@ -394,7 +417,10 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
         if (input.comment) body.comment = input.comment;
       }
       const key = generateIdempotencyKey();
-      return withRetry(() => apiClient.postWithHeaders(CONSULTATION_ENDPOINTS.FEEDBACK(id), body, { ...LIFECYCLE_HEADER, 'Idempotency-Key': key }), maxRetries);
+      return withRetry(
+        () => apiClient.postWithHeaders(CONSULTATION_ENDPOINTS.FEEDBACK(id), body, { ...LIFECYCLE_HEADER, 'Idempotency-Key': key }),
+        maxRetries,
+      );
     },
     [requireContext, sendAttachment, maxRetries],
   );
@@ -439,6 +465,27 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       history,
       recap,
     }),
-    [consultation, status, processing, audio.isCapturing, audio.level, audio.transcriptSegments, audio.error, commandError, session.error, start, pause, stop, generateSummary, sendAttachment, sendFeedback, approve, close, reopen, history, recap],
+    [
+      consultation,
+      status,
+      processing,
+      audio.isCapturing,
+      audio.level,
+      audio.transcriptSegments,
+      audio.error,
+      commandError,
+      session.error,
+      start,
+      pause,
+      stop,
+      generateSummary,
+      sendAttachment,
+      sendFeedback,
+      approve,
+      close,
+      reopen,
+      history,
+      recap,
+    ],
   );
 }

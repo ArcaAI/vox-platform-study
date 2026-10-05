@@ -63,7 +63,6 @@ export const AUDIO_SIGNATURES: Readonly<Record<string, (bytes: Buffer) => boolea
 /** A text attachment is checked over its head only: a NUL byte there means it is not text. */
 export const TEXT_SNIFF_BYTES = 8192;
 
-
 /** Whether `bytes` are the content a (normalised) attachment MIME type claims; text types must carry no NUL in their head. */
 export function attachmentContentMatches(mime: string, bytes: Buffer): boolean {
   const signature = ATTACHMENT_SIGNATURES[mime];

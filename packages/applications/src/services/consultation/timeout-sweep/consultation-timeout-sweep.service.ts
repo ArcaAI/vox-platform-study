@@ -9,8 +9,16 @@ import { IActiveUserContext } from '../../../interfaces';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { IConsultationLifecycleService, IConsultationLifecycleServiceToken } from '../lifecycle/IConsultationLifecycleService';
-import { CONSULTATION_GATE_DEFAULTS, CONSULTATION_RECORDING_STALE_MINUTES_KEY, CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY } from '../consultation-gates.constants';
-import { CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT, CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, isValidTimeZone } from '../../settings-registry/descriptors/consultation-appointment-day.descriptors';
+import {
+  CONSULTATION_GATE_DEFAULTS,
+  CONSULTATION_RECORDING_STALE_MINUTES_KEY,
+  CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
+} from '../consultation-gates.constants';
+import {
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT,
+  CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY,
+  isValidTimeZone,
+} from '../../settings-registry/descriptors/consultation-appointment-day.descriptors';
 import {
   CONSULTATION_AUTO_CLOSE_KEY,
   CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES,
@@ -225,7 +233,10 @@ export class ConsultationTimeoutSweepService implements OnModuleInit, OnModuleDe
     for (const consultation of candidates.slice(0, CONSULTATION_SWEEP_BATCH_LIMIT)) {
       let cutoff = cutoffByTenant.get(consultation.tenantId);
       if (cutoff === undefined) {
-        cutoff = overrides?.idleMinutes !== undefined ? new Date(now.getTime() - overrides.idleMinutes * MS_PER_MINUTE) : await this.resolveCutoff(consultation.tenantId, now);
+        cutoff =
+          overrides?.idleMinutes !== undefined
+            ? new Date(now.getTime() - overrides.idleMinutes * MS_PER_MINUTE)
+            : await this.resolveCutoff(consultation.tenantId, now);
         cutoffByTenant.set(consultation.tenantId, cutoff);
       }
       if (cutoff !== null && consultation.lastActivityAt < cutoff) eligible.push(consultation);
@@ -264,7 +275,11 @@ export class ConsultationTimeoutSweepService implements OnModuleInit, OnModuleDe
       const { value } = await this.effectiveSettings.resolveEffective(CONSULTATION_AUTO_CLOSE_KEY, { tenantId });
       return resolveAutoClosePolicy(value);
     } catch (error) {
-      this.logger.warn({ message: 'consultation.autoClose lookup failed - using the platform default', tenantId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'consultation.autoClose lookup failed - using the platform default',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return resolveAutoClosePolicy(undefined);
     }
   }

@@ -1,6 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export const FEEDBACK_ROLLUP_DIMENSIONS = ['day', 'agentVersion', 'model', 'promptVersion', 'section', 'entityLabel', 'reason', 'targetKind'] as const;
+export const FEEDBACK_ROLLUP_DIMENSIONS = [
+  'day',
+  'agentVersion',
+  'model',
+  'promptVersion',
+  'section',
+  'entityLabel',
+  'reason',
+  'targetKind',
+] as const;
 export type FeedbackRollupDimension = (typeof FEEDBACK_ROLLUP_DIMENSIONS)[number];
 
 export interface FeedbackRollupFilters {

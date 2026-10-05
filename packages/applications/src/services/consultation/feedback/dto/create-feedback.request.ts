@@ -73,7 +73,7 @@ export class CreateFeedbackRequest {
   @Type(() => FeedbackTargetRequest)
   target?: FeedbackTargetRequest;
 
-  @ApiPropertyOptional({ enum: FEEDBACK_RATINGS, description: '`cleared` withdraws the actor\'s earlier rating of the target.' })
+  @ApiPropertyOptional({ enum: FEEDBACK_RATINGS, description: "`cleared` withdraws the actor's earlier rating of the target." })
   @IsOptional()
   @IsIn(FEEDBACK_RATINGS)
   rating?: FeedbackRatingValue;

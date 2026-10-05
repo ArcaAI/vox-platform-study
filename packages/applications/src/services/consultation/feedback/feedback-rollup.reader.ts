@@ -26,11 +26,23 @@ const COUNTERS = [
   ['reasoned', 'reasonedCount'],
 ] as const;
 
+/** The rollup columns this read touches. */
+type RollupRow = {
+  day: Date;
+  agentVersion?: number | null;
+  modelName?: string | null;
+  promptVersion?: string | null;
+  sectionKey?: string | null;
+  entityLabel?: string | null;
+  reasonCode?: string | null;
+  targetKind?: string | null;
+} & Record<string, unknown>;
+
 /** `''` / version `0` are the rollup's "not applicable" sentinels; surface them as null. */
-function dimensionValue(row: Record<string, any>, dim: FeedbackRollupDimension): string | null {
+function dimensionValue(row: RollupRow, dim: FeedbackRollupDimension): string | null {
   switch (dim) {
     case 'day':
-      return (row.day as Date).toISOString().slice(0, 10);
+      return row.day.toISOString().slice(0, 10);
     case 'agentVersion':
       return row.agentVersion ? String(row.agentVersion) : null;
     case 'model':
@@ -79,7 +91,7 @@ export class FeedbackRollupReadService implements IFeedbackRollupReader {
     let truncated = entities.length >= MAX_SOURCE_ROWS;
     for (const entity of entities) {
       const dimensions: Record<string, string | null> = {};
-      for (const dim of filters.groupBy) dimensions[dim] = dimensionValue(entity as any, dim);
+      for (const dim of filters.groupBy) dimensions[dim] = dimensionValue(entity as unknown as RollupRow, dim);
       const key = JSON.stringify(filters.groupBy.map((d) => dimensions[d]));
       let group = groups.get(key);
       if (!group) {
@@ -90,7 +102,7 @@ export class FeedbackRollupReadService implements IFeedbackRollupReader {
         group = { dimensions, up: 0, down: 0, cleared: 0, comments: 0, corrections: 0, reasoned: 0 };
         groups.set(key, group);
       }
-      for (const [out, column] of COUNTERS) group[out] += (entity as any)[column] ?? 0;
+      for (const [out, column] of COUNTERS) group[out] += ((entity as unknown as RollupRow)[column] as number | null | undefined) ?? 0;
     }
     return { rows: [...groups.values()], truncated };
   }

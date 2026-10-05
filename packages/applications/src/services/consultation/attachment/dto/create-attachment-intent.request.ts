@@ -29,7 +29,11 @@ export class CreateAttachmentIntentRequest {
   @MaxLength(255)
   fileName?: string;
 
-  @ApiPropertyOptional({ description: 'Whether the file belongs to the consultation record or backs a feedback entry.', enum: ATTACHMENT_PURPOSES, default: 'attachment' })
+  @ApiPropertyOptional({
+    description: 'Whether the file belongs to the consultation record or backs a feedback entry.',
+    enum: ATTACHMENT_PURPOSES,
+    default: 'attachment',
+  })
   @IsOptional()
   @IsIn(ATTACHMENT_PURPOSES)
   purpose?: AttachmentPurpose;

@@ -166,12 +166,9 @@ export function deriveSupportedKinds(input: SupportedKindsInput): AttachmentKind
 /** 422 `ATTACHMENT_KIND_UNSUPPORTED` carrying the kinds that would have been accepted. */
 export function assertKindSupported(kind: AttachmentKind, supportedKinds: readonly AttachmentKind[]): void {
   if (supportedKinds.includes(kind)) return;
-  throw new AttachmentPolicyError(
-    ATTACHMENT_ERROR_CODES.KIND_UNSUPPORTED,
-    422,
-    `This consultation cannot take a '${kind}' attachment.`,
-    { supportedKinds: [...supportedKinds] },
-  );
+  throw new AttachmentPolicyError(ATTACHMENT_ERROR_CODES.KIND_UNSUPPORTED, 422, `This consultation cannot take a '${kind}' attachment.`, {
+    supportedKinds: [...supportedKinds],
+  });
 }
 
 export interface AttachmentIntentCheck {
@@ -187,12 +184,9 @@ export function validateIntent(input: AttachmentIntentCheck): { mime: string; ma
   assertKindSupported(input.kind, input.supportedKinds);
   const mime = normalizeAttachmentMime(input.mime);
   if (!isMimeAllowedForKind(input.kind, mime)) {
-    throw new AttachmentPolicyError(
-      ATTACHMENT_ERROR_CODES.TYPE_UNSUPPORTED,
-      415,
-      `A '${input.kind}' attachment cannot be '${mime || 'untyped'}'.`,
-      { allowedMimeTypes: [...ATTACHMENT_KIND_MIME_TYPES[input.kind]] },
-    );
+    throw new AttachmentPolicyError(ATTACHMENT_ERROR_CODES.TYPE_UNSUPPORTED, 415, `A '${input.kind}' attachment cannot be '${mime || 'untyped'}'.`, {
+      allowedMimeTypes: [...ATTACHMENT_KIND_MIME_TYPES[input.kind]],
+    });
   }
   const maxSizeBytes = resolveMaxSizeBytes(input.kind, input.sizes);
   if (input.sizeBytes > maxSizeBytes) {

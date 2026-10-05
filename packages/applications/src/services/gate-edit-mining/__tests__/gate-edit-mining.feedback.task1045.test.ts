@@ -169,7 +169,7 @@ describe('queue + processor for feedback jobs', () => {
       getVersionsByChangeReason: vi.fn(async () => []),
     };
     const feedbackRepo = {
-      findById: vi.fn(async () => ({
+      findByIdOrNull: vi.fn(async () => ({
         id: 'fb1',
         tenantId: TENANT,
         consultationId: 'c1',

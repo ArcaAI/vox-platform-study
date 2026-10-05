@@ -319,7 +319,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   private async appendCloseAudit(closed: ConsultationEntity, actor: string, submittedBy: string | null): Promise<void> {
     if (!this.harnessAudit) return;
     const action =
-      closed.status === ConsultationStatus.CLOSED_COMPLETE ? HarnessAuditAction.SESSION_CLOSED_COMPLETE : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
+      closed.status === ConsultationStatus.CLOSED_COMPLETE
+        ? HarnessAuditAction.SESSION_CLOSED_COMPLETE
+        : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
     const clinicianId = actor === 'system' ? null : actor;
     try {
       await this.harnessAudit.append({

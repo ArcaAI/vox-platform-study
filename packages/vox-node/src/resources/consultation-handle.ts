@@ -29,10 +29,7 @@ import type { StreamHandle } from '../core/sse-subscription';
 import type { Transport, TransportRequestOptions } from '../core/transport';
 import { encodePathSegment } from '../core/url';
 import type { ConsultationOpenResponse } from '../types/consultation-realtime';
-import type {
-  AsyncJobResponse,
-  ConsultationSummaryResponse,
-} from '../types/consultation';
+import type { AsyncJobResponse, ConsultationSummaryResponse } from '../types/consultation';
 import type {
   ActivityEntry,
   ApproveOptions,
@@ -209,8 +206,10 @@ type MutableState = {
 
 // Merge the open response's fields onto the class type so `handle.patientId` etc. type-check.
 // `status`, `processing` and `version` are declared on the class because they move.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-unsafe-declaration-merging -- intentional: the constructor copies the open response's fields onto the instance, and this merge is how they are typed
 export interface ConsultationHandle extends Readonly<Omit<ConsultationOpenResult, 'status' | 'processing' | 'version'>> {}
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- see the interface above
 export class ConsultationHandle {
   /** The consultation's lifecycle status; follows commands and lifecycle events. */
   readonly status!: ConsultationLifecycleStatus;
@@ -258,7 +257,12 @@ export class ConsultationHandle {
   }
 
   /** Fold a command or read response into the handle's tracked status, processing and version. */
-  #apply(response: Partial<ConsultationState> & { lifecycle?: { status: ConsultationLifecycleStatus; processing: ConsultationProcessing }; status?: string }): void {
+  #apply(
+    response: Partial<ConsultationState> & {
+      lifecycle?: { status: ConsultationLifecycleStatus; processing: ConsultationProcessing };
+      status?: string;
+    },
+  ): void {
     const state = this.#state();
     const status = response.lifecycle?.status ?? response.status;
     if (status) state.status = status as ConsultationLifecycleStatus;
@@ -537,7 +541,11 @@ export class ConsultationHandle {
   }
 
   /** POST a command under `If-Match`: the explicit value, else the handle's version; on one 412 re-read and retry. */
-  async #occCommand(verb: string, body: Record<string, unknown>, options: { ifMatch?: string | number; signal?: AbortSignal }): Promise<ConsultationState> {
+  async #occCommand(
+    verb: string,
+    body: Record<string, unknown>,
+    options: { ifMatch?: string | number; signal?: AbortSignal },
+  ): Promise<ConsultationState> {
     const send = async (version: string | number): Promise<ConsultationState> => {
       const strong = typeof version === 'string' && version.startsWith('"') ? version : `"${version}"`;
       const response = await this.#transport.request<ConsultationState>({
@@ -606,7 +614,8 @@ export class ConsultationHandle {
     const job = await this.#summaries.generateAsync(this.id, request, { signal: options.signal });
     if (!options.wait) return job;
     const finished = await this.#jobs.waitFor(job.jobId, { signal: options.signal, pollIntervalMs: options.pollIntervalMs });
-    const summary = (finished.status as string).toLowerCase() === 'completed' ? await this.#summaries.latest(this.id, { signal: options.signal }) : undefined;
+    const summary =
+      (finished.status as string).toLowerCase() === 'completed' ? await this.#summaries.latest(this.id, { signal: options.signal }) : undefined;
     return { ...job, status: (finished.status as string).toLowerCase() as AsyncJobResponse['status'], summary };
   }
 
@@ -631,7 +640,12 @@ export class ConsultationHandle {
       if (signal?.aborted) throw abortReason(signal);
       let retryAfter: number | undefined;
       try {
-        const response = await doFetch(intent.uploadUrl as string, { method: intent.uploadMethod ?? 'PUT', headers, body: bytes as unknown as RequestInit['body'], signal });
+        const response = await doFetch(intent.uploadUrl as string, {
+          method: intent.uploadMethod ?? 'PUT',
+          headers,
+          body: bytes as unknown as RequestInit['body'],
+          signal,
+        });
         if (response.ok) return;
         const retryable = response.status === 408 || response.status === 429 || (response.status >= 500 && response.status <= 599);
         lastError = new AttachmentUploadError(`Upload to object storage failed with HTTP ${response.status}.`, response.status);
@@ -641,7 +655,11 @@ export class ConsultationHandle {
         if (error instanceof AttachmentUploadError && !(error.status === 408 || error.status === 429 || (error.status ?? 0) >= 500)) throw error;
         if (signal?.aborted) throw error;
         if (!(error instanceof AttachmentUploadError)) {
-          lastError = new AttachmentUploadError(`Upload to object storage failed: ${error instanceof Error ? error.message : String(error)}`, undefined, { cause: error });
+          lastError = new AttachmentUploadError(
+            `Upload to object storage failed: ${error instanceof Error ? error.message : String(error)}`,
+            undefined,
+            { cause: error },
+          );
         }
       }
       if (attempt < UPLOAD_MAX_ATTEMPTS - 1) await this.#backoff(attempt, retryAfter);
@@ -782,7 +800,8 @@ export class ConsultationHandle {
       if (input.reasonCodes !== undefined) body.reasonCodes = input.reasonCodes;
     }
     if (input.kind === 'edit' || input.kind === 'correction') {
-      body.correction = input.expectedVersion === undefined ? { content: input.content } : { content: input.content, expectedVersion: input.expectedVersion };
+      body.correction =
+        input.expectedVersion === undefined ? { content: input.content } : { content: input.content, expectedVersion: input.expectedVersion };
     }
     if (input.comment !== undefined) body.comment = input.comment;
     if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
@@ -839,7 +858,10 @@ export class ConsultationHandle {
 
   /** The recap of one encounter (display-only text built from its facts). */
   async recap(encounterSeq: number, options: ConsultationHandleCallOptions = {}): Promise<EncounterRecap> {
-    return this.#transport.request<EncounterRecap>({ path: this.#path(`/encounters/${encodePathSegment(String(encounterSeq))}/recap`), signal: options.signal });
+    return this.#transport.request<EncounterRecap>({
+      path: this.#path(`/encounters/${encodePathSegment(String(encounterSeq))}/recap`),
+      signal: options.signal,
+    });
   }
 
   /** The JSON the gateway returned at open, for logging or persistence. */

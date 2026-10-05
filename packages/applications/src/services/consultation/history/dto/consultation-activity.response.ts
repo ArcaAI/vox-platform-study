@@ -29,7 +29,7 @@ export class EncounterBlockResponse implements EncounterBlock {
   @ApiProperty({ type: String, nullable: true }) endedAt!: string | null;
   @ApiProperty({ type: Number, nullable: true }) recordingStartMs!: number | null;
   @ApiProperty({ type: Number, nullable: true }) recordingEndMs!: number | null;
-  @ApiPropertyOptional({ type: EncounterGapResponse, description: 'Idle time between this encounter\'s end and the next one\'s start.' })
+  @ApiPropertyOptional({ type: EncounterGapResponse, description: "Idle time between this encounter's end and the next one's start." })
   gapAfter?: EncounterGapResponse;
 }
 
@@ -123,7 +123,7 @@ export class EncounterRecapLineResponse {
 export class EncounterRecapSectionResponse {
   @ApiProperty({ description: 'reason, findings, medicines, sent_for, since_then, still_open' }) key!: string;
   @ApiPropertyOptional() label?: string;
-  @ApiProperty({ description: 'The section\'s lines joined by newlines.' }) text!: string;
+  @ApiProperty({ description: "The section's lines joined by newlines." }) text!: string;
   @ApiProperty({ type: [EncounterRecapLineResponse] }) lines!: EncounterRecapLineResponse[];
 }
 
@@ -131,7 +131,8 @@ export class EncounterRecapResponse implements EncounterRecap {
   @ApiProperty() encounterSeq!: number;
   @ApiProperty() contextItemId!: string;
   @ApiProperty() versionNumber!: number;
-  @ApiProperty({ description: 'Display-only plain rendering (`## Label` blocks for a structured recap); never an input to generation.' }) text!: string;
+  @ApiProperty({ description: 'Display-only plain rendering (`## Label` blocks for a structured recap); never an input to generation.' })
+  text!: string;
   @ApiPropertyOptional({ type: [EncounterRecapSectionResponse] }) sections?: EncounterRecapSectionResponse[];
   @ApiProperty() generatedAt!: string;
   @ApiProperty() ledgerContextItemId!: string;

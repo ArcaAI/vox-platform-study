@@ -116,12 +116,9 @@ export function assertFeedbackShape(input: FeedbackShapeInput, limits: FeedbackS
       throw new FeedbackPolicyError(FEEDBACK_ERROR_CODES.TARGET_REQUIRED, 400, 'A correction needs a target.');
     }
     if (!FEEDBACK_CORRECTABLE_KINDS.includes(input.target.kind)) {
-      throw new FeedbackPolicyError(
-        FEEDBACK_ERROR_CODES.CORRECTION_UNSUPPORTED,
-        400,
-        `A '${input.target.kind}' cannot be corrected.`,
-        { correctableKinds: [...FEEDBACK_CORRECTABLE_KINDS] },
-      );
+      throw new FeedbackPolicyError(FEEDBACK_ERROR_CODES.CORRECTION_UNSUPPORTED, 400, `A '${input.target.kind}' cannot be corrected.`, {
+        correctableKinds: [...FEEDBACK_CORRECTABLE_KINDS],
+      });
     }
   }
   if (comment.length > limits.commentMaxChars) {

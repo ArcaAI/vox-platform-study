@@ -75,7 +75,7 @@ export class ConsultationActivityQuery {
   @Min(0)
   segmentSeqTo?: number;
 
-  @ApiPropertyOptional({ description: 'Comma-separated extras; `versions` adds each item\'s version list.', enum: ACTIVITY_INCLUDES, isArray: true })
+  @ApiPropertyOptional({ description: "Comma-separated extras; `versions` adds each item's version list.", enum: ACTIVITY_INCLUDES, isArray: true })
   @IsOptional()
   @Transform(csv)
   @IsArray()

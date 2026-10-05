@@ -56,6 +56,7 @@ export async function assertPromptInspectorAccess(caller: PromptInspectorCaller,
   throw new ForbiddenException({
     code: refusal.code ?? 'PROMPT_INSPECTOR_FORBIDDEN',
     message:
-      refusal.message ?? 'Composed prompts carry patient data and are readable only by a super administrator or a tenant administrator of this tenant.',
+      refusal.message ??
+      'Composed prompts carry patient data and are readable only by a super administrator or a tenant administrator of this tenant.',
   });
 }

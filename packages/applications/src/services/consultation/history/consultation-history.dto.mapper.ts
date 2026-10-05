@@ -103,13 +103,25 @@ export class ConsultationHistoryDtoMapper {
    * Lifecycle entries derivable from stored rows: each encounter's start (`opened` for the first,
    * `encounter_appended` after) and end (`stopped`), each approval, and the close.
    */
-  static toLifecycleEntries(encounters: readonly EncounterLike[], approvals: readonly ApprovalLike[], closedAt: Date | null | undefined): Array<KeyedLifecycleEntry & { at: Date }> {
+  static toLifecycleEntries(
+    encounters: readonly EncounterLike[],
+    approvals: readonly ApprovalLike[],
+    closedAt: Date | null | undefined,
+  ): Array<KeyedLifecycleEntry & { at: Date }> {
     const out: Array<KeyedLifecycleEntry & { at: Date }> = [];
     for (const encounter of encounters) {
       const startType = encounter.seq <= 1 ? 'opened' : 'encounter_appended';
-      out.push({ id: `lifecycle:${startType}:${encounter.seq}`, at: encounter.startedAt, entry: { entryType: 'lifecycle', at: encounter.startedAt.toISOString(), type: startType } });
+      out.push({
+        id: `lifecycle:${startType}:${encounter.seq}`,
+        at: encounter.startedAt,
+        entry: { entryType: 'lifecycle', at: encounter.startedAt.toISOString(), type: startType },
+      });
       if (encounter.endedAt) {
-        out.push({ id: `lifecycle:stopped:${encounter.seq}`, at: encounter.endedAt, entry: { entryType: 'lifecycle', at: encounter.endedAt.toISOString(), type: 'stopped' } });
+        out.push({
+          id: `lifecycle:stopped:${encounter.seq}`,
+          at: encounter.endedAt,
+          entry: { entryType: 'lifecycle', at: encounter.endedAt.toISOString(), type: 'stopped' },
+        });
       }
     }
     for (const approval of approvals) {
@@ -208,10 +220,15 @@ export class ConsultationHistoryDtoMapper {
     if (!body || typeof body !== 'object' || body.schema !== ENCOUNTER_RECAP_V2_SCHEMA || !Array.isArray(body.sections)) return null;
 
     const sections: RecapViewSection[] = body.sections
-      .filter((section): section is Record<string, unknown> => !!section && typeof section === 'object' && typeof (section as { key?: unknown }).key === 'string')
+      .filter(
+        (section): section is Record<string, unknown> =>
+          !!section && typeof section === 'object' && typeof (section as { key?: unknown }).key === 'string',
+      )
       .map((section) => {
         const lines: RecapLine[] = (Array.isArray(section.lines) ? section.lines : [])
-          .filter((line): line is Record<string, unknown> => !!line && typeof line === 'object' && typeof (line as { text?: unknown }).text === 'string')
+          .filter(
+            (line): line is Record<string, unknown> => !!line && typeof line === 'object' && typeof (line as { text?: unknown }).text === 'string',
+          )
           .map((line) => ({ text: line.text as string, citations: Array.isArray(line.citations) ? (line.citations as RecapCitation[]) : [] }));
         return {
           key: section.key as string,

@@ -257,7 +257,9 @@ export class S3BlobProvider implements IBlobStorageProvider {
 
   async headObject(params: BlobObjectLocation): Promise<BlobObjectHead | null> {
     try {
-      const head = await this.forBucket(params.bucket, () => this.client.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key, ChecksumMode: 'ENABLED' })));
+      const head = await this.forBucket(params.bucket, () =>
+        this.client.send(new HeadObjectCommand({ Bucket: params.bucket, Key: params.key, ChecksumMode: 'ENABLED' })),
+      );
       return {
         sizeBytes: head.ContentLength ?? 0,
         contentType: head.ContentType ?? 'application/octet-stream',

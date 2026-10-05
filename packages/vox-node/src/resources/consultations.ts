@@ -28,7 +28,6 @@ import type {
 } from '../types/consultation';
 import type {
   CloseConsultationRequest,
-  ConsultationOpenResponse,
   DocumentSection,
   OpenConsultationRequest,
   UpdateConsultationLanguageRequest,
@@ -227,19 +226,20 @@ export class ConsultationsResource {
    * verbs `start`, `pause`, `stop`, `generateSummary`, `approve`, `close`, `reopen`,
    * `sendAttachment`, `sendFeedback` and `history`.
    *
-   * **The visit key.** With an `externalRef` (the value of the schema's
-   * `externalRef`-marked context field, e.g. an EMR encounter/event id) the
-   * key is that ref: the same ref returns the same consultation, a NEW ref
-   * creates a new one — including a second visit for the same patient on the
-   * same day. Without one, the legacy key `(patientId, clinician,
-   * appointmentDate)` applies. A `revisit` open that names no
-   * `parentConsultationId` gets a server-derived same-day parent.
+   * **The open key.** A consultation is an EPISODE of encounters (e.g. doctor →
+   * tests → doctor). Without an `externalRef` it is the non-closed consultation
+   * for `(clinician, patient, department)`; a `revisit` open after the current
+   * encounter ended appends encounter 2 to it. With an `externalRef` (the value
+   * of the schema's `externalRef`-marked context field, e.g. an EMR encounter id)
+   * the ref selects the ENCOUNTER: the same ref returns the same consultation, a
+   * new ref appends an encounter to the open one. With no open consultation, a
+   * new one is created and chained to the latest closed one as its parent.
    *
-   * Read {@link ConsultationOpenResponse.isNew} to tell which happened; calling
-   * this twice for the same visit is the intended way to re-attach to a
-   * consultation you already opened, not an error. **Then read
-   * {@link ConsultationOpenResponse.recordable}** before recording: a row that
-   * is already signed or closed is returned as-is with `recordable: false`.
+   * Read `isNew` / `encounterAppended` on the handle to tell which happened;
+   * calling this twice for the same visit is the intended way to re-attach to a
+   * consultation you already opened, not an error. **Then read `recordable`**
+   * before recording: an approved or closed consultation is returned as-is with
+   * `recordable: false`.
    *
    * **A service-account caller MUST name the clinician — either
    * `clinicianUserId`, or the schema's user-identity field inside `context`

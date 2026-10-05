@@ -268,7 +268,13 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
         const rows = [element.row];
         while (rows.length < HISTORY_SEGMENT_RUN_CAP) {
           const next = await stream.peek();
-          if (!next || next.source !== 'row' || next.row.type !== ContextItemType.TRANSCRIPT_SEGMENT || next.row.encounterSeq !== element.row.encounterSeq) break;
+          if (
+            !next ||
+            next.source !== 'row' ||
+            next.row.type !== ContextItemType.TRANSCRIPT_SEGMENT ||
+            next.row.encounterSeq !== element.row.encounterSeq
+          )
+            break;
           stream.consume(next);
           rows.push(next.row);
         }
@@ -295,7 +301,10 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
     }
 
     const [metaRows, contents] = await Promise.all([
-      this.historyReads.listVersionMeta(context.tenantId, itemRows.map((row) => row.id)),
+      this.historyReads.listVersionMeta(
+        context.tenantId,
+        itemRows.map((row) => row.id),
+      ),
       this.decryptCapped(context.tenantId, toDecrypt.slice(0, HISTORY_DECRYPT_CAP_PER_PAGE)),
     ]);
     const metaByItem = new Map<string, HistoryVersionMetaRow[]>();
@@ -458,7 +467,12 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
     return list;
   }
 
-  async getItemVersion(consultationId: string, contextItemId: string, versionNumber: number, options: HistoryReadOptions): Promise<ItemVersionDetail> {
+  async getItemVersion(
+    consultationId: string,
+    contextItemId: string,
+    versionNumber: number,
+    options: HistoryReadOptions,
+  ): Promise<ItemVersionDetail> {
     await this.assertReadable(options);
     const tenantId = this.requireTenant();
     await this.loadConsultation(consultationId, tenantId);
@@ -490,15 +504,18 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
     return { contextItemId, from: ContextDtoMapper.toVersionResponse(from), to: ContextDtoMapper.toVersionResponse(to) };
   }
 
-  async listItemRuns(consultationId: string, contextItemId: string, versionNumber: number | undefined, options: HistoryReadOptions): Promise<ActivityRunRecord[]> {
+  async listItemRuns(
+    consultationId: string,
+    contextItemId: string,
+    versionNumber: number | undefined,
+    options: HistoryReadOptions,
+  ): Promise<ActivityRunRecord[]> {
     await this.assertReadable(options);
     const tenantId = this.requireTenant();
     await this.loadConsultation(consultationId, tenantId);
     const item = await this.loadItem(tenantId, consultationId, contextItemId);
     const version = versionNumber ?? item.currentVersionNumber;
-    const producer = this.runReader
-      ? await this.runReader.findProducerOf({ tenantId, consultationId, contextItemId, versionNumber: version })
-      : null;
+    const producer = this.runReader ? await this.runReader.findProducerOf({ tenantId, consultationId, contextItemId, versionNumber: version }) : null;
     this.audit(consultationId, options, { view: 'item_runs', contextItemId, versionNumber: version });
     return producer ? [Mapper.toRunRecord(producer, version)] : [];
   }

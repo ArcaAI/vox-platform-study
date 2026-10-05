@@ -1,11 +1,4 @@
-import type {
-  ActivityKind,
-  ActivityRunRecord,
-  ConsultationActivityPage,
-  EncounterRecap,
-  ItemVersionDetail,
-  ItemVersionSummary,
-} from '@arcaai/types';
+import type { ActivityKind, ActivityRunRecord, ConsultationActivityPage, EncounterRecap, ItemVersionDetail, ItemVersionSummary } from '@arcaai/types';
 import type { VersionDiffResponse } from '../context/dto/version-diff.response';
 import type { FeedbackResponse } from '../feedback/dto/feedback.response';
 
@@ -36,7 +29,12 @@ export abstract class IConsultationHistoryService {
   /** An item's versions, newest first, without content. */
   abstract listItemVersions(consultationId: string, contextItemId: string, options: HistoryReadOptions): Promise<ItemVersionSummary[]>;
   /** One version of an item, decrypted. */
-  abstract getItemVersion(consultationId: string, contextItemId: string, versionNumber: number, options: HistoryReadOptions): Promise<ItemVersionDetail>;
+  abstract getItemVersion(
+    consultationId: string,
+    contextItemId: string,
+    versionNumber: number,
+    options: HistoryReadOptions,
+  ): Promise<ItemVersionDetail>;
   /** Version `versionNumber` against version `against` (`from` = against, `to` = versionNumber). */
   abstract diffItemVersions(
     consultationId: string,
@@ -46,7 +44,12 @@ export abstract class IConsultationHistoryService {
     options: HistoryReadOptions,
   ): Promise<VersionDiffResponse>;
   /** The run that produced an item version (latest when `versionNumber` is absent); empty when none is recorded. */
-  abstract listItemRuns(consultationId: string, contextItemId: string, versionNumber: number | undefined, options: HistoryReadOptions): Promise<ActivityRunRecord[]>;
+  abstract listItemRuns(
+    consultationId: string,
+    contextItemId: string,
+    versionNumber: number | undefined,
+    options: HistoryReadOptions,
+  ): Promise<ActivityRunRecord[]>;
   /** The live recap of one encounter (display-only). */
   abstract getRecap(consultationId: string, encounterSeq: number, options: HistoryReadOptions): Promise<EncounterRecap>;
 }

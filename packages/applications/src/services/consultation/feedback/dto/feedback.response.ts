@@ -45,7 +45,7 @@ export class FeedbackResponse {
   @ApiProperty({ type: [String] }) attachmentIds!: string[];
   @ApiProperty({ type: FeedbackCorrectionResponse, nullable: true }) correction!: FeedbackCorrectionResponse | null;
   @ApiProperty() isLatest!: boolean;
-  @ApiPropertyOptional({ description: 'The earlier entry this one replaced as the actor\'s latest for the target.' }) supersedes?: string;
+  @ApiPropertyOptional({ description: "The earlier entry this one replaced as the actor's latest for the target." }) supersedes?: string;
   @ApiProperty({ type: FeedbackProvenanceResponse, nullable: true }) provenance!: FeedbackProvenanceResponse | null;
   @ApiProperty({ type: FeedbackActorResponse }) actor!: FeedbackActorResponse;
   @ApiProperty({ type: FeedbackClientResponse }) client!: FeedbackClientResponse;

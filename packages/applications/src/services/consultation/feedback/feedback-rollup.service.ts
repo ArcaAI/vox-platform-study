@@ -88,7 +88,7 @@ export class FeedbackRollupService extends BaseService implements OnModuleInit, 
       const job = new CronJob(cron, async () => {
         await this.handleScheduledRollup();
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the `cron` and `@nestjs/schedule` CronJob types diverge by package version
       this.schedulerRegistry.addCronJob(JOB_NAME, job as any);
       job.start();
       this.activeCron = cron;
@@ -205,6 +205,7 @@ export class FeedbackRollupService extends BaseService implements OnModuleInit, 
 
   private async releaseLock(): Promise<void> {
     if (!this.redis) return;
+    // swallow-ok: the lock carries a TTL, so a failed release only delays the next run until it expires
     await this.redis.del(LOCK_KEY).catch(() => undefined);
   }
 
@@ -216,7 +217,7 @@ export class FeedbackRollupService extends BaseService implements OnModuleInit, 
         this.schedulerRegistry.deleteCronJob(JOB_NAME);
       }
     } catch {
-      // No job registered.
+      // swallow-ok: `getCronJob` throws when no job is registered, which is the state we want
     }
     this.activeCron = null;
   }

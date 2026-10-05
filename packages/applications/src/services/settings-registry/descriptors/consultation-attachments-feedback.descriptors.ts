@@ -97,8 +97,7 @@ export const CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS: SettingDescriptor[] = [
     key: 'consultation.attachments.multipartMaxMb',
     dataType: 'number',
     label: 'Attachment multipart upload ceiling (MB)',
-    description:
-      'Largest attachment accepted on the direct multipart route; anything larger must use the presigned-upload flow. Default 10.',
+    description: 'Largest attachment accepted on the direct multipart route; anything larger must use the presigned-upload flow. Default 10.',
     default: 10,
     validate: intBetween('Multipart ceiling (MB)', 1, 100),
   },
@@ -116,8 +115,7 @@ export const CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS: SettingDescriptor[] = [
     key: 'consultation.attachments.intentTtlHours',
     dataType: 'number',
     label: 'Attachment upload intent lifetime (hours)',
-    description:
-      'An upload intent that is never completed within this window is expired by the reaper and its object removed. Default 24.',
+    description: 'An upload intent that is never completed within this window is expired by the reaper and its object removed. Default 24.',
     default: 24,
     validate: intBetween('Intent lifetime (hours)', 1, 168),
   },
@@ -182,8 +180,7 @@ export const CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS: SettingDescriptor[] = [
     key: 'consultation.feedback.rollupLookbackDays',
     dataType: 'number',
     label: 'Feedback rollup lookback (days)',
-    description:
-      'How many trailing days each rollup run recomputes, so late-arriving feedback lands in the right day. Default 2.',
+    description: 'How many trailing days each rollup run recomputes, so late-arriving feedback lands in the right day. Default 2.',
     default: 2,
     validate: intBetween('Rollup lookback (days)', 1, 30),
   },

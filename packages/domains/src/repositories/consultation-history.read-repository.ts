@@ -82,7 +82,9 @@ const ITEM_COLUMNS = {
 export class ConsultationHistoryReadRepository {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {}
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the two Prisma model delegates share no common type; each caller reads its own model's shape
   private delegate(model: 'contextItem' | 'contextItemVersion', decrypt = false): any {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the database service is indexed by model name
     const delegate = (this.unitOfWorkService.getDatabaseService() as Record<string, any>)[model];
     return decrypt && getPhiReadSecrets() ? wrapDelegateWithPhiDecrypt(delegate, model) : delegate;
   }

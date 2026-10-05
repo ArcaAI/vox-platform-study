@@ -4,11 +4,7 @@
  * Types for consultation/session management.
  */
 
-import type {
-  ConsultationProcessing as LifecycleProcessing,
-  ConsultationStatus as LifecycleStatus,
-  GoverningRunSummary,
-} from '@arcaai/types';
+import type { ConsultationProcessing as LifecycleProcessing, ConsultationStatus as LifecycleStatus, GoverningRunSummary } from '@arcaai/types';
 import type { ContextItem, AddContextInput } from './context';
 import type { LanguageModeId } from './language';
 

@@ -70,7 +70,10 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       // appeared: R7's capture worked, its mining never ran. Verified live before
       // and after this change.
       // A feedback job carries its own id so it never collapses into the encounter's gate job.
-      jobId: job.source === 'feedback' && job.feedbackId ? `${job.tenantId}__${job.consultationId}__fb_${job.feedbackId}` : `${job.tenantId}__${job.consultationId}`,
+      jobId:
+        job.source === 'feedback' && job.feedbackId
+          ? `${job.tenantId}__${job.consultationId}__fb_${job.feedbackId}`
+          : `${job.tenantId}__${job.consultationId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: 100, // keep recent runs visible on the admin queue board
@@ -223,7 +226,7 @@ export class GateEditMiningProcessor extends WorkerHost {
     consultation: { departmentId?: string | null; parentConsultationId?: string | null; metadata?: unknown } | null,
   ): Promise<void> {
     if (!data.feedbackId || !this.feedbackRepository) return;
-    const feedback = await this.feedbackRepository.findById(data.feedbackId).catch(() => null);
+    const feedback = await this.feedbackRepository.findByIdOrNull(data.feedbackId);
     // Belt-and-braces on the tenant boundary: the job's tenant must own the row.
     if (!feedback || feedback.tenantId !== data.tenantId) return;
 
@@ -232,7 +235,7 @@ export class GateEditMiningProcessor extends WorkerHost {
     if (!isDown && !hasCorrection) return;
 
     const versionContent = async (itemId: string, versionNumber: number): Promise<string | null> =>
-      (await this.contextItemVersionRepository.getVersion(itemId, versionNumber).catch(() => null))?.content ?? null;
+      (await this.contextItemVersionRepository.getVersion(itemId, versionNumber))?.content ?? null;
 
     let targetContent: string | null = null;
     if (feedback.targetContextItemId && feedback.targetKind !== 'ENTITY') {
@@ -252,7 +255,7 @@ export class GateEditMiningProcessor extends WorkerHost {
 
     let entityText: string | null = null;
     if (feedback.targetKind === 'ENTITY' && feedback.targetEntityRef && this.namedEntityRepository) {
-      entityText = (await this.namedEntityRepository.findById(feedback.targetEntityRef).catch(() => null))?.text ?? null;
+      entityText = (await this.namedEntityRepository.findByIdOrNull(feedback.targetEntityRef))?.text ?? null;
     }
 
     await this.miningService.mineFromFeedback({
