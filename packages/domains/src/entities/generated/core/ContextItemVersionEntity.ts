@@ -35,6 +35,7 @@ export interface IContextItemVersionEntity extends IBaseTenantEntity {
 }
 
 export class ContextItemVersionEntity extends BaseTenantEntity {
+  private _metaData?: IContextItemVersionEntity['metaData'];
   private _contextItemId: IContextItemVersionEntity['contextItemId'];
   private _versionNumber: IContextItemVersionEntity['versionNumber'];
   private _content?: IContextItemVersionEntity['content'];
@@ -59,6 +60,7 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
 
   constructor(init: IContextItemVersionEntity) {
     super(init);
+    this._metaData = init.metaData;
     this._contextItemId = init.contextItemId;
     this._versionNumber = init.versionNumber;
     this._content = init.content;
@@ -80,6 +82,14 @@ export class ContextItemVersionEntity extends BaseTenantEntity {
     this._modelVersion = init.modelVersion;
     this._sensorScores = init.sensorScores;
     this._ContextItem = init.ContextItem;
+  }
+
+  get metaData(): IContextItemVersionEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IContextItemVersionEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   get contextItemId(): IContextItemVersionEntity['contextItemId'] {

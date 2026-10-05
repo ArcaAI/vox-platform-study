@@ -5,8 +5,9 @@
  *   `…_task_330_phase1_clinical_harness_status_attestation_ner`
  * actually landed on the dev database:
  *
- *   1. `core.ConsultationStatus` enum exists with EXACTLY the 6 lifecycle
- *      states (OPEN, RECORDING, PENDING_REVIEW, SIGNED, CLOSED, REOPENED).
+ *   1. `core.ConsultationStatus` enum exists with EXACTLY the 7 lifecycle
+ *      states (OPEN, RECORDING, PAUSED, STOPPED, APPROVED, CLOSED_COMPLETE,
+ *      CLOSED_INCOMPLETE).
  *   2. `core.ContextItemType` gained the additive `SIGNED_NOTE` value.
  *   3. `Consultation.status` column exists (NOT NULL, ConsultationStatus,
  *      DEFAULT 'OPEN') so the backfill could populate it.
@@ -81,11 +82,12 @@ afterAll(async () => {
 });
 
 describe('Phase 1 additive schema', () => {
-  it('creates core.ConsultationStatus with the lifecycle states (incl. DRAFT_PENDING_SENSORS)', async () => {
+  it('creates core.ConsultationStatus with the seven lifecycle states', async () => {
     if (!available) return;
     const labels = await enumLabels('ConsultationStatus');
-    // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
-    expect(new Set(labels)).toEqual(new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']));
+    expect(new Set(labels)).toEqual(
+      new Set(['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE']),
+    );
   });
 
   it('adds SIGNED_NOTE to core.ContextItemType', async () => {
