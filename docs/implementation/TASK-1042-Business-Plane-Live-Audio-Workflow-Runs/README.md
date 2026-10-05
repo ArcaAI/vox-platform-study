@@ -1,6 +1,6 @@
 # TASK-1042 — Live audio into standalone workflow runs (business plane)
 
-**Status:** In Progress — gate green; merging into dev-2.2. e2e and the live proof are still to run.
+**Status:** In Progress — merged into dev-2.2 (`2689d5da8`, `c04d05eec`); gate and e2e green; the live proof is still to run.
 **Previously:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
 **Type:** feature (gateway + harness + SDK + docs)
 **Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
@@ -330,6 +330,10 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 - The first run surfaced D6. A workflow that DECLARES settings without `socket` cannot publish a stream-audio Input (WF-SET-003 ERROR), so `LIVE_AUDIO_UNSUPPORTED` is only reachable through a legacy definition.
 - Also fixed in this round: mypy on `py-workflow-contract` (the gate script had run mypy for the harness only) found two `arg-type` errors in WF-SET-005; both are fixed.
 
+**Full e2e suite** (the final one for dev-2.2, at the TASK-1036 orchestrator's request), test API built from dev-2.2 `c04d05eec`, `RESET_DB=false`, 6.8 min: **1,436 passed, 82 skipped, 2 failed, 0 flaky.** Neither failure is caused by this ticket:
+- `task-933-service-account-consultation` › "drives the consultation…": **environmental**. Recording start needs the harness to record the governing run, and the test harness on 8966 is not running; the test API log shows 9 `ECONNREFUSED` to 8966. It fails alone too.
+- `task-959-usage-surface` › "the day bucket moves by exactly what was billed into it": **shared state under parallel workers**. It passes alone, 5/5.
+
 **Not yet run:**
 - The live proof (vox-node `runWithAudio` with a WAV, browser `useRunAudio`), which needs the dev stack and STT.
 
@@ -352,4 +356,5 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 | 2026-10-05 | L2 and L1 merged; artifacts regenerated in the verify worktree `../hope-v2-task-1042-verify` (`5f80ef21c`). Owner: merge target dev-2.2; keep `resultStreamMaxlen` at 10000. Single gate pass running. |
 | 2026-10-05 | Single gate pass in the verify worktree; integration fixes made; the Integration tab wires `streamAudioField`; verify merged into the orchestrator branch (`e28fe7e8c`). |
 | 2026-10-05 | Merged into dev-2.2 (`2689d5da8`). E2E on the test infra found D6 (stream-audio binding typed `json`), fixed in both contract twins with shared fixture cases; mypy fix in WF-SET-005; authz inventory 41. |
+| 2026-10-05 | Full e2e on dev-2.2 `c04d05eec`: 1,436 passed, 82 skipped, 2 failed (both environmental or shared-state, triaged). |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
