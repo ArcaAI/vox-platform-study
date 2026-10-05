@@ -43,6 +43,25 @@ import {
  */
 class SeedMembershipError extends Error {}
 
+/**
+ * ArcaAI EMR consultant ids -> HOPE clinicians (TASK-1045 E2E-1). ALaaS sends the EMR consultant id and
+ * HOPE resolves the clinician by `UserProfile.staffId` (TASK-950); mirrors ALaaS
+ * `alaas-hope-mapping.json` -> `clinicians`. Without it a fresh deploy auto-provisions `auto_*` doctors.
+ */
+export const ARCAAI_STAFF_ID_BY_USERNAME: Readonly<Record<string, string>> = {
+  arcaai_doctor: '1001',
+  arcaai_doctor_surg: '1002',
+  arcaai_doctor_neur: '1003',
+  arcaai_doctor_bren: '1004',
+  arcaai_doctor_rheum: '1005',
+  arcaai_doctor_heme: '1006',
+};
+
+const staffIdFor = (u: { username: string; tenantId: string }): { staffId?: string } => {
+  const staffId = u.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI ? ARCAAI_STAFF_ID_BY_USERNAME[u.username] : undefined;
+  return staffId ? { staffId } : {};
+};
+
 export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
   // Global-tenant users resolve against the platform-generic CARE-SETTING
   // catalog (`DEFAULT_DEPARTMENTS` in 04-department.ts — OPD/IPD/ER/PERI/RAD/
@@ -876,6 +895,7 @@ export const seedUser = async (client: CorePrismaClient) => {
           lastName: userData.profile.lastName,
           email: userData.profile.email,
           phone: userData.profile.phone,
+          ...staffIdFor(userData),
         },
         create: {
           userId: user.id,
@@ -883,6 +903,7 @@ export const seedUser = async (client: CorePrismaClient) => {
           lastName: userData.profile.lastName,
           email: userData.profile.email,
           phone: userData.profile.phone,
+          ...staffIdFor(userData),
         },
       });
 
