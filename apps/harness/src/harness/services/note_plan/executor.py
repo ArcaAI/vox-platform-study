@@ -13,14 +13,20 @@ Trajectory seq offsets inside one activity's 16-wide seq base (pinned by the tes
 * ``0``      — the governed finalizer's NODE step;
 * ``1..10``  — one LLM_CALL per plan call (``calls[i]`` at ``1 + i``);
 * ``11``     — the repair LLM_CALL;
-* ``12..15`` — a call or repair that FAILED.
+* ``12..15`` — a call or repair that FAILED (a call cut off by its output budget included).
+
+An answer that stopped because it ran out of output tokens (``stop_reason == "length"``) is never
+merged: a cut-off section is a wrong note. The call is retried ONCE with more room — twice its
+cap, bounded by what the model's window leaves after the prompt and the plan's safety margin — and
+a second cut-off fails the call. A note in which no section was written at all is not a note
+either: the executor raises instead of assembling one from the not-discussed marker.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -29,7 +35,12 @@ from harness.services.note_plan.coverage import (
     gap_section_keys,
     repair_directive,
 )
-from harness.services.note_plan.merge import merge_sections, merge_sources, parse_answer
+from harness.services.note_plan.merge import (
+    NOT_DISCUSSED_MARKER,
+    merge_sections,
+    merge_sources,
+    parse_answer,
+)
 from harness.services.note_plan.models import (
     MAX_NOTE_PLAN_CALLS,
     CoverageResultV1,
@@ -53,6 +64,11 @@ ACTIVITY_NOTE_GENERATE = "NOTE_GENERATE"
 ACTIVITY_NOTE_SECTION_REGEN = "NOTE_SECTION_REGEN"
 ACTIVITY_NOTE_SECTION_GROUP = "NOTE_SECTION_GROUP"
 ACTIVITY_NOTE_REPAIR = "NOTE_REPAIR"
+
+#: The normalised stop reason of an answer the output budget cut off (``apps/text`` stats).
+STOP_LENGTH = "length"
+#: A cut-off call is retried once with this many times its cap (bounded by the window).
+TRUNCATION_RETRY_GROWTH = 2
 
 
 def section_response_format(section_keys: Sequence[str]) -> dict[str, Any]:
@@ -131,6 +147,8 @@ class NoteCallRequest:
     kind: Literal["call", "repair"] = "call"
     #: The structured-output constraint this call is sent with (:func:`section_response_format`).
     response_format: dict[str, Any] | None = None
+    #: ``1`` on the one retry of a call its output budget cut off (callers key idempotency on it).
+    retry: int = 0
 
 
 @dataclass(frozen=True)
@@ -146,6 +164,31 @@ class NoteCallResult:
     attempt: Any = None
     #: The candidates tried and lost before the one that served (``fallback.FailedLeg``).
     failed_legs: tuple[Any, ...] = ()
+    #: The normalised stop reason (``"length"`` = the output budget ran out).
+    stop_reason: str = ""
+
+
+def stop_reason_of(result: Any) -> str:
+    """The normalised stop reason of a Text result: ``stats.stop_reason``, else ``finish_reason``."""
+    stats = getattr(result, "stats", None)
+    if isinstance(stats, dict) and isinstance(stats.get("stop_reason"), str):
+        return stats["stop_reason"]
+    finish = getattr(result, "finish_reason", "")
+    return finish if isinstance(finish, str) else ""
+
+
+class NoteOutputTruncated(RuntimeError):
+    """The call's answer was cut off by its output budget (after the one retry, when allowed)."""
+
+
+@dataclass(frozen=True)
+class TruncatedAttempt:
+    """One answer the output budget cut off: recorded on the run record, never merged."""
+
+    request: NoteCallRequest
+    started_at: datetime
+    ended_at: datetime
+    result: NoteCallResult
 
 
 class NoteCallAttemptsLost(Exception):  # noqa: N818 — a carrier, raised for the executor
@@ -170,6 +213,8 @@ class NoteCallRecord:
     attempt: Any = None
     #: Candidates tried and lost before ``attempt`` (``fallback.FailedLeg``).
     failed_legs: tuple[Any, ...] = ()
+    #: Answers cut off by the output budget (the first try, and the retry when it was cut too).
+    truncated: tuple[TruncatedAttempt, ...] = ()
 
     @property
     def call_id(self) -> str:
@@ -199,6 +244,20 @@ class NotePlanCallFailed(RuntimeError):
         super().__init__(f"note plan call(s) failed: {failed}")
         self.records = records
 
+    @property
+    def truncated_only(self) -> bool:
+        """Every failed call was cut off by its output budget (no other cause)."""
+        errors = [r.error for r in self.records if r.error is not None]
+        return bool(errors) and all(isinstance(e, NoteOutputTruncated) for e in errors)
+
+
+class NotePlanEmptyNote(NotePlanCallFailed):
+    """Every call answered, but no section of the note was written: there is no note to store."""
+
+    def __init__(self, records: list[NoteCallRecord]) -> None:
+        RuntimeError.__init__(self, "the note plan wrote no section")
+        self.records = records
+
 
 GenerateFn = Callable[[NoteCallRequest], Awaitable[NoteCallResult]]
 
@@ -221,22 +280,57 @@ def _now() -> datetime:
 
 
 async def _run(
-    generate: GenerateFn, request: NoteCallRequest, gate: asyncio.Semaphore
+    generate: GenerateFn,
+    request: NoteCallRequest,
+    gate: asyncio.Semaphore,
+    *,
+    retry_max_tokens: int | None = None,
+    allow_retry: Callable[[], bool] = lambda: True,
 ) -> NoteCallRecord:
     async with gate:
         record = NoteCallRecord(request=request, started_at=_now())
+        truncated: list[TruncatedAttempt] = []
+        current = request
         try:
-            record.result = await generate(request)
-            record.attempt = record.result.attempt
-            record.failed_legs = record.result.failed_legs
+            while True:
+                started = _now()
+                result = await generate(current)
+                if result.stop_reason != STOP_LENGTH:
+                    record.result = result
+                    break
+                truncated.append(TruncatedAttempt(current, started, _now(), result))
+                if current.retry or retry_max_tokens is None or not allow_retry():
+                    record.error = NoteOutputTruncated(
+                        f"note plan call {request.call_id} was cut off by its output budget "
+                        f"({current.max_tokens} tokens)"
+                    )
+                    break
+                current = replace(current, max_tokens=retry_max_tokens, retry=1)
+            record.request = current
+            if record.result is not None:
+                record.attempt = record.result.attempt
+                record.failed_legs = record.result.failed_legs
         except NoteCallAttemptsLost as lost:
             record.error = lost.error
             record.attempt = lost.attempt
             record.failed_legs = lost.failed_legs
         except Exception as exc:  # noqa: BLE001 — recorded, then raised as NotePlanCallFailed
             record.error = exc
+        record.truncated = tuple(truncated)
         record.ended_at = _now()
         return record
+
+
+def _retry_max_tokens(plan: NotePlanV1, call: Any) -> int | None:
+    """The cap of a cut-off call's one retry, or ``None`` when the window leaves no more room."""
+    room = plan.budget.context_window - call.prompt_tokens - plan.budget.safety_tokens
+    cap = min(call.max_tokens * TRUNCATION_RETRY_GROWTH, room)
+    return cap if cap > call.max_tokens else None
+
+
+def _written(body: str | None) -> bool:
+    text = (body or "").strip()
+    return bool(text) and text != NOT_DISCUSSED_MARKER
 
 
 def _user(prefix: str, directive: str) -> str:
@@ -278,7 +372,20 @@ async def execute_plan(
         )
         for index, call in enumerate(plan.calls)
     ]
-    records = list(await asyncio.gather(*(_run(generate, r, gate) for r in requests)))
+    records = list(
+        await asyncio.gather(
+            *(
+                _run(
+                    generate,
+                    r,
+                    gate,
+                    retry_max_tokens=_retry_max_tokens(plan, call),
+                    allow_retry=allow_repair,
+                )
+                for r, call in zip(requests, plan.calls, strict=True)
+            )
+        )
+    )
     if any(record.error is not None for record in records):
         raise NotePlanCallFailed(records)
 
@@ -341,6 +448,9 @@ async def execute_plan(
         else:
             # The repair itself failed: the note keeps the gaps it had, and says one was tried.
             coverage = coverage.model_copy(update={"repair_passes": 1})
+
+    if not any(_written(generated.get(key)) for key in regenerated):
+        raise NotePlanEmptyNote(records)
 
     document = {
         "case_note": merge_sections(plan, generated, preserved),

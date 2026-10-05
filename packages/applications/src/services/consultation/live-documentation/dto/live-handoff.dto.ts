@@ -69,6 +69,12 @@ export interface LiveHandoffRecord {
    */
   documentHeadings?: string[];
   /**
+   * TASK-1045 — the slug of that frozen document template, so the composed note plan writes the
+   * SAME sections the finalizer is told to keep. Absent when the session froze none (the platform
+   * shape, or no template configured) and on every record written before.
+   */
+  documentTemplateSlug?: string;
+  /**
    * TASK-1045 — the frozen lane's note nodes (`RealtimeLane.handoffNoteNodeIds`): the ids the read
    * hands the composed note plan on, whether or not the live lane produced an output for them.
    * Absent when the lane has none (and on every record written before).

@@ -107,13 +107,16 @@ from harness.services.note_plan.executor import (
     NoteCallRecord,
     NoteCallRequest,
     NoteCallResult,
+    NoteOutputTruncated,
     NotePlanCallFailed,
+    NotePlanEmptyNote,
     call_run_stats,
     call_step_offset,
     execute_plan,
     failed_step_offset,
     note_run_stats,
     render_user_prefix,
+    stop_reason_of,
     summed_usage,
 )
 from harness.services.note_plan.fallback import (
@@ -2047,6 +2050,9 @@ def record_note_plan_steps(
         started: datetime,
         ended: datetime | None,
         attempt: PlanAttempt | None,
+        *,
+        result_stats: dict[str, Any] | None = None,
+        error_code: str | None = None,
     ) -> None:
         nonlocal failed
         failed_offset = failed_step_offset(failed)
@@ -2070,8 +2076,10 @@ def record_note_plan_steps(
                     funding_tier=attempt.funding_tier if attempt else None,
                     total_ms=max(0, round((ended - started).total_seconds() * 1000)),
                 ),
+                **(result_stats or {}),
                 **run_stats,
             },
+            error_code=error_code,
             offset=failed_offset,
         )
 
@@ -2081,6 +2089,19 @@ def record_note_plan_steps(
         for leg in record.failed_legs:
             if isinstance(leg, FailedLeg):
                 _failed_step(run_stats, leg.started_at, leg.ended_at, leg.attempt)
+        # An answer the output budget cut off: billed tokens, never merged.
+        for cut in record.truncated:
+            cut_attempt = (
+                cut.result.attempt if isinstance(cut.result.attempt, PlanAttempt) else None
+            )
+            _failed_step(
+                {**call_run_stats(plan, cut.request), **(extra_stats or {})},
+                cut.started_at,
+                cut.ended_at,
+                cut_attempt,
+                result_stats=cut.result.stats,
+                error_code="output_truncated",
+            )
         if record.result is not None:
             offset = (
                 REPAIR_STEP_OFFSET
@@ -2097,6 +2118,8 @@ def record_note_plan_steps(
                 offset=offset,
             )
             continue
+        if isinstance(record.error, NoteOutputTruncated):
+            continue  # its cut-off answers were recorded above
         attempt = record.attempt if isinstance(record.attempt, PlanAttempt) else None
         _failed_step(run_stats, record.started_at, record.ended_at, attempt)
 
@@ -2171,14 +2194,18 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             # Stable across a retry of THIS activity, distinct per call: a re-run returns the
             # calls that already completed from Text's cache instead of re-billing them. A
             # fallback is a DIFFERENT generation and takes its own suffix (as in `generate`).
+            # The one retry of a cut-off call is a different generation (more room): its own key,
+            # or Text's cache would answer it with the cut-off one.
             idempotency_key=_idempotency_key(
                 f"note-plan:{request.call_id}"
-                if index == 0
-                else f"note-plan:{request.call_id}:fallback:{index}"
+                + (f":retry:{request.retry}" if request.retry else "")
+                + (f":fallback:{index}" if index else "")
             ),
             # A same-model candidate on another account carries its own credential; the plan's
             # own attempt carries none (`TextClient` then resolves by provider name, as before).
             provider_override=attempt.provider_override,
+            # A posture the assembled hyperparameters carry; absent ⇒ nothing is sent.
+            reasoning=hp.get("reasoning"),
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=tenant_id,
@@ -2195,6 +2222,7 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             provider=result.provider,
             model=result.model,
             usage=result.usage,
+            stop_reason=stop_reason_of(result),
         )
 
     batch = _TrajectoryBatch(settings, payload.trajectory)
@@ -2211,6 +2239,14 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
         record_note_plan_steps(batch, plan, exc.records, provider=provider, model=model)
         await batch.flush()
         errors = [r.error for r in exc.records if r.error is not None]
+        # A note cut off by its output budget (after its one retry) or with no section written
+        # would come back the same on a retry: fail the note, never store it.
+        if isinstance(exc, NotePlanEmptyNote):
+            raise ApplicationError(str(exc), type="NotePlanEmptyNote", non_retryable=True) from exc
+        if exc.truncated_only:
+            raise ApplicationError(
+                str(exc), type="NoteOutputTruncated", non_retryable=True
+            ) from exc
         if any(isinstance(e, TextServiceError) and e.after_send for e in errors):
             # Same rule as `generate`: a call that may have run must not be re-issued by a retry.
             raise ApplicationError(str(exc), type="TextResponseLost", non_retryable=True) from exc

@@ -68,6 +68,29 @@ class _TextResponseLost(RuntimeError):
         self.cause = cause
 
 
+#: The efforts a reasoning posture may name (``GenerateRequest.reasoning``, apps/text).
+_REASONING_EFFORTS = ("minimal", "low", "medium", "high")
+
+
+def reasoning_wire(reasoning: Any) -> dict[str, Any] | None:
+    """``GenerateRequest.reasoning`` for an agent's ``parameters.generation.reasoning`` block.
+
+    The Python half of ``agent-reasoning.ts::reasoningWire`` (the gateway rule every other agent
+    call goes through): anything that is not ``{enabled: bool}`` is no opinion (``None`` — nothing
+    is sent and the engine decides); ``enabled: false`` drops any effort, because a budget for
+    reasoning that will not happen is a second, contradictory instruction; an unknown effort is
+    dropped rather than sent.
+    """
+    if not isinstance(reasoning, Mapping) or not isinstance(reasoning.get("enabled"), bool):
+        return None
+    if not reasoning["enabled"]:
+        return {"enabled": False}
+    effort = reasoning.get("effort")
+    return (
+        {"enabled": True, "effort": effort} if effort in _REASONING_EFFORTS else {"enabled": True}
+    )
+
+
 class TextGenerationResult(BaseModel):
     """Parsed Text ``GenerateResponse`` (the fields the loop needs)."""
 
@@ -224,6 +247,7 @@ class TextClient:
         provider_override: dict[str, Any] | None = None,
         provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
+        reasoning: Mapping[str, Any] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -265,6 +289,7 @@ class TextClient:
             provider_override=provider_override,
             provider_locality=provider_locality,
             known_phi=known_phi,
+            reasoning=reasoning,
             stream=False,
         )
 
@@ -323,6 +348,7 @@ class TextClient:
         provider_override: dict[str, Any] | None = None,
         provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
+        reasoning: Mapping[str, Any] | None = None,
     ) -> TextGenerationResult:
         """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
 
@@ -349,6 +375,7 @@ class TextClient:
             provider_override=provider_override,
             provider_locality=provider_locality,
             known_phi=known_phi,
+            reasoning=reasoning,
             stream=True,
         )
         headers["Accept"] = "text/event-stream"
@@ -398,6 +425,7 @@ class TextClient:
         provider_locality: Mapping[str, str] | None,
         known_phi: list[dict[str, str]] | None,
         stream: bool,
+        reasoning: Mapping[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, str]]:
         """``(url, body, headers)`` of one generate call — the ONE preparation both the blocking
         and the streaming calls use (tenant guard, credential fold, locality, PHI, headers)."""
@@ -429,6 +457,11 @@ class TextClient:
             body["provider_locality"] = dict(provider_locality)
         if known_phi:
             body["known_phi"] = known_phi
+        # The resolved reasoning posture travels AS a posture (`GenerateRequest.reasoning`); each
+        # Text adapter renders it. Absent means no tier had an opinion: nothing is sent.
+        posture = reasoning_wire(reasoning)
+        if posture is not None:
+            body["reasoning"] = posture
 
         # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and

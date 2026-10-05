@@ -12,6 +12,11 @@ A citation is matched by its LABEL whatever its spelling: ``S8``, ``[S8]``, and 
 ``[S8 E2]`` / ``[S8 E2 Doctor 00:00]`` all name ``S8``.
 
 An anchor is the fact's key term or one of its aliases — alternatives, so one present is enough.
+A multi-word term the note words differently is present when one of its distinctive words that
+the cited source also states is in the note ("troponin" for "troponin blood test"); a one-word
+term (a drug, an allergen) still has to be named. A follow-up is also present under the words a
+note uses for one ("follow-up", "review") — its interval, when the ledger recorded one, is still
+checked as a number.
 When none of a fact's anchors occurs in the source lines the fact cites (the ledger described the
 fact instead of quoting it: "metformin dosage change"), the check reads the SOURCE instead: the
 anchor words the source does contain, every number the source states, and — when no anchor word
@@ -68,6 +73,15 @@ _REF_LABEL = re.compile(r"^\[?\s*(?P<label>[SAR]\d+|E\d+-F\d+)(?![\w-])")
 _SOURCE_VALUE = re.compile(r"(?<![\w.,/])\d+(?:\.\d+)?(?:/\d+)?(?![\w.,/])")
 #: An anchor word worth grounding: letters only, three or more of them.
 _ANCHOR_WORD = re.compile(r"[a-z][a-z]{2,}")
+#: Words of a multi-word term too generic to stand for it alone: "blood" is not "troponin blood
+#: test". A lexicon of the checker, not a setting.
+_GENERIC_TERM_WORDS = frozenset(
+    {"blood", "test", "tests", "level", "levels", "value", "values", "check", "scan"}
+)
+#: The words a note names a fact of this kind by, whatever the ledger's term: alternatives.
+_KIND_ALTERNATIVES: dict[str, tuple[str, ...]] = {
+    "follow_up": ("follow", "review", "revisit", "return", "come back")
+}
 
 NumberKey = tuple[str, str]
 
@@ -144,23 +158,39 @@ def _anchor_present(
     anchors = [anchor for anchor in fact.anchors if anchor.strip()]
     if not anchors:
         return True
+    alternatives = _KIND_ALTERNATIVES.get(fact.kind, ())
+    if any(contains(note, alternative) for alternative in alternatives):
+        return True
     source_text = normalise_text(source)
     if not source_text or any(contains(source_text, anchor) for anchor in anchors):
-        return any(contains(note, anchor) for anchor in anchors)
+        if any(contains(note, anchor) for anchor in anchors):
+            return True
+        return any(
+            contains(note, word)
+            for anchor in anchors
+            for word in _term_words(anchor)
+            if not source_text or contains(source_text, word)
+        )
     grounded = [
-        [
-            word
-            for word in _ANCHOR_WORD.findall(normalise_text(anchor))
-            if contains(source_text, word)
-        ]
+        word
         for anchor in anchors
+        for word in _ANCHOR_WORD.findall(normalise_text(anchor))
+        if contains(source_text, word)
     ]
-    if any(grounded):
-        if not any(words and all(contains(note, w) for w in words) for words in grounded):
+    if grounded:
+        if not any(contains(note, word) for word in grounded):
             return False
     elif not cited:
         return False
     return _numbers_present(_source_numbers(source), note, note_numbers)
+
+
+def _term_words(anchor: str) -> list[str]:
+    """The distinctive words of a MULTI-word anchor; a one-word anchor stands only for itself."""
+    words = _ANCHOR_WORD.findall(normalise_text(anchor))
+    if len(words) < 2:
+        return []
+    return [word for word in words if word not in _GENERIC_TERM_WORDS]
 
 
 def _fact_present(

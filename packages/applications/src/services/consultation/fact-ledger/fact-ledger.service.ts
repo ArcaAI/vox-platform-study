@@ -28,6 +28,7 @@ import {
   type ModelFact,
 } from './fact-ledger.schema';
 import { applySupersession } from './fact-ledger-supersession';
+import { normaliseFactKey, normaliseFactKind, numbersFromStatement } from './fact-ledger-normalise';
 import { ENCOUNTER_RECAP_RENDERER, ENCOUNTER_RECAP_SCHEMA, renderEncounterRecap } from './encounter-recap.renderer';
 
 /** Per-call input budget (estimated tokens) for one extractor call; absent ⇒ one call per encounter. */
@@ -544,13 +545,17 @@ function mapFacts(
         droppedUncited++;
         continue;
       }
+      // The model's key prefix and kind drift apart, its keys lose their term, and it leaves the
+      // numbers of a dose or reading empty: reconcile them here, from the fact's own words.
+      const kind = normaliseFactKind(fact.key, fact.kind);
+      const numbers = fact.numbers && fact.numbers.length > 0 ? fact.numbers : numbersFromStatement(kind, fact.statement);
       resolved.push({
         fact: {
-          key: fact.key.trim().toLowerCase(),
-          kind: fact.kind,
+          key: normaliseFactKey(fact.key, kind, fact.statement),
+          kind,
           statement: fact.statement,
-          critical: isCriticalFact(fact.kind, fact.statement),
-          numbers: fact.numbers ?? [],
+          critical: isCriticalFact(kind, fact.statement),
+          numbers,
           aliases: fact.aliases ?? [],
           citations: cited.map((line) => line.itemId),
           ...(fact.sectionHint ? { sectionHint: fact.sectionHint } : {}),

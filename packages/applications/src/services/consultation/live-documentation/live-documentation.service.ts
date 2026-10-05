@@ -7623,6 +7623,8 @@ return 0`;
     // TASK-1022 — the headings the session FROZE (`ensureTemplateResolved`), captured while the
     // snapshot still exists: the durable finalizer is told to use exactly these, in this order.
     const documentHeadings = frozenDocumentHeadings(session.templateSnapshot);
+    // TASK-1045 — and the template itself, so the note plan's sections are those same headings.
+    const documentTemplateSlug = session.templateSnapshot?.templateId ? session.templateSnapshot.slug : undefined;
     // TASK-1045 — the note nodes the durable finalizer reads, so the read can hand them the plan
     // even when the stop came before the live lane produced anything for them.
     const lane = session.laneSnapshot ?? (await session.lanePromise?.catch(() => null)) ?? null;
@@ -7633,6 +7635,7 @@ return 0`;
       // TASK-1022 — summary outputs carry the HEADED note as `text` (see `headedHandoffOutputs`).
       outputs: headedHandoffOutputs(session.liveNodeOutputs ?? {}),
       ...(documentHeadings.length > 0 ? { documentHeadings } : {}),
+      ...(documentTemplateSlug ? { documentTemplateSlug } : {}),
       ...(noteNodeIds.length > 0 ? { noteNodeIds } : {}),
     };
     try {
@@ -7758,7 +7761,13 @@ return 0`;
       const composedFor = typeof consultation?.segmentSeqHead === 'number' ? { notePlanSegmentHead: consultation.segmentSeqHead } : {};
       let planned: LiveHandoffRecordWithPlan;
       try {
-        const summary = await this.notePlanComposer!.composeNotePlan(consultationId, { tenantId, mode: 'final' });
+        // The department's frozen note shape decides the plan's sections — the headings the
+        // finalizer's own prompt lists (`document_headings`); the tenant default would disagree.
+        const summary = await this.notePlanComposer!.composeNotePlan(
+          consultationId,
+          { tenantId, mode: 'final' },
+          { documentTemplateSlug: record.documentTemplateSlug ?? null },
+        );
         planned = { ...fresh, ...composedFor, notePlanRef: summary.notePlanRef };
         this.logger.log({
           message: 'Note plan composed for the live handoff',

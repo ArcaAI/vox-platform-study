@@ -144,3 +144,22 @@ describe('TASK-1022 — the frozen template headings on the live handoff', () =>
     expect('document_headings' in answer.context).toBe(false);
   });
 });
+
+describe('TASK-1045 E2E-27 — the frozen template is named on the handoff for the note plan', () => {
+  it('records the slug of a configured template the session froze', async () => {
+    const { service, stored } = buildService();
+    const frozen = { ...REVISIT_TEMPLATE, templateId: 'tpl-1' } as SessionShape['templateSnapshot'];
+
+    await stop(service, { consultationId: CID, tenantId: TENANT, templateSnapshot: frozen });
+
+    expect(JSON.parse(stored.get(`live-doc:handoff:${CID}`)!).documentTemplateSlug).toBe('arcaai-gen-soap-revisit');
+  });
+
+  it('names none for the platform shape (no configured template)', async () => {
+    const { service, stored } = buildService();
+
+    await stop(service, { consultationId: CID, tenantId: TENANT, templateSnapshot: REVISIT_TEMPLATE });
+
+    expect('documentTemplateSlug' in JSON.parse(stored.get(`live-doc:handoff:${CID}`)!)).toBe(false);
+  });
+});
