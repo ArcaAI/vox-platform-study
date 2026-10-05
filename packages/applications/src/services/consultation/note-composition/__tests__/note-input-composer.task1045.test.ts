@@ -18,6 +18,7 @@ import { estimateCounts, type TokenCountResult } from '../text-token-count.clien
 import type { FactLedgerV1 } from '../../fact-ledger/fact-ledger.schema';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { HarnessInternalService } from '../../harness/harness-internal.service';
+import { ChainSummaryService } from '../../summary/chain-summary.service';
 
 const SETTINGS: NoteCompositionSettings = {
   singlePassRatio: 0.6,
@@ -701,3 +702,51 @@ describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan th
 });
 
 type NoteComposeRequestLike = { extras: { results: unknown[]; background: unknown[] } };
+
+describe('ChainSummaryService — the chain summary records its text run (H-89)', () => {
+  it('records one NOTE_GENERATE run, in the usage transaction, keyed on the TEXT task id', async () => {
+    const recorded: unknown[] = [];
+    const tx = { tx: true };
+    const unitOfWork = { runInTransaction: vi.fn(async (work: (t: unknown) => Promise<void>) => work(tx)) };
+    const activityRuns = { record: vi.fn(async (run: unknown, t: unknown) => void recorded.push([run, t])) };
+    const service = new ChainSummaryService(
+      {} as never,
+      {} as never,
+      { create: vi.fn() } as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      { get: vi.fn() } as never,
+      {} as never,
+      {} as never,
+      undefined,
+      { recordUsage: vi.fn() } as never,
+      unitOfWork as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      activityRuns as never,
+    );
+    const usage = {
+      taskId: 'task-9',
+      requestId: 'req-9',
+      textProvider: 'lm-studio',
+      model: 'gemma-4-e2b-it-qat',
+      byok: false,
+      promptTokens: 1200,
+      completionTokens: 300,
+      totalMs: 4200,
+      occurredAt: new Date('2026-10-05T10:00:00Z'),
+      interrupted: false,
+    };
+    await (service as unknown as { persistSummaryMetaWithUsage: (...args: unknown[]) => Promise<void> }).persistSummaryMetaWithUsage(
+      { contextItemId: 'note-9' },
+      usage,
+      { tenantId: 't1', consultationId: 'c1' },
+    );
+    expect(activityRuns.record).toHaveBeenCalledTimes(1);
+    const [[run, inTx]] = recorded as [[Record<string, unknown>, unknown]];
+    expect(inTx).toBe(tx);
+    expect(run).toMatchObject({ tenantId: 't1', consultationId: 'c1', activityKind: 'NOTE_GENERATE', runKey: 'text:c1:task-9:0', contextItemId: 'note-9', outputVersionNumber: 1 });
+  });
+});

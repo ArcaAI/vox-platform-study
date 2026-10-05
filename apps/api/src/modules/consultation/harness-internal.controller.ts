@@ -1295,3 +1295,40 @@ export class HarnessInternalController {
     });
   }
 }
+
+/**
+ * The composed note plan the harness executes — a SIBLING mount of the harness prefix, at exactly
+ * `GET /api/v1/internal/consultations/:consultationId/note-plans/:planId` (the executor's route).
+ *
+ * Same posture as `HarnessInternalController`: service-to-service only (`HarnessServiceTokenGuard`),
+ * `@Public()` merely skips the end-user auth chain. The tenant is the mandatory `X-Tenant-Id`
+ * header (the `tenantId` query is accepted as the house fallback). The body is
+ * `{ plan, preservedSections }` — a `section_regen` plan needs the preserved sections' text — and
+ * **carries PHI**. A cache miss is recomposed under the same plan id and recorded; a plan id of
+ * another consultation or tenant is a 404.
+ */
+@ApiExcludeController()
+@Public()
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
+@Controller('internal/consultations')
+export class HarnessNotePlanController {
+  constructor(private readonly harnessInternalService: HarnessInternalService) {}
+
+  @Get(':consultationId/note-plans/:planId')
+  @ApiOperation({ summary: 'Read the composed note plan a harness run executes (recomposed on a cache miss)' })
+  @ApiParam({ name: 'consultationId', description: 'Consultation ID' })
+  @ApiParam({ name: 'planId', description: 'Note plan id from the run’s note_plan_ref' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Fallback for the X-Tenant-Id header.' })
+  async getNotePlan(
+    @Param('consultationId') consultationId: string,
+    @Param('planId') planId: string,
+    @Headers('x-tenant-id') tenantHeader?: string,
+    @Query('tenantId') tenantQuery?: string,
+  ) {
+    const tenantId = tenantHeader?.trim() || tenantQuery?.trim();
+    if (!tenantId) {
+      throw new BadRequestException('X-Tenant-Id is required');
+    }
+    return this.harnessInternalService.getNotePlan(consultationId, planId, tenantId);
+  }
+}
