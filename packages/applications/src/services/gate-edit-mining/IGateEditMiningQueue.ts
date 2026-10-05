@@ -18,6 +18,12 @@ export interface GateEditMiningJob {
   doctorId?: string | null;
   gateDecision: string;
   signedAt?: string | null;
+  /**
+   * What produced the job. Absent or `'gate'` is the clinician sign-off signal; `'feedback'` asks
+   * the miner to mine the clinician feedback row `feedbackId` instead (thumbs-down / correction).
+   */
+  source?: 'gate' | 'feedback';
+  feedbackId?: string | null;
 }
 
 export interface IGateEditMiningQueue {

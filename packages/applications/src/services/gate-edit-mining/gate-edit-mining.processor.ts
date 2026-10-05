@@ -5,7 +5,14 @@ import { ITenantLockService } from '../tenant-checkpoint/contracts';
 import { postponeIfTenantLocked } from '../../common/worker-session-lock';
 import { Queue, Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
-import { ContextItemRepository, ContextItemVersionRepository, ConsultationRepository, JobQueue } from '@arcaai/domains';
+import {
+  ConsultationFeedbackRepository,
+  ContextItemRepository,
+  ContextItemVersionRepository,
+  ConsultationRepository,
+  JobQueue,
+  NamedEntityRepository,
+} from '@arcaai/domains';
 import { createWorkerSession } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { GateEditMiningService } from './gate-edit-mining.service';
@@ -62,7 +69,8 @@ export class GateEditMiningQueue implements IGateEditMiningQueue {
       // enqueue is best-effort the throw was caught and the exemplar simply never
       // appeared: R7's capture worked, its mining never ran. Verified live before
       // and after this change.
-      jobId: `${job.tenantId}__${job.consultationId}`,
+      // A feedback job carries its own id so it never collapses into the encounter's gate job.
+      jobId: job.source === 'feedback' && job.feedbackId ? `${job.tenantId}__${job.consultationId}__fb_${job.feedbackId}` : `${job.tenantId}__${job.consultationId}`,
       attempts: 3,
       backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: 100, // keep recent runs visible on the admin queue board
@@ -137,6 +145,9 @@ export class GateEditMiningProcessor extends WorkerHost {
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // Postpones the job while a restore holds the tenant's lock. Optional + trailing so positional fixtures keep their arity.
     @Optional() @Inject(ITenantLockService) private readonly tenantLock?: ITenantLockService,
+    // Feedback-sourced jobs read the feedback row and the text it points at; absent ⇒ such a job is dropped.
+    @Optional() @Inject(ConsultationFeedbackRepository) private readonly feedbackRepository?: ConsultationFeedbackRepository,
+    @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
   ) {
     super();
   }
@@ -174,6 +185,11 @@ export class GateEditMiningProcessor extends WorkerHost {
       const delivered = contextItemId ? await this.loadDeliveredDraft(contextItemId) : null;
       const signed = versions.length > 0 ? (versions[versions.length - 1].content ?? null) : null;
 
+      if (job.data.source === 'feedback') {
+        await this.processFeedbackJob(job.data, consultation);
+        return;
+      }
+
       await this.miningService.mineFromGateDecision({
         tenantId,
         consultationId,
@@ -194,6 +210,70 @@ export class GateEditMiningProcessor extends WorkerHost {
         signedAt: signedAt ?? null,
         contextItemId: contextItemId ?? null,
       });
+    });
+  }
+
+  /**
+   * Feedback-sourced job: only a thumbs-down or a correction is worth mining, so everything else
+   * returns before any text is read. The versions are read TRANSIENTLY — the miner redacts before
+   * it persists anything.
+   */
+  private async processFeedbackJob(
+    data: GateEditMiningJob,
+    consultation: { departmentId?: string | null; parentConsultationId?: string | null; metadata?: unknown } | null,
+  ): Promise<void> {
+    if (!data.feedbackId || !this.feedbackRepository) return;
+    const feedback = await this.feedbackRepository.findById(data.feedbackId).catch(() => null);
+    // Belt-and-braces on the tenant boundary: the job's tenant must own the row.
+    if (!feedback || feedback.tenantId !== data.tenantId) return;
+
+    const hasCorrection = !!feedback.correctionContextItemId && feedback.correctionVersionNumber != null;
+    const isDown = feedback.rating === 'DOWN';
+    if (!isDown && !hasCorrection) return;
+
+    const versionContent = async (itemId: string, versionNumber: number): Promise<string | null> =>
+      (await this.contextItemVersionRepository.getVersion(itemId, versionNumber).catch(() => null))?.content ?? null;
+
+    let targetContent: string | null = null;
+    if (feedback.targetContextItemId && feedback.targetKind !== 'ENTITY') {
+      const number =
+        feedback.targetVersionNumber ?? (await this.contextItemVersionRepository.getLatestVersionNumber(feedback.targetContextItemId).catch(() => 0));
+      if (number) targetContent = await versionContent(feedback.targetContextItemId, number);
+    }
+
+    let beforeContent: string | null = null;
+    let afterContent: string | null = null;
+    if (hasCorrection) {
+      const itemId = feedback.correctionContextItemId as string;
+      const number = feedback.correctionVersionNumber as number;
+      afterContent = await versionContent(itemId, number);
+      beforeContent = number > 1 ? await versionContent(itemId, number - 1) : null;
+    }
+
+    let entityText: string | null = null;
+    if (feedback.targetKind === 'ENTITY' && feedback.targetEntityRef && this.namedEntityRepository) {
+      entityText = (await this.namedEntityRepository.findById(feedback.targetEntityRef).catch(() => null))?.text ?? null;
+    }
+
+    await this.miningService.mineFromFeedback({
+      tenantId: data.tenantId,
+      consultationId: data.consultationId,
+      feedbackId: feedback.id,
+      targetKind: feedback.targetKind ?? 'NOTE',
+      rating: feedback.rating ?? null,
+      reasonCodes: feedback.reasonCodes ?? [],
+      departmentId: consultation?.departmentId ?? null,
+      visitType: (this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE).forConsultation(data.tenantId, {
+        recorded: readRecordedVisitType(consultation?.metadata as never),
+        isFollowUp: Boolean(consultation?.parentConsultationId),
+      }).key,
+      contextItemId: feedback.targetContextItemId ?? feedback.correctionContextItemId ?? null,
+      modelName: feedback.provModelName ?? null,
+      targetContent,
+      beforeContent,
+      afterContent,
+      entityText,
+      entityLabel: feedback.entityLabel ?? null,
     });
   }
 
