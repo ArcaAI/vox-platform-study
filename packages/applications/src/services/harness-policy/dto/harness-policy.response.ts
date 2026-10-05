@@ -84,7 +84,7 @@ export class HarnessPolicyResponse {
 
   @ApiProperty({
     description:
-      'Clinician-gate SLA in seconds. On the effective policy this is the consultation completion timeout (`consultation.session.completionTimeoutMinutes` × 60, tenant → platform, default 300); the stored row value is superseded.',
+      'Clinician-gate SLA in seconds. On the effective policy this is the consultation auto-close idle window (`consultation.autoClose.idleMinutes` × 60, tenant → platform, default 43200); the stored row value is superseded.',
     example: 300,
   })
   gateSlaSeconds: number;
@@ -94,7 +94,7 @@ export class HarnessPolicyResponse {
 
   @ApiPropertyOptional({
     description:
-      'SLA breaches the clinician gate records before it abandons (terminal: the consultation is closed unsigned; a late sign-off still signs). DERIVED, not stored: 1 whenever the consultation completion timeout (`consultation.session.completionTimeoutMinutes`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.',
+      'SLA breaches the clinician gate records before it abandons (terminal for the gate; the auto-close sweep, not the gate, closes the consultation). DERIVED, not stored: 1 whenever the consultation auto-close policy (`consultation.autoClose`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.',
     nullable: true,
     example: 1,
   })

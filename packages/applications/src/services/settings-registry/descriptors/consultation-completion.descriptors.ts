@@ -47,9 +47,9 @@ export const CONSULTATION_COMPLETION_TIMEOUT_SETTINGS: SettingDescriptor[] = [
     editableBy: 'GlobalSetting',
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Consultation completion timeout (minutes)',
+    label: '(Deprecated) Consultation completion timeout (minutes)',
     description:
-      'Minutes a consultation waits for the clinician to approve the final note (Save / Submit) once recording has stopped and ' +
+      'Deprecated, no longer read: superseded by `consultation.autoClose`. Kept for one release. Minutes a consultation waits for the clinician to approve the final note (Save / Submit) once recording has stopped and ' +
       'the final note has been generated. With no approval by then the session is closed unsigned (CLOSED_INCOMPLETE). A later ' +
       'approval still signs it, and the clinician may resume recording; every resumed recording restarts the window when it ' +
       'stops. Tenant admins set it for their tenant; the platform value is the default for every tenant that has not. Whole ' +
