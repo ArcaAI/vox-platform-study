@@ -37,3 +37,7 @@
 | H-33 | AB-4b | `harness-internal.service.ts`, `consultation.service.ts` | AB-4c / AB-3 | `closeOnCompletionTimeout` now unreferenced; drop `scheduler.schedule/cancel` calls (compile today, dead) | pending (send to AB-4c/AB-3) |
 | H-34 | AB-4b | `stt-runtime.descriptors.test.ts` + Python control-plane parity test | orchestrator gate | new key `stt.streaming.pauseMaxSeconds` must appear in both parity tests | pending (gate) |
 | H-35 | AB-4b | sweep fairness | follow-up | repo queried at the 15-min floor then filtered per tenant; 200 cap can starve long-window tenants → paginate per tenant later | follow-up |
+| H-36 | G-ROLL+MINE | `gate-edit-mining.service.module.ts` | orchestrator | provide `IEvalGateCurationSink` → `NoopEvalGateCurationSink` | applied |
+| H-37 | G-ROLL+MINE | module composition | orchestrator (integration) | import `FeedbackRollupServiceModule` where scheduled services are composed (needs ScheduleModule, EventEmitter, Redis) | pending (integration) |
+| H-38 | G-ROLL+MINE | G-SVC | G-SVC | enqueue `{source:'feedback', feedbackId, gateDecision:'FEEDBACK', tenantId, consultationId}` post-commit for thumbs-down + corrections | sent to G-SVC |
+| H-39 | G-ROLL+MINE | rollup settings | follow-up | rollup keys read via local constants; descriptor file exports none — export constants from `consultation-attachments-feedback.descriptors.ts` later | follow-up |
