@@ -150,6 +150,16 @@
   outline-offset: 2px;
 }
 
+/* The attribution link renders at ~52×12 px in a fixed #999, which fails WCAG 2.5.8 (24 px target)
+   and, in the light theme, 1.4.3 contrast (2.72:1) — both found by axe in the TASK-1036 live check.
+   Height only, so the label keeps its size and position; colour from the theme token. */
+.workflow-canvas .react-flow__attribution a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: var(--muted-foreground);
+}
+
 /* Run overlay (TASK-1036 F2): data moving over a link. The dash flow is decoration — state is also
    carried by the stroke token and the node chips — so it only runs when the viewer has not asked
    for reduced motion. */
