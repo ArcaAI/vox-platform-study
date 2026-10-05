@@ -141,6 +141,14 @@ export interface RealtimeLane {
    * no guarded node, which makes the whole mechanism inert for a graph that authors no split.
    */
   readonly conditions: readonly RealtimeCondition[];
+  /**
+   * TASK-1045 — the lane's NOTE nodes: the realtime nodes a durable `onEnd` `core.agent` (the
+   * consultation finalizer) reads on its `in` port, in graph order. The live handoff hands the
+   * composed note plan on these ids whether or not the live lane produced an output for them,
+   * because the note's input is the transcript record, not the live text. Absent on the platform
+   * lane and on any lane no finalizer reads.
+   */
+  readonly handoffNoteNodeIds?: readonly string[];
 }
 
 /** Node ids of the platform-default lane — stable, because trajectories cite them. */
@@ -317,6 +325,7 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
   // through a cadence.
   if (stages.length === 0 && onStart.length === 0) return null;
 
+  const handoffNoteNodeIds = finalizerNoteSources(compiled, admitted);
   return {
     source: 'tenant-graph',
     definitionSlug: compiled.slug ?? null,
@@ -324,7 +333,25 @@ export function buildRealtimeLane(compiled: CompiledWorkflowConfig | null | unde
     stages,
     onStart,
     conditions: conditionsFor(compiled, guardedBy),
+    ...(handoffNoteNodeIds.length > 0 ? { handoffNoteNodeIds } : {}),
   };
+}
+
+/**
+ * The admitted (realtime) nodes a durable `onEnd` `core.agent` reads on `in`, de-duplicated, in
+ * graph order. Control edges (`next` → `after`) and every other port are not the note.
+ */
+function finalizerNoteSources(compiled: CompiledWorkflowConfig, admitted: ReadonlySet<string>): string[] {
+  const sources: string[] = [];
+  for (const stage of compiled.stages) {
+    for (const node of stage.nodes ?? []) {
+      if (admitted.has(node.nodeId) || node.type !== 'core.agent' || cadenceOf(node.config) !== 'onEnd') continue;
+      for (const binding of node.inputs ?? []) {
+        if (binding.toPort === 'in' && admitted.has(binding.fromNodeId) && !sources.includes(binding.fromNodeId)) sources.push(binding.fromNodeId);
+      }
+    }
+  }
+  return sources;
 }
 
 /**

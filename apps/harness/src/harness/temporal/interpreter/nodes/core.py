@@ -1544,10 +1544,44 @@ def _note_plan_error(value: Any) -> str | None:
     return None
 
 
+#: The harness progress stage that marks a consultation's note as not written (apps/api
+#: ``HARNESS_PROGRESS_FAILED_STAGE``).
+_PROGRESS_FAILED_STAGE = "failed"
+
+
+async def _report_finalizer_failure(payload: NodeActivityInput, code: str) -> None:
+    """Tell apps/api the consultation finalizer wrote no note, naming why (best-effort).
+
+    A degraded ``core.agent`` stores no output, so the graph's critical ``core.output`` then fails
+    its schema and the RUN's code is ``OUTPUT_INVALID`` — which says nothing about the note. The
+    ``failed`` progress stage marks a STOPPED consultation without a note FAILED by the note path
+    (an earlier named reason is kept), before the run's own failure arrives. Never raises: the
+    degrade is the node's outcome either way.
+    """
+    consultation_id = run_identity(payload.run_payload).consultation_id
+    if not consultation_id:
+        return
+    try:
+        await _api_client(get_settings()).report_progress(
+            consultation_id,
+            tenant_id=payload.tenant_id,
+            stage=_PROGRESS_FAILED_STAGE,
+            label=f"Note not written ({code})"[:256],
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, the degrade stands either way
+        _LOGGER.warning(
+            "core.agent.finalizer_failure_report_failed",
+            node_id=payload.node_id,
+            code=code,
+            error=type(exc).__name__,
+        )
+
+
 async def _degrade_note_plan(
     payload: NodeActivityInput, started: Any, code: str, detail: str
 ) -> NodeActivityResult:
     await record_and_flush(payload, status=STATUS_DEGRADED, started=started, error_code=code)
+    await _report_finalizer_failure(payload, code)
     return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {code}: {detail}")
 
 
@@ -1811,6 +1845,8 @@ async def _run_text_generation(
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
+        if _is_consultation_finalizer(payload, config):
+            await _report_finalizer_failure(payload, "no_bound_text")
         return NodeActivityResult(
             status="DEGRADED", reason="core.agent: nothing bound on `in`/`context` to generate from"
         )

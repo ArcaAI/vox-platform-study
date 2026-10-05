@@ -7,6 +7,7 @@ conservative:
 * number words (zero–twenty, the tens, "hundred") become digits; "half" / "a half" becomes 0.5;
 * thousands separators are dropped and a leading-dot decimal gains its zero — a value is never
   rounded;
+* a paired reading ("150 over 95", "150 / 95") is written "150/95";
 * a unit word directly after a number becomes its canonical symbol, by SYNONYM only. Units are
   never converted: 1 g stays 1 g and never equals 1000 mg, because a dose stated in another unit
   must stay a mismatch.
@@ -46,6 +47,9 @@ _NUMBER_WORDS = re.compile(rf"\b(?:{_REST})\b")
 _HALF = re.compile(r"\b(?:a\s+)?half\b")
 _THOUSANDS = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d,])")
 _LEADING_DOT = re.compile(r"(?<![\w.])\.(?=\d)")
+#: A paired reading ("150 over 95", "150 / 95") in the written form "150/95". Two- and three-digit
+#: values only, so "5 kg over 3 months" and a "1/2" fraction are left alone.
+_READING = re.compile(r"(?<![\d.])(?P<high>\d{2,3})\s*(?:/|\bover\b)\s*(?P<low>\d{2,3})(?!\d|\.\d)")
 
 #: Unit spellings → canonical symbol. Only synonyms: no entry ever crosses a scale.
 _UNIT_SYNONYMS: dict[str, tuple[str, ...]] = {
@@ -111,6 +115,7 @@ def normalise_text(text: str) -> str:
     out = _HALF.sub("0.5", out)
     out = _THOUSANDS.sub(lambda m: m.group(0).replace(",", ""), out)
     out = _LEADING_DOT.sub("0.", out)
+    out = _READING.sub(r"\g<high>/\g<low>", out)
     return _UNIT_AFTER_NUMBER.sub(_canonical_unit_match, out)
 
 

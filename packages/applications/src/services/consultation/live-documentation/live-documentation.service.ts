@@ -7609,12 +7609,17 @@ return 0`;
     // TASK-1022 — the headings the session FROZE (`ensureTemplateResolved`), captured while the
     // snapshot still exists: the durable finalizer is told to use exactly these, in this order.
     const documentHeadings = frozenDocumentHeadings(session.templateSnapshot);
+    // TASK-1045 — the note nodes the durable finalizer reads, so the read can hand them the plan
+    // even when the stop came before the live lane produced anything for them.
+    const lane = session.laneSnapshot ?? (await session.lanePromise?.catch(() => null)) ?? null;
+    const noteNodeIds = [...(lane?.handoffNoteNodeIds ?? [])];
     const record: LiveHandoffRecord = {
       endedAt: new Date().toISOString(),
       tenantId: session.tenantId,
       // TASK-1022 — summary outputs carry the HEADED note as `text` (see `headedHandoffOutputs`).
       outputs: headedHandoffOutputs(session.liveNodeOutputs ?? {}),
       ...(documentHeadings.length > 0 ? { documentHeadings } : {}),
+      ...(noteNodeIds.length > 0 ? { noteNodeIds } : {}),
     };
     try {
       await this.cacheService.setex(this.handoffKey(session.consultationId), this.HANDOFF_TTL, JSON.stringify(record));
@@ -7669,8 +7674,12 @@ return 0`;
     if (stillLive || (await this.isHandoffPending(consultationId))) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
-    const filtered = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
-    const outputs = record ? await this.withNotePlan(consultationId, consultation, record, filtered) : filtered;
+    const isRequested = (nodeId: string): boolean => requested.size === 0 || requested.has(nodeId);
+    const filtered = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => isRequested(nodeId)));
+    // TASK-1045 — a note node the live lane never reached (a stop before its first flush) still
+    // gets the plan: the note is written from the transcript record, not from the live text.
+    const noteNodeIds = new Set((record?.noteNodeIds ?? []).filter(isRequested));
+    const outputs = record ? await this.withNotePlan(consultationId, consultation, record, filtered, noteNodeIds) : filtered;
     return {
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
@@ -7684,7 +7693,8 @@ return 0`;
   /**
    * TASK-1045 — the handoff's note outputs, pointed at the consultation's composed note plan.
    *
-   * Every summary-node output (one carrying `sections`) becomes `{ …, text: '', note_plan_ref }`:
+   * Every summary-node output (one carrying `sections`) — and every recorded note node
+   * (`noteNodeIds`) the live lane never reached — becomes `{ …, text: '', note_plan_ref }`:
    * the durable finalizer executes the plan — every encounter, the results, the earlier note,
    * budgeted against the model's window — and the live lane's running text is no longer the note's
    * input. Other outputs pass through. The plan is composed ONCE per handoff record and remembered
@@ -7701,12 +7711,16 @@ return 0`;
     consultation: ConsultationEntity | null,
     record: LiveHandoffRecordWithPlan,
     outputs: Record<string, Record<string, unknown>>,
+    noteNodeIds: ReadonlySet<string> = new Set(),
   ): Promise<Record<string, Record<string, unknown>>> {
-    if (!this.notePlanComposer || !Object.values(outputs).some(isNoteOutput)) return outputs;
+    const withNoteNodes: Record<string, Record<string, unknown>> = { ...outputs };
+    for (const nodeId of noteNodeIds) withNoteNodes[nodeId] ??= {};
+    const isNote = (nodeId: string, output: Record<string, unknown>): boolean => noteNodeIds.has(nodeId) || isNoteOutput(output);
+    if (!this.notePlanComposer || !Object.entries(withNoteNodes).some(([nodeId, output]) => isNote(nodeId, output))) return outputs;
     const planned = record.notePlanRef || record.notePlanError ? record : await this.composeHandoffNotePlan(consultationId, consultation, record);
     return Object.fromEntries(
-      Object.entries(outputs).map(([nodeId, output]) => {
-        if (!isNoteOutput(output)) return [nodeId, output];
+      Object.entries(withNoteNodes).map(([nodeId, output]) => {
+        if (!isNote(nodeId, output)) return [nodeId, output];
         if (planned.notePlanRef) return [nodeId, { ...output, text: '', note_plan_ref: planned.notePlanRef }];
         const { sections: _dropped, ...rest } = output;
         return [nodeId, { ...rest, text: '', note_plan_error: planned.notePlanError }];
