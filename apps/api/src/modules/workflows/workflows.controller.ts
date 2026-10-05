@@ -198,7 +198,11 @@ export class WorkflowsController {
     // run and then failing to deliver it the way the caller asked.
     const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id, mode });
     // TASK-864 (G9): the terminal status is recorded by a background watcher, not by a reader.
-    this.runCompletion?.watch(req.user?.tenantId ?? req.tenantId ?? '', started.runId);
+    // The tenant is the one the run was started under — the CLS tenant `invoke` resolved — and an
+    // empty string is never a tenant: an API key's bound human can carry `tenantId: ''`, which a
+    // `??` chain kept, and the watcher then wrote under no tenant and lost the result (TASK-1036).
+    const runTenantId = this.cls?.get('tenantId') || req.user?.tenantId || req.tenantId || '';
+    this.runCompletion?.watch(runTenantId, started.runId);
     return deliverRun(this.workflowStreamService, slug, started, res, mode, { protocolHeader, protocol });
   }
 
