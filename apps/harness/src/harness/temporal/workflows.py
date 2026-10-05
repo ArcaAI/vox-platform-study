@@ -45,6 +45,7 @@ with workflow.unsafe.imports_passed_through():
         document_extract_text,
         emit_loop_event,
         escalate_gate,
+        execute_note_plan,
         extract_entities,
         fetch_loop_config,
         fetch_policy,
@@ -120,6 +121,7 @@ with workflow.unsafe.imports_passed_through():
         EditSignal,
         EmitLoopEventInput,
         EscalateInput,
+        ExecuteNotePlanInput,
         ExtractEntitiesInput,
         FetchLoopConfigInput,
         FetchPolicyInput,
@@ -820,6 +822,10 @@ class HarnessDocWorkflow:
         assembled = None
         sensors = None
         comp_verdict = None
+        # A NotePlan execution's coverage + note-level run stats, threaded to the persist.
+        # Stay None on every run without a plan ⇒ pruned from the persist ⇒ byte-identical.
+        note_coverage: dict[str, Any] | None = None
+        note_run_stats: dict[str, Any] | None = None
         # the prior iteration's critique, threaded into the next regen's
         # generate call (None on the first iteration ⇒ byte-identical prompt).
         regen_feedback: RegenFeedback | None = None
@@ -874,37 +880,60 @@ class HarnessDocWorkflow:
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
                 )
-            # the retrieved Knowledge Context (StrictCitations) block + the
-            # (possibly offloaded) prompt refs are threaded to ``generate``, which resolves
-            # the prompt inline-or-ref and folds in the block. The workflow no longer
-            # concatenates the blob, so history holds only the small refs.
-            generated = await workflow.execute_activity(
-                generate,
-                GenerateInput(
-                    tenant_id=inp.tenant_id,
-                    prompt=assembled.user_prompt,
-                    prompt_ref=assembled.user_prompt_ref,
-                    system_prompt=assembled.system_prompt,
-                    system_prompt_ref=assembled.system_prompt_ref,
-                    prompt_block=retrieved.prompt_block,
-                    response_format=assembled.response_format,
-                    hyperparameters=assembled.hyperparameters,
-                    provider=text_provider,
-                    model=text_model,
-                    text_fallback=text_fallback,
-                    phi_enabled=phi_enabled,
-                    phi_fail_closed=phi_fail_closed,
-                    # critique from the prior iteration (None on the
-                    # first pass ⇒ byte-identical prompt, replay-safe).
-                    regen_feedback=regen_feedback,
-                    # PHI-safe segment refs from assemble (empty ⇒
-                    # no StrictCitations block, byte-identical prompt).
-                    segment_citations=list(assembled.segment_citations),
-                    trajectory=self._traj(inp, is_regen=regens_used > 0),
-                ),
-                start_to_close_timeout=_GENERATE_TIMEOUT,
-                retry_policy=_GENERATE_RETRY,
-            )
+            # A run started WITH a NotePlan pointer executes the plan apps/api composed (parallel
+            # section groups, coverage, one repair) in place of the single assembled prompt.
+            # ``note_plan_ref`` is the FIRST operand, so a run without a plan never calls
+            # ``workflow.patched`` — no marker, and the legacy ``generate`` command below is
+            # byte-identical to before (the ``task-516-mcp-tools`` conditional-patch precedent).
+            # The change-id is DATA written into history; never rename it.
+            if inp.note_plan_ref is not None and workflow.patched("task-1045-note-plan"):
+                executed = await workflow.execute_activity(
+                    execute_note_plan,
+                    ExecuteNotePlanInput(
+                        tenant_id=inp.tenant_id,
+                        note_plan_ref=inp.note_plan_ref,
+                        hyperparameters=assembled.hyperparameters,
+                        regen_feedback=regen_feedback,
+                        trajectory=self._traj(inp, is_regen=regens_used > 0),
+                    ),
+                    start_to_close_timeout=_GENERATE_TIMEOUT,
+                    retry_policy=_GENERATE_RETRY,
+                )
+                generated = executed.generation
+                note_coverage = executed.coverage
+                note_run_stats = executed.note_run_stats
+            else:
+                # the retrieved Knowledge Context (StrictCitations) block + the
+                # (possibly offloaded) prompt refs are threaded to ``generate``, which resolves
+                # the prompt inline-or-ref and folds in the block. The workflow no longer
+                # concatenates the blob, so history holds only the small refs.
+                generated = await workflow.execute_activity(
+                    generate,
+                    GenerateInput(
+                        tenant_id=inp.tenant_id,
+                        prompt=assembled.user_prompt,
+                        prompt_ref=assembled.user_prompt_ref,
+                        system_prompt=assembled.system_prompt,
+                        system_prompt_ref=assembled.system_prompt_ref,
+                        prompt_block=retrieved.prompt_block,
+                        response_format=assembled.response_format,
+                        hyperparameters=assembled.hyperparameters,
+                        provider=text_provider,
+                        model=text_model,
+                        text_fallback=text_fallback,
+                        phi_enabled=phi_enabled,
+                        phi_fail_closed=phi_fail_closed,
+                        # critique from the prior iteration (None on the
+                        # first pass ⇒ byte-identical prompt, replay-safe).
+                        regen_feedback=regen_feedback,
+                        # PHI-safe segment refs from assemble (empty ⇒
+                        # no StrictCitations block, byte-identical prompt).
+                        segment_citations=list(assembled.segment_citations),
+                        trajectory=self._traj(inp, is_regen=regens_used > 0),
+                    ),
+                    start_to_close_timeout=_GENERATE_TIMEOUT,
+                    retry_policy=_GENERATE_RETRY,
+                )
 
             note_entities: list[NEREntity] = []
             try:
@@ -1211,6 +1240,8 @@ class HarnessDocWorkflow:
                         # the era is off ⇒ pruned ⇒ byte-identical early-persist body.
                         redaction_applied=redaction_marker_applied,
                         redaction_manifest=redaction_marker_manifest,
+                        coverage=note_coverage,
+                        note_run_stats=note_run_stats,
                         trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
@@ -1603,6 +1634,8 @@ class HarnessDocWorkflow:
                     # era is off ⇒ pruned ⇒ byte-identical legacy persist body.
                     redaction_applied=redaction_marker_applied,
                     redaction_manifest=redaction_marker_manifest,
+                    coverage=note_coverage,
+                    note_run_stats=note_run_stats,
                     trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
