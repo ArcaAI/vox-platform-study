@@ -1,8 +1,9 @@
 /**
  * TASK-1036 review R-C — the canvas inside the Studio:
  *
- *  #1 `viewportInsets` (the docked panes' footprint) moves the zoom controls and the minimap clear
- *     of the panes, so keyboard focus on Zoom never lands under a pane (and never makes it yield).
+ *  #1 (owner, 2026-10-05) the zoom controls and the minimap are ANCHORED: one bottom-centre dock
+ *     that never moves when a floating pane moves, resizes, collapses or opens. `viewportInsets`
+ *     (the panes' footprint) no longer touches any control's position.
  *  #2 `fitView` fits into the FREE rectangle: per-side pixel padding grown by the insets, on the
  *     initial fit, the re-fit and the Controls' own fit button.
  *  #8 a typed port SAYS its type (a visible suffix), and the list colour is the strong token (3:1).
@@ -63,23 +64,47 @@ const lastFlow = () => flowProps.at(-1) as Record<string, unknown> & { fitViewOp
 const A: WorkflowCanvasNode = { id: 'a', type: 'core.agent', label: 'Extract', position: { x: 0, y: 0 } };
 const B: WorkflowCanvasNode = { id: 'b', type: 'core.agent', label: 'Summarise', position: { x: 260, y: 0 } };
 
-describe('WorkflowCanvas — insets keep the chrome clear of the panes (R-C #1, #2)', () => {
-  it('moves the zoom controls and the minimap in by the panes’ footprint', async () => {
-    const { container } = render(<WorkflowCanvas nodes={[A, B]} edges={[]} aria-label="Graph" viewportInsets={{ left: 272, right: 372 }} />);
+/** Everything that decides where a panel is drawn: its classes and its inline style. */
+function placementOf(element: Element | null) {
+  const el = element as HTMLElement | null;
+  return { className: el?.className ?? null, style: el?.getAttribute('style') ?? null };
+}
+
+describe('WorkflowCanvas — anchored chrome, insets only shape the fit (R-C #1, #2)', () => {
+  it('docks the zoom controls and the minimap together at the bottom centre, horizontal', async () => {
+    const { container } = render(<WorkflowCanvas nodes={[A, B]} edges={[]} aria-label="Graph" />);
     await waitFor(() => expect(container.querySelector('.react-flow__controls')).not.toBeNull());
-    const controls = container.querySelector('.react-flow__controls') as HTMLElement;
-    const minimap = container.querySelector('.react-flow__minimap') as HTMLElement;
-    expect(controls.style.marginLeft).toBe('287px');
-    expect(minimap.style.marginRight).toBe('387px');
+    const dock = container.querySelector('[data-slot="workflow-canvas-dock"]') as HTMLElement;
+    expect(dock).not.toBeNull();
+    expect(dock.className).toContain('bottom');
+    expect(dock.className).toContain('center');
+    expect(dock.querySelector('.react-flow__controls')?.className).toContain('horizontal');
+    expect(dock.querySelector('.react-flow__minimap')).not.toBeNull();
+  });
+
+  it('never moves the zoom controls or the minimap when the panes’ footprint changes', async () => {
+    const { container, rerender } = render(<WorkflowCanvas nodes={[A, B]} edges={[]} aria-label="Graph" />);
+    await waitFor(() => expect(container.querySelector('.react-flow__minimap')).not.toBeNull());
+    const before = {
+      dock: placementOf(container.querySelector('[data-slot="workflow-canvas-dock"]')),
+      controls: placementOf(container.querySelector('.react-flow__controls')),
+      minimap: placementOf(container.querySelector('.react-flow__minimap')),
+    };
+    rerender(<WorkflowCanvas nodes={[A, B]} edges={[]} aria-label="Graph" viewportInsets={{ left: 272, right: 372, top: 10, bottom: 40 }} />);
+    await waitFor(() => expect(container.querySelector('.react-flow__minimap')).not.toBeNull());
+    expect(placementOf(container.querySelector('[data-slot="workflow-canvas-dock"]'))).toEqual(before.dock);
+    expect(placementOf(container.querySelector('.react-flow__controls'))).toEqual(before.controls);
+    expect(placementOf(container.querySelector('.react-flow__minimap'))).toEqual(before.minimap);
   });
 
   it('fits into the free rectangle: per-side pixel padding grown by the insets', () => {
     render(<WorkflowCanvas nodes={[A, B]} edges={[]} aria-label="Graph" viewportInsets={{ left: 272, right: 372 }} />);
     const padding = lastFlow().fitViewOptions?.padding as Record<string, string>;
-    expect(padding.left).toBe(`${272 + 56}px`);
+    expect(padding.left).toBe(`${272 + 32}px`);
     expect(padding.right).toBe(`${372 + 32}px`);
     expect(padding.top).toBe('56px');
-    expect(padding.bottom).toBe('32px');
+    // The bottom gap clears the anchored controls + minimap dock.
+    expect(padding.bottom).toBe('120px');
   });
 
   it('keeps the old proportional padding when no insets are given', () => {

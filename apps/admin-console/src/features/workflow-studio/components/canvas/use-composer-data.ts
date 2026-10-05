@@ -19,6 +19,7 @@ import { useContextSchemaCatalog, useContextSchemaDefinition } from '@/shared/ca
 import { useAgentOptions } from '../../api/hooks';
 import type { AgentOption } from '../../api/types';
 import { agentResolverOf } from '../../lib/composer-io';
+import { agentNamesOf, type NodeNaming } from '../../lib/node-identity';
 import { settingsDraftOf } from '../../lib/settings-model';
 import { useOptionalGraphStore, useOptionalGraphStoreApi, type GraphStoreApi } from '../../store';
 import type { GraphStoreEdge, GraphStoreNode } from '../../store/types';
@@ -50,6 +51,17 @@ export function useComposerAgents(enabled = true): { agents: AgentIOResolver; ag
       agents: agentResolverOf(agentOptions.map((agent) => ({ slug: agent.slug, task: agent.task, outputSchema: (agent as AgentOption & { outputSchema?: unknown }).outputSchema }))),
     };
   }, [query.data]);
+}
+
+/**
+ * TASK-1036 (owner, 2026-10-05) — what names a step beyond the graph: the agents' display names,
+ * from the SAME cached `GET admin/agents` query. Every surface that names a step reads this, so an
+ * agent step is "Realtime transcription (whisper.cpp ML/EN)" everywhere, never its slug. The editor
+ * hands it down through `NodeNamingProvider`.
+ */
+export function useNodeNaming(enabled = true): NodeNaming {
+  const { agentOptions } = useComposerAgents(enabled);
+  return useMemo(() => agentNamesOf(agentOptions), [agentOptions]);
 }
 
 export function useComposerData(): ComposerData | null {

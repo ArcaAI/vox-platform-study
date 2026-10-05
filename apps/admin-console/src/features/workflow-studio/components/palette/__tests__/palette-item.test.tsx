@@ -54,4 +54,18 @@ describe('PaletteItem', () => {
     render(<PaletteItem descriptor={noSummary} entitled onAdd={vi.fn()} />);
     expect(screen.queryByText(/task/i)).toBeNull();
   });
+
+  // Owner, 2026-10-05 — the palette names a step type in words ("Action", "Start", "Map fields"),
+  // never the registry key ("Core.action").
+  it.each([
+    ['core.action', 'Action'],
+    ['core.trigger', 'Start'],
+    ['core.data', 'Map fields'],
+    ['core.output', 'Output'],
+  ])('names %s as “%s”', (type, title) => {
+    render(<PaletteItem descriptor={{ ...BASE, type }} entitled onAdd={vi.fn()} />);
+    const button = screen.getByRole('button');
+    expect(button.textContent).toContain(title);
+    expect(button.textContent).not.toMatch(/core\./i);
+  });
 });

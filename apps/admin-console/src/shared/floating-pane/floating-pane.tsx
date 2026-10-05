@@ -29,9 +29,14 @@
  *    on a laptop. The clamp is display-only: the saved preference is left alone, so the author's
  *    own layout comes back on a bigger window. "Reset layout" restores the defaults, and a
  *    double-click on the header snaps the pane back to its edge.
- *  - **Reports its footprint** (R-C #1): `onFootprintChange` hears how far the pane reaches in
- *    from the stage's left / right edge, so the canvas can keep its zoom controls, minimap and
- *    fit clear of it. A collapsed pane, an unmounted one and the stacked (below `md`) layout report
+ *  - **A drag moves, it never resizes** (owner, 2026-10-05). The clamp moves the pane to keep it
+ *    on the stage and shrinks it only when the stage genuinely cannot hold it. A docked pane is
+ *    DRAWN the stage's full height, so un-docking it (by pointer or keyboard) carries that drawn
+ *    height into the free geometry — before, the free pane fell back to its stored default height
+ *    and visibly shrank the moment it was picked up.
+ *  - **Reports its footprint** (R-C #2): `onFootprintChange` hears how far the pane reaches in
+ *    from the stage's left / right edge, so the canvas can fit its graph clear of it. (Nothing
+ *    POSITIONS itself off it: the canvas chrome is anchored — owner, 2026-10-05.) A collapsed pane, an unmounted one and the stacked (below `md`) layout report
  *    none.
  *
  * Geometry reaches CSS through custom properties (`--fp-x`, …), because the numbers are runtime
@@ -126,15 +131,34 @@ interface StageSize {
  * its width capped. A stage that has not been measured (0 × 0: before layout, or a test with no
  * layout engine) clamps nothing.
  */
-export function clampPaneGeometry<T extends Pick<PaneState, 'x' | 'y' | 'width' | 'height'>>(state: T, stage: StageSize, bounds: { minWidth: number; minHeight: number }): T {
+export function clampPaneGeometry<T extends Pick<PaneState, 'x' | 'y' | 'width' | 'height'> & { collapsed?: boolean }>(
+  state: T,
+  stage: StageSize,
+  bounds: { minWidth: number; minHeight: number },
+): T {
   if (stage.width <= 0 || stage.height <= 0) return state;
   const maxWidth = Math.max(bounds.minWidth, Math.floor(stage.width * MAX_STAGE_SHARE));
   const width = Math.min(Math.max(bounds.minWidth, state.width), maxWidth);
-  const x = Math.min(Math.max(0, state.x), Math.max(0, stage.width - width));
-  const y = Math.min(Math.max(0, state.y), Math.max(0, stage.height - HEADER_KEEP));
-  const height = Math.min(Math.max(bounds.minHeight, state.height), Math.max(bounds.minHeight, stage.height - y));
+  // The SIZE gives way only when the stage cannot hold it; otherwise the POSITION does.
+  const height = Math.min(Math.max(bounds.minHeight, state.height), Math.max(bounds.minHeight, stage.height));
+  const { x, y } = clampOrigin(state.x, state.y, { width, height: state.collapsed ? HEADER_KEEP : height }, stage);
   if (width === state.width && x === state.x && y === state.y && height === state.height) return state;
   return { ...state, width, x, y, height };
+}
+
+/**
+ * Pull an origin onto the stage so a pane of `size` fits wholly on it — the pane MOVES, its size is
+ * untouched. An unmeasured stage (0 × 0) clamps only the top-left.
+ */
+function clampOrigin(x: number, y: number, size: { width: number; height: number }, stage: StageSize): { x: number; y: number } {
+  const maxX = stage.width > 0 ? Math.max(0, stage.width - size.width) : Number.POSITIVE_INFINITY;
+  const maxY = stage.height > 0 ? Math.max(0, stage.height - size.height) : Number.POSITIVE_INFINITY;
+  return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
+}
+
+/** The height a DOCKED pane is drawn at (`md:top-3 … md:bottom-3`); its stored height before the stage is measured. */
+function dockedHeight(stored: number, stage: StageSize): number {
+  return stage.height > 0 ? Math.max(0, stage.height - 2 * DOCK_MARGIN) : stored;
 }
 
 /** R-C #1 — the band of the stage a pane covers, measured in from the edge it sits against. */
@@ -267,30 +291,36 @@ export function FloatingPane({
     return { width: element?.clientWidth ?? 0, height: element?.clientHeight ?? 0 };
   }, []);
 
-  const clampPosition = useCallback(
-    (x: number, y: number, width: number) => {
-      const stage = stageSize();
-      const maxX = stage.width > 0 ? Math.max(0, stage.width - width) : Number.POSITIVE_INFINITY;
-      const maxY = stage.height > 0 ? Math.max(0, stage.height - HEADER_KEEP) : Number.POSITIVE_INFINITY;
-      return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
-    },
-    [stageSize],
-  );
-
-  /** The pane's current pixel position, whether docked or free (a docked pane is measured). */
-  const currentOrigin = useCallback((): { x: number; y: number } => {
-    if (state.dock === null) return { x: state.x, y: state.y };
+  /**
+   * The pane's current pixel RECT, whether docked or free. A docked pane is drawn from the dock
+   * margin to the stage's far edge, so its height is the stage's (less the margins), not the
+   * stored one — that is the size a move must carry over.
+   */
+  const currentRect = useCallback((): { x: number; y: number; width: number; height: number } => {
+    if (state.dock === null) return { x: state.x, y: state.y, width: state.width, height: state.height };
     const stage = stageSize();
-    return { x: state.dock === 'right' ? Math.max(0, stage.width - state.width - DOCK_MARGIN) : DOCK_MARGIN, y: DOCK_MARGIN };
+    return {
+      x: state.dock === 'right' ? Math.max(0, stage.width - state.width - DOCK_MARGIN) : DOCK_MARGIN,
+      y: DOCK_MARGIN,
+      width: state.width,
+      height: dockedHeight(state.height, stage),
+    };
   }, [state, stageSize]);
+
+  /** A MOVE: new origin, same size (a docked pane's drawn size becomes its free size). */
+  const movedTo = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }, dx: number, dy: number): Partial<PaneState> => {
+      const next = clampOrigin(rect.x + dx, rect.y + dy, { width: rect.width, height: state.collapsed ? HEADER_KEEP : rect.height }, stageSize());
+      return { dock: null, x: next.x, y: next.y, width: rect.width, height: rect.height };
+    },
+    [stageSize, state.collapsed],
+  );
 
   const moveBy = useCallback(
     (dx: number, dy: number) => {
-      const origin = currentOrigin();
-      const next = clampPosition(origin.x + dx, origin.y + dy, state.width);
-      commit({ dock: null, x: next.x, y: next.y });
+      commit(movedTo(currentRect(), dx, dy));
     },
-    [clampPosition, commit, currentOrigin, state.width],
+    [commit, currentRect, movedTo],
   );
 
   /**
@@ -335,7 +365,7 @@ export function FloatingPane({
     if (event.button !== undefined && event.button > 0) return;
     const startX = event.clientX;
     const startY = event.clientY;
-    const origin = currentOrigin();
+    const rect = currentRect();
     const base = state;
     const growsRight = base.dock !== 'right';
     let latest: Partial<PaneState> = {};
@@ -343,8 +373,7 @@ export function FloatingPane({
       const dx = move.clientX - startX;
       const dy = move.clientY - startY;
       if (mode === 'move') {
-        const next = clampPosition(origin.x + dx, origin.y + dy, base.width);
-        latest = { dock: null, x: next.x, y: next.y };
+        latest = movedTo(rect, dx, dy);
       } else {
         latest = {
           width: Math.min(maxWidth, Math.max(minWidth, base.width + (growsRight ? dx : -dx))),
@@ -360,7 +389,7 @@ export function FloatingPane({
     }
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [clampPosition, commit, currentOrigin, maxWidth, minHeight, minWidth, state]);
+  }, [commit, currentRect, maxWidth, minHeight, minWidth, movedTo, state]);
 
   // --- WCAG 2.4.11: never cover the focused element -------------------------------------------
   useEffect(() => {
@@ -427,7 +456,8 @@ export function FloatingPane({
       data-x={state.x}
       data-y={state.y}
       data-width={state.width}
-      data-height={state.height}
+      // The DRAWN height: a docked pane spans the stage (less the dock margins).
+      data-height={state.dock === null ? state.height : dockedHeight(state.height, stage)}
       data-collapsed={state.collapsed}
       data-yielding={yielding}
       style={geometry}
@@ -499,6 +529,8 @@ export function FloatingPane({
           hidden={collapsed}
           // A scrolling body is keyboard-scrollable even when everything in it is disabled (a locked palette) — WCAG 2.1.1.
           tabIndex={bodyScroll ? 0 : undefined}
+          // A name needs a role to hang on (axe `aria-prohibited-attr`): the scrolling body is a named group.
+          role={bodyScroll ? 'group' : undefined}
           aria-label={bodyScroll ? `${title} content` : undefined}
           className={cn(
             'min-h-0 flex-1 p-2',

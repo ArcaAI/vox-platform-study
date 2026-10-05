@@ -83,8 +83,8 @@ describe('ComposerCanvas — run overlay (F2)', () => {
 });
 
 describe('ComposerCanvas — “Add a step” placement (F2)', () => {
-  // R-C #1 — the button sits in a band spanning the free strip between the panes; its placement is
-  // the band's justification (centre by default), not a corner of the whole canvas.
+  // The button sits in a band spanning the canvas's top edge (anchored — it never follows a pane);
+  // its placement is the band's justification (centre by default).
   const band = () => screen.getByRole('button', { name: /add a step/i }).closest('[data-slot="composer-add-step"]') as HTMLElement;
 
   it('does not sit in the top-left corner the floating palette docks in, and stays reachable', () => {

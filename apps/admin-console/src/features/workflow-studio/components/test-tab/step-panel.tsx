@@ -13,6 +13,7 @@ import { formatDuration, formatValue } from './lib/event-display';
 import { nodeWarningCount } from './lib/flow-state';
 import { PHI_MASK } from './lib/phi';
 import { Panel } from './panel';
+import { nodeTypeTitle } from '../../lib/node-identity';
 
 export interface StepPanelNode {
   id: string;
@@ -88,7 +89,7 @@ export function StepPanel({ node, run, hidePhi, live }: { node: StepPanelNode | 
           {node.agent.versionNumber !== null ? '(pinned)' : '(active version at publish)'} · its prompt follows the agent’s pin.
         </p>
       ) : (
-        <p className="text-muted-foreground font-mono text-xs">{node.type}</p>
+        <p className="text-muted-foreground text-xs">{nodeTypeTitle(node.type)}</p>
       )}
 
       {!run ? (

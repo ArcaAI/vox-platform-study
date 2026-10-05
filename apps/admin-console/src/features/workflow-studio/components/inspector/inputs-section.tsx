@@ -33,6 +33,7 @@ import { inputRows, withPromptVariable, type InputRow, type PromptVariableInfo }
 import { pickerGroups, type PickerGroup } from '../../lib/picker-model';
 import { ioTypeLabel } from '../../lib/composer-io';
 import { BindingChip } from './binding-chip';
+import { useNodeNamingContext } from '../node-naming-context';
 import { FieldPicker } from './field-picker';
 import { InsertFieldButton } from './insert-field-button';
 
@@ -108,6 +109,7 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
   // unbinds the input), until Clear or a field is chosen.
   const [fixedMode, setFixedMode] = useState(false);
   const templateRef = useRef<TemplateEditorHandle>(null);
+  const naming = useNodeNamingContext();
   const binding = row.binding;
   const isValue = binding !== null && 'value' in binding;
   const isTemplate = binding !== null && 'template' in binding;
@@ -127,9 +129,10 @@ function InputRowItem({ row, node, graph, agents, onConfigChange, disabled, cont
     purpose: row.origin === 'prompt' ? 'template' : 'binding',
     samples: samples,
     hidePhi,
+    naming,
   });
   const templateGroups = isTemplate
-    ? pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: contextSchema, contextSchemaName, contextSchemaVersion, purpose: 'template', samples: samples, hidePhi })
+    ? pickerGroups({ nodes: graph.nodes, edges: graph.edges, settings: graph.settings, nodeId: node.id, agents, contextSchema: contextSchema, contextSchemaName, contextSchemaVersion, purpose: 'template', samples: samples, hidePhi, naming })
     : [];
   const phi = groups.some((group) => group.items.some((item) => binding !== null && 'from' in binding && item.raw === binding.from && item.phiClass === 'PHI'));
   const write = (next: Binding | null) => onConfigChange(withRowBinding(node.config, row, next));

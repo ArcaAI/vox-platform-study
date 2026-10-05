@@ -382,7 +382,7 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
 
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
     await expect(paletteNav).toBeVisible();
-    await paletteNav.getByRole('button').filter({ hasText: 'Core.trigger' }).first().click();
+    await paletteNav.getByRole('button').filter({ hasText: /^Start/ }).first().click();
 
     await page.getByRole('radio', { name: 'List view' }).click();
     await page.getByRole('button', { name: /^Configure Core\.trigger/ }).click();
@@ -403,7 +403,7 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
 
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
     await expect(paletteNav).toBeVisible();
-    await paletteNav.getByRole('button').filter({ hasText: 'Core.agent' }).first().click();
+    await paletteNav.getByRole('button').filter({ hasText: /^Agent/ }).first().click();
 
     await page.getByRole('radio', { name: 'List view' }).click();
     await page.getByRole('button', { name: /^Configure Core\.agent/ }).click();
@@ -416,7 +416,7 @@ test.describe('workflow studio editor — TASK-890 core.trigger / core.agent ins
     test.skip(!definitionId, 'Draft creation did not navigate to an editor id');
     const paletteNav = page.getByRole('navigation', { name: 'Node palette' });
     await expect(paletteNav).toBeVisible();
-    await paletteNav.getByRole('button').filter({ hasText: 'Core.trigger' }).first().click();
+    await paletteNav.getByRole('button').filter({ hasText: /^Start/ }).first().click();
     // Adding a node does not OPEN its inspector — the sibling `core.agent` case above goes
     // through list view for the same reason. Without this the assertion below waits for an
     // inspector that was never rendered.

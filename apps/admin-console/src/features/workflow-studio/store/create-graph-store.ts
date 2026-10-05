@@ -178,8 +178,8 @@ const UNDO_STACK_LIMIT = 50;
  * registry that ever stopped classing them `mandatory` must not make Start or End deletable.
  */
 export const BOUNDARY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.output']);
-export const BOUNDARY_DELETE_REASON = 'Start and End are part of every workflow and can’t be deleted.';
-const BOUNDARY_DUPLICATE_REASON = 'Start and End exist once in every workflow and can’t be duplicated.';
+export const BOUNDARY_DELETE_REASON = 'Start and Output are part of every workflow and can’t be deleted.';
+const BOUNDARY_DUPLICATE_REASON = 'Start and Output exist once in every workflow and can’t be duplicated.';
 
 /** The registry type a canvas GROUP is: `wrapInLoop` creates one, and every consumer that has to
  *  decide `kind: 'group'` reads this rather than re-typing the string. */

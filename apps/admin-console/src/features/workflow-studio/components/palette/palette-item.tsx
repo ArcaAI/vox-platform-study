@@ -20,7 +20,7 @@
  */
 import { cn } from '@arcaai/ui';
 import { writePaletteDragType } from '../../lib/palette-drag';
-import { humanizeKey } from '../../lib/schema-form';
+import { nodeTypeTitle } from '../../lib/node-identity';
 import type { WorkflowNodeDescriptor } from '../../api/types';
 import { NodeTypeIcon } from './node-type-icon';
 import { SafetyClassBadge } from './safety-class-badge';
@@ -51,7 +51,8 @@ export function PaletteItem({ descriptor, entitled, onAdd }: PaletteItemProps) {
     : !entitled
       ? 'Not entitled — your plan does not include this node type.'
       : null;
-  const label = humanizeKey(descriptor.type);
+  // Owner, 2026-10-05 — the type in words ("Action", "Start"), never the registry key.
+  const label = nodeTypeTitle(descriptor.type);
   const purpose = purposeOf(descriptor);
 
   return (

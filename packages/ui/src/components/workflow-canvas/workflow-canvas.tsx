@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, OnConnectEnd, ReactFlowInstance } from '@xyflow/react';
-import { Background, BackgroundVariant, MiniMap, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
+import { Background, BackgroundVariant, MiniMap, Panel, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { cn } from '@/lib/utils';
@@ -209,10 +209,10 @@ function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set
   return Object.fromEntries(remaining.map((id) => [id, previous[id]]));
 }
 
-/** React Flow's own panel margin (`.react-flow__panel { margin: 15px }`). */
-const PANEL_MARGIN = 15;
-/** Room `fitView` leaves on each side of the free rectangle: the top clears the composer's "Add a step"; the left clears the zoom controls. */
-const FIT_GAP = { top: 56, left: 56, right: 32, bottom: 32 } as const;
+/** Room `fitView` leaves on each side of the free rectangle: the top clears the composer's "Add a step"; the bottom clears the controls dock. */
+const FIT_GAP = { top: 56, left: 32, right: 32, bottom: 120 } as const;
+/** The minimap's size inside the bottom-centre dock — compact, so the dock never crowds the graph. */
+const MINIMAP_STYLE = { width: 160, height: 96 } as const;
 
 /**
  * TASK-1036 R-C #2 — `fitView` padding that fits the graph into the rectangle the floating panes
@@ -300,14 +300,6 @@ export function WorkflowCanvas({
   React.useEffect(() => {
     fitViewOptionsRef.current = fitViewOptions;
   }, [fitViewOptions]);
-  const controlsStyle = React.useMemo(
-    () => ({ marginLeft: PANEL_MARGIN + insetLeft, marginBottom: PANEL_MARGIN + insetBottom }),
-    [insetLeft, insetBottom],
-  );
-  const minimapStyle = React.useMemo(
-    () => ({ marginRight: PANEL_MARGIN + insetRight, marginBottom: PANEL_MARGIN + insetBottom }),
-    [insetRight, insetBottom],
-  );
   // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
   // removed nodes are pruned so a long editing session cannot grow this unboundedly.
   const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
@@ -589,17 +581,19 @@ export function WorkflowCanvas({
           aria-label={ariaLabel}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} />
-          <CanvasControls showInteractive={!readOnly} fitViewOptions={fitViewOptions} style={controlsStyle} />
-          {minimap && nodes.length > 0 ? (
-            <MiniMap
-              position="bottom-right"
-              pannable
-              zoomable={zoomOnWheel}
-              style={minimapStyle}
-              className="workflow-canvas-minimap"
-              aria-label="Graph overview"
-            />
-          ) : null}
+          {/* Owner, 2026-10-05 — the zoom controls and the minimap share ONE anchored dock at the
+              bottom centre. Its position never depends on what floats over the canvas: a pane
+              that moves, resizes, collapses or opens never drags the chrome along (a floating pane
+              may overlap it, as floating windows do). Bottom centre because the Studio's panes
+              dock full-height against BOTH side edges, so neither bottom corner is free.
+              `viewportInsets` shapes the FIT only. The nested panels are laid out in flow by
+              `.workflow-canvas-dock` (canvas-tokens.css). */}
+          <Panel position="bottom-center" data-slot="workflow-canvas-dock" className="workflow-canvas-dock">
+            <CanvasControls showInteractive={!readOnly} fitViewOptions={fitViewOptions} />
+            {minimap && nodes.length > 0 ? (
+              <MiniMap pannable zoomable={zoomOnWheel} style={MINIMAP_STYLE} className="workflow-canvas-minimap" aria-label="Graph overview" />
+            ) : null}
+          </Panel>
         </ReactFlow>
       </WorkflowEdgeChromeProvider>
       {emptyState && nodes.length === 0 ? (
