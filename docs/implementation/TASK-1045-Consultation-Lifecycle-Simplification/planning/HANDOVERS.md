@@ -124,3 +124,6 @@
 | H-119 | AB-8a | `lifecycle/consultation-lifecycle.service.ts` `close()` ~219-222 | DEFECT (wave 5) | named-clinician rule + close WORM row lost (TASK-972 `resolveAttributedActor`): service account closing without a clinician → must 400; foreign clinician → 404; clinician naming another → 400; `SESSION_CLOSED_*` WORM row. Pinned by 4 `it.fails` in `close-attribution.task972` | pending (fix lane) |
 | H-120 | AB-8a | `start({supersedeByDurableBinding})` | DEFECT (wave 5) | supersede reuses `liveBoundSessions`, which keeps sessions whose status lookup failed; TASK-1003 rule = only sessions verified active are announced superseded. Pinned by 1 `it.fails` in `stt-supersede.task1003` | pending (fix lane) |
 | H-121 | AB-8a | `summary.same-day-prequel.task1020.test.ts` | AB-8d | stray `'SIGNED'` data literal | pending |
+| H-122 | AB-8b | legacy api/console/applications tests | AB-8b | swept; `harness-internal.service.test.ts` left for after E6 | applied `860ebb6cd` |
+| H-123 | D8 | changeset bump | owner | `major` for vox / vox-node / types (12→7 status type is breaking; rides 5.0.0 per D-19 — no TASK-1039 changeset exists yet) | owner to confirm |
+| H-124 | D8 | deprecation register Sunset | owner | `Sun, 31 Jan 2027 00:00:00 GMT`, removeIn `R5` placeholders (also the controller constant) | owner to confirm |
