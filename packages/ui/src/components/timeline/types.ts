@@ -62,6 +62,8 @@ export type TimelineContent =
   | { type: 'custom'; render: () => React.ReactNode };
 
 export interface TimelineItemModel {
+  /** Absent (or `'item'`) for a content row; `'band'` rows are `TimelineBandModel`. */
+  kind?: 'item';
   id: string;
   /** `ContextItem.createdAt`. */
   timestamp: string | Date;
@@ -73,6 +75,22 @@ export interface TimelineItemModel {
   /** Passthrough (e.g. the source `ContextItem`). */
   meta?: Record<string, unknown>;
 }
+
+/**
+ * A non-content row that groups or interrupts the feed (an encounter section
+ * heading, a time-gap marker). Rendered as a labelled `separator`.
+ */
+export interface TimelineBandModel {
+  kind: 'band';
+  id: string;
+  /** Accessible name and visible text of the band. */
+  label: string;
+  description?: React.ReactNode;
+  /** `section` = heading-like divider; `gap` = quieter elapsed-time marker. */
+  tone?: 'section' | 'gap';
+}
+
+export type TimelineRow = TimelineItemModel | TimelineBandModel;
 
 export interface TimelineRendererProps {
   item: TimelineItemModel;
@@ -93,8 +111,11 @@ export interface TimelineExpansion {
 }
 
 export interface HistoryTimelineListProps<TItem = TimelineItemModel> extends BaseSurfaceProps, AsyncStateProps {
-  /** Newest-first by default (the component does not reorder unless `order` is set). */
+  /** Ordered per `inputOrder` (newest-first by default). Rows with `kind: 'band'` render as separators. */
   items: TItem[];
+  /** Order the `items` are supplied in. Default `'desc'` (newest-first). */
+  inputOrder?: 'desc' | 'asc';
+  /** Displayed order. Defaults to `inputOrder`; the list only reverses when the two differ. */
   order?: 'desc' | 'asc';
   /** Adapter from a raw row (e.g. `ContextItem`) → `TimelineItemModel`. */
   mapItem?: (raw: TItem) => TimelineItemModel;
@@ -105,6 +126,12 @@ export interface HistoryTimelineListProps<TItem = TimelineItemModel> extends Bas
   expansion?: TimelineExpansion;
   onItemExpand?: (id: string, expanded: boolean) => void;
   onMediaOpen?: (itemId: string, mediaIndex: number) => void;
+  /** Currently selected item id (controlled). */
+  selectedId?: string | null;
+  /** When provided, each item gets a keyboard-accessible select control. */
+  onItemSelect?: (id: string) => void;
+  /** Per-item actions rendered beside the row header (e.g. edit, history). */
+  actions?: (item: TimelineItemModel) => React.ReactNode;
   onRetry?: () => void;
   estimateItemHeight?: number;
   /** Defer heavy media (PDF/full-res image) until needed. Default `true`. */
