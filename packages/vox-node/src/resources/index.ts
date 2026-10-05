@@ -22,10 +22,15 @@ export type {
   AddContextOptions,
   CloseConsultationOptions,
   ConsultationRequestOptions,
+  ConsultationsResourceOptions,
   UpdateLanguageOptions,
   WaitForFinalNoteOptions,
 } from './consultations';
 export { ConsultationsResource } from './consultations';
+
+/** The consultation handle returned by `open()` / `attach()`. */
+export type { ConsultationHandleDeps, ConsultationHandleEventName, ConsultationHandleEvents, ConsultationOpenResult } from './consultation-handle';
+export { AttachmentFailedError, AttachmentUploadError, ConsultationHandle, LIFECYCLE_HEADER, LIFECYCLE_HEADER_VALUE, withLifecycleHeader } from './consultation-handle';
 
 /** The consultation REALTIME lifecycle (TASK-933): recording, the live SSE planes, and the STT session. */
 export type { RecordingRequestOptions } from './consultation-recording';
