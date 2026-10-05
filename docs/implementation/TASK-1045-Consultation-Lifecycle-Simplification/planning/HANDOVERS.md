@@ -24,3 +24,6 @@
 | H-20 | E7 | rollout order | rollout | deployment `main` (`ccab8bc`, local) lands before the hope seed is applied to a cluster — declared window must never exceed served | rollout note |
 | H-21 | E7 | ledger agent | E4 | `fact-ledger-extraction` has no assignment; the producer calls it by slug (`FACT_LEDGER_AGENT_SLUG`); `critical`, `factId`, supersession are set by code | pending (E4 brief) |
 | H-22 | E7 | count pins in `task-930-agents`, `task-1036-agent-prompt-pins`, `system-output-language-policy.task1001` | E7 | bumped for the 8th agent per tenant (`401f61387`) | applied |
+| H-23 | D6 | `PluginManager.ts`, `useArca.ts`, `useArcaSummary.ts` | orchestrator | `bindControlChannel(wsClient)`; `@deprecated` on audio start/stop + per-summary approve | applied `0492d1e2c` |
+| H-24 | D6 | browser SDK | follow-up | `history()`/`recap()` typed `unknown` until page types are wired; `sendAttachment` does not yet honour `Retry-After` | follow-up (D8/gate) |
+| H-25 | D6 | AB-6 / AB-4a | AB-6 | `stop` idempotent on STOPPED returning current `finalTranscript` state (D-28); lifecycle responses must stay shape-compatible with the stored `Consultation` | pending (AB-6 brief) |

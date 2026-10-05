@@ -180,12 +180,13 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-19 | SDK 5.0.0 is not tagged (latest `SDK-4.1.0`): TASK-1045 SDK changes ship in the same 5.0.0 major as TASK-1039; `open()` returns a handle. |
 | D-20 | **Fresh deploy with a database reset** (owner, 2026-10-05): no data backfill or migration of existing rows — migrations only add schema, enum values, partial indexes and triggers; no duplicate open-key closure; no legacy offset-segment reader needed. |
 | D-21 | `ConsultationState` carries `closedReason (auto|manual|approved)` + `reopenAllowed`; lifecycle events via SSE `GET consultations/:id/events` and, for unconnected consumers, the existing sys-event → webhook fan-out (`ResourceUpdated`, `data.action='lifecycle'`). |
-| D-22 | Section-scoped regenerate: `generateSummary({sectionKey})` → `mode:'section_regen'`, other sections preserved, new note version (`changeSource=ai_section_regen`). |
+| D-22 | Section-scoped regenerate: `generateSummary({sectionKeys: string[]})` (one key = one-element array; pinned 2026-10-05 after D6) → `mode:'section_regen'`, other sections preserved, new note version (`changeSource=ai_section_regen`). |
 | D-23 | Tokenizer: engine (where reachable) → pinned HF `tokenizer.json` → conservative estimate `ceil(utf8Bytes/2)`; never truncate. |
 | D-24 | Uploaded-audio transcripts are a cited note input block (`attachment_transcripts`). |
 | D-25 | OD-C1: on the default engine PDF attachments are supported; images 422 until TASK-1017. |
 | D-26 | **Late Copy to EMR** on an auto-closed (CLOSED_INCOMPLETE) consultation: HOPE atomically reopens, approves and closes → CLOSED_COMPLETE, audited as a late sign-off (owner, 2026-10-05). |
 | D-27 | ALaaS lane branches merge into `refactor-hope-integaration` (owner, 2026-10-05). |
+| D-28 | `POST :id/stop` on a STOPPED consultation is an idempotent no-op that returns the current `finalTranscript {state: complete|pending, …}` — SDKs poll by re-POSTing stop until `complete`. |
 
 ## 5. Open questions
 
