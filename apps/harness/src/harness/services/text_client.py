@@ -7,7 +7,8 @@ hyperparameters are omitted so the Text service applies its own defaults.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import json
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 import httpx
@@ -20,6 +21,7 @@ from harness.core.provider_credentials import (
     ProviderCredential,
     to_provider_overrides,
 )
+from harness.temporal import http_pool
 from harness.temporal.claim_check import ClaimCheckRef
 
 
@@ -100,6 +102,14 @@ class TextGenerationResult(BaseModel):
     # text model. Additive-optional default None ⇒ replay-safe, since the `generate` activity
     # returns this model and an older activity result deserializes it to None.
     usage_detail: dict[str, Any] | None = None
+    # TASK-1035 §5.0 — Text's egress report for THIS call: `{locality, detected: {label: count},
+    # redacted, restored, images_unredacted, pii_leak_blocked}`. Counts only, never values.
+    # Additive-optional default None ⇒ replay-safe, exactly like `stats` / `usage_detail`.
+    egress: dict[str, Any] | None = None
+    # TASK-1036 OD-1 (lane B4 → B1) — explicit inbound/outbound screening VERDICTS, when the text
+    # service reports them (`{"inbound": {action, detected, …}, "outbound": {…}}`). Additive-
+    # optional; absent ⇒ the harness derives the inbound verdict from `egress` alone.
+    guardrail: dict[str, Any] | None = None
 
 
 def _int_or_none(source: Any, name: str) -> int | None:
@@ -211,8 +221,9 @@ class TextClient:
         response_format: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
-        guardrail_policy: dict[str, Any] | None = None,
         provider_override: dict[str, Any] | None = None,
+        provider_locality: Mapping[str, str] | None = None,
+        known_phi: list[dict[str, str]] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -231,7 +242,165 @@ class TextClient:
         (``ResolvedAgent.providerOverride``) for the row the caller is bound to. When
         present it is authoritative and the by-name credential resolver is skipped
         entirely — see the fold below.
+
+        TASK-1035 §5.0 — ``apps/text`` owns LLM egress safety and fails CLOSED (no stamp ⇒
+        cloud). ``provider_locality`` is sent only when the caller KNOWS the deployment kind
+        (``harness.core.llm_egress.provider_locality``); ``known_phi`` carries the identity
+        values the caller holds, for deterministic replacement on cloud, and is never logged.
+        The retired guardrail opt-out (``guardrail_policy``) and ``require_medical=false`` are
+        never sent (OD-1, OD-5): every call is screened.
         """
+        url, body, headers = await self._prepare(
+            tenant_id=tenant_id,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            response_format=response_format,
+            context=context,
+            idempotency_key=idempotency_key,
+            provider_override=provider_override,
+            provider_locality=provider_locality,
+            known_phi=known_phi,
+            stream=False,
+        )
+
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+
+            async def _send() -> httpx.Response:
+                try:
+                    resp = await client.post(url, json=body, headers=headers, timeout=self._timeout)
+                except _POST_SEND_ERRORS as exc:
+                    # The prompt reached Text (bytes sent) but the response was
+                    # lost. The model MAY have run — do NOT let the governor re-POST it.
+                    raise _TextResponseLost(exc) from exc
+                resp.raise_for_status()
+                return resp
+
+            # Per-endpoint governor (the Text/LM Studio box): bounded rate-limit-aware retry
+            # on a transient generation failure before the loop's own retry. generate is
+            # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
+            # timeout terminal, and a post-send read loss is surfaced as
+            # ``_TextResponseLost`` (marker-free) — the governor NEVER re-invokes the model
+            # after the prompt is dispatched. Pre-send failures still retry.
+            try:
+                resp = await governed_request(self._base_url, _send, retry_on_timeout=False)
+            except _TextResponseLost as exc:
+                raise TextServiceError(
+                    f"text generate failed (response lost after dispatch): {exc.cause}",
+                    after_send=True,
+                ) from exc.cause
+            except LlmCallTimeout as exc:
+                # The per-call governor timeout fired mid-request — the model may already
+                # be running, so treat it as a post-send failure (never re-issued).
+                raise TextServiceError(
+                    f"text generate failed (per-call timeout; not re-issued): {exc}",
+                    after_send=True,
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise TextServiceError(f"text generate failed: {exc}") from exc
+            data = resp.json()
+        return TextGenerationResult.model_validate(data)
+
+    async def generate_stream(
+        self,
+        *,
+        tenant_id: str,
+        prompt: str,
+        on_delta: Callable[[str], Awaitable[None]],
+        system_prompt: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        response_format: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+        provider_override: dict[str, Any] | None = None,
+        provider_locality: Mapping[str, str] | None = None,
+        known_phi: list[dict[str, str]] | None = None,
+    ) -> TextGenerationResult:
+        """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
+
+        The text service answers ``200`` + SSE: ``meta``, one ``chunk`` per delta (``content``),
+        then exactly one terminal frame — ``done`` (``data``: ``finish_reason``, ``usage``,
+        ``egress``) or ``error``. Each chunk's text is handed to ``on_delta`` as it arrives; the
+        assembled result is the blocking call's ``TextGenerationResult``, so every caller after
+        this one is unchanged. Same tenant, credential, locality and PHI rules as
+        :meth:`generate` (one preparation path). After the first byte of the stream a transport
+        failure is ``after_send`` and is never re-issued by the governor.
+        """
+        url, body, headers = await self._prepare(
+            tenant_id=tenant_id,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            response_format=response_format,
+            context=context,
+            idempotency_key=idempotency_key,
+            provider_override=provider_override,
+            provider_locality=provider_locality,
+            known_phi=known_phi,
+            stream=True,
+        )
+        headers["Accept"] = "text/event-stream"
+
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+
+            async def _consume() -> TextGenerationResult:
+                try:
+                    async with client.stream(
+                        "POST", url, json=body, headers=headers, timeout=self._timeout
+                    ) as resp:
+                        resp.raise_for_status()
+                        return await _read_generation_stream(resp, on_delta, provider, model)
+                except _POST_SEND_ERRORS as exc:
+                    raise _TextResponseLost(exc) from exc
+
+            try:
+                return await governed_request(self._base_url, _consume, retry_on_timeout=False)
+            except _TextResponseLost as exc:
+                raise TextServiceError(
+                    f"text stream failed (response lost after dispatch): {exc.cause}",
+                    after_send=True,
+                ) from exc.cause
+            except LlmCallTimeout as exc:
+                raise TextServiceError(
+                    f"text stream failed (per-call timeout; not re-issued): {exc}",
+                    after_send=True,
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise TextServiceError(f"text stream failed: {exc}") from exc
+
+    async def _prepare(
+        self,
+        *,
+        tenant_id: str,
+        prompt: str,
+        system_prompt: str | None,
+        provider: str | None,
+        model: str | None,
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        response_format: dict[str, Any] | None,
+        context: dict[str, Any] | None,
+        idempotency_key: str | None,
+        provider_override: dict[str, Any] | None,
+        provider_locality: Mapping[str, str] | None,
+        known_phi: list[dict[str, str]] | None,
+        stream: bool,
+    ) -> tuple[str, dict[str, Any], dict[str, str]]:
+        """``(url, body, headers)`` of one generate call — the ONE preparation both the blocking
+        and the streaming calls use (tenant guard, credential fold, locality, PHI, headers)."""
         if not tenant_id or not tenant_id.strip():
             raise ValueError(
                 "text generate requires a tenant_id : pass the consultation's "
@@ -239,7 +408,7 @@ class TextClient:
                 "tenant-less work. An absent tenant is a caller defect."
             )
         url = f"{self._base_url}/api/v1/generate"
-        body: dict[str, Any] = {"prompt": prompt, "stream": False}
+        body: dict[str, Any] = {"prompt": prompt, "stream": stream}
         if system_prompt is not None:
             body["system_prompt"] = system_prompt
         if provider:
@@ -256,15 +425,10 @@ class TextClient:
             body["response_format"] = response_format
         if context is not None:
             body["context"] = context
-        # TASK-890 §3.14 (OD-R) — the tenant's guardrail decision for THIS call, already
-        # folded by the caller (`guardrail_optout.resolve_guardrail_decision`: node > workflow
-        # > agent > on). Passed through verbatim and only when the caller supplies it: an
-        # absent key means "no opinion", under which TEXT's platform posture governs. This
-        # client neither folds the precedence nor invents an opinion — and a pushed `True`
-        # cannot revive a platform kill switch, because TEXT keeps `platform.enabled` as the
-        # floor (`core/guardrail_posture.resolve_posture`).
-        if guardrail_policy is not None:
-            body["guardrail_policy"] = guardrail_policy
+        if provider_locality:
+            body["provider_locality"] = dict(provider_locality)
+        if known_phi:
+            body["known_phi"] = known_phi
 
         # Text holds no endpoint or credential of its own (/736):
         # every adapter, LM Studio included, reads ``provider_overrides[provider]`` and
@@ -321,40 +485,76 @@ class TextClient:
         # the guard above already rejected a blank value.
         headers["X-Tenant-Id"] = tenant_id.strip()
         headers.update(outbound_context_headers())
+        return url, body, headers
 
-        async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 
-            async def _send() -> httpx.Response:
-                try:
-                    resp = await client.post(url, json=body, headers=headers)
-                except _POST_SEND_ERRORS as exc:
-                    # The prompt reached Text (bytes sent) but the response was
-                    # lost. The model MAY have run — do NOT let the governor re-POST it.
-                    raise _TextResponseLost(exc) from exc
-                resp.raise_for_status()
-                return resp
+async def _read_generation_stream(
+    resp: httpx.Response,
+    on_delta: Callable[[str], Awaitable[None]],
+    provider: str | None,
+    model: str | None,
+) -> TextGenerationResult:
+    """Read the text service's generation SSE to its terminal frame (TASK-1038 R8)."""
+    parts: list[str] = []
+    event = ""
+    data_lines: list[str] = []
+    terminal: dict[str, Any] | None = None
 
-            # Per-endpoint governor (the Text/LM Studio box): bounded rate-limit-aware retry
-            # on a transient generation failure before the loop's own retry. generate is
-            # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
-            # timeout terminal, and a post-send read loss is surfaced as
-            # ``_TextResponseLost`` (marker-free) — the governor NEVER re-invokes the model
-            # after the prompt is dispatched. Pre-send failures still retry.
-            try:
-                resp = await governed_request(self._base_url, _send, retry_on_timeout=False)
-            except _TextResponseLost as exc:
-                raise TextServiceError(
-                    f"text generate failed (response lost after dispatch): {exc.cause}",
-                    after_send=True,
-                ) from exc.cause
-            except LlmCallTimeout as exc:
-                # The per-call governor timeout fired mid-request — the model may already
-                # be running, so treat it as a post-send failure (never re-issued).
-                raise TextServiceError(
-                    f"text generate failed (per-call timeout; not re-issued): {exc}",
-                    after_send=True,
-                ) from exc
-            except httpx.HTTPError as exc:
-                raise TextServiceError(f"text generate failed: {exc}") from exc
-            data = resp.json()
-        return TextGenerationResult.model_validate(data)
+    async def dispatch() -> dict[str, Any] | None:
+        nonlocal event, data_lines
+        name, raw = event, "\n".join(data_lines)
+        event, data_lines = "", []
+        if not raw:
+            return None
+        try:
+            chunk = json.loads(raw)
+        except ValueError:
+            return None
+        if not isinstance(chunk, dict):
+            return None
+        kind = chunk.get("type") or name
+        if kind == "chunk" and isinstance(chunk.get("content"), str) and chunk["content"]:
+            parts.append(chunk["content"])
+            await on_delta(chunk["content"])
+            return None
+        payload = chunk.get("data")
+        data: dict[str, Any] = payload if isinstance(payload, dict) else {}
+        if kind == "error":
+            raise TextServiceError(f"text stream failed: {data.get('error') or 'error frame'}")
+        if kind == "done":
+            return data
+        return None
+
+    async for line in resp.aiter_lines():
+        if line == "":
+            found = await dispatch()
+            if found is not None:
+                terminal = found
+                break
+            continue
+        if line.startswith(":"):
+            continue
+        field, _, value = line.partition(":")
+        value = value[1:] if value.startswith(" ") else value
+        if field == "event":
+            event = value
+        elif field == "data":
+            data_lines.append(value)
+    else:
+        found = await dispatch()
+        if found is not None:
+            terminal = found
+    if terminal is None:
+        raise TextServiceError("text stream ended without a terminal frame", after_send=True)
+    usage = terminal.get("usage")
+    return TextGenerationResult(
+        content="".join(parts),
+        provider=str(terminal.get("provider") or provider or ""),
+        model=str(terminal.get("model") or model or ""),
+        usage=usage if isinstance(usage, dict) else {},
+        finish_reason=str(terminal.get("finish_reason") or ""),
+        egress=terminal.get("egress") if isinstance(terminal.get("egress"), dict) else None,
+        guardrail=(
+            terminal.get("guardrail") if isinstance(terminal.get("guardrail"), dict) else None
+        ),
+    )

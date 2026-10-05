@@ -1,0 +1,132 @@
+{
+  "$comment": "TASK-1036 §3.1 — `deriveVariableDeclarations(content, existing)` (`packages/workflow-contract/src/derive-variable-declarations.ts`). `content` is one template string or an ordered list of fragment strings (each scanned on its own, so a `{{` never pairs with a `}}` across fragments). `existing` is the template's current declaration array. `expected.declarations` is the existing entries VERBATIM in their order, then the newly derived ones sorted by name (code-unit order); a new root is `type: \"json\"` when referenced with a sub-path, `\"string\"` otherwise, and `required = !hasDefault` (AND over every occurrence). `stale` names existing declarations whose name is no longer referenced as a root; they are KEPT, never deleted. Namespace roots and the platform context variable names are never declared. TypeScript reads this file in `packages/workflow-contract/src/__tests__/derive-variable-declarations.test.ts`; the Python mirror (wave B) must read it too.",
+  "namespaceRoots": ["context", "trigger", "input", "vars", "nodes", "variables", "consultation", "run"],
+  "cases": [
+    {
+      "name": "adds-new-roots-sorted-required-from-default",
+      "content": "Hello {{name}}, age {{age | default(\"?\")}}.",
+      "existing": [],
+      "expected": {
+        "declarations": [
+          { "name": "age", "type": "string", "required": false },
+          { "name": "name", "type": "string", "required": true }
+        ],
+        "added": ["age", "name"],
+        "stale": []
+      }
+    },
+    {
+      "name": "preserves-existing-type-description-default",
+      "content": "{{name}} at {{dept}}",
+      "existing": [
+        { "name": "name", "type": "json", "required": false, "description": "Patient name", "default": "Unknown", "source": { "kind": "context", "path": "context.patient_name" } }
+      ],
+      "expected": {
+        "declarations": [
+          { "name": "name", "type": "json", "required": false, "description": "Patient name", "default": "Unknown", "source": { "kind": "context", "path": "context.patient_name" } },
+          { "name": "dept", "type": "string", "required": true }
+        ],
+        "added": ["dept"],
+        "stale": []
+      }
+    },
+    {
+      "name": "marks-stale-never-deletes",
+      "content": "Only {{fresh}} now.",
+      "existing": [
+        { "name": "old_one", "type": "string", "required": true },
+        { "name": "fresh", "type": "number", "required": true }
+      ],
+      "expected": {
+        "declarations": [
+          { "name": "old_one", "type": "string", "required": true },
+          { "name": "fresh", "type": "number", "required": true }
+        ],
+        "added": [],
+        "stale": ["old_one"]
+      }
+    },
+    {
+      "name": "skips-namespace-roots-and-platform-variables",
+      "content": "{{context.safe_age}} {{trigger.x}} {{input.a}} {{vars.b}} {{nodes.n1.out}} {{variables.v}} {{consultation.patient.id}} {{run.id}} {{safe_age}} {{language_name}} {{dna_style_text}} {{custom}}",
+      "existing": [],
+      "expected": {
+        "declarations": [{ "name": "custom", "type": "string", "required": true }],
+        "added": ["custom"],
+        "stale": []
+      }
+    },
+    {
+      "name": "dotted-reference-declares-the-root-as-json",
+      "content": "{{patient.name}} ({{patient.age | default(\"n/a\")}})",
+      "existing": [],
+      "expected": {
+        "declarations": [{ "name": "patient", "type": "json", "required": true }],
+        "added": ["patient"],
+        "stale": []
+      }
+    },
+    {
+      "name": "one-undefaulted-occurrence-makes-it-required",
+      "content": "{{a | default(\"x\")}} {{a}} {{b | default(\"\")}}",
+      "existing": [],
+      "expected": {
+        "declarations": [
+          { "name": "a", "type": "string", "required": true },
+          { "name": "b", "type": "string", "required": false }
+        ],
+        "added": ["a", "b"],
+        "stale": []
+      }
+    },
+    {
+      "name": "fragments-scanned-separately-malformed-skipped",
+      "content": ["Base {{a}}", "Broken {{b", "Then }} {{c}}", null],
+      "existing": [],
+      "expected": {
+        "declarations": [
+          { "name": "a", "type": "string", "required": true },
+          { "name": "c", "type": "string", "required": true }
+        ],
+        "added": ["a", "c"],
+        "stale": []
+      }
+    },
+    {
+      "name": "escaped-braces-are-not-variables",
+      "content": "Literal {{{{not_a_var}} here.",
+      "existing": [],
+      "expected": { "declarations": [], "added": [], "stale": [] }
+    },
+    {
+      "name": "existing-namespace-named-declaration-is-not-stale-when-its-root-is-referenced",
+      "content": "{{context.x}}",
+      "existing": [{ "name": "context", "type": "json", "required": false }],
+      "expected": {
+        "declarations": [{ "name": "context", "type": "json", "required": false }],
+        "added": [],
+        "stale": []
+      }
+    },
+    {
+      "name": "empty-content-everything-existing-is-stale",
+      "content": "",
+      "existing": [{ "name": "x", "type": "string", "required": true }],
+      "expected": {
+        "declarations": [{ "name": "x", "type": "string", "required": true }],
+        "added": [],
+        "stale": ["x"]
+      }
+    },
+    {
+      "name": "null-existing-is-no-declarations",
+      "content": "{{z}}",
+      "existing": null,
+      "expected": {
+        "declarations": [{ "name": "z", "type": "string", "required": true }],
+        "added": ["z"],
+        "stale": []
+      }
+    }
+  ]
+}

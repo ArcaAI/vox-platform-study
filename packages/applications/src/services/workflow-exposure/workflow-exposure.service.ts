@@ -1,5 +1,5 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -18,17 +18,28 @@ import { IActiveUserContext } from '../../interfaces';
 import { IConfigService } from '../baseServices/_meta/config';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis';
+import { idempotencyCanonicalJson } from '../consultation/jobs/job-idempotency.service';
 import { WORKFLOW_EXPOSURE_ENABLED_KEY } from '../settings-registry/descriptors/feature-availability.descriptors';
+import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { WebhookService } from '../webhook/webhook.service';
-import { IS3Service } from '../baseServices/storage';
+import { IBlobStorageService, IS3Service } from '../baseServices/storage';
 import { IConsultationService } from '../consultation/consultation/IConsultationService';
 import { GetWorkflowRunResult, HarnessGatewayService, StartWorkflowRunSubject } from '../consultation/harness/harness-gateway.service';
 import { IBillingService } from '../billing/IBillingService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import type { UserIdentityBinding } from '../consultation-context-schema/context-schema-definition';
-import { interpreterSessionId, IWorkflowRunService, terminalStatusOf, WorkflowRunResponse } from '../workflow-run';
+import {
+  deliveredRunResultFrom,
+  interpreterSessionId,
+  isResultKeyInTenantPrefix,
+  IWorkflowRunService,
+  readPersistedRunResult,
+  terminalStatusOf,
+  WorkflowRunResponse,
+} from '../workflow-run';
+import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
@@ -40,7 +51,9 @@ import {
   WorkflowInvokeResponse,
   WorkflowReviewDecisionResponse,
   WorkflowReviewResponse,
+  RUN_NOT_TERMINAL,
   WorkflowRunCancelResponse,
+  WorkflowRunResult,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
 } from './dto';
@@ -80,6 +93,34 @@ export function modeRefusal(graph: unknown, mode: WorkflowRunResponseMode | unde
   const required = mode === 'blocking' ? 'http' : 'http-sse';
   if (protocols.includes(required)) return null;
   return `mode '${mode}' requires the workflow to publish the '${required}' protocol; it declares [${protocols.join(', ')}]. Use mode=async, or one of the declared protocols.`;
+}
+
+/** TASK-982 settled-node counts (TASK-1036 B6b: derived on the status read path). */
+interface SettledNodeCounts {
+  nodeCount: number;
+  failedNodeCount: number;
+  degradedNodeCount: number;
+  skippedNodeCount: number;
+}
+
+/**
+ * The four counts from the harness state query's settled `stages` (each node `{ status }`) — the
+ * harness's own `_settled_node_counts`. `undefined` when no node settled (nothing to report, never
+ * a fabricated zero). Pure.
+ */
+export function settledNodeCountsFromStages(stages: readonly unknown[] | undefined): SettledNodeCounts | undefined {
+  const statuses: string[] = [];
+  for (const stage of stages ?? []) {
+    const nodes = (stage as { nodes?: unknown } | null)?.nodes;
+    if (!Array.isArray(nodes)) continue;
+    for (const node of nodes) {
+      const status = (node as { status?: unknown } | null)?.status;
+      if (typeof status === 'string') statuses.push(status);
+    }
+  }
+  if (statuses.length === 0) return undefined;
+  const count = (wanted: string) => statuses.filter((status) => status === wanted).length;
+  return { nodeCount: statuses.length, failedNodeCount: count('FAILED'), degradedNodeCount: count('DEGRADED'), skippedNodeCount: count('SKIPPED') };
 }
 
 /**
@@ -152,6 +193,10 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // other cross-cutting dependency here; absent, every trigger runs against its published
     // bytes — the behaviour a follow-latest workflow had before this existed.
     @Optional() private readonly effectiveTriggerSchema?: EffectiveTriggerSchemaService,
+    // TASK-1038 D-I — signs the short-lived GET URL for a claim-checked result (the tenant-bucket
+    // gate applies). `@Optional()` like every other cross-cutting dependency here; absent, a
+    // `ref` result answers 503 rather than a URL nobody can open.
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -192,13 +237,20 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const runId = opts.idempotencyKey ? deterministicRunId(tenantId, slug, opts.idempotencyKey) : generateId();
 
     const idempotencyRedisKey = opts.idempotencyKey ? `${IDEMPOTENCY_KEY_PREFIX}${tenantId}:${slug}:${opts.idempotencyKey}` : null;
-    if (idempotencyRedisKey) {
+    // TASK-1038 E2 (fix 11) — the agent-run semantic on workflow runs: the key names ONE intent.
+    // Same key + same body joins; a DIFFERENT body is 409 `IDEMPOTENCY_KEY_REUSED`. The body is
+    // the caller's `input` plus the server-resolved consultation the run is bound to.
+    const requestBodyHash = opts.idempotencyKey ? workflowInvokeBodyHash(dto, opts.consultationId) : null;
+    if (idempotencyRedisKey && requestBodyHash) {
       const cached = await this.tryReadIdempotencyCache(idempotencyRedisKey);
-      if (cached) return cached;
+      if (cached) {
+        if (cached.requestBodyHash !== undefined && cached.requestBodyHash !== requestBodyHash) throw idempotencyKeyReused();
+        return cached.response;
+      }
       // The DURABLE layer, consulted when the cache misses (eviction, cold node, Redis down —
       // all of which the cache read swallows by design). A run row under this derived id means a
       // prior delivery already started it; JOIN it rather than dispatching a second billed run.
-      const joined = await this.tryJoinExistingRun(tenantId, slug, runId);
+      const joined = await this.tryJoinExistingRun(tenantId, slug, runId, requestBodyHash);
       if (joined) return joined;
     }
 
@@ -238,12 +290,38 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       throw new NotFoundException(`Workflow '${slug}' not found.`);
     }
 
-    // TASK-864 §3.4 — a `core` graph declares WHICH trigger kinds may start it and WHICH
-    // protocols its Output publishes. A kind the Trigger did not declare is a 404 (the same
-    // "not a product on this plane" posture as the palette boundary); a `?mode=` the Output
-    // does not publish is a 400 naming the declared protocols — the caller is authenticated
-    // and the definition is theirs, so there is nothing to hide, only something to fix.
-    if (isCoreGraph(graphOf(definition.graph))) {
+    // TASK-1036 (OD-4, lane B6b) — the workflow's SETTINGS decide which entry points it admits:
+    // frozen at publish (`compiledConfig.settings`), else the graph's own `settings`. The entry is
+    // the caller's connection (`api`, `webhook`) or the `consultation` source; `?mode=stream`
+    // additionally needs `sse`. A refused entry is the same 404 as below; a refused mode the same
+    // 400. Only a definition with NO settings falls through to the legacy checks (D-4).
+    const exposure = effectiveExposureSettings({ compiledConfig: definition.compiledConfig, graph: definition.graph });
+    if (exposure.origin !== 'legacy') {
+      const entry: WorkflowEntry = opts.trigger === 'webhook' ? 'webhook' : consultationBound ? 'consultation' : 'api';
+      if (!isWorkflowEntryAllowed(exposure, entry)) {
+        this.broadcastSysEvent(SysEventType.ResourceViewed, {
+          resourceId: definition.id,
+          data: {
+            action: 'invokeRefusedByExposureSettings',
+            slug: definition.slug,
+            requiredEntry: entry,
+            connections: exposure.connections,
+            sources: exposure.sources,
+          },
+        });
+        throw new NotFoundException(`Workflow '${slug}' not found.`);
+      }
+      if (opts.mode === 'stream' && !isWorkflowEntryAllowed(exposure, 'sse')) {
+        throw new BadRequestException(
+          `mode 'stream' requires the workflow to admit the 'sse' connection; it admits [${exposure.connections.join(', ')}]. Use mode=async, or mode=blocking.`,
+        );
+      }
+    } else if (isCoreGraph(graphOf(definition.graph))) {
+      // TASK-864 §3.4 (legacy, D-4 — one release) — a `core` graph declares WHICH trigger kinds may
+      // start it and WHICH protocols its Output publishes. A kind the Trigger did not declare is a
+      // 404 (the same "not a product on this plane" posture as the palette boundary); a `?mode=`
+      // the Output does not publish is a 400 naming the declared protocols — the caller is
+      // authenticated and the definition is theirs, so there is nothing to hide, only something to fix.
       const kinds = declaredTriggerKinds(graphOf(definition.graph));
       const requiredKind = opts.trigger === 'webhook' ? 'webhook' : consultationBound ? 'consultation' : 'api';
       if (!kinds.includes(requiredKind)) {
@@ -350,7 +428,22 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // different reasons (human caller · consultation-bound run · schema declares no identity
       // field) and none of them is a fact about this run worth storing. An absent key is the one
       // honest spelling of all three.
-      metaData: actingUserId ? { actingUserId } : undefined,
+      //
+      // TASK-1038 B3a — a CONSULTATION-BOUND run also stamps the server-resolved consultation id
+      // (`subject.consultationId`, from the request PATH — never `input`): the internal
+      // consultation-read route admits an exposure-plane run only when its row names the
+      // consultation it was bound to.
+      //
+      // TASK-1038 E2 (fix 11) — an `Idempotency-Key` start also stamps its body fingerprint, the
+      // DURABLE half of "a different body under the same key is a 409".
+      metaData:
+        actingUserId || subject?.consultationId || requestBodyHash
+          ? {
+              ...(actingUserId ? { actingUserId } : {}),
+              ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
+              ...(requestBodyHash ? { requestBodyHash } : {}),
+            }
+          : undefined,
     });
 
     const started = await this.harnessGateway.startWorkflowRun({
@@ -408,8 +501,8 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
     const response = WorkflowExposureDtoMapper.toInvokeResponse(runId, definition.slug, started.status);
 
-    if (idempotencyRedisKey) {
-      await this.tryWriteIdempotencyCache(idempotencyRedisKey, response);
+    if (idempotencyRedisKey && requestBodyHash) {
+      await this.tryWriteIdempotencyCache(idempotencyRedisKey, response, requestBodyHash);
     }
 
     return response;
@@ -419,8 +512,21 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const tenantId = this.requireTenantId();
     const run = await this.resolveOwnedRun(tenantId, slug, runId);
 
-    const upstream = await this.harnessGateway.getWorkflowRun(runId);
-    await this.syncTerminalStatus(tenantId, run, upstream);
+    let upstream: GetWorkflowRunResult;
+    // TASK-1036 (lane B6b) — the v2 terminal event carries no node counts; when the row has none
+    // (no completion watcher recorded them) the harness's settled stages are the source.
+    let derived: SettledNodeCounts | undefined;
+    try {
+      upstream = await this.harnessGateway.getWorkflowRun(runId);
+      if (run.nodeCount == null && terminalStatusOf(upstream.status) !== null) derived = settledNodeCountsFromStages(upstream.stages);
+      await this.syncTerminalStatus(tenantId, run, upstream, derived);
+    } catch (err) {
+      // TASK-1038 — the harness keeps a run only as long as Temporal does; once it has no record
+      // (404) the durable read model is the answer, not a failed status read. Any OTHER failure
+      // still propagates: "the harness is down" must never read as "the run is in this state".
+      if (!isHarnessNotFound(err)) throw err;
+      upstream = { runId: run.runId, status: run.status, stages: [], startedAt: run.startedAt ?? null, endedAt: run.endedAt ?? null };
+    }
 
     // TASK-982 (E6) — the SAME fold `WorkflowRunCompletionService.recordTerminal` applies, so the
     // live surface and the persisted row say the same thing for the same run: RUNNING/DEGRADED/
@@ -435,11 +541,75 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       run.resultRef ?? null,
       run.actingUserId ?? null,
       status,
-      run.nodeCount ?? null,
-      run.failedNodeCount ?? null,
-      run.degradedNodeCount ?? null,
-      run.skippedNodeCount ?? null,
+      run.nodeCount ?? derived?.nodeCount ?? null,
+      derived?.failedNodeCount ?? run.failedNodeCount ?? null,
+      run.degradedNodeCount ?? derived?.degradedNodeCount ?? null,
+      run.skippedNodeCount ?? derived?.skippedNodeCount ?? null,
     );
+  }
+
+  async getRunResult(slug: string, runId: string): Promise<WorkflowRunResult> {
+    const tenantId = this.requireTenantId();
+    let run = await this.resolveOwnedRun(tenantId, slug, runId);
+
+    // The read model can lag the run by one missed completion event: ask the live status (which
+    // reconciles the row) before refusing, then re-read the row for the result it now carries.
+    if (terminalStatusOf(run.status) === null) {
+      const live = await this.getRunStatus(slug, runId);
+      if (terminalStatusOf(live.status) === null) {
+        throw new ConflictException({
+          code: RUN_NOT_TERMINAL,
+          message: `Run '${runId}' has not finished yet; its result is available once it is terminal.`,
+          status: live.status,
+        });
+      }
+      run = await this.resolveOwnedRun(tenantId, slug, runId);
+    }
+    const status = terminalStatusOf(run.status) ?? run.status;
+    const stored = readPersistedRunResult(run.resultRef);
+
+    // The delivered output is clinical content: every read is an audited PHI access.
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: run.workflowVersionId,
+      forceAuditLog: true,
+      data: { action: 'readResult', runId, slug: run.workflowSlug, kind: stored?.kind ?? 'none' },
+    });
+
+    if (stored === null) return { runId, status, kind: 'none' };
+    if (stored.kind === 'inline') return { runId, status, kind: 'inline', value: stored.value };
+    if (stored.kind === 'expired') return { runId, status, kind: 'expired', expiredAt: stored.expiredAt };
+
+    // TASK-1038 E2 (fix 13) — sign only an object under the run tenant's prefix. A key outside it
+    // (another tenant's, a shared content-addressed key, a legacy un-prefixed key) is not provably
+    // this tenant's: the house 404, and nothing is signed.
+    // `tenantId` is the run's own tenant: `resolveOwnedRun` read the row under it.
+    if (!isResultKeyInTenantPrefix(tenantId, stored.key)) {
+      throw new NotFoundException(`Run '${runId}' has no readable result.`);
+    }
+    if (!this.blobStorage) {
+      throw new ServiceUnavailableException('This run delivered a stored result, but no object storage is configured to sign a download URL for it.');
+    }
+    const ttlSeconds = this.resultUrlTtlSeconds();
+    const issuedAt = Date.now();
+    const url = await this.blobStorage.presignGet({ bucket: stored.bucket, key: stored.key, expiresInSeconds: ttlSeconds });
+    return {
+      runId,
+      status,
+      kind: 'ref',
+      url,
+      expiresAt: new Date(issuedAt + ttlSeconds * 1000).toISOString(),
+      sizeBytes: stored.sizeBytes,
+      sha256: stored.sha256,
+    };
+  }
+
+  private resultUrlTtlSeconds(): number {
+    try {
+      const value = this.tenantSettings?.resolvePlatform<number>(WORKFLOW_RUNS_RESULT_URL_TTL_SECONDS_KEY).value;
+      return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : WORKFLOW_RUNS_DEFAULTS.resultUrlTtlSeconds;
+    } catch {
+      return WORKFLOW_RUNS_DEFAULTS.resultUrlTtlSeconds;
+    }
   }
 
   async cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse> {
@@ -814,14 +984,18 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
    * Redis fast path takes, and safe for the same reason: Temporal's own `USE_EXISTING` +
    * `REJECT_DUPLICATE` still refuse a second execution under that workflow id.
    */
-  private async tryJoinExistingRun(tenantId: string, slug: string, runId: string): Promise<WorkflowInvokeResponse | null> {
+  private async tryJoinExistingRun(tenantId: string, slug: string, runId: string, requestBodyHash: string): Promise<WorkflowInvokeResponse | null> {
+    let storedHash: string | null;
     try {
       const existing = await this.workflowRunService.getRun(tenantId, runId);
       if (existing.workflowSlug !== slug) return null;
-      return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
+      storedHash = await this.workflowRunService.getRunRequestBodyHash(tenantId, runId);
     } catch {
       return null;
     }
+    // TASK-1038 E2 (fix 11) — a row started before fingerprints existed carries none and joins.
+    if (storedHash !== null && storedHash !== requestBodyHash) throw idempotencyKeyReused();
+    return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
   }
 
   /** Cross-tenant `runId`, or a `runId` whose lineage does not belong to `slug` -> 404 (never 403). */
@@ -833,12 +1007,20 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     return run;
   }
 
-  private async syncTerminalStatus(tenantId: string, run: WorkflowRunResponse, upstream: GetWorkflowRunResult): Promise<void> {
+  private async syncTerminalStatus(
+    tenantId: string,
+    run: WorkflowRunResponse,
+    upstream: GetWorkflowRunResult,
+    counts?: SettledNodeCounts,
+  ): Promise<void> {
     // TASK-982 — fold FIRST, then check membership: `upstream.status` is the interpreter's raw
     // vocabulary (SUCCEEDED/DEGRADED/CANCELLED/…), not the read model's, so comparing it directly
     // against `TERMINAL_RUN_STATUSES` missed every SUCCEEDED/DEGRADED/CANCELLED run.
     const status = terminalStatusOf(upstream.status);
     if (!status || !TERMINAL_RUN_STATUSES.has(status)) return;
+    // TASK-1038 D-I — a harness status read that carries the delivered result (the producer's
+    // shape, validated) persists it too; one that does not leaves `resultRef` alone.
+    const result = deliveredRunResultFrom(upstream as unknown as Record<string, unknown>);
     try {
       await this.workflowRunService.recordRunFinished({
         tenantId,
@@ -846,6 +1028,8 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
         runId: run.runId,
         status,
         endedAt: upstream.endedAt ? new Date(upstream.endedAt) : undefined,
+        ...(result ? { resultRef: result as unknown as Record<string, unknown> } : {}),
+        ...(counts ?? {}),
       });
     } catch {
       // Best-effort read-model sync — the live upstream status is still returned to the caller
@@ -853,25 +1037,56 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     }
   }
 
-  private async tryReadIdempotencyCache(key: string): Promise<WorkflowInvokeResponse | null> {
+  /**
+   * The Redis fast path. The record is the invoke response plus the body fingerprint
+   * (`requestBodyHash`, TASK-1038 E2 fix 11), which is stripped before the response is replayed.
+   * A record written before fingerprints existed has none (`requestBodyHash: undefined`).
+   */
+  private async tryReadIdempotencyCache(key: string): Promise<{ response: WorkflowInvokeResponse; requestBodyHash: string | undefined } | null> {
     if (!this.redisCache) return null;
     try {
       const cached = await this.redisCache.get(key);
-      return cached ? (JSON.parse(cached) as WorkflowInvokeResponse) : null;
+      if (!cached) return null;
+      const { requestBodyHash, ...response } = JSON.parse(cached) as WorkflowInvokeResponse & { requestBodyHash?: unknown };
+      return { response: response as WorkflowInvokeResponse, requestBodyHash: typeof requestBodyHash === 'string' ? requestBodyHash : undefined };
     } catch {
       return null; // best-effort — a lookup failure falls through to a normal (fresh) invoke
     }
   }
 
-  private async tryWriteIdempotencyCache(key: string, response: WorkflowInvokeResponse): Promise<void> {
+  private async tryWriteIdempotencyCache(key: string, response: WorkflowInvokeResponse, requestBodyHash: string): Promise<void> {
     if (!this.redisCache) return;
     try {
-      await this.redisCache.setex(key, IDEMPOTENCY_TTL_SECONDS, JSON.stringify(response));
+      await this.redisCache.setex(key, IDEMPOTENCY_TTL_SECONDS, JSON.stringify({ ...response, requestBodyHash }));
     } catch {
       // A record failure means a retry within the TTL may start a second run — logged upstream
       // by the cache service itself; never a reason to fail the invoke that already succeeded.
     }
   }
+}
+
+/**
+ * TASK-1038 E2 (fix 11) — the fingerprint of a workflow start under an `Idempotency-Key`: the
+ * caller's `input` (key order irrelevant) and the consultation the run is bound to.
+ */
+function workflowInvokeBodyHash(dto: InvokeWorkflowRequest, consultationId: string | undefined): string {
+  return createHash('sha256')
+    .update(idempotencyCanonicalJson({ input: dto?.input ?? {}, consultationId: consultationId ?? null }), 'utf8')
+    .digest('hex');
+}
+
+/** The 409 for a key reused with a different body — the agent-run shape; it never names the other request's run. */
+function idempotencyKeyReused(): ConflictException {
+  return new ConflictException({
+    code: 'IDEMPOTENCY_KEY_REUSED',
+    message: 'This Idempotency-Key already started a run with a different request body. Use a new key for a new request.',
+  });
+}
+
+/** An axios-style "the harness answered 404" — the harness has no record of the run. */
+function isHarnessNotFound(err: unknown): boolean {
+  const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
+  return status === 404 || err instanceof NotFoundException;
 }
 
 /** The graph's one mandatory entry node — the same string `compiledTriggerContextSchema` matches. */

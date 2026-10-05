@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 
 from harness.services.text_client import TextServiceError
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import agent_catalogue as agent_catalogue_mod
 from harness.temporal.interpreter.nodes import consultation_realtime as realtime_mod
@@ -195,7 +196,6 @@ def harness(monkeypatch: pytest.MonkeyPatch):
         return None
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
     def _install(answer: dict[str, Any], failing: set[str]) -> _StubText:
         api = _StubApi(answer)
@@ -260,9 +260,9 @@ class TestFallbackOnPrimaryFailure:
         # default's step follows it.
         served = text.calls[1]
         assert served["model"] == "gemma-4-e2b-it-qat"
-        assert served["system_prompt"] == "PLATFORM Ada\n\n" + default_output_language_step(
-            "English"
-        )
+        assert served[
+            "system_prompt"
+        ] == platform_rules() + "\n\nPLATFORM Ada\n\n" + default_output_language_step("English")
         assert served["temperature"] == 0.2 and served["max_tokens"] == 2048
         # And the output names the row that served — metering follows it.
         assert result.output is not None

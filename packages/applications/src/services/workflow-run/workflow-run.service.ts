@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Opt
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
+import { ResourceType, SysEventType, WorkflowRunEntity, WorkflowRunFactory, WorkflowRunKind, WorkflowRunRepository, WorkflowRunStatus } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MAX_CURSOR_LIMIT, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
@@ -35,6 +35,9 @@ export const INTERPRETER_WORKFLOW_ID_PREFIX = 'workflow-interpreter-';
 
 /** `recordRunSuperseded` re-reads after an OCC conflict at most this many times in total. */
 const SUPERSEDE_WRITE_ATTEMPTS = 3;
+/** TASK-1038 E2 (fix 5) — `recordRunFinished` re-reads after an OCC conflict at most this many times in total. */
+const RECORD_FINISHED_WRITE_ATTEMPTS = 3;
+
 export function interpreterSessionId(runId: string): string {
   return `${INTERPRETER_WORKFLOW_ID_PREFIX}${runId}`;
 }
@@ -195,7 +198,9 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     }
     const limit = clampCursorLimit(options.limit);
 
-    const where: Record<string, unknown> = { tenantId };
+    // TASK-1038 OD-26 — the table also holds AGENT runs (`POST /agents/:slug/runs`); this is the
+    // WORKFLOW runs list, so they never appear in it.
+    const where: Record<string, unknown> = { tenantId, kind: WorkflowRunKind.WORKFLOW };
     if (filters.workflowSlug) where.workflowSlug = filters.workflowSlug;
     if (filters.workflowVersionId) where.workflowVersionId = filters.workflowVersionId;
     if (filters.status) where.status = filters.status;
@@ -221,6 +226,12 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
   async getRun(tenantId: string, runId: string): Promise<WorkflowRunResponse> {
     const entity = await this.findRunOrThrow(tenantId, runId);
     return WorkflowRunDtoMapper.toResponse(entity);
+  }
+
+  async getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null> {
+    const entity = await this.findRunOrThrow(tenantId, runId);
+    const hash = entity.metaData?.requestBodyHash;
+    return typeof hash === 'string' && hash.length > 0 ? hash : null;
   }
 
   async getRunGate(tenantId: string, runId: string): Promise<RunGateStateResponse> {
@@ -371,39 +382,53 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
 
   async recordRunFinished(input: RecordRunFinishedInput): Promise<WorkflowRunResponse> {
     const runId = input.runId ?? '';
-    // TASK-946 D3 — the SAME two-spelling lookup `findRunOrThrow` has done since TASK-933 H3-5.
-    // The caller's `sessionId` is tried first (it is right for every exposure-plane run), then
-    // both conventional keys: a consultation-dispatched run is anchored as `wf-<runId>`, so a
-    // watcher that named the interpreter key 404'd against a row that exists — which is why the
-    // 2026-09-10 consultation runs stayed `RUNNING` after their workflows had already FAILED.
-    const entity =
-      (await this.workflowRunRepository.findByRunKey(input.tenantId, input.sessionId, runId)) ??
-      (await this.findRunByConventionalSessionKeys(input.tenantId, runId));
-    if (!entity) {
-      throw new NotFoundException(`WorkflowRun for run ${input.runId} not found`);
-    }
-
-    entity.status = input.status as WorkflowRunStatus;
     const endedAt = input.endedAt ?? new Date();
-    entity.endedAt = endedAt;
-    entity.durationMs = Math.max(0, endedAt.getTime() - entity.startedAt.getTime());
-    if (input.nodeCount !== undefined) entity.nodeCount = input.nodeCount;
-    if (input.failedNodeCount !== undefined) entity.failedNodeCount = input.failedNodeCount;
-    if (input.degradedNodeCount !== undefined) entity.degradedNodeCount = input.degradedNodeCount;
-    // TASK-982 — no `skippedNodeCount` column; merged into the existing `_metadata` bag so
-    // `actingUserId` (written by `recordRunStarted`) is never clobbered by this later write.
-    if (input.skippedNodeCount !== undefined) {
-      entity.metaData = { ...(entity.metaData ?? {}), skippedNodeCount: input.skippedNodeCount };
-    }
-    if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
-    // (M-2). `undefined` means the caller reported no delivered output (a graph with no
-    // `output.deliver` node) and must leave any existing value alone; an explicit `null` clears it.
-    if (input.resultRef !== undefined) entity.resultRef = input.resultRef as never;
+    // TASK-1038 E2 (fix 5) — two writers close a run: the status sync (usually no result) and the
+    // completion watcher (with the result). Both read `_version` N; the loser's write used to throw
+    // and its result was lost. A conflict now re-reads and re-applies, a bounded number of times.
+    let saved: WorkflowRunEntity | undefined;
+    for (let attempt = 0; saved === undefined; attempt++) {
+      // TASK-946 D3 — the SAME two-spelling lookup `findRunOrThrow` has done since TASK-933 H3-5.
+      // The caller's `sessionId` is tried first (it is right for every exposure-plane run), then
+      // both conventional keys: a consultation-dispatched run is anchored as `wf-<runId>`, so a
+      // watcher that named the interpreter key 404'd against a row that exists — which is why the
+      // 2026-09-10 consultation runs stayed `RUNNING` after their workflows had already FAILED.
+      const entity =
+        (await this.workflowRunRepository.findByRunKey(input.tenantId, input.sessionId, runId)) ??
+        (await this.findRunByConventionalSessionKeys(input.tenantId, runId));
+      if (!entity) {
+        throw new NotFoundException(`WorkflowRun for run ${input.runId} not found`);
+      }
 
-    if (!entity.hasChanges) {
-      return WorkflowRunDtoMapper.toResponse(entity);
+      entity.status = input.status as WorkflowRunStatus;
+      entity.endedAt = endedAt;
+      entity.durationMs = Math.max(0, endedAt.getTime() - entity.startedAt.getTime());
+      if (input.nodeCount !== undefined) entity.nodeCount = input.nodeCount;
+      if (input.failedNodeCount !== undefined) entity.failedNodeCount = input.failedNodeCount;
+      if (input.degradedNodeCount !== undefined) entity.degradedNodeCount = input.degradedNodeCount;
+      // TASK-982 — no `skippedNodeCount` column; merged into the existing `_metadata` bag so
+      // `actingUserId` (written by `recordRunStarted`) is never clobbered by this later write.
+      if (input.skippedNodeCount !== undefined) {
+        entity.metaData = { ...(entity.metaData ?? {}), skippedNodeCount: input.skippedNodeCount };
+      }
+      if (input.firstErrorCode !== undefined) entity.firstErrorCode = input.firstErrorCode;
+      // (M-2). `undefined` means the caller reported no delivered output (a graph with no
+      // `output.deliver` node) and must leave any existing value alone. TASK-1038 E2 (fix 5): an
+      // explicit `null` no longer clears a result already persisted — a writer that has no result
+      // is never the authority over one that does.
+      if (input.resultRef !== undefined && (input.resultRef !== null || entity.resultRef === null || entity.resultRef === undefined)) {
+        entity.resultRef = input.resultRef as never;
+      }
+
+      if (!entity.hasChanges) {
+        return WorkflowRunDtoMapper.toResponse(entity);
+      }
+      try {
+        saved = await this.workflowRunRepository.updateWithVersion(entity.id, entity, entity.version);
+      } catch (error) {
+        if (!(error instanceof OptimisticConcurrencyException) || attempt >= RECORD_FINISHED_WRITE_ATTEMPTS - 1) throw error;
+      }
     }
-    const saved = await this.workflowRunRepository.updateWithVersion(entity.id, entity, entity.version);
 
     // TASK-864 (owner decision D-5) — the ONE sys-event the run read model emits, on TERMINAL
     // status, so a `WorkflowRun` webhook subscription fires (`workflow.run.completed`). The

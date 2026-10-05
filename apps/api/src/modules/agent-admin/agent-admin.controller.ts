@@ -2,6 +2,9 @@ import {
   AsrLanguageCapabilityService,
   AgentBundleResponse,
   AgentResponse,
+  AgentTagSuggestionResponse,
+  AgentUsageResponse,
+  AgentUsageService,
   ListAgentLineagesQuery,
   PaginatedAgentLineageResponse,
   AgentSyncResponse,
@@ -19,7 +22,22 @@ import {
   TestAgentRequest,
   UpdateAgentRequest,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Optional, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Optional,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CanManage, ExpectedVersion, ForbidApiKey, RequiredSvcScopes, RequiresIfMatch } from '../../decorators';
@@ -54,6 +72,8 @@ export class AgentAdminController {
     // TASK-1004 §4.5 — advisory language warnings when a SPEECH_TO_TEXT agent is published.
     // Optional: absent, the publish response is exactly what it was.
     @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
+    // TASK-1036 OD-21 — "used by N published workflows" for one agent version.
+    @Inject(AgentUsageService) private readonly usageService?: AgentUsageService,
   ) {}
 
   /**
@@ -94,6 +114,28 @@ export class AgentAdminController {
     return this.agentService.listLineages(query);
   }
 
+  /**
+   * TASK-1036 R1 — tag autocomplete for the agent editor's `TagsField`, the mirror of
+   * `GET admin/prompt-templates/tags`. Static path, so it is declared ABOVE every `:id` route.
+   * Inherits the class gate; reads ONLY the caller tenant's agents.
+   */
+  @Get('tags')
+  @ApiOperation({
+    summary: 'Distinct agent tags with usage counts (autocomplete)',
+    description:
+      "Distinct tags over the caller tenant's agents, normalised to lower case and counted per agent LINEAGE (slug), ranked by count " +
+      '(descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Case-insensitive substring filter' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max suggestions (default 20, max 100)' })
+  @ApiResponse({ status: 200, description: 'Tag suggestions', type: [AgentTagSuggestionResponse] })
+  @ApiResponse({ status: 400, description: 'No tenant context on the request' })
+  @ApiResponse({ status: 403, description: 'Caller lacks manage:Agent' })
+  async listTags(@Query() queryParams: { q?: string; limit?: string }): Promise<AgentTagSuggestionResponse[]> {
+    const limit = Number(queryParams.limit);
+    return this.agentService.listTagSuggestions({ q: queryParams.q, limit: Number.isFinite(limit) && limit > 0 ? limit : undefined });
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get one agent version (own or SYSTEM template)' })
   @ApiParam({ name: 'id', type: String })
@@ -110,6 +152,30 @@ export class AgentAdminController {
   @ApiResponse({ status: 404, description: 'Not found (also returned for another tenant’s agent).' })
   async fetchVersions(@Param('id') id: string): Promise<AgentResponse[]> {
     return this.agentService.listVersions(id);
+  }
+
+  /**
+   * TASK-1036 OD-21 — how many published workflows pin this agent version. A pinned version
+   * keeps running after it is deprecated, so the console shows this count BEFORE Deprecate.
+   * Addressed by lineage slug + version number (what a workflow's `agentRef` names), tenant-scoped
+   * in the service. Inherits the class gate (`manage:Agent`).
+   */
+  @Get(':slug/versions/:versionNumber/usage')
+  @ApiOperation({
+    summary: 'Published workflows that pin this agent version',
+    description:
+      "The caller tenant's PUBLISHED or DEPRECATED workflow versions whose compiled config pins this exact agent version in a `core.agent` " +
+      'node. A pinned version keeps running after it is deprecated (OD-21), so Deprecate warns with `count` first. Unpinned references ' +
+      '(they follow the active version) are not counted.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'versionNumber', type: Number })
+  @ApiResponse({ status: 200, type: AgentUsageResponse })
+  @ApiResponse({ status: 400, description: '`versionNumber` is not an integer, or there is no tenant context.' })
+  @ApiResponse({ status: 404, description: 'No such version in the caller tenant’s lineage (also returned for another tenant’s agent).' })
+  async fetchVersionUsage(@Param('slug') slug: string, @Param('versionNumber', ParseIntPipe) versionNumber: number): Promise<AgentUsageResponse> {
+    if (!this.usageService) throw new ServiceUnavailableException('Agent usage is not available in this composition.');
+    return this.usageService.usage(slug, versionNumber);
   }
 
   @Post()

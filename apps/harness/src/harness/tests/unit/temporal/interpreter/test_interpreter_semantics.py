@@ -303,14 +303,17 @@ class TestCapClamping:
 
 class TestCancel:
     @pytest.mark.asyncio
-    async def test_cancel_signal_stops_the_walk_at_the_next_stage_boundary(self):
+    async def test_cancel_signal_interrupts_the_stage_in_flight(self):
         # n1 sleeps briefly (real wall-clock — activities are not time-skipped) so it is
         # still genuinely in flight when the cancel signal lands. `_run` waits for n1's
         # ActivityTaskScheduled history event (not a fixed real-time delay — see
         # `_temporal_sync.await_history_event`) before signalling, so cancellation
-        # deterministically lands after the workflow has committed to stage 0 (stage 0
-        # still completes; stage 1 never starts) regardless of how long a busy machine
-        # takes to get there.
+        # deterministically lands after the workflow has committed to stage 0.
+        #
+        # TASK-1038 R-4: this used to assert that stage 0 still COMPLETED — cancel was read only
+        # between stages, so the in-flight node ran to completion while the run already read as
+        # cancelled. The stage in flight is now interrupted: n1 settles `SKIPPED(cancelled)`, and
+        # stage 1 still never starts.
         body = _body(
             [
                 {
@@ -329,5 +332,6 @@ class TestCancel:
         )
         result = await _run(body, signal_cancel_after_start=True)
         assert result.status == "CANCELLED"
-        assert len(result.stages) == 1  # stage 0 completed; stage 1 never started
-        assert result.stages[0].nodes[0].status == "SUCCEEDED"
+        assert len(result.stages) == 1  # stage 0 interrupted; stage 1 never started
+        assert result.stages[0].nodes[0].status == "SKIPPED"
+        assert result.stages[0].nodes[0].reason == "cancelled"

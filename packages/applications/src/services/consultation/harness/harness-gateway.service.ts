@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { resolveRunStartLimits } from '../../workflow-run/run-start-limits';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -407,6 +409,9 @@ export class HarnessGatewayService {
     // compile without a mock. When unset we send an empty token, which the
     // harness-side service-token guard rejects (fail-closed on the harness).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-1038 B3a — the run-start retention + payload limits (platform settings). Optional and
+    // trailing so positional fixtures keep compiling; absent ⇒ the descriptor defaults are sent.
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {
     this.harnessUrl = this.configService.get<string>('HARNESS_URL') ?? 'http://localhost:8866';
   }
@@ -587,6 +592,11 @@ export class HarnessGatewayService {
       // `null` on the wire and a missing key mean the same thing there, but sending the key only
       // when there IS a subject keeps a Temporal history honest about which runs were bound.
       ...(input.subject ? { subject: input.subject } : {}),
+      // TASK-1038 B3a — every start carries the event-stream retention (the TTL of the terminal
+      // append) and the payload limits, resolved here from the platform settings so no harness
+      // knob is a literal or an env var. One resolution site covers every caller (exposure plane,
+      // consultation dispatch, Workbench sandbox).
+      ...resolveRunStartLimits(this.settings),
     };
     const response = await this.httpService.axiosRef.post(url, body, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run started', runId: input.runId, status: (response.data as StartWorkflowRunResult)?.status });
@@ -610,6 +620,24 @@ export class HarnessGatewayService {
     const response = await this.httpService.axiosRef.post(url, {}, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run cancel requested', runId });
     return response.data as CancelWorkflowRunResult;
+  }
+
+  /**
+   * TASK-1038 B3a (G14) — cooperatively CANCEL a consultation's harness DOCUMENT workflow (the run
+   * behind a `SUMMARY` consultation job), through the harness admin route and the workflow's
+   * deterministic id (`harness-doc-<consultationId>`, `internal.py::_workflow_id`). Throws on any
+   * harness refusal (404 for no such workflow) — the caller then reports "not cancellable".
+   */
+  async cancelDocumentWorkflow(consultationId: string, input: { tenantId: string; reason: string }): Promise<unknown> {
+    const workflowId = `harness-doc-${consultationId}`;
+    const url = `${this.harnessUrl}/api/v1/internal/harness/workflows/${encodeURIComponent(workflowId)}/cancel`;
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { tenantId: input.tenantId, reason: input.reason },
+      { headers: await this.buildHeaders(input.tenantId), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS },
+    );
+    this.logger.log({ message: 'Harness document workflow cancel requested', consultationId });
+    return response.data;
   }
 
   /**

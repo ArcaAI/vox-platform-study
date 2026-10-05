@@ -579,6 +579,70 @@ export interface FromResponseExtra {
 }
 
 /**
+ * A run reached a terminal state that is not `COMPLETED`, and the caller asked for its result
+ * (`RunHandle.result()`, TASK-1039).
+ *
+ * Deliberately an `Error`, not a {@link HopeAPIError}: every HTTP exchange succeeded — the run
+ * itself failed, was cancelled, or timed out. `code` / `message` are the run protocol's PUBLIC
+ * error (a fixed SCREAMING_SNAKE code and its fixed label, never an interpolated model or patient
+ * value — `detail` never reaches the business plane), and are absent when the run was only ever
+ * observed through a status read, which carries no error.
+ */
+export class RunFailedError extends Error {
+  readonly runId: string;
+  /** The terminal status the run ended in: `FAILED`, `TIMED_OUT` or `CANCELED`. */
+  readonly status: string;
+  /** The run's public error code, when the protocol carried one. */
+  readonly code?: string;
+
+  constructor(init: { runId: string; status: string; code?: string; message?: string }) {
+    super(`Run ${init.runId} ended ${init.status}${init.message === undefined ? '' : `: ${init.message}`}.`);
+    this.name = 'RunFailedError';
+    this.runId = init.runId;
+    this.status = init.status;
+    this.code = init.code;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
+ * A run's event stream dropped and could not be re-established within the reconnect budget
+ * (TASK-1039).
+ *
+ * **The run is NOT affected** — a disconnect never cancels a durable run, and it may well have
+ * finished. `lastSeq` is the resume cursor of the last event this iteration saw; pass it as
+ * `events({ after })`, or read the run's state with `wait({ poll: true })` / `result()`.
+ */
+export class RunStreamInterruptedError extends Error {
+  readonly runId: string;
+  readonly lastSeq: number;
+
+  constructor(init: { runId: string; lastSeq: number; cause?: unknown }) {
+    super(
+      `The event stream of run ${init.runId} dropped and could not be re-established (last seq ${init.lastSeq}). ` +
+        'The run itself is unaffected; resume with `events({ after })` or read its state with `wait({ poll: true })`.',
+      { cause: init.cause },
+    );
+    this.name = 'RunStreamInterruptedError';
+    this.runId = init.runId;
+    this.lastSeq = init.lastSeq;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/** A signed-URL result was fetched but its bytes do not hash to the `sha256` the gateway declared (TASK-1039). Never returned — a result you cannot verify is not a result. */
+export class RunResultIntegrityError extends Error {
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super(`The result of run ${runId} did not match its declared sha256; it was discarded.`);
+    this.name = 'RunResultIntegrityError';
+    this.runId = runId;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+/**
  * Build the right {@link HopeAPIError} subclass for a non-2xx `Response`,
  * given its already-parsed body (JSON, or `undefined` if the body was empty
  * or not JSON). Never reads bodies out of `response` itself — callers parse

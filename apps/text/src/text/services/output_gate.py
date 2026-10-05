@@ -3,7 +3,7 @@
 Owner decision (TASK-870 items 5 and 7): guardrail checks every text-generation
 request BEFORE it is sent to the provider AND every response AFTER it is
 received, for built-in and BYO providers alike. The input half is
-``api/endpoints/generate._apply_guardrail_gate``; this module is the output half,
+``services/egress.run_inbound_gate``; this module is the output half,
 and it is called from exactly two places:
 
 * the non-streaming ``/generate`` body, after ``provider.generate`` returns and
@@ -20,9 +20,18 @@ discards on. The exception carries everything either site needs so neither
 re-derives the rejection contract.
 
 Fail posture is the input gate's, verbatim: a genuine rejection is a
-422-equivalent, a sustained outage is a retryable 503-equivalent, a malformed
-verdict fails closed, and the dev/CI bypass (client absent AND posture off) is
-preserved. Raising — rather than returning a verdict a caller might forget to
+422-equivalent, a sustained outage is a retryable 503-equivalent and a malformed
+verdict fails closed. There is no posture switch and no tenant opt-out any more
+(TASK-1035 OD-1/OD-4); the only unscreened path is a process with NO client wired
+at all, which the service lifespan never builds (it is how the hermetic unit
+harness constructs an app).
+
+``pii_leak`` depends on provider LOCALITY (TASK-1035 §3.1). On a CLOUD call the
+completion is screened BEFORE re-identification against the pseudonymized source,
+so any real identifier in it was leaked or hallucinated, and the response is
+blocked (``PII_LEAK_BLOCKED``). On a LOCAL call it is detect-only: a clinical note
+legitimately names the patient, so a verdict whose ONLY blocking reason is
+``pii_leak`` is audited and allowed. Raising — rather than returning a verdict a caller might forget to
 check — is what makes the gate fail closed by construction: a call site that
 does not handle the exception fails its generation instead of shipping it.
 
@@ -36,15 +45,20 @@ from __future__ import annotations
 from typing import Any
 
 from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError, TextError
-from text.core.guardrail_posture import platform_moderation_enabled, tenant_opted_out
+from text.core.locality import CLOUD, LOCAL
+from text.core.logging import get_logger
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
+from text.services.egress import request_segments, sent_text
 from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
     ExternalGuardrailClient,
 )
 from text.services.judge_guard import assert_not_in_judge_scope
 
+logger = get_logger(__name__)
+
 __all__ = [
+    "PII_LEAK_CODE",
     "REJECTED_CODE",
     "UNAVAILABLE_CODE",
     "OutputRejectedError",
@@ -60,6 +74,11 @@ REJECTED_CODE = "GUARDRAIL_REJECTED"
 #: posture with no client wired). Retryable — nothing about the content was
 #: judged, and telling a clinician their note was rejected would be a lie.
 UNAVAILABLE_CODE = "GUARDRAIL_UNAVAILABLE"
+#: ``code`` when a CLOUD completion carried a real identifier before
+#: re-identification (TASK-1035). Not retryable as-is: the same prompt can leak again.
+PII_LEAK_CODE = "PII_LEAK_BLOCKED"
+#: The outbound check whose meaning depends on locality.
+_PII_LEAK_CHECK = "pii_leak"
 #: Prefix of the persisted task ``error`` for a rejected generation. The task
 #: status is ``FAILED`` (the value every consumer already discards on — a new
 #: enum value would cross into the gateway's contract); this prefix is what
@@ -77,12 +96,15 @@ class OutputRejectedError(Exception):
         retryable: bool,
         decision: dict[str, Any] | None = None,
         guardrail_usage: UsageDetail | None = None,
+        pii_leak: bool = False,
     ) -> None:
         super().__init__(f"Response rejected by guardrail: {reason}")
         self.reason = reason
         self.retryable = retryable
         self.decision = decision
         self.guardrail_usage = guardrail_usage
+        #: A CLOUD completion carried a real identifier (TASK-1035).
+        self.pii_leak = pii_leak
 
     @property
     def status_code(self) -> int:
@@ -91,7 +113,9 @@ class OutputRejectedError(Exception):
 
     @property
     def code(self) -> str:
-        return UNAVAILABLE_CODE if self.retryable else REJECTED_CODE
+        if self.retryable:
+            return UNAVAILABLE_CODE
+        return PII_LEAK_CODE if self.pii_leak else REJECTED_CODE
 
     @property
     def detail(self) -> str:
@@ -119,6 +143,12 @@ class OutputRejectedError(Exception):
         """
         if self.retryable:
             return GuardrailUnavailableError()
+        if self.pii_leak:
+            return ContentBlockedError(
+                "The response was blocked because it contained an identifier that was "
+                "not sent to the provider.",
+                error_code=PII_LEAK_CODE,
+            )
         return ContentBlockedError("The response was blocked by the safety guardrail.")
 
     def terminal_data(self, *, usage: dict[str, Any]) -> dict[str, Any]:
@@ -161,13 +191,12 @@ def assemble_completion(content: str | None, reasoning: str | None) -> str:
 def source_context_of(request_body: Any) -> str:
     """The source the response was generated FROM, for guardrail's PII-leak check.
 
-    Identical to the text the input gate screened, so a response that repeats
-    the consultation's own identifiers is not a leak, and one that introduces
-    identifiers absent from it is.
+    Everything the input gate screened — system prompt, user message and text
+    parts, minus the composer's ``EXTERNAL_DATA`` markers — so a response that
+    repeats the consultation's own identifiers is not a leak, and one that
+    introduces identifiers absent from it is (TASK-1036 E1).
     """
-    prompt = str(getattr(request_body, "prompt", "") or "")
-    system_prompt = getattr(request_body, "system_prompt", None)
-    return f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    return sent_text(request_segments(request_body))
 
 
 async def gate_completion(
@@ -179,17 +208,16 @@ async def gate_completion(
     tenant_policy: Any,
     app_state: Any,
     where: str,
+    locality: str = CLOUD,
 ) -> UsageDetail | None:
     """Screen ``completion``; return guardrail's own usage, or raise.
 
-    Branches mirror ``_apply_guardrail_gate`` one for one:
-
     * client wired ⇒ screen; ``allowed`` missing or false ⇒ raise (outage
-      reason ⇒ retryable, anything else ⇒ content rejection);
-    * client absent AND the platform posture enforces ⇒ raise, retryable — a
-      misconfiguration must not ship an unscreened response, UNLESS this call opted
-      out (TASK-890 OD-R), which has no screening to misconfigure;
-    * client absent AND posture off ⇒ ``None``, the dev/CI bypass.
+      reason ⇒ retryable, anything else ⇒ content rejection), EXCEPT a LOCAL call
+      whose only blocking reason is ``pii_leak``, which is detect-only;
+    * client absent ⇒ ``None`` — only a process the lifespan never wired.
+
+    ``locality`` defaults to CLOUD, the strict reading of ``pii_leak``.
 
     An EMPTY completion is not sent: there is nothing to screen, and guardrail
     would 422 a blank ``response``, which this side would then misread as an
@@ -212,16 +240,18 @@ async def gate_completion(
         if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
             reason = str(verdict.get("reason", "not_allowed"))
             raw = verdict.get("raw")
+            reasons = raw.get("reasons") if isinstance(raw, dict) else None
+            blocking = {str(r) for r in reasons} if isinstance(reasons, list) else set()
+            if locality == LOCAL and blocking == {_PII_LEAK_CHECK}:
+                # OD-2: detect-only on a local provider. Counts only — never the text.
+                logger.info("text.egress.pii_leak_detected_local", where=where)
+                return guardrail_usage
             raise OutputRejectedError(
                 reason=reason,
                 retryable=reason == GUARDRAIL_UNAVAILABLE_REASON,
                 decision=raw if isinstance(raw, dict) else None,
                 guardrail_usage=guardrail_usage,
+                pii_leak=_PII_LEAK_CHECK in blocking,
             )
         return guardrail_usage
-    # The unwired-client branch, mirroring the input gate one for one — including the
-    # TASK-890 OD-R exception: a call the tenant opted out of has no screening to be
-    # misconfigured for, so it is not a fail-closed case. Every other call still is.
-    if platform_moderation_enabled(app_state) and not tenant_opted_out(tenant_policy):
-        raise OutputRejectedError(reason=GUARDRAIL_UNAVAILABLE_REASON, retryable=True)
     return None

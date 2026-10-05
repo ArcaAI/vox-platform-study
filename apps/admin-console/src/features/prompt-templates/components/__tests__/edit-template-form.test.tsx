@@ -6,6 +6,7 @@
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import { EditTemplateForm } from '../template-form-dialog';
 import type { PromptTemplate } from '../../api/types';
 
@@ -49,13 +50,13 @@ describe('EditTemplateForm — Save is gated on a dirty form', () => {
 
   it('enables Save once content changes, and disables it again when the edit is reverted', () => {
     renderForm();
-    const content = screen.getByLabelText('Prompt content');
+    const content = screen.getByRole('textbox', { name: 'Prompt content' });
 
-    fireEvent.change(content, { target: { value: 'You are a cardiology scribe.' } });
+    setTemplateEditorValue(content, 'You are a cardiology scribe.');
     expect(saveButton().disabled).toBe(false);
     expect(screen.queryByText(/no changes to save/i)).toBeNull();
 
-    fireEvent.change(content, { target: { value: 'You are a clinical scribe.' } });
+    setTemplateEditorValue(content, 'You are a clinical scribe.');
     expect(saveButton().disabled).toBe(true);
   });
 

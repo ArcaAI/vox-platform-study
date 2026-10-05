@@ -14,6 +14,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentService } from '../agent.service';
+import { asInputBlock, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -41,6 +42,18 @@ const mockAiModelRepository = { findById: vi.fn(async () => LLM_MODEL), findByTa
 const mockPromptTemplateRepository = { findById: vi.fn(async () => null) };
 const mockPromptVersionRepository = { findByVersionNumber: vi.fn(async () => null) };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb({})) } };
+const mockContextSchemas = { resolveReference: vi.fn(async () => OPEN_CONTEXT_SCHEMA) };
+/**
+ * An OPEN context schema bound by the fixture agent: an undeclared reference blocks publish and
+ * the bench, so the fixture declares a `context` root that admits the paths these cases read.
+ */
+const OPEN_CONTEXT_SCHEMA = {
+  outcome: 'resolved',
+  schemaId: 'schema-open',
+  versionNumber: 1,
+  versionId: 'schema-open-v1',
+  payloadSchema: { type: 'object' },
+};
 const mockProviderConnections = {
   resolveConnection: vi.fn(async () => ({ source: 'system', encryptedApiKey: new Uint8Array([1]) })),
   findRow: vi.fn(async () => null),
@@ -59,7 +72,7 @@ function compositeAgent(fragments: Array<{ key: string; systemPrompt: string; wh
     status: WorkflowDefinitionStatus.DRAFT,
     isActive: false,
     modelId: 'model-llm',
-    contextSchemaId: null,
+    contextSchemaId: 'schema-open',
     contextSchemaVersionNumber: null,
     instruction: { fragments, ...(variables ? { variables } : {}) },
     parameters: null,
@@ -87,6 +100,9 @@ function makeService() {
     mockProviderConnections as never,
     mockPromptTemplateRepository as never,
     mockPromptVersionRepository as never,
+    undefined as never,
+    undefined as never,
+    mockContextSchemas as never,
   );
 }
 
@@ -110,7 +126,7 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B', visit_type: 'revisit' } });
 
-    expect(ack.assembledSystemPrompt).toBe('You are a scribe for Ward B.\n\nThis is a follow-up.');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('You are a scribe for Ward B.\n\nThis is a follow-up.'));
     expect(ack.composition).toEqual({ selected: ['base', 'revisit'], excluded: [] });
   });
 
@@ -124,7 +140,7 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: { visit_type: 'new' } });
 
-    expect(ack.assembledSystemPrompt).toBe('BASE');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('BASE'));
     expect(ack.composition).toEqual({ selected: ['base'], excluded: [{ key: 'revisit', reason: 'condition_false' }] });
   });
 
@@ -138,7 +154,7 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: {} });
 
-    expect(ack.assembledSystemPrompt).toBe('BASE');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('BASE'));
     expect(ack.composition?.selected).toEqual(['base']);
     expect(ack.composition?.excluded[0]).toMatchObject({ key: 'peds', reason: 'condition_error' });
     expect(ack.composition?.excluded[0].detail).toBeTruthy();
@@ -178,7 +194,7 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' } });
 
-    expect(ack.assembledSystemPrompt).toBe('Scribe for Ward B.');
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Scribe for Ward B.'));
     expect(ack.composition).toBeUndefined();
   });
 

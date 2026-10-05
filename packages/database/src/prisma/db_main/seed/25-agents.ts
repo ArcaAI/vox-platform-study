@@ -92,16 +92,87 @@ export const NER_IO_DEFAULTS = {
   },
 };
 
-/** The task defaults of AGENT_IO_DEFAULTS, compiled verbatim so the runtime never reads a null schema. */
-const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown> }> = {
+/**
+ * The task defaults of `AGENT_IO_DEFAULTS` (`@arcaai/workflow-contract`), compiled verbatim so the
+ * runtime never reads a null schema.
+ *
+ * COPIED, not imported: this package takes no dependency on the contract (see the file header).
+ * `task-1036-agent-io-defaults-parity.test.ts` imports the contract from source and fails on any
+ * drift, so a contract change to these schemas fails CI until this table is refreshed.
+ * TASK-1036: the TEXT input is `message` (OD-8; `text` a deprecated alias, `variables`-only
+ * accepted) and the ASR output is `transcript` TEXT + `segments` — the retired `transcript` array
+ * is gone. NER stays on {@link NER_IO_DEFAULTS} (the INTERFACES section 2.3 literal).
+ */
+export const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>; outputSchema: Record<string, unknown> }> = {
   TEXT_GENERATION: {
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['text'],
-      properties: { text: { type: 'string', minLength: 1 }, variables: { type: 'object', additionalProperties: { type: 'string' } } },
+      properties: {
+        message: {
+          type: 'string',
+          minLength: 1,
+          description: 'The user turn / the document to operate on.',
+        },
+        text: {
+          type: 'string',
+          minLength: 1,
+          deprecated: true,
+          description: 'DEPRECATED alias of `message` (TASK-1036 OD-8), accepted for one release. Send `message`.',
+        },
+        variables: {
+          type: 'object',
+          additionalProperties: {
+            type: 'string',
+          },
+          description: 'Prompt-template variables (override the agent`s bound defaults).',
+        },
+      },
+      anyOf: [
+        {
+          required: ['message'],
+          additionalProperties: false,
+          properties: {
+            message: {
+              type: 'string',
+            },
+            variables: {
+              type: 'object',
+            },
+          },
+        },
+        {
+          required: ['text'],
+          additionalProperties: false,
+          properties: {
+            text: {
+              type: 'string',
+            },
+            variables: {
+              type: 'object',
+            },
+          },
+        },
+        {
+          required: ['variables'],
+          additionalProperties: false,
+          properties: {
+            variables: {
+              type: 'object',
+            },
+          },
+        },
+      ],
     },
-    outputSchema: { type: 'object', required: ['text'], properties: { text: { type: 'string' } } },
+    outputSchema: {
+      type: 'object',
+      required: ['text'],
+      properties: {
+        text: {
+          type: 'string',
+        },
+      },
+    },
   },
   SPEECH_TO_TEXT: {
     inputSchema: {
@@ -113,9 +184,26 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
           type: 'object',
           additionalProperties: false,
           required: ['kind'],
-          properties: { kind: { type: 'string', enum: ['artifact', 'stream'] }, mediaId: { type: 'string' }, sessionId: { type: 'string' } },
+          properties: {
+            kind: {
+              type: 'string',
+              enum: ['artifact', 'stream'],
+            },
+            mediaId: {
+              type: 'string',
+              description: '`artifact`: an uploaded media row.',
+            },
+            sessionId: {
+              type: 'string',
+              description: '`stream`: a realtime STT session.',
+            },
+          },
         },
-        language: { type: 'string', minLength: 2, maxLength: 16 },
+        language: {
+          type: 'string',
+          minLength: 2,
+          maxLength: 16,
+        },
       },
     },
     outputSchema: {
@@ -123,20 +211,160 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
       required: ['transcript'],
       properties: {
         transcript: {
+          type: 'string',
+          description: 'The transcript text — the utterances joined in spoken order. What the `transcript` socket carries.',
+        },
+        segments: {
           type: 'array',
           items: {
             type: 'object',
             required: ['text', 'start', 'end'],
             properties: {
-              text: { type: 'string' },
-              start: { type: 'number', minimum: 0 },
-              end: { type: 'number', minimum: 0 },
-              speaker: { type: 'string' },
-              isFinal: { type: 'boolean' },
+              text: {
+                type: 'string',
+              },
+              start: {
+                type: 'number',
+                minimum: 0,
+                description: 'Seconds from the capture start (the producer clock). Absolute only through `audio.epochMs`.',
+              },
+              end: {
+                type: 'number',
+                minimum: 0,
+                description: 'Seconds from the capture start (the producer clock).',
+              },
+              speaker: {
+                type: 'string',
+              },
+              speakerConfidence: {
+                type: 'number',
+                minimum: 0,
+                maximum: 1,
+                description: 'Diarization confidence for `speaker`, when the engine reports one.',
+              },
+              isFinal: {
+                type: 'boolean',
+              },
+              stableChars: {
+                type: 'integer',
+                minimum: 0,
+                description:
+                  'On a PARTIAL, the committed-prefix length of `text`: characters before it will not be revised. Absent on a final and when the commit policy is off.',
+              },
+              utteranceIndex: {
+                type: 'integer',
+                minimum: 0,
+                description:
+                  "The PRODUCER's utterance ordinal. A `gloss` reuses the index of the final it translates — the only field that pairs them.",
+              },
+              resultType: {
+                type: 'string',
+                enum: ['segment', 'gloss'],
+                description:
+                  'Absent means `segment`. A `gloss` translates the final carrying the same `utteranceIndex`; it is not a second utterance.',
+              },
+              seq: {
+                type: 'integer',
+                minimum: 0,
+                description:
+                  "The GATEWAY's monotonic transcript sequence — what a dropped socket resumes from. Not `utteranceIndex`, and not interchangeable with it.",
+              },
+              language: {
+                type: 'string',
+                description: 'Per-utterance detected language, when the engine detects one. Can differ across a code-switched capture.',
+              },
+              charStart: {
+                type: 'integer',
+                minimum: 0,
+                description: 'Half-open [charStart, charEnd) offsets of this utterance in the joined `transcript` text.',
+              },
+              charEnd: {
+                type: 'integer',
+                minimum: 0,
+              },
+              receivedAtMs: {
+                type: 'integer',
+                minimum: 0,
+                description:
+                  'Epoch ms at which the CONSUMER received this utterance. With `audio.epochMs` + `end` it gives the speech-to-transcript lag.',
+              },
+              inferenceMs: {
+                type: 'number',
+                minimum: 0,
+                description: "The engine's own time on this utterance — its share of the lag above.",
+              },
+              pipelineId: {
+                type: 'string',
+                description:
+                  'The ASR binding that produced THIS utterance. Per-utterance, because a mid-session engine switch splits one transcript across two.',
+              },
+              words: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['text', 'start', 'end'],
+                  properties: {
+                    text: {
+                      type: 'string',
+                    },
+                    start: {
+                      type: 'number',
+                      minimum: 0,
+                    },
+                    end: {
+                      type: 'number',
+                      minimum: 0,
+                    },
+                    confidence: {
+                      type: 'number',
+                      minimum: 0,
+                      maximum: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          description:
+            'Per-utterance timing, speaker and correlation over `transcript`. Published on the `data` socket; empty when the producer reported no segmentation.',
+        },
+        audio: {
+          type: 'object',
+          properties: {
+            kind: {
+              type: 'string',
+              enum: ['artifact', 'stream'],
+              description: 'Echoes the `audio.kind` the agent was invoked with.',
+            },
+            sessionId: {
+              type: 'string',
+              description: '`stream`: the realtime STT session the segments were cut from.',
+            },
+            mediaId: {
+              type: 'string',
+              description: '`artifact`: the uploaded media row.',
+            },
+            sampleRate: {
+              type: 'integer',
+              minimum: 1,
+              description: 'Hz of the audio actually decoded — not what the caller asked for.',
+            },
+            epochMs: {
+              type: 'integer',
+              minimum: 0,
+              description:
+                'Epoch ms that segment time `0` maps to. Absent when the producer could not name one; segment times are then relative and nothing else.',
             },
           },
         },
-        language: { type: 'string' },
+        language: {
+          type: 'string',
+          description: 'The capture-level language. A per-utterance one, where it differs, is on the segment.',
+        },
+        pipelineId: {
+          type: 'string',
+          description: "The session's ASR binding. A segment that came from a different one after a mid-session switch says so itself.",
+        },
       },
     },
   },
@@ -144,8 +372,26 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      properties: { text: { type: 'string', minLength: 1, maxLength: 20000 }, ssml: { type: 'string', minLength: 1, maxLength: 40000 } },
-      anyOf: [{ required: ['text'] }, { required: ['ssml'] }],
+      properties: {
+        text: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 20000,
+        },
+        ssml: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 40000,
+        },
+      },
+      anyOf: [
+        {
+          required: ['text'],
+        },
+        {
+          required: ['ssml'],
+        },
+      ],
     },
     outputSchema: {
       type: 'object',
@@ -154,9 +400,22 @@ const IO_DEFAULTS: Record<SeedAgentTask, { inputSchema: Record<string, unknown>;
         audio: {
           type: 'object',
           required: ['mediaId', 'format'],
-          properties: { mediaId: { type: 'string' }, format: { type: 'string' }, sampleRate: { type: 'integer' } },
+          properties: {
+            mediaId: {
+              type: 'string',
+            },
+            format: {
+              type: 'string',
+            },
+            sampleRate: {
+              type: 'integer',
+            },
+          },
         },
-        durationMs: { type: 'integer', minimum: 0 },
+        durationMs: {
+          type: 'integer',
+          minimum: 0,
+        },
       },
     },
   },
@@ -242,7 +501,7 @@ export const ASR_AGENT_SLUG = 'realtime-transcription';
 
 /**
  * TASK-1001 (OD-8) — the agents that WRITE THE NOTE, and therefore carry the tenant's output-language
- * policy as their last, unconditional, unpinned fragment. The same shape the 22 ArcaAI department
+ * policy as their last, unconditional (pinned, TASK-1036 W3) fragment. The same shape the 22 ArcaAI department
  * agents took in wave 1 (`29-arcaai-agents-and-workflows.ts`).
  *
  * Deliberately NOT on this list, each for its own reason:
@@ -393,9 +652,8 @@ export const summarizationMaxTokens = (sectionCount: number): number =>
     : SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS;
 
 /**
- * The per-turn summarization hyper-parameters. `guards.enabled: true` is the AGENT level of the
- * `node > workflow > agent > true` guardrail precedence (§3.14) — stated, not inherited, because
- * "guardrail enabled with GLiNER2 on the summarization agent" is an owner commitment (D-2).
+ * The per-turn summarization hyper-parameters. (No `guards.enabled`: the guardrail opt-out is
+ * retired, so guardrail screening — GLiNER2 included — is not a per-agent setting any more.)
  * Reasoning OFF: the live flush is a 20 s budget and reasoning tokens were measured at 92% of
  * the completion on this model (TASK-891).
  *
@@ -412,7 +670,6 @@ export const summarizationMaxTokens = (sectionCount: number): number =>
 export const SUMMARIZATION_PARAMETERS = {
   generation: { temperature: 0, maxTokens: SUMMARIZATION_ABSOLUTE_FLOOR_TOKENS, reasoning: { enabled: false } },
   responseFormat: 'text',
-  guards: { enabled: true },
 };
 
 /**
@@ -492,13 +749,13 @@ export const PRE_SUMMARY_VARIABLE_NAMES: readonly string[] = [
  * Every pre-summary variable, bound to the trigger's validated context.
  *
  * The bodies themselves are written in the `{{context.<name>}}` grammar and are NOT rewritten:
- * `buildAgentPromptScope` publishes the trigger under BOTH `trigger` and `context`
- * (`agent-prompt-scope.ts`), so `{{context.safe_age}}` already resolves from
+ * `buildPromptScope` publishes the trigger under BOTH `trigger` and `context`
+ * (`@arcaai/workflow-contract prompt-scope.ts`), so `{{context.safe_age}}` already resolves from
  * `trigger.context.safe_age` with no binding at all. The bindings below are declared anyway, for
  * two reasons that are not decoration:
  *
  *  - the bare name and the dotted path must be the SAME value ("`{{age}}` and
- *    `{{context.patientAge}}` are the same value", `agent-prompt-scope.ts` §3.3), and declaring
+ *    `{{context.patientAge}}` are the same value", `@arcaai/workflow-contract prompt-scope.ts` §3.3), and declaring
  *    the binding is how that is stated rather than assumed;
  *  - `publish-findings` cross-checks a template's placeholders against the agent's DECLARED
  *    variables plus the trigger's namespace, so an author editing the body in the Studio sees the
@@ -533,7 +790,6 @@ export const PRE_SUMMARY_PARAMETERS = {
   // per-turn floor (3072 : 2048 = 1.5 ⇒ 8192 × 1.5) rather than inventing a new relationship.
   generation: { temperature: 0, maxTokens: 12288, reasoning: { enabled: false } },
   responseFormat: 'text',
-  guards: { enabled: true },
 };
 
 /**
@@ -587,7 +843,6 @@ export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
  */
 export const CASENOTE_FINALIZATION_PARAMETERS = {
   generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } },
-  guards: { enabled: true },
 };
 
 /** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
@@ -958,10 +1213,61 @@ export interface SeedResolvedPromptFragment {
   promptVersionNumber?: number;
   content: string;
   when: string | null;
+  /** TASK-1036 OD-10 — the template version's variable declarations; omitted when it declares none. */
+  variables?: SeedVariableDeclaration[];
+}
+
+/**
+ * TASK-1036 OD-10 — one prompt variable declaration, as `AgentService` freezes it beside a
+ * template's content in `compiledConfig.resolvedPrompt` (field-for-field
+ * `PromptVariableDeclarationDto`; this package takes no applications dependency).
+ */
+export interface SeedVariableDeclaration {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+  required: boolean;
+  default?: string;
+  description?: string;
+  source?: { kind: 'context' | 'static'; path?: string };
+}
+
+const SEED_VARIABLE_TYPES: ReadonlyArray<SeedVariableDeclaration['type']> = ['string', 'number', 'boolean', 'date', 'json'];
+
+/**
+ * `parsePromptVariableDeclarations` of @arcaai/applications, verbatim in behaviour: array-only
+ * (the retired `{ [name]: … }` map and `null` are "no declarations"), unknown `type` → `string`,
+ * `required` only when exactly `true`.
+ */
+export function parseSeedVariableDeclarations(raw: unknown): SeedVariableDeclaration[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object' && !Array.isArray(entry))
+    .filter((entry) => typeof entry.name === 'string' && entry.name.length > 0)
+    .map((entry) => {
+      const declaration: SeedVariableDeclaration = {
+        name: entry.name as string,
+        type: SEED_VARIABLE_TYPES.includes(entry.type as SeedVariableDeclaration['type']) ? (entry.type as SeedVariableDeclaration['type']) : 'string',
+        required: entry.required === true,
+      };
+      if (typeof entry.default === 'string') declaration.default = entry.default;
+      if (typeof entry.description === 'string') declaration.description = entry.description;
+      if (entry.source && typeof entry.source === 'object') {
+        const source = entry.source as Record<string, unknown>;
+        if (source.kind === 'context' || source.kind === 'static') {
+          declaration.source = typeof source.path === 'string' ? { kind: source.kind, path: source.path } : { kind: source.kind };
+        }
+      }
+      return declaration;
+    });
+}
+
+/** `frozenDeclarations` of `AgentService`: spread in, omitted when the version declares none. */
+function frozenSeedDeclarations(declarations: readonly SeedVariableDeclaration[]): { variables?: SeedVariableDeclaration[] } {
+  return declarations.length > 0 ? { variables: declarations.map((declaration) => ({ ...declaration })) } : {};
 }
 
 export type SeedResolvedPrompt =
-  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+  | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string; variables?: SeedVariableDeclaration[] }
   | { source: 'inline'; content: string }
   | { source: 'composite'; content: string; join: string; fragments: SeedResolvedPromptFragment[] }
   | null;
@@ -1007,16 +1313,7 @@ export function buildCompiledConfig(
     // `contextSchema: null` — no seeded agent pins a context schema: a schema is CONTENT, cloned
     // per tenant; the trigger of the workflow binds it and `{{trigger.context.*}}` reads it.
     contextSchema: null,
-    // ABSENT MEANS ON — the agent level of the guardrail precedence.
-    guardrail: { enabled: guardrailEnabledOf(spec.parameters) },
   };
-}
-
-/** Mirrors `guardrailEnabledOf` in `AgentService` (duplicated: no dependency on the applications layer). */
-function guardrailEnabledOf(parameters: Record<string, unknown> | null | undefined): boolean {
-  const guards = parameters?.guards;
-  if (guards === null || typeof guards !== 'object' || Array.isArray(guards)) return true;
-  return (guards as Record<string, unknown>).enabled === false ? false : true;
 }
 
 export function checksumOf(compiled: Record<string, unknown>): string {
@@ -1085,9 +1382,15 @@ export interface SeedAgentsClient {
       content: string | null;
       approvedVersionNumber: number | null;
       currentVersionNumber: number | null;
+      /** TASK-1036 OD-10 — the declarations column (`Json?`); optional so a narrow fake may omit it. */
+      variables?: unknown;
     } | null>;
   };
-  promptVersion: { findFirst(args: { where: { promptTemplateId: string; versionNumber: number } }): Promise<{ content: string | null } | null> };
+  promptVersion: {
+    findFirst(args: {
+      where: { promptTemplateId: string; versionNumber: number };
+    }): Promise<{ content: string | null; variables?: unknown } | null>;
+  };
   agent: {
     findUnique(args: { where: { id: string }; select?: { id: true } }): Promise<{ id: string } | null>;
     create(args: { data: unknown }): Promise<unknown>;
@@ -1111,13 +1414,19 @@ async function resolveTemplateBinding(
   client: SeedAgentsClient,
   templateId: string,
   pinned: number | null,
-): Promise<{ ok: true; promptVersionNumber: number; content: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; promptVersionNumber: number; content: string; declarations: SeedVariableDeclaration[] } | { ok: false; reason: string }> {
   const template = await client.promptTemplate.findUnique({ where: { id: templateId } });
   if (!template) return { ok: false, reason: `prompt template ${templateId} is not seeded` };
   if (template.status !== 'APPROVED') return { ok: false, reason: `prompt template ${templateId} is ${template.status ?? 'DRAFT'}, not APPROVED` };
   const versionNumber = pinned ?? template.approvedVersionNumber ?? template.currentVersionNumber ?? 1;
   const version = await client.promptVersion.findFirst({ where: { promptTemplateId: templateId, versionNumber } });
-  return { ok: true, promptVersionNumber: versionNumber, content: version?.content ?? template.content ?? '' };
+  return {
+    ok: true,
+    promptVersionNumber: versionNumber,
+    content: version?.content ?? template.content ?? '',
+    // OD-10 — the version's own declarations, else the template's (`AgentService.resolveTemplateBinding`'s read).
+    declarations: parseSeedVariableDeclarations(version?.variables ?? template.variables),
+  };
 }
 
 /**
@@ -1174,6 +1483,7 @@ async function resolveCompositePrompt(
       promptVersionNumber: outcome.promptVersionNumber,
       content: outcome.content,
       when,
+      ...frozenSeedDeclarations(outcome.declarations),
     });
   }
 
@@ -1219,6 +1529,7 @@ async function resolvePrompt(
       promptTemplateId: templateId,
       promptVersionNumber: outcome.promptVersionNumber,
       content: outcome.content,
+      ...frozenSeedDeclarations(outcome.declarations),
     },
   };
 }

@@ -34,7 +34,6 @@ const configService = { get: vi.fn().mockReturnValue('http://text.test') } as ne
 const enrichment = {
   applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
   applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
-  applyGuardrailDecision: vi.fn((body: Record<string, unknown>) => body),
 } as never;
 
 function service(): AgentInvocationService {
@@ -81,7 +80,6 @@ function resolved(over: { frozen?: string | null; models?: ResolvedAgentModel[];
       tools: [],
     },
     models: over.models ?? [],
-    guardrail: { enabled: true },
   } as unknown as ResolvedAgent;
 }
 
@@ -132,6 +130,16 @@ describe('the TEXT body carries the provider-native wire model id', () => {
     await service().invokeText(resolved({ models: [primary('gemma-4-e2b-it-qat')] }), TENANT, { text: 'hi' }, 'stream');
 
     expect(sentBody().model).toBe('gemma-4-e2b-it-qat');
+  });
+});
+
+describe('the egress locality of the invocation', () => {
+  it('hands the primary row deploymentKind to the egress enrichment', async () => {
+    await service().invokeText(resolved({ models: [{ ...primary('gemma-4-e2b-it-qat'), deploymentKind: 'SELF_HOSTED' }] }), TENANT, { text: 'hi' }, 'blocking');
+
+    const calls = (enrichment as unknown as { applyTenantProviderOverrides: { mock: { calls: unknown[][] } } }).applyTenantProviderOverrides.mock.calls;
+    expect(calls.at(-1)?.[1]).toMatchObject({ deploymentKind: 'SELF_HOSTED', phase: 'invoke' });
+    expect(sentBody()).not.toHaveProperty('guardrail_policy');
   });
 });
 

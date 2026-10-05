@@ -932,18 +932,6 @@ const CEL_EXPRESSION_PROPERTY = Object.freeze({
 });
 
 /**
- * TASK-890 §3.14 (OD-R clause 3) — the guardrail OVERRIDE, on the two nodes that can carry an
- * opinion about a whole call: a `core.agent` node (this instance) and `core.trigger` (this
- * workflow's default).
- *
- * TRI-STATE BY ABSENCE, the `mcpToolsEnabled` shape: the object absent — or present with no
- * `enabled` — means INHERIT, which is why there is no `default: true` here and why
- * `additionalProperties: false` matters. `resolveGuardrailDecision` (`guardrail-optout.ts`)
- * folds node > workflow > agent > `true` and names WHICH level decided, so the answer is
- * attributable rather than merely computed. A pushed `true` never turns a platform kill-switch
- * back on: `apps/text` keeps `platform.enabled` as the floor.
- */
-/**
  * TASK-932 R-16a — the DNA writing-style declaration on a `core.agent` instance.
  *
  * TASK-891 OD-5: the workflow NAMES the DNA-redaction agent. In the `core` vocabulary that agent
@@ -985,21 +973,6 @@ const DNA_PROPERTY = Object.freeze({
   }),
 });
 
-const GUARDRAIL_OVERRIDE_PROPERTY = Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    enabled: Object.freeze({
-      type: 'boolean',
-      summary: 'On, off, or inherit the default safety setting.',
-      description:
-        'Whether platform guardrail screens this call. ABSENT = inherit (workflow, then agent, then on). A publish WARNING (`GUARDRAIL_OPTED_OUT`) and a per-call usage attribute record every `false`.',
-    }),
-  }),
-  summary: 'Turn safety screening on or off for this workflow.',
-  description: 'Guardrail opt-out for this scope. Absent means inherit — never "unset".',
-});
-
 const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'https://arcaai.dev/hope/workflow-nodes/core.trigger.schema.json',
@@ -1034,7 +1007,6 @@ const CORE_TRIGGER_SCHEMA: NodeConfigSchema = Object.freeze({
       description:
         'The consultation-context object schema available to the whole session, authored inline or referenced by row. The run payload is validated against it before any node runs.',
     }),
-    guardrail: GUARDRAIL_OVERRIDE_PROPERTY,
     sampleInput: Object.freeze({
       type: 'object',
       summary: 'An example input, shown in the Studio and docs only.',
@@ -1122,7 +1094,6 @@ const CORE_AGENT_SCHEMA: NodeConfigSchema = Object.freeze({
       }),
     }),
     ...DOCUMENT_BINDING_PROPERTIES,
-    guardrail: GUARDRAIL_OVERRIDE_PROPERTY,
     dna: DNA_PROPERTY,
     onError: Object.freeze({ type: 'string', enum: Object.freeze(['fail', 'degrade']) }),
   }),
@@ -1623,9 +1594,9 @@ const RUNTIME_PROPERTY_EXCLUSIONS: ReadonlySet<string> = new Set<string>();
  * This set used to gate the `enabled` fold below, so the seven clinical guard types offered no
  * disable toggle at all, and the argument recorded here was that a switchable
  * `consultation.consentGate` is a compliance defect rather than a feature. The owner decided
- * otherwise: guardrail screening is platform-managed and a tenant may opt OUT of it per agent,
- * per workflow and per node (OD-R), and that opt-out extends to the mandatory clinical guards
- * (D-1). The safety property is not the absence of a switch — it is that using the switch is
+ * otherwise: a mandatory clinical guard node may be switched off (D-1). (The per-agent /
+ * per-workflow / per-node LLM guardrail opt-out that D-1 was decided beside is RETIRED — see
+ * `retired-guardrail-optout.ts`; D-1 itself is unchanged.) The safety property is not the absence of a switch — it is that using the switch is
  * IMPOSSIBLE TO DO QUIETLY. Three compensating controls carry it:
  *
  *   1. publish emits `GUARDRAIL_OPTED_OUT` (a WARNING, never blocking) naming every disabled
@@ -1673,6 +1644,108 @@ export const MANDATORY_NODE_TYPES: ReadonlySet<string> = new Set([
  */
 export const GRAPH_BOUNDARY_NODE_TYPES: ReadonlySet<string> = new Set(['core.trigger', 'core.output']);
 
+// =============================================================================================
+// TASK-1036 (OD-20, OD-29) — the two AUTHORING keys every core node offers: `label` and `inputs`
+// =============================================================================================
+
+/** The longest node label (OD-20). */
+export const NODE_LABEL_MAX_LENGTH = 80;
+
+/**
+ * OD-20 — a node's display name. References are SHOWN by label and STORED by node id, so renaming
+ * a step never breaks a binding (`bindings.ts`, `binding-source-paths.ts`). Optional: absent, the
+ * id is shown.
+ */
+const NODE_LABEL_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength: NODE_LABEL_MAX_LENGTH,
+  summary: 'The name of this step on the canvas.',
+  description: 'Shown wherever this step is referenced. References are stored by node id, so renaming a step never breaks one.',
+});
+
+/** The most paths one `{ firstOf }` binding may list. */
+export const BINDING_FIRST_OF_MAX_PATHS = 8;
+
+/**
+ * OD-29 — ONE binding: exactly one of `{ from }`, `{ value }`, `{ template }`, `{ firstOf }`, each
+ * closed. `{ firstOf: [path, path, …] }` (two or more `from`-style paths) is an ORDERED COALESCE —
+ * the first path that has a value — which is a deliberate authoring choice, not fan-in (OD-18 as
+ * amended by the TASK-1036 contract freeze): each path is ancestor- and type-checked exactly like
+ * a `from`. The legacy fan-in translation compiles to the same shape. Exported for `bindings.ts`,
+ * which re-exports it beside the TypeScript type.
+ */
+export const BINDING_JSON_SCHEMA: NodeConfigSchema = Object.freeze({
+  summary: 'Where this input comes from.',
+  description:
+    '`{ from: <path> }` reads `context.*`, `consultation.*`, `nodes.<id>.outputs.*`, `vars.*` or `run.*`; `{ value }` is a literal; `{ template }` is text with `{{ … }}` references; `{ firstOf: [<path>, <path>, …] }` takes the first path that has a value.',
+  anyOf: Object.freeze([
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['from']),
+      properties: Object.freeze({
+        from: Object.freeze({ type: 'string', minLength: 1, maxLength: 512 }),
+        at: Object.freeze({
+          type: 'string',
+          enum: Object.freeze(['nodeStart', 'runStart']),
+          summary: 'When consultation data is read: at this step or at the run start.',
+          description: 'When a `consultation.*` value is read: at this step`s start (default) or once at run start.',
+        }),
+      }),
+    }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['value']),
+      properties: Object.freeze({ value: Object.freeze({}) }),
+    }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['template']),
+      properties: Object.freeze({ template: Object.freeze({ type: 'string', maxLength: 8000 }) }),
+    }),
+    Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['firstOf']),
+      properties: Object.freeze({
+        firstOf: Object.freeze({
+          type: 'array',
+          minItems: 2,
+          maxItems: BINDING_FIRST_OF_MAX_PATHS,
+          items: Object.freeze({ type: 'string', minLength: 1, maxLength: 512 }),
+          summary: 'Paths to try in order: the first one that has a value is used.',
+          description: 'Two or more `from`-style paths, each read like a `from` binding. The first path that produced a value wins.',
+        }),
+      }),
+    }),
+  ]),
+});
+
+const NODE_INPUTS_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: BINDING_JSON_SCHEMA,
+  summary: "Where each of this step's inputs comes from.",
+  description:
+    'One binding per declared input (the node`s I/O contract). An input bound here takes this value; a data edge into the same input is then ordering only. Absent, the step`s data edges supply its inputs.',
+});
+
+/** The node types that take NO `inputs`: the entry point has no inputs, a note is a comment. */
+const NODES_WITHOUT_INPUTS: ReadonlySet<string> = new Set(['core.trigger', 'core.note']);
+
+/** `label` on every core node, `inputs` on every one that has inputs. Node schemas only — never an action's sub-config. */
+function withAuthoringProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
+  if (!key.startsWith('core.')) return schema;
+  const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
+  const additions: Record<string, NodeConfigSchema> = {};
+  if (declared.label === undefined) additions.label = NODE_LABEL_PROPERTY;
+  if (declared.inputs === undefined && !NODES_WITHOUT_INPUTS.has(key)) additions.inputs = NODE_INPUTS_PROPERTY;
+  if (Object.keys(additions).length === 0) return schema;
+  return Object.freeze({ ...schema, properties: Object.freeze({ ...declared, ...additions }) });
+}
+
 function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfigSchema {
   if (RUNTIME_PROPERTY_EXCLUSIONS.has(key)) return schema;
   const declared = (schema.properties ?? {}) as Record<string, NodeConfigSchema>;
@@ -1688,7 +1761,9 @@ function withRuntimeProperties(key: string, schema: NodeConfigSchema): NodeConfi
  * `GET /admin/workflow-nodes` serves, and what the Studio inspector compiles into fields.
  */
 export const NODE_CONFIG_SCHEMAS: Readonly<Record<string, NodeConfigSchema>> = Object.freeze(
-  Object.fromEntries(Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withRuntimeProperties(key, schema)])),
+  Object.fromEntries(
+    Object.entries(AUTHORED_NODE_CONFIG_SCHEMAS).map(([key, schema]) => [key, withAuthoringProperties(key, withRuntimeProperties(key, schema))]),
+  ),
 );
 
 /**

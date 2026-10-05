@@ -1,0 +1,547 @@
+{
+  "_comment": "The CROSS-LANGUAGE golden fixture for schemaVariablePaths (@arcaai/workflow-contract) and schema_variable_paths (apps/harness/src/harness/temporal/interpreter/schema_variable_paths.py). Asserted from tests/contracts/schema-variable-paths-parity.contract.test.ts and apps/harness/src/harness/tests/unit/temporal/interpreter/test_schema_variable_paths_parity.py. Each case is a ConsultationContextSchemaVersion.definition (or an inline payload JSON Schema), a root, and the exact sorted entry list.",
+  "cases": [
+    {
+      "name": "multi-kind-context-root",
+      "definition": {
+        "schemaVersion": "1.0",
+        "kinds": [
+          {
+            "key": "patient",
+            "label": "Patient",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "cardinality": "ONE",
+            "lifecycle": "PRE",
+            "producedBy": "CLIENT",
+            "required": true,
+            "description": "The patient.",
+            "fields": {
+              "type": "object",
+              "required": ["age"],
+              "properties": {
+                "age": {
+                  "type": "integer",
+                  "description": "Age in years."
+                },
+                "name": {
+                  "type": ["string", "null"]
+                },
+                "legacy_id": {
+                  "type": "string",
+                  "deprecated": true
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "anything": {}
+              }
+            }
+          },
+          {
+            "key": "case_note",
+            "label": "Case note",
+            "primitive": "TEXT",
+            "phiClass": "NON_PHI",
+            "cardinality": "MANY",
+            "lifecycle": "ANY",
+            "producedBy": "CLIENT",
+            "deprecated": {
+              "since": "2026-01-01"
+            }
+          },
+          {
+            "key": "audio_stream",
+            "label": "Audio",
+            "primitive": "STREAM_AUDIO",
+            "phiClass": "PHI",
+            "cardinality": "ONE",
+            "lifecycle": "DURING",
+            "producedBy": "CLIENT"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "note",
+            "label": "Note",
+            "primitive": "TEXT"
+          }
+        ]
+      },
+      "root": "context",
+      "expected": [
+        {
+          "path": "context.audio_stream",
+          "type": "STREAM_AUDIO",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "context.case_note",
+          "type": "TEXT",
+          "required": false,
+          "phiClass": "NON_PHI",
+          "description": null,
+          "deprecated": true
+        },
+        {
+          "path": "context.patient",
+          "type": "STRUCTURED",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "The patient.",
+          "deprecated": false
+        },
+        {
+          "path": "context.patient.age",
+          "type": "integer",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "Age in years.",
+          "deprecated": false
+        },
+        {
+          "path": "context.patient.anything",
+          "type": "any",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "context.patient.legacy_id",
+          "type": "string",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": true
+        },
+        {
+          "path": "context.patient.name",
+          "type": "string|null",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "context.patient.tags",
+          "type": "array",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "name": "multi-kind-trigger-root",
+      "definition": {
+        "schemaVersion": "1.0",
+        "kinds": [
+          {
+            "key": "patient",
+            "label": "Patient",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "cardinality": "ONE",
+            "lifecycle": "PRE",
+            "producedBy": "CLIENT",
+            "required": true,
+            "description": "The patient.",
+            "fields": {
+              "type": "object",
+              "required": ["age"],
+              "properties": {
+                "age": {
+                  "type": "integer",
+                  "description": "Age in years."
+                },
+                "name": {
+                  "type": ["string", "null"]
+                },
+                "legacy_id": {
+                  "type": "string",
+                  "deprecated": true
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "anything": {}
+              }
+            }
+          },
+          {
+            "key": "case_note",
+            "label": "Case note",
+            "primitive": "TEXT",
+            "phiClass": "NON_PHI",
+            "cardinality": "MANY",
+            "lifecycle": "ANY",
+            "producedBy": "CLIENT",
+            "deprecated": {
+              "since": "2026-01-01"
+            }
+          },
+          {
+            "key": "audio_stream",
+            "label": "Audio",
+            "primitive": "STREAM_AUDIO",
+            "phiClass": "PHI",
+            "cardinality": "ONE",
+            "lifecycle": "DURING",
+            "producedBy": "CLIENT"
+          }
+        ],
+        "outputs": [
+          {
+            "key": "note",
+            "label": "Note",
+            "primitive": "TEXT"
+          }
+        ]
+      },
+      "root": "trigger",
+      "expected": [
+        {
+          "path": "trigger.audio_stream",
+          "type": "STREAM_AUDIO",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "trigger.case_note",
+          "type": "TEXT",
+          "required": false,
+          "phiClass": "NON_PHI",
+          "description": null,
+          "deprecated": true
+        },
+        {
+          "path": "trigger.patient",
+          "type": "STRUCTURED",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "The patient.",
+          "deprecated": false
+        },
+        {
+          "path": "trigger.patient.age",
+          "type": "integer",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "Age in years.",
+          "deprecated": false
+        },
+        {
+          "path": "trigger.patient.anything",
+          "type": "any",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "trigger.patient.legacy_id",
+          "type": "string",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": true
+        },
+        {
+          "path": "trigger.patient.name",
+          "type": "string|null",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "trigger.patient.tags",
+          "type": "array",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "name": "sole-context-kind-collapses-under-context",
+      "definition": {
+        "schemaVersion": "1.0",
+        "kinds": [
+          {
+            "key": "context",
+            "label": "Context",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "description": "Prompt context.",
+            "fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["visit_type"],
+              "properties": {
+                "visit_type": {
+                  "type": "string",
+                  "enum": ["new-visit", "revisit"],
+                  "description": "Visit type."
+                },
+                "safe_age": {
+                  "type": "string",
+                  "description": "Patient age, or `Unknown`."
+                }
+              }
+            }
+          }
+        ]
+      },
+      "root": "context",
+      "expected": [
+        {
+          "path": "context.safe_age",
+          "type": "string",
+          "required": false,
+          "phiClass": "PHI",
+          "description": "Patient age, or `Unknown`.",
+          "deprecated": false
+        },
+        {
+          "path": "context.visit_type",
+          "type": "string",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "Visit type.",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "name": "sole-context-kind-keeps-envelope-under-trigger",
+      "definition": {
+        "schemaVersion": "1.0",
+        "kinds": [
+          {
+            "key": "context",
+            "label": "Context",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "description": "Prompt context.",
+            "fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["visit_type"],
+              "properties": {
+                "visit_type": {
+                  "type": "string",
+                  "enum": ["new-visit", "revisit"],
+                  "description": "Visit type."
+                },
+                "safe_age": {
+                  "type": "string",
+                  "description": "Patient age, or `Unknown`."
+                }
+              }
+            }
+          }
+        ]
+      },
+      "root": "trigger",
+      "expected": [
+        {
+          "path": "trigger.context",
+          "type": "STRUCTURED",
+          "required": false,
+          "phiClass": "PHI",
+          "description": "Prompt context.",
+          "deprecated": false
+        },
+        {
+          "path": "trigger.context.safe_age",
+          "type": "string",
+          "required": false,
+          "phiClass": "PHI",
+          "description": "Patient age, or `Unknown`.",
+          "deprecated": false
+        },
+        {
+          "path": "trigger.context.visit_type",
+          "type": "string",
+          "required": true,
+          "phiClass": "PHI",
+          "description": "Visit type.",
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "name": "sole-kind-other-key-not-collapsed",
+      "definition": {
+        "schemaVersion": "1.0",
+        "kinds": [
+          {
+            "key": "patient",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "fields": {
+              "properties": {
+                "age": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "root": "context",
+      "expected": [
+        {
+          "path": "context.patient",
+          "type": "STRUCTURED",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "context.patient.age",
+          "type": "integer",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": false
+        }
+      ]
+    },
+    {
+      "name": "deprecated-kind-fields-inherit",
+      "definition": {
+        "kinds": [
+          {
+            "key": "old",
+            "primitive": "STRUCTURED",
+            "phiClass": "PHI",
+            "deprecated": {
+              "since": "2026-01-01",
+              "message": "Use new."
+            },
+            "fields": {
+              "properties": {
+                "f": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "root": "context",
+      "expected": [
+        {
+          "path": "context.old",
+          "type": "STRUCTURED",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": true
+        },
+        {
+          "path": "context.old.f",
+          "type": "string",
+          "required": false,
+          "phiClass": "PHI",
+          "description": null,
+          "deprecated": true
+        }
+      ]
+    },
+    {
+      "name": "inline-payload-schema",
+      "definition": {
+        "type": "object",
+        "required": ["a"],
+        "properties": {
+          "a": {
+            "type": "object",
+            "description": "A.",
+            "properties": {
+              "b": {
+                "type": "string"
+              }
+            }
+          },
+          "c": {
+            "type": "number",
+            "deprecated": true
+          }
+        }
+      },
+      "root": "trigger",
+      "expected": [
+        {
+          "path": "trigger.a",
+          "type": "object",
+          "required": true,
+          "phiClass": null,
+          "description": "A.",
+          "deprecated": false
+        },
+        {
+          "path": "trigger.a.b",
+          "type": "string",
+          "required": false,
+          "phiClass": null,
+          "description": null,
+          "deprecated": false
+        },
+        {
+          "path": "trigger.c",
+          "type": "number",
+          "required": false,
+          "phiClass": null,
+          "description": null,
+          "deprecated": true
+        }
+      ]
+    },
+    {
+      "name": "unreadable-null",
+      "definition": null,
+      "root": "context",
+      "expected": []
+    },
+    {
+      "name": "unreadable-string",
+      "definition": "nope",
+      "root": "context",
+      "expected": []
+    },
+    {
+      "name": "unreadable-kinds",
+      "definition": {
+        "kinds": [
+          null,
+          {
+            "key": ""
+          },
+          {
+            "primitive": "TEXT"
+          }
+        ]
+      },
+      "root": "context",
+      "expected": []
+    }
+  ]
+}

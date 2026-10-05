@@ -22,6 +22,12 @@ from harness.temporal.interpreter.models import NodeActivityInput
 from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
 
+
+def _input_block(body: str) -> str:
+    """TASK-1035 — the bound note reaches text as the `input` data block of `compose_messages`."""
+    return f'<<<EXTERNAL_DATA section="input">>>\n--- Input ---\n{body}\n<<<END_EXTERNAL_DATA>>>'
+
+
 _TENANT = "10000000-0000-0000-0000-000000000001"
 _RUN = "018f3a7c-5b84-7d19-9e63-0a2c8d5f7b43"
 
@@ -200,7 +206,6 @@ async def test_the_finalizer_user_turn_carries_the_headings(
 
     text = _Text()
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
     monkeypatch.setattr(core, "_text_client", lambda _settings: text)
 
@@ -226,7 +231,7 @@ async def test_the_finalizer_user_turn_carries_the_headings(
     )
 
     assert result.status == "SUCCEEDED"
-    assert text.calls[0]["prompt"] == (
+    assert text.calls[0]["prompt"] == _input_block(
         "## New Complaints\nBreathless on stairs.\n\n"
         "## Investigations\nNot discussed\n\n"
         "## Current Diagnosis\nAnaemia (Hb 10.2 g/dL)."
@@ -320,7 +325,6 @@ async def test_the_finalizer_user_turn_starts_with_a_heading_through_the_socket_
 
     text = _Text()
     monkeypatch.setattr(core, "record_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
     monkeypatch.setattr(core, "_text_client", lambda _settings: text)
 
@@ -340,5 +344,6 @@ async def test_the_finalizer_user_turn_starts_with_a_heading_through_the_socket_
 
     assert result.status == "SUCCEEDED"
     prompt = text.calls[0]["prompt"]
-    assert prompt.startswith("## ")
-    assert prompt == _HEADED_HANDOFF_TEXT
+    # TASK-1035 — the note is the `input` data block; its body still starts with a heading.
+    assert prompt.split("\n", 2)[2].startswith("## ")
+    assert prompt == _input_block(_HEADED_HANDOFF_TEXT)

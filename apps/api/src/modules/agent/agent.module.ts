@@ -3,17 +3,22 @@ import {
   AiProviderConnectionServiceModule,
   AsrAgentResolverServiceModule,
   BillingServiceModule,
+  CommonServiceModule,
   EntitlementsServiceModule,
   MediaServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  TenantBucketServiceModule,
+  TenantSettingsService,
   TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
+import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { gatewayKeepAliveAgents } from '../../common';
 import { AgentController } from './agent.controller';
+import { AgentRunService } from './agent-run.service';
 
 /** `/agents/**` — the Agent business plane (TASK-863 §3.5). */
 @Module({
@@ -40,7 +45,19 @@ import { AgentController } from './agent.controller';
     // `UsageLedgerServiceModule` above, which provides its `TenantSettingsService` locally. This
     // module therefore needs no `EffectiveSettingsModule` of its own; the controller reads that
     // descriptor through the shared resolver rather than through a second copy of the cascade.
+    // TASK-1038 OD-26 — the agent RUN resource: `CommonServiceModule` brings the settings plane
+    // `TenantSettingsService` reads the A2 event-retention knob from (provided LOCALLY, the
+    // `WorkflowRunCompletionModule` precedent); `IRedisCacheService` (@Global) carries the run's
+    // event stream only.
+    CommonServiceModule,
+    // TASK-1038 OD-26 (lane B6a) — `WorkflowRunRepository`: an agent run's state and result are
+    // a `kind = AGENT` row of the run read model, not a Redis document.
+    CoreDatabaseModule,
+    // TASK-1036 §3.2 — `ITenantBucketService`, the tenant AUDIO bucket a `delivery: 'blob'`
+    // synthesis is stored in (`IBlobStorageService` itself is @Global).
+    TenantBucketServiceModule,
   ],
+  providers: [TenantSettingsService, AgentRunService],
   controllers: [AgentController],
 })
 export class AgentModule {}

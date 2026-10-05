@@ -224,11 +224,14 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_ATOMIC_FACT_N_GPU_LAYERS` | `apps/harness` | no | no | `0` | commented | — |
 | `HARNESS_ATOMIC_FACT_N_THREADS` | `apps/harness` | no | no | — | commented | — |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
+| `HARNESS_CLAIM_CHECK_ACTIVITY_INPUT_MAX_BYTES` | `apps/harness` | no | no | `1572864` | commented | — |
 | `HARNESS_CLAIM_CHECK_BUCKET` | `apps/harness` | no | no | `harness-claim-check` | commented | — |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_CLAIM_CHECK_ENDPOINT_URL` | `apps/harness` | no | no | `http://localhost:9000` | commented | — |
 | `HARNESS_CLAIM_CHECK_MIN_BYTES` | `apps/harness` | no | no | `65536` | commented | — |
+| `HARNESS_CLAIM_CHECK_NODE_OUTPUT_MIN_BYTES` | `apps/harness` | no | no | `20480` | commented | — |
 | `HARNESS_CLAIM_CHECK_REGION` | `apps/harness` | no | no | `us-east-1` | commented | — |
+| `HARNESS_CLAIM_CHECK_RESULT_INLINE_MAX_BYTES` | `apps/harness` | no | no | `65536` | commented | — |
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `apps/harness` | no | yes | `CHANGE_ME` | live | — |
 | `HARNESS_CLAIM_CHECK_SECURE` | `apps/harness` | no | no | `false` | commented | — |
 | `HARNESS_CLAIM_CHECK_STORE` | `apps/harness` | no | no | `memory` | commented | — |
@@ -293,9 +296,6 @@ default — see `renderPythonExample()` in `scripts/env-sync.mts`.
 | `HARNESS_OTEL_INSECURE` | `apps/harness` | no | no | `true` | commented | — |
 | `HARNESS_OTEL_SERVICE_NAME` | `apps/harness` | no | no | `harness` | commented | — |
 | `HARNESS_OTEL_SERVICE_NAMESPACE` | `apps/harness` | no | no | `hope` | commented | — |
-| `HARNESS_PHI_ENABLED` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_PHI_FAIL_CLOSED` | `apps/harness` | no | no | `true` | commented | — |
-| `HARNESS_PHI_LOCAL_PROVIDERS` | `apps/harness` | no | no | `["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]` | commented | — |
 | `HARNESS_PORT` | `apps/harness` | no | no | `8866` | commented | — |
 | `HARNESS_PROMPT_SIZE_WARN_CHARS` | `apps/harness` | no | no | `400000` | commented | — |
 | `HARNESS_REDIS_URL` | `apps/harness` | no | no | `redis://localhost:6379/0` | commented | — |

@@ -23,12 +23,7 @@ function build() {
   const runs = { recordRunFinished: vi.fn().mockResolvedValue({}) };
   const harnessInternal = { failGovernedRun: vi.fn().mockResolvedValue({ transitioned: true, status: 'CLOSED_INCOMPLETE' }) };
   const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
-  const service = new WorkflowRunCompletionService(
-    runs as never,
-    cls as never,
-    { isRedisConfigured: () => false } as never,
-    harnessInternal as never,
-  );
+  const service = new WorkflowRunCompletionService(runs as never, cls as never, undefined, harnessInternal as never);
   return { service, runs, harnessInternal };
 }
 

@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput, ResolvedAgent, ResolvedPrompt
 from harness.temporal.interpreter.nodes import core
 from harness.temporal.interpreter.nodes._text_fallback import (
@@ -161,7 +162,6 @@ class TestCoreAgentDegradesOnAnUnresolvedVariable:
             return None
 
         monkeypatch.setattr(core, "record_and_flush", _noop)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
         def _install(answer: dict[str, Any]) -> list[dict[str, Any]]:
             calls: list[dict[str, Any]] = []
@@ -258,106 +258,6 @@ class TestCoreAgentBindingForm:
             )
 
         assert excinfo.value.path == "context.absent"
-
-
-class TestCoreAgentGuardrailDecision:
-    """§3.14 (OD-R) — the durable producer folds the opt-out and pushes it to TEXT.
-
-    Two of the three levels are in scope on this lane. The workflow default
-    (`policyBindings.guardrail`) is not: `workflow.py` does not thread it into
-    `NodeActivityInput`, so a workflow-level opt-out is honoured on the realtime lane and
-    inherited-as-ON here. That divergence is RECORDED (README §8/§9), not papered over with a
-    second read — which is why these cases pin node > agent > ON and nothing else.
-    """
-
-    @pytest.fixture
-    def captured(self, monkeypatch: pytest.MonkeyPatch):
-        async def _noop(*_args: Any, **_kwargs: Any) -> None:
-            return None
-
-        monkeypatch.setattr(core, "record_and_flush", _noop)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
-
-        def _install(wire: dict[str, Any]) -> list[dict[str, Any]]:
-            calls: list[dict[str, Any]] = []
-
-            class _Api:
-                async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
-                    return wire
-
-                async def get_policy(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
-                    return {"phiEnabled": False, "phiFailClosed": True}
-
-            class _Result:
-                content = "the note"
-                provider = "openai"
-                model = "gpt-x"
-                usage = {}
-
-            class _Text:
-                async def generate(self, **kwargs: Any) -> Any:
-                    calls.append(kwargs)
-                    return _Result()
-
-            monkeypatch.setattr(core, "_api_client", lambda _settings: _Api())
-            monkeypatch.setattr(core, "_text_client", lambda _settings: _Text())
-            return calls
-
-        return _install
-
-    async def _run(self, captured, node_config: dict[str, Any], agent_guardrail: Any = None):
-        wire = _resolved("Write the note.").model_dump(by_alias=True)
-        if agent_guardrail is not None:
-            wire["compiledConfig"]["guardrail"] = {"enabled": agent_guardrail}
-        calls = captured(wire)
-        result = await core.interpreter_core_agent(
-            NodeActivityInput(
-                node_id="agent1",
-                node_type="core.agent",
-                tenant_id=_TENANT,
-                run_id=_RUN,
-                config={"agentRef": {"slug": "discharge-writer"}, **node_config},
-                bound_inputs={"in": "the transcript"},
-                run_context=_run_context(),
-            )
-        )
-        return result, calls
-
-    @pytest.mark.asyncio
-    async def test_screens_by_default_and_says_so_explicitly(self, captured) -> None:
-        result, calls = await self._run(captured, {})
-
-        assert calls[0]["guardrail_policy"] == {"enabled": True}
-        assert result.output["guardrail"] == {"enabled": True, "source": "default"}
-
-    @pytest.mark.asyncio
-    async def test_honours_the_node_opt_out(self, captured) -> None:
-        result, calls = await self._run(captured, {"guardrail": {"enabled": False}})
-
-        assert calls[0]["guardrail_policy"] == {"enabled": False}
-        assert result.output["guardrail"] == {"enabled": False, "source": "node"}
-
-    @pytest.mark.asyncio
-    async def test_falls_through_to_the_agent_opinion(self, captured) -> None:
-        result, calls = await self._run(captured, {}, agent_guardrail=False)
-
-        assert calls[0]["guardrail_policy"] == {"enabled": False}
-        assert result.output["guardrail"] == {"enabled": False, "source": "agent"}
-
-    @pytest.mark.asyncio
-    async def test_the_node_overrides_the_agent_in_the_on_direction(self, captured) -> None:
-        _result, calls = await self._run(
-            captured, {"guardrail": {"enabled": True}}, agent_guardrail=False
-        )
-
-        assert calls[0]["guardrail_policy"] == {"enabled": True}
-
-    @pytest.mark.asyncio
-    async def test_a_malformed_agent_opinion_reads_as_screened(self, captured) -> None:
-        """On a safety gate, "unparseable" must never resolve to an opt-out."""
-        _result, calls = await self._run(captured, {}, agent_guardrail="false")
-
-        assert calls[0]["guardrail_policy"] == {"enabled": True}
 
 
 class TestSingleKindContextEnvelope:
@@ -632,7 +532,9 @@ class TestCoreAgentCompositeInstruction:
             )
 
         assert excinfo.value.path == "trigger.absent"
-        assert excinfo.value.template_ref == "agent:discharge-writer#revisit"
+        # TASK-1035 — `compose_messages` checks the whole SELECTED instruction before
+        # rendering and names every missing path against the agent, not one fragment.
+        assert excinfo.value.template_ref == "agent:discharge-writer"
 
     def test_a_join_absent_from_the_artifact_defaults(self) -> None:
         prompt = core._system_prompt(
@@ -662,7 +564,6 @@ class TestCoreAgentCompositeOnTheActivity:
 
         monkeypatch.setattr(core, "record_and_flush", _record)
         monkeypatch.setattr(core, "record_generation_and_flush", _record)
-        monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
         def _install(wire: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
             calls: list[dict[str, Any]] = []
@@ -725,7 +626,9 @@ class TestCoreAgentCompositeOnTheActivity:
 
         # TASK-1001 (OD-12) — no `output_language_policy` fragment was selected, so the platform
         # default's output-language step is the last paragraph.
-        assert calls[0]["system_prompt"] == "Base.\n\nAdult.\n\n" + _ENGLISH_STEP
+        assert calls[0]["system_prompt"] == (
+            platform_rules() + "\n\nBase.\n\nAdult.\n\n" + _ENGLISH_STEP
+        )
 
     @pytest.mark.asyncio
     async def test_the_selected_keys_ride_the_node_result(self, harness) -> None:
@@ -770,7 +673,7 @@ class TestCoreAgentCompositeOnTheActivity:
 
         assert result.status == "SUCCEEDED"
         assert result.prompt_fragments == ["base"]
-        assert calls[0]["system_prompt"] == "Base.\n\n" + _ENGLISH_STEP
+        assert calls[0]["system_prompt"] == platform_rules() + "\n\nBase.\n\n" + _ENGLISH_STEP
 
     @pytest.mark.asyncio
     async def test_an_empty_composition_degrades_with_the_named_code(self, harness) -> None:

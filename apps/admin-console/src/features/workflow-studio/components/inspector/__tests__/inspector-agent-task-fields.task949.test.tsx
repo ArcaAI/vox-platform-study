@@ -69,20 +69,20 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
     // Rendered outside the schema (its path is not a descriptor), so `withheld` cannot reach it
     // and it needs its own check -- found by driving the real app, not by the suite.
     const llm = renderNode(agentNode('gen-summary'), [LLM_AGENT]);
-    expect(llm.container.textContent).toContain('Prompt template');
+    expect(llm.container.textContent).toContain('Hope Prompt');
     llm.unmount();
     const asr = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
-    expect(asr.container.textContent).not.toContain('Prompt template');
+    expect(asr.container.textContent).not.toContain('Hope Prompt');
   });
 
   it('keeps the task-neutral fields for every task', () => {
     const { container } = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
-    // `execution` (lane/cadence), `guardrail` and `onError` are properties of the INSTANCE,
-    // not of the task, so every agent keeps them.
+    // `execution` (lane/cadence) and `onError` are properties of the INSTANCE, not of the
+    // task, so every agent keeps them. Guardrail screening is unconditional — no field.
     expect(container.textContent).toContain('Lane');
     expect(container.textContent).toContain('Cadence');
     expect(container.textContent).toContain('On Error');
-    expect(container.textContent).toContain('Guardrail');
+    expect(container.textContent).not.toContain('Guardrail');
   });
 
   it('does not hide the whole surface while the agent is still unresolved', () => {

@@ -1,0 +1,655 @@
+{
+  "_comment": "TASK-1036 §9.3 — the CROSS-LANGUAGE fixture for the consultation read schema (@arcaai/workflow-contract `consultation-read-schema.ts`; Python mirror: lane B1): the versioned schema itself (every leaf carries x-phiClass), every addressable path with its I/O type and PHI class, the 11 flat-alias mappings, and declared-read extraction cases. Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts.",
+  "version": 1,
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://arcaai.dev/hope/consultation-read-schema.v1.json",
+    "title": "consultation.* — the platform read model of one consultation (v1)",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "The consultation id.",
+        "x-phiClass": "NON_PHI"
+      },
+      "visitType": {
+        "type": "string",
+        "description": "The visit type (for example `new-visit`, `revisit`).",
+        "x-phiClass": "NON_PHI"
+      },
+      "department": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The consultation`s department.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The department id.",
+            "x-phiClass": "NON_PHI"
+          },
+          "code": {
+            "type": "string",
+            "description": "The department code.",
+            "x-phiClass": "NON_PHI"
+          },
+          "name": {
+            "type": "string",
+            "description": "The department name.",
+            "x-phiClass": "NON_PHI"
+          }
+        }
+      },
+      "language": {
+        "type": "string",
+        "description": "The SPOKEN language of the consultation (for example `en`, `ml-en`).",
+        "x-phiClass": "NON_PHI"
+      },
+      "outputLanguage": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The language the note is written in (the tenant`s output-language policy).",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The language code.",
+            "x-phiClass": "NON_PHI"
+          },
+          "name": {
+            "type": "string",
+            "description": "The language name (for example `English`).",
+            "x-phiClass": "NON_PHI"
+          }
+        }
+      },
+      "patient": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The patient, as held on the consultation.",
+        "properties": {
+          "age": {
+            "type": "integer",
+            "description": "Age in years.",
+            "x-phiClass": "PHI"
+          },
+          "gender": {
+            "type": "string",
+            "description": "Gender, as recorded.",
+            "x-phiClass": "PHI"
+          },
+          "dob": {
+            "type": "string",
+            "format": "date",
+            "description": "Date of birth.",
+            "x-phiClass": "PHI"
+          }
+        }
+      },
+      "clinician": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The treating clinician.",
+        "properties": {
+          "dna": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The clinician`s DNA writing profile.",
+            "properties": {
+              "style": {
+                "type": "string",
+                "description": "The effective writing-style guidance (style, not patient data).",
+                "x-phiClass": "NON_PHI"
+              },
+              "rules": {
+                "type": "string",
+                "description": "The clinician`s redaction / rewrite rules.",
+                "x-phiClass": "PHI"
+              }
+            }
+          }
+        }
+      },
+      "transcript": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The consultation transcript so far.",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The transcript text, utterances joined in spoken order.",
+            "x-phiClass": "PHI"
+          },
+          "segments": {
+            "type": "array",
+            "description": "Per-utterance timing and speaker.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "One transcribed utterance.",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "What was said.",
+                  "x-phiClass": "PHI"
+                },
+                "speaker": {
+                  "type": "string",
+                  "description": "Who said it (a diarization label or a role).",
+                  "x-phiClass": "PHI"
+                },
+                "start": {
+                  "type": "number",
+                  "description": "Seconds from the capture start.",
+                  "x-phiClass": "NON_PHI"
+                },
+                "end": {
+                  "type": "number",
+                  "description": "Seconds from the capture start.",
+                  "x-phiClass": "NON_PHI"
+                }
+              }
+            }
+          }
+        }
+      },
+      "items": {
+        "type": "array",
+        "description": "Every context item: case notes, attachments, vitals, tests, prior visits.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "One context item of the consultation, in arrival order.",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The context item id.",
+              "x-phiClass": "NON_PHI"
+            },
+            "kind": {
+              "type": "string",
+              "enum": ["CASE_NOTE", "ATTACHMENT", "VITALS", "TEST_RESULT", "PRIOR_VISIT"],
+              "description": "What the item is.",
+              "x-phiClass": "NON_PHI"
+            },
+            "text": {
+              "type": "string",
+              "description": "The item`s text content (a case note, a formatted result).",
+              "x-phiClass": "PHI"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the item was added.",
+              "x-phiClass": "PHI"
+            },
+            "attachment": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A file attached to the consultation, by reference.",
+              "properties": {
+                "mediaId": {
+                  "type": "string",
+                  "description": "The stored media id (a reference, never the bytes).",
+                  "x-phiClass": "NON_PHI"
+                },
+                "mime": {
+                  "type": "string",
+                  "description": "The media type (`text/plain`, `text/markdown`, `application/pdf`, `image/jpeg`).",
+                  "x-phiClass": "NON_PHI"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The file name as uploaded — may name the patient.",
+                  "x-phiClass": "PHI"
+                },
+                "size": {
+                  "type": "integer",
+                  "description": "Size in bytes.",
+                  "x-phiClass": "NON_PHI"
+                }
+              }
+            }
+          }
+        }
+      },
+      "notes": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The notes generated for this consultation.",
+        "properties": {
+          "preSummary": {
+            "type": "string",
+            "description": "The pre-summary of the prior record.",
+            "x-phiClass": "PHI"
+          },
+          "summary": {
+            "type": "string",
+            "description": "The current running note or summary.",
+            "x-phiClass": "PHI"
+          }
+        }
+      },
+      "vitals": {
+        "type": "array",
+        "description": "The measured vitals.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "One measured vital sign.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The vital measured (blood pressure, pulse, temperature, …).",
+              "x-phiClass": "NON_PHI"
+            },
+            "value": {
+              "type": "string",
+              "description": "The measured value, as recorded.",
+              "x-phiClass": "PHI"
+            },
+            "unit": {
+              "type": "string",
+              "description": "The unit of the value.",
+              "x-phiClass": "NON_PHI"
+            },
+            "measuredAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When it was measured.",
+              "x-phiClass": "PHI"
+            }
+          }
+        }
+      },
+      "testResults": {
+        "type": "array",
+        "description": "The investigation results.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "One investigation result.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The investigation (a test name can itself disclose a condition).",
+              "x-phiClass": "PHI"
+            },
+            "value": {
+              "type": "string",
+              "description": "The result value, as reported.",
+              "x-phiClass": "PHI"
+            },
+            "unit": {
+              "type": "string",
+              "description": "The unit of the value.",
+              "x-phiClass": "NON_PHI"
+            },
+            "flag": {
+              "type": "string",
+              "description": "Abnormal flag or reference-range note, when reported.",
+              "x-phiClass": "PHI"
+            },
+            "takenAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the sample was taken or the result reported.",
+              "x-phiClass": "PHI"
+            }
+          }
+        }
+      },
+      "previousVisits": {
+        "type": "array",
+        "description": "Earlier visits of this patient, newest first.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "One earlier visit of this patient.",
+          "properties": {
+            "consultationId": {
+              "type": "string",
+              "description": "The earlier consultation`s id.",
+              "x-phiClass": "NON_PHI"
+            },
+            "date": {
+              "type": "string",
+              "format": "date",
+              "description": "When the visit took place.",
+              "x-phiClass": "PHI"
+            },
+            "department": {
+              "type": "string",
+              "description": "The department of that visit.",
+              "x-phiClass": "NON_PHI"
+            },
+            "summary": {
+              "type": "string",
+              "description": "That visit`s note or summary.",
+              "x-phiClass": "PHI"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": [
+    {
+      "path": "consultation.id",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The consultation id."
+    },
+    {
+      "path": "consultation.visitType",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The visit type (for example `new-visit`, `revisit`)."
+    },
+    {
+      "path": "consultation.department",
+      "type": "json",
+      "phiClass": "NON_PHI",
+      "description": "The consultation`s department."
+    },
+    {
+      "path": "consultation.department.id",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The department id."
+    },
+    {
+      "path": "consultation.department.code",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The department code."
+    },
+    {
+      "path": "consultation.department.name",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The department name."
+    },
+    {
+      "path": "consultation.language",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The SPOKEN language of the consultation (for example `en`, `ml-en`)."
+    },
+    {
+      "path": "consultation.outputLanguage",
+      "type": "json",
+      "phiClass": "NON_PHI",
+      "description": "The language the note is written in (the tenant`s output-language policy)."
+    },
+    {
+      "path": "consultation.outputLanguage.code",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The language code."
+    },
+    {
+      "path": "consultation.outputLanguage.name",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The language name (for example `English`)."
+    },
+    {
+      "path": "consultation.patient",
+      "type": "json",
+      "phiClass": "PHI",
+      "description": "The patient, as held on the consultation."
+    },
+    {
+      "path": "consultation.patient.age",
+      "type": "number",
+      "phiClass": "PHI",
+      "description": "Age in years."
+    },
+    {
+      "path": "consultation.patient.gender",
+      "type": "text",
+      "phiClass": "PHI",
+      "description": "Gender, as recorded."
+    },
+    {
+      "path": "consultation.patient.dob",
+      "type": "date",
+      "phiClass": "PHI",
+      "description": "Date of birth."
+    },
+    {
+      "path": "consultation.clinician",
+      "type": "json",
+      "phiClass": "PHI",
+      "description": "The treating clinician."
+    },
+    {
+      "path": "consultation.clinician.dna",
+      "type": "json",
+      "phiClass": "PHI",
+      "description": "The clinician`s DNA writing profile."
+    },
+    {
+      "path": "consultation.clinician.dna.style",
+      "type": "text",
+      "phiClass": "NON_PHI",
+      "description": "The effective writing-style guidance (style, not patient data)."
+    },
+    {
+      "path": "consultation.clinician.dna.rules",
+      "type": "text",
+      "phiClass": "PHI",
+      "description": "The clinician`s redaction / rewrite rules."
+    },
+    {
+      "path": "consultation.transcript",
+      "type": "json",
+      "phiClass": "PHI",
+      "description": "The consultation transcript so far."
+    },
+    {
+      "path": "consultation.transcript.text",
+      "type": "text",
+      "phiClass": "PHI",
+      "description": "The transcript text, utterances joined in spoken order."
+    },
+    {
+      "path": "consultation.transcript.segments",
+      "type": "list<json>",
+      "phiClass": "PHI",
+      "description": "Per-utterance timing and speaker."
+    },
+    {
+      "path": "consultation.items",
+      "type": "list<json>",
+      "phiClass": "PHI",
+      "description": "Every context item: case notes, attachments, vitals, tests, prior visits."
+    },
+    {
+      "path": "consultation.notes",
+      "type": "json",
+      "phiClass": "PHI",
+      "description": "The notes generated for this consultation."
+    },
+    {
+      "path": "consultation.notes.preSummary",
+      "type": "text",
+      "phiClass": "PHI",
+      "description": "The pre-summary of the prior record."
+    },
+    {
+      "path": "consultation.notes.summary",
+      "type": "text",
+      "phiClass": "PHI",
+      "description": "The current running note or summary."
+    },
+    {
+      "path": "consultation.vitals",
+      "type": "list<json>",
+      "phiClass": "PHI",
+      "description": "The measured vitals."
+    },
+    {
+      "path": "consultation.testResults",
+      "type": "list<json>",
+      "phiClass": "PHI",
+      "description": "The investigation results."
+    },
+    {
+      "path": "consultation.previousVisits",
+      "type": "list<json>",
+      "phiClass": "PHI",
+      "description": "Earlier visits of this patient, newest first."
+    }
+  ],
+  "aliases": {
+    "context.current_department": {
+      "path": "consultation.department.name",
+      "formatting": "The department name; \"General\" when unknown."
+    },
+    "context.dna_redaction_rules_text": {
+      "path": "consultation.clinician.dna.rules",
+      "formatting": "The rules as a bullet list; empty when none."
+    },
+    "context.dna_style_text": {
+      "path": "consultation.clinician.dna.style",
+      "formatting": "The effective style text; empty when none."
+    },
+    "context.formatted_previous_visits": {
+      "path": "consultation.previousVisits",
+      "formatting": "One block per visit, newest first; \"\" when none."
+    },
+    "context.formatted_test_results": {
+      "path": "consultation.testResults",
+      "formatting": "One line per result; \"\" when none."
+    },
+    "context.language_name": {
+      "path": "consultation.outputLanguage.name",
+      "formatting": "The language name; \"English\" by default."
+    },
+    "context.safe_age": {
+      "path": "consultation.patient.age",
+      "formatting": "The age as text; \"Unknown\" when not held."
+    },
+    "context.safe_dob": {
+      "path": "consultation.patient.dob",
+      "formatting": "The date as text; \"Unknown\" when not held."
+    },
+    "context.safe_gender": {
+      "path": "consultation.patient.gender",
+      "formatting": "The gender as text; \"Unknown\" when not held."
+    },
+    "context.safe_vitals": {
+      "path": "consultation.vitals",
+      "formatting": "One line per vital; \"Not available\" when none."
+    },
+    "context.visit_type": {
+      "path": "consultation.visitType",
+      "formatting": "The visit type as stored."
+    }
+  },
+  "declaredReads": [
+    {
+      "name": "bindings-and-templates",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_a",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "template": "Age {{consultation.patient.age}}, sex {{ consultation.patient.gender }}"
+                },
+                "context": {
+                  "from": "consultation.notes.preSummary",
+                  "at": "runStart"
+                }
+              },
+              "overrides": {
+                "promptVariables": {
+                  "dob": "{{consultation.patient.dob}}",
+                  "plain": "{{context.x}}"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_b",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "nodes.n_a.outputs.text"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expected": {
+        "n_a": [
+          {
+            "path": "consultation.notes.preSummary",
+            "at": "runStart"
+          },
+          {
+            "path": "consultation.patient.age",
+            "at": "nodeStart"
+          },
+          {
+            "path": "consultation.patient.dob",
+            "at": "nodeStart"
+          },
+          {
+            "path": "consultation.patient.gender",
+            "at": "nodeStart"
+          }
+        ]
+      }
+    },
+    {
+      "name": "node-start-wins-over-run-start",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_a",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "gen"
+              },
+              "inputs": {
+                "message": {
+                  "from": "consultation.transcript.text",
+                  "at": "runStart"
+                },
+                "context": {
+                  "from": "consultation.transcript.text"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expected": {
+        "n_a": [
+          {
+            "path": "consultation.transcript.text",
+            "at": "nodeStart"
+          }
+        ]
+      }
+    }
+  ]
+}

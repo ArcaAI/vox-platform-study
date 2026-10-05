@@ -11,6 +11,7 @@ export * from './sysEvent';
 export * from './globalSetting';
 // Kafka service removed - using Redis for job queues and PostgreSQL for audit logs
 export * from './media';
+export * from './media-upload';
 export * from './notification';
 export * from './resourceSubscription';
 export * from './security';
@@ -73,6 +74,7 @@ export * from './text';
 // BUG-018 — the shared TEXT request-enrichment service (tenant BYO credentials
 // + runtime profile) used by both the TEXT proxy and the prompt-test bench.
 export * from './text-request';
+export * from './composed-prompt';
 export * from './stt';
 // The SYSTEM-only model registry (TASK-860): catalogue CRUD, publish-to-bucket, inventory.
 export * from './ai-model';
@@ -149,6 +151,8 @@ export * from './workflow-test-fixture';
 // WorkflowDefinition CRUD + compile/validate/publish lifecycle — wires
 // @arcaai/workflow-contract's compiler/validator into the application layer.
 export * from './workflow-definition';
+// TASK-1036 §9.3 / TASK-1038 — the `consultation.*` declared-read plane.
+export * from './consultation-read';
 // The DB-backed rule-set half of the validator — resolves
 // SYSTEM ∪ tenant `WorkflowInvariantRule` rows, merges them one-way-strict, and
 // evaluates a graph against the result. Total: never throws, never `ok: true`

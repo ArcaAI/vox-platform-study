@@ -1,27 +1,35 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import {
+  HarnessGatewayService,
   HarnessInternalService,
-  IConfigService,
   IWorkflowRunService,
+  TenantSettingsService,
   createWorkerSession,
+  deliveredRunResultFrom,
   interpreterSessionId,
+  isDeliveredRunResult,
   terminalStatusOf,
 } from '@arcaai/applications';
-import type { IActiveUserContext } from '@arcaai/applications';
-import { RESUME_FROM_BEGINNING, parseAsyncEnvelope } from '@arcaai/async-contract';
+import type { DeliveredRunResult, IActiveUserContext } from '@arcaai/applications';
+import { RESUME_FROM_BEGINNING, parseStoredRunEvent } from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
-import Redis from 'ioredis';
-import { runCompletedCountsFromPayload } from './run-completed-counts';
+import { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 import type { RunCompletedCounts } from './run-completed-counts';
-import { WORKFLOW_RUN_COMPLETED, runEventStreamKey } from './workflow-run-event';
+import { RunEventStreamHub } from './run-event-stream-hub';
+import { RunEventFold, terminalOutcomeOf } from './run-protocol-delivery';
+import { terminalCheckIntervalMs } from './run-stream-delivery';
+import { runEventStreamKey } from './workflow-run-event';
 
-export { runCompletedCountsFromPayload } from './run-completed-counts';
+export { runCompletedCountsFromPayload, runCompletedCountsFromStages } from './run-completed-counts';
 export type { RunCompletedCounts } from './run-completed-counts';
 
 /** How long ONE watcher stays attached before giving up — a run's own ceiling, not a poll interval. */
 export const RUN_COMPLETION_WATCH_CEILING_MS = 6 * 60 * 60 * 1000;
-/** A single blocking `XREAD` parks this long before re-checking liveness. */
+/** A single read waits this long for new entries before re-checking liveness. */
 const RUN_COMPLETION_BLOCK_MS = 15_000;
+/** R-2 — backoff after a failed read: doubles from the floor to the cap, reset on success. */
+export const RUN_COMPLETION_RETRY_FLOOR_MS = 250;
+export const RUN_COMPLETION_RETRY_CAP_MS = 30_000;
 /** Watchers per process. A run past the cap is reconciled by the next status read, as before. */
 export const RUN_COMPLETION_MAX_WATCHERS = 256;
 
@@ -41,41 +49,48 @@ export const RUN_COMPLETION_MAX_WATCHERS = 256;
  * (Temporal + the retained stream), a watcher is one blocking `XREAD` on a dedicated connection,
  * and a run that outlives the ceiling or a restart is still reconciled by the next status read,
  * exactly as before. Recorded as a deviation from the ticket's "BullMQ processor" wording.
+ *
+ * TASK-1038: reads go through the shared `RunEventStreamHub` (R-1 — a watcher no longer holds a
+ * place in a per-service connection queue). A failed read is RETRIED with exponential backoff
+ * instead of silently ending the watcher (R-2), and an idle watcher re-asks the harness for the
+ * run's status every `workflowRuns.streamTerminalCheckSeconds`, so a completion event that was
+ * lost still reaches the read model. The completed event's `payload.result` — the delivered
+ * output, inline or as a claim-check ref — is persisted as `WorkflowRun.resultRef` (D-I).
  */
 @Injectable()
 export class WorkflowRunCompletionService implements OnModuleDestroy {
   private readonly logger = new Logger(WorkflowRunCompletionService.name);
   private readonly watching = new Map<string, Promise<void>>();
-  private redis: Redis | null = null;
-  private redisUnavailable = false;
-  private closed = false;
+  private readonly shutdown = new AbortController();
 
   constructor(
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
     private readonly cls: ClsService<IActiveUserContext>,
-    @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // TASK-1038 — the shared multiplexed reader. `@Optional()`: absent (or no Redis), no watcher
+    // is attached and the next status read reconciles the run, exactly as before.
+    @Optional() private readonly hub?: RunEventStreamHub,
     // TASK-946 OD-4 — the consultation lifecycle's single writer for this outcome. `@Optional()`
     // so a Nest context without the harness-internal plane still records run terminality; absent
     // ⇒ a failed consultation run leaves the consultation to the 24h timeout sweep, which is the
     // pre-existing behaviour rather than a new failure.
     @Optional() private readonly harnessInternal?: HarnessInternalService,
+    // TASK-1038 R-2 — the idle re-check asks the harness directly; there is no slug or caller
+    // here, so the exposure plane's `getRunStatus` is not the right door. Absent ⇒ no re-check.
+    @Optional() private readonly harnessGateway?: HarnessGatewayService,
+    @Optional() private readonly settings?: TenantSettingsService,
   ) {}
 
   async onModuleDestroy(): Promise<void> {
-    this.closed = true;
-    if (this.redis) {
-      await this.redis.quit().catch(() => {});
-      this.redis = null;
-    }
+    this.shutdown.abort();
   }
 
   /** Attach a watcher for `runId`. Idempotent; never throws; returns whether one is attached. */
   watch(tenantId: string, runId: string, consultationId?: string | null): boolean {
-    if (this.closed || this.watching.has(runId)) return this.watching.has(runId);
+    if (this.shutdown.signal.aborted || this.watching.has(runId)) return this.watching.has(runId);
     if (this.watching.size >= RUN_COMPLETION_MAX_WATCHERS) return false;
-    const redis = this.reader();
-    if (redis === null) return false;
-    const task = this.consume(redis, tenantId, runId, consultationId ?? null)
+    const hub = this.hub;
+    if (!hub?.available()) return false;
+    const task = this.consume(hub, tenantId, runId, consultationId ?? null)
       .catch((err) => this.logger.warn({ message: 'run completion watcher failed', runId, error: err instanceof Error ? err.message : String(err) }))
       .finally(() => this.watching.delete(runId));
     this.watching.set(runId, task);
@@ -87,32 +102,102 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     return this.watching.size;
   }
 
-  private async consume(redis: Redis, tenantId: string, runId: string, consultationId: string | null): Promise<void> {
+  private async consume(hub: RunEventStreamHub, tenantId: string, runId: string, consultationId: string | null): Promise<void> {
     const streamKey = runEventStreamKey(runId);
     const deadline = Date.now() + RUN_COMPLETION_WATCH_CEILING_MS;
+    const checkEveryMs = terminalCheckIntervalMs(this.settings);
+    const signal = this.shutdown.signal;
+    let lastCheck = Date.now();
+    let backoffMs = 0;
     let cursor = RESUME_FROM_BEGINNING;
-    while (!this.closed && Date.now() < deadline) {
-      const result = await redis.xread('COUNT', 200, 'BLOCK', RUN_COMPLETION_BLOCK_MS, 'STREAMS', streamKey, cursor);
-      if (!result) continue;
-      for (const [entryId, fields] of result[0][1] as [string, string[]][]) {
-        cursor = entryId;
-        const envelope = this.parse(fields);
-        if (envelope?.type !== WORKFLOW_RUN_COMPLETED) continue;
-        const payload = envelope.payload as Record<string, unknown> | undefined;
-        const status = terminalStatusOf(payload?.status);
+    const fold = new RunEventFold();
+
+    while (!signal.aborted && Date.now() < deadline) {
+      let entries;
+      try {
+        entries = await hub.read(streamKey, cursor, {
+          timeoutMs: Math.min(RUN_COMPLETION_BLOCK_MS, checkEveryMs, Math.max(1, deadline - Date.now())),
+          signal,
+        });
+        backoffMs = 0;
+      } catch (err) {
+        // R-2 — a transient Redis failure used to END the watcher, leaving the run `RUNNING` in
+        // the read model until someone happened to read it. Retry instead; the stream is durable.
+        backoffMs = Math.min(RUN_COMPLETION_RETRY_CAP_MS, Math.max(RUN_COMPLETION_RETRY_FLOOR_MS, backoffMs * 2));
+        this.logger.warn({
+          message: 'run completion watcher read failed — retrying',
+          runId,
+          backoffMs,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await abortableSleep(backoffMs, signal);
+        continue;
+      }
+
+      for (const entry of entries) {
+        cursor = entry.id;
+        // TASK-1038 B3a — producers write protocol v2 from this release; the node events are
+        // folded for the TASK-982 counts (`run.completed` does not carry them), and a pre-v2
+        // `workflow.run.completed` of a run that started before the deploy still ends the watch.
+        const parsed = parseStoredRunEvent(runId, entry.fields);
+        if (parsed.kind === 'event') fold.apply(parsed.event);
+        const outcome = terminalOutcomeOf(runId, entry.fields);
+        if (outcome === null) continue;
+        const status = terminalStatusOf(outcome.status);
         if (status === null) return;
+        void hub.expireAfterTerminal(runId);
+        const counts = outcome.legacyPayload ? runCompletedCountsFromPayload(outcome.legacyPayload) : (fold.counts() ?? {});
         await this.recordTerminal(
           tenantId,
           runId,
           status,
-          String(payload?.status),
-          envelope.occurredAt,
+          outcome.reason ?? outcome.status,
+          outcome.occurredAt,
           consultationId,
-          runCompletedCountsFromPayload(payload),
+          counts,
+          deliveredRunResultFrom({ result: outcome.result }),
         );
         return;
       }
+
+      if (entries.length === 0 && !signal.aborted && Date.now() - lastCheck >= checkEveryMs) {
+        lastCheck = Date.now();
+        if (await this.reconcileFromHarness(hub, tenantId, runId, consultationId, fold)) return;
+      }
     }
+  }
+
+  /**
+   * R-2 — the terminal fallback. The run's completion event never reached its stream (or was
+   * trimmed away); ask the harness. A terminal answer is recorded with what the harness knows —
+   * no result, which stays as it is rather than being invented.
+   *
+   * TASK-1036 (lane B6b) — the TASK-982 counts are no longer dropped on this path: the node events
+   * this watcher folded are the run's own record (whole-run only, `fold.counts()`); failing that,
+   * the harness state query's settled `stages` are. Neither ⇒ the columns stay untouched.
+   */
+  private async reconcileFromHarness(
+    hub: RunEventStreamHub,
+    tenantId: string,
+    runId: string,
+    consultationId: string | null,
+    fold?: RunEventFold,
+  ): Promise<boolean> {
+    if (!this.harnessGateway) return false;
+    // swallow-ok: the idle re-check is a fallback; an unreachable harness means "ask again next interval", never a terminal status.
+    const upstream = await this.harnessGateway.getWorkflowRun(runId).catch(() => null);
+    const status = terminalStatusOf(upstream?.status);
+    if (!upstream || status === null) return false;
+    this.logger.warn({
+      message: 'run reached a terminal state without a completion event on its stream — recording it from the harness',
+      runId,
+      status,
+    });
+    void hub.expireAfterTerminal(runId);
+    const folded = fold?.counts();
+    const counts = folded && (folded.nodeCount ?? 0) > 0 ? folded : runCompletedCountsFromStages(upstream.stages);
+    await this.recordTerminal(tenantId, runId, status, String(upstream.status), upstream.endedAt ?? new Date().toISOString(), consultationId, counts);
+    return true;
   }
 
   /**
@@ -138,6 +223,9 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
     endedAt: string,
     consultationId: string | null,
     counts: RunCompletedCounts = {},
+    // TASK-1038 D-I — the run's delivered output from the completed event, already validated by
+    // `deliveredRunResultFrom`. `undefined` leaves `WorkflowRun.resultRef` untouched.
+    result?: DeliveredRunResult,
   ): Promise<void> {
     // A CLS context carrying the run's tenant: `broadcastSysEvent` stamps `tenantId` from CLS,
     // and the webhook matcher finds a tenant's subscriptions by it. Without this the event would
@@ -162,6 +250,7 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
           failedNodeCount: counts.failedNodeCount,
           degradedNodeCount: counts.degradedNodeCount,
           skippedNodeCount: counts.skippedNodeCount,
+          ...(isDeliveredRunResult(result) ? { resultRef: result as unknown as Record<string, unknown> } : {}),
         });
       } catch (err) {
         this.logger.warn({
@@ -219,29 +308,17 @@ export class WorkflowRunCompletionService implements OnModuleDestroy {
       }
     });
   }
+}
 
-  private parse(fields: string[]): ReturnType<typeof parseAsyncEnvelope> {
-    for (let i = 0; i < fields.length; i += 2) {
-      if (fields[i] !== 'data') continue;
-      try {
-        return parseAsyncEnvelope(JSON.parse(fields[i + 1]));
-      } catch {
-        return null;
-      }
+function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
     }
-    return null;
-  }
-
-  private reader(): Redis | null {
-    if (this.redis) return this.redis;
-    if (this.redisUnavailable) return null;
-    if (!this.configService?.isRedisConfigured()) {
-      this.redisUnavailable = true;
-      return null;
-    }
-    const config = this.configService.getRedisConfig();
-    // Dedicated: a blocking XREAD occupies its connection for the whole BLOCK window.
-    this.redis = new Redis({ host: config.host, port: config.port, password: config.password, maxRetriesPerRequest: null, lazyConnect: false });
-    return this.redis;
-  }
+    signal.addEventListener('abort', done, { once: true });
+  });
 }

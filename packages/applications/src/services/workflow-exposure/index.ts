@@ -9,3 +9,5 @@ export * from './workflow-exposure.dto.mapper';
 export * from './workflow-exposure.service';
 export * from './workflow-schema-description';
 export * from './workflow-exposure.service.module';
+// TASK-1036 (OD-4) — the settings gate the socket ticket route asks.
+export * from './workflow-entry-gate.service';

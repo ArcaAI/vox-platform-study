@@ -44,6 +44,13 @@ export interface IWorkflowRunService {
   recordRunFinished(input: RecordRunFinishedInput): Promise<WorkflowRunResponse>;
 
   /**
+   * TASK-1038 E2 (fix 11) — the request-body fingerprint an `Idempotency-Key` start stamped on the
+   * run row (`_metadata.requestBodyHash`), or `null` when it carries none (no key, or a row
+   * started before fingerprints existed). Cross-tenant id throws `NotFoundException`.
+   */
+  getRunRequestBodyHash(tenantId: string, runId: string): Promise<string | null>;
+
+  /**
    * TASK-1022 A2 — close the row of a run another run superseded, without rewriting history: a
    * `RUNNING` row becomes `CANCELED` (ended now, with the run-finished sys-event); a terminal row
    * keeps its status and `endedAt`. Both record `_metadata.supersededBy`. Missing row → 404.

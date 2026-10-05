@@ -21,7 +21,9 @@ import {
   SelectValue,
   Switch,
 } from '@arcaai/ui';
+import type { VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import type { FieldDescriptor } from '../../lib/schema-form';
+import type { PickerGroup } from '../../lib/picker-model';
 import { CelExpressionField } from './cel-expression-field';
 import { FieldCopy, summaryOf } from './field-copy';
 import { getAtPath, setAtPath } from './field-path';
@@ -45,6 +47,10 @@ export interface FieldRendererProps {
   idPrefix: string;
   /** Run-context references the CEL editor offers as quick inserts (TASK-864 B1). */
   references?: readonly string[];
+  /** The workflow's schema paths (`trigger.*` / `context.*`), completed by the CEL editor. */
+  schemaPaths?: readonly VariablePath[];
+  /** TASK-1036 R-C #5 — the composer's condition picker groups, for a CEL field's "+ Insert field". */
+  pickerGroups?: readonly PickerGroup[];
   /**
    * TASK-890 §3.10 — a per-PATH escape hatch for a field NESTED inside a schema `group` (e.g.
    * `overrides.promptVariables`, buried inside `core.agent`'s `overrides` object). The top-level
@@ -71,7 +77,7 @@ function fieldId(idPrefix: string, path: string): string {
   return `${idPrefix}-${path || 'root'}`;
 }
 
-export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownErrors, errorsFor, idPrefix, references, fieldOverrides }: FieldRendererProps) {
+export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownErrors, errorsFor, idPrefix, references, schemaPaths, pickerGroups, fieldOverrides }: FieldRendererProps) {
   const id = fieldId(idPrefix, descriptor.path);
   const value = getAtPath(config, descriptor.path);
   const set = (next: unknown) => onConfigChange(setAtPath(config, descriptor.path, next));
@@ -93,7 +99,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownE
         <FieldCopy label={descriptor.label} summary={summaryOf(descriptor)} description={descriptor.description} />
         <div className="flex flex-col gap-4 pl-4">
           {descriptor.fields.map((field) => (
-            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
+            <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} schemaPaths={schemaPaths} pickerGroups={pickerGroups} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
           ))}
         </div>
         <FieldError errors={errors?.map((message) => ({ message }))} />
@@ -130,7 +136,7 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownE
         {currentBranch ? (
           <div className="flex flex-col gap-4 pl-4">
             {currentBranch.fields.map((field) => (
-              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
+              <FieldRenderer key={field.path} descriptor={field} config={config} onConfigChange={onConfigChange} idPrefix={idPrefix} references={references} schemaPaths={schemaPaths} pickerGroups={pickerGroups} fieldOverrides={fieldOverrides} errorsFor={errorsFor} />
             ))}
           </div>
         ) : null}
@@ -252,6 +258,8 @@ export function FieldRenderer({ descriptor, config, onConfigChange, errors: ownE
         onChange={set}
         errors={errors}
         references={references}
+        paths={schemaPaths}
+        groups={pickerGroups}
       />
     );
   }

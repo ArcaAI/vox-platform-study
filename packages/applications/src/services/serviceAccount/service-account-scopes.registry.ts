@@ -117,8 +117,12 @@ export function toServiceAccountScope(apiKeyScope: string): string {
  * (guardrail moderation, medical NLP, speech synthesis) that the requirement
  * does not name, and deny-by-default means silence is a refusal, not an
  * oversight. Adding one is a single line here plus a decorator — see the ticket.
+ *
+ * TASK-1038 (F1) — `media:write` joined them: `POST /media`, the tenant media upload a run's
+ * attachments and audio blobs are referenced from, is a standalone business-plane feature in
+ * exactly this sense (the API-key class reaches it, so the machine class must reach the same).
  */
-export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'consultation:report:write'] as const;
+export const STANDALONE_FEATURE_SCOPE_SOURCES = ['stt:transcription:write', 'consultation:report:write', 'media:write'] as const;
 
 /** The renamespaced form of {@link STANDALONE_FEATURE_SCOPE_SOURCES}. */
 export const STANDALONE_FEATURE_SVC_SCOPES: readonly string[] = STANDALONE_FEATURE_SCOPE_SOURCES.map(toServiceAccountScope);

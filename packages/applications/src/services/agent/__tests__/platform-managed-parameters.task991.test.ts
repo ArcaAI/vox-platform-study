@@ -26,26 +26,30 @@ const EMBEDDING_PATH = 'audioFrontEnd.diarization.embeddingModelSlug';
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
 describe('the locked paths come from the contract, not from a list in the service', () => {
-  it('locks exactly the speaker-embedding slug on SPEECH_TO_TEXT', () => {
-    expect(platformManagedParameterPaths(AgentTask.SPEECH_TO_TEXT)).toEqual([EMBEDDING_PATH]);
-  });
-
-  it('locks nothing on the other three tasks — this is a voice-profile rule, not a blanket freeze', () => {
-    expect(platformManagedParameterPaths(AgentTask.TEXT_GENERATION)).toEqual([]);
-    expect(platformManagedParameterPaths(AgentTask.TEXT_TO_SPEECH)).toEqual([]);
-    expect(platformManagedParameterPaths(AgentTask.NAMED_ENTITY_RECOGNITION)).toEqual([]);
+  // TASK-1036 W2 / OD-11 generalised the lock from this one `readOnly` path to every
+  // `x-platformManaged` leaf (`platform-managed-parameters.task1036.test.ts` pins the full set).
+  // The voice-profile lock this file is about is still part of it.
+  it('still locks the speaker-embedding slug on SPEECH_TO_TEXT', () => {
+    expect(platformManagedParameterPaths(AgentTask.SPEECH_TO_TEXT)).toContain(EMBEDDING_PATH);
   });
 
   describe('platformManagedParameterChanges', () => {
-    const stored = { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } }, decoding: { beamSize: 5 } };
+    // `vad.enabled` is a tenant-editable switch (TASK-1036 §8.6); `decoding.*` became platform-managed.
+    const stored = { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' }, vad: { enabled: true } } };
 
     it('reports nothing when the value is written back unchanged beside a real edit', () => {
-      const next = { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } }, decoding: { beamSize: 1 } };
+      const next = { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' }, vad: { enabled: false } } };
       expect(platformManagedParameterChanges(AgentTask.SPEECH_TO_TEXT, next, stored)).toEqual([]);
     });
 
     it('reports nothing when the path is absent from BOTH — an agent that never diarized stays editable', () => {
-      expect(platformManagedParameterChanges(AgentTask.SPEECH_TO_TEXT, { decoding: { beamSize: 1 } }, { decoding: { beamSize: 5 } })).toEqual([]);
+      expect(
+        platformManagedParameterChanges(
+          AgentTask.SPEECH_TO_TEXT,
+          { audioFrontEnd: { vad: { enabled: false } } },
+          { audioFrontEnd: { vad: { enabled: true } } },
+        ),
+      ).toEqual([]);
     });
 
     it('reports a swap', () => {
@@ -53,6 +57,8 @@ describe('the locked paths come from the contract, not from a list in the servic
       expect(platformManagedParameterChanges(AgentTask.SPEECH_TO_TEXT, next, stored)).toEqual([EMBEDDING_PATH]);
     });
 
+    // The PURE comparison still calls a removal a change. On the write path a tenant's omission
+    // never reaches it as one: TASK-1036 W2 carries the stored value forward first (see below).
     it('reports a REMOVAL — dropping the key is the same breakage by another route', () => {
       // Not a no-op: `buildResolvedAsrSpec` then refuses the spec (409
       // ASR_AGENT_DIARIZATION_MODEL_MISSING) instead of diarizing at all.
@@ -215,21 +221,37 @@ describe('AgentService.update — the platform-managed lock (TASK-991 OD-3)', ()
     ).rejects.toMatchObject({ response: { message: expect.stringContaining(EMBEDDING_PATH) } });
   });
 
-  it('REFUSES a removal as firmly as a swap', async () => {
+  // TASK-1036 W2 — an OMITTED locked value is no longer a removal on the write path: the stored
+  // slug is carried forward, so the breakage this lock exists for still cannot be introduced.
+  it('a tenant OMITTING the locked value keeps it — the stored slug is carried forward, never dropped', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(sttAgent());
-    await expect(makeService().update('agent-1', { parameters: { audioFrontEnd: { diarization: { enabled: false } } } })).rejects.toMatchObject({
-      response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED' },
+    await makeService().update('agent-1', { parameters: { audioFrontEnd: { diarization: { enabled: false } } } });
+    expect(persisted()).toMatchObject({
+      audioFrontEnd: { diarization: { enabled: false, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } },
+      decoding: { beamSize: 5 },
     });
+  });
+
+  it('REFUSES an explicit null over the locked value as firmly as a swap', async () => {
+    mockAgentRepository.findByIdVisible.mockResolvedValue(sttAgent());
+    await expect(
+      makeService().update('agent-1', { parameters: { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: null } } } }),
+    ).rejects.toMatchObject({ response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED' } });
     expect(mockAgentRepository.updateWithVersion).not.toHaveBeenCalled();
   });
 
   it('PASSES an ordinary edit that sends the locked value back unchanged', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(sttAgent());
     await makeService().update('agent-1', {
-      parameters: { audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } }, decoding: { beamSize: 1 } },
+      parameters: {
+        audioFrontEnd: { diarization: { enabled: true, embeddingModelSlug: 'wespeaker-voxceleb-resnet34' }, vad: { enabled: true } },
+        decoding: { beamSize: 5 },
+      },
     });
     expect(mockAgentRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-    expect(persisted()).toMatchObject({ decoding: { beamSize: 1 }, audioFrontEnd: { diarization: { embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } } });
+    expect(persisted()).toMatchObject({
+      audioFrontEnd: { vad: { enabled: true }, diarization: { embeddingModelSlug: 'wespeaker-voxceleb-resnet34' } },
+    });
   });
 
   it('PASSES an edit that touches no parameters at all', async () => {
@@ -249,11 +271,12 @@ describe('AgentService.update — the platform-managed lock (TASK-991 OD-3)', ()
     expect(persisted()).toMatchObject({ audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } });
   });
 
-  it('a SUPER_ADMIN acting INSIDE a customer tenant is refused — one tenant’s profiles break the same way whoever typed it', async () => {
+  // TASK-1036 OD-11 REVERSED this: "A super admin may write these in any tenant; today only
+  // SYSTEM is exempt." The platform admin owns the value everywhere, not only on the SYSTEM row.
+  it('a SUPER_ADMIN acting INSIDE a customer tenant may change it too (OD-11)', async () => {
     clsStore.user = { id: 'user-platform', roles: ['SUPER_ADMIN'] };
     mockAgentRepository.findByIdVisible.mockResolvedValue(sttAgent());
-    await expect(
-      makeService().update('agent-1', { parameters: { audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } } }),
-    ).rejects.toMatchObject({ response: { code: 'AGENT_PARAMETER_PLATFORM_MANAGED' } });
+    await makeService().update('agent-1', { parameters: { audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } } });
+    expect(persisted()).toMatchObject({ audioFrontEnd: { diarization: { embeddingModelSlug: 'ecapa-tdnn-voxceleb' } } });
   });
 });

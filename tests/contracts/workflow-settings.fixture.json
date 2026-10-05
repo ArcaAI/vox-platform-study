@@ -1,0 +1,695 @@
+{
+  "_comment": "TASK-1036 §3.5 — the CROSS-LANGUAGE fixture for workflow settings (@arcaai/workflow-contract `workflow-settings.ts`; Python mirror: lane B1): the shape validator (problem pointers), effectiveSettings (settings first, legacy kinds/protocols fallback) and the WF-SET-001..004 implications. Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts.",
+  "connections": ["api", "webhook", "sse", "socket"],
+  "sources": ["consultation", "schedule"],
+  "shape": [
+    {
+      "value": {
+        "connections": ["api", "sse"],
+        "sources": ["consultation"],
+        "contextSchema": {
+          "contextSchemaId": "cs-1",
+          "versionNumber": null
+        }
+      },
+      "expectedPointers": []
+    },
+    {
+      "value": {
+        "connections": [],
+        "sources": [],
+        "contextSchema": {
+          "inline": {
+            "type": "object"
+          }
+        }
+      },
+      "expectedPointers": []
+    },
+    {
+      "value": {
+        "connections": ["api"],
+        "sources": []
+      },
+      "expectedPointers": []
+    },
+    {
+      "value": null,
+      "expectedPointers": ["/settings"]
+    },
+    {
+      "value": {
+        "connections": ["ftp"],
+        "sources": []
+      },
+      "expectedPointers": ["/settings/connections/0"]
+    },
+    {
+      "value": {
+        "connections": ["api", "api"],
+        "sources": []
+      },
+      "expectedPointers": ["/settings/connections"]
+    },
+    {
+      "value": {
+        "connections": ["api"],
+        "sources": ["api"]
+      },
+      "expectedPointers": ["/settings/sources/0"]
+    },
+    {
+      "value": {
+        "connections": ["api"]
+      },
+      "expectedPointers": ["/settings/sources"]
+    },
+    {
+      "value": {
+        "connections": ["api"],
+        "sources": [],
+        "extra": 1
+      },
+      "expectedPointers": ["/settings/extra"]
+    },
+    {
+      "value": {
+        "connections": ["api"],
+        "sources": [],
+        "contextSchema": {
+          "contextSchemaId": "x",
+          "versionNumber": 0
+        }
+      },
+      "expectedPointers": ["/settings/contextSchema/versionNumber"]
+    },
+    {
+      "value": {
+        "connections": ["api"],
+        "sources": [],
+        "contextSchema": {
+          "inline": {
+            "type": "object"
+          },
+          "contextSchemaId": "x"
+        }
+      },
+      "expectedPointers": ["/settings/contextSchema"]
+    }
+  ],
+  "effective": [
+    {
+      "name": "declared-settings",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [],
+        "settings": {
+          "connections": ["socket", "api"],
+          "sources": ["schedule"]
+        }
+      },
+      "expected": {
+        "connections": ["api", "socket"],
+        "sources": ["schedule"],
+        "contextSchema": null,
+        "origin": "settings"
+      }
+    },
+    {
+      "name": "legacy-full",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["consultation", "api", "webhook", "schedule"],
+              "contextSchema": {
+                "contextSchemaId": "cs-1"
+              }
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http", "http-sse", "socket"]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expected": {
+        "connections": ["api", "webhook", "sse", "socket"],
+        "sources": ["consultation", "schedule"],
+        "contextSchema": {
+          "contextSchemaId": "cs-1",
+          "versionNumber": null
+        },
+        "origin": "legacy"
+      }
+    },
+    {
+      "name": "legacy-default-protocols",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"],
+              "contextSchema": {
+                "inline": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "expected": {
+        "connections": ["api", "sse"],
+        "sources": [],
+        "contextSchema": {
+          "inline": {
+            "type": "object"
+          }
+        },
+        "origin": "legacy"
+      }
+    },
+    {
+      "name": "settings-without-schema-take-the-trigger-one",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"],
+              "contextSchema": {
+                "contextSchemaId": "cs-2",
+                "versionNumber": 3
+              }
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [],
+        "settings": {
+          "connections": ["api"],
+          "sources": []
+        }
+      },
+      "expected": {
+        "connections": ["api"],
+        "sources": [],
+        "contextSchema": {
+          "contextSchemaId": "cs-2",
+          "versionNumber": 3
+        },
+        "origin": "settings"
+      }
+    },
+    {
+      "name": "invalid-settings-fall-back",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {
+              "protocols": ["http"]
+            }
+          }
+        ],
+        "edges": [],
+        "settings": {
+          "connections": "api"
+        }
+      },
+      "expected": {
+        "connections": ["api"],
+        "sources": [],
+        "contextSchema": null,
+        "origin": "legacy"
+      }
+    }
+  ],
+  "implications": [
+    {
+      "name": "sse-needs-api",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["sse"]
+      },
+      "context": {},
+      "expected": [
+        {
+          "ruleId": "WF-SET-001",
+          "requires": "api",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "socket-needs-api",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["socket"]
+      },
+      "context": {},
+      "expected": [
+        {
+          "ruleId": "WF-SET-002",
+          "requires": "api",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "asr-agent-needs-socket",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api"]
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "ner": {
+            "task": "NAMED_ENTITY_RECOGNITION"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          },
+          "finalize": {
+            "task": "TEXT_GENERATION",
+            "outputSchema": {
+              "type": "object",
+              "required": ["case_note"],
+              "properties": {
+                "case_note": {
+                  "type": "string"
+                },
+                "redactions": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          }
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-003",
+          "requires": "socket",
+          "nodeId": "n_asr"
+        }
+      ]
+    },
+    {
+      "name": "asr-agent-consultation-source-exempt",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          },
+          {
+            "id": "n_tts",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "tts"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api"],
+        "sources": ["consultation"]
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "ner": {
+            "task": "NAMED_ENTITY_RECOGNITION"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          },
+          "finalize": {
+            "task": "TEXT_GENERATION",
+            "outputSchema": {
+              "type": "object",
+              "required": ["case_note"],
+              "properties": {
+                "case_note": {
+                  "type": "string"
+                },
+                "redactions": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          }
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-003",
+          "requires": "socket",
+          "nodeId": "n_tts"
+        }
+      ]
+    },
+    {
+      "name": "stream-audio-kind-needs-socket",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api"]
+      },
+      "context": {
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-003",
+          "requires": "socket",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "stream-audio-kind-needs-socket-even-from-consultation",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api"],
+        "sources": ["consultation"]
+      },
+      "context": {
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-003",
+          "requires": "socket",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "blob-audio-needs-api",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["webhook"]
+      },
+      "context": {
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "recording",
+              "primitive": "STREAM_AUDIO",
+              "delivery": "blob"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-004",
+          "requires": "api",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "attachment-needs-api",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {
+              "kinds": ["api"]
+            }
+          },
+          {
+            "id": "n_output",
+            "type": "core.output",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["webhook"]
+      },
+      "context": {
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "attachment",
+              "primitive": "DOCUMENT"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-004",
+          "requires": "api",
+          "nodeId": null
+        }
+      ]
+    },
+    {
+      "name": "satisfied",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "sse", "socket"]
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "ner": {
+            "task": "NAMED_ENTITY_RECOGNITION"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          },
+          "finalize": {
+            "task": "TEXT_GENERATION",
+            "outputSchema": {
+              "type": "object",
+              "required": ["case_note"],
+              "properties": {
+                "case_note": {
+                  "type": "string"
+                },
+                "redactions": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          }
+        }
+      },
+      "expected": []
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import type { EdgeProps, EdgeTypes } from '@xyflow/react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react';
 
@@ -21,6 +21,8 @@ export interface WorkflowEdgeChrome {
   readOnly: boolean;
   /** Absent = edges are not deletable; the X is not rendered. */
   onEdgeDelete?: (edgeId: string) => void;
+  /** TASK-1036 — absent = no `+` insert button on the link. */
+  onEdgeInsert?: (edgeId: string) => void;
   /** Which edge the pointer is currently over, as reported by React Flow's own edge mouse events. */
   hoveredEdgeId: string | null;
   /** Node id -> label, so an edge's delete button can be named after what it connects rather than after two uuids. */
@@ -54,11 +56,19 @@ function WorkflowEdge({
   style,
   data,
 }: EdgeProps) {
-  const { readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById } = React.useContext(WorkflowEdgeChromeContext);
+  const { readOnly, onEdgeDelete, onEdgeInsert, hoveredEdgeId, nodeLabelById } = React.useContext(WorkflowEdgeChromeContext);
   // A BINDING edge (`WorkflowCanvasEdge.kind`): a data binding the consumer edits in its own
   // inspector field, drawn dashed and always labelled so the flow reads correctly, and never
   // deletable from the canvas — the X is not rendered at all.
   const binding = (data as { kind?: string } | undefined)?.kind === 'binding';
+  const runState = (data as { runState?: 'idle' | 'done' | 'active' } | undefined)?.runState ?? 'idle';
+  // Run overlay (TASK-1036 F2): a lit edge is recoloured through the canvas token, never a raw colour.
+  const stroke =
+    runState === 'active'
+      ? 'var(--workflow-canvas-edge-active)'
+      : runState === 'done'
+        ? 'var(--workflow-canvas-edge-done)'
+        : 'var(--workflow-canvas-edge)';
   // Reveal state the portaled button cannot observe for itself: React Flow reports the pointer
   // entering the EDGE (`onEdgeMouseEnter`), but the button lives in the edge-label portal, so
   // moving the pointer off the path and onto the button would fire `onEdgeMouseLeave` and hide
@@ -69,6 +79,7 @@ function WorkflowEdge({
   const [edgePath, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
 
   const deletable = !readOnly && onEdgeDelete !== undefined && !binding;
+  const insertable = !readOnly && onEdgeInsert !== undefined && !binding;
   const revealed = hoveredEdgeId === id || pointerOverButton || buttonFocused || Boolean(selected);
   const fromLabel = nodeLabelById.get(source) ?? source;
   const toLabel = nodeLabelById.get(target) ?? target;
@@ -79,14 +90,16 @@ function WorkflowEdge({
         id={id}
         path={edgePath}
         markerEnd={markerEnd}
+        // The dash animation lives in `canvas-tokens.css` behind `prefers-reduced-motion: no-preference`.
+        className={runState === 'active' ? 'workflow-edge-active' : undefined}
         style={{
           ...style,
-          stroke: 'var(--workflow-canvas-edge)',
+          stroke,
           strokeWidth: selected ? 2 : 1.5,
           ...(binding ? { strokeDasharray: '6 4', opacity: 0.75 } : {}),
         }}
       />
-      {label || deletable ? (
+      {label || deletable || insertable ? (
         <EdgeLabelRenderer>
           <div
             data-slot="workflow-edge-chrome"
@@ -104,6 +117,24 @@ function WorkflowEdge({
               >
                 {label}
               </span>
+            ) : null}
+            {insertable ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-xs"
+                // Always visible (unlike the delete X): inserting a step is the friendly default
+                // gesture on a link, so it is offered rather than hidden behind a hover.
+                className="pointer-events-auto border border-border shadow-raised"
+                aria-label={`Insert a step between ${fromLabel} and ${toLabel}`}
+                title="Insert a step here"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdgeInsert?.(id);
+                }}
+              >
+                <Plus aria-hidden />
+              </Button>
             ) : null}
             {deletable ? (
               <Button

@@ -401,6 +401,9 @@ describe('HarnessGatewayService', () => {
         configRef,
         sandbox: false,
         payload: {},
+        // TASK-1038 B3a — every start carries the retention + payload limits (defaults here: no settings resolver).
+        retentionSeconds: 24 * 3600,
+        limits: { nodeOutputClaimCheckMinBytes: 20480, resultInlineMaxBytes: 65536, activityInputMaxBytes: 1572864 },
       });
       // The nested ClaimCheckRef keeps `content_type` (snake_case) — the Python
       // model carries no alias of its own.

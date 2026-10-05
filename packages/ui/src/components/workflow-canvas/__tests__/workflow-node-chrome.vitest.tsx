@@ -98,7 +98,8 @@ describe('WorkflowNode — run chip', () => {
     const { container } = renderNodes([{ id: 'a', type: 'core.agent', label: 'Extract', position: { x: 0, y: 0 }, runState: 'failed' }]);
     await waitFor(() => expect(runChip(container)).not.toBeNull());
     expect(runChip(container)!.getAttribute('data-run-state')).toBe('failed');
-    expect(runChip(container)!.textContent).toContain('failed');
+    // TASK-1036 R-C #10 (E4a) — the chip speaks the spec's words (§10.2): Waiting/Running/Done/Failed/Skipped.
+    expect(runChip(container)!.textContent).toContain('Failed');
     expect(screen.getByText(/run state:/i)).toBeInTheDocument();
   });
 
@@ -119,7 +120,7 @@ describe('WorkflowNode — run chip', () => {
   it('renders the state alone when no duration was reported', async () => {
     const { container } = renderNodes([{ id: 'a', type: 'core.agent', label: 'Waiting', position: { x: 0, y: 0 }, runState: 'pending' }]);
     await waitFor(() => expect(runChip(container)).not.toBeNull());
-    expect(runChip(container)!.textContent).toContain('pending');
+    expect(runChip(container)!.textContent).toContain('Waiting'); // `pending` reads as "Waiting" (R-C #10)
     expect(runChip(container)!.textContent).not.toMatch(/ms|\ds/);
   });
 

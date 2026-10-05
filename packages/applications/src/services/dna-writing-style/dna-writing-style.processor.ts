@@ -875,6 +875,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // default. Selection stays the `finalize` task (`resolveTextSelection`'s default): this is a
     // durable, offline job, and nothing about which agent serves it changes here.
     let generation: Record<string, unknown> | undefined;
+    let deploymentKind: string | undefined;
     // TASK-974 §4.4 — the PLATFORM analyst decides provider, model and hyper-parameters. The
     // `resolveTextSelection` branch is the pre-974 path and survives ONLY for the positional
     // fixtures that wire no agent plane; production always takes the branch above it.
@@ -882,8 +883,9 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       provider = analystSpec.primary.provider;
       model = analystSpec.primary.model;
       generation = DnaWritingStyleProcessor.asRecord(analystSpec.primary.parameters.generation);
+      deploymentKind = analystSpec.primary.deploymentKind;
     } else if (this.harnessPolicyService) {
-      ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection());
+      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection());
     }
     // the payload is HOISTED out of the call argument (it used to be
     // an inline object literal) so the shared credential enrichment below has
@@ -925,7 +927,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // credential fold, exactly as the TEXT proxy does. Caller-set fields win; an agent that
     // authored no posture injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(textPayload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(textPayload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'dna' });
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
       timeout: 120000,
       // the tenant is MANDATORY on this hop: `apps/text /generate`

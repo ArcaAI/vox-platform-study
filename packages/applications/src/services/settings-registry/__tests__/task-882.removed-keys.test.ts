@@ -26,7 +26,6 @@ const REMOVED_KEYS = [
 ] as const;
 
 const PLATFORM_ONLY_KEYS = [
-  'text.guardrailPolicy.requireMedical',
   'text.guardrailPolicy.includeReasoning',
   'consultation.realtime.graphExecutor.enabled',
 ] as const;
@@ -41,6 +40,15 @@ describe('TASK-882 — removed keys', () => {
       expect(HOPE_SETTINGS_REGISTRY.has(key), key).toBe(false);
     }
   });
+});
+
+describe('the retired guardrail switches are not registered (OD-4, OD-5)', () => {
+  it.each(['text.externalGuardrail.enabled', 'text.externalGuardrail.requireMedical', 'text.guardrailPolicy.requireMedical'])(
+    '%s is not registered — screening and the medical judge are not settings',
+    (key) => {
+      expect(HOPE_SETTINGS_REGISTRY.has(key)).toBe(false);
+    },
+  );
 });
 
 describe('TASK-882 — platform-only flips (owner decisions of 2026-09-05)', () => {

@@ -7,13 +7,16 @@ import {
   WorkflowInvokeResponse,
   WorkflowRunCancelResponse,
   WorkflowRunResponseMode,
+  WorkflowRunResultRefResponse,
   WorkflowRunStatusResponse,
   WorkflowSummaryListResponse,
+  WorkflowEntryGateService,
   type WorkflowSchemaDescription,
 } from '@arcaai/applications';
 import {
   Controller,
   Get,
+  GoneException,
   Headers,
   HttpCode,
   HttpStatus,
@@ -31,6 +34,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { RUN_PROTOCOL_HEADER } from '@arcaai/async-contract';
 import { CanCreate, CanList, CanRead, CanUpdate, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
@@ -39,6 +43,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { deliverRun } from './deliver-run';
+import { resolveRunProtocol } from './run-protocol-delivery';
 import { WorkflowRunCompletionService } from './workflow-run-completion.service';
 import { WorkflowStreamService } from './workflow-stream.service';
 
@@ -58,6 +63,13 @@ export interface WorkflowRunStreamTicketResponse {
   scope: string;
   /** The socket to open with it, query string already built and encoded. */
   url: string;
+  /**
+   * TASK-1038 B3a (G12) — the SSE stream to open with the SAME ticket instead (protocol v2
+   * selected), for a browser app on an API key: `EventSource` cannot send `X-API-Key`, and the
+   * route's `@StreamScope('workflow_run', runId)` accepts this ticket. The ticket is single-use:
+   * open ONE of `url` / `sseUrl`.
+   */
+  sseUrl: string;
 }
 
 /**
@@ -93,6 +105,9 @@ export class WorkflowsController {
     // either is absent rather than minting something unattributable.
     @Optional() private readonly streamTicketService?: StreamTicketService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+    // TASK-1036 (OD-4) — the socket ticket is refused unless the workflow's settings admit `socket`.
+    // Optional so the positional unit fixtures keep constructing; absent, the settings are not read.
+    @Optional() private readonly entryGate?: WorkflowEntryGateService,
   ) {}
 
   @Get()
@@ -119,15 +134,16 @@ export class WorkflowsController {
       '`blocking` waits for the run to finish and answers 200 with the terminal status, or **504** at a hard ceiling of ~60s ' +
       'with a pointer to streaming; `stream` answers `text/event-stream` directly, the same snapshot-then-delta contract as ' +
       '`GET :slug/runs/:runId/stream`. ' +
-      '**Idempotency**: send `Idempotency-Key` and a retry JOINS the existing run instead of starting (and billing) a second — ' +
-      'the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. ' +
+      '**Idempotency**: send `Idempotency-Key` and a retry with the same body JOINS the existing run instead of starting (and billing) a ' +
+      'second — the run id is derived from (tenant, slug, key) and Temporal refuses a duplicate execution under it. The same key with a ' +
+      'different body is 409 `IDEMPOTENCY_KEY_REUSED`. ' +
       '**Disconnecting never cancels the run**: it is a durable execution, so abandoning the HTTP request abandons only your view of it. ' +
       'To run a workflow AGAINST A CONSULTATION, use `POST /consultations/{consultationId}/workflows/{slug}/runs` — a consultation ' +
       'graph is not invocable here, and consultation identity is never accepted in the request body.',
   })
   @ApiParam({ name: 'slug' })
   @ApiQuery({ name: 'mode', required: false, enum: ['async', 'blocking', 'stream'], description: 'Response mode. Default `async`.' })
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value joins the existing run.' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value and body joins the existing run.' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse, description: '`mode=async` — the run handle.' })
   @ApiResponse({ status: 200, type: WorkflowRunStatusResponse, description: '`mode=blocking` — the terminal run status.' })
   @ApiResponse({
@@ -151,7 +167,8 @@ export class WorkflowsController {
     description:
       'The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries ' +
       'it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a ' +
-      'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row.',
+      'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row. ' +
+      '`IDEMPOTENCY_KEY_REUSED` — the `Idempotency-Key` already started a run with a different body.',
   })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   @ApiResponse({
@@ -166,14 +183,18 @@ export class WorkflowsController {
     @Res({ passthrough: true }) res: Response,
     @Query('mode') mode?: WorkflowRunResponseMode,
     @Headers('Idempotency-Key') idempotencyKey?: string,
+    @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
+    @Query('protocol') protocol?: string,
   ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
+    // TASK-1038 B3a — an unsupported protocol is a 400 BEFORE a run is started (and billed).
+    if (mode === 'stream') resolveRunProtocol({ header: protocolHeader, query: protocol });
     // TASK-864 §3.4: `mode` reaches the service so it can be bounded by the definition's Output
     // protocols BEFORE a run starts (400 naming the declared protocols), rather than starting a
     // run and then failing to deliver it the way the caller asked.
     const started = await this.workflowExposureService.invoke(slug, dto, { idempotencyKey, apiKeyId: req.apiKey?.id, mode });
     // TASK-864 (G9): the terminal status is recorded by a background watcher, not by a reader.
     this.runCompletion?.watch(req.user?.tenantId ?? req.tenantId ?? '', started.runId);
-    return deliverRun(this.workflowStreamService, slug, started, res, mode);
+    return deliverRun(this.workflowStreamService, slug, started, res, mode, { protocolHeader, protocol });
   }
 
   @Post(':slug/invoke')
@@ -247,6 +268,61 @@ export class WorkflowsController {
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async getRunStatus(@Param('slug') slug: string, @Param('runId') runId: string): Promise<WorkflowRunStatusResponse> {
     return this.workflowExposureService.getRunStatus(slug, runId);
+  }
+
+  /**
+   * TASK-1038 D-I — what the run DELIVERED, for the caller that started it.
+   *
+   * `WorkflowRun.resultRef` was always null before this ticket (no terminal path persisted the
+   * output), so a business-plane caller could watch a run finish and never read what it made.
+   * The completion watcher now persists the result the harness puts on `workflow.run.completed`,
+   * and this route serves it: small results inline, large ones (claim-checked by the harness) as
+   * a short-lived signed URL — never the bucket and key themselves. Same authorisation as the
+   * status route; every read is audited by the service, because the output is PHI.
+   */
+  @Get(':slug/runs/:runId/result')
+  @CanRead('WorkflowRun')
+  @RequiredScopes('workflow:run:read')
+  @RequiredSvcScopes('svc:workflow:run:read')
+  @ApiOperation({
+    summary: 'The result a finished run delivered: the JSON value inline, or a short-lived signed URL for a large result.',
+    description:
+      'Answers once the run is terminal. The `X-Hope-Result-Kind` header says which shape the 200 carries: `inline` — the body IS the ' +
+      'delivered JSON value; `ref` — `{ url, expiresAt, sizeBytes, sha256 }`, a signed GET URL valid until `expiresAt` (request the route ' +
+      'again for a fresh one). 204 means the run ended and delivered nothing; 410 means it delivered a result that has passed the ' +
+      "tenant's result retention (`workflowRuns.resultRetentionDays`). A run that is still going is a 409 carrying its current status.",
+  })
+  @ApiParam({ name: 'slug' })
+  @ApiParam({ name: 'runId' })
+  @ApiResponse({
+    status: 200,
+    description: '`X-Hope-Result-Kind: inline` — the delivered JSON value; `ref` — a signed URL (schema below).',
+    type: WorkflowRunResultRefResponse,
+  })
+  @ApiResponse({ status: 204, description: 'The run is terminal and delivered no result.' })
+  @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
+  @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its current `status`.' })
+  @ApiResponse({ status: 410, description: 'The result existed and has passed its retention window.' })
+  @ApiResponse({ status: 503, description: 'A stored result exists but no object storage is configured to sign its URL.' })
+  async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
+    const result = await this.workflowExposureService.getRunResult(slug, runId);
+    switch (result.kind) {
+      case 'inline':
+        res.setHeader('X-Hope-Result-Kind', 'inline');
+        return result.value;
+      case 'ref':
+        res.setHeader('X-Hope-Result-Kind', 'ref');
+        return { url: result.url, expiresAt: result.expiresAt, sizeBytes: result.sizeBytes, sha256: result.sha256 };
+      case 'expired':
+        throw new GoneException({
+          code: 'RESULT_EXPIRED',
+          message: `The result of run '${runId}' has passed its retention window.`,
+          expiredAt: result.expiredAt,
+        });
+      default:
+        res.status(HttpStatus.NO_CONTENT);
+        return undefined;
+    }
   }
 
   @Post(':slug/runs/:runId/cancel')
@@ -369,7 +445,12 @@ export class WorkflowsController {
   })
   @ApiParam({ name: 'slug' })
   @ApiParam({ name: 'runId' })
-  @ApiResponse({ status: 201, description: 'The ticket, its absolute expiry, its scope, and the socket URL to open with it.' })
+  @ApiResponse({
+    status: 201,
+    description:
+      'The ticket, its absolute expiry, its scope, and the URLs to open with it: `url` (WebSocket) or `sseUrl` (SSE, protocol v2). The ticket is single-use — open one.',
+  })
+  @ApiResponse({ status: 400, description: 'MODE_UNSUPPORTED — the workflow’s settings enable neither the `sse` nor the `socket` connection.' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
@@ -378,7 +459,12 @@ export class WorkflowsController {
       throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
     }
     // FIRST: 404-over-403 ownership, through the same read every other run route makes.
-    await this.workflowExposureService.getRunStatus(slug, runId);
+    const run = await this.workflowExposureService.getRunStatus(slug, runId);
+    // TASK-1036 (OD-4), TASK-1038 E2 (fix 1) — the ticket opens EITHER lane (`url` = socket,
+    // `sseUrl` = SSE; the browser `useRun` mints it for an EventSource), so it is minted when the
+    // run's workflow version admits `sse` OR `socket`. Each lane is enforced again where the ticket
+    // is redeemed: `socket` by `WorkflowWsGateway`, `sse` by `streamRunStatus` below.
+    await this.entryGate?.assertAnyEntryAllowed(slug, run.workflowVersionNumber, ['sse', 'socket']);
 
     const user = this.cls.get('user');
     if (!user?.id) throw new UnauthorizedException('User context not available');
@@ -396,7 +482,14 @@ export class WorkflowsController {
     });
 
     const query = new URLSearchParams({ slug, runId, ticket: issued.ticket });
-    return { ticket: issued.ticket, expiresAt: issued.expiresAt, scope: issued.scope, url: `/ws/workflows?${query.toString()}` };
+    const sseQuery = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+      url: `/ws/workflows?${query.toString()}`,
+      sseUrl: `/api/v1/workflows/${encodeURIComponent(slug)}/runs/${encodeURIComponent(runId)}/stream?${sseQuery.toString()}`,
+    };
   }
 
   @Get(':slug/runs/:runId/stream')
@@ -416,23 +509,60 @@ export class WorkflowsController {
   // Both of these are OPTIONAL by construction — a first connect sends neither — and documenting
   // a resume cursor as mandatory would tell a client to invent one, which is the exact thing
   // async-contract forbids.
-  @ApiHeader({ name: 'Last-Event-ID', required: false, description: 'Opaque resume token from a previous frame’s `id`. Omit on a first connect.' })
+  @ApiHeader({
+    name: 'Last-Event-ID',
+    required: false,
+    description:
+      'Resume cursor: the `seq` of the last event received (protocol v2), or a legacy opaque token (accepted for one release). Omit on a first connect.',
+  })
+  @ApiHeader({
+    name: RUN_PROTOCOL_HEADER,
+    required: false,
+    description: 'Set to `2` to select run protocol v2. Absent = the legacy frame shapes (one release).',
+  })
+  @ApiQuery({
+    name: 'protocol',
+    required: false,
+    description: '`2` selects run protocol v2 — for clients that cannot set headers (EventSource). Any other value is a 400.',
+  })
+  @ApiQuery({
+    name: 'after',
+    required: false,
+    description: 'Protocol v2 resume cursor (`seq`) for a client that cannot set headers. The header wins.',
+  })
   @ApiQuery({
     name: 'lastEventId',
     required: false,
-    description: 'Fallback for a client that cannot set headers. The header wins when both are present.',
+    description: 'Legacy fallback for a client that cannot set headers. The header wins when both are present.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Unsupported run protocol (`RUN_PROTOCOL_UNSUPPORTED`), a v2 cursor that is not a decimal seq (`RUN_CURSOR_INVALID`), or `MODE_UNSUPPORTED` — a `?ticket=` request for a workflow whose settings do not enable the `sse` connection.',
   })
   @ApiResponse({ status: 404, description: "Cross-tenant run id, or a runId that does not belong to slug's lineage." })
   async streamRunStatus(
     @Param('slug') slug: string,
     @Param('runId') runId: string,
     @Res() res: Response,
-    // The SSE spec sends this header on reconnect by itself; the query parameter is the manual
-    // escape hatch for a client that cannot set headers (the same fallback `apps/text`'s stream
-    // endpoint offers). NEVER a JWT — this is a stream cursor, not a credential.
+    // The SSE spec sends this header on reconnect by itself; the query parameters are the manual
+    // escape hatch for a client that cannot set headers. NEVER a JWT — this is a stream cursor,
+    // not a credential.
     @Headers('Last-Event-ID') lastEventIdHeader?: string,
     @Query('lastEventId') lastEventIdQuery?: string,
+    @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
+    @Query('protocol') protocol?: string,
+    @Query('after') after?: string,
+    // `@Req` rather than `@Query('ticket')`: the ticket is consumed by `JwtAuthGuard`, never read
+    // here as a value — only its PRESENCE says this request redeemed a run ticket.
+    @Req() req?: { query?: Record<string, unknown> },
   ): Promise<void> {
-    await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader ?? lastEventIdQuery);
+    // TASK-1038 E2 (fix 1) — a run ticket is minted when the workflow admits `sse` OR `socket`; the
+    // SSE lane is enforced HERE, where the SSE stream redeems it. A bearer request is unchanged.
+    if (this.entryGate && req?.query?.ticket !== undefined) {
+      const run = await this.workflowExposureService.getRunStatus(slug, runId);
+      await this.entryGate.assertEntryAllowed(slug, run.workflowVersionNumber, 'sse');
+    }
+    await this.workflowStreamService.stream(slug, runId, res, lastEventIdHeader, { protocolHeader, protocol, after, legacyQuery: lastEventIdQuery });
   }
 }

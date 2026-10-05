@@ -58,15 +58,16 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // Monitoring, Releases) from 10-19 to 20-29: 22/12/19/5. TASK-1023 moved
   // AI models from 10-19 to 20-29 (shared, read-only for a tenant admin): 22/13/19/5
   // (the prose above predates the later additions; the asserts below are current).
-  it('covers the full 58-route rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(60);
+  // The tier-30-49 Quick start was added after that: 61 total, 22/13/21/5.
+  it('covers the full rail map across the four tiers', () => {
+    expect(NAV_ENTRIES).toHaveLength(61);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(20);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(63);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(64);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -529,14 +530,25 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
     ],
   ],
   // Knowledge & Agents — /tools-mcp left for Platform Ops (TASK-932 R-4).
-  ['/agents', 'knowledge-agents', '30-49', 1, [['manage', 'Agent']]],
-  ['/prompt-templates', 'knowledge-agents', '30-49', 2, [['manage', 'PromptTemplate']]],
-  ['/context-schemas', 'knowledge-agents', '30-49', 3, [['manage', 'ConsultationContextSchema']]],
-  ['/document-templates', 'knowledge-agents', '30-49', 4, [['manage', 'DocumentTemplate']]],
-  ['/knowledge', 'knowledge-agents', '30-49', 5, [['manage', 'KnowledgeDocument']]],
-  ['/dna-writing-styles', 'knowledge-agents', '30-49', 6, [['manage', 'DnaWritingStyleReport']]],
-  ['/workflow-studio', 'knowledge-agents', '30-49', 7, [['manage', 'WorkflowDefinition']]],
-  ['/workflow-studio/assignments', 'knowledge-agents', '30-49', 8, [['manage', 'WorkflowDefinition']]],
+  // The quick start leads the domain: schema → agent → workflow → assignment in one pass.
+  [
+    '/quick-start',
+    'knowledge-agents',
+    '30-49',
+    1,
+    [
+      ['manage', 'Agent'],
+      ['manage', 'WorkflowDefinition'],
+    ],
+  ],
+  ['/agents', 'knowledge-agents', '30-49', 2, [['manage', 'Agent']]],
+  ['/prompt-templates', 'knowledge-agents', '30-49', 3, [['manage', 'PromptTemplate']]],
+  ['/context-schemas', 'knowledge-agents', '30-49', 4, [['manage', 'ConsultationContextSchema']]],
+  ['/document-templates', 'knowledge-agents', '30-49', 5, [['manage', 'DocumentTemplate']]],
+  ['/knowledge', 'knowledge-agents', '30-49', 6, [['manage', 'KnowledgeDocument']]],
+  ['/dna-writing-styles', 'knowledge-agents', '30-49', 7, [['manage', 'DnaWritingStyleReport']]],
+  ['/workflow-studio', 'knowledge-agents', '30-49', 8, [['manage', 'WorkflowDefinition']]],
+  ['/workflow-studio/assignments', 'knowledge-agents', '30-49', 9, [['manage', 'WorkflowDefinition']]],
   // Clinical
   ['/consent', 'clinical', '30-49', 1, [['manage', 'ConsentGrant']]],
   [
@@ -670,7 +682,7 @@ describe('EXPECTED_NAV_ENTRIES — the full route/domain/tier/order/ability/gate
     );
   });
 
-  it('pins exactly 58 entries, matching NAV_ENTRIES', () => {
+  it('pins every entry, matching NAV_ENTRIES', () => {
     expect(EXPECTED_NAV_ENTRIES).toHaveLength(NAV_ENTRIES.length);
   });
 });
@@ -967,8 +979,9 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       },
       'knowledge-agents': {
         '30-49': [
+          'Quick start',
           'Agents',
-          'Prompt templates',
+          'Hope Prompts',
           'Context Schemas',
           'Document Templates',
           'Knowledge Base',
@@ -1011,7 +1024,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       tenancy: { '20-29': ['Tenant profile'], '30-49': ['Departments'] },
       'platform-ops': { '20-29': ['Settings registry', 'Settings rows & secrets'], '30-49': ['Storage browser'] },
       'ai-platform': { '20-29': ['AI models', 'AI providers'] },
-      'knowledge-agents': { '30-49': ['Prompt templates'] },
+      'knowledge-agents': { '30-49': ['Hope Prompts'] },
       'identity-access': { '20-29': ['Users', 'Roles'], '30-49': ['Allowed origins'] },
       playground: {
         '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],

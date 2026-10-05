@@ -60,7 +60,7 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
 
 /**
  * `hope.admin` — every machine-reachable `/api/v1/admin/**` area, one property
- * per `svc:*` scope (48 areas, 443 routes).
+ * per `svc:*` scope (48 areas, 451 routes).
  *
  * Reaching any of it requires a SERVICE ACCOUNT: the admin plane refuses a
  * tenant API key by policy, not by omission. Construct the client with
@@ -82,11 +82,12 @@ import { AdminWorkflowTestFixtureResource } from './workflow-test-fixture';
  * - `TextGenerationAdminController` (2 routes)
  * - `WorkflowInvariantRuleController` (5 routes)
  * - `WorkflowRunController` (1 route)
+ * - `WorkflowRunTraceController` (1 route)
  *
  * See the barrel (`./index.ts`) for which decision closed each one.
  */
 export class AdminNamespace {
-  /** `svc:admin:agent:manage` — 24 routes. */
+  /** `svc:admin:agent:manage` — 26 routes. */
   readonly agent: AdminAgentResource;
   /** `svc:admin:agent-promotion:manage` — 3 routes. */
   readonly agentPromotion: AdminAgentPromotionResource;
@@ -110,7 +111,7 @@ export class AdminNamespace {
   readonly billing: AdminBillingResource;
   /** `svc:admin:changelog:manage` — 4 routes. */
   readonly changelog: AdminChangelogResource;
-  /** `svc:admin:consultation-admin:manage` — 4 routes. */
+  /** `svc:admin:consultation-admin:manage` — 7 routes. */
   readonly consultationAdmin: AdminConsultationAdminResource;
   /** `svc:admin:consultation-context-schema:manage` — 9 routes. */
   readonly consultationContextSchema: AdminConsultationContextSchemaResource;
@@ -136,7 +137,7 @@ export class AdminNamespace {
   readonly notification: AdminNotificationResource;
   /** `svc:admin:platform-metrics:read` — 3 routes. */
   readonly platformMetrics: AdminPlatformMetricsResource;
-  /** `svc:admin:prompt-template:manage` — 16 routes. */
+  /** `svc:admin:prompt-template:manage` — 17 routes. */
   readonly promptTemplate: AdminPromptTemplateResource;
   /** `svc:admin:pstudio:manage` — 1 route. */
   readonly pstudio: AdminPstudioResource;
@@ -174,7 +175,7 @@ export class AdminNamespace {
   readonly user: AdminUserResource;
   /** `svc:webhook:event:write` — 7 routes. */
   readonly webhookEvent: AdminWebhookEventResource;
-  /** `svc:admin:workflow-definition:manage` — 29 routes. */
+  /** `svc:admin:workflow-definition:manage` — 31 routes. */
   readonly workflowDefinition: AdminWorkflowDefinitionResource;
   /** `svc:admin:workflow-node:read` — 1 route. */
   readonly workflowNode: AdminWorkflowNodeResource;

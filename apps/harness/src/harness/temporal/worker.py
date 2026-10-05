@@ -42,6 +42,7 @@ from harness.temporal.compute_metering import (
     ComputeSampleBuffer,
     get_compute_sample_buffer,
 )
+from harness.temporal.http_pool import aclose_shared_clients
 from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
 from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
@@ -446,6 +447,10 @@ async def run_worker() -> None:
         await _flush_compute_metering_once(compute_samples)
         await stop_registration(service_release_task)
         await service_release_http_client.aclose()
+        # TASK-1038 R-6 — the ONE pooled client every ApiClient/TextClient borrowed. Closed
+        # after Temporal drained its in-flight activities (the context manager above), so no
+        # activity is still holding a connection from it.
+        await aclose_shared_clients()
         # Flushes any buffered spans (BatchSpanProcessor) before the process exits —
         # otherwise the window a crash-loop investigation needs is exactly the one
         # lost. Never raises; a no-op when tracing was off.

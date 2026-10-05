@@ -35,3 +35,11 @@ describe('graph JSON import/export', () => {
     expect(parseGraphJson(text)).toEqual({ ok: false, reason });
   });
 });
+
+describe('TASK-1036 §3.5 — settings survive JSON export and import', () => {
+  it('round-trips graph.settings', () => {
+    const text = exportGraphJson([], [], { connections: ['api'], sources: ['schedule'] });
+    const parsed = parseGraphJson(text);
+    expect(parsed.ok && (parsed.graph as { settings?: unknown }).settings).toEqual({ connections: ['api'], sources: ['schedule'] });
+  });
+});

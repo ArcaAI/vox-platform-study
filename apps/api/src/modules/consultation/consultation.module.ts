@@ -41,6 +41,8 @@ import {
   EffectiveSettingsModule,
   // TASK-999 Lane B — the read-only per-consultation AI telemetry projection.
   ConsultationTelemetryServiceModule,
+  // TASK-1036 §9.3 / TASK-1038 — the `consultation.*` declared-read plane.
+  ConsultationReadServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -49,6 +51,7 @@ import { ConsultationTelemetryController } from './consultation-telemetry.contro
 import { ConsultationJobController } from './consultation-job.controller';
 import { HarnessInternalController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
+import { ConsultationReadInternalController } from './consultation-read-internal.controller';
 
 @Module({
   imports: [
@@ -109,6 +112,8 @@ import { ConsentInternalController } from './consent-internal.controller';
     // TASK-999 Lane B — supplies `IConsultationTelemetryService` to
     // `ConsultationTelemetryController`.
     ConsultationTelemetryServiceModule,
+    // TASK-1036 §9.3 / TASK-1038 — `IConsultationReadService` for the harness's declared reads.
+    ConsultationReadServiceModule,
   ],
   controllers: [
     ConsultationController,
@@ -120,6 +125,7 @@ import { ConsentInternalController } from './consent-internal.controller';
     ConsultationJobController,
     HarnessInternalController,
     ConsentInternalController,
+    ConsultationReadInternalController,
   ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's

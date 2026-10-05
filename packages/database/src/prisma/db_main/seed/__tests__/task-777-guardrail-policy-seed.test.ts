@@ -157,47 +157,18 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
     expect(graniteUpdates[0]!.data).toEqual(graniteUpdates[1]!.data);
   });
 
-  it('leaves every other row\'s update payload untouched (no metaData key introduced where the seed sets none)', async () => {
+  it('writes metaData exactly as the seed row declares it, and never invents one for a row that declares none', async () => {
     const { client, updates } = makeExistingRowClient();
     await seedAiModels(client as never);
 
-    const otherRowsWithNoSeedMetaData = DEFAULT_AI_MODELS.filter((m) => m.slug !== 'granite-guardian-4.1-8b' && m.metaData === undefined);
-    expect(otherRowsWithNoSeedMetaData.length).toBeGreaterThan(0);
-
-    for (const row of otherRowsWithNoSeedMetaData) {
+    // TASK-1036 stamps `metaData.capabilities` on every row, so no seeded row is metaData-less any
+    // more. The property this pins is unchanged: the update payload carries the seed row's own
+    // blob (policy included), and a row that declared none would get no `metaData` key at all.
+    for (const row of DEFAULT_AI_MODELS.filter((m) => m.slug !== 'granite-guardian-4.1-8b')) {
       const update = updates.find((u) => u.where.id === `existing-${row.tenantId}-${row.slug}`);
-      expect(update).toBeDefined();
-      expect(update!.data).not.toHaveProperty('metaData');
+      expect(update, row.slug).toBeDefined();
+      if (row.metaData === undefined) expect(update!.data).not.toHaveProperty('metaData');
+      else expect(update!.data.metaData, row.slug).toEqual(row.metaData);
     }
-  });
-});
-
-// =============================================================================
-// retireCustomerTenantAiModels — the registry is SYSTEM-only (TASK-860): the
-// per-tenant clones the seed used to materialise (and the policy blob they
-// carried) are swept, never re-created.
-// =============================================================================
-
-describe('retireCustomerTenantAiModels and the policy blob', () => {
-  it('soft-deletes every non-SYSTEM AiModel row in one sweep and never creates a clone', async () => {
-    const updates: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }> = [];
-    const client = {
-      aiModel: {
-        updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
-          updates.push(args);
-          return { count: 3 };
-        }),
-        create: vi.fn(),
-      },
-    };
-
-    const result = await retireCustomerTenantAiModels(client as never);
-
-    expect(result.retired).toBe(3);
-    expect(client.aiModel.create).not.toHaveBeenCalled();
-    expect(updates).toHaveLength(1);
-    expect(updates[0]!.where).toEqual({ tenantId: { not: SYSTEM_TENANT_ID }, resourceStatus: { not: 'DELETED' } });
-    expect(updates[0]!.data.resourceStatus).toBe('DELETED');
-    expect(updates[0]!.data.version).toEqual({ increment: 1 });
   });
 });

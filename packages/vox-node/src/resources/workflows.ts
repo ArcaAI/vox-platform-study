@@ -6,10 +6,11 @@
  *
  * ```
  * GET /api/v1/workflows -> list()
- * POST /api/v1/workflows/{slug}/runs -> run() / runAndWait() / runAndStream()
+ * POST /api/v1/workflows/{slug}/runs -> run() / start() / runAndWait() / runAndStream()
  * GET /api/v1/workflows/{slug}/runs/{runId} -> getRun()
  * POST /api/v1/workflows/{slug}/runs/{runId}/cancel -> cancelRun()
- * GET /api/v1/workflows/{slug}/runs/{runId}/stream -> streamRun() / waitForRun()
+ * GET /api/v1/workflows/{slug}/runs/{runId}/stream -> RunHandle.events() / streamRun() / waitForRun()
+ * GET /api/v1/workflows/{slug}/runs/{runId}/result -> RunHandle.result()
  * ```
  *
  * The consultation-bound half lives on {@link ConsultationWorkflowsResource}
@@ -37,6 +38,7 @@
 
 import { CredentialClassError, ReservedRunIdentityError, SocketUnavailableError } from '../core/errors';
 import { generateUuidV7 } from '../core/idempotency';
+import { RunHandle, type RunHandleTuning } from '../core/run-handle';
 import { reservedRunIdentityKeysIn } from '../core/run-identity';
 import { parseSseStream } from '../core/sse';
 import { readSocketFrames, resolveSocketUrl, type SocketFrame, type WorkflowRunStreamTicket } from '../core/socket';
@@ -73,6 +75,8 @@ export const WORKFLOW_PLANE_ROUTES: ReadonlyArray<{ method: string; path: string
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/cancel' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/stream' },
+  // TASK-1039 — what `RunHandle.result()` reads: the inline value, or a signed URL for a large one.
+  { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/result' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/stream-ticket' },
   { method: 'GET', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}' },
   { method: 'POST', path: '/api/v1/workflows/{slug}/runs/{runId}/reviews/{nodeId}/decide' },
@@ -114,6 +118,22 @@ export interface StartRunOptions {
    */
   idempotent?: boolean;
   /** Overrides the client's per-request timeout. Raise it for `runAndWait`, whose server ceiling is ~60s. */
+  timeoutMs?: number;
+}
+
+/**
+ * Options for {@link WorkflowsResource.run} and `AgentsResource.run` (TASK-1039).
+ *
+ * There is no `idempotent` flag: a `run` ALWAYS sends an `Idempotency-Key` — yours, or a UUIDv7 it
+ * mints — so the start is retry-safe inside the SDK. Pass your own, derived from your domain (an
+ * order id, a message id), when a fresh process might start the same logical run again.
+ */
+export interface RunStartOptions extends RunHandleTuning {
+  /** Aborts the START request only. A handle's streams take their own signal; nothing here cancels a run. */
+  signal?: AbortSignal;
+  /** Sent as `Idempotency-Key`. A retry with the same value JOINS the run in flight (`handle.joined`). Default: a fresh UUIDv7. */
+  idempotencyKey?: string;
+  /** Overrides the client's per-request timeout for the start call. */
   timeoutMs?: number;
 }
 
@@ -598,10 +618,59 @@ export class WorkflowsResource extends WorkflowInvocationBase {
   }
 
   /**
-   * Start a run and return immediately with its handle (`?mode=async`, the
-   * default). The run continues regardless of what this process does next.
+   * Start a run and get a {@link RunHandle} for it (TASK-1039): stream its text, follow its typed
+   * events, poll or wait for it, read its verified result, cancel it. The run is durable — it
+   * continues whatever this process does next — and an `Idempotency-Key` is sent on every start.
+   *
+   * `input` is the workflow's input object itself (NOT wrapped in `{ input }`). Pass the types
+   * `vox-codegen --api-key … --workflows` emits for a typed call:
+   *
+   * ```ts
+   * const run = await hope.workflows.run<Workflow_NoteWriter_Input, Workflow_NoteWriter_Output>(
+   *   'note-writer',
+   *   { note },
+   *   { idempotencyKey: `note-${visitId}` },
+   * );
+   * for await (const chunk of run.text()) process.stdout.write(chunk);
+   * const delivered = await run.result(); // Workflow_NoteWriter_Output | null
+   * ```
+   *
+   * The previous return value — the bare 202 body — is {@link start}.
    */
-  async run(slug: string, body: StartWorkflowRunRequest, options: StartRunOptions = {}): Promise<WorkflowRunHandle> {
+  async run<TInput extends object = Record<string, unknown>, TOutput = unknown>(
+    slug: string,
+    input: TInput,
+    options: RunStartOptions = {},
+  ): Promise<RunHandle<TOutput>> {
+    const started = await this.startRun(
+      slug,
+      { input: input as Record<string, unknown> },
+      { signal: options.signal, timeoutMs: options.timeoutMs, idempotencyKey: options.idempotencyKey ?? generateUuidV7() },
+    );
+    return new RunHandle<TOutput>({
+      transport: this.transport,
+      kind: 'workflow',
+      slug,
+      runId: started.runId,
+      joined: started.status === 'already_running',
+      maxReconnects: options.maxReconnects,
+      reconnectDelayMs: options.reconnectDelayMs,
+    });
+  }
+
+  /**
+   * A {@link RunHandle} for a run that is already going — started by another process, or by a
+   * `start()` / `runAndStream()` call whose `runId` you kept. Makes no request.
+   */
+  attach<TOutput = unknown>(slug: string, runId: string, tuning: RunHandleTuning = {}): RunHandle<TOutput> {
+    return new RunHandle<TOutput>({ transport: this.transport, kind: 'workflow', slug, runId, ...tuning });
+  }
+
+  /**
+   * Start a run and return only the bare 202 body (`?mode=async`) — what `run()` returned before
+   * SDK 5. Prefer {@link run}, which wraps this and gives you the {@link RunHandle}.
+   */
+  async start(slug: string, body: StartWorkflowRunRequest, options: StartRunOptions = {}): Promise<WorkflowRunHandle> {
     return this.startRun(slug, body, options);
   }
 
@@ -620,6 +689,9 @@ export class WorkflowsResource extends WorkflowInvocationBase {
   /**
    * Start a run and consume its event stream in one call (`?mode=stream`),
    * reconnecting transparently if the connection drops.
+   *
+   * @deprecated Superseded by {@link run}: `const run = await hope.workflows.run(slug, input); for await (const event of run.events()) …`.
+   * It yields the LEGACY envelope shape and resumes by an opaque token; `RunHandle` speaks protocol v2 and resumes by `seq`. Not removed in 5.x.
    */
   runAndStream(
     slug: string,
@@ -644,7 +716,7 @@ export class WorkflowsResource extends WorkflowInvocationBase {
     options: StartRunOptions & StreamRunOptions,
   ): AsyncGenerator<WorkflowRunEvent, void, void> {
     assertSocketRuntime();
-    const handle = await this.run(slug, body, options);
+    const handle = await this.start(slug, body, options);
     yield* this.streamRunOverSocket(slug, handle.runId, options);
   }
 
@@ -670,6 +742,8 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * `Last-Event-ID` set to the last token it saw, so nothing between the two
    * connections is lost. You do not have to do anything to get that; set
    * `autoResume: false` to opt out.
+   *
+   * @deprecated Superseded by {@link attach}: `hope.workflows.attach(slug, runId).events()` yields protocol-v2 events and resumes by `seq`. Not removed in 5.x.
    */
   streamRun(slug: string, runId: string, options: StreamRunOptions = {}): AsyncGenerator<WorkflowRunEvent, void, void> {
     if (options.transport === 'socket') return this.streamRunOverSocket(slug, runId, options);
@@ -687,6 +761,8 @@ export class WorkflowsResource extends WorkflowInvocationBase {
    * Pairs with {@link run}: start now, hand the `runId` to another process,
    * wait there. Unlike {@link runAndWait} there is no 60s ceiling — the
    * stream is resumed across disconnects for as long as the run takes.
+   *
+   * @deprecated Superseded by {@link RunHandle.wait}: `await hope.workflows.attach(slug, runId).wait()` (or `{ poll: true }`). Not removed in 5.x.
    */
   async waitForRun(slug: string, runId: string, options: StreamRunOptions = {}): Promise<WorkflowRunStatus> {
     let last: WorkflowRunEvent | undefined;

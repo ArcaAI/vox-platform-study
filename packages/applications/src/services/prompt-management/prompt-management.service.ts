@@ -59,6 +59,7 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // write delegates to the existing UserProfile upsert (which is read back for resolution).
 import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { DepartmentResponse } from '../department/dto';
+import { PromptTagSuggestionResponse } from './dto/prompt-tag-suggestion.response';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
@@ -210,6 +211,9 @@ export function coercePromptVariableValue(type: PromptVariableType, value: unkno
       return typeof value === 'string' ? value : String(value);
   }
 }
+
+const TAG_SUGGESTION_DEFAULT_LIMIT = 20;
+const TAG_SUGGESTION_MAX_LIMIT = 100;
 
 @Injectable()
 export class PromptManagementService extends BaseService implements IPromptManagementService {
@@ -820,6 +824,42 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const mapper = PromptTemplateEntityMapper.getInstance();
     const templates = models.map((m) => mapper.toDomainEntity(m));
     return templates.map(PromptManagementDtoMapper.toTemplateResponse);
+  }
+
+  /**
+   * Distinct tags over the caller tenant's non-deleted prompt templates (TASK-1036 R1).
+   *
+   * Same explicit `tenantId` pin as the list reads above (B-12): `PromptTemplate` is a
+   * SYSTEM-shared READ model, so an unpinned read would fold the SYSTEM golden templates' tags
+   * into a tenant's suggestions.
+   *
+   * Scale assumption: a tenant owns tens-to-low-hundreds of prompts with a handful of tags each, so
+   * the tag column is selected and aggregated in memory. If a tenant ever holds tens of thousands
+   * of prompts, move this to `SELECT unnest(tags), count(*) ... GROUP BY 1` in the repository.
+   */
+  async listTagSuggestions(query: { q?: string; limit?: number }): Promise<PromptTagSuggestionResponse[]> {
+    const tenantId = this.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant ID is required');
+
+    const limit = query.limit && query.limit > 0 ? Math.min(Math.floor(query.limit), TAG_SUGGESTION_MAX_LIMIT) : TAG_SUGGESTION_DEFAULT_LIMIT;
+    const needle = query.q?.trim().toLowerCase();
+
+    const qb = this.promptTemplateRepository.$();
+    qb.Where({ tenantId });
+    qb.Where({ resourceStatus: { not: ResourceStatusType.DELETED } });
+    const rows = (await qb.Select(['tags']).ToList()) as Array<{ tags?: string[] | null }>;
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      for (const tag of new Set(row.tags ?? [])) {
+        if (needle && !tag.toLowerCase().includes(needle)) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+      .slice(0, limit);
   }
 
   /**
@@ -1661,14 +1701,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
       // caller-pinned `provider`/`model`/`modelId` names a raw registry row with no agent behind
       // it, so there is no authored posture to apply and none is invented here.
       await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string }, generation);
-      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
-      // TASK-890 §3.14 — a prompt bench run is ALWAYS screened. There is no node and no agent
-      // here, so there is no opinion to inherit: `resolveGuardrailDecision` would answer its
-      // `default` (ON) for every input, and stating it explicitly is what lets TEXT tell
-      // "screened by a decision" from "no opinion" and lets the ledger record `screened`.
-      // A tenant cannot opt a bench run out; the only thing that can turn this off is the
-      // PLATFORM kill switch, which stays the floor inside `apps/text`.
-      this.textRequestEnrichment.applyGuardrailDecision(body, { enabled: true });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { phase: 'test' });
     }
 
     let taskId: string;

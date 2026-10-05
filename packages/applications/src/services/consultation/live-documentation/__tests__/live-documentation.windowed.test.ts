@@ -72,7 +72,9 @@ function buildService(stored: Record<string, unknown> = {}) {
 
 const generatePrompt = (http: { axiosRef: { post: ReturnType<typeof vi.fn> } }, index = 0): string => {
   const calls = http.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate'));
-  return (calls[index][1] as { prompt: string }).prompt;
+  // Everything the model reads, in order: the system message (instructions) then the user (data).
+  const body = calls[index][1] as { prompt: string; system_prompt: string };
+  return `${body.system_prompt}\n\n${body.prompt}`;
 };
 
 /** Drive one flush with `segments` ingested, under the given stored knobs. */

@@ -28,6 +28,7 @@ import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gat
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
 import type { ResolvedWorkflowAssignment } from '../../../workflow-assignment/IWorkflowAssignmentService';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../../agent/text-generation-spec';
+import { agentSystemHead, dataBlock, headOf, liveSystemHead } from './live-compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const CID = 'consultation-947';
@@ -229,7 +230,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('Patient Ada, ward 3.');
+    expect(headOf(calls[0]?.system_prompt, 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
   });
 
   it('a `template` artifact produces the same bytes', async () => {
@@ -239,7 +240,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe(`Visit: ${VISIT_TYPE}.`);
+    expect(headOf(calls[0]?.system_prompt, `Visit: ${VISIT_TYPE}.`)).toBe(agentSystemHead(`Visit: ${VISIT_TYPE}.`));
   });
 
   it('a candidate with NO resolvedPrompt still falls back to `instruction.systemPrompt`', async () => {
@@ -247,7 +248,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe(`INLINE FALLBACK ${VISIT_TYPE}`);
+    expect(headOf(calls[0]?.system_prompt, `INLINE FALLBACK ${VISIT_TYPE}`)).toBe(agentSystemHead(`INLINE FALLBACK ${VISIT_TYPE}`));
   });
 
   it('a candidate carrying no instruction body at all still sends the platform prompt', async () => {
@@ -255,7 +256,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe(LIVE_DOCUMENT_SYSTEM_PROMPT);
+    expect(headOf(calls[0]?.system_prompt, LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
   });
 
   it('stamps NO `prompt_fragments` on the stats — a single-body agent has no fragments to report', async () => {
@@ -281,7 +282,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe(`BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`);
+    expect(headOf(calls[0]?.system_prompt, `BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`)).toBe(agentSystemHead(`BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`));
   });
 
   it('never sends the STATIC PROJECTION alone — the pre-947 read (`resolvedPrompt.content`) would have', async () => {
@@ -317,7 +318,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
     const { calls, stats } = await runOneFlush(service, post);
 
     expect(calls, 'an unevaluable condition took the node out').toHaveLength(1);
-    expect(calls[0]?.system_prompt).toBe('BASE.');
+    expect(headOf(calls[0]?.system_prompt, 'BASE.')).toBe(agentSystemHead('BASE.'));
     expect(stats?.prompt_fragments).toEqual(['base']);
   });
 
@@ -337,7 +338,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('{{\n\ntrigger.context.visit_type}}');
+    expect(headOf(calls[0]?.system_prompt, '{{\n\ntrigger.context.visit_type}}')).toBe(agentSystemHead('{{\n\ntrigger.context.visit_type}}'));
   });
 
   it('OD-6 — a composition that selects NOTHING degrades the node without calling TEXT', async () => {
@@ -399,7 +400,7 @@ describe('R1 #1 — the `context` alias is the UNWRAPPED view when the agent bin
 
     const { calls, stats } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe(`BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`);
+    expect(headOf(calls[0]?.system_prompt, `BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`)).toBe(agentSystemHead(`BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`));
     expect(stats?.prompt_fragments).toEqual(['base', 'revisit']);
   });
 
@@ -408,7 +409,7 @@ describe('R1 #1 — the `context` alias is the UNWRAPPED view when the agent bin
 
     const { calls, stats } = await runOneFlush(service, post);
 
-    expect(calls[0]?.system_prompt).toBe('BASE.');
+    expect(headOf(calls[0]?.system_prompt, 'BASE.')).toBe(agentSystemHead('BASE.'));
     expect(stats?.prompt_fragments).toEqual(['base']);
   });
 });

@@ -33,7 +33,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
+from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES, node_activity_envelope
 from harness.temporal.interpreter.core_loop_workflow import LoopWorkflow
 from harness.temporal.interpreter.gate_workflow import ConsultationGateWorkflow
 from harness.temporal.interpreter.loop_activities import LOOP_ACTIVITIES
@@ -71,8 +71,7 @@ _HANDOFF_SCRIPT: list[LiveOutputsResult] = []
 _HANDOFF_CALLS: list[LiveOutputsRequest] = []
 
 
-@activity.defn(name="interpreter.core_agent")
-async def stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
+async def _stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     _SEEN[payload.node_id] = payload
     bound = payload.bound_inputs
     text = bound.get("in") or bound.get("context")
@@ -85,6 +84,14 @@ async def stub_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
             reason="core.agent: nothing bound on `in`/`context` to generate from",
         )
     return NodeActivityResult(status="SUCCEEDED", output={"text": f"finalized({text})"})
+
+
+#: TASK-1038 R-3 — registered inside the SAME envelope every production node activity runs in, so
+#: `_SEEN` records the input the node's own code receives (references already dereferenced, the
+#: run context's views rebuilt), not the compact wire form the workflow schedules.
+stub_core_agent = activity.defn(name="interpreter.core_agent")(
+    node_activity_envelope(_stub_core_agent)
+)
 
 
 @activity.defn(name="interpreter.load_live_outputs")

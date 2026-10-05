@@ -1346,9 +1346,10 @@ describe('TextProxyController', () => {
 
       expect(mockContextItemRepo.findById).toHaveBeenCalledTimes(2);
       const postedPrompt = mockHttpService.axiosRef.post.mock.calls[0][1].prompt;
-      expect(postedPrompt).toContain('Transcript:\nTranscript content here');
-      expect(postedPrompt).toContain('Case Note:\nCase note content here');
-      expect(postedPrompt.indexOf('Transcript:')).toBeLessThan(postedPrompt.indexOf('Case Note:'));
+      // Each item is ONE delimited data block, labelled by its type, in the order asked for.
+      expect(postedPrompt).toContain('<<<EXTERNAL_DATA section="transcript">>>\n--- Transcript ---\nTranscript content here\n<<<END_EXTERNAL_DATA>>>');
+      expect(postedPrompt).toContain('<<<EXTERNAL_DATA section="case_note">>>\n--- Case Note ---\nCase note content here\n<<<END_EXTERNAL_DATA>>>');
+      expect(postedPrompt.indexOf('--- Transcript ---')).toBeLessThan(postedPrompt.indexOf('--- Case Note ---'));
       expect(result._debug.context_item_ids).toEqual(['ctx-1', 'ctx-2']);
     });
 
@@ -1411,7 +1412,7 @@ describe('TextProxyController', () => {
         key: '2026/05/31/lab-result.txt',
       });
       const postedPrompt = mockHttpService.axiosRef.post.mock.calls[0][1].prompt;
-      expect(postedPrompt).toContain('Attachment (lab-result.txt):');
+      expect(postedPrompt).toContain('<<<EXTERNAL_DATA section="attachment">>>\n--- Attachment (lab-result.txt) ---');
       expect(postedPrompt).toContain('WBC 6.1, Hemoglobin 14.2');
     });
 
@@ -1499,6 +1500,37 @@ describe('TextProxyController', () => {
       );
       expect(result._debug.prompt_template_id).toBe('tmpl-1');
       expect(result._debug.prompt_template_name).toBe('Cardiology Pre-Summary');
+    });
+
+    it('renders the template — a reference the route cannot supply is a 400 naming it, never a raw `{{…}}` sent upstream', async () => {
+      mockPromptTemplateRepo.findById.mockResolvedValue({
+        id: 'tmpl-vars',
+        name: 'Needs context',
+        content: 'Age {{context.safe_age}} for a {{visit_type}} visit.',
+      });
+
+      const error = await controller
+        .generateAssembled({ type: 'summary', message: 'Patient with chest pain', prompt_template_id: 'tmpl-vars', visit_type: 'revisit' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'PROMPT_VARIABLE_UNRESOLVED',
+        missingVariables: ['context.safe_age'],
+      });
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+    });
+
+    it('sends the RENDERED template and the message as a delimited data block', async () => {
+      mockPromptTemplateRepo.findById.mockResolvedValue({ id: 'tmpl-vt', name: 'VT', content: 'Scribe a {{visit_type}} visit.' });
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'ok' } });
+
+      await controller.generateAssembled({ type: 'summary', message: 'Chest pain.', prompt_template_id: 'tmpl-vt', visit_type: 'revisit' });
+
+      const posted = mockHttpService.axiosRef.post.mock.calls[0][1] as { prompt: string; system_prompt: string };
+      expect(posted.system_prompt).toContain('Scribe a Revisit visit.');
+      expect(posted.system_prompt).not.toContain('{{');
+      expect(posted.prompt).toBe('<<<EXTERNAL_DATA section="message">>>\n--- Message ---\nChest pain.\n<<<END_EXTERNAL_DATA>>>');
     });
 
     it('should throw NotFoundException when prompt template does not exist', async () => {

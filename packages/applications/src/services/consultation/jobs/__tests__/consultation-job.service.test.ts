@@ -29,7 +29,13 @@ const createMockCacheService = () => ({
   get: vi.fn().mockResolvedValue(null),
   setex: vi.fn().mockResolvedValue(undefined),
   publish: vi.fn().mockResolvedValue(undefined),
+  // TASK-1038 B3a — the atomic Idempotency-Key claim (`null` = claimed) and its release.
+  eval: vi.fn().mockResolvedValue(null),
+  del: vi.fn().mockResolvedValue(undefined),
 });
+
+/** TASK-1038 B3a (G6) — frames are named; `status` frames carry each update (progress/result precede it). */
+const statusFrames = (events: MessageEvent[]) => events.filter((event) => event.type === 'status');
 
 // Mock Redis Subscriber Service
 const createMockRedisSubscriber = () => ({
@@ -79,7 +85,7 @@ describe('ConsultationJobService', () => {
       expect(result).toEqual({
         jobId: 'test-job-id-123',
         status: 'PENDING',
-        sseUrl: '/api/consultations/jobs/test-job-id-123/sse',
+        sseUrl: '/api/v1/consultations/jobs/test-job-id-123/stream',
         estimatedSeconds: 30,
       });
     });
@@ -707,8 +713,8 @@ describe('ConsultationJobService', () => {
         });
       });
 
-      expect(events).toHaveLength(1);
-      const data = JSON.parse(events[0].data as string);
+      expect(events.map((event) => event.type)).toEqual(['result', 'status']);
+      const data = JSON.parse(statusFrames(events)[0].data as string);
       expect(data.status).toBe('COMPLETED');
       expect(data.progress).toBe(100);
       expect(mockRedisSubscriber.subscribeToChannel).not.toHaveBeenCalled();
@@ -840,13 +846,14 @@ describe('ConsultationJobService', () => {
 
       await new Promise((r) => setTimeout(r, 50));
 
-      // events[0] = current status (PENDING), events[1] = progress 25%, events[2] = progress 75%
-      expect(events.length).toBe(3);
+      // status frames: current status (PENDING), progress 25%, progress 75% (each preceded by a `progress` frame)
+      const statuses = statusFrames(events);
+      expect(statuses.length).toBe(3);
 
-      const progress1 = JSON.parse(events[1].data as string);
+      const progress1 = JSON.parse(statuses[1].data as string);
       expect(progress1.progress).toBe(25);
 
-      const progress2 = JSON.parse(events[2].data as string);
+      const progress2 = JSON.parse(statuses[2].data as string);
       expect(progress2.progress).toBe(75);
 
       subscription.unsubscribe();
@@ -1109,7 +1116,7 @@ describe('ConsultationJobService', () => {
       );
 
       await new Promise((r) => setTimeout(r, 50));
-      expect(events.length).toBe(2); // current status + progress
+      expect(statusFrames(events).length).toBe(2); // current status + progress
 
       // Client unsubscribes before job completes
       subscription.unsubscribe();
@@ -1131,7 +1138,7 @@ describe('ConsultationJobService', () => {
       );
 
       await new Promise((r) => setTimeout(r, 50));
-      expect(events.length).toBe(2); // No new events after unsubscribe
+      expect(statusFrames(events).length).toBe(2); // No new events after unsubscribe
     });
   });
 
@@ -1196,11 +1203,8 @@ describe('ConsultationJobService', () => {
       idempotencyKey: 'idem-key-uuid-1234',
     };
 
-    it('createPreSummaryJob returns the prior jobId when the Redis key already exists', async () => {
-      mockCacheService.get.mockImplementation(async (key: string) => {
-        if (key.startsWith('idempotency:')) return 'prior-job-id-xyz';
-        return null;
-      });
+    it('createPreSummaryJob returns the prior jobId when the Redis key already exists (a pre-TASK-1038 bare record)', async () => {
+      mockCacheService.eval.mockResolvedValue('prior-job-id-xyz');
 
       const result = await service.createPreSummaryJob(
         validParams.consultationId,
@@ -1217,8 +1221,6 @@ describe('ConsultationJobService', () => {
     });
 
     it('createPreSummaryJob persists the new jobId under the idempotency key with 24h TTL', async () => {
-      mockCacheService.get.mockResolvedValue(null);
-
       await service.createPreSummaryJob(
         validParams.consultationId,
         validParams.tenantId,
@@ -1234,12 +1236,10 @@ describe('ConsultationJobService', () => {
       expect(idempotencyCall![0]).toContain('user-1');
       expect(idempotencyCall![0]).toContain('idem-key-uuid-1234');
       expect(idempotencyCall![1]).toBe(86400);
-      expect(idempotencyCall![2]).toBe('test-job-id-123');
+      expect(JSON.parse(String(idempotencyCall![2]))).toMatchObject({ state: 'done', value: 'test-job-id-123' });
     });
 
     it('namespaces the idempotency key by tenant + user so collisions cannot cross-leak', async () => {
-      mockCacheService.get.mockResolvedValue(null);
-
       await service.createPreSummaryJob('c', 'tenant-A', 'user-1', validParams.request, undefined, 'shared-key');
       await service.createPreSummaryJob('c', 'tenant-B', 'user-1', validParams.request, undefined, 'shared-key');
 

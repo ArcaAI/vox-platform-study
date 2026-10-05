@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { HarnessGatewayService } from './harness-gateway.service';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 
 /**
  * HarnessGatewayService DI module. Leaf module:
@@ -12,7 +13,9 @@ import { HarnessGatewayService } from './harness-gateway.service';
  */
 @Module({
   imports: [ConfigModule, HttpModule],
-  providers: [HarnessGatewayService],
+  // TASK-1038 B3a — `TenantSettingsService` resolves the run-start limits (its `IAppSettingsService`
+  // dependency is provided by the @Global() `AppSettingsModule`).
+  providers: [HarnessGatewayService, TenantSettingsService],
   exports: [HarnessGatewayService],
 })
 export class HarnessGatewayServiceModule {}

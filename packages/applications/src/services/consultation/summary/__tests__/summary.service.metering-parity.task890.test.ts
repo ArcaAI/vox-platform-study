@@ -119,7 +119,6 @@ function makeGenerationService(entitlements?: unknown, enrichment?: unknown) {
       : (enrichment ?? {
           applyTextRuntimeProfile: vi.fn(async (body: unknown) => body),
           applyTenantProviderOverrides: vi.fn(async (body: unknown) => body),
-          guardrailDisposition: vi.fn(async () => 'screened'),
         })) as never,
   );
   return { service, usageLedger, httpService };
@@ -218,13 +217,9 @@ describe('SummaryService.extractEntities — the NLP allowance is checked before
 });
 
 /**
- * TASK-890 L14 (§3.14, OD-R) — the clinical summary path records HOW it was screened.
- *
- * This path pushes no opt-out: it posts to TEXT with the tenant's credential fold and no
- * `guardrail_policy.enabled`, so the platform posture governs. Its rows can therefore say
- * `screened` or `platform_off` — never `opted_out`. Recording it anyway is the point: "was this
- * clinical note generated behind the guard" must be a query on the ledger, not an inference from
- * which code path produced it.
+ * The clinical summary path records HOW it was screened. Every call is screened (the opt-outs and
+ * the platform kill switch are retired), so a row produced through the egress enrichment says
+ * `screened`; an unwired enrichment stamps nothing rather than guessing.
  */
 describe('SummaryService — the guardrail disposition on the clinical row', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -239,18 +234,15 @@ describe('SummaryService — the guardrail disposition on the clinical row', () 
     expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'screened', trigger: 'CONSULTATION' });
   });
 
-  it('records `platform_off` when the platform kill switch is off — never a fabricated `screened`', async () => {
-    const { service, usageLedger } = makeGenerationService(undefined, {
+  it('names the consultation to the egress enrichment, so its known PHI rides the call', async () => {
+    const applyTenantProviderOverrides = vi.fn(async (body: unknown) => body);
+    const { service } = makeGenerationService(undefined, {
       applyTextRuntimeProfile: vi.fn(async (body: unknown) => body),
-      applyTenantProviderOverrides: vi.fn(async (body: unknown) => body),
-      guardrailDisposition: vi.fn(async () => 'platform_off'),
+      applyTenantProviderOverrides,
     });
     await service.generatePreSummary('c-1', {} as never);
 
-    const llm = usageLedger.recordUsage.mock.calls
-      .map((call) => call[0] as { common: { operation: string; attributesJson?: Record<string, unknown> } })
-      .find((batch) => batch.common.operation === 'presummarize');
-    expect(llm!.common.attributesJson).toMatchObject({ guardrail: 'platform_off' });
+    expect(applyTenantProviderOverrides.mock.calls[0]?.[1]).toMatchObject({ consultationId: 'c-1' });
   });
 
   it('an unwired enrichment service stamps nothing rather than guessing', async () => {

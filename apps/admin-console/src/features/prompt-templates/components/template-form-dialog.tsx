@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { templateReferences } from '@arcaai/workflow-contract';
-import { IconPlus, IconTrash, IconWand, IconX } from '@tabler/icons-react';
+import { deriveVariableDeclarations } from '@arcaai/workflow-contract';
+import { IconEraser, IconPlus, IconTrash, IconWand } from '@tabler/icons-react';
+import { cn } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Input } from '@arcaai/ui/components/shadcn/input';
@@ -11,9 +12,11 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { TemplateField, templateSyntaxLint, variableNamePaths, withPlatformPaths } from '@/shared/template-editor';
+import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
+import { TagsField } from '@/shared/tags-field';
 import { useCreateTemplate, useDepartments, useUpdateTemplate } from '../api/hooks';
 import type { PromptTemplate, PromptTemplateCategory, PromptTemplateStatus, PromptVariableDeclaration, PromptVariableType } from '../api/types';
 
@@ -26,12 +29,13 @@ const VARIABLE_TYPE_OPTIONS: { value: PromptVariableType; label: string }[] = [
 ];
 
 /**
- * The variable-declarations repeater (TASK-890 §3.6) — shared by the create
- * and edit forms. "Derive from content" reads every `{{path}}` reference in
- * the template body via `templateReferences` (`@arcaai/workflow-contract`,
- * the SAME parser the publish gate and the render engine use) and adds one
- * declaration per ROOT name not already declared — `{{a.b}}` derives `a`, not
- * `a.b`, with a hint noting the fuller path it was referenced by.
+ * The variable-declarations repeater (TASK-890 §3.6, "Derive v2" TASK-1036 §3.1) — shared by the
+ * create and edit forms. "Derive from content" calls `deriveVariableDeclarations`
+ * (`@arcaai/workflow-contract`), the SAME function the server runs on create/update, so the list
+ * shown here is the list stored: one declaration per ROOT name (`{{a.b}}` declares `a`, as JSON),
+ * existing declarations kept verbatim, and namespace roots (`trigger`, `context`, …) and platform
+ * variables never offered. A declaration the content no longer references is shown STALE and is
+ * only removed after the author confirms ("Remove stale").
  */
 function PromptVariablesEditor({
   variables,
@@ -42,6 +46,14 @@ function PromptVariablesEditor({
   onChange: (next: PromptVariableDeclaration[]) => void;
   content: string;
 }) {
+  const [confirmingStale, setConfirmingStale] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  // A row the author has not named yet is not "stale" — it is unfinished.
+  const stale = useMemo(
+    () => new Set(deriveVariableDeclarations(content, variables).stale.filter((name) => name !== '')),
+    [content, variables],
+  );
+
   function updateAt(index: number, patch: Partial<PromptVariableDeclaration>) {
     onChange(variables.map((variable, i) => (i === index ? { ...variable, ...patch } : variable)));
   }
@@ -55,52 +67,67 @@ function PromptVariablesEditor({
   }
 
   function deriveFromContent() {
-    let refs: ReturnType<typeof templateReferences>;
-    try {
-      refs = templateReferences(content);
-    } catch {
-      // A syntax error in the content is reported by the publish gate, not
-      // this best-effort authoring helper — just derive nothing.
-      return;
-    }
-    const known = new Set(variables.map((variable) => variable.name));
-    const derived: PromptVariableDeclaration[] = [];
-    for (const ref of refs) {
-      const root = ref.path.split('.')[0];
-      if (known.has(root)) continue;
-      known.add(root);
-      derived.push({
-        name: root,
-        type: 'string',
-        required: !ref.hasDefault,
-        ...(ref.path !== root ? { description: `Referenced as {{${ref.path}}}` } : {}),
-      });
-    }
-    if (derived.length > 0) onChange([...variables, ...derived]);
+    const result = deriveVariableDeclarations(content, variables);
+    if (result.added.length > 0) onChange(result.declarations);
+    const count = result.added.length;
+    setAnnouncement(count === 0 ? 'No new variables found.' : `Added ${count} ${count === 1 ? 'variable' : 'variables'}: ${result.added.join(', ')}.`);
+  }
+
+  function removeStale() {
+    onChange(variables.filter((variable) => !stale.has(variable.name)));
+    setAnnouncement(`Removed ${stale.size} stale ${stale.size === 1 ? 'variable' : 'variables'}.`);
+    setConfirmingStale(false);
   }
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">Variables</span>
-        <Button type="button" variant="outline" size="sm" onClick={deriveFromContent}>
-          <IconWand aria-hidden />
-          Derive from content
-        </Button>
+        <div className="flex items-center gap-2">
+          {stale.size > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setConfirmingStale(true)}>
+              <IconEraser aria-hidden />
+              Remove stale ({stale.size})
+            </Button>
+          ) : null}
+          <Button type="button" variant="outline" size="sm" onClick={deriveFromContent}>
+            <IconWand aria-hidden />
+            Derive from content
+          </Button>
+        </div>
       </div>
+      <p className="text-muted-foreground text-xs">
+        Optional variables render empty when no value is provided. Required variables must be supplied, or the prompt fails by name.
+      </p>
+      <p role="status" className="text-muted-foreground text-xs empty:sr-only">
+        {announcement}
+      </p>
+      <ConfirmDialog
+        open={confirmingStale}
+        onOpenChange={setConfirmingStale}
+        title="Remove stale variables?"
+        description={`These declarations are no longer referenced by the prompt content: ${[...stale].join(', ')}.`}
+        confirmLabel="Remove stale variables"
+        onConfirm={removeStale}
+      />
       {variables.length === 0 ? <p className="text-muted-foreground text-xs">No declared variables yet.</p> : null}
       {variables.map((variable, index) => (
         <div key={index} className="grid grid-cols-1 items-end gap-2 rounded-md border p-2 sm:grid-cols-12">
           <div className="flex flex-col gap-1 sm:col-span-3">
             <Label htmlFor={`variable-name-${index}`} className="text-xs">
               Name
+              {stale.has(variable.name) ? (
+                <Badge variant="outline" className="ml-1.5 text-[10px]">
+                  no longer used
+                </Badge>
+              ) : null}
             </Label>
             <Input
               id={`variable-name-${index}`}
               value={variable.name}
               onChange={(event) => updateAt(index, { name: event.target.value })}
               placeholder="topic"
-              className="font-mono text-xs"
+              className={cn('font-mono text-xs', stale.has(variable.name) && 'text-muted-foreground line-through')}
               autoComplete="off"
             />
           </div>
@@ -182,81 +209,58 @@ const STATUS_OPTIONS: { value: PromptTemplateStatus; label: string }[] = [
   { value: 'PUBLISHED', label: 'Published' },
 ];
 
-/**
- * Tag editor (chips + an add box) — shared by the create and edit forms.
- *
- * `PromptTemplate` is a TAGGED entity end to end (column, create/update DTOs,
- * response) and tags are already load-bearing at RESOLUTION time — the
- * tenant-wide pre-summary is picked by the `pre-summary` tag, minus
- * `dept-free` — yet the console had no way to read or write them. With the
- * `departmentId` scope being deprecated in favour of `dept:<slug>` tags, an
- * admin who cannot edit tags cannot steer resolution at all.
- *
- * Enter or a comma commits; a comma-separated paste adds several at once.
- * Duplicates and blanks are dropped, and order is preserved (the resolver's
- * tie-breaks are by row, never by tag order, so this is purely cosmetic).
- */
-function TagsField({ idPrefix, tags, onChange }: { idPrefix: string; tags: string[]; onChange: (next: string[]) => void }) {
-  const [draft, setDraft] = useState('');
-
-  function commit(raw: string) {
-    const added = raw
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    if (added.length === 0) return;
-    const next = [...tags];
-    for (const tag of added) if (!next.includes(tag)) next.push(tag);
-    onChange(next);
-    setDraft('');
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor={`${idPrefix}-tags`}>Tags</Label>
-      {tags.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="rounded-full py-0.5 pr-1 font-mono text-[11px]">
-              {tag}
-              <button
-                type="button"
-                aria-label={`Remove tag ${tag}`}
-                className="text-muted-foreground hover:text-foreground ml-1 cursor-pointer rounded-full"
-                onClick={() => onChange(tags.filter((entry) => entry !== tag))}
-              >
-                <IconX aria-hidden className="size-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      ) : null}
-      <Input
-        id={`${idPrefix}-tags`}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ',') return;
-          event.preventDefault();
-          commit(draft);
-        }}
-        onBlur={() => commit(draft)}
-        placeholder="dept:cardiology — Enter to add"
-        autoComplete="off"
-      />
-      <p className="text-muted-foreground text-xs">
-        Tags select prompts at resolution time (<span className="font-mono">pre-summary</span>) and carry the department axis as{' '}
-        <span className="font-mono">dept:&lt;slug&gt;</span>.
-      </p>
-    </div>
-  );
-}
+const TAGS_DESCRIPTION = (
+  <>
+    Tags select prompts at resolution time (<span className="font-mono">pre-summary</span>) and carry the department axis as{' '}
+    <span className="font-mono">dept:&lt;slug&gt;</span>.
+  </>
+);
 
 function RequiredMark() {
   return (
     <span aria-hidden className="text-destructive">
       *
     </span>
+  );
+}
+
+/**
+ * The template body: a `TemplateEditor` completing the template's own declared variables and
+ * flagging a placeholder that does not parse. Which `context.*` paths resolve is decided by each
+ * agent that binds the template, so the body is checked for syntax only here; the binding agent's
+ * publish (and its editor) checks the references.
+ */
+function TemplateContentField({
+  value,
+  onChange,
+  variables,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  variables: PromptVariableDeclaration[];
+  placeholder?: string;
+}) {
+  // The template's own declarations, then the platform's `context.*` names a binding agent resolves.
+  const paths = withPlatformPaths(
+    variableNamePaths(
+      variables.map((variable) => variable.name),
+      'declared',
+    ),
+  );
+  return (
+    <div className="flex min-h-40 flex-1 flex-col">
+      <TemplateField
+        label="Prompt content"
+        required
+        value={value}
+        onChange={onChange}
+        paths={paths}
+        lint={templateSyntaxLint}
+        minLines={10}
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 
@@ -379,28 +383,21 @@ export function CreateTemplateForm({ onCreated, onCancel }: { onCreated: (templa
           autoComplete="off"
         />
       </div>
-      <div className="flex min-h-40 flex-1 flex-col gap-2">
-        <Label htmlFor="create-template-content">
-          Prompt content <RequiredMark />
-        </Label>
-        <Textarea
-          id="create-template-content"
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder={'You are a clinical scribe. Summarize {{transcript}} as…'}
-          className="min-h-40 flex-1 resize-none font-mono text-xs"
-          required
-        />
-      </div>
+      <TemplateContentField
+        value={content}
+        onChange={setContent}
+        variables={variables}
+        placeholder={'You are a clinical scribe. Summarize {{transcript}} as…'}
+      />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
-      <TagsField idPrefix="create-template" tags={tags} onChange={setTags} />
+      <TagsField id="create-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
       <FormActions>
         <Button type="button" variant="outline" onClick={onCancel} disabled={createTemplate.isPending}>
           Cancel
         </Button>
         <Button type="submit" disabled={!name.trim() || !content || createTemplate.isPending}>
           {createTemplate.isPending ? <Spinner /> : null}
-          Create template
+          Create Hope Prompt
         </Button>
       </FormActions>
     </form>
@@ -533,21 +530,9 @@ export function EditTemplateForm({
         <Label htmlFor="edit-template-description">Description</Label>
         <Input id="edit-template-description" value={description} onChange={(event) => setDescription(event.target.value)} autoComplete="off" />
       </div>
-      <div className="flex min-h-40 flex-1 flex-col gap-2">
-        <Label htmlFor="edit-template-content">
-          Prompt content <RequiredMark />
-        </Label>
-        <Textarea
-          id="edit-template-content"
-          aria-label="Prompt content"
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          className="min-h-40 flex-1 resize-none font-mono text-xs"
-          required
-        />
-      </div>
+      <TemplateContentField value={content} onChange={setContent} variables={variables} />
       <PromptVariablesEditor variables={variables} onChange={setVariables} content={content} />
-      <TagsField idPrefix="edit-template" tags={tags} onChange={setTags} />
+      <TagsField id="edit-template-tags" value={tags} onChange={setTags} description={TAGS_DESCRIPTION} />
       <div className="flex flex-col gap-2">
         <Label htmlFor="edit-template-change-reason">Change reason</Label>
         <Input

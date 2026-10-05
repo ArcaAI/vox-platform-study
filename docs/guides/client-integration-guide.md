@@ -668,21 +668,44 @@ Pick by what your process can afford:
 
 | Signal                                              | Reach for it when                                               | Cost                                                                          |
 | --------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Hold the stream — `runAndStream` / `waitForRun`     | You want the lowest latency and can keep a connection           | One live connection per run. Server-sent events is the only lane that resumes |
-| Poll — `getRun` until `isTerminalRunStatus(status)` | You have the `runId` and nothing else                           | A request per interval                                                        |
+| Hold the stream — `run.text()` / `run.wait()`       | You want the lowest latency and can keep a connection           | One live connection per run. Server-sent events is the only lane that resumes |
+| Poll — `run.wait({ poll: true })`                   | You have the `runId` and nothing else                           | A request per interval                                                        |
 | Webhook                                             | Nothing of yours should be connected while the run is in flight | A public endpoint and a signature check                                       |
 
 Full file: [`packages/vox-node/examples/09-completion-signals.ts`](../../packages/vox-node/examples/09-completion-signals.ts).
 
-### Three ways to start a run, and when each is wrong
+### Starting a run: the `RunHandle` (SDK 5.0)
 
-| Call                       | Shape                        | Watch out                                                                     |
-| -------------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
-| `run(slug, body)`          | Returns a handle immediately | You now own the `runId`, and there is no way to re-discover it                |
-| `runAndWait(slug, body)`   | Blocks until terminal        | The gateway's ~60s cap is a **ceiling, not a flake** — a 504 is never retried |
-| `runAndStream(slug, body)` | Async generator of frames    | Resumes automatically; the right default for anything slow                    |
+`hope.workflows.run(slug, input)` and `hope.agents.run(slug, input)` start a run and return a
+`RunHandle`. `input` is the workflow's input object itself (an agent's flat invocation body) — not
+wrapped in `{ input }`. The handle speaks the run protocol for you: it reconnects by `seq`, hides
+tickets, and an `Idempotency-Key` is sent on every start.
 
-`streamRun` and `runAndStream` track each frame's opaque id and reconnect with `Last-Event-ID`, so a
+```ts
+const run = await hope.workflows.run(slug, { note }, { idempotencyKey: `note-${visitId}` });
+const runId = run.runId; // persist this NOW — see "You cannot list your runs"
+
+for await (const chunk of run.text()) process.stdout.write(chunk); // the text as it is written
+const delivered = await run.result(); // the verified value; null if nothing was delivered
+const outcome = await run.wait(); // { status, degraded?, error?, durationMs?, tokens? }
+await run.cancel(); // explicit and idempotent — disconnecting NEVER cancels
+
+// An agent run is the same handle, with one step (`nodeId: 'agent'`):
+const agentRun = await hope.agents.run('scribe', { text: transcript });
+
+// Another process, later — makes no request:
+const same = hope.workflows.attach(slug, runId);
+await same.wait({ poll: true, intervalMs: 2_000 }); // no stream at all
+```
+
+| Call                               | Shape                              | Watch out                                                                          |
+| ---------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------- |
+| `run(slug, input)`                 | A `RunHandle`, immediately         | You own the `runId`, and there is no way to re-discover it                         |
+| `start(slug, { input })`           | The bare 202 body                  | What `run()` returned before 5.0; you wire the stream yourself                     |
+| `runAndWait(slug, { input })`      | Blocks until terminal              | The gateway's ~60s cap is a **ceiling, not a flake** — a 504 is never retried      |
+| `runAndStream(slug, { input })`    | Async generator of legacy frames   | Resumes by opaque token, not `seq`; not removed in 5.x, but prefer `run.events()`  |
+
+`run.events()` and `run.text()` track each event's `seq` and reconnect with `Last-Event-ID`, so a
 dropped connection costs latency, not events. Use `isTerminalRunStatus(status)` rather than comparing
 strings: the terminal set includes `TIMED_OUT`, and cancellation is spelled `CANCELED`, with one L.
 
@@ -692,7 +715,7 @@ strings: the terminal set includes `TIMED_OUT`, and cancellation is spelled `CAN
 in your code changes:
 
 ```ts
-const run = await hope.workflows.run(slug, { input: { /* … */ } });
+const run = await hope.workflows.run(slug, { /* … the workflow input … */ });
 
 for await (const event of hope.workflows.streamRun(slug, run.runId, { transport: 'socket' })) {
   // Same frames, same order, same terminal event as the SSE lane.
@@ -904,7 +927,7 @@ it safe to retry. Two consequences:
 - The re-open branch writes no context items and dispatches no workflow. Whatever was decided at
   create time stands.
 
-Starting a workflow run has the same shape: `hope.workflows.run(slug, body, { idempotencyKey })`
+Starting a workflow run has the same shape: `hope.workflows.run(slug, input, { idempotencyKey })`
 derives the run id from `(tenant, slug, key)`, so a retry with the same key **joins the run already
 in flight** rather than starting — and billing — a second one. Correct on a retry; a surprise if you
 reuse a key across different payloads. The run input may not carry the reserved identity keys

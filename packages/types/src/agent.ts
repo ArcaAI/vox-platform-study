@@ -95,6 +95,13 @@ export interface ResolvedAgentModel {
   libraryName?: string;
   computeType: string | null;
   provider: string | null;
+  /**
+   * `AiModel.deploymentKind` (`SELF_HOSTED` | `CLOUD` | `BYOK`) — what decides the provider's
+   * egress LOCALITY on a text call (`SELF_HOSTED` => local, otherwise cloud). ADDITIVE-OPTIONAL and
+   * omitted when unknown: a consumer that predates it falls back to the provider-name rule, and
+   * `apps/text` treats an unstamped provider as cloud.
+   */
+  deploymentKind?: string;
   /** The tenant that OWNS the registry row (SYSTEM for the platform catalogue). */
   tenantId: string;
   /**
@@ -144,6 +151,28 @@ export interface AgentCompiledPromptFragment {
   promptVersionNumber?: number;
   content: string;
   when: string | null;
+  /**
+   * TASK-1039 — the template version's variable DECLARATIONS, frozen beside its content at publish
+   * (a `template` fragment only). ADDITIVE-OPTIONAL: absent on an artifact frozen before the field existed.
+   */
+  variables?: AgentPromptVariableDeclaration[];
+}
+
+/**
+ * TASK-1039 — one prompt variable DECLARATION, as `PromptVersion.variables` stores it and as the
+ * published agent now carries it on `resolvedPrompt`. The shape mirrors `PromptVariableDeclaration`
+ * in `@arcaai/workflow-contract` (this package cannot import it); a client reads it to build an
+ * input form — which variable is required, which is optional (renders empty), what it defaults to.
+ */
+export interface AgentPromptVariableDeclaration {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'date' | 'json';
+  required: boolean;
+  /** Used when the variable is absent, whatever `required` says. */
+  default?: string;
+  description?: string;
+  /** Where a value comes from when the caller sends none: a `context` path, or a `static` value. */
+  source?: { kind: 'context' | 'static'; path?: string };
 }
 
 /**
@@ -192,7 +221,18 @@ export interface AgentCompiledConfig {
    * `tests/contracts/prompt-composition.fixture.json`.
    */
   resolvedPrompt:
-    | { source: 'template'; promptTemplateId: string; promptVersionNumber: number; content: string }
+    | {
+        source: 'template';
+        promptTemplateId: string;
+        promptVersionNumber: number;
+        content: string;
+        /**
+         * TASK-1039 — the pinned version's variable declarations, frozen at publish. ADDITIVE-OPTIONAL:
+         * absent on an artifact frozen before the field existed. (A `composite` prompt carries them per
+         * fragment — see {@link AgentCompiledPromptFragment.variables}.)
+         */
+        variables?: AgentPromptVariableDeclaration[];
+      }
     | { source: 'inline'; content: string }
     | { source: 'composite'; content: string; join: string; fragments: AgentCompiledPromptFragment[] }
     | null;
@@ -206,16 +246,8 @@ export interface AgentCompiledConfig {
   // this field. Rows published before this ticket still carry `compiledConfig.protocols` in the
   // database; nothing here reads it, so the extra key is harmless.
   // See `docs/operations/deprecation-register.md` §SDK.
-  /**
-   * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail opt-out, stamped at publish from
-   * `parameters.guards.enabled ?? true`.
-   *
-   * ADDITIVE-OPTIONAL on purpose: every artifact published before this ticket carries no such
-   * key, and absence must read as ON. It is the BOTTOM of `resolveGuardrailDecision`'s
-   * precedence (node > workflow > agent > on) — a workflow node may override it in either
-   * direction, and nothing here can turn screening on that the PLATFORM turned off.
-   */
-  guardrail?: { enabled: boolean };
+  // The retired guardrail opt-out (`guardrail?: { enabled }`) is gone from the type. Artifacts
+  // published before its retirement may still carry the key; nothing reads it.
   /**
    * TASK-890 §3.4 — the context schema this agent PINS, frozen at publish.
    *
@@ -269,17 +301,4 @@ export interface ResolvedAgent {
   models: ResolvedAgentModel[];
   providerOverride?: ResolvedAgentProviderOverride;
   fundingTier?: AgentFundingTier;
-  /**
-   * TASK-890 §3.14 — the agent's guardrail decision, RESOLVED (never optional here).
-   *
-   * `compiledConfig.guardrail` is additive-optional because old artifacts predate it; this is
-   * not, because every consumer needs an answer rather than a maybe. `AgentResolverService`
-   * normalises absence — and any malformed value — to `{ enabled: true }`: on a safety gate,
-   * "unparseable" must read as SCREENED, never as an opt-out.
-   *
-   * Consumed by the invocation path, the realtime `core.agent` lane and the harness over
-   * `GET /internal/agents/resolve`, each of which pushes it to TEXT as
-   * `guardrail_policy.enabled` after folding any node / workflow opinion over it.
-   */
-  guardrail: { enabled: boolean };
 }

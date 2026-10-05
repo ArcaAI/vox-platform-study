@@ -44,11 +44,8 @@ from harness.temporal.interpreter.models import (
     NodeActivityResult,
 )
 from harness.temporal.interpreter.registry import NODE_REGISTRY, NodeSpec
-from harness.temporal.interpreter.run_events import (
-    EVENT_TOKEN_DELTA,
-    run_event_stream_key,
-)
 from harness.temporal.interpreter.workflow import WorkflowInterpreter
+from harness.tests.unit.temporal.interpreter._run_stream_fake import FakeRunStreamRedis
 
 _BUCKET = "harness-claim-check"
 TENANT = "22222222-2222-2222-2222-222222222222"
@@ -70,11 +67,11 @@ async def token_stream_probe(payload: NodeActivityInput) -> NodeActivityResult:
     producer = run_event_producer()
     count = int(payload.config.get("delta_count", 0))
     for sequence in range(count):
-        await producer.emit_token_delta(
-            tenant_id=payload.tenant_id,
+        # TASK-1038 R6 — a run-protocol v2 `output.text.delta`, through the one sequencer.
+        await producer.text_delta(
             run_id=payload.run_id,
             node_id=payload.node_id,
-            sequence=sequence,
+            field="text",
             text=f"tok{sequence} ",
         )
     return NodeActivityResult(status="SUCCEEDED", output={"deltas": count})
@@ -107,15 +104,8 @@ def _decoded_history_payloads(history_json: str) -> str:
     return "".join(chunks)
 
 
-class FakeRedisStream:
-    def __init__(self) -> None:
-        self.by_key: dict[str, list[dict]] = {}
-        self._seq = 0
-
-    async def xadd(self, key, fields, maxlen=None, approximate=None):  # noqa: ANN001
-        self._seq += 1
-        self.by_key.setdefault(key, []).append(json.loads(fields["data"]))
-        return f"{self._seq}-0"
+#: TASK-1038 R6 — the fake socket now runs the run-protocol v2 sequencer.
+FakeRedisStream = FakeRunStreamRedis
 
 
 def _body(delta_count: int) -> dict:
@@ -229,14 +219,10 @@ class TestTokenDeltasNeverEnterTemporalHistory:
         # The deltas really were produced — without this the equality below would also hold
         # for a producer that silently emitted nothing.
         small_deltas = [
-            e
-            for e in small_redis.by_key[run_event_stream_key(small_run)]
-            if e["type"] == EVENT_TOKEN_DELTA
+            e for e in small_redis.events(small_run) if e["type"] == "output.text.delta"
         ]
         large_deltas = [
-            e
-            for e in large_redis.by_key[run_event_stream_key(large_run)]
-            if e["type"] == EVENT_TOKEN_DELTA
+            e for e in large_redis.events(large_run) if e["type"] == "output.text.delta"
         ]
         assert len(small_deltas) == SMALL_DELTAS
         assert len(large_deltas) == LARGE_DELTAS
@@ -296,7 +282,7 @@ class TestTokenDeltasNeverEnterTemporalHistory:
         control lane, so a debug surface can still show the node completing."""
         redis = FakeRedisStream()
         run_id, _ = await _run_with(SMALL_DELTAS, redis, monkeypatch)
-        types = [e["type"] for e in redis.by_key[run_event_stream_key(run_id)]]
-        assert "workflow.node.started" in types
-        assert "workflow.node.completed" in types
-        assert "workflow.run.completed" in types
+        types = [e["type"] for e in redis.events(run_id)]
+        assert "node.started" in types
+        assert "node.completed" in types
+        assert "run.completed" in types

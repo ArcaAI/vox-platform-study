@@ -12,14 +12,17 @@ import {
   IBillingService,
   IComputeDeviceResolver,
   IConfigService,
+  IBlobStorageService,
   IEntitlementsService,
   IMediaService,
+  ITenantBucketService,
   IUsageLedgerService,
   LlmStreamUsageCollector,
   requestedLanguageMode,
   resolveEffectiveLanguageMode,
   SecretsService,
   TranscriptionJobService,
+  TenantSettingsService,
   TranscriptionRealtimeService,
   TtsAgentResolverService,
   UsageIdempotencyKey,
@@ -44,6 +47,7 @@ import type {
   ComputeAugmentedBatch,
   ComputeDevice,
   GuardrailDisposition,
+  IBlobStorageService as IBlobStorageServiceType,
   ResolvedAgent,
   UsageAttributes,
   UsageEventBatchInput,
@@ -53,8 +57,11 @@ import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
+  GoneException,
+  Headers,
   HttpCode,
   HttpException,
   HttpStatus,
@@ -64,21 +71,46 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { AxiosError } from 'axios';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import {
+  RUN_EVENTS_KEY,
+  RUN_PROTOCOL_HEADER,
+  RUN_PROTOCOL_QUERY_PARAM,
+  TERMINAL_RUN_EVENT_TYPES,
+  parseResumeCursor,
+  parseStoredRunEvent,
+  planRunResume,
+  selectRunProtocol,
+  toPublicRunEvent,
+  toSseFrame,
+  type RunEventV2,
+  type RunResyncReason,
+} from '@arcaai/async-contract';
 import { ClsService } from 'nestjs-cls';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
+import { StreamScope } from '../auth/decorators/stream-scope.decorator';
+import { StreamTicketService } from '../auth/stream-ticket.service';
 import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/downstream-error';
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
+import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
+import { AgentRunService, agentRunLinks, type AgentRunOutcome, type AgentRunTask } from './agent-run.service';
+import { persistSpeechBlob, type SpeechBlobFormat } from './tts-blob-delivery';
 import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
 /** Plain interfaces (not class-validator DTOs) so the global pipe passes the body through; TIER 3 validation runs against the agent's own `inputSchema`. */
 export interface AgentInvocationBody {
+  /** TASK-1036 OD-8 — the user turn. */
+  message?: string;
+  /** @deprecated TASK-1036 OD-8 — alias of `message`, accepted for one release. */
   text?: string;
   variables?: Record<string, string>;
   /**
@@ -92,6 +124,11 @@ export interface AgentInvocationBody {
 export interface AgentSpeechBody {
   text?: string;
   ssml?: string;
+  /**
+   * TASK-1036 §3.2 — `stream` (the default: the audio itself, streamed) or `blob` (stored in the
+   * tenant bucket; the answer is `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`).
+   */
+  delivery?: 'stream' | 'blob';
 }
 
 export interface AgentTextInvocationResponse {
@@ -131,6 +168,62 @@ export interface AgentTranscriptionResponse {
 }
 
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+
+/** The blob's format: what `apps/tts` reported, else what was asked for, else the content type. */
+function speechBlobFormat(reported: unknown, requested: unknown, contentType: string): SpeechBlobFormat {
+  const known = (value: unknown): value is SpeechBlobFormat => value === 'wav' || value === 'mp3' || value === 'pcm' || value === 'ogg';
+  if (known(reported)) return reported;
+  if (known(requested)) return requested;
+  if (contentType.includes('wav')) return 'wav';
+  if (contentType.includes('mpeg')) return 'mp3';
+  if (contentType.includes('ogg')) return 'ogg';
+  return 'pcm';
+}
+
+/** The persisted terminal statuses of a run. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['COMPLETED', 'FAILED', 'CANCELED', 'TIMED_OUT']);
+
+/** TASK-1038 OD-26 — what `POST /agents/:slug/runs` answers. */
+export interface AgentRunStartResponse {
+  runId: string;
+  status: string;
+  links: { self: string; events: string; result: string; cancel: string };
+}
+
+/**
+ * TASK-1038 (F1) — the ticket namespace of an agent run's SSE stream: `agent_run:<runId>`.
+ * Distinct from `workflow_run` on purpose, so a ticket for one kind of run can never open the
+ * other kind's stream even when the ids collide.
+ */
+export const AGENT_RUN_TICKET_NAMESPACE = 'agent_run';
+
+/**
+ * TASK-1038 (F1) — what `POST /agents/:slug/runs/:runId/stream-ticket` answers. The same shape as
+ * the workflow run ticket minus the socket `url`: an agent run has no WebSocket lane, only SSE.
+ */
+export interface AgentRunStreamTicketResponse {
+  ticket: string;
+  /** Epoch MILLISECONDS at which the ticket stops being redeemable (absolute, never a duration). */
+  expiresAt: number;
+  /** Always `agent_run:<runId>` — derived from the path, never accepted from the wire. */
+  scope: string;
+  /** The SSE stream to open with it (protocol v2 selected, query string already encoded). Single-use. */
+  sseUrl: string;
+}
+
+/** TASK-1038 OD-26 — `GET /agents/:slug/runs/:runId`. */
+export interface AgentRunStatusResponse {
+  runId: string;
+  agentSlug: string;
+  agentVersionId: string;
+  versionNumber: number;
+  status: string;
+  createdAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  error: { code: string; message: string } | null;
+  links: { self: string; events: string; result: string; cancel: string };
+}
 
 /**
  * Every ledger row this controller writes names the activity that produced it
@@ -222,6 +315,21 @@ export class AgentController {
     // tenant → SYSTEM cascade, the membership check and the warn-once, and it never raises —
     // unresolvable degrades to `cpu` rather than to a lost usage batch.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // TASK-1038 OD-26 — the agent RUN resource. Trailing and @Optional() like everything above;
+    // absent ⇒ the run routes answer a named 503 and the invocation routes are untouched.
+    @Optional() private readonly agentRuns?: AgentRunService,
+    // TASK-1038 R-1 — the process-wide multiplexed run-stream reader (@Global, exported by
+    // `WorkflowRunCompletionModule`), read through its existing API for `…/runs/:runId/events`.
+    @Optional() private readonly runEventHub?: RunEventStreamHub,
+    // TASK-1036 §3.2 — `delivery: 'blob'` on `/speech`: the tenant's AUDIO bucket, the store
+    // that writes to it (@Global), and the signed-URL lifetime (`workflowRuns.resultUrlTtlSeconds`).
+    @Optional() @Inject(ITenantBucketService) private readonly tenantBuckets?: ITenantBucketService,
+    @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageServiceType,
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
+    // TASK-1038 (F1) — the run-scoped stream ticket. `StreamTicketModule` is @Global in production;
+    // optional (and trailing) only so the positional unit fixtures keep constructing. Absent, the
+    // ticket route answers a named 503 rather than minting something unattributable.
+    @Optional() private readonly streamTicketService?: StreamTicketService,
   ) {}
 
   @Get()
@@ -256,7 +364,7 @@ export class AgentController {
   @ApiOperation({
     summary: 'Invoke a TEXT_GENERATION agent (blocking JSON, or SSE with ?mode=stream)',
     description:
-      'The body is validated against the agent’s `inputSchema` (default: `{ text, variables? }`). `mode=blocking` answers `200 application/json`; ' +
+      'The body is validated against the agent’s `inputSchema` (default: `{ message } | { text } | { variables }` — `text` is a deprecated alias of `message`). `mode=blocking` answers `200 application/json`; ' +
       '`mode=stream` answers `200 text/event-stream` with the TEXT service’s frames relayed verbatim.',
   })
   @ApiParam({ name: 'slug', type: String })
@@ -270,7 +378,7 @@ export class AgentController {
   @ApiBody({
     required: true,
     description:
-      'FLAT — `{ text, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) ' +
+      'FLAT — `{ message, … }`, never `{ input: { … } }`. (The enveloped form is the WORKFLOW body, `POST /workflows/{slug}/runs`; getting the two the wrong way round is a 400 on every call.) ' +
       'The properties below are the DEFAULT `inputSchema` a TEXT_GENERATION agent ships with. What is actually accepted is the agent’s OWN `inputSchema`, published by `GET /api/v1/agents/{slug}` — ' +
       'which is why additional properties are allowed here and why a mismatch is a 400 rather than a 422. ' +
       'A NAMED_ENTITY_RECOGNITION agent shares this route and this body, but is one-shot: `?mode=stream` on one answers 400 `MODE_UNSUPPORTED`.',
@@ -278,10 +386,15 @@ export class AgentController {
       type: 'object',
       additionalProperties: true,
       properties: {
-        text: {
+        message: {
           type: 'string',
           description:
-            'The input text. Required by the default `inputSchema`; an agent that declares its own schema may name something else entirely.',
+            'The user turn (TASK-1036 OD-8). Optional: a body may carry only `variables`. An agent that declares its own schema may name something else entirely.',
+        },
+        text: {
+          type: 'string',
+          deprecated: true,
+          description: 'DEPRECATED alias of `message`, accepted for one release. Send `message`.',
         },
         variables: {
           type: 'object',
@@ -295,7 +408,7 @@ export class AgentController {
             'The run CONTEXT, validated against the context schema the agent BINDS — not against `inputSchema`. They declare different things: `inputSchema` says what the agent is called WITH, the context schema says what it is called ABOUT. A violation is a 400 `CONTEXT_SCHEMA_VIOLATION`.',
         },
       },
-      example: { text: 'Summarise the consultation note below.' },
+      example: { message: 'Summarise the consultation note below.' },
     },
   })
   @ApiResponse({ status: 200, description: 'The generated output (JSON) or the SSE stream.' })
@@ -358,6 +471,27 @@ export class AgentController {
     // declares only `{ text, variables }`, so an agent that PINS a context schema could never be
     // invoked with a context at all, and §3.4's enforcement path was unreachable through the
     // route that is supposed to reach it.
+    await this.precheckText(resolved, tenantId, body);
+
+    // How this call was screened, stamped on whichever row the call ends up producing (the stream
+    // path emits from three handlers). Every call is screened: the opt-out and the platform kill
+    // switch are retired.
+    const guardrail: GuardrailDisposition = 'screened';
+
+    if (mode === 'stream') {
+      await this.streamText(resolved, tenantId, slug, body, res, guardrail);
+      return;
+    }
+
+    res.status(HttpStatus.OK).json(await this.executeText(resolved, tenantId, slug, body));
+  }
+
+  /**
+   * TIER 3 input validation + the metered prechecks of a TEXT_GENERATION call — shared by the
+   * invocation route and the run route (TASK-1038 OD-26), so a run is refused for exactly the
+   * reasons an invocation is, and BEFORE its 202.
+   */
+  private async precheckText(resolved: ResolvedAgent, tenantId: string, body: AgentInvocationBody): Promise<void> {
     const { context: _context, ...invocationInput } = body ?? {};
     const problems = this.invocation.inputProblems(resolved, invocationInput);
     if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
@@ -375,57 +509,70 @@ export class AgentController {
     // unbounded on the two planes that can spend fastest. Opt-in and cheap: a tenant with no
     // limit set returns without computing a draft. -> 402 when over.
     await this.billing?.assertSpendLimit(tenantId);
+  }
 
-    // TASK-890 §3.14 (OD-R) — how this call was screened, resolved ONCE here and stamped on
-    // whichever row the call ends up producing (the stream path emits from three handlers).
-    // Read before the generation rather than after it so an abort still records the disposition
-    // that was in force when the tokens were spent.
-    const guardrail = await this.invocation.guardrailDisposition(resolved.guardrail);
+  private async streamText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    res: Response,
+    guardrail: GuardrailDisposition,
+  ): Promise<void> {
+    const { stream, actingUserId } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
+    // TASK-950 (decision 3, fast win) — the clinician this call acted FOR, on every row the
+    // three teardown handlers below can emit. `AgentInvocationService` writes no row and
+    // broadcasts no event, so the usage ledger is this plane's ONLY durable, queryable record;
+    // `doctorId` is the column consultation-driven calls already fill, so both arrive on one
+    // channel rather than two. `null` for a human or API-key caller, exactly as today.
+    const doctorId = actingUserId ?? null;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Agent-Slug', resolved.slug);
+    res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
+    res.flushHeaders();
+    const heartbeat = setInterval(() => res.write(':keepalive\n\n'), SSE_HEARTBEAT_INTERVAL_MS);
+    // Forward first, observe from a side copy: the client's bytes are never
+    // touched by metering (§3.13 — the ONE tee, `LlmStreamUsageCollector`).
+    const collector = new LlmStreamUsageCollector();
+    stream.on('data', (chunk: Buffer) => {
+      res.write(chunk);
+      collector.observe(chunk);
+    });
+    stream.on('end', () => {
+      clearInterval(heartbeat);
+      res.end();
+      void this.emitStreamInvocationUsage(collector, { tenantId, doctorId }, slug, guardrail);
+    });
+    stream.on('error', (err: Error) => {
+      clearInterval(heartbeat);
+      this.logger.error({ message: 'Agent invocation stream error', agentSlug: slug, error: err.message });
+      res.end();
+      // The tokens seen before the socket died were still spent.
+      void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
+    });
+    res.on('close', () => {
+      clearInterval(heartbeat);
+      stream.destroy();
+      void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
+    });
+  }
 
-    if (mode === 'stream') {
-      const { stream, actingUserId } = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'stream');
-      // TASK-950 (decision 3, fast win) — the clinician this call acted FOR, on every row the
-      // three teardown handlers below can emit. `AgentInvocationService` writes no row and
-      // broadcasts no event, so the usage ledger is this plane's ONLY durable, queryable record;
-      // `doctorId` is the column consultation-driven calls already fill, so both arrive on one
-      // channel rather than two. `null` for a human or API-key caller, exactly as today.
-      const doctorId = actingUserId ?? null;
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache, no-transform');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no');
-      res.setHeader('X-Agent-Slug', resolved.slug);
-      res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
-      res.flushHeaders();
-      const heartbeat = setInterval(() => res.write(':keepalive\n\n'), SSE_HEARTBEAT_INTERVAL_MS);
-      // Forward first, observe from a side copy: the client's bytes are never
-      // touched by metering (§3.13 — the ONE tee, `LlmStreamUsageCollector`).
-      const collector = new LlmStreamUsageCollector();
-      stream.on('data', (chunk: Buffer) => {
-        res.write(chunk);
-        collector.observe(chunk);
-      });
-      stream.on('end', () => {
-        clearInterval(heartbeat);
-        res.end();
-        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId }, slug, guardrail);
-      });
-      stream.on('error', (err: Error) => {
-        clearInterval(heartbeat);
-        this.logger.error({ message: 'Agent invocation stream error', agentSlug: slug, error: err.message });
-        res.end();
-        // The tokens seen before the socket died were still spent.
-        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
-      });
-      res.on('close', () => {
-        clearInterval(heartbeat);
-        stream.destroy();
-        void this.emitStreamInvocationUsage(collector, { tenantId, doctorId, interrupted: true }, slug, guardrail);
-      });
-      return;
-    }
-
-    const result = await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
+  /** One blocking TEXT_GENERATION call, metered — the invocation route's answer and a run's execution. */
+  private async executeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    // TASK-1038 E2 (fix 4) — an agent RUN's abort (cancel / ceiling); absent on the synchronous route.
+    signal?: AbortSignal,
+  ): Promise<AgentTextInvocationResponse> {
+    const guardrail: GuardrailDisposition = 'screened';
+    const result = signal
+      ? await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking', { signal })
+      : await this.invocation.invokeText(resolved, tenantId, body ?? {}, 'blocking');
     this.emitInvocationUsage(await this.buildBlockingUsage(tenantId, resolved, result), slug, guardrail);
     // TASK-957 F-3 — a SEPARATE row for the screening call TEXT made on this request's behalf.
     // Its own operation, its own key, its own model: it is another provider call, not a dimension
@@ -441,7 +588,7 @@ export class AgentController {
       usage: result.usage,
       promptFragments: result.promptFragments ?? null,
     };
-    res.status(HttpStatus.OK).json(payload);
+    return payload;
   }
 
   /**
@@ -471,6 +618,11 @@ export class AgentController {
         code: 'MODE_UNSUPPORTED',
       });
     }
+    await this.precheckNer(resolved, tenantId, body);
+    res.status(HttpStatus.OK).json(await this.executeNer(resolved, tenantId, slug, body));
+  }
+
+  private async precheckNer(resolved: ResolvedAgent, tenantId: string, body: AgentInvocationBody): Promise<void> {
     const { context: _context, ...invocationInput } = body ?? {};
     const problems = this.invocation.inputProblems(resolved, invocationInput);
     if (problems.length > 0) throw new BadRequestException({ message: 'The invocation body does not match the agent’s inputSchema.', problems });
@@ -479,7 +631,19 @@ export class AgentController {
     // TASK-957 F-4 — the same ceiling. NER shares the invocations route, so a plane that checked
     // only the TEXT_GENERATION branch would leave half of it unbounded.
     await this.billing?.assertSpendLimit(tenantId);
-    const result = await this.invocation.invokeNer(resolved, tenantId, body ?? {});
+  }
+
+  private async executeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    slug: string,
+    body: AgentInvocationBody,
+    // TASK-1038 E2 (fix 4) — an agent RUN's abort (cancel / ceiling); absent on the synchronous route.
+    signal?: AbortSignal,
+  ): Promise<AgentNerInvocationResponse> {
+    const result = signal
+      ? await this.invocation.invokeNer(resolved, tenantId, body ?? {}, { signal })
+      : await this.invocation.invokeNer(resolved, tenantId, body ?? {});
     this.emitInvocationUsage(this.buildNerUsage(tenantId, result), slug);
 
     const payload: AgentNerInvocationResponse = {
@@ -493,7 +657,370 @@ export class AgentController {
       model: result.model,
       usage: null,
     };
-    res.status(HttpStatus.OK).json(payload);
+    return payload;
+  }
+
+  // ============================================================================================
+  // TASK-1038 OD-26 — the agent RUN resource (`invocations` stays as the synchronous sugar)
+  // ============================================================================================
+
+  @Post(':slug/runs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @Throttle({ heavy: { limit: 20, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Start an agent RUN (async): answers 202 { runId, status, links } at once; poll, read the result, or follow its events',
+    description:
+      'The same body, validation and metering as `POST /agents/{slug}/invocations` (TEXT_GENERATION and NAMED_ENTITY_RECOGNITION agents), ' +
+      'refused BEFORE the 202 when invalid or over quota. The agent then runs in the background. `links.events` streams the run as run ' +
+      'protocol v2 (SSE, resumable); `links.result` serves the output once it is terminal. **Idempotency**: send `Idempotency-Key` — the ' +
+      'same key with the same body joins the run it started (same `runId`, the agent runs once); the same key with a different body is 409.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same key + the same body joins the existing run.' })
+  @ApiBody({
+    required: true,
+    description: 'The invocation body (see `POST /agents/{slug}/invocations`).',
+    schema: { type: 'object', additionalProperties: true },
+  })
+  @ApiResponse({ status: 202, description: '`{ runId, status, links: { self, events, result, cancel } }`.' })
+  @ApiResponse({
+    status: 400,
+    description: 'The body does not match the agent’s inputSchema, or the agent’s task has no run form (use `/speech` or `/transcriptions`).',
+  })
+  @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent — one answer.' })
+  @ApiResponse({ status: 409, description: '`IDEMPOTENCY_KEY_REUSED` — the key already started a run with a different body.' })
+  @ApiResponse({ status: 429, description: 'The tenant has reached its usage allowance. Refused before anything runs.' })
+  @ApiResponse({ status: 503, description: '`AGENT_RUN_STORE_UNAVAILABLE` — the run store is not reachable.' })
+  async startRun(
+    @Param('slug') slug: string,
+    @Body() body: AgentInvocationBody,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ): Promise<AgentRunStartResponse> {
+    const runs = this.requireRuns();
+    const tenantId = this.requireTenant();
+    const resolved = await this.resolver.resolve({ tenantId, agentSlug: slug });
+    const key = typeof idempotencyKey === 'string' && idempotencyKey.length > 0 ? idempotencyKey : undefined;
+    // TASK-1038 E2 (fix 10) — a key that already started a run JOINS it first (or is 409 for a
+    // different body), BEFORE validation and the quota / spend prechecks: a retry of an accepted
+    // request must reach its run, never be refused by a meter it already passed.
+    if (key !== undefined) {
+      const joined = await runs.joinExisting({ tenantId, slug: resolved.slug, idempotencyKey: key, body: body ?? {} });
+      if (joined) return { runId: joined.runId, status: joined.status, links: agentRunLinks(joined.slug, joined.runId) };
+    }
+    // TASK-1038 E2 (fix 4, R2) — `signal` aborts the model call on cancel or at the run ceiling.
+    let execute: (signal: AbortSignal) => Promise<AgentRunOutcome>;
+    if (resolved.task === AgentTask.TEXT_GENERATION) {
+      await this.precheckText(resolved, tenantId, body);
+      execute = async (signal) => {
+        const answer = await this.executeText(resolved, tenantId, slug, body, signal);
+        return {
+          output: answer.output,
+          tokens: { in: answer.usage?.promptTokens ?? 0, out: answer.usage?.completionTokens ?? 0 },
+        };
+      };
+    } else if (resolved.task === AgentTask.NAMED_ENTITY_RECOGNITION) {
+      await this.precheckNer(resolved, tenantId, body);
+      execute = async (signal) => ({ output: (await this.executeNer(resolved, tenantId, slug, body, signal)).output, tokens: { in: 0, out: 0 } });
+    } else {
+      throw new BadRequestException({
+        message: `Agent '${resolved.slug}' is a ${resolved.task} agent; a run applies to TEXT_GENERATION and NAMED_ENTITY_RECOGNITION agents. Use its own route (\`/speech\`, \`/transcriptions\`).`,
+        code: 'RUN_TASK_UNSUPPORTED',
+      });
+    }
+    const { state } = await runs.start({
+      tenantId,
+      slug: resolved.slug,
+      agentVersionId: resolved.agentVersionId,
+      versionNumber: resolved.versionNumber,
+      task: resolved.task as AgentRunTask,
+      body: body ?? {},
+      idempotencyKey: key,
+      execute,
+    });
+    return { runId: state.runId, status: state.status, links: agentRunLinks(state.slug, state.runId) };
+  }
+
+  @Get(':slug/runs/:runId')
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @ApiOperation({ summary: 'The status of one agent run' })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, description: 'The run: status, timings, the public error of a failed run, and its links.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
+  async getRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStatusResponse> {
+    const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
+    return {
+      runId: state.runId,
+      agentSlug: state.slug,
+      agentVersionId: state.agentVersionId,
+      versionNumber: state.versionNumber,
+      status: state.status,
+      createdAt: state.createdAt,
+      endedAt: state.endedAt,
+      durationMs: state.durationMs,
+      error: state.error,
+      links: agentRunLinks(state.slug, state.runId),
+    };
+  }
+
+  @Get(':slug/runs/:runId/result')
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @ApiOperation({
+    summary: 'The output a finished agent run produced',
+    description:
+      'Mirrors `GET /workflows/{slug}/runs/{runId}/result`: 200 with `X-Hope-Result-Kind: inline` and the agent output as the body ' +
+      '(`{ text }` / `{ entities }`); 204 when the run ended without one (failed or cancelled); 409 `RUN_NOT_TERMINAL` while it runs; ' +
+      '410 `RESULT_EXPIRED` once the output has passed `workflowRuns.resultRetentionDays`.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, description: 'The agent output.' })
+  @ApiResponse({ status: 204, description: 'The run is terminal and produced no output.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status.' })
+  @ApiResponse({ status: 410, description: '`RESULT_EXPIRED` — the result existed and has passed its retention window.' })
+  async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
+    const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
+    if (state.status === 'RUNNING') {
+      throw new ConflictException({ code: 'RUN_NOT_TERMINAL', message: `Run '${runId}' has not finished.`, status: state.status });
+    }
+    if (state.status === 'COMPLETED' && state.output) {
+      res.setHeader('X-Hope-Result-Kind', 'inline');
+      return state.output;
+    }
+    // OD-25 — the daily purge replaced the output with a tombstone: it existed and is gone.
+    if (state.result?.kind === 'expired') {
+      throw new GoneException({
+        code: 'RESULT_EXPIRED',
+        message: `The result of run '${runId}' has passed its retention window.`,
+        expiredAt: state.result.expiredAt,
+      });
+    }
+    res.status(HttpStatus.NO_CONTENT);
+    return undefined;
+  }
+
+  @Post(':slug/runs/:runId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @ApiOperation({
+    summary: 'Cancel an agent run (idempotent)',
+    description:
+      'A RUNNING run becomes CANCELED and its stream ends with `run.cancelled`; a finished run is answered as it is. A model call in flight ' +
+      'is aborted; whatever the provider already spent is still metered.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 200, description: '`{ runId, status }` after the cancel.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  async cancelRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<{ runId: string; status: string }> {
+    const state = await this.requireRuns().cancel(this.requireTenant(), slug, runId);
+    return { runId: state.runId, status: state.status };
+  }
+
+  /**
+   * TASK-1038 (F1) — a single-use, ~30-second ticket for THIS agent run's SSE stream.
+   *
+   * The mirror of `POST /workflows/:slug/runs/:runId/stream-ticket`: a browser `EventSource` cannot
+   * send `X-API-Key`, and `POST /auth/stream-ticket` is JWT-only (`@ForbidApiKey()`). The scope is
+   * DERIVED from the path (`agent_run:<runId>`) so nothing wider than this run can be minted, and
+   * ownership is proved FIRST through the same read every other run route makes, so another
+   * tenant's run, an unknown id, or a run of another agent is a 404 and no ticket is issued.
+   * Same authorisation as the other agent run routes (bare `@Authorize()` + the invocation scopes
+   * for both machine classes).
+   */
+  @Post(':slug/runs/:runId/stream-ticket')
+  @HttpCode(HttpStatus.CREATED)
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  @ApiOperation({
+    summary: 'Mint a single-use, 30-second ticket for this agent run’s SSE stream',
+    description:
+      'For a client that cannot send its credential on the stream request (a browser `EventSource` on an API key). The scope is derived ' +
+      'from the path (`agent_run:<runId>`) and the run’s ownership is proved before the ticket is issued. Open the returned `sseUrl` — ' +
+      'the ticket is consumed on first use and cannot be replayed.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiResponse({ status: 201, description: '`{ ticket, expiresAt (epoch ms), scope, sseUrl }`. The ticket is single-use.' })
+  @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
+  @ApiResponse({ status: 403, description: 'Scope violation.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
+  @ApiResponse({ status: 503, description: 'Stream tickets or the agent run store are not available on this gateway.' })
+  async issueRunStreamTicket(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStreamTicketResponse> {
+    if (!this.streamTicketService) {
+      throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
+    }
+    // FIRST: 404-over-403 ownership — tenant AND agent lineage — before anything is minted.
+    await this.requireRuns().get(this.requireTenant(), slug, runId);
+
+    const user = this.cls.get('user');
+    if (!user?.id) throw new UnauthorizedException('User context not available');
+    // The ACTIVE (CLS) tenant wins: a super admin's selected tenant and a service account's
+    // exchange-bound working tenant both land on the ticket the stream reads back.
+    const tenantId = this.cls.get('tenantId') || user.tenantId || null;
+    const issued = await this.streamTicketService.issueTicket({
+      userId: user.id,
+      tenantId,
+      scope: `${AGENT_RUN_TICKET_NAMESPACE}:${runId}`,
+      impersonatedBy: user.impersonatedBy ?? null,
+    });
+    const query = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
+    return {
+      ticket: issued.ticket,
+      expiresAt: issued.expiresAt,
+      scope: issued.scope,
+      sseUrl: `${agentRunLinks(slug, runId).events}?${query.toString()}`,
+    };
+  }
+
+  @Get(':slug/runs/:runId/events')
+  @Authorize()
+  @RequiredScopes('agent:invocation:write')
+  @RequiredSvcScopes('svc:agent:invocation:write')
+  // TASK-1038 (F1) — opened with `?ticket=` from `POST …/runs/:runId/stream-ticket` (scope `agent_run:<runId>`).
+  @StreamScope({ namespace: AGENT_RUN_TICKET_NAMESPACE, param: 'runId' })
+  @ApiOperation({
+    summary: 'Follow an agent run as run protocol v2 over SSE (resumable)',
+    description:
+      'Every frame is `event: <type>` / `id: <seq>` / `data: <envelope>`; the step is `nodeId: "agent"`. Resume with `Last-Event-ID` ' +
+      '(or `?after=<seq>`); a cursor the server can no longer serve is answered with `run.resync` and a snapshot. The stream ends after ' +
+      'the terminal event. Agent runs speak protocol 2 only: `?protocol=` / `x-hope-run-protocol` may be omitted or `2`. A client that ' +
+      'cannot send its credential (a browser `EventSource`) opens it with a single-use `?ticket=` from `POST …/runs/{runId}/stream-ticket`.',
+  })
+  @ApiParam({ name: 'slug', type: String })
+  @ApiParam({ name: 'runId', type: String })
+  @ApiQuery({ name: 'after', required: false, description: 'Resume after this seq (the header `Last-Event-ID` wins).' })
+  @ApiQuery({ name: 'protocol', required: false, enum: ['2'] })
+  @ApiResponse({ status: 200, description: '`text/event-stream` of run protocol v2 frames.' })
+  @ApiResponse({ status: 400, description: 'An unsupported protocol, or a malformed resume cursor.' })
+  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  async runEvents(@Param('slug') slug: string, @Param('runId') runId: string, @Req() req: Request, @Res() res: Response): Promise<void> {
+    const runs = this.requireRuns();
+    const tenantId = this.requireTenant();
+    const header = (name: string): string | undefined => {
+      const value = req.headers?.[name];
+      return Array.isArray(value) ? value[0] : value;
+    };
+    const query = (name: string): string | undefined => {
+      const value = (req.query as Record<string, unknown> | undefined)?.[name];
+      return typeof value === 'string' ? value : undefined;
+    };
+    const protocol = selectRunProtocol({ header: header(RUN_PROTOCOL_HEADER), query: query(RUN_PROTOCOL_QUERY_PARAM) });
+    if ('problems' in protocol) throw new BadRequestException({ code: 'RUN_PROTOCOL_UNSUPPORTED', message: protocol.problems.join('; ') });
+    const cursor = parseResumeCursor({ lastEventId: header('last-event-id'), after: query('after') });
+    if ('problems' in cursor) throw new BadRequestException({ code: 'RUN_CURSOR_INVALID', message: cursor.problems.join('; ') });
+    // Existence first (404-over-403), before a single header is written.
+    let state = await runs.get(tenantId, slug, runId);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    const abort = new AbortController();
+    res.on('close', () => abort.abort());
+
+    const write = (event: RunEventV2): void => void res.write(toSseFrame(event));
+    const resync = async (reason: RunResyncReason, lastSeq: number): Promise<void> => {
+      state = await runs.get(tenantId, slug, runId);
+      write({
+        seq: lastSeq,
+        runId,
+        type: 'run.resync',
+        ts: new Date().toISOString(),
+        data: { reason, snapshot: runs.snapshotOf(state, lastSeq) },
+      } as RunEventV2);
+    };
+
+    const hub = this.runEventHub;
+    if (!hub || !hub.available()) {
+      // swallow-ok: the push transport is already down; the snapshot (from the run state) is the answer, and seq 0 is its documented cursor.
+      await resync('unavailable', (await runs.events.lastSeq(runId).catch(() => null)) ?? 0);
+      res.end();
+      return;
+    }
+
+    const key = RUN_EVENTS_KEY(runId);
+    const lastSeq = await runs.events.lastSeq(runId);
+    const oldestSeq = await runs.events.oldestSeq(runId);
+    const plan = planRunResume({ after: cursor.after, oldestSeq, lastSeq });
+    let streamCursor = '0-0';
+    let delivered = cursor.after;
+    if (plan.kind === 'resync') {
+      await resync(plan.reason, lastSeq ?? 0);
+      delivered = lastSeq ?? 0;
+      if (TERMINAL_STATUSES.has(state.status) || lastSeq === null) {
+        res.end();
+        return;
+      }
+      streamCursor = (await runs.events.entryIdForSeq(runId, delivered)) ?? '0-0';
+    } else if (plan.after > 0 && oldestSeq !== null && plan.after >= oldestSeq) {
+      streamCursor = (await runs.events.entryIdForSeq(runId, plan.after)) ?? '0-0';
+    }
+
+    let first = true;
+    while (!abort.signal.aborted) {
+      const entries = first
+        ? await hub.readNow(key, streamCursor)
+        : await hub.read(key, streamCursor, { timeoutMs: SSE_HEARTBEAT_INTERVAL_MS, signal: abort.signal });
+      first = false;
+      if (entries.length === 0) {
+        if (abort.signal.aborted) break;
+        // Nothing new: a run that ended without a terminal event in its retained stream is closed
+        // here (its state is the record); otherwise a ping keeps the connection and the cursor.
+        state = await runs.get(tenantId, slug, runId);
+        if (TERMINAL_STATUSES.has(state.status) && (await runs.events.lastSeq(runId)) === delivered) {
+          // TASK-1038 E2 (fix 8) — the §6.1 terminal backstop (as `run-protocol-delivery.ts`): a run
+          // that is terminal in the read model but whose retained stream ends WITHOUT a terminal
+          // event (an append was lost) gets its stream closed and a terminal
+          // `run.resync { reason: 'gap', snapshot }` — never a silent close. A client that already
+          // holds the terminal event (a reconnect after the end) gets nothing more.
+          // swallow-ok: an unreadable tail is treated as "no terminal event retained" — the backstop is the safe answer.
+          const newest = await runs.events.newestType(runId).catch(() => null);
+          if (newest === null || !(TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(newest)) {
+            this.logger.warn({ message: 'Agent run ended without a terminal event reaching its stream — closing with a terminal snapshot', runId });
+            await runs.closeStreamAfterTerminal(runId);
+            await resync('gap', delivered);
+          }
+          res.end();
+          return;
+        }
+        write({ seq: delivered, runId, type: 'ping', ts: new Date().toISOString(), data: {} } as RunEventV2);
+        continue;
+      }
+      for (const entry of entries) {
+        streamCursor = entry.id;
+        const parsed = parseStoredRunEvent(runId, entry.fields);
+        if (parsed.kind !== 'event') continue;
+        if (parsed.event.seq <= delivered) continue;
+        delivered = parsed.event.seq;
+        const outgoing = toPublicRunEvent(parsed.event);
+        if (outgoing) write(outgoing);
+        if ((TERMINAL_RUN_EVENT_TYPES as readonly string[]).includes(parsed.event.type)) {
+          res.end();
+          return;
+        }
+      }
+    }
+    res.end();
+  }
+
+  private requireRuns(): AgentRunService {
+    if (!this.agentRuns) {
+      throw new ServiceUnavailableException({ code: 'AGENT_RUN_STORE_UNAVAILABLE', message: 'Agent runs are not configured on this gateway.' });
+    }
+    return this.agentRuns;
   }
 
   /** The `ner.extract` ledger row for ONE agent invocation — the shared shape, with this route's trigger. */
@@ -549,11 +1076,24 @@ export class AgentController {
       properties: {
         text: { type: 'string', description: 'Plain text to synthesise.' },
         ssml: { type: 'string', description: 'An SSML document to synthesise. Only for agents that declare SSML support.' },
+        delivery: {
+          type: 'string',
+          enum: ['stream', 'blob'],
+          default: 'stream',
+          description:
+            '`stream` (default): the audio, streamed. `blob` (TASK-1036): the audio is stored in the tenant’s AUDIO bucket and the answer is JSON ' +
+            '`{ mediaId, url, expiresAt, format, sampleRate, durationMs }` — `url` is a short-lived signed GET.',
+        },
       },
       example: { text: 'Your appointment is confirmed for Tuesday at ten.' },
     },
   })
-  @ApiResponse({ status: 200, description: 'audio/pcm | audio/wav | audio/mpeg, streamed.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'audio/pcm | audio/wav | audio/mpeg, streamed — or, with `delivery: "blob"`, JSON `{ mediaId, url, expiresAt, format, sampleRate, durationMs }`.',
+  })
+  @ApiResponse({ status: 503, description: '`TTS_BLOB_STORAGE_UNAVAILABLE` — `delivery: "blob"` and the tenant has no audio bucket.' })
   @ApiResponse({ status: 400, description: 'Missing text/ssml, or the agent is not a TEXT_TO_SPEECH agent.' })
   @ApiResponse({ status: 404, description: 'Unknown, unpublished, or another tenant’s agent.' })
   // TASK-957 F-4 — the tenant's own monthly spend ceiling (D12). Documented on every metered
@@ -564,9 +1104,14 @@ export class AgentController {
     description: 'The tenant has reached the monthly spend limit it set (`monthlySpendLimitMicros`). Refused before anything is spent.',
   })
   async speech(@Param('slug') slug: string, @Body() body: AgentSpeechBody, @Res() res: Response): Promise<void> {
+    const delivery = body?.delivery ?? 'stream';
+    if (delivery !== 'stream' && delivery !== 'blob') {
+      throw new BadRequestException({ message: '`delivery` is `stream` (the default) or `blob`.', code: 'DELIVERY_UNSUPPORTED' });
+    }
     const tenantId = this.requireTenant();
     const resolved = await this.resolver.resolve({ tenantId, task: AgentTask.TEXT_TO_SPEECH, agentSlug: slug });
-    const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...(body ?? {}) });
+    const { delivery: _delivery, ...speechInput } = body ?? {};
+    const agentRequest = this.invocation.buildSpeechRequest(resolved, { ...speechInput });
 
     // The SAME resolution the speech proxy applies (`tts-tenant-config.ts`), mapped onto the
     // agent's request. Since TASK-879 the agent decides everything — voice, format, speed, model,
@@ -601,7 +1146,8 @@ export class AgentController {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Accept: 'application/octet-stream, text/event-stream',
+      // A blob is the whole file, never an event stream.
+      Accept: delivery === 'blob' ? 'application/octet-stream' : 'application/octet-stream, text/event-stream',
       ...requestIdHeader(),
     };
     // The ONE shared `INTERNAL_ACCESS_TOKEN` (the `TTS_SERVICE_TOKEN` fallback was retired with its descriptor, TASK-879/880).
@@ -630,12 +1176,6 @@ export class AgentController {
     }
 
     const contentType = (upstream.headers['content-type'] as string | undefined) ?? 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'no-store, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('X-Agent-Slug', resolved.slug);
-    res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
-    res.flushHeaders();
 
     const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
     // TASK-958 D-7 — which of the tenant's accounts of that vendor was spent. An
@@ -730,6 +1270,52 @@ export class AgentController {
     };
 
     const stream = upstream.data;
+
+    if (delivery === 'blob') {
+      // TASK-1036 §3.2 — buffer the whole synthesis, store it in the tenant bucket, answer JSON.
+      const chunks: Buffer[] = [];
+      try {
+        await new Promise<void>((resolve, reject) => {
+          stream.on('data', (chunk: Buffer) => {
+            relayedBytes += chunk.length;
+            chunks.push(chunk);
+          });
+          stream.on('end', () => resolve());
+          stream.on('error', (err: Error) => reject(err));
+        });
+      } catch (err) {
+        this.logger.error({ message: 'Agent speech stream error', agentSlug: slug, error: err instanceof Error ? err.message : String(err) });
+        emitUsage(true);
+        throw new HttpException({ detail: 'Speech synthesis failed' }, HttpStatus.BAD_GATEWAY);
+      }
+      emitUsage(false);
+      if (!this.tenantBuckets || !this.blobStorage || !this.mediaService) {
+        throw new ServiceUnavailableException({ code: 'TTS_BLOB_STORAGE_UNAVAILABLE', message: 'Blob delivery is not configured on this gateway.' });
+      }
+      const reportedSeconds = positiveNumber(upstream.headers['x-tts-audio-seconds']);
+      const answer = await persistSpeechBlob(
+        { blobStorage: this.blobStorage, tenantBuckets: this.tenantBuckets, media: this.mediaService, settings: this.tenantSettings },
+        {
+          tenantId,
+          agentSlug: resolved.slug,
+          audio: Buffer.concat(chunks),
+          format: speechBlobFormat(upstream.headers['x-tts-audio-format'], forwardBody.response_format, contentType),
+          sampleRate: positiveNumber(upstream.headers['x-tts-sample-rate']),
+          durationMs: reportedSeconds === null ? null : Math.round(reportedSeconds * 1000),
+        },
+      );
+      res.setHeader('X-Agent-Slug', resolved.slug);
+      res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
+      res.status(HttpStatus.OK).json(answer);
+      return;
+    }
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'no-store, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('X-Agent-Slug', resolved.slug);
+    res.setHeader('X-Agent-Version-Id', resolved.agentVersionId);
+    res.flushHeaders();
     stream.on('data', (chunk: Buffer) => {
       relayedBytes += chunk.length;
       res.write(chunk);

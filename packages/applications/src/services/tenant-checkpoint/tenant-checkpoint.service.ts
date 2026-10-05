@@ -224,7 +224,9 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
       // BullMQ refuses a custom id containing ':' (unless it has exactly three parts), hence the dash.
       jobId: job.kind === 'verify-upload' ? `verify-${job.checkpointId}` : job.checkpointId,
       attempts: 1,
-      removeOnComplete: true,
+      // Keep finished jobs (bounded) so the admin queue board shows them; each
+      // job id is a fresh row id, so a kept job never blocks a later enqueue.
+      removeOnComplete: 100,
       removeOnFail: 100,
     });
   }
@@ -624,7 +626,7 @@ export class TenantCheckpointService extends BaseService implements ITenantCheck
 
     const job: CheckpointRestoreJob = { restoreId: saved.id, tenantId };
     try {
-      await this.restoreQueue.add(JobQueue.TenantCheckpointRestore, job, { jobId: saved.id, attempts: 1, removeOnComplete: true, removeOnFail: 100 });
+      await this.restoreQueue.add(JobQueue.TenantCheckpointRestore, job, { jobId: saved.id, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
     } catch (error) {
       saved.status = TenantCheckpointRestoreStatus.FAILED;
       saved.failureReason = 'RESTORE_FAILED';

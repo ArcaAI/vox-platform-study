@@ -23,9 +23,11 @@ import { DEFAULT_AI_MODELS } from '../06-ai-models';
 import {
   ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   ARCAAI_SAME_DAY_RETURN_CONTENT,
   ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
   ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+  ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
   ARCAAI_SAME_DAY_RETURN_WHEN,
 } from '../07b-arcaai-clinical-templates';
 import {
@@ -83,7 +85,7 @@ describe('ArcaAI `casenote-finalization` — the agent `n_finalize` runs', () =>
     expect(ARCAAI_FINALIZATION_AGENT_SPEC.outputSchema).toEqual(CASENOTE_OUTPUT_SCHEMA);
   });
 
-  it('composes the finalization body FIRST, then same_day_return (conditional, unpinned), then the language policy LAST', () => {
+  it('composes the finalization body FIRST, then same_day_return (conditional, pinned), then the language policy LAST', () => {
     expect(fragments().map((fragment) => fragment.key)).toEqual([
       CLINICAL_NOTE_FRAGMENT_KEY,
       ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
@@ -94,9 +96,14 @@ describe('ArcaAI `casenote-finalization` — the agent `n_finalize` runs', () =>
     expect(sameDay).toEqual({
       key: ARCAAI_SAME_DAY_RETURN_FRAGMENT_KEY,
       promptTemplateId: ARCAAI_SAME_DAY_RETURN_TEMPLATE_ID,
+      promptVersionNumber: ARCAAI_SAME_DAY_RETURN_VERSION_NUMBER,
       when: ARCAAI_SAME_DAY_RETURN_WHEN,
     });
-    expect(policy).toEqual({ key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY, promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID });
+    expect(policy).toEqual({
+      key: ARCAAI_OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
+      promptTemplateId: ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
+      promptVersionNumber: ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
+    });
   });
 
   it('has an id no other seeded agent uses', () => {

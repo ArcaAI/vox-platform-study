@@ -49,6 +49,10 @@ import { TEXT_GUARDRAIL_POLICY_SETTINGS } from './descriptors/text-guardrail-pol
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { TENANT_STORAGE_LIFECYCLE_SETTINGS } from './descriptors/tenant-storage-lifecycle.descriptors';
 import { TENANT_CHECKPOINT_SETTINGS } from './descriptors/tenant-checkpoint.descriptors';
+import { COMPOSED_PROMPTS_SETTINGS } from './descriptors/composed-prompts.descriptors';
+import { WORKFLOW_RUNS_SETTINGS } from './descriptors/workflow-runs.descriptors';
+import { MEDIA_UPLOAD_SETTINGS } from './descriptors/media-upload.descriptors';
+import { WORKFLOW_DEFINITION_SETTINGS } from './descriptors/workflow-definitions.descriptors';
 import { STT_GATEWAY_SETTINGS } from './descriptors/stt-gateway.descriptors';
 import { STT_RUNTIME_SETTINGS } from './descriptors/stt-runtime.descriptors';
 import { TTS_RUNTIME_SETTINGS } from './descriptors/tts-runtime.descriptors';
@@ -68,6 +72,14 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // TASK-1025 — deleted-tenant bucket retention + purge schedule.
   ...TENANT_STORAGE_LIFECYCLE_SETTINGS,
   ...TENANT_CHECKPOINT_SETTINGS,
+  // Composed-prompt incident records (OD-9) — retention of the encrypted per-call prompt copy.
+  ...COMPOSED_PROMPTS_SETTINGS,
+  // TASK-1038 — run event/result retention and the delivery plane's tuning knobs.
+  ...WORKFLOW_RUNS_SETTINGS,
+  // TASK-1038 (F1) — `POST /media` size ceilings (attachment / audio).
+  ...MEDIA_UPLOAD_SETTINGS,
+  // TASK-1036 — the compiler's data-contract release switch (`workflows.emitDataContract`).
+  ...WORKFLOW_DEFINITION_SETTINGS,
   // `TTS_SETTINGS` was spread here — one key, `tts.defaultVoiceEn`. TASK-879
   // deleted the file: a tenant's default voice is `Agent.parameters.voice` on the
   // TEXT_TO_SPEECH agent the assignment cascade selects, and the gateway pushes it
@@ -316,8 +328,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
 
 // TASK-969 WS-1 — the one CROSS-descriptor invariant, run once the whole catalog
 // exists. `register()` sees a single descriptor at a time, so it cannot check
-// that `text.guardrailPolicy.requireMedical`'s declared platform tier
-// (`text.externalGuardrail.requireMedical`) exists and agrees with it on
+// that `text.guardrailPolicy.includeReasoning`'s declared platform tier
+// (`text.externalGuardrail.includeReasoning`) exists and agrees with it on
 // maxScope / dataType / globalOnly. Run HERE it throws at MODULE LOAD, so a
 // mispaired declaration can never reach a request — it cannot even boot the
 // gateway. A separate STATEMENT rather than a chained call deliberately: the

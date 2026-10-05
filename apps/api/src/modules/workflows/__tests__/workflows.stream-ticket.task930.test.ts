@@ -92,6 +92,8 @@ describe('TASK-930 §4 — POST /workflows/:slug/runs/:runId/stream-ticket', () 
       expiresAt: 1_700_000_030_000,
       scope: `workflow_run:${RUN_ID}`,
       url: `/ws/workflows?slug=report&runId=${RUN_ID}&ticket=TICKET-abc`,
+      // TASK-1038 B3a (G12) — the same ticket may open the SSE stream instead.
+      sseUrl: `/api/v1/workflows/report/runs/${RUN_ID}/stream?protocol=2&ticket=TICKET-abc`,
     });
   });
 

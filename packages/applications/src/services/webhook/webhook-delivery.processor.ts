@@ -52,7 +52,7 @@ import { attachJobTrace, runJobInContext } from '../baseServices/observability/j
  * redundant: the fan-out job uses `AsyncIdempotencyKey.webhookDelivery(...)`
  * (`hook:<webhookId>:<sourceEnvelopeId>`) as the BullMQ `jobId` (cheap,
  * best-effort — a completed job's id is freed once `removeOnComplete`
- * reaps it, so this alone cannot be relied on), AND the dispatch processor
+ * ages it out of the kept window, so this alone cannot be relied on), AND the dispatch processor
  * checks `WebhookRunHistory` for an existing `SUCCESS` row carrying the same
  * key before sending (authoritative — survives job-id reuse after
  * completion).
@@ -76,7 +76,7 @@ export interface WebhookDeliveryJobPayload {
 export const WEBHOOK_DELIVERY_JOB_OPTIONS = {
   attempts: 5,
   backoff: { type: 'exponential' as const, delay: 2_000 }, // 2s → 4s → 8s → 16s → 32s
-  removeOnComplete: true,
+  removeOnComplete: 100, // keep recent deliveries visible on the admin queue board
   removeOnFail: false, // dead-letter inspection, same posture as SYS_EVENT_JOB_OPTIONS.
 };
 

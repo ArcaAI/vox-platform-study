@@ -2,7 +2,7 @@
 
 import { useId } from 'react';
 import { IconAlertTriangle } from '@tabler/icons-react';
-import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
+import { AGENT_PARAMETER_SCHEMAS, platformManagedPaths } from '@arcaai/workflow-contract';
 import { Alert, AlertDescription, AlertTitle, Field, FieldContent, FieldDescription, FieldLabel } from '@arcaai/ui';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
@@ -253,26 +253,6 @@ function ScalarField({
   );
 }
 
-/**
- * TASK-890 §3.10/§3.14 (OD-R clause 3) — `parameters.guards.enabled`, the AGENT-level default of
- * the node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements. ABSENT
- * MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts OUT of, per
- * agent — never a switch to remember to turn on. A `false` here is a publish WARNING
- * (`GUARDRAIL_OPTED_OUT`), a per-call usage attribute (`guardrail: 'opted_out'`), and a TEXT
- * response `reason`, so the omission is attributable, not merely permitted.
- */
-function GuardrailScreeningField({ id, value, onChange }: { id: string; value: unknown; onChange: (next: unknown) => void }) {
-  return (
-    <Field orientation="horizontal">
-      <FieldContent>
-        <FieldLabel htmlFor={id}>Guardrail screening</FieldLabel>
-        <FieldDescription>Platform guardrail runs on this agent&apos;s input and output; a node or workflow can override.</FieldDescription>
-      </FieldContent>
-      <Switch id={id} checked={value !== false} onCheckedChange={(checked) => onChange(checked ? undefined : false)} />
-    </Field>
-  );
-}
-
 /** `parameters.generation.reasoning.effort` — the pinned cross-lane contract (TASK-891 C1/C4). */
 const REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high'] as const;
 
@@ -462,13 +442,6 @@ function SchemaFields({
             />
           );
         }
-        // TASK-890 §3.10/§3.14 (OD-R) — the agent-level guardrail default gets its own labelled
-        // copy rather than the generic boolean renderer's bare "Enabled": this switch is the
-        // bottom of the node > workflow > agent > `true` precedence, so what it says has to name
-        // that, not just the JSON key.
-        if (childPath.join('.') === 'guards.enabled') {
-          return <GuardrailScreeningField key={name} id={id} value={getPath(value, childPath)} onChange={(next) => onChange(setPath(value, childPath, next))} />;
-        }
         // TASK-887 — a property annotated with `modelTaskType` is a registry REFERENCE, so
         // the admin picks from the tenant's catalogue instead of typing a slug.
         const modelTaskType = typeof child.modelTaskType === 'string' ? child.modelTaskType : undefined;
@@ -547,9 +520,41 @@ function asrInheritHints(profile: CatalogueAsrProfile | null): Record<string, st
  * and shows the effective value the agent would inherit for every decode field it leaves
  * unset (OD-3: agent → model profile → engine default).
  */
-export function ParametersForm({ task, value, onChange, modelId }: { task: AgentTask; value: Value; onChange: (next: Value) => void; modelId?: string }) {
+/**
+ * TASK-1036 C5 (W2) — `scope="platform"` keeps ONLY the leaves the contract marks platform-managed
+ * (and the containers that still hold one). It is the body of a super admin's collapsed "Platform
+ * tuning" section; the tenant-editable knobs are the simple editor's and never repeat here.
+ */
+function pruneToPaths(schema: Schema, keep: ReadonlySet<string>, prefix: readonly string[] = []): Schema {
+  const next: Record<string, Schema> = {};
+  for (const [name, child] of Object.entries(props(schema))) {
+    const path = [...prefix, name];
+    if (child.type === 'object' && Object.keys(props(child)).length > 0) {
+      const pruned = pruneToPaths(child, keep, path);
+      if (Object.keys(props(pruned)).length > 0) next[name] = pruned;
+    } else if (keep.has(path.join('.'))) {
+      next[name] = child;
+    }
+  }
+  return { ...schema, properties: next };
+}
+
+export function ParametersForm({
+  task,
+  value,
+  onChange,
+  modelId,
+  scope = 'all',
+}: {
+  task: AgentTask;
+  value: Value;
+  onChange: (next: Value) => void;
+  modelId?: string;
+  scope?: 'all' | 'platform';
+}) {
   const idPrefix = useId();
-  const schema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
+  const fullSchema = AGENT_PARAMETER_SCHEMAS[task] as Schema;
+  const schema = scope === 'platform' ? pruneToPaths(fullSchema, new Set(platformManagedPaths(task))) : fullSchema;
   const isSpeechToText = task === 'SPEECH_TO_TEXT';
   const isTextGeneration = task === 'TEXT_GENERATION';
   // Called unconditionally (rules of hooks) — `task` is a prop and can change

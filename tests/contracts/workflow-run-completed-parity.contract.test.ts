@@ -1,14 +1,14 @@
 /**
  * TASK-982 §3.4.5 — `workflow.run.completed` envelope cross-language parity (TypeScript half).
  *
- * `interpreter.emit_run_events` (`apps/harness/.../interpreter/activities.py::_envelope_for`)
- * PRODUCES the envelope payload; `WorkflowRunCompletionService`'s watcher (this repo,
+ * A pre-v2 `interpreter.emit_run_events` PRODUCED the envelope payload (TASK-1038 B1 retired
+ * that producer — the harness writes run-protocol v2 events only, and the Python half of this
+ * parity was retired with it); `WorkflowRunCompletionService`'s watcher (this repo,
  * `apps/api/src/modules/workflows/workflow-run-completion.service.ts`) CONSUMES it, through the
  * dependency-free leaf module `run-completed-counts.ts` imported below — never the service file
- * itself, so this root-level test does not drag in `ioredis`/`nestjs-cls`/NestJS decorators. Both
- * halves read the SAME committed fixture — `workflow-run-completed.fixture.json` — so a shape
- * change on either side fails the other: the Python half is
- * `apps/harness/src/harness/tests/unit/temporal/interpreter/test_task982_run_completed_fixture_parity.py`.
+ * itself, so this root-level test does not drag in `ioredis`/`nestjs-cls`/NestJS decorators. It
+ * still reads a LEGACY stream entry's payload, which is what `workflow-run-completed.fixture.json`
+ * pins.
  *
  * This file asserts the consumer side: `runCompletedCountsFromPayload(expected)` extracts exactly
  * `input`'s counts, `undefined` for anything the payload omitted — never a fabricated zero.

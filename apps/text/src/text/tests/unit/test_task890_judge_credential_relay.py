@@ -75,7 +75,7 @@ def _client(http_client: Any) -> ExternalGuardrailClient:
     return ExternalGuardrailClient(
         base_url=_BASE_URL,
         http_client=http_client,
-        app_state=SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True)),
+        app_state=SimpleNamespace(guardrail_posture=GuardrailPosture()),
     )
 
 
@@ -133,10 +133,11 @@ def test_serialization_unwraps_the_secret_so_the_far_side_can_use_it() -> None:
 
 @pytest.mark.asyncio
 async def test_the_input_gate_hands_the_requests_overrides_to_the_client() -> None:
-    from text.api.endpoints.generate import _apply_guardrail_gate
+    from text.services.egress import run_inbound_gate
 
     client = AsyncMock()
     client.validate = AsyncMock(return_value={"allowed": True, "is_medical": True})
+    client.screen_inbound = AsyncMock(return_value={"allowed": True, "pii_spans": []})
     request_body = GenerateRequest(
         prompt="patient reports chest pain",
         provider="lm-studio",
@@ -144,11 +145,13 @@ async def test_the_input_gate_hands_the_requests_overrides_to_the_client() -> No
         provider_overrides=_LM_STUDIO_OVERRIDE,  # type: ignore[arg-type]
     )
 
-    await _apply_guardrail_gate(
+    await run_inbound_gate(
         client,
-        request_body=request_body,
+        segments=[request_body.prompt],
+        prompt=request_body.prompt,
+        system_prompt=request_body.system_prompt,
         tenant_id=TENANT,
-        app_state=SimpleNamespace(),
+        provider_overrides=request_body.provider_overrides,
     )
 
     # Serialized, so the far side gets the usable key plus the funding attribution

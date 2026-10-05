@@ -1837,8 +1837,8 @@ export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLA
 // (`07b-arcaai-clinical-templates.ts`), so a tenant provisioned from SYSTEM got none — and
 // `general-medicine-summarization`'s body said "write all content values in the conversation
 // language", which on the durable lane nothing overrode. OD-8 (a) ships the same English policy
-// as a SYSTEM reference-set default, bound as an unconditional, UNPINNED fragment on the
-// note-writing agents (`25-agents.ts` `OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS`). (Since the owner
+// as a SYSTEM reference-set default, bound as an unconditional fragment — PINNED to the version
+// this seed creates (TASK-1036 W3) — on the note-writing agents (`25-agents.ts` `OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS`). (Since the owner
 // directive of 2026-09-23 rule 5 itself names English; the policy still rides, as the tenant's
 // own lever.)
 //
@@ -1861,6 +1861,13 @@ export const GENERAL_MEDICINE_SUMMARY_VERSIONS = GENERAL_MEDICINE_SUMMARY_TEMPLA
 // the slot the same way. `prompt-seed-id-uniqueness.test.ts` fails on any id two seeded rows share.
 // =============================================================================
 
+/**
+ * The ONE version number the seed creates for the output-language policy rows (Global and SYSTEM),
+ * their `PromptVersion` snapshots, and — since TASK-1036 W3 — the pin every agent fragment that
+ * binds them carries. One constant, so the pin and the version it points at cannot drift.
+ */
+export const OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER = 1;
+
 export const GLOBAL_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID = '71000000-0000-0000-0000-000000000052';
 export const GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID = '72000000-0000-0000-0000-000000000052';
 
@@ -1876,8 +1883,8 @@ const outputLanguagePolicyRow = (tenantId: string, id: string, sourceTemplateId:
   status: 'APPROVED' as PromptTemplateStatus,
   // TENANT_DEFAULT, not USER_PERSONAL — the reference set carries every other SYSTEM row.
   scope: 'TENANT_DEFAULT' as PromptTemplateScope,
-  currentVersionNumber: 1,
-  approvedVersionNumber: 1,
+  currentVersionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
+  approvedVersionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   departmentId: null as string | null,
   sourceTemplateId,
   templateLocked: false,
@@ -1896,7 +1903,7 @@ export const OUTPUT_LANGUAGE_POLICY_VERSIONS = OUTPUT_LANGUAGE_POLICY_TEMPLATES.
   id: template.tenantId === SYSTEM_TENANT_ID ? SYSTEM_OUTPUT_LANGUAGE_POLICY_VERSION_ID : GLOBAL_OUTPUT_LANGUAGE_POLICY_VERSION_ID,
   tenantId: template.tenantId,
   promptTemplateId: template.id,
-  versionNumber: 1,
+  versionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   content: template.content,
   changeReason: template.sourceTemplateId
     ? 'Promoted from the Global playground (TASK-1001 OD-8)'
@@ -1909,13 +1916,16 @@ export const OUTPUT_LANGUAGE_POLICY_VERSIONS = OUTPUT_LANGUAGE_POLICY_TEMPLATES.
  * shape as `arcaaiOutputLanguagePolicyFragment` in `07b`, under the platform-reserved key the
  * runtime asks about.
  *
- * NO `promptVersionNumber`: publish then resolves the template's own `approvedVersionNumber`, so an
- * agent's next publish picks up whatever an admin last approved without anyone editing its
- * instruction. NO `when`: this is the unconditional policy.
+ * PINNED (TASK-1036 W3): a published agent freezes every library prompt it binds, and the
+ * publish gate refuses an unpinned one (`PROMPT_VERSION_UNPINNED`). The pin is the version this
+ * seed creates for the row ({@link OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER}); an admin's later
+ * approved version reaches a note when the agent is republished against it. NO `when`: this is
+ * the unconditional policy.
  */
 export const outputLanguagePolicyFragment = (templateId: string) => ({
   key: OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY,
   promptTemplateId: templateId,
+  promptVersionNumber: OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
 });
 
 export const seedPromptTemplate = async (client: CorePrismaClient) => {

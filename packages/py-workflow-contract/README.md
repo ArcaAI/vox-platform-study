@@ -11,6 +11,8 @@ Normative machine artifact (the one both languages mirror):
 | Path | What it holds |
 |---|---|
 | `src/hope_workflow_contract/compiled_config.py` | `CompiledWorkflowConfig` and every nested model (`CompiledNode`, `CompiledStage`, `CompiledGate`, `CompiledRetryPolicy`, ...), `UnsupportedFormatVersionError`, `verify_checksum` |
+| `src/hope_workflow_contract/{node_io,ports,bindings,workflow_settings,consultation_read_schema,derive_variables,template}.py` | TASK-1036 data contract mirrors: NodeIO, port tables, bindings (legacy translation, `firstOf`, publish issues), workflow settings, the `consultation.*` read schema, prompt-variable derivation, the template reference reader |
+| `tests/test_data_contract_fixtures.py` | Runs the shared `tests/contracts/{node-io,bindings,workflow-settings,consultation-read-schema,derive-variables}.fixture.json` — the same files the TypeScript suite reads |
 | `tests/test_parity.py` | Field-set parity against the normative JSON Schema, round-trips the shared TS/Python example, recomputes a TypeScript-produced sha256 |
 
 ## Commands

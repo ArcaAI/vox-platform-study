@@ -16,6 +16,7 @@ import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gat
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
 import type { ResolvedWorkflowAssignment } from '../../../workflow-assignment/IWorkflowAssignmentService';
 import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../../agent/text-generation-spec';
+import { agentSystemHead, dataBlock, headOf, liveSystemHead } from './live-compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const CID = 'consultation-876';
@@ -216,7 +217,7 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(body.provider).toBe('vllm');
     expect(body.model).toBe('medgemma-27b');
     // The agent's resolved instruction, interpolated: the agent's own variable + the node's override (node wins).
-    expect(body.system_prompt).toBe('Write the note for Ward 3 in a terse tone.');
+    expect(headOf(body.system_prompt, 'Write the note for Ward 3 in a terse tone.')).toBe(agentSystemHead('Write the note for Ward 3 in a terse tone.'));
     // Hyper-parameters: the agent's, with the node's `overrides.generation` layered on top.
     expect(body.temperature).toBe(0.4);
     // TASK-1000 — the agent declares 900, and the runtime CLAMPS it up to the template floor.
@@ -245,7 +246,8 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
 
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'medgemma-27b' });
-    expect(calls[1]).toMatchObject({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat', system_prompt: 'PLATFORM PROMPT.' });
+    expect(calls[1]).toMatchObject({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+    expect(headOf(calls[1]?.system_prompt, 'PLATFORM PROMPT.')).toBe(agentSystemHead('PLATFORM PROMPT.'));
     expect(payload?.textFailed).toBeFalsy();
     expect(payload?.metadata?.stats).toMatchObject({
       selection_source: 'agent-fallback',
@@ -274,10 +276,6 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
       textRequestEnrichment: {
         applyTextRuntimeProfile: vi.fn(async (t: unknown) => t),
         applyTenantProviderOverrides,
-        // TASK-890 §3.14 — the realtime producer states the folded guardrail decision on every
-        // `core.agent` post, so a partial enrichment fixture has to answer this call too.
-        applyGuardrailDecision: vi.fn((t: unknown) => t),
-        guardrailDisposition: vi.fn(async () => 'screened'),
       },
     });
     const { payload, calls } = await runOneFlush(service, post);
@@ -288,6 +286,22 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     // The FALLBACK's own platform credential survives untouched — key and funding label both.
     expect(calls[1].provider_overrides).toEqual({ 'lm-studio': { api_key: 'platform-key', funding: 'platform' } });
     expect(payload?.metadata?.stats).toMatchObject({ funding_tier: 'platform' });
+  });
+
+  it('states each candidate`s OWN row locality and the consultation to the egress enrichment, and no guardrail opt-out', async () => {
+    const primary = { ...candidate(), deploymentKind: 'CLOUD' };
+    textAgents.resolve.mockResolvedValue({ ...spec({ chain: [{ ...platformCandidate(), deploymentKind: 'SELF_HOSTED' }] }), primary });
+    const applyTenantProviderOverrides = vi.fn(async (target: Record<string, unknown>) => target);
+    const { service, post } = buildService({
+      generate: (n) => (n === 0 ? new Error('primary provider down') : NOTE),
+      textRequestEnrichment: { applyTextRuntimeProfile: vi.fn(async (t: unknown) => t), applyTenantProviderOverrides },
+    });
+    const { calls } = await runOneFlush(service, post);
+
+    expect(calls).toHaveLength(2);
+    expect(applyTenantProviderOverrides.mock.calls[0]?.[1]).toMatchObject({ deploymentKind: 'CLOUD', consultationId: CID });
+    expect(applyTenantProviderOverrides.mock.calls[1]?.[1]).toMatchObject({ deploymentKind: 'SELF_HOSTED', consultationId: CID });
+    for (const call of calls) expect(call).not.toHaveProperty('guardrail_policy');
   });
 
   it('honours autoSwitch:false — the tenant turned HA fallback off for this agent, so the node degrades instead of switching', async () => {
@@ -334,7 +348,8 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
 
     expect(textAgents.resolve).not.toHaveBeenCalled();
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
-    expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'tenant-default', system_prompt: 'SESSION SYSTEM PROMPT.' });
+    expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'tenant-default' });
+    expect(headOf(calls[0]?.system_prompt, 'SESSION SYSTEM PROMPT.')).toBe(agentSystemHead('SESSION SYSTEM PROMPT.'));
   });
 });
 

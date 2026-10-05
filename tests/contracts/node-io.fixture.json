@@ -1,0 +1,1345 @@
+{
+  "_comment": "TASK-1036 §9.1 — the CROSS-LANGUAGE fixture for the node I/O contract (@arcaai/workflow-contract `node-io.ts`; Python mirror: lane B1). Engine output of NODE_IO, agentNodeIO, typeFits and ioTypeOfJsonSchema. Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts. Regenerate from the engine, never by hand.",
+  "ioBaseTypes": ["text", "number", "boolean", "date", "json", "audio", "file", "document", "any"],
+  "ioElementTypes": ["entity", "segment"],
+  "nodeIO": {
+    "core.trigger": {
+      "inputs": {},
+      "outputs": {
+        "context": {
+          "type": "json",
+          "description": "The validated run input (the Input shape).",
+          "phiClass": "PHI"
+        }
+      }
+    },
+    "core.agent": {
+      "inputs": {
+        "message": {
+          "type": "text",
+          "required": false,
+          "description": "The text the agent works on: the user turn, or the document to operate on."
+        },
+        "context": {
+          "type": "json",
+          "required": false,
+          "description": "Structured context for the prompt (the run input, or an earlier step`s data)."
+        },
+        "audio": {
+          "type": "audio",
+          "required": false,
+          "description": "The recording to transcribe (a reference, never inline bytes)."
+        },
+        "text": {
+          "type": "text",
+          "required": false,
+          "description": "The text to speak (speech) or classify (entity recognition)."
+        }
+      },
+      "outputs": {
+        "text": {
+          "type": "text",
+          "description": "The generated text.",
+          "phiClass": "PHI"
+        },
+        "data": {
+          "type": "json",
+          "description": "The structured result, shaped by the agent`s output schema.",
+          "phiClass": "PHI"
+        },
+        "transcript": {
+          "type": "text",
+          "description": "The transcript text, utterances joined in spoken order.",
+          "phiClass": "PHI"
+        },
+        "segments": {
+          "type": "list<segment>",
+          "description": "Per-utterance timing, speaker and correlation over the transcript.",
+          "phiClass": "PHI"
+        },
+        "language": {
+          "type": "text",
+          "description": "The capture-level language the speech was recognised in.",
+          "phiClass": "NON_PHI"
+        },
+        "audio": {
+          "type": "audio",
+          "description": "The synthesised speech (a reference).",
+          "phiClass": "PHI"
+        },
+        "durationMs": {
+          "type": "number",
+          "description": "Length of the synthesised speech, in milliseconds.",
+          "phiClass": "NON_PHI"
+        },
+        "entities": {
+          "type": "list<entity>",
+          "description": "The recognised entities: text, label, character offsets and score.",
+          "phiClass": "PHI"
+        }
+      }
+    },
+    "core.classify": {
+      "inputs": {
+        "in": {
+          "type": "any",
+          "required": true,
+          "description": "What to classify: a transcript, a generated text, or a structured value."
+        }
+      },
+      "outputs": {
+        "classification": {
+          "type": "json",
+          "description": "The class taken and its score.",
+          "phiClass": "NON_PHI"
+        },
+        "input": {
+          "type": "any",
+          "description": "The classified input, carried through to the branch taken (OD-19)."
+        }
+      }
+    },
+    "core.humanReview": {
+      "inputs": {
+        "in": {
+          "type": "any",
+          "required": false,
+          "description": "What the reviewer is shown."
+        }
+      },
+      "outputs": {
+        "decision": {
+          "type": "json",
+          "description": "The review outcome, reviewer, comment and any edited payload.",
+          "phiClass": "PHI"
+        }
+      }
+    },
+    "core.variable": {
+      "inputs": {
+        "set": {
+          "type": "json",
+          "required": false,
+          "description": "Values to merge into the run variables."
+        }
+      },
+      "outputs": {
+        "vars": {
+          "type": "json",
+          "description": "The run variables after this step."
+        }
+      }
+    },
+    "core.condition": {
+      "inputs": {
+        "in": {
+          "type": "any",
+          "required": false,
+          "description": "The value the conditions read (they may also read the run context)."
+        }
+      },
+      "outputs": {
+        "evaluation": {
+          "type": "json",
+          "description": "Which branch was taken and whether a condition matched.",
+          "phiClass": "NON_PHI"
+        },
+        "input": {
+          "type": "any",
+          "description": "The router`s input, carried through to the branch taken (OD-19)."
+        }
+      }
+    },
+    "core.loop": {
+      "inputs": {
+        "in": {
+          "type": "any",
+          "required": false,
+          "description": "The list to iterate."
+        }
+      },
+      "outputs": {
+        "item": {
+          "type": "any",
+          "description": "The current item, inside the loop body."
+        },
+        "result": {
+          "type": "json",
+          "description": "What the loop collected when it finished."
+        }
+      }
+    },
+    "core.note": {
+      "inputs": {},
+      "outputs": {}
+    },
+    "core.output": {
+      "inputs": {
+        "in": {
+          "type": "any",
+          "required": false,
+          "description": "The workflow result, validated against the Output shape."
+        }
+      },
+      "outputs": {}
+    },
+    "core.data": {
+      "inputs": {
+        "in": {
+          "type": "json",
+          "required": true,
+          "description": "The value to reshape."
+        }
+      },
+      "outputs": {
+        "data": {
+          "type": "json",
+          "description": "The reshaped value."
+        },
+        "text": {
+          "type": "text",
+          "description": "The reshaped value`s `text` field, when it is text."
+        }
+      }
+    },
+    "core.action": {
+      "inputs": {
+        "in": {
+          "type": "json",
+          "required": false,
+          "description": "Platform action — input `in` (object)."
+        },
+        "text": {
+          "type": "text",
+          "required": false,
+          "description": "Platform action — input `text` (text)."
+        },
+        "transcript": {
+          "type": "text",
+          "required": false,
+          "description": "Platform action — input `transcript` (transcript)."
+        },
+        "entities": {
+          "type": "list<entity>",
+          "required": false,
+          "description": "Platform action — input `entities` (entities)."
+        },
+        "document": {
+          "type": "text",
+          "required": false,
+          "description": "Platform action — input `document` (document)."
+        },
+        "context": {
+          "type": "json",
+          "required": false,
+          "description": "Platform action — input `context` (context<schemaRef>)."
+        }
+      },
+      "outputs": {
+        "result": {
+          "type": "json",
+          "description": "Platform action — output `result` (object)."
+        },
+        "text": {
+          "type": "text",
+          "description": "Platform action — output `text` (text)."
+        },
+        "entities": {
+          "type": "list<entity>",
+          "description": "Platform action — output `entities` (entities)."
+        },
+        "verdict": {
+          "type": "json",
+          "description": "Platform action — output `verdict` (verdict)."
+        },
+        "document": {
+          "type": "text",
+          "description": "Platform action — output `document` (document)."
+        },
+        "context": {
+          "type": "json",
+          "description": "Platform action — output `context` (context<schemaRef>)."
+        }
+      }
+    }
+  },
+  "agentNodeIO": [
+    {
+      "name": "text-generation-default",
+      "task": "TEXT_GENERATION",
+      "expected": {
+        "inputs": {
+          "message": {
+            "type": "text",
+            "required": false,
+            "description": "The text the agent works on: the user turn, or the document to operate on."
+          },
+          "context": {
+            "type": "json",
+            "required": false,
+            "description": "Structured context for the prompt (the run input, or an earlier step`s data)."
+          }
+        },
+        "outputs": {
+          "text": {
+            "type": "text",
+            "description": "The generated text.",
+            "phiClass": "PHI"
+          }
+        }
+      }
+    },
+    {
+      "name": "text-generation-structured",
+      "task": "TEXT_GENERATION",
+      "outputSchema": {
+        "type": "object",
+        "required": ["case_note"],
+        "properties": {
+          "case_note": {
+            "type": "string"
+          },
+          "redactions": {
+            "type": "array"
+          }
+        }
+      },
+      "expected": {
+        "inputs": {
+          "message": {
+            "type": "text",
+            "required": false,
+            "description": "The text the agent works on: the user turn, or the document to operate on."
+          },
+          "context": {
+            "type": "json",
+            "required": false,
+            "description": "Structured context for the prompt (the run input, or an earlier step`s data)."
+          }
+        },
+        "outputs": {
+          "text": {
+            "type": "text",
+            "description": "The generated text.",
+            "phiClass": "PHI"
+          },
+          "data": {
+            "type": "json",
+            "description": "The structured result, shaped by the agent`s output schema.",
+            "phiClass": "PHI",
+            "schema": {
+              "type": "object",
+              "required": ["case_note"],
+              "properties": {
+                "case_note": {
+                  "type": "string"
+                },
+                "redactions": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "speech-to-text",
+      "task": "SPEECH_TO_TEXT",
+      "expected": {
+        "inputs": {
+          "audio": {
+            "type": "audio",
+            "required": true,
+            "description": "The recording to transcribe (a reference, never inline bytes)."
+          }
+        },
+        "outputs": {
+          "transcript": {
+            "type": "text",
+            "description": "The transcript text, utterances joined in spoken order.",
+            "phiClass": "PHI"
+          },
+          "segments": {
+            "type": "list<segment>",
+            "description": "Per-utterance timing, speaker and correlation over the transcript.",
+            "phiClass": "PHI"
+          },
+          "language": {
+            "type": "text",
+            "description": "The capture-level language the speech was recognised in.",
+            "phiClass": "NON_PHI"
+          }
+        }
+      }
+    },
+    {
+      "name": "text-to-speech",
+      "task": "TEXT_TO_SPEECH",
+      "expected": {
+        "inputs": {
+          "text": {
+            "type": "text",
+            "required": true,
+            "description": "The text to speak."
+          }
+        },
+        "outputs": {
+          "audio": {
+            "type": "audio",
+            "description": "The synthesised speech (a reference).",
+            "phiClass": "PHI"
+          },
+          "durationMs": {
+            "type": "number",
+            "description": "Length of the synthesised speech, in milliseconds.",
+            "phiClass": "NON_PHI"
+          }
+        }
+      }
+    },
+    {
+      "name": "named-entity-recognition",
+      "task": "NAMED_ENTITY_RECOGNITION",
+      "expected": {
+        "inputs": {
+          "text": {
+            "type": "text",
+            "required": true,
+            "description": "The document to extract entities from."
+          }
+        },
+        "outputs": {
+          "entities": {
+            "type": "list<entity>",
+            "description": "The recognised entities: text, label, character offsets and score.",
+            "phiClass": "PHI"
+          },
+          "text": {
+            "type": "text",
+            "description": "The classified text, passed through so a later step still sees the document.",
+            "phiClass": "PHI"
+          }
+        }
+      }
+    }
+  ],
+  "typeFits": [
+    {
+      "target": "text",
+      "source": "text",
+      "expected": "match"
+    },
+    {
+      "target": "text",
+      "source": "number",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "boolean",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "date",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "json",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "text",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "text",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "text",
+      "source": "any",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "list<text>",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "list<json>",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "list<entity>",
+      "expected": "convert"
+    },
+    {
+      "target": "text",
+      "source": "list<segment>",
+      "expected": "convert"
+    },
+    {
+      "target": "number",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "number",
+      "expected": "match"
+    },
+    {
+      "target": "number",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "any",
+      "expected": "convert"
+    },
+    {
+      "target": "number",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "number",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "boolean",
+      "expected": "match"
+    },
+    {
+      "target": "boolean",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "any",
+      "expected": "convert"
+    },
+    {
+      "target": "boolean",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "boolean",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "date",
+      "expected": "match"
+    },
+    {
+      "target": "date",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "any",
+      "expected": "convert"
+    },
+    {
+      "target": "date",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "date",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "json",
+      "source": "text",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "number",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "boolean",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "date",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "json",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "json",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "json",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "json",
+      "source": "any",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "list<text>",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "list<json>",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "list<entity>",
+      "expected": "match"
+    },
+    {
+      "target": "json",
+      "source": "list<segment>",
+      "expected": "match"
+    },
+    {
+      "target": "audio",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "audio",
+      "expected": "match"
+    },
+    {
+      "target": "audio",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "audio",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "file",
+      "expected": "match"
+    },
+    {
+      "target": "file",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "file",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "document",
+      "expected": "match"
+    },
+    {
+      "target": "document",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "document",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "any",
+      "source": "text",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "number",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "boolean",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "date",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "json",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "audio",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "file",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "document",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "any",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "list<text>",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "list<json>",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "list<entity>",
+      "expected": "match"
+    },
+    {
+      "target": "any",
+      "source": "list<segment>",
+      "expected": "match"
+    },
+    {
+      "target": "list<text>",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "list<text>",
+      "expected": "match"
+    },
+    {
+      "target": "list<text>",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<text>",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<json>",
+      "source": "list<text>",
+      "expected": "match"
+    },
+    {
+      "target": "list<json>",
+      "source": "list<json>",
+      "expected": "match"
+    },
+    {
+      "target": "list<json>",
+      "source": "list<entity>",
+      "expected": "match"
+    },
+    {
+      "target": "list<json>",
+      "source": "list<segment>",
+      "expected": "match"
+    },
+    {
+      "target": "list<entity>",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<entity>",
+      "source": "list<entity>",
+      "expected": "match"
+    },
+    {
+      "target": "list<entity>",
+      "source": "list<segment>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "text",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "number",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "boolean",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "date",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "json",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "audio",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "file",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "document",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "any",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "list<text>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "list<json>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "list<entity>",
+      "expected": "blocked"
+    },
+    {
+      "target": "list<segment>",
+      "source": "list<segment>",
+      "expected": "match"
+    }
+  ],
+  "ioTypeOfJsonSchema": [
+    {
+      "schema": {
+        "type": "string"
+      },
+      "expected": "text"
+    },
+    {
+      "schema": {
+        "type": "string",
+        "format": "date"
+      },
+      "expected": "date"
+    },
+    {
+      "schema": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "expected": "date"
+    },
+    {
+      "schema": {
+        "type": "integer"
+      },
+      "expected": "number"
+    },
+    {
+      "schema": {
+        "type": "number"
+      },
+      "expected": "number"
+    },
+    {
+      "schema": {
+        "type": "boolean"
+      },
+      "expected": "boolean"
+    },
+    {
+      "schema": {
+        "type": "object"
+      },
+      "expected": "json"
+    },
+    {
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "expected": "list<text>"
+    },
+    {
+      "schema": {
+        "type": "array"
+      },
+      "expected": "list<json>"
+    },
+    {
+      "schema": {
+        "type": ["string", "null"]
+      },
+      "expected": "text"
+    },
+    {
+      "schema": {},
+      "expected": "json"
+    }
+  ]
+}

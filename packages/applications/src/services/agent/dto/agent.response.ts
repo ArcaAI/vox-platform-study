@@ -22,6 +22,17 @@ export class AgentValidationReportResponse {
   @ApiProperty({ type: [AgentFindingResponse] }) findings!: AgentFindingResponse[];
 }
 
+/**
+ * OD-6 — the context schema an agent's prompt paths are checked against, and where it came from:
+ * the agent's own pin (`agent`), or the trigger schema of a published workflow that runs it
+ * (`workflow`, for an agent that pins none).
+ */
+export class AgentEffectiveContextSchemaResponse {
+  @ApiProperty({ description: 'The context schema id.' }) id!: string;
+  @ApiProperty({ description: 'The concrete version the paths are checked against.' }) versionNumber!: number;
+  @ApiProperty({ enum: ['agent', 'workflow'] }) inheritedFrom!: 'agent' | 'workflow';
+}
+
 /** One `Agent` row — which IS a version. Timestamps are ISO-8601 strings. */
 export class AgentResponse {
   @ApiProperty() id!: string;
@@ -68,6 +79,13 @@ export class AgentResponse {
   @ApiPropertyOptional({ nullable: true }) publishedAt!: string | null;
   @ApiPropertyOptional({ nullable: true }) deprecatedAt!: string | null;
   @ApiProperty() resourceStatus!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    type: AgentEffectiveContextSchemaResponse,
+    description:
+      'The context schema the prompt paths are checked against — the agent`s own, or inherited from a workflow that runs it. Present on the agent DETAIL (`GET admin/agents/:id`); null when neither applies.',
+  })
+  effectiveContextSchema?: AgentEffectiveContextSchemaResponse | null;
   /**
    * TASK-974 D-1 — a PLATFORM HIDDEN agent: one the platform owns and serves to every tenant
    * through its own resolver, never through the business plane.
@@ -79,6 +97,13 @@ export class AgentResponse {
    * keep it out of tenant-facing pickers.
    */
   @ApiProperty({ description: 'Platform-owned agent: never cloned, listed, invoked or assignable on the business plane.' }) hidden!: boolean;
+  @ApiProperty({
+    description:
+      'TASK-1036 OD-1 — guardrails are ALWAYS ON for every agent (TASK-1035 OD-1): the inbound screen inspects the external data blocks, ' +
+      'the outbound screen the response. Read-only and informational; there is no setting behind it.',
+    enum: ['always_on'],
+  })
+  guardrails!: 'always_on';
   @ApiProperty({ type: [String] }) tags!: string[];
   @ApiProperty({ description: 'ISO timestamp' }) createdAt!: string;
   @ApiProperty({ description: 'ISO timestamp' }) updatedAt!: string;

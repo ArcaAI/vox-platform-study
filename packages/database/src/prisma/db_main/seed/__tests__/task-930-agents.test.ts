@@ -184,17 +184,17 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       // the document template SHAPES ride as constants (no document-template binding kind exists)
       expect(instruction.variables.new_visit_headings.value).toContain('Presenting Complaints');
       expect(instruction.variables.revisit_headings.value).toContain('Last Visit Complaints');
-      expect(spec.parameters).toMatchObject({ guards: { enabled: true } });
+      expect(spec.parameters).not.toHaveProperty('guards');
     }
   });
 
-  it('casenote-finalization is an inline system prompt with the §8.3 output schema, guards on, and NO responseFormat (the schema is the format — INTERFACES §5)', () => {
+  it('casenote-finalization is an inline system prompt with the §8.3 output schema, no guardrail opt-out, and NO responseFormat (the schema is the format — INTERFACES §5)', () => {
     for (const spec of ALL_SPECS.filter((s) => s.slug === 'casenote-finalization')) {
       // TASK-1001 (OD-8) — the inline body is now the composite's first (inline) fragment.
       expect((spec.instruction as any).fragments[0].systemPrompt).toMatch(/redact/i);
       expect(spec.outputSchema).toMatchObject({ type: 'object', required: ['case_note', 'redactions'] });
       expect((spec.outputSchema as any).properties.redactions.items.required).toEqual(['text', 'label']);
-      expect(spec.parameters).toMatchObject({ guards: { enabled: true } });
+      expect(spec.parameters).not.toHaveProperty('guards');
       expect((spec.parameters as any).responseFormat).toBeUndefined();
       const row = buildAgentRow(spec, modelRef(spec.modelSlug), [], { source: 'inline', content: 'x' });
       expect(row.outputSchema).toEqual(spec.outputSchema);
@@ -250,7 +250,8 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
     });
     expect(canonicalJson(compiled)).toBe(contractCanonicalJson(compiled));
     expect(checksumOf(compiled)).toBe(`sha256:${createHash('sha256').update(contractCanonicalJson(compiled)).digest('hex')}`);
-    expect(compiled).toMatchObject({ guardrail: { enabled: true }, contextSchema: null, model: { wireModelId: 'gemma-4-e2b-it-qat' } });
+    expect(compiled).toMatchObject({ contextSchema: null, model: { wireModelId: 'gemma-4-e2b-it-qat' } });
+    expect(compiled).not.toHaveProperty('guardrail');
   });
 });
 

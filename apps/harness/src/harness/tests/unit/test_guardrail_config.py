@@ -5,8 +5,9 @@ Phase 2 needs
 * NO safety sub-config at all — ``HARNESS_SAFETY_*`` and its Granite Guardian engine
   plane were DELETED ( A.1 / F-02); the content-safety screen is delegated to
   ``apps/guardrail``. ``TestSafetyEnginePlaneDeleted`` locks that,
-* a fail-closed **PHI** sub-config (``HARNESS_PHI_*``) for the pre-cloud-egress
-  redaction guard, and
+* NO **PHI** sub-config either — ``HARNESS_PHI_*`` was DELETED by TASK-1035: LLM egress
+  redaction is ``apps/text``'s job, the run-effective PHI flags are ``HarnessPolicy`` (DB
+  tier) and the direct-judge local set is code. ``TestPhiEnvPlaneDeleted`` locks that, and
 * the existing eval :class:`~harness.eval.config.JudgeConfig` (``HARNESS_JUDGE_*``)
   **reused** (not duplicated) for the runtime groundedness/reasoning judge.
 
@@ -20,7 +21,6 @@ from pydantic import ValidationError
 
 import harness.core.config as harness_config
 from harness.core.config import (
-    PhiConfig,
     Settings,
     get_runtime_judge_config,
 )
@@ -66,6 +66,27 @@ class TestSafetyEnginePlaneDeleted:
         assert not _reachable_env_names(Settings) & {var}
 
 
+class TestPhiEnvPlaneDeleted:
+    """TASK-1035 — `HARNESS_PHI_*` is gone (no configuration in env).
+
+    `HARNESS_PHI_LOCAL_PROVIDERS` was a PHI allow-list in environment, and both flags duplicated
+    the per-tenant `HarnessPolicy.phiEnabled` / `phiFailClosed` the activities actually read.
+    """
+
+    def test_phi_config_class_is_gone(self) -> None:
+        assert not hasattr(harness_config, "PhiConfig")
+
+    def test_settings_carry_no_phi_subconfig(self) -> None:
+        assert "phi" not in Settings.model_fields
+
+    @pytest.mark.parametrize("var", _PHI_ENV)
+    def test_no_field_binds_a_harness_phi_var(
+        self, var: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(var, "should-be-ignored")
+        assert not _reachable_env_names(Settings) & {var}
+
+
 def _reachable_env_names(model: type) -> set[str]:
     """Every env var name the settings tree can bind, prefix-aware, recursively."""
     from pydantic_settings import BaseSettings
@@ -78,57 +99,6 @@ def _reachable_env_names(model: type) -> set[str]:
         if isinstance(annotation, type) and issubclass(annotation, BaseSettings):
             names |= _reachable_env_names(annotation)
     return names
-
-
-class TestPhiConfig:
-    def test_defaults_are_fail_closed(self, monkeypatch: pytest.MonkeyPatch):
-        for var in _PHI_ENV:
-            monkeypatch.delenv(var, raising=False)
-        c = PhiConfig()
-        assert c.enabled is True
-        # The whole point of the PHI guard: fail CLOSED (block egress on doubt).
-        assert c.fail_closed is True
-        # The known-LOCAL providers — everything else (including a provider not
-        # in this list) defaults to redact-and-confirm (default-deny;).
-        assert "lm-studio" in c.local_providers
-        # Owner decision 2026-08-20 (/-3): Ollama provider
-        # logic stays available, and it is a local (non-egress) engine like
-        # lm-studio/vllm/llama-cpp — it belongs back on the PHI local allowlist.
-        assert "ollama" in c.local_providers
-        assert "azure" not in c.local_providers
-        assert "bedrock" not in c.local_providers
-
-    def test_env_override(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_PHI_FAIL_CLOSED", "false")
-        monkeypatch.setenv("HARNESS_PHI_LOCAL_PROVIDERS", '["lm-studio"]')
-        c = PhiConfig()
-        assert c.fail_closed is False
-        assert c.local_providers == ["lm-studio"]
-
-    def test_empty_local_providers_raises_when_enabled(self) -> None:
-        # an empty local-provider list under enabled=True would
-        # redact EVERY call (including genuinely local ones) — almost certainly a
-        # misconfiguration, so refuse to boot rather than silently degrade.
-        with pytest.raises(ValidationError):
-            PhiConfig(enabled=True, local_providers=[])
-
-    def test_empty_local_providers_allowed_when_disabled(self) -> None:
-        # The guard itself is off, so an empty list is not a footgun.
-        c = PhiConfig(enabled=False, local_providers=[])
-        assert c.local_providers == []
-
-    def test_duplicate_local_providers_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            PhiConfig(local_providers=["lm-studio", "lm-studio"])
-
-    def test_blank_local_provider_entry_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            PhiConfig(local_providers=["lm-studio", "  "])
-
-
-class TestSettingsWiring:
-    def test_settings_expose_the_phi_subconfig(self):
-        assert isinstance(Settings().phi, PhiConfig)
 
 
 class TestRuntimeJudgeReuse:

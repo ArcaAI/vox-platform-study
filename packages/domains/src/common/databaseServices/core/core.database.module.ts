@@ -43,6 +43,7 @@ import { DepartmentRepository } from '../../../repositories/generated/core/Depar
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
 import { DnaWritingSampleRepository } from '../../../repositories/generated/core/DnaWritingSampleRepository';
+import { ComposedPromptRecordRepository } from '../../../repositories/generated/core/ComposedPromptRecordRepository';
 import { DnaWritingStyleVersionRepository } from '../../../repositories/generated/core/DnaWritingStyleVersionRepository';
 import { EvalRunRepository } from '../../../repositories/generated/core/EvalRunRepository';
 import { EvalScoreRepository } from '../../../repositories/generated/core/EvalScoreRepository';
@@ -212,6 +213,8 @@ const repositories = [
   DnaWritingStyleReportRepository,
   DnaWritingSampleRepository,
   DnaWritingStyleVersionRepository,
+  // The composed-prompt incident record (OD-9) — PHI ciphertext, retention-purged.
+  ComposedPromptRecordRepository,
   DnaUsageRecordRepository,
   PromptUsageRecordRepository,
   // Storage domain

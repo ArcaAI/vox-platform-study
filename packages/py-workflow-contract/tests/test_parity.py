@@ -42,8 +42,11 @@ from hope_workflow_contract import (
     COMPILED_CONFIG_FORMAT_VERSION,
     CompiledBranchGuard,
     CompiledCaps,
+    CompiledConsultationRead,
     CompiledContextSchemaRef,
     CompiledDocumentTemplateRef,
+    CompiledFirstOfBinding,
+    CompiledFromBinding,
     CompiledGate,
     CompiledGuardrailDecision,
     CompiledInputBinding,
@@ -53,7 +56,10 @@ from hope_workflow_contract import (
     CompiledPolicyBindings,
     CompiledPromptTemplateRef,
     CompiledRetryPolicy,
+    CompiledSettings,
     CompiledStage,
+    CompiledTemplateBinding,
+    CompiledValueBinding,
     CompiledWorkflowConfig,
     UnsupportedFormatVersionError,
     canonical_json,
@@ -147,7 +153,29 @@ PAIRS: list[tuple[str, type[BaseModel], dict[str, Any]]] = [
     ("branchGuard", CompiledBranchGuard, SCHEMA["$defs"]["branchGuard"]),
     ("loopBody", CompiledLoopBody, SCHEMA["$defs"]["loopBody"]),
     ("loop", CompiledLoop, SCHEMA["$defs"]["loop"]),
+    # TASK-1036 — the data contract (`emitDataContract`): per-node bindings (one model per
+    # `anyOf` branch of `compiledBinding`, in the schema's order), declared consultation reads,
+    # and the effective workflow settings on the root.
+    ("compiledBinding.from", CompiledFromBinding, SCHEMA["$defs"]["compiledBinding"]["anyOf"][0]),
+    ("compiledBinding.value", CompiledValueBinding, SCHEMA["$defs"]["compiledBinding"]["anyOf"][1]),
+    (
+        "compiledBinding.template",
+        CompiledTemplateBinding,
+        SCHEMA["$defs"]["compiledBinding"]["anyOf"][2],
+    ),
+    (
+        "compiledBinding.firstOf",
+        CompiledFirstOfBinding,
+        SCHEMA["$defs"]["compiledBinding"]["anyOf"][3],
+    ),
+    ("consultationRead", CompiledConsultationRead, SCHEMA["$defs"]["consultationRead"]),
+    ("settings", CompiledSettings, SCHEMA["$defs"]["settings"]),
 ]
+
+#: `$defs` entries that are deliberately NOT a model: `triggerContextSchema` describes the
+#: `core.trigger` node's `config.contextSchema` block, and node `config` is open by design
+#: ("described but never closed" — a node type may author any config its registry admits).
+OPEN_DEFINITIONS = {"triggerContextSchema"}
 
 
 def test_the_normative_schema_is_a_valid_draft_2020_12_document() -> None:
@@ -184,7 +212,7 @@ def test_both_sides_forbid_unknown_properties(
 
 def test_every_normative_definition_has_a_model() -> None:
     """Guards the PAIRS table itself: a new `$defs` entry must be mirrored."""
-    assert set(SCHEMA["$defs"]) == {
+    assert set(SCHEMA["$defs"]) - OPEN_DEFINITIONS == {
         "stage",
         "node",
         "retryPolicy",
@@ -196,6 +224,10 @@ def test_every_normative_definition_has_a_model() -> None:
         "branchGuard",
         "loopBody",
         "loop",
+        # TASK-1036
+        "compiledBinding",
+        "consultationRead",
+        "settings",
     }
 
 
@@ -225,9 +257,9 @@ def test_closed_value_sets_match_the_normative_schema(
     label: str, model: type[BaseModel], node: dict[str, Any], field: str
 ) -> None:
     generated = model.model_json_schema()["properties"][field]
-    assert _allowed_values(generated) == _allowed_values(
-        node["properties"][field]
-    ), f"{label}.{field}"
+    assert _allowed_values(generated) == _allowed_values(node["properties"][field]), (
+        f"{label}.{field}"
+    )
 
 
 def test_the_format_version_constant_agrees_with_the_schema() -> None:
@@ -420,3 +452,85 @@ def test_there_is_no_signed_field_anywhere_in_the_contract() -> None:
     ):
         offenders = {name for name in names if "sign" in name.lower()}
         assert offenders == set(), f"{label}: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# TASK-1036 — the data contract on a compiled artifact
+# ---------------------------------------------------------------------------
+
+
+def _with_data_contract() -> dict[str, Any]:
+    document = copy.deepcopy(FIXTURE)
+    node = document["stages"][1]["nodes"][0]
+    node["bindings"] = {
+        "message": {"from": "nodes.n_asr.outputs.transcript"},
+        "context": {"firstOf": ["context.patient", "consultation.patient"]},
+        "label": {"value": None},
+        "intro": {"template": "Summarise: {{nodes.n_asr.outputs.transcript}}"},
+        "age": {"from": "consultation.patient.age", "at": "runStart"},
+    }
+    node["consultationReads"] = [
+        {"path": "consultation.patient", "at": "nodeStart"},
+        {"path": "consultation.patient.age", "at": "runStart"},
+    ]
+    document["settings"] = {"connections": ["api", "sse"], "sources": ["consultation"]}
+    return document
+
+
+def test_a_data_contract_document_validates_and_round_trips() -> None:
+    document = _with_data_contract()
+    del document["checksum"]
+    document["checksum"] = "x"
+    Draft202012Validator(SCHEMA).validate(document)
+    parsed = CompiledWorkflowConfig.model_validate(document)
+    assert parsed.model_dump(mode="json", by_alias=True) == document
+
+
+def test_an_artifact_without_the_data_contract_dumps_none_of_it() -> None:
+    parsed = CompiledWorkflowConfig.model_validate(FIXTURE)
+    dumped = parsed.model_dump(mode="json", by_alias=True)
+    assert "settings" not in dumped
+    for stage in dumped["stages"]:
+        for node in stage["nodes"]:
+            assert "bindings" not in node
+            assert "consultationReads" not in node
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        {"from": ""},
+        {"from": "a", "at": "later"},
+        {"firstOf": ["only.one"]},
+        {"template": 1},
+        {"from": "a", "value": 1},
+        {},
+    ],
+    ids=["empty-from", "bad-at", "first-of-one", "template-not-text", "two-shapes", "empty"],
+)
+def test_a_malformed_binding_is_refused(binding: dict[str, Any]) -> None:
+    document = copy.deepcopy(FIXTURE)
+    document["stages"][1]["nodes"][0]["bindings"] = {"in": binding}
+    with pytest.raises(ValidationError):
+        CompiledWorkflowConfig.model_validate(document)
+
+
+def test_a_consultation_read_must_name_a_consultation_path() -> None:
+    document = copy.deepcopy(FIXTURE)
+    document["stages"][1]["nodes"][0]["consultationReads"] = [
+        {"path": "context.x", "at": "nodeStart"}
+    ]
+    with pytest.raises(ValidationError):
+        CompiledWorkflowConfig.model_validate(document)
+
+
+def test_settings_refuse_an_unknown_connection_and_a_repeat() -> None:
+    for settings in (
+        {"connections": ["ftp"], "sources": []},
+        {"connections": ["api", "api"], "sources": []},
+        {"connections": [], "sources": ["consultation"], "extra": 1},
+    ):
+        document = copy.deepcopy(FIXTURE)
+        document["settings"] = settings
+        with pytest.raises(ValidationError):
+            CompiledWorkflowConfig.model_validate(document)

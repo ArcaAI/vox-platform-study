@@ -6,7 +6,7 @@
  * context; `useGraphStore(selector)` / `useGraphStoreApi()` both throw outside a provider.
  * NEVER export the store object itself or a module singleton.
  */
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { createGraphStore, type GraphStore, type GraphStoreApi } from './create-graph-store';
 
@@ -36,4 +36,22 @@ export function useGraphStoreApi(): GraphStoreApi {
  *  selections in `useShallow` at the call site (rule 08 §Store). */
 export function useGraphStore<T>(selector: (state: GraphStore) => T): T {
   return useStore(useGraphStoreApi(), selector);
+}
+
+/** The store when a provider is mounted, else `null` — for leaf components that are ALSO rendered
+ *  standalone (an inspector field in its own unit test) and degrade without the graph. */
+export function useOptionalGraphStoreApi(): GraphStoreApi | null {
+  return useContext(GraphStoreContext);
+}
+
+/**
+ * `useGraphStore` that tolerates a missing provider: outside one it returns `fallback` and never
+ * subscribes. The selector must return a stable value for an unchanged state (an existing array,
+ * a primitive) — it feeds `useSyncExternalStore`, which re-renders on identity.
+ */
+export function useOptionalGraphStore<T>(selector: (state: GraphStore) => T, fallback: T): T {
+  const api = useContext(GraphStoreContext);
+  const subscribe = useCallback((onChange: () => void) => (api ? api.subscribe(onChange) : () => undefined), [api]);
+  const read = () => (api ? selector(api.getState()) : fallback);
+  return useSyncExternalStore(subscribe, read, read);
 }

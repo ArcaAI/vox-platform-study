@@ -102,18 +102,31 @@ export class PromptTemplateSyntaxError extends Error {
   }
 }
 
-/** A placeholder resolved to nothing and carried no `default(...)`. Named, never silent. */
+/**
+ * A placeholder resolved to nothing and carried no `default(...)`. Named, never silent.
+ *
+ * `renderTemplate` stops at the FIRST such placeholder, so it names one path. A caller that checks
+ * a whole prompt before rendering (`composeMessages`) names EVERY missing path through `paths`;
+ * `path` is then the first of them, so a reader of the single-path shape keeps working.
+ */
 export class PromptVariableUnresolvedError extends Error {
+  readonly code = 'PROMPT_VARIABLE_UNRESOLVED' as const;
   readonly path: string;
+  readonly paths: readonly string[];
   readonly templateRef: string | null;
-  constructor(path: string, templateRef: string | null) {
+  constructor(path: string | readonly string[], templateRef: string | null) {
+    const paths = typeof path === 'string' ? [path] : [...path];
+    const named = paths.map((one) => `\`${one}\``).join(', ');
+    const subject = paths.length === 1 ? `Prompt variable ${named} did` : `Prompt variables ${named} did`;
+    const declares = paths.length === 1 ? 'declares' : 'declare';
     super(
       templateRef === null
-        ? `Prompt variable \`${path}\` did not resolve and declares no \`default(...)\`.`
-        : `Prompt variable \`${path}\` did not resolve in \`${templateRef}\` and declares no \`default(...)\`.`,
+        ? `${subject} not resolve and ${declares} no \`default(...)\`.`
+        : `${subject} not resolve in \`${templateRef}\` and ${declares} no \`default(...)\`.`,
     );
     this.name = 'PromptVariableUnresolved';
-    this.path = path;
+    this.path = paths[0] ?? '';
+    this.paths = paths;
     this.templateRef = templateRef;
   }
 }
@@ -414,9 +427,8 @@ function schemaAdmits(schema: unknown, segments: readonly string[]): boolean | n
  * Publish-time cross-validation (§3.3): every reference must name a declared bare variable, or a
  * declared namespace root whose schema admits the rest of the path, or carry `default(...)`.
  *
- * Severity is the CALLER's (`PublishContext.templateReferenceSeverity`, WARNING in release 1 and
- * ERROR in release +1 — the OD-C ramp), because the same problem is authoring feedback in a draft
- * and a publish refusal later. This function only decides WHETHER, never how loudly.
+ * Severity is the caller's to stamp (`PROMPT_VARIABLE_UNDECLARED_SEVERITY`, an ERROR). This
+ * function only decides WHETHER, never how loudly.
  */
 export function templateReferenceProblems(content: string, declared: DeclaredNamespaces): string[] {
   const roots = declared.roots ?? {};

@@ -132,12 +132,14 @@ class TestClientNamesTheSelection:
         assert http.calls[0]["json"]["provider_overrides"] == {"lm-studio": CONNECTION}
 
     @pytest.mark.asyncio
-    async def test_opts_out_of_the_medical_relevance_gate_only(self) -> None:
+    async def test_declares_the_internal_medical_exemption_by_name(self) -> None:
         """Owner decision (2026-09-29): open-taxonomy topic/intent labels are not clinical
         content (`billing`, `appointments`), so the input medical-relevance gate must not
         refuse them — `text` answered 422 CONTENT_BLOCKED_NOT_MEDICAL for a billing question.
-        ONLY that gate: `enabled` stays unset, so platform screening (and the output gate)
-        still run."""
+
+        TASK-1035 OD-5: the exemption is NAMED (`medical_exempt: "internal"`), never a
+        tenant-pushable `require_medical=false`, and no `guardrail_policy` opt-out rides
+        along — both safety gates still run."""
         http = _RecordingHttp()
         client = ExternalTextClient(
             settings=ExternalTextConfig(base_url="http://text.local"), http_client=http
@@ -147,7 +149,9 @@ class TestClientNamesTheSelection:
             "Which topic?", tenant_id="t1", provider="lm-studio", model="gemma-3-12b"
         )
 
-        assert http.calls[0]["json"]["guardrail_policy"] == {"require_medical": False}
+        body = http.calls[0]["json"]
+        assert body["medical_exempt"] == "internal"
+        assert "guardrail_policy" not in body
 
     @pytest.mark.asyncio
     async def test_posts_to_texts_versioned_generate_route(self) -> None:

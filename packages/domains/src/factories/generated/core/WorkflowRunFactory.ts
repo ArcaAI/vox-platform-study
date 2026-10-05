@@ -9,10 +9,10 @@ import * as Entities from '../../../entities';
 
 export interface CreateWorkflowRunProps extends BaseEntityFactoryCreateProps {
   tenantId: IWorkflowRunEntity['tenantId'];
-  workflowVersionId: IWorkflowRunEntity['workflowVersionId'];
-  workflowSlug: IWorkflowRunEntity['workflowSlug'];
-  workflowVersionNumber: IWorkflowRunEntity['workflowVersionNumber'];
-  definitionName: IWorkflowRunEntity['definitionName'];
+  workflowVersionId: string;
+  workflowSlug: string;
+  workflowVersionNumber: number;
+  definitionName: string;
   sessionId: IWorkflowRunEntity['sessionId'];
   runId?: IWorkflowRunEntity['runId'];
   trigger: IWorkflowRunEntity['trigger'];
@@ -31,6 +31,32 @@ export interface CreateWorkflowRunProps extends BaseEntityFactoryCreateProps {
 
   createdAt?: IWorkflowRunEntity['createdAt'];
   createdBy?: IWorkflowRunEntity['createdBy'];
+}
+
+/**
+ * TASK-1038 OD-26 — the props of an AGENT run row (`POST /agents/:slug/runs`). There is no
+ * workflow identity to pass and no session key to choose: the row is anchored under
+ * `agent-run-<runId>` (`AGENT_RUN_SESSION_PREFIX`), a key no workflow lookup ever asks for.
+ */
+export interface CreateAgentRunProps extends BaseEntityFactoryCreateProps {
+  tenantId: IWorkflowRunEntity['tenantId'];
+  runId: string;
+  agentSlug: string;
+  agentVersionId: string;
+  agentVersionNumber: number;
+  startedAt: IWorkflowRunEntity['startedAt'];
+  metaData?: IWorkflowRunEntity['metaData'];
+  createdAt?: IWorkflowRunEntity['createdAt'];
+  createdBy?: IWorkflowRunEntity['createdBy'];
+}
+
+/** The `trigger` every agent run row carries (the column is a code-owned vocabulary string). */
+export const AGENT_RUN_TRIGGER = 'agent run';
+/** The session-key prefix of an AGENT run row — see `agentRunSessionId`. */
+export const AGENT_RUN_SESSION_PREFIX = 'agent-run-';
+/** The session key an AGENT run row is anchored under (`(tenantId, sessionId, runId)` is unique). */
+export function agentRunSessionId(runId: string): string {
+  return `${AGENT_RUN_SESSION_PREFIX}${runId}`;
 }
 
 export class WorkflowRunFactory {
@@ -53,6 +79,7 @@ export class WorkflowRunFactory {
       updatedBy: null,
 
       tenantId: props.tenantId,
+      kind: Enums.WorkflowRunKind.WORKFLOW,
       workflowVersionId: props.workflowVersionId,
       workflowSlug: props.workflowSlug,
       workflowVersionNumber: props.workflowVersionNumber,
@@ -83,6 +110,51 @@ export class WorkflowRunFactory {
       // absence, which `workflow-run.acting-user.task950.test.ts` pins on `toObject()`.
       metaData: props.metaData,
       Tenant: props.Tenant ?? null,
+    });
+  }
+
+  /**
+   * TASK-1038 OD-26 — one AGENT run row: RUNNING, one step, no workflow identity. Its result is
+   * written at the terminal transition as `resultRef = { kind: 'inline', value }`, so the A2
+   * retention purge (`workflowRuns.resultRetentionDays`) expires it exactly like a workflow's.
+   */
+  static CreateAgentRun(props: CreateAgentRunProps): WorkflowRunEntity {
+    const id = generateId();
+    const now = props.createdAt || new Date();
+
+    return new WorkflowRunEntity({
+      id,
+
+      createdAt: now,
+      updatedAt: now,
+      createdBy: props.createdBy ?? null,
+      updatedBy: null,
+
+      tenantId: props.tenantId,
+      kind: Enums.WorkflowRunKind.AGENT,
+      workflowVersionId: null,
+      workflowSlug: null,
+      workflowVersionNumber: null,
+      definitionName: null,
+      agentSlug: props.agentSlug,
+      agentVersionId: props.agentVersionId,
+      agentVersionNumber: props.agentVersionNumber,
+      sessionId: agentRunSessionId(props.runId),
+      runId: props.runId,
+      trigger: AGENT_RUN_TRIGGER,
+      status: Enums.WorkflowRunStatus.RUNNING,
+      isSandbox: false,
+      startedAt: props.startedAt,
+      endedAt: null,
+      durationMs: null,
+      nodeCount: 1,
+      failedNodeCount: 0,
+      degradedNodeCount: 0,
+      firstErrorCode: null,
+      resultRef: null,
+      // Verbatim, never `?? null` — the same three-way absence `CreateRun` preserves.
+      metaData: props.metaData,
+      Tenant: null,
     });
   }
 }

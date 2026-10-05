@@ -59,6 +59,10 @@ def _guardrail(*, validate: dict[str, Any] | None = None, screen: dict[str, Any]
     client.validate = AsyncMock(
         return_value=validate if validate is not None else {"allowed": True}
     )
+    # TASK-1035: the inbound screen runs beside the judge on every call.
+    client.screen_inbound = AsyncMock(
+        return_value={"allowed": True, "reason": "screened", "pii_spans": []}
+    )
     client.screen_output = AsyncMock(return_value=screen if screen is not None else _allow())
     return client
 
@@ -186,7 +190,6 @@ class _RaisingHttp:
 
 
 def _client(http: Any, **posture: Any) -> ExternalGuardrailClient:
-    posture.setdefault("enabled", True)
     posture.setdefault("retry_backoff_ms", 0)
     state = SimpleNamespace(guardrail_posture=GuardrailPosture(**posture))
     return ExternalGuardrailClient(
@@ -225,17 +228,6 @@ class TestScreenOutputClient:
         assert verdict["allowed"] is False
         assert verdict["reason"] == "response_safety"
         assert verdict["raw"]["decision"] == "block"
-
-    @pytest.mark.asyncio
-    async def test_disabled_posture_short_circuits_without_http(self) -> None:
-        http = _RecordingHttp({"decision": "block"})
-        client = _client(http, enabled=False)
-
-        verdict = await client.screen_output("anything", tenant_id="t")
-
-        assert verdict["allowed"] is True
-        assert verdict["reason"] == "external_guardrail_disabled"
-        assert http.calls == []
 
     @pytest.mark.asyncio
     async def test_payload_without_a_decision_fails_closed(self) -> None:
@@ -332,8 +324,9 @@ class TestGateHelper:
         assert rejected.value.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_bypass_when_unwired_and_posture_off_but_closed_when_posture_on(self) -> None:
-        from text.services.output_gate import OutputRejectedError, gate_completion
+    async def test_an_unwired_client_screens_nothing(self) -> None:
+        """Only a process the lifespan never wired has no client (the unit harness)."""
+        from text.services.output_gate import gate_completion
 
         assert (
             await gate_completion(
@@ -347,19 +340,6 @@ class TestGateHelper:
             )
             is None
         )
-
-        with pytest.raises(OutputRejectedError) as closed:
-            await gate_completion(
-                None,
-                completion="x",
-                source_context=None,
-                tenant_id="t",
-                tenant_policy=None,
-                app_state=SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True)),
-                where="test",
-            )
-        assert closed.value.status_code == 503
-        assert closed.value.retryable is True
 
     @pytest.mark.asyncio
     async def test_empty_completion_is_not_sent_to_guardrail(self) -> None:
@@ -514,6 +494,7 @@ class TestNonStreamingPath:
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "ok"
         assert "patient note" in kwargs["source_context"]
+        # TASK-1036 E1: the source is everything the provider was sent.
         assert "be brief" in kwargs["source_context"]
         assert kwargs["tenant_id"] == "tenant-42"
 
@@ -548,7 +529,7 @@ class TestNonStreamingPath:
         assert semaphore.in_flight == 0
 
     @pytest.mark.asyncio
-    async def test_unwired_client_with_posture_off_is_the_dev_bypass(
+    async def test_an_unwired_client_on_a_local_provider_streams_through(
         self, client_factory, mock_provider
     ) -> None:
         client = await client_factory(None)
@@ -650,7 +631,7 @@ class TestStreamingProducer:
         # The gate saw everything the consumer saw: reasoning AND content, assembled.
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "think\n\nhello world"
-        assert "p" in kwargs["source_context"] and "s" in kwargs["source_context"]
+        assert kwargs["source_context"] == "s\n\np"
         assert kwargs["tenant_id"] == "tenant-rej"
 
         chunks = _appended_chunks(mock_task_manager)
@@ -725,28 +706,6 @@ class TestStreamingProducer:
             TaskStatus.COMPLETED
         )
         assert audit.events[0].status == "completed"
-
-    @pytest.mark.asyncio
-    async def test_unwired_client_with_posture_on_fails_closed_on_the_stream(
-        self, mock_task_manager, mock_provider
-    ) -> None:
-        from text.api.endpoints.generate import _run_streaming_generation
-
-        await _run_streaming_generation(
-            mock_task_manager,
-            mock_provider,
-            "task-enforce",
-            GenerateRequest(prompt="p", provider=_PROVIDER, model="m", stream=True),
-            provider_name=_PROVIDER,
-            model="m",
-            tenant_id="t",
-            guardrail_client=None,
-            app_state=SimpleNamespace(guardrail_posture=GuardrailPosture(enabled=True)),
-        )
-
-        chunks = _appended_chunks(mock_task_manager)
-        assert [c.type for c in chunks] == ["error"]
-        assert (chunks[0].data or {})["code"] == "GUARDRAIL_UNAVAILABLE"
 
     @pytest.mark.asyncio
     async def test_unwired_client_with_posture_off_is_the_dev_bypass(

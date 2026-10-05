@@ -114,7 +114,6 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
             config: {
               agentRef: { slug: options.summarizer.slug },
               execution: REALTIME_PER_TURN,
-              guardrail: { enabled: true },
               onError: 'degrade',
               ...documentBinding('n_summary'),
             },
@@ -139,7 +138,6 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
             config: {
               agentRef: { slug: options.summarizer.newVisitSlug },
               execution: REALTIME_PER_TURN,
-              guardrail: { enabled: true },
               onError: 'degrade',
               ...documentBinding('n_summary_new'),
             },
@@ -150,7 +148,6 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
             config: {
               agentRef: { slug: options.summarizer.revisitSlug },
               execution: REALTIME_PER_TURN,
-              guardrail: { enabled: true },
               onError: 'degrade',
               ...documentBinding('n_summary_revisit'),
             },
@@ -167,7 +164,7 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
         // No `versionNumber` — FOLLOW LATEST (TASK-982): the trigger validates against
         // whatever this tenant has pinned at dispatch, not a version frozen the day this
         // seed last ran.
-        config: { kinds: ['consultation', 'api'], contextSchema: { contextSchemaId: options.contextSchemaId }, guardrail: { enabled: true } },
+        config: { kinds: ['consultation', 'api'], contextSchema: { contextSchemaId: options.contextSchemaId } },
       },
       {
         // TASK-932 D-9 — the WARM START. A sibling of the capture node, not a predecessor: it
@@ -177,7 +174,7 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
         // record failed to summarise is still a consultation that must record.
         id: 'n_presummary',
         type: 'core.agent',
-        config: { agentRef: { slug: PRE_SUMMARY_AGENT_SLUG }, execution: REALTIME_ON_START, guardrail: { enabled: true }, onError: 'degrade' },
+        config: { agentRef: { slug: PRE_SUMMARY_AGENT_SLUG }, execution: REALTIME_ON_START, onError: 'degrade' },
       },
       { id: 'n_asr', type: 'core.agent', config: { agentRef: { slug: 'realtime-transcription' }, execution: REALTIME_PER_TURN, onError: 'fail' } },
       {
@@ -206,7 +203,6 @@ export function buildConsultationGraph(options: ConsultationGraphOptions): SeedG
         config: {
           agentRef: { slug: 'casenote-finalization' },
           execution: { lane: 'durable', cadence: 'onEnd' },
-          guardrail: { enabled: true },
           dna: { enabled: true },
           onError: 'fail',
         },
@@ -312,7 +308,7 @@ export function buildSummarizationGraph(options: { contextSchemaId: string }): S
       {
         id: 'n_trigger',
         type: 'core.trigger',
-        config: { kinds: ['api'], contextSchema: { contextSchemaId: options.contextSchemaId }, guardrail: { enabled: true } },
+        config: { kinds: ['api'], contextSchema: { contextSchemaId: options.contextSchemaId } },
       },
       {
         id: 'n_summary',
@@ -320,7 +316,6 @@ export function buildSummarizationGraph(options: { contextSchemaId: string }): S
         config: {
           agentRef: { slug: 'general-medicine-summarization' },
           execution: { lane: 'durable', cadence: 'once' },
-          guardrail: { enabled: true },
           onError: 'fail',
         },
       },

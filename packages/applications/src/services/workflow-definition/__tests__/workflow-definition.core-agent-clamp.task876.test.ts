@@ -23,7 +23,9 @@ import { WorkflowDefinitionService } from '../workflow-definition.service';
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockRoutingPolicyService = { resolveGenerationCapabilities: vi.fn() };
-const agentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn() };
+// TASK-1038 E2 (fix 9, OD-21) — an unresolved explicit pin is re-checked against every version
+// (a DEPRECATED pin publishes with a warning), so the fixture carries `findAllVersionsBySlug`.
+const agentRepository = { findPublishedActiveBySlug: vi.fn(), findPublishedVisibleBySlugVersion: vi.fn(), findAllVersionsBySlug: vi.fn() };
 const aiModelRepository = { findById: vi.fn() };
 
 const node = (config: Record<string, unknown>) => ({ id: 'n_agent', type: 'core.agent', config });
@@ -203,10 +205,18 @@ describe('publish — a core.agent override the bound agent`s provider rejects i
     ]);
   });
 
-  it('an agent that does not resolve at publish is an UNKNOWN capability set (WARNING) — the runtime fails closed on it anyway', async () => {
+  // TASK-1036 W3 — the capability clamp still treats an unresolvable agent as UNKNOWN (no model
+  // read), but publish now has to FREEZE the version the node runs, so an agent with no active
+  // published version refuses the publish (AGENT_PIN_UNRESOLVED) instead of passing with a warning.
+  it('an agent that does not resolve at publish is an UNKNOWN capability set, and W3 refuses to publish it unpinned', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(null);
-    const result = await makeService().publish('def-1', {});
-    expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    const error = await makeService()
+      .publish('def-1', {})
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(((error as BadRequestException).getResponse() as { findings: Array<{ code?: string }> }).findings).toEqual([
+      expect.objectContaining({ code: 'AGENT_PIN_UNRESOLVED' }),
+    ]);
     expect(aiModelRepository.findById).not.toHaveBeenCalled();
   });
 
@@ -234,21 +244,28 @@ describe('publish — a core.agent override the bound agent`s provider rejects i
     expect(findings[0].message).not.toContain('v3');
   });
 
-  it('an UNRESOLVABLE pin is an unknown capability set (WARNING), like an unresolvable slug', async () => {
+  it('an UNRESOLVABLE pin is an unknown capability set, and W3 refuses to publish it (AGENT_PIN_UNRESOLVED)', async () => {
     agentRepository.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
+    agentRepository.findAllVersionsBySlug.mockResolvedValue([]); // v9 is not even a DEPRECATED version
     mockWorkflowDefinitionRepository.findById.mockResolvedValue(
       entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer', versionNumber: 9 }, overrides: { generation: { presencePenalty: 0.5 } } }) }),
     );
 
-    const result = await makeService().publish('def-1', {});
+    const error = await makeService()
+      .publish('def-1', {})
+      .catch((e: unknown) => e);
 
-    expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(((error as BadRequestException).getResponse() as { findings: Array<{ code?: string }> }).findings).toEqual([
+      expect.objectContaining({ code: 'AGENT_PIN_UNRESOLVED' }),
+    ]);
     expect(aiModelRepository.findById).not.toHaveBeenCalled();
   });
 
-  it('a node that tunes nothing is never looked up', async () => {
+  it('a node that tunes nothing is never looked up for capabilities (only once, for its W3 pin)', async () => {
     mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity({ graph: graph({ agentRef: { slug: 'clinic-summarizer' } }) }));
     await makeService().publish('def-1', {});
-    expect(agentRepository.findPublishedActiveBySlug).not.toHaveBeenCalled();
+    expect(aiModelRepository.findById).not.toHaveBeenCalled();
+    expect(agentRepository.findPublishedActiveBySlug).toHaveBeenCalledTimes(1);
   });
 });

@@ -122,7 +122,15 @@ def _client(app: Any) -> AsyncClient:
 
 
 def _body(count: int = 40) -> dict[str, Any]:
-    return {"prompt": "summarise", "provider": "mock", "model": "mock-model", "stream": True}
+    # The mock is stamped local: an unstamped unknown provider resolves to cloud and its
+    # stream is held in sentence windows, which is not what these resume tests measure.
+    return {
+        "prompt": "summarise",
+        "provider": "mock",
+        "model": "mock-model",
+        "stream": True,
+        "provider_locality": {"mock": "local"},
+    }
 
 
 def _parse_sse(text: str) -> list[tuple[str, str, str]]:

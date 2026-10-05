@@ -46,6 +46,7 @@ import { type StreamSessionBinding, StreamSessionTenantBindingService } from '..
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
+import { SttRunTranscriptMirror, type SttResultFrame } from './stt-run-transcript-mirror';
 import { logWsFailure, wsClientIp, type WsFailureContext } from './ws-failure-log';
 
 /**
@@ -540,6 +541,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(ITenantLockService)
     private readonly tenantLock?: ITenantLockService,
+    // TASK-1036 (lane B6b) — mirrors each relayed transcript into the RUNNING run its consultation
+    // feeds (sandbox Test tab or governed run). Optional and TRAILING like the rest; absent => no mirror.
+    @Optional()
+    private readonly runTranscriptMirror?: SttRunTranscriptMirror,
   ) {}
 
   /**
@@ -1232,6 +1237,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       .subscribe({
         next: (msg) => {
           this.relayResult(session.client, session, msg as unknown as { type: string; isFinal?: boolean; [key: string]: unknown });
+          // Synchronous, never throws; the lookup and append are queued off the relay path.
+          this.runTranscriptMirror?.mirror(session.tenantId, session.sessionId, msg as unknown as SttResultFrame);
         },
         error: (err) => {
           const correlationId = this.logSessionFailure(session, { message: 'Result stream error', level: 'warn' }, err);
@@ -1946,6 +1953,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     this.clearEgressState(session, reason);
     this.sessions.delete(session.client);
     this.sessionsById.delete(session.sessionId);
+    this.runTranscriptMirror?.forget(session.sessionId);
     this.publishSocketCount();
 
     this.logger.log({

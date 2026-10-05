@@ -294,3 +294,133 @@ export const DRAFT_CORE_RULE_SET: readonly DraftWorkflowRule[] = [
  * (`action-catalogue.ts`), whose `mandatory` / `redaction` / `activity` classes `classesOf()`
  * resolves per instance — so class-based rules still see them.
  */
+
+/**
+ * TASK-1036 — the DATA-CONTRACT rules: bindings (§9.2), the consultation scope (§9.3) and the
+ * workflow settings (§3.5).
+ *
+ * Unlike the DRAFT rule sets above these are not graph-shape predicates evaluated by
+ * `validate()`; they are publish checks (`publishFindings` → `bindings.ts` /
+ * `workflow-settings.ts`). They are catalogued here so a console, the docs and a reviewer read one
+ * table: the code a finding carries, its rule id, how loud it is, what it means and how to fix it.
+ *
+ * `severity` is the severity under the NEW model (declared `inputs`, declared `settings`).
+ * `legacySeverity` is what the same rule reports on a graph still on the legacy model (edges for
+ * data, trigger `kinds` / output `protocols` for settings) during the one-release migration, so
+ * nothing that published before TASK-1036 stops publishing.
+ */
+export interface DataContractRule {
+  /** `WF-PUB` for a publish finding; the four settings implications carry their own `WF-SET-00n`. */
+  readonly ruleId: string;
+  readonly code: string;
+  readonly severity: 'ERROR' | 'WARNING' | 'INFO';
+  readonly legacySeverity?: 'WARNING';
+  readonly title: string;
+  readonly fix: string;
+}
+
+export const DATA_CONTRACT_RULES: readonly DataContractRule[] = Object.freeze([
+  {
+    ruleId: 'WF-PUB',
+    code: 'BINDING_UNKNOWN_PATH',
+    severity: 'ERROR',
+    title: 'An input reads a path that does not exist: no such root, step, output field, variable or schema field.',
+    fix: 'Pick the field from the list; it offers only what this step can read.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'BINDING_NOT_ANCESTOR',
+    severity: 'ERROR',
+    title: 'An input reads the output of a step that does not run before this one.',
+    fix: 'Connect that step upstream of this one, or read another field.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'BINDING_TYPE_MISMATCH',
+    severity: 'ERROR',
+    title: 'An input receives a value of a type it cannot use (for example audio where text is needed).',
+    fix: 'Choose a field of a matching type, or add a step that produces one.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'BINDING_TYPE_CONVERTED',
+    severity: 'INFO',
+    title: 'An input receives a value that will be formatted to fit (for example a number or a list as text).',
+    fix: 'Nothing to do unless the formatted value is not what the step should see.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'BINDING_UNKNOWN_INPUT',
+    severity: 'ERROR',
+    title: 'A binding names an input this step does not declare.',
+    fix: 'Remove the binding, or bind one of the inputs the step lists.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'REQUIRED_INPUT_UNBOUND',
+    severity: 'ERROR',
+    title: 'A required input of this step has no value: no binding and no connection.',
+    fix: 'Choose where the input comes from, or connect a step that produces it.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'INPUT_MULTIPLE_PRODUCERS',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'Several steps feed one single-value input, so only one value can arrive (OD-18).',
+    fix: 'Bind the input to one of them, or combine the values with a Merge step.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'AGENT_NOTHING_BOUND',
+    severity: 'WARNING',
+    title: 'A text agent step has nothing to work on: no message, no context and no prompt variable is bound.',
+    fix: 'Bind its message or context, or set a prompt variable; otherwise it runs on its prompt alone.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'CONSULTATION_SCOPE_UNAVAILABLE',
+    severity: 'ERROR',
+    title: 'A step reads consultation data, but the workflow is not started by a consultation.',
+    fix: 'Add the consultation source in the workflow settings, or read the value from the context.',
+  },
+  {
+    ruleId: 'WF-PUB',
+    code: 'SETTINGS_INVALID',
+    severity: 'ERROR',
+    title: 'The workflow settings are malformed (an unknown connection or source, a repeat, an unknown key).',
+    fix: 'Re-open the workflow settings and save them again.',
+  },
+  {
+    ruleId: 'WF-SET-001',
+    code: 'SETTINGS_SSE_REQUIRES_API',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'Streaming a run (SSE) is enabled without the API connection it follows.',
+    fix: 'Enable the API connection.',
+  },
+  {
+    ruleId: 'WF-SET-002',
+    code: 'SETTINGS_SOCKET_REQUIRES_API',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'The socket connection is enabled without the API connection it attaches to.',
+    fix: 'Enable the API connection.',
+  },
+  {
+    ruleId: 'WF-SET-003',
+    code: 'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'A speech step (speech-to-text or text-to-speech) or a streamed audio input needs the socket connection.',
+    fix: 'Enable the socket connection.',
+  },
+  {
+    ruleId: 'WF-SET-004',
+    code: 'SETTINGS_UPLOAD_REQUIRES_API',
+    severity: 'ERROR',
+    legacySeverity: 'WARNING',
+    title: 'An uploaded audio file or an attachment in the Input shape needs the API connection.',
+    fix: 'Enable the API connection.',
+  },
+] satisfies DataContractRule[]);

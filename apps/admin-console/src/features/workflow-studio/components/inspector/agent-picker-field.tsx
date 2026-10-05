@@ -20,9 +20,12 @@
  * therefore GROUPED by task rather than filtered to one, so a long summarization list cannot
  * bury the single ASR agent.
  */
+import { lazy, Suspense, useState } from 'react';
 import Link from 'next/link';
-import { IconExternalLink } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { IconExternalLink, IconPencil, IconPlus } from '@tabler/icons-react';
 import {
+  Button,
   Field,
   FieldDescription,
   FieldError,
@@ -38,8 +41,16 @@ import {
   Skeleton,
 } from '@arcaai/ui';
 import { useAgentOptions } from '../../api/hooks';
+import { workflowStudioKeys } from '../../api/keys';
 
 const CREATE_AGENT_HREF = '/agents?create=1';
+
+/**
+ * TASK-1036 OD-12 — the agent wizard lives in `shared/` (rule 13) and is loaded on first use: it
+ * carries the whole prompt / parameter editing surface, which an inspector that only picks an
+ * agent should not pay for up front.
+ */
+const AgentWizard = lazy(() => import('@/shared/agent-wizard/agent-wizard').then((module) => ({ default: module.AgentWizard })));
 
 /**
  * `SPEECH_TO_TEXT` -> `Speech to text`. The task vocabulary is the contract's; this only titles it.
@@ -58,13 +69,57 @@ export function agentTaskLabel(task: string | undefined): string {
 export interface AgentPickerFieldProps {
   id: string;
   value: string;
-  onChange: (slug: string) => void;
+  /**
+   * `versionNumber` is the version the node should PIN (`agentRef.versionNumber`, W3): the chosen
+   * agent's current version, or the version an inline create / edit just published.
+   */
+  onChange: (slug: string, versionNumber?: number) => void;
+  /** The version this node is pinned to today; the edit dialog branches from it. */
+  versionNumber?: number | null;
   errors?: string[];
   disabled?: boolean;
 }
 
-export function AgentPickerField({ id, value, onChange, errors, disabled }: AgentPickerFieldProps) {
+/**
+ * Create / edit an agent without leaving the Studio (OD-12, D-7). Mounted only while open, so the
+ * picker itself needs no query client. A published result binds the node; a draft kept back by an
+ * unapproved prompt (`blocked`) binds nothing and the dialog stays open, showing its reason.
+ */
+function AgentWizardLauncher({
+  edit,
+  onClose,
+  onBind,
+}: {
+  edit?: { slug: string; versionNumber?: number | null };
+  onClose: () => void;
+  onBind: (slug: string, versionNumber: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  return (
+    <Suspense fallback={null}>
+      <AgentWizard
+        open
+        edit={edit}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+        onCreated={(agent, result) => {
+          void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.agentOptions() });
+          if (result?.published) {
+            onBind(agent.slug, agent.versionNumber);
+            onClose();
+          } else if (!result?.blocked) {
+            onClose();
+          }
+        }}
+      />
+    </Suspense>
+  );
+}
+
+export function AgentPickerField({ id, value, onChange, versionNumber, errors, disabled }: AgentPickerFieldProps) {
   const options = useAgentOptions(undefined);
+  const [wizard, setWizard] = useState<'create' | 'edit' | null>(null);
   const invalid = (errors?.length ?? 0) > 0 ? 'true' : undefined;
 
   if (options.isPending) {
@@ -85,12 +140,23 @@ export function AgentPickerField({ id, value, onChange, errors, disabled }: Agen
         <FieldLabel htmlFor={id}>Agent slug *</FieldLabel>
         <FieldDescription>
           {options.isError ? 'The agent list is unavailable — enter the published agent`s slug.' : 'No published agent yet — enter a slug, or create one.'}{' '}
-          <Link href={CREATE_AGENT_HREF} className="inline-flex items-center gap-1 underline">
-            Create agent <IconExternalLink aria-hidden="true" className="size-3" />
-          </Link>
+          {options.isError ? (
+            <Link href={CREATE_AGENT_HREF} className="inline-flex items-center gap-1 underline">
+              Create agent <IconExternalLink aria-hidden="true" className="size-3" />
+            </Link>
+          ) : null}
         </FieldDescription>
         <Input id={id} value={value} disabled={disabled} className="font-mono" onChange={(event) => onChange(event.target.value)} />
+        {options.isError ? null : (
+          <div>
+            <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setWizard('create')}>
+              <IconPlus aria-hidden="true" className="size-3.5" />
+              Create agent
+            </Button>
+          </div>
+        )}
         <FieldError errors={errors?.map((message) => ({ message }))} />
+        {wizard === 'create' ? <AgentWizardLauncher onClose={() => setWizard(null)} onBind={onChange} /> : null}
       </Field>
     );
   }
@@ -108,13 +174,12 @@ export function AgentPickerField({ id, value, onChange, errors, disabled }: Agen
   return (
     <Field data-invalid={invalid}>
       <FieldLabel htmlFor={id}>Agent *</FieldLabel>
-      <FieldDescription>
-        A published agent, resolved tenant-first at run time.{' '}
-        <Link href={CREATE_AGENT_HREF} className="inline-flex items-center gap-1 underline">
-          Create agent <IconExternalLink aria-hidden="true" className="size-3" />
-        </Link>
-      </FieldDescription>
-      <Select value={known ? value : ''} onValueChange={onChange} disabled={disabled}>
+      <FieldDescription>A published agent, resolved tenant-first at run time. This step stays on the version you choose until you change it.</FieldDescription>
+      <Select
+        value={known ? value : ''}
+        onValueChange={(slug) => onChange(slug, agents.find((agent) => agent.slug === slug)?.versionNumber)}
+        disabled={disabled}
+      >
         <SelectTrigger id={id} className="w-full">
           <SelectValue placeholder={value && !known ? `${value} (not in the list)` : 'Choose an agent'} />
         </SelectTrigger>
@@ -131,7 +196,26 @@ export function AgentPickerField({ id, value, onChange, errors, disabled }: Agen
           ))}
         </SelectContent>
       </Select>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setWizard('create')}>
+          <IconPlus aria-hidden="true" className="size-3.5" />
+          Create agent
+        </Button>
+        {known ? (
+          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => setWizard('edit')}>
+            <IconPencil aria-hidden="true" className="size-3.5" />
+            Edit agent
+          </Button>
+        ) : null}
+      </div>
       <FieldError errors={errors?.map((message) => ({ message }))} />
+      {wizard ? (
+        <AgentWizardLauncher
+          edit={wizard === 'edit' ? { slug: value, versionNumber } : undefined}
+          onClose={() => setWizard(null)}
+          onBind={onChange}
+        />
+      ) : null}
     </Field>
   );
 }

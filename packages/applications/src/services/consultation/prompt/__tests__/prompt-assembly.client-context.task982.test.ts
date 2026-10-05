@@ -68,10 +68,10 @@ beforeEach(() => {
 });
 
 describe('the client-supplied vitals reach the prompt', () => {
-  it('renders the measured readings where the body declares them, instead of "Not available"', async () => {
+  it('points the body’s vitals slot at the RECENT VITALS data section, instead of "Not available"', async () => {
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt, userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -79,21 +79,22 @@ describe('the client-supplied vitals reach the prompt', () => {
       vitals: VITALS_LINE,
     });
 
-    expect(userPrompt).toContain(`- **Recent Vitals:** ${VITALS_LINE} (two most recent encounters)`);
-    expect(userPrompt).not.toContain('Not available');
+    expect(systemPrompt).toContain('- **Recent Vitals:** [see the RECENT VITALS data section below] (two most recent encounters)');
+    expect(userPrompt).toContain('<<<EXTERNAL_DATA section="recent_vitals">>>\n--- RECENT VITALS ---\n' + VITALS_LINE);
+    expect(systemPrompt).not.toContain('Not available');
   });
 
   it("keeps v1's own default when the client stated no reading", async () => {
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
 
-    expect(userPrompt).toContain('- **Recent Vitals:** Not available');
+    expect(systemPrompt).toContain('- **Recent Vitals:** Not available');
   });
 
   it('appends the readings as a RECENT VITALS data block on a body that inlines nothing', async () => {
@@ -125,10 +126,10 @@ describe('the client-supplied vitals reach the prompt', () => {
     expect(userPrompt).not.toContain('recent_vitals');
   });
 
-  it('never states the readings twice: a body that inlines them gets no appended block', async () => {
+  it('never states the readings twice: the section appears ONCE and the body only points at it', async () => {
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt, userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -136,15 +137,16 @@ describe('the client-supplied vitals reach the prompt', () => {
       vitals: VITALS_LINE,
     });
 
-    expect(userPrompt).not.toContain('section="recent_vitals"');
+    expect(userPrompt.split('section="recent_vitals"').length - 1).toBe(1);
+    expect(systemPrompt).not.toContain(VITALS_LINE);
   });
 });
 
 describe('the client-supplied previous visits reach the prompt', () => {
-  it('renders the history where the body declares it', async () => {
+  it('points the body’s history slot at the PREVIOUS CASE NOTES SUMMARY data section', async () => {
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt, userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -152,7 +154,8 @@ describe('the client-supplied previous visits reach the prompt', () => {
       previousVisits: PREVIOUS_VISITS,
     });
 
-    expect(userPrompt).toContain(`- **Previous Visits:** ${PREVIOUS_VISITS}`);
+    expect(systemPrompt).toContain('- **Previous Visits:** [see the PREVIOUS CASE NOTES SUMMARY data section below]');
+    expect(userPrompt).toContain(PREVIOUS_VISITS);
   });
 
   it('appends it as a PREVIOUS CASE NOTES SUMMARY block on a body that inlines nothing', async () => {
@@ -175,7 +178,7 @@ describe('the client-supplied previous visits reach the prompt', () => {
   it('never states the history twice', async () => {
     const service = await getService();
 
-    const { userPrompt } = await service.assemble({
+    const { systemPrompt, userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -183,7 +186,8 @@ describe('the client-supplied previous visits reach the prompt', () => {
       previousVisits: PREVIOUS_VISITS,
     });
 
-    expect(userPrompt).not.toContain('section="previous_case_notes_summary"');
+    expect(userPrompt.split('section="previous_case_notes_summary"').length - 1).toBe(1);
+    expect(systemPrompt).not.toContain(PREVIOUS_VISITS);
   });
 });
 

@@ -10,6 +10,10 @@ export * from './agent-reasoning';
 export * from './agent.dto.mapper';
 export * from './agent.service';
 export * from './agent-resolver.service';
+// TASK-1038 — one PINNED version, same materialisation (GET internal/agents/:slug/versions/:n/resolved).
+export * from './agent-version-resolver.service';
+// TASK-1036 OD-21 — "used by N published workflows" for an agent version.
+export * from './agent-usage.service';
 export * from './text-generation-spec';
 export * from './text-agent-resolver.service';
 export * from './tts-spec';

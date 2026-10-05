@@ -12,7 +12,9 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse
 import type { Response } from 'express';
 import { Authorize, RequiredScopes, RequiredSvcScopes } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
+import { RUN_PROTOCOL_HEADER } from '@arcaai/async-contract';
 import { deliverRun } from './deliver-run';
+import { resolveRunProtocol } from './run-protocol-delivery';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
@@ -132,13 +134,17 @@ export class ConsultationWorkflowRunsController {
     @Res({ passthrough: true }) res: Response,
     @Query('mode') mode?: WorkflowRunResponseMode,
     @Headers('Idempotency-Key') idempotencyKey?: string,
+    @Headers(RUN_PROTOCOL_HEADER) protocolHeader?: string,
+    @Query('protocol') protocol?: string,
   ): Promise<WorkflowInvokeResponse | WorkflowRunStatusResponse | void> {
+    // TASK-1038 B3a — an unsupported run protocol is a 400 BEFORE a run is started.
+    if (mode === 'stream') resolveRunProtocol({ header: protocolHeader, query: protocol });
     const started = await this.workflowExposureService.invoke(slug, dto, {
       idempotencyKey,
       apiKeyId: req.apiKey?.id,
       // The ONLY place this option is ever set, and it comes from the URL. See the class doc.
       consultationId,
     });
-    return deliverRun(this.workflowStreamService, slug, started, res, mode);
+    return deliverRun(this.workflowStreamService, slug, started, res, mode, { protocolHeader, protocol });
   }
 }

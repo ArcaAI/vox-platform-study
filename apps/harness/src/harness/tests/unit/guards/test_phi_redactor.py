@@ -19,11 +19,9 @@ and hermetic — they never load a model.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
-from harness.core.config import PhiConfig, Settings
 from harness.guards.phi import (
     PhiEgressBlocked,
     PhiModelUnavailable,
@@ -37,29 +35,6 @@ _PHI_TEXT = (
     "called from 415-555-0132 about chest pain."
 )
 _RAW_PHI_VALUES = ("John Smith", "884512", "03/14/1972", "415-555-0132")
-
-
-def _settings(
-    *,
-    fail_closed: bool = True,
-    local: tuple[str, ...] = ("lm-studio", "openai_compat", "vllm", "llama-cpp"),
-    enabled: bool = True,
-) -> Settings:
-    """A ``settings``-shaped stand-in exposing the real :class:`PhiConfig`.
-
-    Values are passed explicitly so the test is deterministic regardless of any
-    ``HARNESS_PHI_*`` in the environment.
-    """
-    return cast(
-        Settings,
-        SimpleNamespace(
-            phi=PhiConfig(
-                enabled=enabled,
-                fail_closed=fail_closed,
-                local_providers=list(local),
-            )
-        ),
-    )
 
 
 class _RaisingAnalyzer:
@@ -159,14 +134,12 @@ class TestEnsureSafeForCloud:
         # Fail-closed: a cloud egress + analyzer failure must REFUSE (no text out).
         guard = PhiRedactor(analyzer=_RaisingAnalyzer())
         with pytest.raises(PhiEgressBlocked):
-            guard.ensure_safe_for_cloud(
-                _PHI_TEXT, provider="azure", settings=_settings(fail_closed=True)
-            )
+            guard.ensure_safe_for_cloud(_PHI_TEXT, provider="azure", fail_closed=True)
 
     def test_local_provider_is_passthrough_without_redacting(self) -> None:
         # A non-cloud provider returns the text untouched and never redacts.
         guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
-        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="lm-studio", settings=_settings())
+        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="lm-studio", fail_closed=True)
         assert out == _PHI_TEXT
 
     def test_cloud_provider_refuses_when_removal_unconfirmed(self) -> None:
@@ -174,12 +147,10 @@ class TestEnsureSafeForCloud:
         # so removal cannot be confirmed -> REFUSE.
         guard = _detected_person_redactor()
         with pytest.raises(PhiEgressBlocked):
-            guard.ensure_safe_for_cloud(
-                _PHI_TEXT, provider="azure", settings=_settings(fail_closed=True)
-            )
+            guard.ensure_safe_for_cloud(_PHI_TEXT, provider="azure", fail_closed=True)
 
     def test_cloud_provider_returns_redacted_text_on_success(self, redactor: PhiRedactor) -> None:
-        out = redactor.ensure_safe_for_cloud(_PHI_TEXT, provider="bedrock", settings=_settings())
+        out = redactor.ensure_safe_for_cloud(_PHI_TEXT, provider="bedrock", fail_closed=True)
         assert out != _PHI_TEXT
         for raw in _RAW_PHI_VALUES:
             assert raw not in out
@@ -187,23 +158,19 @@ class TestEnsureSafeForCloud:
     def test_clean_text_egresses_to_cloud_unchanged(self, redactor: PhiRedactor) -> None:
         # No PHI detected -> nothing to remove -> confirmed clean -> egress allowed.
         clean = "The patient reported improvement after rest and hydration."
-        out = redactor.ensure_safe_for_cloud(clean, provider="azure", settings=_settings())
+        out = redactor.ensure_safe_for_cloud(clean, provider="azure", fail_closed=True)
         assert out == clean
 
     def test_fail_open_returns_original_when_analyzer_raises(self) -> None:
         # With fail_closed=False the guard degrades open: returns the input text.
         guard = PhiRedactor(analyzer=_RaisingAnalyzer())
-        out = guard.ensure_safe_for_cloud(
-            _PHI_TEXT, provider="azure", settings=_settings(fail_closed=False)
-        )
+        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="azure", fail_closed=False)
         assert out == _PHI_TEXT
 
     def test_fail_open_returns_best_effort_when_removal_unconfirmed(self) -> None:
         # With fail_closed=False an unconfirmed removal degrades open to best effort.
         guard = _detected_person_redactor()
-        out = guard.ensure_safe_for_cloud(
-            _PHI_TEXT, provider="azure", settings=_settings(fail_closed=False)
-        )
+        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="azure", fail_closed=False)
         assert out == _PHI_TEXT
 
 
@@ -227,15 +194,16 @@ class TestUnknownProviderDefaultsToRedact:
     injected fakes so nothing loads a spaCy model."""
 
     @pytest.mark.parametrize(
-        # "ollama": Ollama is removed entirely, so it is no longer
-        # a known-local provider — it must fail closed into redaction like any
-        # other unrecognized provider string.
+        # TASK-1035: the local set is code (`LOCAL_DIRECT_TRANSPORTS`, the former
+        # `HARNESS_PHI_LOCAL_PROVIDERS` default), which keeps `ollama` local per the owner
+        # decision of 2026-08-20 — so it is no longer in this list. Every string below
+        # must fail closed into redaction.
         "provider",
-        ["some-new-cloud-provider", "openai", "anthropic", "vertex", "ollama"],
+        ["some-new-cloud-provider", "openai", "anthropic", "vertex", "azure-openai"],
     )
     def test_provider_is_redacted_not_passed_through(self, provider: str) -> None:
         out = _working_redactor().ensure_safe_for_cloud(
-            _PHI_TEXT, provider=provider, settings=_settings()
+            _PHI_TEXT, provider=provider, fail_closed=True
         )
         assert out != _PHI_TEXT
         assert "John Smith" not in out
@@ -247,13 +215,13 @@ class TestUnknownProviderDefaultsToRedact:
         guard = PhiRedactor(analyzer=_RaisingAnalyzer())
         with pytest.raises(PhiEgressBlocked):
             guard.ensure_safe_for_cloud(
-                _PHI_TEXT, provider="some-new-cloud-provider", settings=_settings(fail_closed=True)
+                _PHI_TEXT, provider="some-new-cloud-provider", fail_closed=True
             )
 
     def test_unknown_provider_analyzer_failure_degrades_open_when_not_fail_closed(self) -> None:
         guard = PhiRedactor(analyzer=_RaisingAnalyzer())
         out = guard.ensure_safe_for_cloud(
-            _PHI_TEXT, provider="some-new-cloud-provider", settings=_settings(fail_closed=False)
+            _PHI_TEXT, provider="some-new-cloud-provider", fail_closed=False
         )
         assert out == _PHI_TEXT
 
@@ -290,5 +258,5 @@ class TestModelIsNeverDownloadedOnDemand:
 
         with pytest.raises(PhiEgressBlocked):
             PhiRedactor().ensure_safe_for_cloud(
-                _PHI_TEXT, provider="azure-openai", settings=_settings(fail_closed=True)
+                _PHI_TEXT, provider="azure-openai", fail_closed=True
             )

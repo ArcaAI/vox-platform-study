@@ -156,19 +156,6 @@ const GUARDS_PROPERTY: NodeConfigSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    // TASK-890 §3.14 (OD-R clause 3) — the AGENT-level guardrail default, the bottom of the
-    // node > workflow > agent > `true` precedence `resolveGuardrailDecision` implements.
-    // ABSENT MEANS ON: guardrail is platform-managed and screening is the floor a tenant opts
-    // OUT of, per agent, never a switch it has to remember to turn on. A `false` here is
-    // recorded three ways — a publish WARNING (`GUARDRAIL_OPTED_OUT`), the per-call usage
-    // attribute `guardrail: 'opted_out'`, and the TEXT response's own `reason` — so the
-    // omission is attributable rather than merely permitted.
-    enabled: Object.freeze({
-      type: 'boolean',
-      default: true,
-      description:
-        'Whether platform guardrail screens this agent`s input and output. Absent = on. A `core.agent` node or the workflow`s trigger may override it; nothing can turn a platform kill-switch back on.',
-    }),
     input: GUARD_POLICY_LIST,
     output: GUARD_POLICY_LIST,
   }),
@@ -296,6 +283,23 @@ const TEXT_GENERATION_PARAMETERS: NodeConfigSchema = Object.freeze({
     }),
     guards: GUARDS_PROPERTY,
     fallback: fallbackProperty('TEXT_GENERATION'),
+    // TASK-1036 OD-7 — the DNA switch moves from the `core.agent` NODE onto the AGENT. DNA always
+    // resolves the clinician's LATEST report at run time (W3): there is no version to pin, so the
+    // block is one switch and nothing else. The node-level `dna` block stays as a per-node
+    // override for one release (deprecation register), then retires.
+    dna: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      required: Object.freeze(['enabled']),
+      properties: Object.freeze({
+        enabled: Object.freeze({
+          type: 'boolean',
+          description:
+            "Apply the clinician's DNA writing style and redaction rules to this agent's output. Always the clinician's latest report (W3); the clinician's own opt-out still vetoes it.",
+        }),
+      }),
+      description: "TASK-1036 OD-7 — the agent-level DNA switch. Resolves the clinician's latest DNA report at run time; never pinned.",
+    }),
   }),
 });
 
@@ -729,12 +733,154 @@ const NAMED_ENTITY_RECOGNITION_PARAMETERS: NodeConfigSchema = Object.freeze({
   }),
 });
 
-export const AGENT_PARAMETER_SCHEMAS: Readonly<Record<AgentTask, NodeConfigSchema>> = Object.freeze({
-  SPEECH_TO_TEXT: SPEECH_TO_TEXT_PARAMETERS,
-  TEXT_GENERATION: TEXT_GENERATION_PARAMETERS,
-  TEXT_TO_SPEECH: TEXT_TO_SPEECH_PARAMETERS,
-  NAMED_ENTITY_RECOGNITION: NAMED_ENTITY_RECOGNITION_PARAMETERS,
+// =============================================================================================
+// TASK-1036 (W2, OD-11 → W2) — platform-managed parameters and model capabilities
+// =============================================================================================
+
+/**
+ * The JSON Schema ANNOTATION that marks a parameter leaf as owned by the platform, not the tenant.
+ *
+ * It generalises TASK-991's `readOnly` lock (`diarization.embeddingModelSlug`): `readOnly` keeps its
+ * meaning and its one path, and every OTHER leaf outside {@link TENANT_EDITABLE_PARAMETER_PATHS}
+ * now carries this keyword. Like `readOnly` and `modelTaskType` it is an annotation, never a
+ * validation keyword: `jsonSchemaValueProblems` ignores it, so every stored value that validated
+ * before still validates. WHO may write an annotated path is decided on the write path (403
+ * `AGENT_PARAMETER_PLATFORM_MANAGED` for a non-super-admin, applications layer), and the console
+ * hides it from tenant admins ("Managed by the platform").
+ */
+export const PLATFORM_MANAGED_KEYWORD = 'x-platformManaged';
+
+/**
+ * The parameter leaves a TENANT may write, per task — everything else is platform-managed.
+ *
+ * W2: "temperature and max output tokens only, when the provider and model support them" — the
+ * two generation knobs — plus the TASK SWITCHES of §8.6, which are not tuning but the agent's
+ * shape (ASR: VAD, noise suppression, diarization; Text: structured output and DNA; TTS: voice,
+ * speed). The switches stay tenant-editable because locking them would make the §8.6 editor
+ * impossible; their tuning (thresholds, model slugs, levels) is platform-managed.
+ *
+ * Dotted paths relative to `parameters`, in schema order. A path listed here that is not a real
+ * leaf is a defect (pinned by test): it would silently lock nothing.
+ */
+export const TENANT_EDITABLE_PARAMETER_PATHS: Readonly<Record<AgentTask, readonly string[]>> = Object.freeze({
+  SPEECH_TO_TEXT: Object.freeze(['audioFrontEnd.vad.enabled', 'audioFrontEnd.denoise.enabled', 'audioFrontEnd.diarization.enabled']),
+  TEXT_GENERATION: Object.freeze(['generation.temperature', 'generation.maxTokens', 'responseFormat', 'responseSchema', 'dna.enabled']),
+  TEXT_TO_SPEECH: Object.freeze(['voice', 'speed']),
+  NAMED_ENTITY_RECOGNITION: Object.freeze([] as string[]),
 });
+
+/**
+ * What a registry model can do, as `AiModel._metadata.capabilities` declares it (TASK-1036 §3.2,
+ * W2, OD-16). The editor reads it to decide which sections EXIST: an unsupported section is
+ * hidden, not disabled. Tools and attachments stay hidden until built (OD-16) even when a model
+ * declares them.
+ *
+ * `supportedGenerationParams` uses the `GENERATION_HYPERPARAMETERS` vocabulary (`temperature`,
+ * `maxTokens`, …). `reasoning: true` marks a reasoning model, which takes no temperature.
+ */
+export interface ModelCapabilities {
+  readonly supportsTools: boolean;
+  readonly supportsVision: boolean;
+  readonly supportsAttachments: boolean;
+  /** TTS voice identifiers the model offers; empty when it offers none (or is not a TTS model). */
+  readonly voices: readonly string[];
+  readonly supportedGenerationParams: readonly string[];
+  readonly reasoning?: boolean;
+}
+
+type CapabilityGate = (capabilities: ModelCapabilities) => boolean;
+
+const listIncludes = (list: unknown, value: string): boolean => Array.isArray(list) && list.includes(value);
+
+/** Editable paths that exist only when the bound model supports them. Absent from this table ⇒ always offered. */
+const TENANT_EDITABLE_CAPABILITY_GATES: Readonly<Record<AgentTask, Readonly<Record<string, CapabilityGate>>>> = Object.freeze({
+  SPEECH_TO_TEXT: Object.freeze({}),
+  TEXT_GENERATION: Object.freeze({
+    'generation.temperature': (caps: ModelCapabilities) => listIncludes(caps.supportedGenerationParams, 'temperature') && caps.reasoning !== true,
+    'generation.maxTokens': (caps: ModelCapabilities) => listIncludes(caps.supportedGenerationParams, 'maxTokens'),
+  }),
+  TEXT_TO_SPEECH: Object.freeze({
+    voice: (caps: ModelCapabilities) => Array.isArray(caps.voices) && caps.voices.length > 0,
+  }),
+  NAMED_ENTITY_RECOGNITION: Object.freeze({}),
+});
+
+/**
+ * Stamp {@link PLATFORM_MANAGED_KEYWORD} on every LEAF (a property schema with no `properties` of
+ * its own) whose dotted path is not tenant-editable. Containers are never annotated: whether a
+ * container is "managed" is the union of its leaves, and stating it twice invites a disagreement.
+ * Returns a frozen COPY — the shared property objects (`MODEL_SLUG_PROPERTY`, the fallback block)
+ * are never mutated.
+ */
+function annotatePlatformManaged(schema: NodeConfigSchema, editable: readonly string[]): NodeConfigSchema {
+  const allowed = new Set(editable);
+  const walk = (node: Readonly<Record<string, unknown>>, prefix: readonly string[]): Readonly<Record<string, unknown>> => {
+    const properties = node.properties;
+    if (!isPlainObject(properties)) return node;
+    const next: Record<string, unknown> = {};
+    for (const [name, child] of Object.entries(properties)) {
+      const path = [...prefix, name];
+      if (!isPlainObject(child)) {
+        next[name] = child;
+      } else if (isPlainObject(child.properties)) {
+        next[name] = walk(child, path);
+      } else {
+        next[name] = allowed.has(path.join('.')) ? child : Object.freeze({ ...child, [PLATFORM_MANAGED_KEYWORD]: true });
+      }
+    }
+    return Object.freeze({ ...node, properties: Object.freeze(next) });
+  };
+  return walk(schema, []);
+}
+
+export const AGENT_PARAMETER_SCHEMAS: Readonly<Record<AgentTask, NodeConfigSchema>> = Object.freeze({
+  SPEECH_TO_TEXT: annotatePlatformManaged(SPEECH_TO_TEXT_PARAMETERS, TENANT_EDITABLE_PARAMETER_PATHS.SPEECH_TO_TEXT),
+  TEXT_GENERATION: annotatePlatformManaged(TEXT_GENERATION_PARAMETERS, TENANT_EDITABLE_PARAMETER_PATHS.TEXT_GENERATION),
+  TEXT_TO_SPEECH: annotatePlatformManaged(TEXT_TO_SPEECH_PARAMETERS, TENANT_EDITABLE_PARAMETER_PATHS.TEXT_TO_SPEECH),
+  NAMED_ENTITY_RECOGNITION: annotatePlatformManaged(NAMED_ENTITY_RECOGNITION_PARAMETERS, TENANT_EDITABLE_PARAMETER_PATHS.NAMED_ENTITY_RECOGNITION),
+});
+
+const PLATFORM_MANAGED_PATHS_CACHE = new Map<AgentTask, readonly string[]>();
+
+/**
+ * Dotted parameter paths a tenant may not write for `task`, in schema order: every leaf carrying
+ * {@link PLATFORM_MANAGED_KEYWORD}, plus any carrying the older `readOnly` lock (TASK-991). The
+ * applications layer's write guard and the console both read THIS list, so the contract stays the
+ * one place the rule is stated.
+ */
+export function platformManagedPaths(task: AgentTask): readonly string[] {
+  const cached = PLATFORM_MANAGED_PATHS_CACHE.get(task);
+  if (cached) return cached;
+  const out: string[] = [];
+  const collect = (node: unknown, prefix: readonly string[]): void => {
+    if (!isPlainObject(node) || !isPlainObject(node.properties)) return;
+    for (const [name, child] of Object.entries(node.properties)) {
+      const path = [...prefix, name];
+      if (isPlainObject(child) && (child[PLATFORM_MANAGED_KEYWORD] === true || child.readOnly === true)) out.push(path.join('.'));
+      collect(child, path);
+    }
+  };
+  collect(AGENT_PARAMETER_SCHEMAS[task], []);
+  const frozen = Object.freeze(out);
+  PLATFORM_MANAGED_PATHS_CACHE.set(task, frozen);
+  return frozen;
+}
+
+/**
+ * The parameter paths a tenant-facing editor offers for `task` on a model with `capabilities`, in
+ * schema order (W2, §8.6). Temperature appears only when the model lists it in
+ * `supportedGenerationParams` and is not a reasoning model; max tokens only when listed; the TTS
+ * voice picker only when the model declares voices. With `capabilities` unknown, every
+ * capability-gated path is withheld — "unknown" never shows a knob the model may refuse.
+ */
+export function tenantEditableParams(task: AgentTask, capabilities?: ModelCapabilities | null): readonly string[] {
+  const gates = TENANT_EDITABLE_CAPABILITY_GATES[task];
+  return TENANT_EDITABLE_PARAMETER_PATHS[task].filter((path) => {
+    const gate = gates[path];
+    if (gate === undefined) return true;
+    return capabilities !== undefined && capabilities !== null && gate(capabilities);
+  });
+}
 
 // =============================================================================================
 // Instruction schemas per task (§3.2) — `null` where the task carries none
@@ -819,6 +965,30 @@ const PROMPT_FRAGMENTS_PROPERTY: NodeConfigSchema = Object.freeze({
   description: 'Ordered prompt fragments; the selected ones are rendered separately and joined. Exclusive with `promptTemplateId` / `systemPrompt`.',
 });
 
+/**
+ * TASK-1036 OD-7 / OD-22 / W3 — the document template this agent produces, by SLUG and nothing
+ * else. It ALWAYS resolves the latest approved / published version at run time: a document
+ * template floats, unlike a prompt, which is pinned. A `versionNumber` here is refused with a
+ * message that says so (`agentConfigProblems`), because accepting it silently would promise a pin
+ * the runtime does not honour. The slug grammar is the `core.agent` node's
+ * `documentTemplateSlug` (portable across tenants, unlike an id); that node field stays as a
+ * per-node override for one release.
+ */
+const DOCUMENT_TEMPLATE_REFERENCE_PROPERTY: NodeConfigSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: Object.freeze(['slug']),
+  properties: Object.freeze({
+    slug: Object.freeze({
+      type: 'string',
+      minLength: 1,
+      maxLength: 128,
+      description: 'The `DocumentTemplate.slug` whose compiled shape this agent produces, resolved in the REQUEST tenant at run time.',
+    }),
+  }),
+  description: 'Which document layout this agent produces. Always the latest approved / published version (W3, OD-22) — never pinned.',
+});
+
 /** Exactly one of `promptTemplateId`, `systemPrompt` or `fragments` (TASK-947) — enforced by `agentConfigProblems`. */
 const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
   type: 'object',
@@ -830,6 +1000,7 @@ const TEXT_GENERATION_INSTRUCTION: NodeConfigSchema = Object.freeze({
     systemPrompt: Object.freeze({ type: 'string', minLength: 1, maxLength: 50000 }),
     fragments: PROMPT_FRAGMENTS_PROPERTY,
     evalGate: EVAL_GATE_PROPERTY,
+    documentTemplate: DOCUMENT_TEMPLATE_REFERENCE_PROPERTY,
   }),
 });
 
@@ -1029,19 +1200,48 @@ const TRANSCRIPT_AUDIO_SYNC_SCHEMA: NodeConfigSchema = Object.freeze({
 });
 
 export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = Object.freeze({
+  // TASK-1036 OD-8 — the user turn is `message`; `text` stays accepted as a DEPRECATED alias for
+  // one release. At most one of the two, and `message` is OPTIONAL (contract freeze): a body may
+  // carry only `variables`. Each `anyOf` branch closes the object over its own spelling, so a body
+  // carrying both spellings matches no branch, and an empty body matches none either. Written with `anyOf` +
+  // `additionalProperties: false` rather than an undiscriminated `oneOf`, which the authoring gate
+  // (`authorableJsonSchemaProblems`) refuses. Read it with `readTextAgentMessage`.
   TEXT_GENERATION: Object.freeze({
     inputSchema: Object.freeze({
       type: 'object',
       additionalProperties: false,
-      required: Object.freeze(['text']),
       properties: Object.freeze({
-        text: Object.freeze({ type: 'string', minLength: 1, description: 'The user turn / the document to operate on.' }),
+        message: Object.freeze({ type: 'string', minLength: 1, description: 'The user turn / the document to operate on.' }),
+        text: Object.freeze({
+          type: 'string',
+          minLength: 1,
+          deprecated: true,
+          description: 'DEPRECATED alias of `message` (TASK-1036 OD-8), accepted for one release. Send `message`.',
+        }),
         variables: Object.freeze({
           type: 'object',
           additionalProperties: Object.freeze({ type: 'string' }),
           description: 'Prompt-template variables (override the agent`s bound defaults).',
         }),
       }),
+      anyOf: Object.freeze([
+        Object.freeze({
+          required: Object.freeze(['message']),
+          additionalProperties: false,
+          properties: Object.freeze({ message: Object.freeze({ type: 'string' }), variables: Object.freeze({ type: 'object' }) }),
+        }),
+        Object.freeze({
+          required: Object.freeze(['text']),
+          additionalProperties: false,
+          properties: Object.freeze({ text: Object.freeze({ type: 'string' }), variables: Object.freeze({ type: 'object' }) }),
+        }),
+        // Contract freeze: `message` is optional — an agent may run on its prompt variables alone.
+        Object.freeze({
+          required: Object.freeze(['variables']),
+          additionalProperties: false,
+          properties: Object.freeze({ variables: Object.freeze({ type: 'object' }) }),
+        }),
+      ]),
     }),
     outputSchema: Object.freeze({
       type: 'object',
@@ -1175,6 +1375,18 @@ export const AGENT_IO_DEFAULTS: Readonly<Record<AgentTask, AgentIoDefaults>> = O
   }),
 });
 
+/**
+ * TASK-1036 OD-8 — the user turn of a TEXT_GENERATION invocation: `message`, else the deprecated
+ * `text` alias. `undefined` when neither is a non-empty string. Every runtime that reads the turn
+ * reads it HERE, so the alias is retired in one place when its release window closes.
+ */
+export function readTextAgentMessage(input: unknown): string | undefined {
+  if (!isPlainObject(input)) return undefined;
+  if (typeof input.message === 'string' && input.message.length > 0) return input.message;
+  if (typeof input.text === 'string' && input.text.length > 0) return input.text;
+  return undefined;
+}
+
 // =============================================================================================
 // agentConfigProblems — the checks a JSON Schema cannot express
 // =============================================================================================
@@ -1212,6 +1424,13 @@ export interface AgentConfigContext {
   readonly model?: AgentModelView;
   readonly fallbackModels?: readonly AgentModelView[];
   readonly capabilities?: AgentProviderCapabilities;
+  /**
+   * TASK-1036 W3 — which gate is asking. `draft` (the default: create, update, import) checks the
+   * shape; `publish` (the validate/publish gate) ALSO refuses what may be incomplete on a draft
+   * but never in a published version — today an unpinned library prompt
+   * (`PROMPT_VERSION_UNPINNED`). Absent ⇒ `draft`, so every existing caller is unchanged.
+   */
+  readonly phase?: 'draft' | 'publish';
 }
 
 /**
@@ -1220,7 +1439,12 @@ export interface AgentConfigContext {
  * so the applications layer's `codeForConfigProblem` reads `code` first when it is present.
  * Every pre-947 problem carries none; nothing downstream depends on it being set.
  */
-export type AgentConfigProblemCode = 'PROMPT_FRAGMENT_SHAPE' | 'PROMPT_FRAGMENT_CONDITION_SYNTAX' | 'PROMPT_COMPOSITION_NO_BASE';
+export type AgentConfigProblemCode =
+  | 'PROMPT_FRAGMENT_SHAPE'
+  | 'PROMPT_FRAGMENT_CONDITION_SYNTAX'
+  | 'PROMPT_COMPOSITION_NO_BASE'
+  // TASK-1036 W3 — a library prompt bound without `promptVersionNumber`, at the PUBLISH gate only.
+  | 'PROMPT_VERSION_UNPINNED';
 
 export interface AgentConfigProblem {
   readonly severity: 'ERROR' | 'WARNING';
@@ -1342,6 +1566,64 @@ function textGenerationInstructionProblems(instruction: Record<string, unknown>,
   }
   if (hasFragments) fragmentProblems(instruction.fragments as unknown[], out);
   variableBindingProblems(instruction, out);
+  documentTemplateProblems(instruction.documentTemplate, out);
+}
+
+/**
+ * TASK-1036 OD-7 / OD-22 — `instruction.documentTemplate` is `{ slug }`. A version pin is refused
+ * IN WORDS: a document template always resolves latest approved (W3), and an author who wrote a
+ * version needs to be told that, not that a property "is not declared".
+ */
+function documentTemplateProblems(block: unknown, out: AgentConfigProblem[]): void {
+  if (block === undefined) return;
+  const at = 'instruction.documentTemplate';
+  if (!isPlainObject(block)) {
+    out.push({ severity: 'ERROR', path: at, message: `\`${at}\` is \`{ "slug": "…" }\` — a document template referenced by slug.` });
+    return;
+  }
+  for (const key of Object.keys(block)) {
+    if (key === 'slug') continue;
+    out.push({
+      severity: 'ERROR',
+      path: `${at}.${key}`,
+      message:
+        key === 'versionNumber' || key === 'version' || key === 'documentVersionNumber'
+          ? `\`${at}.${key}\`: a document template is never pinned — it always resolves the latest approved version at run time (W3). Remove the version.`
+          : `\`${at}.${key}\` is not a document-template reference field; the block carries \`slug\` only.`,
+    });
+  }
+  if (typeof block.slug !== 'string' || block.slug.length === 0 || block.slug.length > 128) {
+    out.push({ severity: 'ERROR', path: `${at}.slug`, message: `\`${at}.slug\` must name a document template (1–128 characters).` });
+  }
+}
+
+/**
+ * TASK-1036 W3 — every library prompt an agent binds is PINNED in a published version. Binding a
+ * template stamps the current approved version (the service does that on save), so on a draft an
+ * absent pin is transient; at the PUBLISH gate it is an ERROR, because a published agent that
+ * followed a moving template would change behaviour without a new version. Inline prompts have
+ * nothing to pin. Checked per fragment for a composite instruction.
+ */
+function promptPinProblems(instruction: Record<string, unknown>, out: AgentConfigProblem[]): void {
+  const unpinned = (path: string, holder: string): void => {
+    out.push({
+      severity: 'ERROR',
+      path,
+      code: 'PROMPT_VERSION_UNPINNED',
+      message: `\`${holder}\` binds a library prompt without \`promptVersionNumber\`. A published agent pins every prompt it binds (W3) — choose the version to publish.`,
+    });
+  };
+  if (typeof instruction.promptTemplateId === 'string' && instruction.promptTemplateId.length > 0 && instruction.promptVersionNumber === undefined) {
+    unpinned('instruction.promptVersionNumber', 'instruction');
+  }
+  if (Array.isArray(instruction.fragments)) {
+    instruction.fragments.forEach((fragment, index) => {
+      if (!isPlainObject(fragment)) return;
+      if (typeof fragment.promptTemplateId === 'string' && fragment.promptTemplateId.length > 0 && fragment.promptVersionNumber === undefined) {
+        unpinned(`instruction.fragments[${index}].promptVersionNumber`, `instruction.fragments[${index}]`);
+      }
+    });
+  }
 }
 
 /**
@@ -1486,7 +1768,10 @@ export function agentConfigProblems(view: AgentConfigView, context: AgentConfigC
       problems.push({ severity: 'ERROR', path: 'instruction', message: 'A TEXT_TO_SPEECH agent carries no instruction.' });
     }
   } else if (task === 'TEXT_GENERATION') {
-    if (instruction !== undefined) textGenerationInstructionProblems(instruction, problems);
+    if (instruction !== undefined) {
+      textGenerationInstructionProblems(instruction, problems);
+      if (context.phase === 'publish') promptPinProblems(instruction, problems);
+    }
   } else if (task === 'NAMED_ENTITY_RECOGNITION') {
     // TASK-930 — the label set, and nothing else. Named explicitly rather than left to the
     // SPEECH_TO_TEXT fall-through below, which would have told a NER author to write `hotwords`.

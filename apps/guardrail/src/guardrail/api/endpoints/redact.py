@@ -47,7 +47,6 @@ extraction. PHI hygiene: request/response text is never logged, only counts.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -56,6 +55,7 @@ from pydantic import BaseModel, Field
 
 from guardrail.core.dependencies import ModelUnavailableError, get_safety_analyzer
 from guardrail.core.logging import get_logger
+from guardrail.services.pii_extraction import DocumentSpan, extract_spans
 
 logger = get_logger(__name__)
 
@@ -79,69 +79,9 @@ _GENERIC_MASK = "[REDACTED]"
 #: winning it back, and shrinking further would only cost the model context.
 _DEFAULT_CHUNK_CHARS = 4000
 
-#: Split points, most-preferred first. The DNA corpus separator comes first so a
-#: chunk boundary lands between two whole samples where possible.
-_CHUNK_SEPARATORS = ("\n\n---\n\n", "\n\n", "\n", ". ", " ")
-
-
-@dataclass(frozen=True)
-class _Span:
-    """One PII span with offsets re-based onto the SUBMITTED document.
-
-    The PII model reports offsets relative to whatever string it was handed, so a
-    chunked extraction yields chunk-local offsets. Normalizing to this type at
-    the extraction seam means everything downstream (`_apply_mask`, the response
-    model) works in document coordinates only.
-    """
-
-    label: str
-    start: int
-    end: int
-    score: float
-
-
-def _split_for_extraction(text: str, chunk_chars: int) -> list[str]:
-    """Partition `text` into chunks of at most `chunk_chars`, cutting on whitespace.
-
-    GLiNER's cost is super-linear in input length ( Task 6: 20k chars
-    → 3.6s/5.2GB, 50k → 17.5s/17.8GB), so an unbounded call over a large corpus
-    exhausts both the caller's HTTP timeout and the worker's memory. Chunking
-    makes both linear and bounded.
-
-    Cuts land on a separator boundary so an identifier is never split in half —
-    a mid-token cut would hide PII from BOTH chunks, the one way this
-    optimization could silently weaken redaction. A run of `chunk_chars` with no
-    separator at all (pathological input) is cut hard rather than growing the
-    chunk without limit: the memory bound is the invariant that must hold.
-
-    The result is a pure partition — `"".join(result) == text`.
-    """
-    if chunk_chars <= 0 or len(text) <= chunk_chars:
-        return [text] if text else []
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        if len(text) - start <= chunk_chars:
-            chunks.append(text[start:])
-            break
-
-        window = text[start : start + chunk_chars]
-        cut = -1
-        for separator in _CHUNK_SEPARATORS:
-            # `rfind` keeps the separator itself at the END of the current
-            # chunk, so joining the chunks reproduces the input exactly.
-            found = window.rfind(separator)
-            if found > 0:
-                cut = found + len(separator)
-                break
-
-        if cut <= 0:
-            cut = chunk_chars  # no boundary in range — hard cut, bound wins
-        chunks.append(text[start : start + cut])
-        start += cut
-
-    return chunks
+#: The split and the span type live in `services/pii_extraction.py`, shared with
+#: the inbound screen (TASK-1035).
+_Span = DocumentSpan
 
 
 class RedactEntityModel(BaseModel):
@@ -212,27 +152,11 @@ async def _resolve_chunk_chars(app_state: Any) -> int:
 async def _extract_spans(analyzer: Any, text: str, chunk_chars: int) -> list[_Span]:
     """Extract PII spans over bounded chunks, in document coordinates.
 
-    Chunks are processed SEQUENTIALLY on purpose: running them concurrently
-    would restore exactly the peak-memory problem chunking exists to solve (the
-    provider's own thread pool is shared across requests anyway). Any chunk
+    The chunks run CONCURRENTLY (`services/pii_extraction.extract_spans`). Any chunk
     raising propagates — the endpoint's fail-closed posture is unchanged, and a
     partially-extracted document must never be answered with 200.
     """
-    spans: list[_Span] = []
-    offset = 0
-    for chunk in _split_for_extraction(text, chunk_chars):
-        entities = await analyzer.extract_pii_entities(chunk)
-        for entity in entities or []:
-            spans.append(
-                _Span(
-                    label=entity.label,
-                    start=entity.start + offset,
-                    end=entity.end + offset,
-                    score=entity.score,
-                )
-            )
-        offset += len(chunk)
-    return spans
+    return await extract_spans(analyzer.extract_pii_entities, text, chunk_chars)
 
 
 def _apply_mask(text: str, entities: list[_Span], mode: RedactMode) -> str:

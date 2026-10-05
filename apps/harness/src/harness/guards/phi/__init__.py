@@ -1,4 +1,8 @@
-"""Fail-closed PHI redaction guard.
+"""Fail-closed PHI redaction guard for the harness's DIRECT (non-``/generate``) egress.
+
+LLM egress through ``apps/text`` ``/generate`` is redacted by text itself (TASK-1035). This
+package covers only what does not go through it: the inferential judge's direct provider hop
+and outbound MCP tool args.
 
 Public API:
 
@@ -8,12 +12,11 @@ Public API:
 * :class:`PhiEgressBlocked` — raised when fail-closed refuses a cloud egress.
 * :class:`PhiModelUnavailable` — raised when the spaCy NER model is not installed
   (the redactor refuses rather than downloading it mid-request).
-* :func:`ensure_egress_safe` / :func:`ensure_inferential_egress_safe` —
-  the policy-aware egress chokepoint the activities enforce before cloud LLM calls.
+* :func:`ensure_inferential_egress_safe` / :func:`ensure_mcp_args_safe` — the policy-aware
+  screens the activities enforce before the direct judge call and an external MCP call.
 """
 
 from harness.guards.phi.egress import (
-    ensure_egress_safe,
     ensure_inferential_egress_safe,
     ensure_mcp_args_safe,
 )
@@ -33,7 +36,6 @@ __all__ = [
     "PhiRedactor",
     "RedactedEntity",
     "RedactionResult",
-    "ensure_egress_safe",
     "ensure_inferential_egress_safe",
     "ensure_mcp_args_safe",
 ]

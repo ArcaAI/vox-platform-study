@@ -21,6 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type { ResolvedAgent } from '@arcaai/types';
 import { AgentInvocationService } from '../agent-invocation.service';
+import { asInputBlock, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 
@@ -110,7 +111,7 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
     );
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe('Language en for p-1 in tone concise; age 48.');
+    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe(withPlatformRules('Language en for p-1 in tone concise; age 48.'));
   });
 
   it('asks for nothing a `default("…")` covers', async () => {
@@ -121,7 +122,7 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
       'blocking',
     );
 
-    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe('unknown');
+    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe(withPlatformRules('unknown'));
   });
 
   it('is SELECTION-AWARE: a fragment this call excludes asks for nothing', async () => {
@@ -162,7 +163,7 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
  * invocation path never read it — it diffs the artifact's own `resolvedPrompt`). It is that
  * `general-medicine-summarization` does not reference its nine context paths from the template
  * at all: it BINDS them (`instruction.variables[name] = { path: 'trigger.context.<name>' }`,
- * `seed/25-agents.ts:338-349`) and the template reads the bare names. `buildAgentPromptScope`
+ * `seed/25-agents.ts:338-349`) and the template reads the bare names. `buildPromptScope`
  * resolves every binding EAGERLY while the scope is built, so it threw on the first one before
  * the diff could run — exactly the fallback the first fix documented, and exactly the experience
  * the ticket set out to end.

@@ -39,6 +39,7 @@ export * from './DnaWritingStyleReportRepository';
 // Sibling that patches DnaWritingStyleReportRepository.prototype.
 export * from './DnaWritingStyleReportRepository.encryption';
 export * from './DnaWritingSampleRepository';
+export * from './ComposedPromptRecordRepository';
 export * from './DnaWritingStyleVersionRepository';
 // Sibling that patches DnaWritingStyleVersionRepository.prototype.
 export * from './DnaWritingStyleVersionRepository.encryption';

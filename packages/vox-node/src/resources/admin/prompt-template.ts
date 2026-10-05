@@ -18,6 +18,7 @@ import type {
   DepartmentResponse,
   FinalizePromptTestRequest,
   PaginatedResponse,
+  PromptTagSuggestionResponse,
   PromptTemplateResponse,
   PromptTestAckResponse,
   PromptTestResultResponse,
@@ -38,7 +39,7 @@ import type {
  * names the scope in that error's message.
  *
  * Backed by controller PromptManagementController
- * (16 routes). Several controllers sharing one scope share one
+ * (17 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -304,6 +305,23 @@ export class AdminPromptTemplateResource extends AdminResource {
       method: 'POST',
       path: 'admin/prompt-templates/assign-department',
       body,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Distinct prompt tags with usage counts (autocomplete)
+   *
+   * Distinct tags over the caller tenant's non-deleted Hope Prompts, ranked by how many prompts carry them (descending) then alphabetically. `q` is a case-insensitive substring filter; `limit` defaults to 20 and is capped at 100.
+   *
+   * `GET /api/v1/admin/prompt-templates/tags` — `PromptManagementController.listTags`.
+   */
+  listTags(options: AdminRequestOptions & { query?: { limit?: number; q?: string } } = {}): Promise<PromptTagSuggestionResponse[]> {
+    return this.request<PromptTagSuggestionResponse[]>({
+      method: 'GET',
+      path: 'admin/prompt-templates/tags',
+      query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
     });

@@ -2,10 +2,11 @@
 
 Verifies the guardrail is called per generate, the consultation X-Tenant-Id is
 forwarded, and the degrade-safe → fail-CLOSED posture: a content
-rejection is a 422, a sustained outage is a retryable 503, a missing ``allowed``
-key fails closed, and an unwired client under the enforce posture fails closed —
-while allowed content proceeds and the dev bypass (disabled/unwired) is preserved.
-The guardrail client is mocked — no network.
+rejection is a 422, a sustained outage is a retryable 503 and a missing
+``allowed`` key fails closed, while allowed content proceeds. These tests drive
+the MEDICAL JUDGE half of the inbound gate; the inbound screen and the output
+screen are stubbed to allow (TASK-1035 covers them in `test_task1035_*`). The
+guardrail client is mocked — no network.
 """
 
 from __future__ import annotations
@@ -50,6 +51,12 @@ def _make_app(registry, task_manager, guardrail_client):
     app = create_app()
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
+    if guardrail_client is not None:
+        # TASK-1035: the inbound screen runs beside the judge on every call.
+        guardrail_client.screen_inbound = AsyncMock(
+            return_value={"allowed": True, "reason": "screened", "pii_spans": []}
+        )
+        guardrail_client.screen_output = AsyncMock(return_value={"allowed": True})
     app.state.guardrail_client = guardrail_client
     return app
 
@@ -122,7 +129,8 @@ async def test_tenant_id_header_propagated_to_guardrail(_client_factory):
     kwargs = guardrail.validate.await_args.kwargs
     assert kwargs["tenant_id"] == "tenant-42"
     assert kwargs["prompt"] == "patient note"
-    assert kwargs["system_prompt"] == "be careful"
+    # TASK-1036 OD-1: the judge never sees the system prompt.
+    assert kwargs["system_prompt"] is None
 
 
 @pytest.mark.asyncio
@@ -218,27 +226,4 @@ async def test_content_rejection_never_leaks_the_free_text_reasoning(
     assert resp.json()["error_code"] == "CONTENT_BLOCKED_NOT_MEDICAL"
     assert "123-45-6789" not in resp.text
     assert "Jane Doe" not in resp.text
-    mock_provider.generate.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_none_client_with_enforce_posture_fails_closed(
-    mock_registry, mock_task_manager, mock_provider
-):
-    # Moderation ON but the client is unwired → fail CLOSED (503), not a silent
-    # skip that ships unmoderated PHI. The posture comes from the control plane,
-    # so it is read off live state rather than off settings.
-    from text.core.guardrail_posture import GuardrailPosture
-
-    app = _make_app(mock_registry, mock_task_manager, None)
-    app.state.guardrail_posture = GuardrailPosture(enabled=True)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
-            "/api/v1/generate",
-            json={"provider": "lm-studio", "prompt": "patient note", "model": "m"},
-        )
-
-    assert resp.status_code == 503
-    assert resp.json()["error_code"] == "GUARDRAIL_UNAVAILABLE"
     mock_provider.generate.assert_not_called()

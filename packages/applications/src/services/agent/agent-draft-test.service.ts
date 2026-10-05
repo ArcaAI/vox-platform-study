@@ -55,8 +55,8 @@ export interface DraftTestSubmitInput {
   systemPrompt: string | null;
   provider: string;
   model: string;
-  /** §3.14 — the agent's own guardrail decision, carried on the wire like every other TEXT post. */
-  guardrailEnabled: boolean;
+  /** `AiModel.deploymentKind` of the bound row, for `provider_locality`; null for a caller-supplied target. */
+  deploymentKind?: string | null;
   /**
    * TASK-891 (OD-4) — the draft's own `parameters.generation`, so the bench obeys the reasoning
    * control an author sets on the very screen they set it. Only the REASONING posture is read
@@ -156,9 +156,6 @@ export class AgentDraftTestService {
       stream: true,
       provider: input.provider,
       model: input.model,
-      // §3.14 — every TEXT post carries the resolved decision. `true` is not "force on": a
-      // platform kill switch stays the floor on TEXT's side.
-      guardrail_policy: { enabled: input.guardrailEnabled },
     };
     if (input.systemPrompt) body.system_prompt = input.systemPrompt;
 
@@ -171,7 +168,7 @@ export class AgentDraftTestService {
       // enrichment returns early when `provider_overrides` is already set, which is
       // exactly the contract it states.
       await this.applyBoundConnection(body, input);
-      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, { deploymentKind: input.deploymentKind ?? null, phase: 'test' });
     }
 
     let taskId: string;

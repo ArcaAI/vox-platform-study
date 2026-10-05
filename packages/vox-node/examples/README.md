@@ -16,7 +16,7 @@ automated coverage see `packages/vox-node/src/**/__tests__/*.test.ts`
 | `06-realtime-consultation.ts`   | The whole machine-driven consultation journey: open (with a typed `context`) -> record -> live summary -> stop -> release the governing workflow's review gate -> approve the summary -> close -> read the context items and the run back |
 | `07-typed-open-and-refusals.ts` | Opening with a generated `OpenConsultationContext` type, and branching on every refusal `open()` can answer with                                                                                                                          |
 | `08-stream-audio.ts`            | Pushing audio a server already has into a consultation over `RealtimeSttSocket`                                                                                                                                                           |
-| `09-completion-signals.ts`      | The three ways to learn a run finished — hold the stream, poll, or receive the webhook — and how to verify a delivery                                                                                                                     |
+| `09-completion-signals.ts`      | The three ways to learn a run finished — hold the stream (`RunHandle`), poll, or receive the webhook — an agent run on the same handle, and how to verify a delivery                                                                                                                     |
 
 ## Commands
 
@@ -53,7 +53,8 @@ its user-identity and department fields.
 `08-stream-audio.ts` needs `HOPE_CONSULTATION_ID` (open one with `07` first) and
 `HOPE_AUDIO_PCM16`, a raw PCM16 LE mono file. Like the socket half of `05`, it needs Node 22+.
 
-`09-completion-signals.ts` runs on an API key and needs `HOPE_WORKFLOW_SLUG`; its
+`09-completion-signals.ts` runs on an API key and needs `HOPE_WORKFLOW_SLUG` (and, optionally,
+`HOPE_AGENT_SLUG` for the agent-run section); its
 `handleDelivery` export is the receiver half, to be wired into your own HTTP framework with
 `HOPE_WEBHOOK_SECRET`. Subscribing the webhook itself is an admin call and needs a service account —
 the example's comments say which scope.

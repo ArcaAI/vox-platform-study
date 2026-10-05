@@ -61,7 +61,7 @@ const FALLBACK_ORIGIN = 'https://your-gateway.example.com';
  * differently — one with the real host, one with `your-gateway.example.com` — made a developer
  * comparing them doubt both.
  */
-function curlEnvLines(baseUrl: string = FALLBACK_ORIGIN): string[] {
+export function curlEnvLines(baseUrl: string = FALLBACK_ORIGIN): string[] {
   return [
     `# Your gateway origin, and a key minted on the console's API keys screen.`,
     `export HOPE_API_URL=${JSON.stringify(baseUrl)}`,
@@ -102,7 +102,7 @@ const FLAT_MINIMUM: Record<string, unknown> = { text: '…' };
  * purpose: the Node, Browser, HTTP and Postman lanes then print CHARACTER-IDENTICAL payloads, so
  * a developer comparing two tabs is comparing the transport, not the formatting.
  */
-function jsonBlock(value: unknown, indent: number): string {
+export function jsonBlock(value: unknown, indent: number): string {
   const pad = ' '.repeat(indent);
   return JSON.stringify(value, null, 2)
     .split('\n')
@@ -157,27 +157,52 @@ export function agentVoxNodeStreamSnippet(slug: string, options?: AgentSnippetOp
 }
 
 /**
- * Start a blocking run of a published workflow by slug.
+ * Run a published workflow by slug (SDK 5.0).
  *
- * `runAndWait` is the blocking lane — the mode is the METHOD, never a body field, and the body
- * is the `{ input }` envelope (the agent plane takes its input flat; mixing the two is a 400 on
- * every call). It throws `GatewayTimeoutError` at the gateway's ~60s ceiling, which means the run
- * is still going: `hope.workflows.run(...)` + `streamRun` is the lane for anything longer.
+ * `hope.workflows.run(slug, input)` takes the input ITSELF — not the `{ input }` envelope, which
+ * belongs to the raw HTTP body — and returns a `RunHandle`: `text()` follows the written text,
+ * `result()` reads the verified delivered value, `events()` yields protocol-v2 events that resume by
+ * `seq`, `wait({ poll: true })` follows without a stream, `cancel()` ends it on purpose. A `run`
+ * ALWAYS sends an `Idempotency-Key` (yours, or a UUIDv7 it mints). Before 5.0, `run` returned the
+ * bare 202 body and the reader then called the legacy `streamRun` generator; that body is `start()`.
  */
 export function workflowVoxNodeSnippet(slug: string, exampleBody?: Record<string, unknown> | null): string {
   return [
     ...HEADER_LINES,
     CLIENT_WITH_BASE_URL,
     ``,
-    `const status = await hope.workflows.runAndWait('${slug}', {`,
-    `  input: ${jsonBlock(exampleBody ?? {}, 2)},`,
-    `});`,
+    `// The input itself — not wrapped in { input }. A key derived from your own domain makes a retry join`,
+    `// the run in flight instead of starting a second one.`,
+    `const run = await hope.workflows.run('${slug}', ${jsonBlock(exampleBody ?? {}, 0)}, { idempotencyKey: \`${slug}-\${visitId}\` });`,
     ``,
-    `// Longer than the gateway's ~60s blocking ceiling? Start it and follow the run instead:`,
-    `const run = await hope.workflows.run('${slug}', { input: { /* … */ } });`,
-    `for await (const event of hope.workflows.streamRun('${slug}', run.runId)) {`,
-    `  // resumable SSE — the default transport is the only lane that resumes`,
-    `}`,
+    `for await (const chunk of run.text()) process.stdout.write(chunk); // resumes by seq if the connection drops`,
+    `const result = await run.result(); // the delivered value, verified`,
+    ``,
+    `// Cancel on purpose with run.cancel(). Closing the loop or the connection never does.`,
+    `// One blocking call instead (the gateway cuts it at ~60s with a 504 — the run keeps going):`,
+    `//   hope.workflows.runAndWait('${slug}', { input })`,
+  ].join('\n');
+}
+
+/**
+ * Run a published agent (SDK 5.0) — the agent RUN resource, `POST /agents/{slug}/runs`.
+ *
+ * The same `RunHandle` as a workflow run, with the agent plane's FLAT input. An agent run has one
+ * step, `nodeId: 'agent'`. `invoke` / `invokeAndStream` stay as blocking and stream sugar; a run is
+ * the lane that is asynchronous, pollable, idempotent and resumable.
+ */
+export function agentRunVoxNodeSnippet(slug: string, options?: AgentSnippetOptions): string {
+  return [
+    ...HEADER_LINES,
+    CLIENT_WITH_BASE_URL,
+    ``,
+    `// The agent's input, FLAT — the { input } envelope is the workflow plane's and is a 400 here.`,
+    `const run = await hope.agents.run('${slug}', ${jsonBlock(invocationBody(options), 0)}, { idempotencyKey: \`${slug}-\${messageId}\` });`,
+    ``,
+    `for await (const chunk of run.text()) process.stdout.write(chunk);`,
+    `const result = await run.result(); // the agent's own output schema`,
+    ``,
+    `// Not streaming? Poll it: await run.wait({ poll: true, intervalMs: 2_000 })`,
   ].join('\n');
 }
 
@@ -243,29 +268,42 @@ export function agentVoxStreamSnippet(slug: string, options?: AgentSnippetOption
 }
 
 /**
- * Start and follow a published workflow run from a React app.
+ * Start and follow a published workflow run from a React app (`@arcaai/vox` 5.0).
  *
- * The browser never selects a delivery mode on the URL: `mode=blocking` would hold a fetch open
- * against the gateway's ~60s ceiling from a UI thread, and `mode=stream` would put the run's
- * whole event stream on a POST this client cannot resume. So it starts the run async and WATCHES
- * it — which is also why `start` takes the payload unwrapped and posts the envelope itself.
+ * `useRun({ workflow })` starts the run async, follows it over resumable SSE and resumes on mount,
+ * so a refresh does not lose it. It returns `{ start, text, events, result, status, cancel }`.
+ * (4.x: `useWorkflowRun` — `start` then `watch`. It is kept, for its `transport: 'socket'` option.)
  */
 export function workflowVoxSnippet(slug: string, exampleBody?: Record<string, unknown> | null): string {
   return [
-    `import { AgenticProvider, useWorkflowRun } from '@arcaai/vox/core';`,
+    `import { AgenticProvider, useRun } from '@arcaai/vox/core'; // @arcaai/vox 5.0`,
     ``,
     `// baseUrl INCLUDES /api/v1 here — @arcaai/vox-node adds the prefix for you, this SDK does not.`,
     browserConfigLine('accessToken'),
     `// <AgenticProvider config={config}>…</AgenticProvider>`,
     ``,
     `// …in any component under that provider:`,
-    `const { start, watch, status, events, isRunning } = useWorkflowRun();`,
+    `const { start, text, events, result, status, cancel } = useRun({ workflow: '${slug}' });`,
     ``,
-    `// The browser always starts the run async (202) and then WATCHES it — it never selects a`,
-    `// delivery lane on the URL. \`start\` takes the payload UNWRAPPED: the hook posts the`,
-    `// { input } envelope for you, so this is the one place the body is NOT written wrapped.`,
-    `const handle = await start('${slug}', ${jsonBlock(exampleBody ?? {}, 0)});`,
-    `const stop = watch('${slug}', handle.runId); // resumable SSE; call stop() to disconnect`,
+    `// The input itself — the hook posts the { input } envelope for you. The run is durable: closing the`,
+    `// page never cancels it; cancel() does.`,
+    `await start(${jsonBlock(exampleBody ?? {}, 0)});`,
+  ].join('\n');
+}
+
+/** An agent run from a React app (`@arcaai/vox` 5.0): the same hook, the agent plane's flat input. */
+export function agentRunVoxSnippet(slug: string, options?: AgentSnippetOptions): string {
+  return [
+    `import { AgenticProvider, useRun } from '@arcaai/vox/core'; // @arcaai/vox 5.0`,
+    ``,
+    `// baseUrl INCLUDES /api/v1 here — @arcaai/vox-node adds the prefix for you, this SDK does not.`,
+    browserConfigLine('accessToken'),
+    `// <AgenticProvider config={config}>…</AgenticProvider>`,
+    ``,
+    `// …in any component under that provider:`,
+    `const { start, text, events, result, status, cancel } = useRun({ agent: '${slug}' });`,
+    ``,
+    `await start(${jsonBlock(invocationBody(options), 0)}); // FLAT, like invoke()`,
   ].join('\n');
 }
 
@@ -361,15 +399,44 @@ export function workflowCurlSnippet(
     `# 2. Read where it got to.`,
     `curl -sS -H "X-API-Key: $HOPE_API_KEY" "${base}/runs/$RUN_ID"`,
     ``,
-    `# 3. Or follow it. The first frame is a snapshot with no id:, :keepalive arrives every 15s,`,
-    `#    and the stream ends on workflow.run.completed. Resume with -H "Last-Event-ID: <id>".`,
-    `curl -N -H "X-API-Key: $HOPE_API_KEY" "${base}/runs/$RUN_ID/stream"`,
+    `# 3. Or follow it (run protocol v2). One envelope per frame; resume with -H "Last-Event-ID: <seq>".`,
+    `#    Without the protocol header you get the six legacy shapes, kept readable for one release.`,
+    `curl -N -H "X-API-Key: $HOPE_API_KEY" -H "x-hope-run-protocol: 2" "${base}/runs/$RUN_ID/stream"`,
+    ``,
+    `# 4. Read the delivered result: 200 JSON, 204 none, 409 RUN_NOT_TERMINAL while it runs.`,
+    `curl -sS -H "X-API-Key: $HOPE_API_KEY" "${base}/runs/$RUN_ID/result"`,
     ``,
     `# A browser EventSource cannot set headers: POST "${base}/runs/$RUN_ID/stream-ticket" for a`,
-    `# single-use ticket ({ ticket, expiresAt, scope, url }) and pass it as ?ticket=.`,
+    `# single-use ticket ({ ticket, expiresAt, scope, url }) and pass ?protocol=2&ticket=… instead.`,
   ];
   if (modes.includes('blocking')) {
     lines.push(``, `# ?mode=blocking exists, but the gateway cuts it off at ~60s with a 504 — and the run keeps`, `# going. Use the stream above for anything that might take longer.`);
   }
   return lines.join('\n');
+}
+
+/** An agent run as raw HTTP: start it flat, follow it, read the result. */
+export function agentRunCurlSnippet(slug: string, options?: AgentSnippetOptions): string {
+  const base = `$HOPE_API_URL/api/v1/agents/${slug}`;
+  return [
+    ...curlEnvLines(options?.baseUrl),
+    ...CREDENTIAL_COMMENT,
+    ``,
+    `# 1. Start it. 202 → { runId, status, links }. The body is FLAT — the workflow plane's { input: … }`,
+    `#    envelope is a 400 here. The same Idempotency-Key and body joins the run in flight; a different`,
+    `#    body under a used key is a 409.`,
+    `RUN=$(curl -sS -X POST "${base}/runs" \\`,
+    `  -H "X-API-Key: $HOPE_API_KEY" \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -H "Idempotency-Key: $(uuidgen)" \\`,
+    `  -d '${jsonBlock(invocationBody(options), 6)}')`,
+    `RUN_ID=$(printf '%s' "$RUN" | jq -r .runId)`,
+    ``,
+    `# 2. Read where it got to, or follow it. An agent run has one step: nodeId "agent".`,
+    `curl -sS -H "X-API-Key: $HOPE_API_KEY" "${base}/runs/$RUN_ID"`,
+    `curl -N -H "X-API-Key: $HOPE_API_KEY" -H "x-hope-run-protocol: 2" "${base}/runs/$RUN_ID/events"`,
+    ``,
+    `# 3. Read the result.`,
+    `curl -sS -H "X-API-Key: $HOPE_API_KEY" "${base}/runs/$RUN_ID/result"`,
+  ].join('\n');
 }

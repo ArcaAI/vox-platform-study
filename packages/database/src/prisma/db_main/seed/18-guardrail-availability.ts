@@ -6,17 +6,13 @@
  * Every customer tenant inherits it on ABSENCE, which is how a tenant with no
  * opinion follows the platform.
  *
- * Every declared check is ON — what `apps/guardrail` did before this row existed —
- * EXCEPT the five judges the owner calibrated OFF for clinical text (TASK-932, owner
- * decisions 2026-09-09): `response_toxicity` (the 300M classifier intermittently
- * labels SOAP content such as chest pain / aspirin as toxic), `pii_leak` (a
- * finalized note legitimately re-states the encounter's own identifiers, which the
- * fragment check reads as a leak), `response_safety` (blocked a SOAP note),
- * `response_refusal` and `jailbreak_detection` (both blocked a DNA redaction
- * rewrite of a clinical note). Each blocked live notes end to end; all five stay
- * off until retuned for clinical text. `jailbreak_detection` is the one INBOUND
- * check in the set, so prompt-injection screening now rests on `prompt_safety` and
- * `prompt_toxicity` alone. `pii_leak.minScore` is
+ * Every declared check is ON — guardrails check the request AND the response on every
+ * LLM call (owner decisions OD-1..OD-5; this reverses the earlier clinical-text calibration,
+ * which had five judges off). `response_refusal` alone stays off: a refusal is not unsafe content.
+ * `pii_leak` is locality-aware in `apps/text` (blocking on a cloud call before
+ * re-identification, detect-and-audit on a local one), which is what lets it ship ON
+ * now that a finalized note legitimately re-states the encounter's identifiers.
+ * `pii_leak.minScore` is
  * transcribed VERBATIM from `core/policy.py::_SPECS['piiLeakMinScore']` (0.5) —
  * the same discipline the judge hyperparameters were moved under. The runtime
  * composes the availability threshold with the model row's value in the STRICT
@@ -41,8 +37,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-000000000001';
 
 /**
- * The platform default set: every check the screener declares, ON — except the five
- * clinical-text judges calibrated OFF (see the header).
+ * The platform default set: every check the screener declares, ON — except
+ * `response_refusal` (see the header).
  *
  * MIRRORS `PLATFORM_DEFAULT_GUARDRAIL_POLICIES` in
  * `packages/applications/src/services/guardrail-availability/policy-catalogue.ts`,
@@ -50,13 +46,14 @@ export const PLATFORM_GUARDRAIL_AVAILABILITY_ID = '00000000-0000-0000-0018-00000
  * `apps/guardrail/src/guardrail/tests/contracts/availability-catalogue.json`.
  */
 export const PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY: Record<string, { enabled: boolean; minScore?: number }> = {
-  jailbreak_detection: { enabled: false },
+  jailbreak_detection: { enabled: true },
   prompt_safety: { enabled: true },
   prompt_toxicity: { enabled: true },
-  response_safety: { enabled: false },
-  response_toxicity: { enabled: false },
+  response_safety: { enabled: true },
+  response_toxicity: { enabled: true },
+  // A refusal is not unsafe content, so it is the one check that ships off.
   response_refusal: { enabled: false },
-  pii_leak: { enabled: false, minScore: 0.5 },
+  pii_leak: { enabled: true, minScore: 0.5 },
   containment_echo: { enabled: true },
 };
 
@@ -78,7 +75,7 @@ export const seedGuardrailAvailability = async (client: CorePrismaClient): Promi
         tenantId: SYSTEM_TENANT_ID,
         policies: PLATFORM_DEFAULT_GUARDRAIL_AVAILABILITY,
         reason:
-          'Platform default: every declared screening check applies, except response_toxicity, pii_leak, response_safety, response_refusal and jailbreak_detection — calibrated OFF for clinical text (TASK-932, owner decisions 2026-09-09) until the judges are retuned.',
+          'Platform default: every declared screening check applies to the request and the response, except response_refusal (a refusal is not unsafe content).',
         createdBy: SYSTEM_USER_ID,
         updatedBy: SYSTEM_USER_ID,
       },

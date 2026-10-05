@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, ReactFlowInstance } from '@xyflow/react';
+import type { Connection, Edge, Node, NodeChange, NodeDimensionChange, OnConnectEnd, ReactFlowInstance } from '@xyflow/react';
 import { Background, BackgroundVariant, MiniMap, ReactFlow, applyEdgeChanges, applyNodeChanges } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -13,7 +13,7 @@ import { WorkflowEdgeChromeProvider, XYFLOW_EDGE_TYPES } from './workflow-edge';
 import type { WorkflowEdgeChrome } from './workflow-edge';
 import { XYFLOW_NODE_TYPES, problemSummaryId } from './workflow-node';
 import type { WorkflowNodeData } from './workflow-node';
-import type { WorkflowCanvasEdge, WorkflowCanvasNode, WorkflowCanvasProps } from './types';
+import type { WorkflowCanvasEdge, WorkflowCanvasInsets, WorkflowCanvasNode, WorkflowCanvasProps } from './types';
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = React.useState(false);
@@ -146,9 +146,10 @@ function toXyNode(
   };
 }
 
-function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
+function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean, selected: boolean): Edge {
   const kind = edge.kind ?? 'wire';
   return {
+    selected,
     id: edge.id,
     type: 'workflowEdge',
     source: edge.source,
@@ -160,7 +161,7 @@ function toXyEdge(edge: WorkflowCanvasEdge, readOnly: boolean): Edge {
     // A binding is edited where it is bound (the consumer's inspector field), never deleted from
     // the canvas — the Delete key and the hover-X both stay off it.
     deletable: !readOnly && kind !== 'binding',
-    data: { kind },
+    data: { kind, runState: edge.runState ?? 'idle' },
   };
 }
 
@@ -208,6 +209,29 @@ function pruneMeasured(previous: Record<string, NodeDimensions>, removedIds: Set
   return Object.fromEntries(remaining.map((id) => [id, previous[id]]));
 }
 
+/** React Flow's own panel margin (`.react-flow__panel { margin: 15px }`). */
+const PANEL_MARGIN = 15;
+/** Room `fitView` leaves on each side of the free rectangle: the top clears the composer's "Add a step"; the left clears the zoom controls. */
+const FIT_GAP = { top: 56, left: 56, right: 32, bottom: 32 } as const;
+
+/**
+ * TASK-1036 R-C #2 — `fitView` padding that fits the graph into the rectangle the floating panes
+ * leave free. Pixel padding per side (React Flow 12 accepts `{ top, right, bottom, left }` with
+ * units); without insets the old proportional `0.2` stands.
+ */
+export function fitViewPaddingFor(
+  insets: WorkflowCanvasInsets | undefined,
+): number | { top: `${number}px`; right: `${number}px`; bottom: `${number}px`; left: `${number}px` } {
+  if (!insets) return 0.2;
+  const px = (value: number): `${number}px` => `${Math.max(0, Math.round(value))}px`;
+  return {
+    top: px((insets.top ?? 0) + FIT_GAP.top),
+    right: px((insets.right ?? 0) + FIT_GAP.right),
+    bottom: px((insets.bottom ?? 0) + FIT_GAP.bottom),
+    left: px((insets.left ?? 0) + FIT_GAP.left),
+  };
+}
+
 type ReactFlowProps = React.ComponentProps<typeof ReactFlow>;
 type EdgeChanges = Parameters<NonNullable<ReactFlowProps['onEdgesChange']>>[0];
 type NodeDragHandler = NonNullable<ReactFlowProps['onNodeDragStop']>;
@@ -231,6 +255,10 @@ export function WorkflowCanvas({
   nodeTypes,
   selectedNodeId = null,
   selectedNodeIds,
+  selectedEdgeId = null,
+  onEdgeSelect,
+  onEdgeInsert,
+  onConnectEndOnPane,
   readOnly = false,
   overlay,
   onNodesChange,
@@ -246,10 +274,40 @@ export function WorkflowCanvas({
   emptyState,
   minimap = true,
   fitViewKey,
+  viewportInsets,
+  wheelZoom,
   className,
   'aria-label': ariaLabel,
 }: WorkflowCanvasProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const zoomOnWheel = (wheelZoom ?? (readOnly ? 'modifier' : 'scroll')) === 'scroll';
+  const insetLeft = viewportInsets?.left ?? 0;
+  const insetRight = viewportInsets?.right ?? 0;
+  const insetTop = viewportInsets?.top ?? 0;
+  const insetBottom = viewportInsets?.bottom ?? 0;
+  // Keyed on the four numbers, not the object: a consumer rebuilding an equal insets object each
+  // render must not hand React Flow a new `fitViewOptions` every time.
+  const hasInsets = viewportInsets !== undefined;
+  const fitViewOptions = React.useMemo(
+    () => ({
+      duration: reducedMotion ? 0 : 400,
+      padding: fitViewPaddingFor(hasInsets ? { left: insetLeft, right: insetRight, top: insetTop, bottom: insetBottom } : undefined),
+    }),
+    [reducedMotion, hasInsets, insetLeft, insetRight, insetTop, insetBottom],
+  );
+  // The re-fit effect below runs on `fitViewKey` alone; it reads the latest options through this.
+  const fitViewOptionsRef = React.useRef(fitViewOptions);
+  React.useEffect(() => {
+    fitViewOptionsRef.current = fitViewOptions;
+  }, [fitViewOptions]);
+  const controlsStyle = React.useMemo(
+    () => ({ marginLeft: PANEL_MARGIN + insetLeft, marginBottom: PANEL_MARGIN + insetBottom }),
+    [insetLeft, insetBottom],
+  );
+  const minimapStyle = React.useMemo(
+    () => ({ marginRight: PANEL_MARGIN + insetRight, marginBottom: PANEL_MARGIN + insetBottom }),
+    [insetRight, insetBottom],
+  );
   // Node dimensions as React Flow measured them (see `toXyNode`). Keyed by node id; entries for
   // removed nodes are pruned so a long editing session cannot grow this unboundedly.
   const [measured, setMeasured] = React.useState<Record<string, NodeDimensions>>({});
@@ -284,7 +342,7 @@ export function WorkflowCanvas({
       ),
     [nodes, selectedNodeId, selectedSet, readOnly, nodeTypes, onDeleteRequest, overlay, measured],
   );
-  const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly)), [edges, readOnly]);
+  const xyEdges = React.useMemo(() => edges.map((edge) => toXyEdge(edge, readOnly, edge.id === selectedEdgeId)), [edges, readOnly, selectedEdgeId]);
 
   const handleNodesChange = React.useCallback(
     (changes: NodeChange<Node<WorkflowNodeData>>[]) => {
@@ -368,11 +426,12 @@ export function WorkflowCanvas({
   // tore the canvas subtree down the moment a node was selected (observed against the running
   // stack, 2026-08-19).
   const handleSelectionChange = React.useCallback(
-    ({ nodes: selected }: { nodes: Node<WorkflowNodeData>[] }) => {
+    ({ nodes: selected, edges: selectedEdges }: { nodes: Node<WorkflowNodeData>[]; edges?: Edge[] }) => {
       onSelect?.(selected[0]?.id ?? null);
       onSelectionChange?.(selected.map((node) => node.id));
+      onEdgeSelect?.(selectedEdges?.[0]?.id ?? null);
     },
-    [onSelect, onSelectionChange],
+    [onSelect, onSelectionChange, onEdgeSelect],
   );
 
   const handleEdgeMouseEnter = React.useCallback<EdgeMouseHandler>((_event, edge) => setHoveredEdgeId(edge.id), []);
@@ -380,8 +439,8 @@ export function WorkflowCanvas({
 
   const nodeLabelById = React.useMemo(() => new Map(nodes.map((node) => [node.id, node.label])), [nodes]);
   const edgeChrome = React.useMemo<WorkflowEdgeChrome>(
-    () => ({ readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById }),
-    [readOnly, onEdgeDelete, hoveredEdgeId, nodeLabelById],
+    () => ({ readOnly, onEdgeDelete, onEdgeInsert, hoveredEdgeId, nodeLabelById }),
+    [readOnly, onEdgeDelete, onEdgeInsert, hoveredEdgeId, nodeLabelById],
   );
 
   // React Flow hands this an `Edge | Connection`; both carry the four fields the guard needs.
@@ -440,10 +499,28 @@ export function WorkflowCanvas({
     [onConnect],
   );
 
+  /**
+   * TASK-1036 — a link dropped on EMPTY canvas (no target node) from a SOURCE handle. React Flow
+   * hands `onConnectEnd` the pointer event and the connection state; only the drop-on-pane case is
+   * reported, projected into flow coordinates the same way a palette drop is.
+   */
+  const handleConnectEnd = React.useCallback<OnConnectEnd>(
+    (event, state) => {
+      if (readOnly || !onConnectEndOnPane) return;
+      if (state.isValid || state.toNode || !state.fromNode || state.fromHandle?.type === 'target') return;
+      const point = 'changedTouches' in event && event.changedTouches.length > 0 ? event.changedTouches[0]! : (event as MouseEvent);
+      const screen = { x: point.clientX, y: point.clientY };
+      const position = instanceRef.current?.screenToFlowPosition(screen) ?? screen;
+      onConnectEndOnPane({ nodeId: state.fromNode.id, handleId: state.fromHandle?.id ?? null }, position);
+    },
+    [readOnly, onConnectEndOnPane],
+  );
+
   React.useEffect(() => {
     if (fitViewKey === undefined) return;
-    instanceRef.current?.fitView({ duration: reducedMotion ? 0 : 400, padding: 0.2 });
-  }, [fitViewKey, reducedMotion]);
+    // Re-fit on the KEY only — a pane opening or resizing must not yank the viewport around.
+    void instanceRef.current?.fitView(fitViewOptionsRef.current);
+  }, [fitViewKey]);
 
   return (
     <div
@@ -460,6 +537,15 @@ export function WorkflowCanvas({
         Workflow graph editor. Press Tab to move between nodes and connections; each carries a labelled button that removes it without a drag. Adding
         and configuring nodes stay available outside the canvas.
       </span>
+      {!zoomOnWheel ? (
+        // R-C #9 — the wheel scrolls the page here; say how to zoom instead (the controls also zoom).
+        <span
+          data-slot="workflow-canvas-zoom-hint"
+          className="text-muted-foreground bg-background/90 pointer-events-none absolute top-2 right-2 z-10 rounded-sm border px-1.5 py-0.5 text-[11px]"
+        >
+          Ctrl/⌘ + scroll to zoom
+        </span>
+      ) : null}
       <WorkflowEdgeChromeProvider value={edgeChrome}>
         <ReactFlow
           nodes={xyNodes}
@@ -472,6 +558,7 @@ export function WorkflowCanvas({
           onEdgeMouseEnter={handleEdgeMouseEnter}
           onEdgeMouseLeave={handleEdgeMouseLeave}
           onConnect={handleConnect}
+          onConnectEnd={onConnectEndOnPane && !readOnly ? handleConnectEnd : undefined}
           isValidConnection={handleIsValidConnection}
           onSelectionChange={handleSelectionChange}
           onInit={(instance) => {
@@ -493,14 +580,25 @@ export function WorkflowCanvas({
           // EdgeChange, which `handleEdgesChange` turns into one `onEdgeDelete` call.
           deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
           fitView
-          fitViewOptions={{ duration: reducedMotion ? 0 : 400, padding: 0.2 }}
+          fitViewOptions={fitViewOptions}
+          // R-C #9 — `modifier`: the plain wheel reaches the page; Ctrl/⌘+wheel and a pinch still zoom.
+          zoomOnScroll={zoomOnWheel}
+          preventScrolling={zoomOnWheel}
+          zoomOnPinch
           role="application"
           aria-label={ariaLabel}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} />
-          <CanvasControls showInteractive={!readOnly} />
+          <CanvasControls showInteractive={!readOnly} fitViewOptions={fitViewOptions} style={controlsStyle} />
           {minimap && nodes.length > 0 ? (
-            <MiniMap position="bottom-right" pannable zoomable className="workflow-canvas-minimap" aria-label="Graph overview" />
+            <MiniMap
+              position="bottom-right"
+              pannable
+              zoomable={zoomOnWheel}
+              style={minimapStyle}
+              className="workflow-canvas-minimap"
+              aria-label="Graph overview"
+            />
           ) : null}
         </ReactFlow>
       </WorkflowEdgeChromeProvider>

@@ -1,16 +1,14 @@
 """Activity-wiring tests for the PHI egress guard.
 
-Covers how ``generate`` / ``run_inferential_sensors`` are wired to
-the :mod:`harness.guards.phi.egress` chokepoint. Each test runs the *real*
-activity body in a Temporal ``ActivityEnvironment`` with the client factories +
-``get_settings`` / ``get_runtime_judge_config`` / ``_phi_redactor`` monkeypatched
-to deterministic fakes (no model load, no network), and asserts the cloud-bound
-call site is gated:
+Covers how ``run_inferential_sensors`` is wired to the :mod:`harness.guards.phi.egress`
+screen. Each test runs the *real* activity body in a Temporal ``ActivityEnvironment`` with the
+client factories + ``get_settings`` / ``get_runtime_judge_config`` / ``_phi_redactor``
+monkeypatched to deterministic fakes (no model load, no network), and asserts the cloud-bound
+judge hop is gated: cloud safety, cloud block (whole pass degrades), local (no redaction).
 
-* ``generate`` — T1 cloud+block (Text NOT called), T2 cloud (Text gets CLEANED text),
-  T3 local (Text gets ORIGINAL), T4 ``phi_enabled=False`` (bypass), T7 block logs.
-* ``run_inferential_sensors`` — T6 cloud safety (Granite gets REDACTED note),
-  cloud block (whole pass degrades, Granite NOT called), local (no redaction).
+TASK-1035 removed the ``generate`` half of this file: every ``apps/text`` ``/generate`` call is
+redacted by text itself (see ``test_task1035_activities_egress.py``). The judge stays here because
+it posts to its provider DIRECTLY.
 """
 
 from __future__ import annotations
@@ -21,21 +19,12 @@ from typing import Any
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from harness.core.config import PhiConfig, Settings
+from harness.core.config import Settings
+from harness.core.llm_egress import is_local_direct_transport
 from harness.eval.config import JudgeConfig, JudgeProvider
 from harness.guards.phi import PhiEgressBlocked
-from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
-from harness.temporal.models import GenerateInput, RunInferentialSensorsInput
-
-
-class _FakeText:
-    def __init__(self) -> None:
-        self.kwargs: dict[str, Any] = {}
-
-    async def generate(self, **kwargs: Any) -> TextGenerationResult:
-        self.kwargs = kwargs
-        return TextGenerationResult(content="DRAFT", model="m", finish_reason="stop")
+from harness.temporal.models import RunInferentialSensorsInput
 
 
 class _StubJudge:
@@ -69,9 +58,9 @@ class _ContractRedactor:
         self._transform = transform
         self._block = block
 
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
+    def ensure_safe_for_cloud(self, text: str, *, provider: str, fail_closed: bool) -> str:
         self.calls.append((text, provider))
-        if provider in settings.phi.local_providers:
+        if is_local_direct_transport(provider):
             return text
         if self._block:
             raise PhiEgressBlocked(provider=provider, reason="contract block")
@@ -83,10 +72,6 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
-def _gen_settings(*, fail_closed: bool = True) -> Settings:
-    return Settings(phi=PhiConfig(enabled=True, fail_closed=fail_closed))
-
-
 def _infer_settings() -> Settings:
     """No safety provider any more — the screen is a peer-service call ( A.1).
 
@@ -96,7 +81,7 @@ def _infer_settings() -> Settings:
     never gated. The JUDGE half of the guard is unchanged and is what these tests now
     exercise, because the judge client still posts to its selected provider directly.
     """
-    return Settings(phi=PhiConfig(enabled=True, fail_closed=True))
+    return Settings()
 
 
 def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
@@ -115,114 +100,6 @@ def _infer_input(**kw: Any) -> RunInferentialSensorsInput:
     }
     base.update(kw)
     return RunInferentialSensorsInput(**base)
-
-
-class TestGeneratePhiEgress:
-    @pytest.mark.asyncio
-    async def test_cloud_phi_blocks_generate_and_skips_text(self, env, monkeypatch):
-        # T1: cloud + fail-closed block ⇒ Text client never called.
-        text_client = _FakeText()
-        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
-        monkeypatch.setattr(activities, "get_settings", _gen_settings)
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor(block=True))
-
-        with pytest.raises(PhiEgressBlocked):
-            await env.run(
-                activities.generate,
-                GenerateInput(
-                    tenant_id="11111111-1111-1111-1111-111111111111",
-                    prompt="John Smith has HTN",
-                    provider="azure",
-                ),
-            )
-        assert text_client.kwargs == {}, "Text must not be called when egress is blocked"
-
-    @pytest.mark.asyncio
-    async def test_cloud_calls_text_with_cleaned_text(self, env, monkeypatch):
-        # T2: cloud egress ⇒ Text receives the redacted prompt + system prompt.
-        text_client = _FakeText()
-        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
-        monkeypatch.setattr(activities, "get_settings", _gen_settings)
-        monkeypatch.setattr(
-            activities,
-            "_phi_redactor",
-            lambda: _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>")),
-        )
-
-        await env.run(
-            activities.generate,
-            GenerateInput(
-                tenant_id="11111111-1111-1111-1111-111111111111",
-                prompt="John Smith has HTN",
-                system_prompt="Sys John Smith",
-                provider="azure",
-            ),
-        )
-        assert text_client.kwargs["prompt"] == "<PERSON> has HTN"
-        assert text_client.kwargs["system_prompt"] == "Sys <PERSON>"
-
-    @pytest.mark.asyncio
-    async def test_local_provider_passthrough_to_text(self, env, monkeypatch):
-        # T3: a local provider ⇒ Text receives the ORIGINAL text (no redaction).
-        text_client = _FakeText()
-        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
-        monkeypatch.setattr(activities, "get_settings", _gen_settings)
-        monkeypatch.setattr(
-            activities,
-            "_phi_redactor",
-            lambda: _ContractRedactor(transform=lambda t: "SHOULD_NOT_REDACT"),
-        )
-
-        await env.run(
-            activities.generate,
-            GenerateInput(
-                tenant_id="11111111-1111-1111-1111-111111111111",
-                prompt="John Smith has HTN",
-                provider="lm-studio",
-            ),
-        )
-        assert text_client.kwargs["prompt"] == "John Smith has HTN"
-
-    @pytest.mark.asyncio
-    async def test_phi_disabled_bypasses_guard(self, env, monkeypatch):
-        # T4: phi_enabled=False ⇒ egress allowed unredacted; redactor untouched.
-        text_client = _FakeText()
-        redactor = _ContractRedactor(block=True)  # would block if ever consulted
-        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
-        monkeypatch.setattr(activities, "get_settings", _gen_settings)
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
-
-        await env.run(
-            activities.generate,
-            GenerateInput(
-                tenant_id="11111111-1111-1111-1111-111111111111",
-                prompt="John Smith has HTN",
-                provider="azure",
-                phi_enabled=False,
-            ),
-        )
-        assert text_client.kwargs["prompt"] == "John Smith has HTN"
-        assert redactor.calls == []
-
-    @pytest.mark.asyncio
-    async def test_block_emits_structured_log(self, env, monkeypatch, caplog):
-        # T7: a block emits a structured ``harness.phi_egress.blocked`` warning.
-        text_client = _FakeText()
-        monkeypatch.setattr(activities, "_text_client", lambda s: text_client)
-        monkeypatch.setattr(activities, "get_settings", _gen_settings)
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor(block=True))
-
-        with caplog.at_level(logging.WARNING):
-            with pytest.raises(PhiEgressBlocked):
-                await env.run(
-                    activities.generate,
-                    GenerateInput(
-                        tenant_id="11111111-1111-1111-1111-111111111111",
-                        prompt="John Smith has HTN",
-                        provider="azure",
-                    ),
-                )
-        assert any("phi_egress" in r.getMessage() for r in caplog.records)
 
 
 class TestRunInferentialSensorsPhiEgress:
@@ -404,7 +281,7 @@ class TestRunInferentialSensorsPhiEgress:
         from harness.sensors.inferential.guardrail_screen import GuardrailSafetyScreen
         from harness.services.guardrail_client import GuardrailClient
 
-        settings = Settings(phi=PhiConfig(enabled=True))
+        settings = Settings()
         client = activities._safety_screen_client(settings, "11111111-1111-1111-1111-111111111111")
 
         assert isinstance(client, GuardrailSafetyScreen)

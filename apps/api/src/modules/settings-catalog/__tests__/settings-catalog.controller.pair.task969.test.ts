@@ -16,9 +16,9 @@ import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY, type EffectiveSettingsService } from '@arcaai/applications';
 import { SettingsCatalogController } from '../settings-catalog.controller';
 
-const TENANT_HALF = 'text.guardrailPolicy.requireMedical';
+const TENANT_HALF = 'text.guardrailPolicy.includeReasoning';
 const TENANT_HALF_2 = 'text.guardrailPolicy.includeReasoning';
-const PLATFORM_TWIN = 'text.externalGuardrail.requireMedical';
+const PLATFORM_TWIN = 'text.externalGuardrail.includeReasoning';
 const PLATFORM_TWIN_2 = 'text.externalGuardrail.includeReasoning';
 
 async function superAdminCatalog() {

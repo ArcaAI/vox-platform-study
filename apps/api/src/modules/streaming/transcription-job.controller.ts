@@ -17,6 +17,7 @@ import {
   IEntitlementsService,
   ITenantBucketService,
   IUserRoleAssignmentService,
+  JobIdempotencyService,
   jsonSchemaValueProblems,
   requestedLanguageMode,
   resolveEffectiveLanguageMode,
@@ -27,6 +28,7 @@ import {
 import type { LanguageModeSource, ResolvedAsrJobSelection, ResolvedAsrSession, ResolvedAsrSpec } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
 import type { Response } from 'express';
+import { createHash } from 'node:crypto';
 import { probeAudioDurationSeconds } from './audio-duration';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
@@ -59,7 +61,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Observable } from 'rxjs';
 import { uuidv7 } from 'uuidv7';
@@ -206,6 +208,9 @@ export class TranscriptionJobController {
     // TRAILING for the same positional-fixture reason; absent, `language-modes` answers the
     // catalog-wide payload exactly as before.
     @Optional() private readonly languageCapability?: AsrLanguageCapabilityService,
+    // TASK-1038 B3a — `Idempotency-Key` on `POST transcribe`. Optional + TRAILING for the
+    // positional fixtures; absent, the header is ignored (every call starts a job, as before).
+    @Optional() private readonly jobIdempotency?: JobIdempotencyService,
   ) {}
 
   /**
@@ -600,10 +605,22 @@ export class TranscriptionJobController {
   // transcript, not an error. Naming the clinician is what makes that path reachable at all for a
   // machine caller. The job ROW's own `createdBy` is a separate stamp that this gateway cannot yet
   // set for a machine — see the KNOWN GAP at the `createBatchJob` call below.
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Retry-safe key (TASK-1038): the same key with the same upload (audio bytes + fields) returns the same job without a second upload or dispatch; a different upload under the same key is a 409.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`IDEMPOTENCY_KEY_REUSED` — this Idempotency-Key was used with a different upload; `IDEMPOTENCY_KEY_IN_FLIGHT` — the first request is still starting.',
+  })
   async transcribeFile(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: TranscribeFileRequest,
     @Req() req?: RequestWithAuth,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
   ): Promise<BatchTranscribeResponse> {
     // 1. Validate file
     if (!file?.buffer) {
@@ -612,6 +629,24 @@ export class TranscriptionJobController {
     if (!ALLOWED_AUDIO_MIMES.has(file.mimetype)) {
       throw new BadRequestException(`Unsupported audio type: ${file.mimetype}`);
     }
+
+    // TASK-1038 B3a — `Idempotency-Key`: a retried upload (a dropped response, a mobile reconnect)
+    // must not upload, persist and dispatch the recording twice. The fingerprint is the audio's
+    // own hash plus every submitted field, so "the same request" means the same recording.
+    if (idempotencyKey && this.jobIdempotency) {
+      const principalId = this.cls.get('user')?.id ?? (this.cls.get('serviceAccount') as { id?: string } | undefined)?.id ?? 'anonymous';
+      const { value } = await this.jobIdempotency.run(
+        { operation: 'transcribe', tenantId: this.getTenantId(), principalId, key: idempotencyKey },
+        { audioSha256: createHash('sha256').update(file.buffer).digest('hex'), mimetype: file.mimetype, filename: file.originalname, body },
+        () => this.transcribeFileOnce(file, body, req),
+      );
+      return value;
+    }
+    return this.transcribeFileOnce(file, body, req);
+  }
+
+  /** The upload → job row → worker dispatch of ONE transcription (see `transcribeFile`). */
+  private async transcribeFileOnce(file: Express.Multer.File, body: TranscribeFileRequest, req?: RequestWithAuth): Promise<BatchTranscribeResponse> {
     // TASK-1004 — the explicit mode, normalized; 400 LANGUAGE_MODE_UNKNOWN before any I/O.
     const requestedMode = requestedLanguageMode(body);
 

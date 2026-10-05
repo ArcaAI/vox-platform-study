@@ -170,7 +170,12 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     const compiled = await publish({
       fragments: [
         { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
-        { key: 'revisit', promptTemplateId: 'tpl-revisit', when: "has(context.visit_type) && context.visit_type == 'revisit'" },
+        {
+          key: 'revisit',
+          promptTemplateId: 'tpl-revisit',
+          promptVersionNumber: 5,
+          when: "has(context.visit_type) && context.visit_type == 'revisit'",
+        },
         { key: 'peds', systemPrompt: 'The patient is a minor.', when: 'has(context.patient_age) && context.patient_age < 18' },
       ],
     });
@@ -198,7 +203,7 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     putTemplate('tpl-a', 'A');
     const compiled = await publish({
       fragments: [
-        { key: 'frag_a', promptTemplateId: 'tpl-a' },
+        { key: 'frag_a', promptTemplateId: 'tpl-a', promptVersionNumber: 1 },
         { key: 'frag_b', systemPrompt: 'B' },
         { key: 'frag_c', systemPrompt: 'C', when: 'true' },
       ],
@@ -206,7 +211,10 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     expect((compiled.resolvedPrompt as { content: string }).content).toBe('A\n\nB');
   });
 
-  it('follows the pin rule per fragment: explicit pin, else approved, else current', async () => {
+  // TASK-1036 W3 — publish now REFUSES an unpinned fragment (`PROMPT_VERSION_UNPINNED`,
+  // `agent.prompt-pin.task1036.test.ts`); the bind stamps the approved version instead. What this
+  // still pins is that every fragment resolves at its OWN pin, independently of its neighbours.
+  it('resolves every fragment at its own pin', async () => {
     putTemplate('tpl-pinned', 'v-approved', { approvedVersionNumber: 4 });
     putVersion('tpl-pinned', 2, 'v2');
     putTemplate('tpl-current', 'from-current', { approvedVersionNumber: null, currentVersionNumber: 7 });
@@ -215,8 +223,8 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     const compiled = await publish({
       fragments: [
         { key: 'pinned', promptTemplateId: 'tpl-pinned', promptVersionNumber: 2 },
-        { key: 'approved', promptTemplateId: 'tpl-pinned' },
-        { key: 'current', promptTemplateId: 'tpl-current' },
+        { key: 'approved', promptTemplateId: 'tpl-pinned', promptVersionNumber: 4 },
+        { key: 'current', promptTemplateId: 'tpl-current', promptVersionNumber: 7 },
       ],
     });
 
@@ -232,8 +240,8 @@ describe('publish freezes a composite instruction (§4.1, OD-3)', () => {
     putTemplate('tpl-extra', 'Extra');
     const listing = (when: string | undefined) => ({
       fragments: [
-        { key: 'base', promptTemplateId: 'tpl-base' },
-        { key: 'extra', promptTemplateId: 'tpl-extra', ...(when === undefined ? {} : { when }) },
+        { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
+        { key: 'extra', promptTemplateId: 'tpl-extra', promptVersionNumber: 1, ...(when === undefined ? {} : { when }) },
       ],
     });
 
@@ -308,8 +316,8 @@ describe('publish reports a broken fragment BY PATH (§4.1)', () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(
       agent({
         fragments: [
-          { key: 'base', promptTemplateId: 'tpl-base' },
-          { key: 'gone', promptTemplateId: 'tpl-gone', when: 'true' },
+          { key: 'base', promptTemplateId: 'tpl-base', promptVersionNumber: 1 },
+          { key: 'gone', promptTemplateId: 'tpl-gone', promptVersionNumber: 1, when: 'true' },
         ],
       }),
     );
@@ -327,12 +335,10 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
         { key: 'bad', promptTemplateId: 'tpl-bad', when: 'true' },
       ],
     });
-    expect(findings).toContainEqual(
-      expect.objectContaining({ code: 'PROMPT_TEMPLATE_SYNTAX', path: 'instruction.fragments[1]', severity: 'ERROR' }),
-    );
+    expect(findings).toContainEqual(expect.objectContaining({ code: 'PROMPT_TEMPLATE_SYNTAX', path: 'instruction.fragments[1]', severity: 'ERROR' }));
   });
 
-  it('warns about an undeclared reference inside a fragment, at that fragment’s path', async () => {
+  it('refuses an undeclared reference inside a fragment as an ERROR, at that fragment’s path', async () => {
     putTemplate('tpl-base', 'Base');
     const findings = await validateFindings({
       fragments: [
@@ -341,7 +347,7 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
       ],
     });
     expect(findings).toContainEqual(
-      expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', path: 'instruction.fragments[1]', severity: 'WARNING' }),
+      expect.objectContaining({ code: 'PROMPT_VARIABLE_UNDECLARED', path: 'instruction.fragments[1]', severity: 'ERROR' }),
     );
   });
 
@@ -400,14 +406,26 @@ describe('per-fragment template checks (§4.4 item 2)', () => {
 
 describe('the two pre-947 forms are untouched', () => {
   it('form 1 (template) still compiles to the flat `template` shape', async () => {
-    putTemplate('tpl-1', 'SOAP {{context.clinic}}');
+    // A reference nothing declares now blocks publish, so the body declares nothing.
+    putTemplate('tpl-1', 'SOAP for the clinic.');
     const compiled = await publish({ promptTemplateId: 'tpl-1', promptVersionNumber: 1 });
     expect(compiled.resolvedPrompt).toEqual({
       source: 'template',
       promptTemplateId: 'tpl-1',
       promptVersionNumber: 1,
-      content: 'SOAP {{context.clinic}}',
+      content: 'SOAP for the clinic.',
     });
+  });
+
+  it('TASK-1036 OD-10 — a template version`s variable declarations are frozen beside its content (form 1 and fragments)', async () => {
+    const declarations = [{ name: 'tone', type: 'string', required: false }];
+    // The body references nothing: publish's undeclared-reference gate reads the AGENT's bindings, not these.
+    putTemplate('tpl-1', 'SOAP for the clinic.', { variables: declarations });
+    const single = await publish({ promptTemplateId: 'tpl-1', promptVersionNumber: 1 });
+    expect((single.resolvedPrompt as { variables?: unknown }).variables).toEqual(declarations);
+
+    const composite = await publish({ fragments: [{ key: 'base', promptTemplateId: 'tpl-1', promptVersionNumber: 1 }] });
+    expect((composite.resolvedPrompt as { fragments: Array<{ variables?: unknown }> }).fragments[0]?.variables).toEqual(declarations);
   });
 
   it('form 2 (inline) still compiles to the flat `inline` shape', async () => {

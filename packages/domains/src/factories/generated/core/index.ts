@@ -100,3 +100,4 @@ export * from './TenantGuardrailPolicyFactory';
 export * from './ModelResidencyPolicyFactory';
 export * from './TenantCheckpointFactory';
 export * from './TenantCheckpointRestoreFactory';
+export * from './ComposedPromptRecordFactory';

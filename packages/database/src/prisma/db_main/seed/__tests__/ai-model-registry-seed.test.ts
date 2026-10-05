@@ -252,9 +252,20 @@ describe('the platform model catalogue (34 SYSTEM rows)', () => {
     });
   });
 
+  // LLM egress redaction: GLiNER2 is zero-shot, so the clinical identifiers the model card does not
+  // name are CONFIGURATION — labels on the row — not training. Both PII rows carry them.
+  it('both GLiNER2 PII rows carry the clinical identifier labels', () => {
+    const clinical = ['medical_record_number', 'patient_id', 'encounter_id', 'staff_id', 'healthcare_facility', 'date_of_birth', 'date_of_service'];
+    for (const slug of ['gliner2-privacy-filter-pii-multi', 'gliner2-guardrails-pii-multi']) {
+      const labels = bySlug(slug)?.metaData?.labelTaxonomy?.labels ?? [];
+      expect(labels, slug).toEqual(expect.arrayContaining(clinical));
+      expect(new Set(labels).size, slug).toBe(labels.length);
+    }
+  });
+
   it('carries the load-bearing metaData payloads over verbatim', () => {
     expect(bySlug('medical-ner')?.metaData?.clinicalTaxonomy?.linker?.vocabulary?.length).toBeGreaterThan(30);
-    expect(bySlug('gliner2-privacy-filter-pii-multi')?.metaData?.labelTaxonomy?.labels).toHaveLength(42);
+    expect(bySlug('gliner2-privacy-filter-pii-multi')?.metaData?.labelTaxonomy?.labels).toHaveLength(48);
     expect(bySlug('gliner2-guardrails-pii-multi')?.metaData?.capabilities).toEqual(['extract_entities', 'classify_text']);
     expect(Object.keys(bySlug('gliguard-llm-guardrails-300m')?.metaData?.labelTaxonomy?.tasks ?? {})).toHaveLength(6);
     expect(bySlug('minicheck-flan-t5-large')?.metaData?.entailment?.adapter).toBe('minicheck-flan-t5');

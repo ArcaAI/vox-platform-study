@@ -2,13 +2,15 @@
  * The typed prompt-variable declarations repeater (TASK-890 §3.6) shared by
  * `CreateTemplateForm`/`EditTemplateForm` — round-trips a declared variable
  * through the create/update request body, and "Derive from content" reads
- * every `{{path}}` reference via `templateReferences` and adds one
- * declaration per ROOT name (`{{a.b}}` derives `a`, not `a.b`).
+ * the shared `deriveVariableDeclarations` and adds one declaration per
+ * ROOT name (`{{a.b}}` derives `a`, not `a.b`). Derive v2 specifics live in
+ * `derive-variables-v2.task1036.test.tsx`.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
+import { setTemplateEditorValue } from '@/test/template-editor';
 import { CreateTemplateForm, EditTemplateForm } from '../template-form-dialog';
 import type { PromptTemplate } from '../../api/types';
 
@@ -74,31 +76,31 @@ describe('PromptVariablesEditor — create form', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'New Template' } });
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'Summarize {{topic}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Summarize {{topic}}');
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
     expect(post?.body).toMatchObject({ variables: [{ name: 'topic', type: 'string', required: false }] });
   });
 
-  it('"Derive from content" adds the ROOT name for a dotted reference, with a hint noting the full path', () => {
+  it('"Derive from content" adds the ROOT name for a dotted reference', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'Age: {{trigger.patient.age}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'Age: {{patient.age}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
-    expect(screen.getByDisplayValue('trigger')).toBeTruthy();
-    expect(screen.getByDisplayValue('Referenced as {{trigger.patient.age}}')).toBeTruthy();
+    expect(screen.getByDisplayValue('patient')).toBeTruthy();
+    expect(screen.queryByDisplayValue('patient.age')).toBeNull();
   });
 
   it('"Derive from content" never adds a duplicate for a name already declared', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: '{{topic}} and {{topic}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), '{{topic}} and {{topic}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
     expect(screen.getAllByDisplayValue('topic')).toHaveLength(1);
@@ -107,7 +109,7 @@ describe('PromptVariablesEditor — create form', () => {
   it('a declared-with-default reference derives as NOT required', () => {
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: '{{topic | default("general")}}' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), '{{topic | default("general")}}');
     fireEvent.click(screen.getByRole('button', { name: /derive from content/i }));
 
     const requiredSwitch = screen.getByLabelText('Req.');
@@ -123,12 +125,12 @@ describe('PromptVariablesEditor — create form', () => {
 
     renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'x' } });
-    fireEvent.change(screen.getByLabelText(/prompt content/i), { target: { value: 'x' } });
+    setTemplateEditorValue(screen.getByRole('textbox', { name: /prompt content/i }), 'x');
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'topic' } });
-    fireEvent.click(screen.getByRole('button', { name: /remove/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^remove topic$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create hope prompt/i }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
@@ -139,6 +141,7 @@ describe('PromptVariablesEditor — create form', () => {
 describe('PromptVariablesEditor — edit form', () => {
   it('initializes from declaredVariables and PATCHes the edited array', async () => {
     const existing = template({
+      content: 'Summarize {{topic}}',
       declaredVariables: [{ name: 'topic', type: 'string', required: true }],
     });
     const calls = stubFetch((call) => {
@@ -181,5 +184,16 @@ describe('PromptVariablesEditor — accessibility', () => {
     fireEvent.click(screen.getByRole('button', { name: /add variable/i }));
     expect(await axe(container)).toHaveNoViolations();
     document.documentElement.classList.remove('dark');
+  });
+});
+
+describe('PromptVariablesEditor — announcement region (E4b)', () => {
+  it('keeps its polite status region in the accessibility tree when empty (sr-only, never display:none)', () => {
+    renderWithProviders(<CreateTemplateForm onCreated={vi.fn()} onCancel={vi.fn()} />);
+    const region = screen.getByText(/Optional variables render empty/).nextElementSibling as HTMLElement;
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.textContent).toBe('');
+    expect(region.className).toContain('sr-only');
+    expect(region.className).not.toMatch(/(^|\s)(empty:)?hidden(\s|$)/);
   });
 });

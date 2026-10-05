@@ -6,9 +6,14 @@
  * over cache cleverness (rule 13). No `fetch` in `useEffect` anywhere in this feature.
  */
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  activateDefinition,
   cloneWorkflowDefinition,
+  createDraftFrom,
+  deprecateDefinition,
+  listWorkflowLineages,
+  listWorkflowTags,
   createWorkflowAssignment,
   createWorkflowDefinition,
   deleteWorkflowAssignment,
@@ -30,6 +35,7 @@ import {
   updateWorkflowAssignment,
   validateWorkflowDefinition,
   type ListWorkflowDefinitionsParams,
+  type ListWorkflowLineagesParams,
 } from './client';
 import { listAgentOptions, listContextSchemaVersions, getWorkflowSchema } from './client';
 import { workflowStudioKeys } from './keys';
@@ -266,5 +272,75 @@ export function useImportWorkflowDefinition() {
   return useMutation({
     mutationFn: (body: ImportWorkflowDefinitionRequest) => importWorkflowDefinition(body),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: workflowStudioKeys.root }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TASK-1036 §3.3/§3.4 — the management screen's register + lifecycle verbs.
+// Every key roots at ['workflow-studio'], so one invalidation refreshes the register, the
+// version lists and the studio's own detail reads.
+// ---------------------------------------------------------------------------
+
+/** The register: one row per slug. `keepPreviousData` so paging/filtering never flashes the skeleton. */
+export function useWorkflowLineages(params?: ListWorkflowLineagesParams, enabled = true) {
+  return useQuery({
+    queryKey: workflowStudioKeys.lineages(params),
+    queryFn: () => listWorkflowLineages(params),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}
+
+/** One lineage by slug (`slug[iequals]` is fold-safe) — the drawer / sheet when the row is not on the loaded page. */
+export function useWorkflowLineageBySlug(slug: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...workflowStudioKeys.lineages({ slug }), 'by-slug'],
+    queryFn: async () => {
+      const page = await listWorkflowLineages({ filters: `slug[iequals]:${slug}`, limit: 5, page: 1 });
+      return page.data.find((lineage) => lineage.slug === slug) ?? null;
+    },
+    enabled: enabled && !!slug,
+  });
+}
+
+export function useWorkflowTags(q?: string) {
+  return useQuery({ queryKey: workflowStudioKeys.tags(q), queryFn: () => listWorkflowTags(q), staleTime: 60 * 1000 });
+}
+
+/** Edit-as-new-draft. A 409 `OPEN_DRAFT_EXISTS` is the caller's to handle (`GatewayError.details.draftId`). */
+export function useCreateDraftFrom() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({ mutationFn: (id: string) => createDraftFrom(id), onSuccess: invalidate });
+}
+
+export function useActivateDefinition() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({ mutationFn: (id: string) => activateDefinition(id), onSuccess: invalidate });
+}
+
+export function useDeprecateDefinition() {
+  const invalidate = useInvalidateWorkflowStudio();
+  return useMutation({ mutationFn: (id: string) => deprecateDefinition(id), onSuccess: invalidate });
+}
+
+/** Lets a bulk run (many raw client calls) refresh the register ONCE at the end. */
+export function useInvalidateWorkflowStudioNamespace() {
+  return useInvalidateWorkflowStudio();
+}
+
+/**
+ * Every live version row of one lineage. `GET :id/versions` needs ANY id of the lineage, which the
+ * register supplies (active, else the open draft); a lineage with neither (every version
+ * deprecated) falls back to the per-version list narrowed by the fold-safe `slug[iequals]`.
+ */
+export function useWorkflowLineageVersions(slug: string | null, anchorId: string | null | undefined) {
+  return useQuery({
+    queryKey: anchorId ? workflowStudioKeys.versions(anchorId) : workflowStudioKeys.versionsBySlug(slug ?? ''),
+    queryFn: async () => {
+      if (anchorId) return listWorkflowDefinitionVersions(anchorId);
+      const page = await listWorkflowDefinitions({ filters: `slug[iequals]:${slug}`, limit: 100, page: 1 });
+      return page.data.filter((row) => row.slug === slug);
+    },
+    enabled: !!slug,
   });
 }

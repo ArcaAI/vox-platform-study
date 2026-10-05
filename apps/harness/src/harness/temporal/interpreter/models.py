@@ -23,7 +23,10 @@ NodeStatus = Literal["SUCCEEDED", "DEGRADED", "SKIPPED", "FAILED"]
 # ---------------------------------------------------------------------------
 # Run-level terminal states (contracts/execution-semantics.md)
 # ---------------------------------------------------------------------------
-RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED"]
+# TASK-1038 D-B — `TIMED_OUT`: the walk spent its `caps.maxTotalSeconds` compute budget and the
+# stage in flight was interrupted. Distinct from FAILED (nothing refused the work; it ran out of
+# time) and from CANCELLED (nobody asked it to stop).
+RunStatus = Literal["SUCCEEDED", "DEGRADED", "FAILED", "CANCELLED", "TIMED_OUT"]
 
 
 class NodeActivityInput(BaseModel):
@@ -86,6 +89,27 @@ class NodeActivityInput(BaseModel):
     # from its own `_node_outputs` cache — pure derived state, replay-safe — and empty for every
     # legacy node, so pre-existing fixtures are byte-identical.
     run_context: dict[str, Any] = Field(default_factory=dict)
+    # TASK-1036 / TASK-1038 (lane B1) — the run-protocol v2 and data-contract fields. ALL
+    # additive-optional and set by the walk only under the `task-1038-run-protocol-v2` marker, so
+    # every input recorded before it (and every replay of one) is byte-identical.
+    #: `2` once the run speaks protocol v2: the activity envelope then emits the admin debug
+    #: events (`data.bound`, `binding.warning`, per-field `output.data`, …) and the node's
+    #: public outputs.
+    protocol: int | None = None
+    #: The node's compiled `bindings` (NodeIO name → binding), for `data.bound`'s sources.
+    bindings: dict[str, Any] | None = None
+    #: OD-24 — what of this node reaches the PUBLIC plane: `{"publicFields": [...], "stream": b}`
+    #: (wired into End, or flagged `stream`). Absent = admin trace only.
+    delivery: dict[str, Any] | None = None
+    #: The node's declared `consultation.*` reads, nested (`{"patient": {"age": 41}}`), for the
+    #: prompt scope's `consultation` root. Values only; the read itself was a recorded activity.
+    consultation: dict[str, Any] | None = None
+    #: `run.*` — the run identity fields (`run.now` is `workflow.now()` at this step's start).
+    run_fields: dict[str, Any] | None = None
+    #: Separates a loop body's iterations in dedupe keys (`iter:<n>`); empty at the top level.
+    event_scope: str | None = None
+    #: TASK-1038 — the run's node-output claim-check threshold, when the gateway injected one.
+    output_offload_min_bytes: int | None = None
 
 
 class NodeActivityResult(BaseModel):
@@ -112,6 +136,39 @@ class NodeActivityResult(BaseModel):
     # system prompt a `core.agent` step actually ran with — keys only, never a condition string
     # and never a fragment body. `None` for a non-composite instruction and for every other node.
     prompt_fragments: list[str] | None = None
+    # TASK-1036 §9.1 (lane B1), additive-optional — the NodeIO envelope's metadata, set by the
+    # node-activity envelope: `{"task"?, "usage": {"tokens", "costUnits", "in", "out"},
+    # "timing": {"startedAt", "durationMs"}, "artifacts": [...]}`. The envelope's `outputs` are
+    # NOT duplicated here: they are a projection of `output` (`data_contract.outputs_view`), so
+    # a large note is never carried twice in history.
+    io: dict[str, Any] | None = None
+
+
+class ConsultationReadRequest(BaseModel):
+    """TASK-1036 §9.3 — one node's DECLARED `consultation.*` reads (lane B3b serves the route)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    tenant_id: str
+    node_id: str
+    consultation_id: str
+    paths: list[str]
+    #: `node-start` (default, OD-30) or `run-start`.
+    snapshot: Literal["node-start", "run-start"] = "node-start"
+
+
+class ConsultationReadResult(BaseModel):
+    """What the read returned — recorded in history, so a replay binds the same values."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    values: dict[str, Any] = Field(default_factory=dict)
+    read_at: str | None = None
+    schema_version: int | None = None
+    #: Why the read failed (`ok: false`): the gateway's refusal, never patient data.
+    error: str | None = None
 
 
 class NodeResult(BaseModel):
@@ -206,6 +263,29 @@ def sanitize_run_payload(
     return clean
 
 
+class RunLimits(BaseModel):
+    """TASK-1038 R-3 — the size ceilings a run enforces on its own activity traffic.
+
+    Values come from ``ClaimCheckConfig`` (``HARNESS_CLAIM_CHECK_*``), the same mechanism as the
+    claim-check offload threshold, and are carried on the run's INPUT so the deterministic workflow
+    reads them without any I/O.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    #: The pre-flight guard: an activity input larger than this fails the run by name
+    #: (``PAYLOAD_TOO_LARGE``) instead of wedging on Temporal's own payload-size refusal.
+    activity_input_max_bytes: int = Field(alias="activityInputMaxBytes", gt=0)
+    #: TASK-1038 (lane B3a → B1) — the two thresholds the ACTIVITIES apply, now resolved by the
+    #: gateway (settings registry) and injected with the start. Additive-optional: a run started
+    #: before the injection carries neither, and its activities keep reading the
+    #: `HARNESS_CLAIM_CHECK_*` settings (the one-release transition).
+    node_output_claim_check_min_bytes: int | None = Field(
+        default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
+    )
+    result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
+
+
 class InterpreterInput(BaseModel):
     """WorkflowInterpreter's ``@workflow.run`` input.
 
@@ -238,6 +318,17 @@ class InterpreterInput(BaseModel):
     # gap, not this ticket's fix (a different, actively-reviewed ticket's files) — recorded here
     # so the gap is traceable, not silently papered over.
     payload: dict[str, Any] = Field(default_factory=dict)
+    # TASK-1038 R-3, additive-optional. The payload ceilings the workflow enforces on itself,
+    # resolved from settings by the dispatcher BEFORE the start (the workflow body cannot read
+    # settings). Absent on every run started before TASK-1038 — and on those the walk behaves
+    # exactly as it did, which is what keeps their replay byte-identical.
+    limits: RunLimits | None = None
+    # TASK-1038 (OD-25), additive-optional. `workflowRuns.eventRetentionHours × 3600`, resolved by
+    # the gateway and injected with the start (gateway-resolved injection, never a literal in a
+    # producer). The terminal run event carries it so the event stream expires with its keys.
+    # Absent on a run the gateway started before the injection: its terminal append then passes
+    # `'0'` and the gateway's own `EXPIRE … NX` backstop starts the clock.
+    retention_seconds: int | None = None
 
 
 class InterpreterResult(BaseModel):
@@ -446,6 +537,32 @@ class RunEventSpec(BaseModel):
     failed_node_count: int | None = None
     degraded_node_count: int | None = None
     skipped_node_count: int | None = None
+    #: TASK-1038 D-I — for `workflow.run.completed` only: what each `core.output` node published
+    #: (`{nodeId: output}`), from which the emit activity builds the event's `result` (inline, or
+    #: a claim-check reference). Additive-optional on an ACTIVITY INPUT, like the counts above;
+    #: `None` (every replayed pre-TASK-1038 history, and every run with no output) emits no
+    #: `result` at all.
+    result_outputs: dict[str, dict[str, Any]] | None = None
+    #: TASK-1038 R6 — run protocol v2 facts, all additive-optional on this ACTIVITY INPUT (no new
+    #: command). A spec recorded before them carries none, and the activity then emits the v2
+    #: event with the protocol's neutral values (``attempt`` 1, ``durationMs`` 0, no tokens).
+    label: str | None = None
+    duration_ms: int | None = None
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    #: `run.started` — the published definition this run executes.
+    slug: str | None = None
+    version_number: int | None = None
+    #: Terminal events — the gateway-injected retention (``InterpreterInput.retention_seconds``)
+    #: and the run's inline-result ceiling (``RunLimits.result_inline_max_bytes``).
+    retention_seconds: int | None = None
+    result_inline_max_bytes: int | None = None
+    #: A fixed SCREAMING_SNAKE run error code (``run_protocol.RUN_ERROR_MESSAGES``); the free
+    #: text stays in ``reason`` and travels as the admin-only ``error.detail``.
+    error_code: str | None = None
+    #: A node the workflow ran itself (a review child, a loop child): its declared outputs, for
+    #: the admin trace's per-node ``output.data`` (protocol-v2.md §5).
+    outputs: dict[str, Any] | None = None
 
 
 class RunEventBatch(BaseModel):
@@ -490,6 +607,10 @@ class ResolvedAgentModel(BaseModel):
     compute_type: str | None = Field(default=None, alias="computeType")
     local_path: str | None = Field(default=None, alias="localPath")
     checksum: str | None = None
+    #: TASK-1035 §5.0 — ``AiModel.deploymentKind`` (``SELF_HOSTED`` / ``CLOUD`` / ``BYOK``), the
+    #: ONLY source of the ``provider_locality`` stamp sent to ``apps/text``. Absent on a resolve
+    #: answer that does not carry it, in which case no stamp is sent and text decides.
+    deployment_kind: str | None = Field(default=None, alias="deploymentKind")
 
 
 class ResolvedPromptFragment(BaseModel):
@@ -509,6 +630,9 @@ class ResolvedPromptFragment(BaseModel):
     when: str | None = None
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+    #: TASK-1036 OD-10 — the template version's variable DECLARATIONS, frozen at agent publish.
+    #: Absent (``[]``) on an artifact frozen before the field existed.
+    variables: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ResolvedPrompt(BaseModel):
@@ -535,6 +659,8 @@ class ResolvedPrompt(BaseModel):
     fragments: list[ResolvedPromptFragment] = Field(default_factory=list)
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
+    #: TASK-1036 OD-10 — a ``template`` prompt's variable declarations, frozen at publish.
+    variables: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _registry_models(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -753,6 +879,16 @@ class CoreLoopInput(BaseModel):
     #: template variables inside the body read it.
     run_context: dict[str, Any] = Field(default_factory=dict)
     state: CoreLoopState = Field(default_factory=CoreLoopState)
+    #: TASK-1038 R6, additive-optional: `2` when the parent run speaks protocol v2 — the body's
+    #: node activities then emit their admin events, scoped per iteration (`iter:<n>`).
+    protocol: int | None = None
+    #: TASK-1038 lane E3, additive-optional: the body nodes' declared `runStart` consultation
+    #: reads, taken ONCE by the parent before its walk — values by node id, keyed by full path
+    #: (`consultation.visitType`), and the reads that failed (node id → reason). Both empty for
+    #: every loop started before the `task-1038-loop-run-start-reads` marker, so a replayed
+    #: history's body walk is unchanged. Carried across `continue_as_new` with the rest.
+    run_start_reads: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    run_start_read_failures: dict[str, str] = Field(default_factory=dict)
 
 
 class CoreLoopResult(BaseModel):
@@ -838,3 +974,25 @@ class LiveOutputsResult(BaseModel):
     ended_at: str | None = Field(default=None, alias="endedAt")
     outputs: dict[str, dict[str, Any]] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
+
+
+class ContextPathRequest(BaseModel):
+    """TASK-1038 R-3 — resolve one dotted path of a run context that crosses a reference.
+
+    The workflow cannot read a claim-checked value, so ``interpreter.resolve_context_path`` does
+    it: dereference what the path walks through, then resolve it. ``run_payload`` is what the
+    run context's ``$hopeRunPayload`` sentinel (if any) stands for.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_context: dict[str, Any] = Field(default_factory=dict)
+    run_payload: dict[str, Any] = Field(default_factory=dict)
+    path: str
+
+
+class ContextPathResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    found: bool = False
+    value: Any = None

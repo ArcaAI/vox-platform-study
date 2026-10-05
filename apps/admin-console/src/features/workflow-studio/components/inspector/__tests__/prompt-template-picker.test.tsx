@@ -35,13 +35,13 @@ describe('PromptTemplatePicker (workflow-studio wrapper)', () => {
   it('renders the shared picker, labelled "Prompt template"', async () => {
     stubFetch();
     renderWithProviders(<PromptTemplatePicker id="p1" value="" onChange={vi.fn()} />);
-    expect(await screen.findByText('Prompt template')).toBeTruthy();
+    expect(await screen.findByText('Hope Prompt')).toBeTruthy();
   });
 
   it('the deep link targets /prompt-templates?template=<id>, once a template is selected — RED before TASK-890 (was a static /prompt-templates href)', async () => {
     stubFetch();
     renderWithProviders(<PromptTemplatePicker id="p1" value="t-1" onChange={vi.fn()} />);
-    const link = (await screen.findByRole('link', { name: /open in prompt templates/i })) as HTMLAnchorElement;
+    const link = (await screen.findByRole('link', { name: /open in Hope Prompts/i })) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/prompt-templates?template=t-1');
   });
 
@@ -50,7 +50,7 @@ describe('PromptTemplatePicker (workflow-studio wrapper)', () => {
     const onChange = vi.fn();
     renderWithProviders(<PromptTemplatePicker id="p1" value="" onChange={onChange} />);
 
-    const trigger = await screen.findByLabelText('Prompt template');
+    const trigger = await screen.findByLabelText('Hope Prompt');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     const listbox = await screen.findByRole('listbox');
     fireEvent.click(within(listbox).getByRole('option', { name: /Discharge summary/ }));

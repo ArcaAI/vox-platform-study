@@ -27,7 +27,6 @@ derived from ``row.tenantId``, so it would mis-bill silently rather than fail.
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 from collections.abc import Callable
@@ -39,8 +38,8 @@ import structlog
 from temporalio import activity
 
 from harness.core.config import get_settings
-from harness.guards.phi.egress import ensure_egress_safe
-from harness.guards.phi.redactor import PhiEgressBlocked
+from harness.core.llm_egress import egress_counts, known_phi_from, provider_locality
+from harness.services import composed_prompt_recorder
 from harness.services.api_client import ApiServiceError
 from harness.services.nlp_client import NlpServiceError
 from harness.services.text_client import TextServiceError, usage_detail_counters
@@ -49,17 +48,17 @@ from harness.temporal.activities import (
     _api_client,
     _config_snapshot,
     _nlp_client,
-    _phi_redactor,
     _text_client,
     failed_attempt_stats,
 )
 from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
-from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
-from harness.temporal.interpreter.guardrail_optout import (
-    GuardrailDecision,
-    guardrail_opt_out_of,
-    resolve_guardrail_decision,
+from harness.temporal.interpreter.compose_messages import (
+    ComposedMessages,
+    compose_messages,
+    platform_rules,
 )
+from harness.temporal.interpreter.data_contract import outputs_view
+from harness.temporal.interpreter.expressions import evaluate_condition, evaluate_expression
 from harness.temporal.interpreter.models import (
     RESERVED_RUN_IDENTITY_KEYS,
     EvaluateExpressionInput,
@@ -69,6 +68,7 @@ from harness.temporal.interpreter.models import (
     ResolvedAgent,
     ResolvedClassificationModel,
 )
+from harness.temporal.interpreter.nodes import agent_version_cache
 from harness.temporal.interpreter.nodes._consultation_shared import run_identity
 from harness.temporal.interpreter.nodes._shared import (
     MISSING,
@@ -91,19 +91,32 @@ from harness.temporal.interpreter.nodes._text_fallback import (
     wire_provider,
 )
 from harness.temporal.interpreter.output_language import (
-    append_default_output_language_step,
+    OutputLanguage,
     output_language_policy_selected,
     resolve_platform_output_language,
 )
 from harness.temporal.interpreter.prompt_composition import (
     ComposedPrompt,
     PromptCompositionEmpty,
-    compose_prompt,
+    build_prompt_scope,
+    resolved_prompt_variable_declarations,
 )
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
-from harness.temporal.models import HarnessPolicy
 
 _LOGGER = structlog.get_logger(__name__)
+
+
+class ContextSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run payload does not match the trigger's declared context schema.
+
+    A NAMED type so the interpreter's retry policy can list it as non-retryable (Temporal matches
+    on the failure type, i.e. this class name): the same payload is refused on every attempt.
+    """
+
+
+class OutputSchemaViolation(RuntimeError):
+    """TASK-1038 R-5 — the run result does not match ``core.output``'s declared schema. Named
+    for the same reason as :class:`ContextSchemaViolation`."""
 
 
 def _config(payload: NodeActivityInput) -> dict[str, Any]:
@@ -111,14 +124,63 @@ def _config(payload: NodeActivityInput) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
+#: TASK-1036 §9.1 — a `core.agent`'s NodeIO inputs whose value the agent arms read as `in`:
+#: a text agent's `message`, a speech / entity agent's `text` (`bindings.legacyInputName`).
+_AGENT_PRIMARY_INPUTS = ("message", "text")
+
+
 def _bound(payload: NodeActivityInput) -> dict[str, Any]:
     bound = getattr(payload, "bound_inputs", None)
-    return bound if isinstance(bound, dict) else {}
+    if not isinstance(bound, dict):
+        return {}
+    if getattr(payload, "node_type", None) == "core.agent" and "in" not in bound:
+        # A node bound by NodeIO name (compiled `bindings`) hands its primary text over as
+        # `message` / `text`; the agent arms read the legacy port name. Same value, one place.
+        for name in _AGENT_PRIMARY_INPUTS:
+            if name in bound:
+                return {**bound, "in": bound[name]}
+    return bound
 
 
 def _run_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context `{trigger, vars, nodes}`. Under run protocol v2 (`nodeMeta` present) each
+    `nodes.<id>` also serves its NodeIO `outputs` — the dual scope, one release (TASK-1036): a
+    PROJECTION of the stored output built here, never a second copy carried in history."""
     context = getattr(payload, "run_context", None)
-    return context if isinstance(context, dict) else {}
+    if not isinstance(context, dict):
+        return {}
+    meta = context.get("nodeMeta")
+    nodes = context.get("nodes")
+    if not isinstance(meta, dict) or not isinstance(nodes, dict):
+        return context
+    served: dict[str, Any] = {}
+    for node_id, output in nodes.items():
+        raw_info = meta.get(node_id)
+        info: dict[str, Any] = raw_info if isinstance(raw_info, dict) else {}
+        if isinstance(output, dict) and "outputs" not in output:
+            view = outputs_view(str(info.get("type") or ""), output, task=info.get("task"))
+            served[node_id] = {**output, "outputs": view}
+        else:
+            served[node_id] = output
+    return {**context, "nodes": served}
+
+
+def _scope_context(payload: NodeActivityInput) -> dict[str, Any]:
+    """The run context plus the v2 prompt roots (`consultation`, `run`) and the marker that turns
+    on override rendering (TASK-1036). Byte-identical to `_run_context` off protocol v2."""
+    context = _run_context(payload)
+    if getattr(payload, "protocol", None) != 2:
+        return context
+    extra: dict[str, Any] = {_V2_SCOPE: True}
+    if isinstance(payload.consultation, dict):
+        extra["consultation"] = payload.consultation
+    if isinstance(payload.run_fields, dict):
+        extra["run"] = payload.run_fields
+    return {**context, **extra}
+
+
+#: Marks a scope context built under run protocol v2 (`_scope_context`).
+_V2_SCOPE = "$hopeV2Scope"
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -276,9 +338,16 @@ async def interpreter_core_trigger(payload: NodeActivityInput) -> NodeActivityRe
     if not isinstance(declared, dict):
         declared = schema.get("inline") if isinstance(schema, dict) else None
     violation = _schema_violation(declared, _authored_context(context))
+    await _admin_event(
+        payload,
+        "input.validated",
+        {"valid": violation is None, "problems": [] if violation is None else [violation]},
+        "input-validated",
+        node_scoped=False,
+    )
     if violation is not None:
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
-        raise RuntimeError(
+        raise ContextSchemaViolation(
             f"core.trigger: run payload violates the declared context schema: {violation}"
         )
     await record_and_flush(payload, status=STATUS_OK, started=started)
@@ -725,93 +794,10 @@ def _bound_context_payload_schema(resolved: ResolvedAgent) -> Any:
     return schema.get("payloadSchema") if isinstance(schema, dict) else None
 
 
-def _prompt_scope(
-    variables: dict[str, Any],
-    run_context: dict[str, Any],
-    context_payload_schema: Any = None,
-) -> dict[str, Any]:
-    """The render scope of §3.3, built once so both call shapes agree.
-
-    Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, the bare names bound by the agent's
-    ``instruction.variables`` (overlaid by the node's ``overrides.promptVariables``), and
-    ``context`` as an ALIAS of ``trigger`` — unwrapped through ``_unwrap_single_kind_context``
-    when the agent's frozen schema declares a single kind keyed ``context`` (J3-5).
-
-    The alias is what makes ONE prompt portable between a workflow run — where the validated
-    payload arrives as ``trigger`` — and a standalone ``POST /agents/:slug/invocations``, where
-    the caller supplies it as ``context``. It is applied BEFORE the bare names, so an agent that
-    genuinely declares a variable called ``context`` still wins; and it is skipped when the run
-    published no trigger, because binding an empty object would turn "this run has no trigger"
-    into "this field does not exist", which are different findings for the author.
-
-    ``variables`` also stays reachable under its own key: the pre-890 scope exposed it that way
-    and a seeded instruction may reference ``{{variables.x}}``.
-
-    Each ``variables`` entry is a BINDING — ``{"value": …}`` is a literal, ``{"path": …}`` is a
-    reference resolved against the roots — or a plain value (which is what an
-    ``overrides.promptVariables`` entry supplies). Resolution happens BEFORE the bare names are
-    assigned, so ``{{age}}`` and ``{{context.patientAge}}`` are the same value (§3.3) and a
-    binding never sees another bare name. Mirrors ``buildAgentPromptScope``
-    (``packages/applications/src/services/agent/agent-prompt-scope.ts``): the durable lane, the
-    realtime lane, the invocation route and the draft bench must render one agent one way.
-    """
-    scope: dict[str, Any] = dict(run_context)
-    trigger = run_context.get("trigger")
-    if isinstance(trigger, dict):
-        # J3-5 — the alias is the CONTEXT VIEW of the payload, which under the single-kind rule
-        # is the kind itself rather than the envelope wrapping it. ``trigger`` stays the run
-        # payload verbatim: on a workflow lane that root IS what ``core.trigger`` validated, and
-        # the two roots being different views is the honest answer.
-        scope["context"] = _unwrap_single_kind_context(context_payload_schema, trigger)
-    resolved = {
-        name: _resolve_binding(binding, scope, f"instruction.variables.{name}")
-        for name, binding in variables.items()
-    }
-    scope.update(resolved)
-    scope["variables"] = resolved
-    return scope
-
-
-def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:
-    """One ``instruction.variables`` entry, resolved against the roots.
-
-    ``{"value": <str>}`` is a literal and ``{"path": <str>}`` a reference; anything else — a
-    plain string an override supplied, a number, a shape nobody declared — is the value itself.
-    A ``{"path"}`` that resolves to nothing raises ``PromptVariableUnresolved`` NAMING THE PATH,
-    which the activity turns into a DEGRADED step: a binding that silently vanished is how a
-    prompt loses a variable with nobody noticing.
-    """
-    if not isinstance(binding, dict):
-        return binding
-    if isinstance(binding.get("value"), str):
-        return binding["value"]
-    path = binding.get("path")
-    if isinstance(path, str):
-        return render_template("{{" + path + "}}", scope, template_ref=template_ref)
-    return binding
-
-
-def _compose_system_prompt(
-    resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
-) -> ComposedPrompt:
-    """The agent's instruction, rendered through the ONE grammar (§3.2) over the §3.3 scope: the
-    run env's ``trigger`` / ``vars`` / ``nodes`` (plus the ``context`` alias) and the agent's own
-    bound variables, overlaid by the node's ``overrides.promptVariables`` (node wins).
-
-    TASK-947 §4.1 — a COMPOSITE instruction goes through ``compose_prompt``: its fragments are
-    selected against the SAME scope the template renders against, each is rendered on its own,
-    and the results are joined. The two single-body shapes keep the pre-947 path byte for byte.
-    The composite branch is taken BEFORE the candidate chain below, because a composite's
-    ``content`` is the static projection (OD-3) — rendering it would silently drop every
-    conditional fragment.
-
-    Raises ``PromptVariableUnresolved`` when a placeholder resolves to nothing and declares no
-    ``default("…")``, and ``PromptCompositionEmpty`` when no fragment was selected (OD-6). The
-    caller degrades the step on either — a prompt that silently lost a variable, that shipped a
-    literal ``{{…}}`` to the model, or that arrived empty, is the failure this replaces.
-    """
+def _agent_variables(resolved: ResolvedAgent, config: dict[str, Any]) -> dict[str, Any]:
+    """The agent's own ``instruction.variables``, overlaid by the node's
+    ``overrides.promptVariables`` (node wins)."""
     instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
-    compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
     variables: dict[str, Any] = {}
     declared = instruction.get("variables")
     if isinstance(declared, dict):
@@ -819,22 +805,100 @@ def _compose_system_prompt(
     overrides = config.get("overrides")
     if isinstance(overrides, dict) and isinstance(overrides.get("promptVariables"), dict):
         variables.update(overrides["promptVariables"])
-    template_ref = f"agent:{resolved.slug}"
+    return variables
 
-    if resolved.resolved_prompt is not None and resolved.resolved_prompt.source == "composite":
-        return compose_prompt(
-            resolved.resolved_prompt,
-            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
-            template_ref=template_ref,
+
+def _agent_prompt_scope(
+    resolved: ResolvedAgent, config: dict[str, Any], run_context: dict[str, Any]
+) -> dict[str, Any]:
+    """The render scope of §3.3 — ``build_prompt_scope``, the ONE scope every lane shares.
+
+    Roots: the run env's ``trigger`` / ``vars`` / ``nodes``, plus ``context``. On this lane
+    ``trigger`` is the run payload verbatim and ``context`` its CONTEXT VIEW — unwrapped through
+    ``_unwrap_single_kind_context`` when the agent's frozen schema declares a single kind keyed
+    ``context`` (J3-5) — so both are supplied and ``build_prompt_scope`` keeps them as given. With
+    no trigger published neither root is bound: "this run has no trigger" and "this field does
+    not exist" are different findings for the author.
+
+    The bare names come from :func:`_agent_variables`; each is a ``{"value"}`` literal, a
+    ``{"path"}`` reference resolved against the roots (an unresolved one raises
+    ``PromptVariableUnresolved`` naming the path), or a plain value. They are bound AFTER the
+    roots, so an agent that declares a variable called ``context`` still wins its own name.
+    """
+    trigger = run_context.get("trigger")
+    trigger_view = trigger if isinstance(trigger, dict) else None
+    context_view: dict[str, Any] | None = None
+    if trigger_view is not None:
+        unwrapped = _unwrap_single_kind_context(_bound_context_payload_schema(resolved), trigger)
+        context_view = unwrapped if isinstance(unwrapped, dict) else trigger_view
+    vars_root = run_context.get("vars")
+    nodes_root = run_context.get("nodes")
+    variables = _agent_variables(resolved, config)
+    vars_view = vars_root if isinstance(vars_root, dict) else None
+    nodes_view = nodes_root if isinstance(nodes_root, dict) else None
+    if run_context.get(_V2_SCOPE) is not True:
+        return build_prompt_scope(
+            variables=variables,
+            trigger=trigger_view,
+            context=context_view,
+            vars=vars_view,
+            nodes=nodes_view,
         )
+    # TASK-1036 (lane B1) — under run protocol v2 the scope also carries the `consultation` and
+    # `run` roots, and an `overrides.promptVariables` string containing `{{…}}` is RENDERED
+    # against the run scope (it used to be bound LITERALLY: `{{nodes.x.text}}` reached the model
+    # as those characters). An unresolved, undefaulted path raises `PromptVariableUnresolved`
+    # naming it, exactly like the instruction's own placeholders.
+    extra_roots = {
+        name: run_context[name]
+        for name in ("consultation", "run")
+        if isinstance(run_context.get(name), dict)
+    }
+    base = {
+        **build_prompt_scope(
+            trigger=trigger_view, context=context_view, vars=vars_view, nodes=nodes_view
+        ),
+        **extra_roots,
+    }
+    overrides = config.get("overrides")
+    prompt_variables = overrides.get("promptVariables") if isinstance(overrides, dict) else None
+    for key, value in (prompt_variables or {}).items():
+        if isinstance(value, str) and "{{" in value:
+            variables[key] = render_template(
+                value, base, template_ref=f"overrides.promptVariables.{key}"
+            )
+    scope = build_prompt_scope(
+        variables=variables,
+        trigger=trigger_view,
+        context=context_view,
+        vars=vars_view,
+        nodes=nodes_view,
+        # TASK-1036 OD-10 (lane B6b) — the frozen template declarations: an absent OPTIONAL
+        # variable renders "" (or its default); a required one still fails by name.
+        variable_declarations=resolved_prompt_variable_declarations(resolved.resolved_prompt),
+    )
+    for name, root in extra_roots.items():
+        scope.setdefault(name, root)
+    return scope
 
+
+def _agent_resolved_prompt(resolved: ResolvedAgent) -> Any | None:
+    """The instruction ``compose_messages`` renders, or ``None`` when the agent carries none.
+
+    TASK-947 §4.1 — a COMPOSITE instruction is passed as resolved, because its ``content`` is the
+    static projection (OD-3): reading it would silently drop every conditional fragment.
+    Otherwise the first non-empty body wins, as one inline instruction: the gateway-resolved
+    prompt (TASK-863 resolves a pinned template version, or the inline prompt, once,
+    gateway-side), then the raw instruction fields, then the compiled ones.
+    """
+    if resolved.resolved_prompt is not None and resolved.resolved_prompt.source == "composite":
+        return resolved.resolved_prompt
+    instruction = resolved.instruction if isinstance(resolved.instruction, dict) else {}
+    compiled = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
     template = next(
         (
             value
             for value in (
-                # TASK-863 resolves the instruction (a pinned template version's content, or
-                # the inline prompt) once, gateway-side — that text wins over re-reading the
-                # raw instruction here.
                 resolved.resolved_prompt.content if resolved.resolved_prompt is not None else None,
                 instruction.get("systemPrompt"),
                 instruction.get("resolvedPrompt"),
@@ -846,14 +910,59 @@ def _compose_system_prompt(
         ),
         None,
     )
-    if template is None:
-        return ComposedPrompt(prompt=None)
+    return None if template is None else {"source": "inline", "content": template}
+
+
+def _compose_agent_messages(
+    resolved: ResolvedAgent,
+    config: dict[str, Any],
+    run_context: dict[str, Any],
+    *,
+    data_blocks: list[dict[str, Any]] | None = None,
+    output_language: OutputLanguage | None = None,
+    rules: str | None = None,
+) -> tuple[ComposedMessages, bool]:
+    """The agent's request, composed by ``compose_messages`` — ``(messages, policy_selected)``.
+
+    SYSTEM = ``platform_rules()`` → the composed instruction → the output-language step. There is
+    no output-contract layer on this lane: the declared ``outputSchema`` travels as
+    ``response_format``. USER = ``data_blocks``, wrapped, in the given order.
+
+    TASK-1001 (OD-12) — the language step is decided per CANDIDATE, because a fallback carries
+    its own instruction: a SELECTED tenant ``output_language_policy`` fragment owns the language
+    (no step); otherwise ``output_language`` — the platform default — is stated by name. Which
+    fragments are selected is known only once the instruction is composed, so the composition
+    runs once to learn it and once more with the step; both passes are pure.
+
+    Raises ``PromptVariableUnresolved`` (EVERY missing path of the selected instruction, or the
+    one path of an unresolved ``{"path"}`` binding) and ``PromptCompositionEmpty`` (OD-6); the
+    caller degrades the step on either.
+    """
+    kwargs: dict[str, Any] = {
+        "platform_rules": platform_rules() if rules is None else rules,
+        "resolved_prompt": _agent_resolved_prompt(resolved),
+        "scope": _agent_prompt_scope(resolved, config, run_context),
+        "data_blocks": data_blocks,
+        "template_ref": f"agent:{resolved.slug}",
+    }
+    if run_context.get(_V2_SCOPE) is True:
+        # TASK-1036 OD-10 — under run protocol v2 a whitespace-only data block is dropped too.
+        kwargs["drop_empty_blocks"] = True
+    composed = compose_messages(**kwargs)
+    policy_selected = output_language_policy_selected(composed.selected)
+    if policy_selected or output_language is None:
+        return composed, policy_selected
+    return compose_messages(**kwargs, output_language={"name": output_language.name}), False
+
+
+def _compose_system_prompt(
+    resolved: ResolvedAgent, config: dict[str, Any], context: dict[str, Any]
+) -> ComposedPrompt:
+    """The agent's INSTRUCTION alone — the same composition without the platform rules, the
+    language step or any data — and which fragments composed it. Pure."""
+    composed, _ = _compose_agent_messages(resolved, config, context, rules="")
     return ComposedPrompt(
-        prompt=render_template(
-            template,
-            _prompt_scope(variables, context, _bound_context_payload_schema(resolved)),
-            template_ref=template_ref,
-        )
+        prompt=composed.system or None, selected=composed.selected, excluded=composed.excluded
     )
 
 
@@ -886,11 +995,9 @@ async def _output_language_snapshot() -> Any | None:
 #: have to stay in step; every generation on this lane is caused by one product activity.
 USAGE_TRIGGER_WORKFLOW_RUN = "WORKFLOW_RUN"
 
-#: The screening dispositions the same file declares (`GUARDRAIL_DISPOSITIONS`). Only the two
-#: this lane can honestly decide: `platform_off` is Text's own kill-switch state and is not
-#: observable from here.
+#: The screening disposition the same file declares (`GUARDRAIL_DISPOSITIONS`). TASK-1035 OD-1
+#: removed every guardrail opt-out, so a generation on this lane is always `screened`.
 GUARDRAIL_DISPOSITION_SCREENED = "screened"
-GUARDRAIL_DISPOSITION_OPTED_OUT = "opted_out"
 
 
 def _generation_stats(
@@ -899,7 +1006,6 @@ def _generation_stats(
     provider: str,
     model: str,
     funding_tier: str | None,
-    guardrail: GuardrailDecision,
 ) -> dict[str, Any]:
     """The AD-1 ``GenerationStats`` block, plus the three dimensions this lane owns (pure).
 
@@ -918,9 +1024,11 @@ def _generation_stats(
       (``textPrimary.fundingTier`` / the fallback candidate's own). It is DERIVED, never stamped:
       absent stays absent, because a guessed tier converts tenant-funded spend into platform
       COGS with one wrong literal.
-    * ``guardrail`` — the disposition the node folded ONCE for the whole fallback walk. Only the
-      two levels this lane decides are expressible; ``platform_off`` is Text's own kill-switch
-      state and is not observable from here, so it is never claimed.
+    * ``guardrail`` — always ``screened``: TASK-1035 OD-1 removed the tenant / agent / workflow /
+      node opt-outs, and the platform kill switch went with them (OD-4).
+
+    TASK-1035 §5.0 — ``egress`` is Text's egress report for the call that served, copied as
+    COUNTS only (``harness.core.llm_egress.egress_counts``) and only when Text sent one.
     """
     stats: dict[str, Any] = dict(getattr(result, "stats", None) or {})
     if not stats.get("provider"):
@@ -930,9 +1038,10 @@ def _generation_stats(
     stats["trigger"] = USAGE_TRIGGER_WORKFLOW_RUN
     if funding_tier:
         stats["funding_tier"] = funding_tier
-    stats["guardrail"] = (
-        GUARDRAIL_DISPOSITION_SCREENED if guardrail.enabled else GUARDRAIL_DISPOSITION_OPTED_OUT
-    )
+    stats["guardrail"] = GUARDRAIL_DISPOSITION_SCREENED
+    egress = egress_counts(getattr(result, "egress", None))
+    if egress is not None:
+        stats["egress"] = egress
     # TASK-957 F-6 / TASK-959 §10.2 — the counts AD-1 `GenerationStats` cannot express. Text
     # returns them on the SAME response, in `usage_detail`; the mapper zeroed cache-read,
     # cache-write and reasoning because nothing ever put them on the step, so reasoning-model
@@ -955,6 +1064,22 @@ _CADENCE_ON_END = "onEnd"
 def _execution(config: dict[str, Any]) -> dict[str, Any]:
     execution = config.get("execution")
     return execution if isinstance(execution, dict) else {}
+
+
+#: The live lane's running note is `perTurn`; anything else on this lane is a plain workflow step.
+_CADENCE_PER_TURN = "perTurn"
+
+
+def _record_phase(config: dict[str, Any]) -> str:
+    """OD-9 — the ``phase`` a composed-prompt record carries, from the node's declared cadence:
+    ``onEnd`` is the note (``finalize``), ``perTurn`` the running note (``live``), and any other
+    step is ``workflow``."""
+    cadence = _execution(config).get("cadence")
+    if cadence == _CADENCE_ON_END:
+        return "finalize"
+    if cadence == _CADENCE_PER_TURN:
+        return "live"
+    return "workflow"
 
 
 def _is_consultation_finalizer(payload: NodeActivityInput, config: dict[str, Any]) -> bool:
@@ -1084,7 +1209,6 @@ async def _deterministic_redaction(
     content: str,
     rules: list[Any],
     *,
-    policy: HarnessPolicy | None,
     provider: str | None,
     model: str | None,
 ) -> tuple[str, bool | None, dict[str, Any], str | None]:
@@ -1128,8 +1252,6 @@ async def _deterministic_redaction(
                 response_format=None,
                 provider=provider,
                 model=model,
-                phi_enabled=policy.phi_enabled if policy else True,
-                phi_fail_closed=policy.phi_fail_closed if policy else True,
                 trajectory=payload.trajectory,
             )
         )
@@ -1192,7 +1314,6 @@ async def _persist_finalized_note(
     candidate: ResolvedAgent,
     output: dict[str, Any],
     *,
-    policy: HarnessPolicy | None = None,
     provider: str | None = None,
     model: str | None = None,
 ) -> str | None:
@@ -1247,7 +1368,6 @@ async def _persist_finalized_note(
                 payload,
                 content,
                 rules,
-                policy=policy,
                 provider=provider,
                 model=model,
             )
@@ -1329,27 +1449,34 @@ async def _run_text_generation(
     TASK-1001 (OD-12) — this arm is the durable lane's NOTE writer, so its system prompt states
     the note's OUTPUT language exactly as the realtime lane's ``generateDocument`` does
     (``operatingFrame``): when the candidate's composed instruction SELECTED no
-    ``output_language_policy`` fragment, the platform default's step is appended as the last
-    paragraph. The consultation's declared (SOURCE) language is never consulted. See
-    ``output_language.py``.
+    ``output_language_policy`` fragment, the platform default's step is stated. The
+    consultation's declared (SOURCE) language is never consulted. See ``output_language.py``.
+
+    TASK-1035 — the messages are composed by ``compose_messages``, the one composer every lane
+    shares: SYSTEM = platform rules → instruction → language step; USER = the bound ``in`` and
+    ``context`` as wrapped data blocks (``input`` / ``context``), so transcript text is never
+    read as an instruction.
     """
     config = _config(payload)
     bound = _bound(payload)
     # TASK-1022 — a bound note keeps its headings; see `_render_input_for_generation`.
-    prompt_parts = _render_input_for_generation(bound.get("in"))
+    input_text = "\n\n".join(_render_input_for_generation(bound.get("in")))
     context_values = [value for value in _as_list(bound.get("context")) if value is not None]
-    if context_values:
-        prompt_parts.append(
-            "Context:\n"
-            + json.dumps(
-                context_values if len(context_values) > 1 else context_values[0],
-                ensure_ascii=False,
-                sort_keys=True,
-                indent=2,
-            )
+    context_text = (
+        json.dumps(
+            context_values if len(context_values) > 1 else context_values[0],
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
         )
-    user_prompt = "\n\n".join(prompt_parts)
-    if not user_prompt:
+        if context_values
+        else ""
+    )
+    data_blocks = [
+        {"key": "input", "label": "Input", "content": input_text},
+        {"key": "context", "label": "Context", "content": context_text},
+    ]
+    if not input_text and not context_text:
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="no_bound_text"
         )
@@ -1368,55 +1495,43 @@ async def _run_text_generation(
             status="DEGRADED", reason="core.agent: the resolved agent names no provider/model"
         )
 
-    # PHI egress — the SAME fail-closed guard `generate.text` uses, with the tenant's own flags.
-    try:
-        raw_policy = await _api_client(settings).get_policy(payload.tenant_id)
-        policy = HarnessPolicy.from_api(raw_policy)
-    except ApiServiceError as exc:
-        await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="policy_fetch_unreachable"
-        )
-        return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: effective policy fetch unreachable: {exc}"
-        )
+    # TASK-1035 — PHI egress is `apps/text`'s job now: it pseudonymizes for a cloud provider,
+    # re-identifies the answer and fails CLOSED (no locality stamp ⇒ cloud). The harness Presidio
+    # pass and the policy fetch that only fed it are gone from this lane. What the harness still
+    # owes text is what it KNOWS: each candidate's deployment-kind locality (stamped per call
+    # below) and the identity values this run holds.
+    #
+    # OD-1 — the guardrail opt-out is gone too. A stored node `config.guardrail` or an agent's
+    # `compiledConfig.guardrail` from before the decision is accepted and IGNORED: every call is
+    # screened, and nothing here reads either field.
 
-    # The PRIMARY carries the gateway-derived funding tier when the answer shipped one; the
-    # agent row is otherwise unchanged (same model, prompt, parameters).
-    primary_agent = (
-        resolved
-        if primary is None
-        else resolved.model_copy(update={"funding_tier": primary.funding_tier})
-    )
+    # The PRIMARY carries the gateway-derived funding tier (and, when the answer shipped one, its
+    # deployment kind) from `textPrimary`; the agent row is otherwise unchanged.
+    primary_agent = resolved
+    if primary is not None:
+        primary_agent = resolved.model_copy(update={"funding_tier": primary.funding_tier})
+        if primary_agent.model.deployment_kind is None and primary.deployment_kind:
+            primary_agent = primary_agent.model_copy(
+                update={
+                    "model": primary_agent.model.model_copy(
+                        update={"deployment_kind": primary.deployment_kind}
+                    )
+                }
+            )
     candidates: list[tuple[str, ResolvedAgent]] = [("agent", primary_agent)]
     candidates.extend(
         ("agent-fallback", candidate_as_resolved_agent(candidate))
         for candidate in chain_candidates(fallback)
     )
 
-    # TASK-890 §3.14 (OD-R) — fold the guardrail opt-out ONCE, before the walk: every candidate
-    # of one node carries the same decision, because switching engines on a provider outage must
-    # never change whether the call is screened.
-    #
-    # Two of the three levels are in scope here. The NODE's own `config.guardrail` is authored on
-    # the graph and travels with the activity input; the AGENT's is the gateway-resolved
-    # `compiledConfig.guardrail` (absent on any artifact published before this ticket, which
-    # `resolve_guardrail_decision` reads as silence and therefore as ON). The WORKFLOW default
-    # (`policyBindings.guardrail`) is NOT yet threaded into `NodeActivityInput` by `workflow.py`,
-    # so a workflow-level opt-out is honoured on the realtime lane and inherited-as-ON here — a
-    # lane divergence recorded as a follow-up rather than papered over with a second read.
-    compiled_config = resolved.compiled_config if isinstance(resolved.compiled_config, dict) else {}
-    agent_guardrail = compiled_config.get("guardrail")
-    guardrail_decision = resolve_guardrail_decision(
-        node=guardrail_opt_out_of(config),
-        agent=agent_guardrail.get("enabled") if isinstance(agent_guardrail, dict) else None,
-    )
-
     # The whole walk runs inside ONE activity budget: a switch started too late times the
     # activity out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation
     # that already completed. Never start a candidate whose call cannot finish in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
-    run_context = _run_context(payload)
-    redactor = _phi_redactor()
+    run_context = _scope_context(payload)
+    # TASK-1038 R6/R8 — the admin model trace and the text deltas, under run protocol v2 only.
+    trace = _GenerationTrace(payload) if payload.protocol == 2 and payload.run_id else None
+    known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
     # TASK-1001 (OD-12) — the platform-default note OUTPUT language, read ONCE for the whole walk
     # (every candidate that selects no tenant policy states the same default). Read HERE, inside
     # the activity: it is I/O, and workflow code never sees it — the replayer feeds this
@@ -1442,7 +1557,17 @@ async def _run_text_generation(
         # the fallback chain: every candidate renders the SAME template against the SAME scope,
         # so a switch would re-raise identically while billing nothing but latency.
         try:
-            composed = _compose_system_prompt(candidate, config, run_context)
+            # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own
+            # instruction: a selected tenant policy owns the language (nothing added); otherwise
+            # the platform default is stated by name, after the instruction, overriding any
+            # "write in the conversation language" clause it carries.
+            composed, policy_selected = _compose_agent_messages(
+                candidate,
+                config,
+                run_context,
+                data_blocks=data_blocks,
+                output_language=platform_default,
+            )
         except PromptVariableUnresolved as exc:
             await record_and_flush(
                 payload,
@@ -1467,15 +1592,11 @@ async def _run_text_generation(
                 status="DEGRADED",
                 reason=f"core.agent: prompt_composition_empty: {exc}",
             )
-        # TASK-1001 (OD-12) — per CANDIDATE, because a fallback agent carries its own instruction:
-        # a selected tenant policy owns the language (nothing added); otherwise the platform
-        # default is stated by name, last, overriding any "write in the conversation language"
-        # clause the instruction carries. Appended BEFORE the PHI egress guard below, so what is
-        # screened is exactly what is sent.
-        policy_selected = output_language_policy_selected(composed.selected)
-        system_prompt = append_default_output_language_step(
-            composed.prompt, composed.selected, platform_default
-        )
+        system_prompt = composed.system
+        user_prompt = composed.user
+        streaming = trace is not None and trace.streams_text
+        if trace is not None:
+            await trace.composed(composed, index)
         _LOGGER.info(
             "core.agent.output_language",
             node_id=payload.node_id,
@@ -1494,35 +1615,6 @@ async def _run_text_generation(
                 fragment=exclusion.key,
                 reason=exclusion.reason,
             )
-        try:
-            safe_prompt = ensure_egress_safe(
-                user_prompt,
-                provider=provider,
-                settings=settings,
-                phi_enabled=policy.phi_enabled,
-                phi_fail_closed=policy.phi_fail_closed,
-                redactor=redactor,
-            )
-            safe_system = (
-                ensure_egress_safe(
-                    system_prompt,
-                    provider=provider,
-                    settings=settings,
-                    phi_enabled=policy.phi_enabled,
-                    phi_fail_closed=policy.phi_fail_closed,
-                    redactor=redactor,
-                )
-                if system_prompt
-                else None
-            )
-        except PhiEgressBlocked as exc:
-            await record_and_flush(
-                payload, status=STATUS_DEGRADED, started=started, error_code="phi_egress_blocked"
-            )
-            return NodeActivityResult(
-                status="DEGRADED", reason=f"core.agent: phi egress blocked: {exc}"
-            )
-
         generation = _generation_params(candidate, config)
         parameters = candidate.parameters if isinstance(candidate.parameters, dict) else {}
         response_format = parameters.get("responseFormat")
@@ -1542,24 +1634,46 @@ async def _run_text_generation(
             # `outputSchema` was documentation on this lane: an agent could publish
             # `{ case_note, redactions }` and be handed prose, and its `core.output` node then
             # failed the very schema check the agent could have satisfied.
+            #
+            # TASK-1035 — per CANDIDATE: a fallback agent constrains to its OWN declared schema;
+            # the primary's applies only when the candidate declares none. Sending the primary's
+            # schema to every candidate forced a fallback agent into a contract it never wrote.
             wire_format = output_schema_response_format(
-                resolved.slug, resolved.output_schema, parameters
+                candidate.slug,
+                (
+                    candidate.output_schema
+                    if candidate.output_schema is not None
+                    else resolved.output_schema
+                ),
+                parameters,
             )
 
         attempt_started_at = now()
         attempt_started = perf_counter()
+        if trace is not None:
+            await trace.model_request(provider, model, index, streaming, generation)
+        call_kwargs: dict[str, Any] = {}
+        if streaming and trace is not None:
+            call_kwargs["on_delta"] = trace.delta_sink(index)
+        generate = (
+            _text_client(settings).generate_stream if streaming else _text_client(settings).generate
+        )
         try:
-            result = await _text_client(settings).generate(
+            result = await generate(
+                **call_kwargs,
                 tenant_id=payload.tenant_id,
-                prompt=safe_prompt,
-                system_prompt=safe_system,
+                prompt=user_prompt,
+                system_prompt=system_prompt or None,
                 provider=provider,
                 model=model,
                 temperature=generation.get("temperature"),
                 max_tokens=generation.get("maxTokens"),
                 top_p=generation.get("topP"),
                 response_format=wire_format,
-                guardrail_policy={"enabled": guardrail_decision.enabled},
+                # TASK-1035 §5.0 — per CANDIDATE, from ITS deployment kind only; absent ⇒ no
+                # stamp and text fails closed to cloud.
+                provider_locality=provider_locality(provider, candidate.model.deployment_kind),
+                known_phi=known_phi,
                 # TASK-958 G3 — THIS candidate's own connection. The gateway resolved it from
                 # the model row's `sourceConnectionId`, so a sibling-bound agent authenticates
                 # as the account it names; without it the client fell back to a lookup by
@@ -1588,6 +1702,21 @@ async def _run_text_generation(
             )
             continue
 
+        # OD-9 — what was SENT, for incident reconstruction. Fire-and-forget: it never fails or
+        # delays this step.
+        composed_prompt_recorder.record_composed_prompt(
+            tenant_id=payload.tenant_id,
+            consultation_id=run_identity(payload.run_payload).consultation_id,
+            agent_slug=candidate.slug,
+            phase=_record_phase(config),
+            provider=result.provider or provider,
+            egress=getattr(result, "egress", None),
+            system=system_prompt,
+            user=user_prompt,
+        )
+
+        if trace is not None:
+            await trace.guardrails(result, index)
         output: dict[str, Any] = {
             "text": result.content,
             "provider": result.provider or provider,
@@ -1596,12 +1725,9 @@ async def _run_text_generation(
             "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
             "selectionSource": selection_source,
             "fundingTier": candidate.funding_tier,
-            # §3.14 record (c): the step result says whether this generation was screened and
-            # WHICH level decided, so a trajectory answers the question without re-deriving it.
-            "guardrail": {
-                "enabled": guardrail_decision.enabled,
-                "source": guardrail_decision.source,
-            },
+            # §3.14 record (c), kept in shape for its readers. TASK-1035 OD-1: there is no
+            # opt-out left to decide, so every generation is screened by platform default.
+            "guardrail": {"enabled": True, "source": "default"},
         }
         if wire_format is not None:
             try:
@@ -1631,7 +1757,6 @@ async def _run_text_generation(
                 provider=provider,
                 model=model,
                 funding_tier=candidate.funding_tier,
-                guardrail=guardrail_decision,
             ),
         )
 
@@ -1649,16 +1774,15 @@ async def _run_text_generation(
         # already completed. The note still reaches the review gate and the output node, and the
         # reason names what did not happen.
         if _is_consultation_finalizer(payload, config):
-            # The provider/model/PHI policy are the ones THIS generation already resolved —
-            # threaded rather than re-resolved, so the optional semantic-rewrite half of the
-            # redaction runs against the same engine that wrote the note. `wire_format` is
-            # deliberately NOT threaded: it describes the finalizer's DOCUMENT, and what the
-            # redaction transforms is the bare `case_note` string inside it.
+            # The provider/model are the ones THIS generation already resolved — threaded rather
+            # than re-resolved, so the optional semantic-rewrite half of the redaction runs
+            # against the same engine that wrote the note. `wire_format` is deliberately NOT
+            # threaded: it describes the finalizer's DOCUMENT, and what the redaction transforms
+            # is the bare `case_note` string inside it.
             failure = await _persist_finalized_note(
                 payload,
                 candidate,
                 output,
-                policy=policy,
                 provider=provider,
                 model=model,
             )
@@ -1668,9 +1792,13 @@ async def _run_text_generation(
                     reason=f"core.agent: {failure}",
                     output=output,
                     prompt_fragments=prompt_fragments,
+                    io=_streamed_io(streaming),
                 )
         return NodeActivityResult(
-            status="SUCCEEDED", output=output, prompt_fragments=prompt_fragments
+            status="SUCCEEDED",
+            output=output,
+            prompt_fragments=prompt_fragments,
+            io=_streamed_io(streaming),
         )
 
     if exhausted:
@@ -1701,6 +1829,188 @@ async def _run_text_generation(
         status="DEGRADED",
         reason=f"core.agent: text generate failed on every resolved candidate: {last_error}",
     )
+
+
+async def _admin_event(
+    payload: NodeActivityInput,
+    event_type: str,
+    data: dict[str, Any],
+    intent: str,
+    *,
+    node_scoped: bool = True,
+) -> None:
+    """One admin-trace event (run protocol v2 only; best-effort, never raises)."""
+    if payload.protocol != 2 or not payload.run_id:
+        return
+    from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+    from harness.temporal.interpreter.node_events import attempt_of  # noqa: PLC0415
+    from harness.temporal.interpreter.run_events import v2_node_key  # noqa: PLC0415
+
+    await run_event_producer().append(
+        run_id=payload.run_id,
+        type=event_type,
+        node_id=payload.node_id if node_scoped else None,
+        data=data,
+        dedupe_key=v2_node_key(
+            payload.run_id, payload.node_id, attempt_of(), intent, payload.event_scope or ""
+        ),
+    )
+
+
+def _streamed_io(streaming: bool) -> dict[str, Any] | None:
+    return {"streamed": ["text"]} if streaming else None
+
+
+class _GenerationTrace:
+    """TASK-1038 R6/R8 — what a text generation reports on the run stream (run protocol v2).
+
+    Admin: ``prompt.composed`` (layer SIZES only — the content is read through the Prompt
+    Inspector), ``model.request`` per candidate, ``guardrail.inbound`` / ``guardrail.outbound``
+    from the text service's report. Public: ``output.text.delta { field: 'text' }`` for a node
+    wired into End or flagged ``stream`` (OD-24), generated with ``stream: true``.
+    """
+
+    def __init__(self, payload: NodeActivityInput) -> None:
+        from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
+        from harness.temporal.interpreter.node_events import attempt_of  # noqa: PLC0415
+
+        self._payload = payload
+        self._producer = run_event_producer()
+        self._attempt = attempt_of()
+        self._streamed_any = False
+        delivery = payload.delivery or {}
+        self.streams_text = delivery.get("stream") is True or "text" in (
+            delivery.get("publicFields") or []
+        )
+
+    def _key(self, intent: str) -> str:
+        from harness.temporal.interpreter.run_events import v2_node_key  # noqa: PLC0415
+
+        return v2_node_key(
+            self._payload.run_id,
+            self._payload.node_id,
+            self._attempt,
+            intent,
+            self._payload.event_scope or "",
+        )
+
+    async def _append(self, event_type: str, data: dict[str, Any], intent: str | None) -> None:
+        await self._producer.append(
+            run_id=self._payload.run_id,
+            type=event_type,
+            node_id=self._payload.node_id,
+            data=data,
+            dedupe_key=self._key(intent) if intent else None,
+        )
+
+    async def composed(self, composed: Any, index: int) -> None:
+        layers = [{"name": name, "chars": chars} for name, chars in composed.layers]
+        await self._append(
+            "prompt.composed",
+            {
+                "layers": layers,
+                "charsTotal": sum(layer["chars"] for layer in layers),
+                "selected": list(composed.selected),
+                "excluded": [
+                    {"key": exclusion.key, "reason": exclusion.reason}
+                    for exclusion in composed.excluded
+                    if exclusion.reason in ("condition_false", "condition_error")
+                ],
+                "blocks": [
+                    {"key": b.key, "chars": b.chars, "truncated": b.truncated}
+                    for b in composed.blocks
+                ],
+            },
+            f"prompt:{index}",
+        )
+
+    async def model_request(
+        self, provider: str, model: str, index: int, stream: bool, generation: dict[str, Any]
+    ) -> None:
+        parameters: dict[str, Any] = {}
+        temperature = generation.get("temperature")
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
+            parameters["temperature"] = max(0, temperature)
+        max_tokens = generation.get("maxTokens")
+        if isinstance(max_tokens, int) and not isinstance(max_tokens, bool) and max_tokens >= 1:
+            parameters["maxTokens"] = max_tokens
+        data: dict[str, Any] = {
+            "provider": provider,
+            "model": model,
+            "attempt": index + 1,
+            "fallback": index > 0,
+            "stream": stream,
+        }
+        if parameters:
+            data["parameters"] = parameters
+        await self._append("model.request", data, f"model:{index}")
+
+    def delta_sink(self, index: int) -> Any:
+        """The ``on_delta`` of candidate ``index``. A fallback candidate that starts streaming
+        AFTER an earlier one already streamed partial text first re-announces the node with a
+        higher ``attempt``, so a client discards the abandoned text (protocol-v2.md §3)."""
+        restarted = [False]
+
+        async def _sink(text: str) -> None:
+            if index > 0 and self._streamed_any and not restarted[0]:
+                restarted[0] = True
+                await self._append(
+                    "node.started",
+                    {"kind": self._payload.node_type, "attempt": self._attempt + index},
+                    f"restart:{index}",
+                )
+            self._streamed_any = True
+            await self._producer.text_delta(
+                run_id=self._payload.run_id,
+                node_id=self._payload.node_id,
+                field="text",
+                text=text,
+            )
+
+        return _sink
+
+    async def guardrails(self, result: Any, index: int) -> None:
+        verdicts = getattr(result, "guardrail", None)
+        verdicts = verdicts if isinstance(verdicts, dict) else {}
+        egress = getattr(result, "egress", None)
+        inbound = _guardrail_event(verdicts.get("inbound"))
+        if inbound is None and isinstance(egress, dict):
+            raw_detected = egress.get("detected")
+            detected: dict[str, Any] = raw_detected if isinstance(raw_detected, dict) else {}
+            counts = [v for v in detected.values() if isinstance(v, int)]
+            redacted = egress.get("redacted") is True
+            inbound = {
+                "action": "REDACT" if redacted else "ALLOW",
+                "detected": sum(counts),
+                "categories": sorted(str(k) for k in detected),
+                "mode": "redact" if redacted else "detect",
+            }
+        if inbound is not None:
+            await self._append("guardrail.inbound", inbound, f"guardrail-in:{index}")
+        outbound = _guardrail_event(verdicts.get("outbound"))
+        if outbound is not None:
+            await self._append("guardrail.outbound", outbound, f"guardrail-out:{index}")
+
+
+def _guardrail_event(verdict: Any) -> dict[str, Any] | None:
+    """A text-service verdict, narrowed to `GuardrailEventData`'s closed shape; ``None`` when
+    the service reported none."""
+    if not isinstance(verdict, dict) or verdict.get("action") not in ("ALLOW", "REDACT", "BLOCK"):
+        return None
+    detected = verdict.get("detected")
+    event: dict[str, Any] = {
+        "action": verdict["action"],
+        "detected": detected if isinstance(detected, int) and detected >= 0 else 0,
+    }
+    categories = verdict.get("categories")
+    if isinstance(categories, list):
+        event["categories"] = [str(c) for c in categories]
+    if verdict.get("mode") in ("detect", "redact"):
+        event["mode"] = verdict["mode"]
+    latency = verdict.get("latencyMs")
+    if isinstance(latency, (int, float)) and not isinstance(latency, bool) and latency >= 0:
+        event["latencyMs"] = latency
+    return event
 
 
 async def _run_transcription(
@@ -1753,6 +2063,10 @@ async def _run_transcription(
         )
     )
     await record_and_flush(payload, status=STATUS_OK, started=started)
+    transcript_text = getattr(result, "transcript", None)
+    if isinstance(transcript_text, str) and transcript_text:
+        # TASK-1036 §10.3 — the transcript the harness sees, on the admin trace.
+        await _admin_event(payload, "transcript.final", {"text": transcript_text}, "transcript")
     output = {
         "transcript": getattr(result, "transcript", None),
         "jobId": result.job_id,
@@ -1766,6 +2080,33 @@ async def _run_transcription(
             output=output,
         )
     return NodeActivityResult(status="SUCCEEDED", output=output)
+
+
+#: `output.audio.delta.format` is one of four; a TTS format or content type maps onto it.
+_PROTOCOL_AUDIO_FORMATS = {
+    "wav": "wav",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/wave": "wav",
+    "mp3": "mp3",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "ogg": "ogg",
+    "opus": "ogg",
+    "audio/ogg": "ogg",
+    "pcm": "pcm",
+    "audio/pcm": "pcm",
+    "audio/l16": "pcm",
+}
+
+
+def _protocol_audio_format(declared: Any, content_type: Any) -> str | None:
+    for candidate in (declared, content_type):
+        if isinstance(candidate, str):
+            found = _PROTOCOL_AUDIO_FORMATS.get(candidate.split(";")[0].strip().lower())
+            if found is not None:
+                return found
+    return None
 
 
 async def _run_speech(
@@ -1833,17 +2174,23 @@ async def _run_speech(
     # allowed to fail a synthesis that already succeeded, and a run with no `run_id` (the field
     # is additive-optional) simply does not stream. MEASURED by
     # `test_task849_audio_two_lane_split.py`.
-    if payload.run_id:
+    #
+    # TASK-1038 R6 — the frames are run-protocol v2 `output.audio.delta { field: 'audio' }`,
+    # appended through the ONE sequencer (no dedupe key: a retried synthesis is new audio, and the
+    # retry's `node.started` tells clients to discard). A format the protocol cannot name is not
+    # streamed — the stored `audio` reference still carries the whole result.
+    audio_format = _protocol_audio_format(params.get("format"), synthesis.content_type)
+    if payload.run_id and audio_format is not None:
         from harness.temporal.interpreter.activities import run_event_producer  # noqa: PLC0415
 
         producer = run_event_producer()
-        for sequence, frame in enumerate(synthesis.chunks):
-            await producer.emit_token_delta(
-                tenant_id=payload.tenant_id,
+        for frame in synthesis.chunks:
+            await producer.audio_delta(
                 run_id=payload.run_id,
                 node_id=payload.node_id,
-                sequence=sequence,
-                text=base64.b64encode(frame).decode("ascii"),
+                field="audio",
+                chunk=frame,
+                audio_format=audio_format,
             )
 
     settings = get_settings()
@@ -2027,6 +2374,30 @@ async def _run_ner(
     )
 
 
+async def _resolve_agent_answer(slug: str, version: int | None, tenant_id: str) -> dict[str, Any]:
+    """The gateway's ``ResolvedAgent`` answer for one ``core.agent`` node.
+
+    TASK-1038 D-A (owner rule W3) — a node that pins ``agentRef.versionNumber`` RUNS that
+    version: it is resolved BY VERSION (``resolve_agent_version``), so a republished agent (vN+1
+    active) or a DEPRECATED pinned version does not change or break a published workflow, and the
+    prompt that runs is the one frozen inside that version (``compiledConfig.resolvedPrompt``,
+    lifted by :class:`ResolvedAgent`). There is no runtime template fetch on this path.
+
+    The pinned answer is cached per ``(tenantId, slug, versionNumber)`` — see
+    ``agent_version_cache`` for why that is safe and why a credential-bearing answer is not
+    cached. An UNPINNED node keeps asking for the ACTIVE version on every run, exactly as before.
+    """
+    api = _api_client(get_settings())
+    if version is None:
+        return await api.resolve_agent(slug=slug, tenant_id=tenant_id)
+    cached = agent_version_cache.get(tenant_id, slug, version)
+    if cached is not None:
+        return cached
+    answer = await api.resolve_agent_version(slug=slug, version_number=version, tenant_id=tenant_id)
+    agent_version_cache.put(tenant_id, slug, version, answer)
+    return answer
+
+
 @activity.defn(name="interpreter.core_agent")
 async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResult:
     """Resolve the referenced Agent through the gateway and dispatch by its TASK."""
@@ -2041,54 +2412,64 @@ async def interpreter_core_agent(payload: NodeActivityInput) -> NodeActivityResu
         return NodeActivityResult(
             status="DEGRADED", reason="core.agent: `agentRef.slug` is required"
         )
-    version = ref.get("versionNumber") if isinstance(ref, dict) else None
+    raw_version = ref.get("versionNumber") if isinstance(ref, dict) else None
+    # `bool` is an `int`; a boolean is never a version number.
+    version = (
+        raw_version if isinstance(raw_version, int) and not isinstance(raw_version, bool) else None
+    )
 
     try:
-        raw = await _api_client(get_settings()).resolve_agent(
-            slug=slug, tenant_id=payload.tenant_id
-        )
+        raw = await _resolve_agent_answer(slug, version, payload.tenant_id)
         resolved = ResolvedAgent.model_validate(raw)
     except (ApiServiceError, ValueError) as exc:
-        # Fails CLOSED: an unresolvable agent is never substituted with a default.
+        # Fails CLOSED: an unresolvable agent is never substituted with a default — and a pinned
+        # version the gateway cannot serve is never substituted with the ACTIVE one either.
         await record_and_flush(
             payload, status=STATUS_DEGRADED, started=started, error_code="agent_unresolvable"
         )
+        pinned = f" v{version}" if version is not None else ""
         return NodeActivityResult(
-            status="DEGRADED", reason=f"core.agent: agent `{slug}` did not resolve: {exc}"
+            status="DEGRADED",
+            reason=f"core.agent: agent `{slug}`{pinned} did not resolve: {exc}",
         )
-    if isinstance(version, int) and resolved.version_number != version:
-        # The gateway resolves the ACTIVE published version and takes no pin (TASK-863 §3.4), so
-        # honouring `agentRef.versionNumber` means REFUSING a different one — a pin that ran
-        # whatever is active would be no pin at all. Fails CLOSED, like every other selection.
+    if version is not None and resolved.version_number != version:
+        # TASK-1038 D-A — the by-version route answered for a DIFFERENT version. That is a
+        # gateway defect, not drift: the pin is the contract, so the node fails CLOSED rather
+        # than running a version nobody pinned.
         await record_and_flush(
-            payload, status=STATUS_DEGRADED, started=started, error_code="agent_version_drift"
+            payload, status=STATUS_DEGRADED, started=started, error_code="agent_version_mismatch"
         )
         return NodeActivityResult(
             status="DEGRADED",
             reason=(
-                f"core.agent: `{slug}` is pinned to v{version} but the gateway resolved "
-                f"v{resolved.version_number}"
+                f"core.agent: agent_version_mismatch: `{slug}` is pinned to v{version} but the "
+                f"by-version resolve answered v{resolved.version_number}"
             ),
         )
 
     if resolved.task == "TEXT_GENERATION":
         # TASK-876: the fallback chain rides on the resolve answer — read, never resolved here.
-        return await _run_text_generation(
+        result = await _run_text_generation(
             payload,
             resolved,
             started,
             fallback=read_text_fallback(raw),
             primary=read_text_primary(raw),
         )
-    if resolved.task == "SPEECH_TO_TEXT":
-        return await _run_transcription(payload, resolved, started)
+    elif resolved.task == "SPEECH_TO_TEXT":
+        result = await _run_transcription(payload, resolved, started)
     # TASK-930 §2.4 — an EXPLICIT arm, before the TTS fallthrough. Without it a NER agent
     # reached `_run_speech` and degraded with "the resolved TTS agent names no `voice`": a
     # complaint about a control its author never declared, for a task nobody had told the
     # switch about. Every task the mirror admits is now named here.
-    if resolved.task == "NAMED_ENTITY_RECOGNITION":
-        return await _run_ner(payload, resolved, started)
-    return await _run_speech(payload, resolved, started)
+    elif resolved.task == "NAMED_ENTITY_RECOGNITION":
+        result = await _run_ner(payload, resolved, started)
+    else:
+        result = await _run_speech(payload, resolved, started)
+    if payload.protocol != 2:
+        return result
+    # TASK-1036 §9.1 — the agent's TASK decides its NodeIO outputs (`nodes.<id>.outputs.*`).
+    return result.model_copy(update={"io": {**(result.io or {}), "task": resolved.task}})
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2116,11 +2497,21 @@ async def interpreter_core_output(payload: NodeActivityInput) -> NodeActivityRes
     config = _config(payload)
     result = _output_payload(_bound(payload))
     violation = _schema_violation(config.get("outputSchema"), result)
+    await _admin_event(
+        payload,
+        "output.validated",
+        {
+            "valid": violation is None,
+            "problems": [] if violation is None else [violation],
+            "field": "in",
+        },
+        "output-validated",
+    )
     if violation is not None:
         mode = config.get("onSchemaViolation") or "fail"
         await record_and_flush(payload, status=STATUS_ERROR, started=started)
         if mode == "fail":
-            raise RuntimeError(
+            raise OutputSchemaViolation(
                 f"core.output: result violates the declared output schema: {violation}"
             )
         return NodeActivityResult(

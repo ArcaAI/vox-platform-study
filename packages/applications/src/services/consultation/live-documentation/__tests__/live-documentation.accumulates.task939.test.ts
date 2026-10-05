@@ -85,10 +85,11 @@ function sectionRepositoryDouble() {
 function buildService(cache: ReturnType<typeof cacheMock>, turns: string[], sections: ReturnType<typeof sectionRepositoryDouble>) {
   const prompts: string[] = [];
   let call = 0;
-  const post = vi.fn(async (url: string, body: { prompt?: string }) => {
+  const post = vi.fn(async (url: string, body: { prompt?: string; system_prompt?: string }) => {
     if (url.includes('/classify/tokens')) return { data: { entities: [] } };
     if (url.includes('/generate')) {
-      prompts.push(body?.prompt ?? '');
+      // Everything the model reads: the system message (instructions), then the user (data).
+      prompts.push(`${body?.system_prompt ?? ''}\n\n${body?.prompt ?? ''}`);
       return { data: { summary: turns[Math.min(call++, turns.length - 1)] } };
     }
     return { data: {} };

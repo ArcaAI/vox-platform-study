@@ -31,6 +31,9 @@ import { derivedLocalPath } from '../ai-model/constants';
 import { runInTenantContext } from '../agentPromotion/tenant-context';
 import { isPlatformHiddenAgentSlug } from './platform-hidden-agents';
 import { fallbackOnNotFound, warnAndFallback } from '../../common/swallow-policy';
+import { IDocumentTemplateService } from '../document-template/IDocumentTemplateService';
+import type { IDocumentTemplateService as IDocumentTemplateServicePort } from '../document-template/IDocumentTemplateService';
+import type { CompiledDocumentTemplate } from '../document-template/document-template-compiler';
 
 export interface ResolveAgentInput {
   tenantId: string;
@@ -77,6 +80,28 @@ export interface ResolveAgentInput {
    */
   allowPlatformHidden?: boolean;
 }
+
+/**
+ * TASK-1036 OD-7 / OD-22 — the agent's document template as resolved for THIS call.
+ *
+ * `slug` is what the agent names; the rest is the version the request tenant serves now
+ * (`templateId: null` = nothing servable, so the platform shape in `compiled` applies — or
+ * `compiled: null` when this resolver has no document-template plane wired).
+ */
+export interface ResolvedAgentDocumentTemplate {
+  slug: string;
+  templateId: string | null;
+  versionNumber: number | null;
+  documentTemplateVersionId: string | null;
+  compiled: CompiledDocumentTemplate | null;
+}
+
+/**
+ * `ResolvedAgent` plus the members TASK-1036 adds, as an INTERSECTION (the `CompiledModelRef`
+ * precedent): the wire is JSON, `@arcaai/types` declares what every reader may rely on, and this
+ * names the additive member where it is produced. OMITTED when the agent names no template.
+ */
+export type ResolvedAgentWithDocument = ResolvedAgent & { documentTemplate?: ResolvedAgentDocumentTemplate };
 
 /** @see ResolveAgentInput.primaryBinding */
 export type PrimaryBindingPolicy = 'fail-closed' | 'mark';
@@ -217,22 +242,6 @@ function dig(value: unknown, path: readonly string[]): unknown {
 }
 
 /**
- * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail precedence, normalised.
- *
- * `compiledConfig.guardrail` is additive-optional (every artifact published before this ticket
- * has none) and the runtime needs an ANSWER, not a maybe. Absence is INHERIT and the bottom of
- * the chain is screening ON, so absence resolves to `true`.
- *
- * A non-boolean is treated identically to absence, deliberately: publish closes the `guards`
- * object so a malformed value should be unreachable, and if one is reached anyway the call is
- * SCREENED. The failure direction on a safety gate is never "off".
- */
-function guardrailOf(compiled: AgentCompiledConfig): { enabled: boolean } {
-  const declared = (compiled as { guardrail?: { enabled?: unknown } }).guardrail?.enabled;
-  return { enabled: typeof declared === 'boolean' ? declared : true };
-}
-
-/**
  * ONE resolution for two callers (TASK-863 §3.4): the gateway (standalone invocation, STT
  * sessions — TASK-861) and the harness `core.agent` activity (TASK-864, over
  * `GET /internal/agents/resolve`).
@@ -265,9 +274,14 @@ export class AgentResolverService {
     // without it a connection-bound model falls back to the provider-name fold —
     // which is what this resolver did before the binding rule existed.
     @Optional() private readonly credentials?: ProviderCredentialResolver,
+    // TASK-1036 OD-7 / OD-22 — the agent's document template, resolved LATEST per call.
+    // `@Optional()` and TRAILING for the same reason as the two above; absent ⇒ the resolved
+    // agent carries the slug with no servable version (`templateId: null`), which every consumer
+    // already reads as "fall back to the platform shape".
+    @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplates?: IDocumentTemplateServicePort,
   ) {}
 
-  async resolve(input: ResolveAgentInput): Promise<ResolvedAgent> {
+  async resolve(input: ResolveAgentInput): Promise<ResolvedAgentWithDocument> {
     const { tenantId } = input;
     let entity: AgentEntity | null;
     let source: ResolvedAgent['source'];
@@ -326,6 +340,7 @@ export class AgentResolverService {
 
     const models = await this.materialiseModels(entity, compiledConfig, tenantId);
     const override = await this.providerOverrideFor(entity.slug, compiledConfig, models, tenantId, input.primaryBinding ?? 'fail-closed');
+    const documentTemplate = await this.documentTemplateFor(compiledConfig, tenantId);
 
     return {
       agentId: entity.id,
@@ -337,8 +352,33 @@ export class AgentResolverService {
       source,
       compiledConfig,
       models,
-      guardrail: guardrailOf(compiledConfig),
       ...(override ? { providerOverride: override.entry, fundingTier: override.fundingTier } : {}),
+      ...(documentTemplate ? { documentTemplate } : {}),
+    };
+  }
+
+  /**
+   * TASK-1036 OD-7 / OD-22 / W3 — the document template the agent names
+   * (`instruction.documentTemplate.slug`), resolved to the LATEST approved / published version in
+   * the REQUEST tenant. Deliberately read on every resolve and never frozen into `compiledConfig`:
+   * a document template floats, so republishing it changes the next run without republishing the
+   * agent. `resolveForGeneration` is fail-open (an unservable slug answers the platform shape with
+   * `templateId: null`), which is the documented behaviour of every other generation path.
+   */
+  private async documentTemplateFor(compiled: AgentCompiledConfig, tenantId: string): Promise<ResolvedAgentDocumentTemplate | null> {
+    const block = (compiled.instruction as Record<string, unknown> | null | undefined)?.documentTemplate;
+    const slug = block !== null && typeof block === 'object' ? (block as { slug?: unknown }).slug : undefined;
+    if (typeof slug !== 'string' || slug.length === 0) return null;
+    if (!this.documentTemplates) {
+      return { slug, templateId: null, versionNumber: null, documentTemplateVersionId: null, compiled: null };
+    }
+    const resolved = await this.documentTemplates.resolveForGeneration(tenantId, slug);
+    return {
+      slug,
+      templateId: resolved.templateId,
+      versionNumber: resolved.versionNumber,
+      documentTemplateVersionId: resolved.documentTemplateVersionId,
+      compiled: resolved.compiled ?? null,
     };
   }
 
@@ -511,6 +551,8 @@ function toResolvedModel(model: AiModelEntity, role: ResolvedAgentModelRole): Re
     ...(model.libraryName ? { libraryName: String(model.libraryName) } : {}),
     computeType: model.computeType ?? null,
     provider: model.provider ?? null,
+    // The egress LOCALITY of a text call on this row (`provider_locality`). Omitted when unset.
+    ...(model.deploymentKind ? { deploymentKind: String(model.deploymentKind) } : {}),
     tenantId: model.tenantId,
     // TASK-958 D-3 — "the model row names the connection". OMITTED rather than
     // nulled, like `libraryName` and `metaData`: this shape crosses to the harness

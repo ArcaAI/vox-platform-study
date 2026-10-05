@@ -8,6 +8,7 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 import { AiRoutingPolicyServiceModule } from '../ai-routing-policy/ai-routing-policy.service.module';
 import { ConsultationContextSchemaServiceModule } from '../consultation-context-schema/consultation-context-schema.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { WorkflowValidatorServiceModule } from '../workflow-validator/workflow-validator.service.module';
 import { IWorkflowDefinitionService } from './IWorkflowDefinitionService';
 import { WorkflowDefinitionService } from './workflow-definition.service';
@@ -67,6 +68,10 @@ import { WorkflowDefinitionService } from './workflow-definition.service';
     ConsultationContextSchemaServiceModule,
     CoreDatabaseModule,
     EntitlementsServiceModule,
+    // TASK-1036 lane B3b — `TenantSettingsService`, for the `workflows.emitDataContract` release
+    // switch. EffectiveSettingsModule imports only CommonServiceModule, GlobalSettingServiceModule
+    // and CoreDatabaseModule, so this closes no cycle.
+    EffectiveSettingsModule,
     EvalServiceModule,
     WorkflowValidatorServiceModule,
   ],

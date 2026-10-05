@@ -52,11 +52,10 @@ export type UsageTrigger = (typeof USAGE_TRIGGERS)[number];
 /**
  * `guardrail` — the SCREENING DISPOSITION of the call this row bills (OD-R).
  *
- * `screened` = the guard ran; `opted_out` = the tenant turned it off for this
- * agent/workflow node; `platform_off` = the platform kill-switch
- * (`text.externalGuardrail.enabled`) is off, so nobody's opt-out was even
- * consulted. Distinguishing the last two matters: one is a tenant decision on
- * the record, the other is a platform state that makes every opt-out moot.
+ * `screened` = the guard ran. Since the guardrail opt-out (OD-1) and the
+ * platform kill switch (OD-4) were retired every NEW row says `screened`;
+ * `opted_out` and `platform_off` stay in the vocabulary only so rows written
+ * before the retirement (and a harness report still in flight) keep validating.
  */
 export const GUARDRAIL_DISPOSITIONS = ['screened', 'opted_out', 'platform_off'] as const;
 

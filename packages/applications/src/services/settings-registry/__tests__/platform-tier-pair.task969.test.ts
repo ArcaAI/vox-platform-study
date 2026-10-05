@@ -83,9 +83,8 @@ describe('assembly-time pairing assertion', () => {
   });
 });
 
-describe('the real registry declares both guardrail pairs', () => {
+describe('the real registry declares the guardrail pair', () => {
   it.each([
-    ['text.guardrailPolicy.requireMedical', 'text.externalGuardrail.requireMedical'],
     ['text.guardrailPolicy.includeReasoning', 'text.externalGuardrail.includeReasoning'],
   ])('%s names %s as its platform tier', (tenantKey, platformKey) => {
     expect(HOPE_SETTINGS_REGISTRY.getOrThrow(tenantKey).platformTierKey).toBe(platformKey);
@@ -100,7 +99,6 @@ describe('the real registry declares both guardrail pairs', () => {
     // that row sets BOTH halves — so a "(this tenant)" suffix would be wrong on
     // the very control that also writes the platform default. The scope is what
     // the row's own picker says; the label names the concept.
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.guardrailPolicy.requireMedical').label).toBe('Require medical content');
     expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.guardrailPolicy.includeReasoning').label).toBe('Include guardrail reasoning');
   });
 
@@ -108,7 +106,6 @@ describe('the real registry declares both guardrail pairs', () => {
     // Not cosmetic and not ours to tidy: the seeded SYSTEM rows carry these
     // strings in their `name` column, so editing a label here silently desyncs
     // the seed from the descriptor it was transcribed from.
-    expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.externalGuardrail.requireMedical').label).toBe('Require medical content (platform default)');
     expect(HOPE_SETTINGS_REGISTRY.getOrThrow('text.externalGuardrail.includeReasoning').label).toBe('Include guardrail reasoning (platform default)');
   });
 
@@ -117,6 +114,6 @@ describe('the real registry declares both guardrail pairs', () => {
       .filter((d) => d.platformTierKey !== undefined)
       .map((d) => d.key)
       .sort();
-    expect(declaring).toEqual(['text.guardrailPolicy.includeReasoning', 'text.guardrailPolicy.requireMedical']);
+    expect(declaring).toEqual(['text.guardrailPolicy.includeReasoning']);
   });
 });

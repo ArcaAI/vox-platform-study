@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ResourceStatusType } from '@arcaai/domains';
 import { PromptVariableDeclarationDto } from './prompt-variable-declaration.dto';
+import { IsPromptTags } from './prompt-tag';
 
 export class UpdatePromptTemplateRequest {
   @ApiPropertyOptional({ description: 'Template name' })
@@ -40,10 +41,10 @@ export class UpdatePromptTemplateRequest {
   @Type(() => PromptVariableDeclarationDto)
   variables?: PromptVariableDeclarationDto[];
 
-  @ApiPropertyOptional({ description: 'Tags for search/filtering', type: [String] })
+  @ApiPropertyOptional({ description: 'Tags for search/filtering — lower-case `key` or `key:value`, max 24', type: [String] })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsPromptTags()
   tags?: string[];
 
   @ApiPropertyOptional({ description: 'Reason for the change (stored in version history)' })

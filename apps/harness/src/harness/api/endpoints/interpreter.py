@@ -11,6 +11,7 @@ the consultation palette (Wave 4's job, per the ticket's own scoping).
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,7 +25,7 @@ from harness.api.endpoints.internal import require_service_token
 from harness.core.config import Settings
 from harness.core.logging import get_logger
 from harness.temporal.claim_check import ClaimCheckRef
-from harness.temporal.interpreter.models import RunSubject, sanitize_run_payload
+from harness.temporal.interpreter.models import RunLimits, RunSubject, sanitize_run_payload
 
 logger = get_logger(__name__)
 
@@ -63,6 +64,34 @@ def _rpc_error_response(exc: RPCError, *, action: str) -> HTTPException:
     return HTTPException(status_code=502, detail=f"temporal error ({action}): {exc}")
 
 
+class StartRunLimits(BaseModel):
+    """``limits`` on the start body (lane B3a), every key optional."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    node_output_claim_check_min_bytes: int | None = Field(
+        default=None, alias="nodeOutputClaimCheckMinBytes", gt=0
+    )
+    result_inline_max_bytes: int | None = Field(default=None, alias="resultInlineMaxBytes", gt=0)
+    activity_input_max_bytes: int | None = Field(default=None, alias="activityInputMaxBytes", gt=0)
+
+
+def _run_limits(settings: Settings, injected: StartRunLimits | None) -> RunLimits:
+    """The run's ceilings: the gateway's injected values, each falling back to its
+    ``HARNESS_CLAIM_CHECK_*`` setting when absent. The fallback is a ONE-RELEASE transition for a
+    gateway that does not inject them yet; after it, the settings-registry values are the only
+    source."""
+    claim_check = settings.claim_check
+    given = injected or StartRunLimits()
+    return RunLimits(
+        activityInputMaxBytes=given.activity_input_max_bytes
+        or claim_check.activity_input_max_bytes,
+        nodeOutputClaimCheckMinBytes=given.node_output_claim_check_min_bytes
+        or claim_check.node_output_min_bytes,
+        resultInlineMaxBytes=given.result_inline_max_bytes or claim_check.result_inline_max_bytes,
+    )
+
+
 class StartWorkflowRunRequest(BaseModel):
     """Body for ``POST /workflow-runs:start``.
 
@@ -89,6 +118,37 @@ class StartWorkflowRunRequest(BaseModel):
     # caller-composed `payload` cannot impersonate one. See `RunSubject` for why this is a
     # separate field rather than a convention about `payload`'s contents.
     subject: RunSubject | None = Field(default=None)
+    # TASK-1038 (lane B3a injects, lane B1 consumes): the event-stream retention and the payload
+    # ceilings, resolved by the gateway from the settings registry. Each is optional so a gateway
+    # that has not shipped the injection yet still starts runs (see `_run_limits`).
+    retention_seconds: int | None = Field(default=None, alias="retentionSeconds", gt=0)
+    limits: StartRunLimits | None = Field(default=None)
+
+
+async def _execution_timeout(
+    settings: Settings, config_ref: ClaimCheckRef, *, consultation_bound: bool, run_id: str
+) -> timedelta | None:
+    """TASK-1038 D-B — the run's ``execution_timeout`` backstop, from its compiled ``caps``.
+
+    The compiled config is read here (one claim-check read) because the bound must be fixed at
+    START: Temporal takes ``execution_timeout`` on the start call and nowhere else. NEVER raises —
+    an unreadable config is the workflow's own ``load_config`` to fail loudly, and a backstop
+    that could refuse a start would trade a safety net for an outage.
+    """
+    from harness.temporal.claim_check import load_blob, open_store
+    from harness.temporal.interpreter import caps
+    from harness.temporal.interpreter.compiled_config import parse_and_verify
+
+    try:
+        store, _ = await open_store(settings.claim_check, config_ref)
+        config = parse_and_verify(await load_blob(config_ref, store=store))
+    except Exception as exc:  # noqa: BLE001 — see the docstring: the start must not fail here
+        logger.info(
+            "harness.interpreter.run.execution_timeout_unavailable", run_id=run_id, error=str(exc)
+        )
+        return None
+    seconds = caps.execution_timeout_seconds(config, consultation_bound=consultation_bound)
+    return timedelta(seconds=seconds) if seconds is not None else None
 
 
 @router.post(
@@ -103,6 +163,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
     settings = _settings(request)
     client = await _temporal_client_or_503(request)
     workflow_id = interpreter_workflow_id(body.run_id)
+    payload = sanitize_run_payload(body.payload, body.subject)
 
     wf_input = InterpreterInput(
         session_id=body.session_id,
@@ -115,9 +176,24 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         # `RESERVED_RUN_IDENTITY_KEYS` entry and the SERVER-resolved subject is stamped in its
         # place. Unconditional: no branch on sandbox, palette or caller — a strip with a branch
         # is a strip somebody eventually reasons their way around.
-        payload=sanitize_run_payload(body.payload, body.subject),
+        payload=payload,
         subject=body.subject,
+        # TASK-1038 R-3 — the payload ceiling the walk enforces on itself, resolved HERE because
+        # the deterministic workflow body cannot read settings.
+        limits=_run_limits(settings, body.limits),
+        retention_seconds=body.retention_seconds,
     )
+    # TASK-1038 D-B — the Temporal backstop. `None` (no timeout) when it cannot be computed
+    # honestly; the in-workflow deadline still bounds the walk either way.
+    execution_timeout = await _execution_timeout(
+        settings,
+        body.config_ref,
+        consultation_bound=body.subject is not None or bool(payload.get("consultationId")),
+        run_id=body.run_id,
+    )
+    start_options: dict[str, Any] = {}
+    if execution_timeout is not None:
+        start_options["execution_timeout"] = execution_timeout
 
     started_flag: bool | None = None
     try:
@@ -138,6 +214,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
             #     reported it as a fresh start. It now raises, and is reported as a join.
             id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
             id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            **start_options,
         )
         # `USE_EXISTING` does NOT raise when it joins — the distinction rides on the start
         # response's `started` flag. Read defensively: a client stub (or a server too old to set

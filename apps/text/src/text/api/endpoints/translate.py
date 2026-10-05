@@ -8,12 +8,17 @@ translations plus a courtesy input character count. Behind ``X-Service-Token``
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Any
 
-from text.core.dependencies import get_translate_registry
+from fastapi import APIRouter, Depends, Header, HTTPException
+
+from text.core.dependencies import get_app_state, get_guardrail_client, get_translate_registry
 from text.core.logging import get_logger
 from text.models.responses import ErrorResponse
 from text.models.translate import TranslateRequest, TranslateResponse
+from text.services.egress import prepare_text_egress, run_inbound_gate
+from text.services.external_guardrail import ExternalGuardrailClient
+from text.services.output_gate import OutputRejectedError, gate_completion
 from text.translation.base import TranslateProviderNotFoundError, TranslateProviderRegistry
 from text.translation.sarvam import (
     SarvamCredentialError,
@@ -32,6 +37,7 @@ router = APIRouter(tags=["translate"])
     responses={
         200: {"model": TranslateResponse},
         404: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
         502: {"model": ErrorResponse},
         503: {"model": ErrorResponse},
     },
@@ -39,7 +45,26 @@ router = APIRouter(tags=["translate"])
 async def translate(
     request_body: TranslateRequest,
     registry: TranslateProviderRegistry = Depends(get_translate_registry),
+    guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
+    app_state: Any = Depends(get_app_state),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> TranslateResponse:
+    inbound = await run_inbound_gate(
+        guardrail_client,
+        segments=list(request_body.texts),
+        prompt="\n\n".join(request_body.texts),
+        system_prompt=None,
+        tenant_id=x_tenant_id,
+        medical_exempt=request_body.medical_exempt,
+    )
+    egress, outgoing = prepare_text_egress(
+        list(request_body.texts),
+        provider=request_body.provider,
+        provider_locality=request_body.provider_locality,
+        known_phi=request_body.known_phi,
+        spans_by_segment=inbound.spans_by_segment,
+    )
+
     try:
         provider = registry.get(request_body.provider)
     except TranslateProviderNotFoundError:
@@ -52,7 +77,7 @@ async def translate(
 
     try:
         translations = await provider.translate(
-            request_body.texts,
+            outgoing,
             source_language=request_body.source_language,
             target_language=request_body.target_language,
             overrides=overrides,
@@ -72,6 +97,26 @@ async def translate(
             detail=f"Translation failed: {exc}",
         ) from exc
 
+    # The output screen sees the translations BEFORE re-identification, against
+    # what the provider actually received (`pii_leak` per locality).
+    try:
+        await gate_completion(
+            guardrail_client,
+            completion="\n\n".join(translations),
+            source_context=egress.source_context,
+            tenant_id=x_tenant_id,
+            tenant_policy=None,
+            app_state=app_state,
+            where="translate.post_receive_gate",
+            locality=egress.locality,
+        )
+    except OutputRejectedError as rejected:
+        egress.pii_leak_blocked = rejected.pii_leak
+        egress.log("translate")
+        raise rejected.as_text_error() from None
+    translations = [egress.restore(text) for text in translations]
+    egress.log("translate")
+
     # override model wins over the provider's configured model for reporting.
     resolved_model = (overrides.model if overrides and overrides.model else None) or getattr(
         provider, "model", None
@@ -82,4 +127,5 @@ async def translate(
         provider=request_body.provider,
         model=resolved_model,
         chars=sum(len(t) for t in request_body.texts),
+        egress=egress.summary,
     )

@@ -36,7 +36,8 @@ describe('TenantCheckpointService — create', () => {
     const [, payload, opts] = f.exportQueue.add.mock.calls[0];
     expect(payload).toEqual({ kind: 'create', checkpointId: out.id, tenantId: TENANT_A });
     expect(JSON.stringify(payload)).not.toContain('correct horse');
-    expect(opts).toMatchObject({ jobId: out.id });
+    // A finished export must stay visible on the queue board, not vanish on completion.
+    expect(opts).toMatchObject({ jobId: out.id, removeOnComplete: 100 });
     expect(out.status).toBe('PENDING');
     expect(out).not.toHaveProperty('keyEnvelope');
   });

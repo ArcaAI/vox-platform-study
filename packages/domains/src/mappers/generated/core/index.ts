@@ -14,6 +14,7 @@ export * from './AuditLogEntityMapper';
 export * from './BillingAdjustmentEntityMapper';
 export * from './BillingInvoiceEntityMapper';
 export * from './BillingInvoiceLineEntityMapper';
+export * from './ComposedPromptRecordEntityMapper';
 export * from './ConsultationEntityMapper';
 export * from './ConsultationContextSchemaEntityMapper';
 export * from './ConsultationContextSchemaVersionEntityMapper';

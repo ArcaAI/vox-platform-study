@@ -57,7 +57,7 @@ const coreGraph = (triggerConfig: Record<string, unknown>, agentConfig: Record<s
 
 const AGENT_REF_MISSING_GRAPH = coreGraph({}, {});
 
-/** The same graph with a real agent reference, and the workflow guardrail switch OFF. */
+/** The same graph with a real agent reference, still carrying the RETIRED guardrail opt-out (OD-1). */
 const OPTED_OUT_GRAPH = coreGraph({ guardrail: { enabled: false } }, { agentRef: { slug: 'summarizer' } });
 
 const entity = (overrides: Record<string, unknown> = {}) => ({
@@ -155,15 +155,25 @@ describe('validate() records the same findings WITHOUT refusing', () => {
   });
 });
 
-describe('a WARNING finding never blocks', () => {
-  it('publishes a graph whose workflow guardrail switch is OFF, and records GUARDRAIL_OPTED_OUT', async () => {
+describe('the retired guardrail opt-out is accepted and stripped, never honoured', () => {
+  it('publishes a stored graph that still carries it, records no GUARDRAIL_OPTED_OUT and compiles no guardrail binding', async () => {
     mockRepository.findById.mockResolvedValue(entity({ graph: OPTED_OUT_GRAPH }));
     const published = await makeService().publish('def-1', { activate: false });
     expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
-    const written = mockRepository.update.mock.calls[0]?.[1] as { validationReport: { findings: Array<{ code?: string; severity: string }> } };
-    const optOut = written.validationReport.findings.filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
-    expect(optOut.length).toBeGreaterThan(0);
-    expect(optOut.every((f) => f.severity === 'WARNING')).toBe(true);
+    const written = mockRepository.update.mock.calls[0]?.[1] as {
+      validationReport: { findings: Array<{ code?: string; message?: string }> };
+      compiledConfig: { policyBindings: Record<string, unknown> };
+    };
+    expect(written.validationReport.findings.map((f) => f.code)).not.toContain('GUARDRAIL_OPTED_OUT');
+    expect(written.validationReport.findings.filter((f) => f.code === 'NODE_CONFIG_SCHEMA')).toEqual([]);
+    expect(written.compiledConfig.policyBindings).not.toHaveProperty('guardrail');
+  });
+
+  it('strips it from a graph written through update, so the row stops carrying it', async () => {
+    mockRepository.findById.mockResolvedValue(entity());
+    await makeService().update('def-1', { graph: OPTED_OUT_GRAPH, expectedVersion: 1 } as never);
+    const written = mockRepository.updateWithVersion.mock.calls[0]?.[1] as { graph: { nodes: Array<{ config: Record<string, unknown> }> } };
+    for (const node of written.graph.nodes) expect(node.config).not.toHaveProperty('guardrail');
   });
 });
 
@@ -188,7 +198,7 @@ describe('the graph publish gate resolves the referenced agents', () => {
     expect(publishAgentViews).toHaveBeenCalledWith(['summarizer']);
   });
 
-  it('WARNS on a `core.agent` override referencing a variable the agent does not declare', async () => {
+  it('REFUSES a `core.agent` override referencing a variable the agent does not declare (an ERROR)', async () => {
     const graph = coreGraph({}, { agentRef: { slug: 'summarizer' }, overrides: { promptVariables: { tone: '{{context.absent}}' } } });
     mockRepository.findById.mockResolvedValue(entity({ graph }));
     // The agent's BOUND context schema is what makes `context.absent` undeclared rather than
@@ -201,13 +211,16 @@ describe('the graph publish gate resolves the referenced agents', () => {
       },
     }));
 
-    const published = await makeService({ publishAgentViews }).publish('def-1', { activate: false });
+    const refusal = await makeService({ publishAgentViews })
+      .publish('def-1', { activate: false })
+      .then(
+        () => null,
+        (error: { response?: { findings?: Array<{ code?: string; severity: string }> } }) => error,
+      );
 
-    expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
-    const written = mockRepository.update.mock.calls[0]?.[1] as { validationReport: { findings: Array<{ code?: string; severity: string }> } };
-    const undeclared = written.validationReport.findings.filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
+    const undeclared = (refusal?.response?.findings ?? []).filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(undeclared.length).toBeGreaterThan(0);
-    expect(undeclared.every((f) => f.severity === 'WARNING')).toBe(true);
+    expect(undeclared.every((f) => f.severity === 'ERROR')).toBe(true);
   });
 
   it('says nothing when the agent DOES declare it', async () => {

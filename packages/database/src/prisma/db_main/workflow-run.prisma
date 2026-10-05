@@ -65,6 +65,23 @@ enum WorkflowRunStatus {
   @@schema("core")
 }
 
+// TASK-1038 OD-26 (lane B6a) — what a run row is a run OF. The read model holds two kinds:
+//   WORKFLOW — a workflow-substrate run (every row before TASK-1038; the column default), naming
+//              its pinned WorkflowDefinition version in the four `workflow*`/`definitionName`
+//              columns;
+//   AGENT    — one `POST /agents/:slug/runs` invocation, naming the PUBLISHED Agent row it
+//              resolved in `agentSlug` / `agentVersionId` / `agentVersionNumber`.
+// A row names exactly ONE identity, by kind — enforced in SQL by the CHECK constraint
+// `WorkflowRun_kind_identity_check` (Prisma does not model CHECKs; see the TASK-1038 migration).
+// Every WORKFLOW reader (runs list, by-run-key lookup, trace, metering) filters `kind = WORKFLOW`;
+// the agent run routes read `kind = AGENT`.
+enum WorkflowRunKind {
+  WORKFLOW
+  AGENT
+
+  @@schema("core")
+}
+
 model WorkflowRun {
   // meta fields
   metaData Json?  @map("_metadata") @db.JsonB
@@ -75,10 +92,19 @@ model WorkflowRun {
   tenantId String
 
   // core (business) fields — denormalized read model; see file header
-  workflowVersionId     String // WorkflowDefinition.id of the exact PUBLISHED, immutable row pinned for this run
-  workflowSlug          String // WorkflowDefinition.slug — the stable lineage key; groups runs across every version of "the same" definition
-  workflowVersionNumber Int // WorkflowDefinition.versionNumber, denormalized for list-column display without a join
-  definitionName        String // WorkflowDefinition.name, denormalized — renders even after a later rename (R7)
+  // TASK-1038 OD-26 — WORKFLOW (default; every pre-existing row) or AGENT. See `WorkflowRunKind`.
+  kind WorkflowRunKind @default(WORKFLOW)
+
+  // WORKFLOW identity — NOT NULL for every `kind = WORKFLOW` row (CHECK constraint), NULL for AGENT.
+  workflowVersionId     String? // WorkflowDefinition.id of the exact PUBLISHED, immutable row pinned for this run
+  workflowSlug          String? // WorkflowDefinition.slug — the stable lineage key; groups runs across every version of "the same" definition
+  workflowVersionNumber Int? // WorkflowDefinition.versionNumber, denormalized for list-column display without a join
+  definitionName        String? // WorkflowDefinition.name, denormalized — renders even after a later rename (R7)
+
+  // AGENT identity — NOT NULL for every `kind = AGENT` row (CHECK constraint), NULL for WORKFLOW.
+  agentSlug          String? // Agent.slug — the lineage key the run's routes address (`/agents/:slug/runs/:runId`)
+  agentVersionId     String? // Agent.id of the PUBLISHED row the run resolved (rows ARE versions)
+  agentVersionNumber Int? // Agent.versionNumber, denormalized for display
 
   // The AgentTrajectoryStep join key for this run's trace — the DERIVED
   // "workflow-interpreter-{runId}" string (Task 1 contract, NOT the raw
@@ -146,5 +172,8 @@ model WorkflowRun {
   @@index([tenantId, workflowVersionId], name: "WorkflowRun_tenant_version_idx")
   @@index([tenantId, workflowSlug], name: "WorkflowRun_tenant_slug_idx")
   @@index([tenantId, status], name: "WorkflowRun_tenant_status_idx")
+  // TASK-1038 OD-26 — every reader filters by kind; the runs list sorts by startedAt within it.
+  @@index([tenantId, kind, startedAt], name: "WorkflowRun_tenant_kind_startedAt_idx")
+  @@index([tenantId, agentSlug], name: "WorkflowRun_tenant_agentSlug_idx")
   @@schema("core")
 }

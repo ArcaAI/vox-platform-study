@@ -44,7 +44,7 @@ class _RaisingClient:
 
 def _client(exc: BaseException) -> tuple[ExternalGuardrailClient, _RaisingClient]:
     http = _RaisingClient(exc)
-    posture = GuardrailPosture(enabled=True, max_retries=0, retry_backoff_ms=0)
+    posture = GuardrailPosture(max_retries=0, retry_backoff_ms=0)
     client = ExternalGuardrailClient(
         base_url=_BASE_URL,
         http_client=http,  # type: ignore[arg-type]

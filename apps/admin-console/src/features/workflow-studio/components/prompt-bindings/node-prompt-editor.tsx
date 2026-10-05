@@ -40,11 +40,14 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
-import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { TemplateField, templateSyntaxLint, withPlatformPaths } from '@/shared/template-editor';
 import { usePromptTemplateVersions, useUpdateNodePrompt } from '../../api';
 import type { NodePromptBinding, NodePromptUpdateResult } from '../../api/types';
 import { DIALOG_SIZE_CLASS } from '@/shared/dialog/dialog-size';
+
+/** A prompt template body may read the platform's own `context.*` names; offered for completion only. */
+const PLATFORM_PATHS = withPlatformPaths([]);
 
 function latestContent(versions: { versionNumber: number; content: string }[]): string {
   if (versions.length === 0) return '';
@@ -158,18 +161,17 @@ export function NodePromptEditor({
               <Skeleton className="min-h-0 flex-1" />
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col gap-2">
-              <Label htmlFor={`${uid}-content`}>Prompt content</Label>
-              {/* A `Textarea`, not `CodeEditor`: a prompt is prose, and
-                  `CodeEditor` is JSON-only — it would run JSON parse validation
-                  and flag every real prompt as invalid. Same control the
-                  authoritative editor on /prompt-templates uses. */}
-              <Textarea
-                id={`${uid}-content`}
-                aria-label="Prompt content"
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+              {/* The same `TemplateEditor` the authoritative editor on /prompt-templates uses:
+                  a template body is checked for syntax here; which paths resolve is the
+                  binding agent's question, checked at publish. */}
+              <TemplateField
+                label="Prompt content"
                 value={content ?? ''}
-                onChange={(event) => setContent(event.target.value)}
-                className="min-h-40 flex-1 resize-none font-mono text-xs"
+                onChange={setContent}
+                paths={PLATFORM_PATHS}
+                lint={templateSyntaxLint}
+                minLines={10}
               />
             </div>
           )}

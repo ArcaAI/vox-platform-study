@@ -173,6 +173,57 @@ which resolves on COMPLETED/FAILED/CANCELLED/DEAD and throws `TranscriptionJobTi
 otherwise. The transcript is `resultText` on the completed job. **Not `hope.jobs.*`** — that is the
 CONSULTATION jobs plane (`/consultations/jobs/{jobId}`) and answers 404 for a transcription job id.
 
+### 5.0 — `RunHandle`: one handle for a workflow or an agent run
+
+`hope.workflows.run(slug, input, options?)` and `hope.agents.run(slug, input, options?)` start a
+run and return a `RunHandle<TOutput>`. `input` is the workflow's input object itself (an agent's
+flat `{ text, context?, variables? }` body) — **not** wrapped in `{ input }`, which is what the
+pre-5.0 `run()` took. An `Idempotency-Key` is sent on every start (your `options.idempotencyKey`,
+else a fresh UUIDv7); the same key joins the run in flight (`run.joined === true`).
+
+```ts
+const run = await hope.workflows.run('note-writer', { note }, { idempotencyKey: `note-${visitId}` });
+
+// Stream the text as it is written.
+for await (const chunk of run.text()) process.stdout.write(chunk);
+
+// The delivered value, verified (a stored result is fetched by signed URL and its sha256 checked).
+// `null` when the run delivered nothing; throws `RunFailedError` when the run did not complete.
+const note = await run.result();
+
+// Wait for the end — streamed, or polled where a proxy buffers `text/event-stream`.
+const outcome = await run.wait({ poll: true, intervalMs: 2_000 });
+if (outcome.status !== 'COMPLETED') console.error(outcome.error?.code);
+
+// Explicit and idempotent. Breaking out of a loop, aborting a signal or losing the connection
+// NEVER cancels a run — it is a durable execution.
+await run.cancel();
+
+// Another process, later: pick the run up by id (makes no request).
+const same = hope.workflows.attach('note-writer', run.runId);
+for await (const event of same.events({ after: persistedSeq })) { /* typed protocol-v2 events */ }
+
+// An agent run is the same handle; it has one step, `nodeId: 'agent'`.
+const agentRun = await hope.agents.run('scribe', { text: transcript });
+```
+
+| Member                               | What it gives you                                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `runId`, `kind`, `slug`, `joined`    | Identity. Persist `runId` immediately — there is no business-plane run listing                 |
+| `text({ field?, nodeId? })`          | `AsyncGenerator<string>` of the text output                                                    |
+| `events({ after?, autoResume? })`    | Typed protocol-v2 events; resumes by `seq`, never infers loss from a `seq` jump                |
+| `result()`                           | The verified delivered value (`TOutput \| null`)                                               |
+| `wait({ poll?, intervalMs? })`       | `RunOutcome` — `status`, `degraded`, `error`, `durationMs`, `tokens`, `result`                 |
+| `cancel()`                           | Idempotent cancel; `cancel_requested` means the signal was SENT                                |
+| `status`, `lastSeq`, `outcome`       | The handle's current view of the run                                                           |
+
+Each iterator is an independent connection with its own cursor, so they can be combined freely.
+`start()`, `runAndWait()`, `runAndStream()`, `streamRun()` and `waitForRun()` are kept (not removed
+in 5.x) and marked `@deprecated` where `RunHandle` supersedes them; `start()` is the old `run()`
+(the bare 202 body). Pass the types `vox-codegen --api-key … --workflows` emits for a typed call:
+`hope.workflows.run<Workflow_NoteWriter_Input, Workflow_NoteWriter_Output>(…)`. Runnable:
+`examples/09-completion-signals.ts`.
+
 ### DNA writing style — `hope.dnaWritingStyle.*`
 
 `ingest({ clinicianUserId?, items })` submits 1-200 time-ordered writing samples so the platform's

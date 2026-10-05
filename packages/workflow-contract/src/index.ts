@@ -100,6 +100,36 @@ export {
 } from './template';
 export type { DeclaredNamespaces, PlaceholderReference, RenderTemplateOptions, TemplateReference } from './template';
 
+// The ONE render scope (`context` canonical, `trigger` its alias) and the ONE message composer:
+// platform rules → instruction → output-language step → output contract in the system message,
+// wrapped data blocks in the user message. Mirrored in Python by the harness's
+// `prompt_composition.py` (`build_prompt_scope`) and `compose_messages.py`, held to
+// `tests/contracts/compose-messages.fixture.json`.
+export { buildPromptScope } from './prompt-scope';
+export type { PromptScopeParts } from './prompt-scope';
+export { PLATFORM_RULES_VERSION, platformRules } from './platform-rules';
+export {
+  COMPOSE_DATA_BLOCK_KEY_PATTERN,
+  ComposeDataBlockKeyError,
+  EXTERNAL_DATA_MARKER_REPLACEMENT,
+  EXTERNAL_DATA_TRUNCATION_MARKER,
+  MESSAGE_LAYER_JOIN,
+  composeMessages,
+  outputLanguageStep,
+} from './compose-messages';
+export type { ComposeDataBlock, ComposeMessagesInput, ComposedDataBlock, ComposedMessages } from './compose-messages';
+
+// The prompt paths a context schema offers — shared by the publish gate and the console's
+// completion list. Mirrored by the harness's `schema_variable_paths.py`, held to
+// `tests/contracts/schema-variable-paths.fixture.json`.
+export { schemaVariablePaths } from './schema-variable-paths';
+export type { SchemaVariablePath } from './schema-variable-paths';
+
+// The flat `context.*` names the gateway itself binds (no schema kind declares them) — admitted by
+// agent publish and suggested by the console beside the schema's own paths.
+export { PLATFORM_CONTEXT_VARIABLES, withPlatformContextVariables } from './platform-context-variables';
+export type { PlatformContextVariable } from './platform-context-variables';
+
 // TASK-947 — a TEXT_GENERATION instruction's three forms read in ONE place (`agent-instruction`),
 // and prompt COMPOSITION (`prompt-composition`): which fragments of a composite artifact run
 // over the one render scope, rendered per fragment and joined. Mirrored in Python by the
@@ -126,6 +156,7 @@ export {
   composePrompt,
   conditionRootProblems,
   requiredPromptVariables,
+  resolvedPromptVariableDeclarations,
   selectPromptFragments,
   staticProjection,
   unresolvedPromptVariables,
@@ -142,13 +173,9 @@ export type {
   TemplateResolvedPrompt,
 } from './prompt-composition';
 
-// TASK-890 §3.14 (OD-R clause 3) — the guardrail opt-out's ONE precedence function
-// (node > workflow > agent > `true`), mirrored in Python by the harness's `guardrail_optout.py`
-// and held to `tests/contracts/guardrail-optout.fixture.json`. Guardrail POLICY is untouched:
-// this answers only "does the platform's guardrail run for THIS call", and a tenant may only
-// opt OUT.
-export { GUARDRAIL_DECISION_SOURCES, guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
-export type { GuardrailDecision, GuardrailDecisionSource, GuardrailOptOutInputs } from './guardrail-optout';
+// The RETIRED guardrail opt-out (owner decision OD-1): no scope may switch platform screening off.
+// Stored rows may still carry the old field, so for one release every parser strips it on the way in.
+export { stripRetiredAgentGuardrailOptOut, stripRetiredGraphGuardrailOptOuts, stripRetiredNodeGuardrailOptOut } from './retired-guardrail-optout';
 
 export {
   CORE_NODE_TYPES,
@@ -222,7 +249,14 @@ export type { PortValidationOptions } from './port-validation';
 // TASK-890 §3.5 (F-10) — the ONE publish gate, as machine-readable findings. It REPLACES
 // `workflowPublishProblems`, which was a real gate nothing ever called (BLOCKER 1c), re-emits
 // every one of its checks with a `code`, and adds the per-node config-schema check nobody ran.
-export { PUBLISH_FINDING_RULE_ID, TEMPLATE_REFERENCE_SEVERITY_RELEASE_1, WORKFLOW_PUBLISH_FINDING_CODES, publishFindings } from './publish-findings';
+export {
+  PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
+  PUBLISH_FINDING_RULE_ID,
+  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  WORKFLOW_PUBLISH_FINDING_CODES,
+  publishFindings,
+} from './publish-findings';
 export type { GenerationRange, GenerationRanges, PublishAgentView, PublishContext, WorkflowPublishFindingCode } from './publish-findings';
 // step 7 TIER 2 — shallow schema compatibility, WARNING-severity only. Tier 1 (the
 // port lattice, above) blocks; tier 3 is runtime validation at the node boundary. Never promote
@@ -322,3 +356,119 @@ export type {
   PortableBundleSource,
   PortableBundleTenantKind,
 } from './portable-bundle';
+
+// ── TASK-1036 C0b: agent schema (W2/W3/OD-7/OD-8), derive v2, nullable prompt variables ──
+export {
+  PLATFORM_MANAGED_KEYWORD,
+  TENANT_EDITABLE_PARAMETER_PATHS,
+  platformManagedPaths,
+  tenantEditableParams,
+  readTextAgentMessage,
+} from './agent-schemas';
+export type { ModelCapabilities } from './agent-schemas';
+export { deriveVariableDeclarations, PROMPT_VARIABLE_NAMESPACE_ROOTS } from './derive-variable-declarations';
+export type {
+  PromptVariableDeclaration,
+  PromptVariableType,
+  DerivedVariableDeclarations,
+} from './derive-variable-declarations';
+export type { PromptScopeVariableDeclaration } from './prompt-scope';
+
+// ── TASK-1036 C0a: NodeIO, bindings, workflow settings, consultation read schema, picker sources ──
+export {
+  IO_BASE_TYPES,
+  IO_ELEMENT_TYPES,
+  IO_REFERENCE_TYPES,
+  NODE_IO,
+  isIoType,
+  typeFits,
+  ioTypeOfJsonSchema,
+  ioTypeOfVariableType,
+  agentNodeIO,
+  actionNodeIO,
+  agentTaskOf,
+  nodeIOFor,
+} from './node-io';
+export type {
+  IoBaseType,
+  IoType,
+  TypeFit,
+  PhiClass,
+  NodeIO,
+  NodeIOInput,
+  NodeIOOutput,
+  AgentIOResolution,
+  AgentIOResolver,
+  NodeResultArtifact,
+  NodeResultEnvelope,
+} from './node-io';
+export {
+  BINDING_ROOTS,
+  RUN_SCOPE_FIELDS,
+  isBinding,
+  edgeAncestors,
+  legacyInputName,
+  edgeImpliedBindings,
+  compiledBindings,
+  bindingIssues,
+  resolveBindingSource,
+} from './bindings';
+export type {
+  Binding,
+  FromBinding,
+  ValueBinding,
+  TemplateBinding,
+  FirstOfBinding,
+  CompiledBinding,
+  BindingRoot,
+  BindingIssue,
+  BindingIssueCode,
+  BindingIssueContext,
+  ResolvedSource,
+} from './bindings';
+export {
+  WORKFLOW_CONNECTIONS,
+  WORKFLOW_SOURCES,
+  graphSettingsOf,
+  workflowSettingsProblems,
+  effectiveSettings,
+  settingsImplications,
+} from './workflow-settings';
+export type {
+  WorkflowConnection,
+  WorkflowSource,
+  WorkflowContextSchemaSetting,
+  WorkflowSettings,
+  EffectiveWorkflowSettings,
+  WorkflowGraphWithSettings,
+  WorkflowSettingsRuleId,
+  SettingsImplication,
+  SettingsImplicationContext,
+} from './workflow-settings';
+export {
+  CONSULTATION_READ_SCHEMA_V1,
+  CONSULTATION_READ_SCHEMA_VERSION,
+  CONSULTATION_ROOT,
+  consultationPathInfo,
+  consultationReadPaths,
+  nodeConsultationReads,
+  declaredConsultationReads,
+  PLATFORM_CONTEXT_ALIASES,
+} from './consultation-read-schema';
+export type {
+  ConsultationPathInfo,
+  ConsultationRead,
+  ConsultationReadAt,
+  PlatformContextAlias,
+} from './consultation-read-schema';
+export { bindingSourcePaths } from './binding-source-paths';
+export type {
+  BindingSourceGroup,
+  BindingSourceGroupKey,
+  BindingSourceItem,
+  BindingSourceOptions,
+} from './binding-source-paths';
+export { NODE_LABEL_MAX_LENGTH, BINDING_JSON_SCHEMA, BINDING_FIRST_OF_MAX_PATHS } from './node-config-schemas';
+export { DATA_CONTRACT_RULES } from './rule-catalogue';
+export type { DataContractRule } from './rule-catalogue';
+export type { CompiledWorkflowSettings } from './compiler';

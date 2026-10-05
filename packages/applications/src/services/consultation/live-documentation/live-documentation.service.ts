@@ -61,23 +61,25 @@ import type { ResolvedTextCandidate, ResolvedTextGenerationSpec } from '../../ag
 // TASK-890 §3.2/§3.3 — the ONE prompt grammar and the ONE scope. The realtime and durable lanes
 // render the SAME `core.agent` node, so they must render it the same way.
 import {
-  composePrompt,
+  buildPromptScope,
+  composeMessages,
   CORE_PALETTE_KEY,
-  guardrailOptOutOf,
+  platformRules,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  resolveGuardrailDecision,
+  resolvedPromptVariableDeclarations,
   selectPromptFragments,
   type ComposableResolvedPrompt,
-  type ComposedPrompt,
+  type PromptScopeVariableDeclaration,
+  type ComposeDataBlock,
+  type ComposedMessages,
   type ExpressionValue,
 } from '@arcaai/workflow-contract';
 // TASK-1001 (owner decision 2026-09-23) — the platform-reserved key of a tenant's output-language
 // policy fragment. Declared in `@arcaai/types` so the seed that attaches it and this lane that asks
 // whether it was selected read ONE spelling.
 import { OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY } from '@arcaai/types';
-import { buildAgentPromptScope } from '../../agent/agent-prompt-scope';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -332,16 +334,44 @@ class LivePromptUnresolvedError extends Error {
  * so `context.visit_type` selected a fragment on three lanes and was a silent `condition_error` on
  * this one. `trigger` stays the payload verbatim.
  *
- * Throws what `buildAgentPromptScope` throws (an unresolvable `{ path }` binding).
+ * Throws what `buildPromptScope` throws (an unresolvable `{ path }` binding).
  */
 function livePromptScope(
-  variables: Record<string, unknown>,
+  bindings: LivePromptBindings,
   agentSlug: string,
   trigger?: Readonly<Record<string, unknown>> | null,
   contextSchema?: ResolvedTextCandidate['contextSchema'],
 ): Record<string, unknown> {
   const context = trigger ? (unwrapSingleKindContextPayload(contextSchema?.payloadSchema ?? null, trigger) as Record<string, unknown>) : undefined;
-  return buildAgentPromptScope({ variables, trigger, context, templateRef: `agent:${agentSlug}` });
+  // TASK-1036 (lane B6b) — the node's overrides travel SEPARATELY so `buildPromptScope` renders a
+  // `{{…}}` override against the run scope instead of binding it literally (node still wins).
+  return buildPromptScope({
+    variables: bindings.variables,
+    overrides: bindings.overrides,
+    // TASK-1036 OD-10 — an absent OPTIONAL declared variable renders `""` (or its default).
+    variableDeclarations: bindings.variableDeclarations,
+    trigger,
+    context,
+    templateRef: `agent:${agentSlug}`,
+  });
+}
+
+/**
+ * The agent's own `instruction.variables` and the node's `overrides.promptVariables`, kept apart,
+ * plus the variable declarations the candidate's frozen prompt carries (OD-10).
+ */
+interface LivePromptBindings {
+  readonly variables: Record<string, unknown>;
+  readonly overrides: Record<string, unknown>;
+  readonly variableDeclarations: readonly PromptScopeVariableDeclaration[];
+}
+
+function livePromptBindings(instruction: Record<string, unknown>, overrides: NodeOverrides, resolvedPrompt: ComposableResolvedPrompt): LivePromptBindings {
+  return {
+    variables: asRecord(instruction.variables),
+    overrides: overrides.promptVariables,
+    variableDeclarations: resolvedPromptVariableDeclarations(resolvedPrompt),
+  };
 }
 
 /**
@@ -374,8 +404,7 @@ function outputLanguagePolicySelected(
   const fragments = Array.isArray(source.fragments) ? source.fragments : [];
   try {
     // The variables `callTextCandidate` renders with — the agent's own, the node's overrides on top.
-    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
-    const scope = livePromptScope(variables, candidate.agent.slug, trigger, candidate.contextSchema);
+    const scope = livePromptScope(livePromptBindings(instruction, overrides, candidate.resolvedPrompt), candidate.agent.slug, trigger, candidate.contextSchema);
     return selectPromptFragments(fragments, scope).selected.some((fragment) => fragment.key === OUTPUT_LANGUAGE_POLICY_FRAGMENT_KEY);
   } catch {
     return false;
@@ -401,29 +430,30 @@ function outputLanguagePolicySelected(
  * `trigger` still means "this lane has no trigger", and that is now only true of a caller that
  * passes none.
  *
- * TASK-947 §4.1 — the render goes through `composePrompt`, which is what makes a COMPOSITE
- * artifact select its fragments over THIS scope (built once, before any condition), render each
- * fragment on its own and join them. The two single-body forms take that function's other branch,
- * which is `renderTemplate` over this same scope — byte-identical to what this function did
- * before. A fragment names itself in an error as `agent:<slug>#<key>`, so an unresolved variable
- * inside one still degrades the node with the PATH named, exactly as §3.2 requires.
+ * TASK-947 §4.1 — the render goes through `composeMessages` (and through it `composePrompt`),
+ * which is what makes a COMPOSITE artifact select its fragments over THIS scope (built once, before
+ * any condition), render each fragment on its own and join them. A fragment names itself in an
+ * error as `agent:<slug>#<key>`, so an unresolved variable inside one still degrades the node with
+ * the PATH named, exactly as §3.2 requires.
  */
-function renderLivePrompt(
+function composeLiveMessages(
   resolvedPrompt: ComposableResolvedPrompt,
-  variables: Record<string, unknown>,
+  bindings: LivePromptBindings,
   agentSlug: string,
+  parts: LivePromptParts,
+  corrective?: string,
   trigger?: Readonly<Record<string, unknown>> | null,
   contextSchema?: ResolvedTextCandidate['contextSchema'],
-): ComposedPrompt {
+): ComposedMessages {
   try {
     // Scope construction is INSIDE the try: a `{ path }` binding is resolved through the same
     // grammar, so an unresolvable binding raises here and must degrade the node with the path
     // named rather than escape as an unhandled error.
-    const scope = livePromptScope(variables, agentSlug, trigger, contextSchema);
-    return composePrompt(resolvedPrompt, scope, { templateRef: `agent:${agentSlug}` });
+    const scope = livePromptScope(bindings, agentSlug, trigger, contextSchema);
+    return composeLivePromptParts(resolvedPrompt, scope, `agent:${agentSlug}`, parts, corrective);
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
-      throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.path} (agent '${agentSlug}')`);
+      throw new LivePromptUnresolvedError(`core.agent: prompt_variable_unresolved: ${error.paths.join(', ')} (agent '${agentSlug}')`);
     }
     if (error instanceof PromptTemplateSyntaxError) {
       throw new LivePromptUnresolvedError(`core.agent: prompt_template_syntax: ${error.message} (agent '${agentSlug}')`);
@@ -455,6 +485,44 @@ function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, ins
   if (resolvedPrompt && resolvedPrompt.source === 'composite') return resolvedPrompt;
   const content = resolvedPrompt?.content ?? (typeof instruction.systemPrompt === 'string' ? instruction.systemPrompt : null);
   return content ? { source: 'inline', content } : null;
+}
+
+/**
+ * One live turn's prompt, before composition: the per-flush INSTRUCTIONS (the template's stable
+ * lead-in, the turn directive, the operating frame and the turn contract — tenant-governed or
+ * platform-authored text) and the per-flush DATA (transcript, the note so far, the clinician's and
+ * the client's material), each a delimited block in the user message.
+ *
+ * The blocks keep the order the single user prompt used to carry them in — the stable lead-in's
+ * prefix-cache ordering — and the instructions keep theirs.
+ */
+export interface LivePromptParts {
+  readonly instructions: string;
+  readonly blocks: readonly ComposeDataBlock[];
+}
+
+/**
+ * The ONE composition of a live turn: platform rules → the agent's instruction → the turn's
+ * instructions (+ the bounded corrective, last, so the stable layers stay byte-identical between
+ * an original call and its repair) in the SYSTEM message; the turn's data in the USER message.
+ */
+function composeLivePromptParts(
+  resolvedPrompt: ComposableResolvedPrompt,
+  scope: Readonly<Record<string, unknown>>,
+  templateRef: string,
+  parts: LivePromptParts,
+  corrective?: string,
+): ComposedMessages {
+  return composeMessages({
+    platformRules: platformRules(),
+    resolvedPrompt,
+    scope,
+    outputContract: [parts.instructions, corrective?.trim()].filter((part): part is string => !!part).join('\n\n'),
+    dataBlocks: parts.blocks,
+    templateRef,
+    // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
+    dropEmptyBlocks: true,
+  });
 }
 
 const PLATFORM_TEMPLATE: ResolvedDocumentTemplate = Object.freeze({
@@ -3366,7 +3434,7 @@ return 0`;
     // TASK-1001 (owner decision 2026-09-23) — the platform-default OUTPUT language, frozen on the
     // session. Resolved here, before either prompt is built, so both branches state the same one.
     const platformOutputLanguageTag = await this.sessionPlatformOutputLanguage(session);
-    const promptText = this.buildTextUserPrompt(
+    const promptParts = this.buildLivePromptParts(
       priorNote,
       delta || transcript,
       notes,
@@ -3476,7 +3544,7 @@ return 0`;
     const graph = lane
       ? await this.runGraphLane(session, lane, {
           buildPrompt: (sourceText, policySelected) =>
-            this.buildTextUserPrompt(
+            this.buildLivePromptParts(
               priorNote,
               sourceText,
               notes,
@@ -3553,7 +3621,7 @@ return 0`;
           generate: async (retry) => {
             const startedAt = Date.now();
             const { text, stats, structured } = await this.callText(
-              promptText,
+              promptParts,
               session.tenantId,
               signal,
               retry?.corrective,
@@ -4075,7 +4143,7 @@ return 0`;
        * the agent this node runs, which only the node knows: selected ⇒ the frame states no
        * language (the tenant's text owns it); not selected ⇒ it states the platform default.
        */
-      buildPrompt: (sourceText: string, policySelected: boolean) => string;
+      buildPrompt: (sourceText: string, policySelected: boolean) => LivePromptParts;
       agent: FrozenLiveAgentSnapshot;
       template: ResolvedDocumentTemplate;
       signal: AbortSignal;
@@ -4163,7 +4231,7 @@ return 0`;
         // slug — the throw degrades the node with a named reason and nothing is generated on
         // the tenant default in its place. A legacy summary node carries no ref and keeps the
         // assigned-agent path inside `callText`.
-        const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId, effectiveLane);
+        const textAgent = await this.resolveRealtimeTextAgent(input, session.tenantId);
         // A3 — the primary plus every fallback the call may switch to, in the order `callText`
         // walks them. WHICH of them served is read back off the stats below, because that is the
         // one field that already knows.
@@ -4178,7 +4246,7 @@ return 0`;
         // selected. Asked of the PRIMARY: it is the candidate that serves unless it fails, and the
         // prompt is built once for the whole fallback walk. The assigned-agent path
         // (`textAgent` undefined) serves a single-template snapshot, so nothing can be selected.
-        const promptText = ctx.buildPrompt(
+        const promptParts = ctx.buildPrompt(
           input.sourceText,
           textAgent
             ? outputLanguagePolicySelected(textAgent.spec.primary, textAgent.overrides, ctx.runContext.trigger as Readonly<Record<string, unknown>>)
@@ -4196,7 +4264,7 @@ return 0`;
             generate: async (retry) => {
               const startedAt = Date.now();
               const { text, stats, structured } = await this.callText(
-                promptText,
+                promptParts,
                 session.tenantId,
                 signal,
                 retry?.corrective,
@@ -4651,7 +4719,7 @@ return 0`;
    */
   /**
    * TASK-943 — the run context the realtime lane evaluates guards against AND every `core.agent`
-   * renders its instruction from (its `trigger` root, via `buildAgentPromptScope`).
+   * renders its instruction from (its `trigger` root, via `buildPromptScope`).
    *
    * ## The defect this replaced
    *
@@ -6093,115 +6161,84 @@ return 0`;
     return churn;
   }
 
-  private buildTextUserPrompt(
+  /**
+   * One live turn's prompt as {@link LivePromptParts}: the INSTRUCTIONS and the delimited DATA,
+   * composed into the system and user messages by `composeLivePromptParts`.
+   *
+   * Instructions, in order: the stable lead-in (byte-identical across every flush of a session —
+   * the prefix-cache anchor), the turn directive, the elision note (only when something was
+   * elided), the REFERENCE-ONLY rule (only when a reference block is present), the operating frame
+   * (the turn's procedure) and the turn contract LAST (the output contract, nearest the generation
+   * point, where a model honours it most reliably).
+   *
+   * Data blocks, in the order the single user prompt used to carry them: the transcript (so far /
+   * since the last update), the note so far, the clinician's notes/labs, then the CLIENT-context
+   * blocks — `Recent Vitals` and `PREVIOUS CASE NOTES SUMMARY` (the department templates'
+   * source-of-truth T3/T4 tiers, labelled with the exact names those templates give them), the
+   * client's lab results and the patient's EARLIER visits today. An empty block is skipped, so a
+   * session with none of the optional material produces exactly the blocks it did before.
+   */
+  private buildLivePromptParts(
     priorNote: string,
     delta: string,
     notes: string,
     elided = false,
     stablePrefix: string = LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX,
-    // the resolved template's own title. The three blocks below used
-    // to say "SOAP note" in prose while the response schema described whatever
-    // the tenant actually published; a model told to update a SOAP note and
-    // decoded against a discharge summary is being given two different jobs.
+    // the resolved template's own title, so the instructions name the document the response
+    // schema actually describes.
     documentTitle: string = PLATFORM_TEMPLATE.compiled.title,
-    // TASK-932 §3.7 — the operating frame, already rendered. Passed in rather than built here so
-    // this method stays a pure string assembly and the frame is testable on its own.
+    // TASK-932 §3.7 — the operating frame, already rendered.
     operatingFrame = '',
     // TASK-939 OD-2(a) — the turn contract's prose half (`turnInstruction`), already rendered.
-    // Trailing and defaulted so every positional fixture keeps its arity. Empty ⇒ the pre-ticket
-    // whole-document prompt, which is what the durable/compat callers still want.
+    // Empty ⇒ the pre-ticket whole-document directive.
     turnContract = '',
-    // What the CLIENT sent at `open`, already rendered by the shared reader: the measured
-    // readings line and the prior-visit history. Both trailing and optional, so every existing
-    // positional fixture keeps its arity and a session with neither produces a byte-identical
-    // prompt.
+    // What the CLIENT sent at `open`, already rendered by the shared reader.
     clientVitals?: string,
     clientPreviousVisits?: string,
-    // TASK-1020 — the same-day prequel and the client's lab results. Trailing and optional for the
-    // same reason as the two above: absent or blank ⇒ a byte-identical prompt.
+    // TASK-1020 — the same-day prequel and the client's lab results.
     carry?: { sameDayPrequel?: string; testResults?: string },
-  ): string {
-    const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
+  ): LivePromptParts {
     const hasPriorNote = priorNote.trim().length > 0;
-    // In windowed mode an over-cap backlog drops its oldest part.
-    // Say so: a partial window presented as the whole encounter would invite the
-    // model to treat absent findings as absent from the visit. Appended AFTER the
-    // stable prefix, and only when something was actually elided, so both the
-    // prefix-cache-stable lead-in and the `whole`-mode prompt stay untouched.
-    const elisionBlock = elided
-      ? `\n\nNOTE: earlier transcript from this update was elided to fit the context window; the ${documentTitle} above already reflects it. Do not treat its absence as new information.`
-      : '';
-
-    // prefix-cache-friendly ordering:
-    //   [stable system] + [transcript-so-far] + [current note] + [delta instruction]
-    // The leading stable-system block is identical across the first flush and
-    // every update flush (see LIVE_DOCUMENT_STABLE_SYSTEM_PREFIX), so the engine
-    // reuses the cached KV of that prefix. The mode-specific directive that
-    // used to LEAD the prompt (breaking the shared prefix between first/update
-    // flushes) is now the trailing block.
-    const transcriptBlock = hasPriorNote ? `\n\nNew transcript since last update:\n${delta}` : `\n\nTranscript so far:\n${delta}`;
-    const currentNoteBlock = hasPriorNote ? `\n\nCurrent ${documentTitle} so far:\n${priorNote}` : '';
-    // TASK-939 — under the turn contract the instruction is about the CONTRIBUTION, not about the
-    // document: "update the existing note" invited the model to hand back the note, which is what
-    // it did. `turnContract` (appended last) carries the field-level rules; this line only has to
-    // say what the turn is FOR.
+    // TASK-939 — under the turn contract the directive is about the CONTRIBUTION, not about the
+    // document: "update the existing note" invited the model to hand back the note.
     const deltaInstruction = turnContract
       ? hasPriorNote
-        ? `\n\nReport what the new transcript adds to the ${documentTitle} above. Do not reproduce the note.`
-        : `\n\nThis is the first turn of this ${documentTitle}: report what the transcript above establishes.`
+        ? `Report what the new transcript adds to the ${documentTitle} in the data sections. Do not reproduce the note.`
+        : `This is the first turn of this ${documentTitle}: report what the transcript in the data sections establishes.`
       : hasPriorNote
-        ? `\n\nUpdate the existing ${documentTitle} above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
-        : `\n\nFrom the transcript and any clinician notes/labs above, produce the running ${documentTitle} now.`;
-
-    // The frame goes LAST, after the delta instruction: it is the turn's procedure, and a
-    // trailing block is what the model reads immediately before generating. It is deliberately
-    // NOT part of `stablePrefix` — the prefix is byte-identical across every flush of a session
-    // so the engine can reuse its cached KV, and the frame carries the same bytes for the same
-    // session, so appending it here costs the cache nothing while keeping the prefix's contract
-    // (tenant-governed prose + compiled structure) unmuddied.
-    // `turnContract` is LAST of all — after the operating frame — because it is the output
-    // contract, and the nearest instruction to the generation point is the one a model honours
-    // most reliably. It is per-session-stable like the frame, so the prefix cache is unaffected.
-    // The two CLIENT-context blocks. Labelled with the exact names the department templates'
-    // own source-of-truth protocol gives them — `Recent Vitals` is its T3 tier and
-    // `PREVIOUS CASE NOTES SUMMARY` its T4 — so the rules those templates already state about
-    // each tier bind to the block rather than describing material that is not in the prompt.
-    // Appended here rather than written into the bodies, so no seeded template is regenerated.
-    //
-    // Placed AFTER the transcript and note blocks and BEFORE the operating frame: they are
-    // per-session-stable like the frame, so the prefix cache is unaffected, and the turn's own
-    // procedure and output contract stay nearest the generation point, where a model honours
-    // them most reliably.
-    const clientVitalsBlock = clientVitals?.trim() ? `\n\nRecent Vitals:\n${clientVitals.trim()}` : '';
-    const clientPreviousVisitsBlock = clientPreviousVisits?.trim() ? `\n\nPREVIOUS CASE NOTES SUMMARY:\n${clientPreviousVisits.trim()}` : '';
-    // TASK-1020 — appended the same way, after the prior case notes: the client's lab results, then
-    // the patient's EARLIER visits today (dated, attributed blocks from `same-day-prequel.ts`).
-    const testResultsBlock = carry?.testResults?.trim() ? `\n\nTEST RESULTS:\n${carry.testResults.trim()}` : '';
-    const sameDayPrequelBlock = carry?.sameDayPrequel?.trim() ? `\n\nSAME-DAY EARLIER VISIT(S):\n${carry.sameDayPrequel.trim()}` : '';
-    // TASK-1022 — the three blocks above are REFERENCE, not dictation. A live replay's turn 1 ("Your
-    // reports are back.") copied them into today's sections on its own. One rule line, stated once
-    // before the first of them; absent when none is present, so such a prompt stays byte-identical.
-    // `Recent Vitals` stays outside the frame: the templates' VITALS rule already governs it.
-    const referenceRuleBlock =
-      clientPreviousVisitsBlock || testResultsBlock || sameDayPrequelBlock
-        ? "\n\nREFERENCE ONLY — the blocks below are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
+        ? `Update the existing ${documentTitle} in the data sections using ONLY the new transcript since the last update; keep prior content unless it is contradicted.`
+        : `From the transcript and any clinician notes/labs in the data sections, produce the running ${documentTitle} now.`;
+    // In windowed mode an over-cap backlog drops its oldest part. Say so: a partial window
+    // presented as the whole encounter would invite the model to treat absent findings as absent
+    // from the visit.
+    const elisionNote = elided
+      ? `NOTE: earlier transcript from this update was elided to fit the context window; the ${documentTitle} in the data sections already reflects it. Do not treat its absence as new information.`
+      : '';
+    const previousVisits = clientPreviousVisits?.trim() ?? '';
+    const testResults = carry?.testResults?.trim() ?? '';
+    const sameDayPrequel = carry?.sameDayPrequel?.trim() ?? '';
+    // TASK-1022 — the three reference blocks are REFERENCE, not dictation. One rule line, absent
+    // when none is present. `Recent Vitals` stays outside it: the templates' VITALS rule governs it.
+    const referenceRule =
+      previousVisits || testResults || sameDayPrequel
+        ? "REFERENCE ONLY — the PREVIOUS CASE NOTES SUMMARY, TEST RESULTS and SAME-DAY EARLIER VISIT(S) data sections are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
         : '';
 
-    return (
-      stablePrefix +
-      transcriptBlock +
-      currentNoteBlock +
-      elisionBlock +
-      deltaInstruction +
-      notesBlock +
-      clientVitalsBlock +
-      referenceRuleBlock +
-      clientPreviousVisitsBlock +
-      testResultsBlock +
-      sameDayPrequelBlock +
-      operatingFrame +
-      turnContract
-    );
+    return {
+      instructions: [stablePrefix, deltaInstruction, elisionNote, referenceRule, operatingFrame, turnContract]
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .join('\n\n'),
+      blocks: [
+        { key: 'transcript', label: hasPriorNote ? 'New transcript since last update' : 'Transcript so far', content: delta },
+        { key: 'current_note', label: `Current ${documentTitle} so far`, content: hasPriorNote ? priorNote : null },
+        { key: 'clinician_notes', label: 'Clinician notes / labs', content: notes || null },
+        { key: 'recent_vitals', label: 'Recent Vitals', content: clientVitals?.trim() || null },
+        { key: 'previous_case_notes_summary', label: 'PREVIOUS CASE NOTES SUMMARY', content: previousVisits || null },
+        { key: 'test_results', label: 'TEST RESULTS', content: testResults || null },
+        { key: 'same_day_prequel_summary', label: 'SAME-DAY EARLIER VISIT(S)', content: sameDayPrequel || null },
+      ],
+    };
   }
 
   /**
@@ -6519,23 +6556,16 @@ return 0`;
   }
 
   /**
-   * TASK-890 §3.14 — resolve a realtime `core.agent` node's agent AND fold its guardrail decision.
-   *
-   * The fold happens HERE, once per call, because this is the only place all three opinions are
-   * in scope: the node's own `config.guardrail` (authored on the graph), the WORKFLOW default the
-   * compiler froze onto `policyBindings.guardrail` (carried by the lane), and the agent's own
-   * `compiledConfig.guardrail` the resolver normalised. Precedence is the shared
-   * `resolveGuardrailDecision` — node > workflow > agent > ON — so this lane and the durable lane
-   * (`guardrail_optout.resolve_guardrail_decision`) answer identically for the same node.
+   * Resolve a realtime `core.agent` node's agent and its per-node overrides. (The node / workflow /
+   * agent guardrail opt-out this used to fold is retired — every call is screened.)
    *
    * A legacy summary node carries no `agentRef` and keeps the assigned-agent path inside
-   * `callText`, which expresses no opinion and lets TEXT's platform posture govern — unchanged.
+   * `callText`.
    */
   private async resolveRealtimeTextAgent(
     input: { agentRef?: RealtimeAgentRef; config?: Readonly<Record<string, unknown>> },
     tenantId: string,
-    lane: RealtimeLane,
-  ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail: { enabled: boolean } } | undefined> {
+  ): Promise<{ spec: ResolvedTextGenerationSpec; overrides: NodeOverrides } | undefined> {
     // TASK-893 — a `core.agent` names its agent by SLUG or by TASK. Only the slug form pins an
     // agent; the task form is the code-built platform lane saying "the tenant's assigned
     // TEXT_GENERATION agent", which is exactly the `undefined` path `callText` already takes
@@ -6544,16 +6574,7 @@ return 0`;
     const { slug, versionNumber } = (input.agentRef ?? {}) as { slug?: string; versionNumber?: number };
     if (slug === undefined) return undefined;
     const spec = await this.resolveRealtimeAgent({ slug, ...(versionNumber !== undefined ? { versionNumber } : {}) }, tenantId);
-    const guardrail = resolveGuardrailDecision({
-      node: guardrailOptOutOf(input.config),
-      workflow: lane.guardrail,
-      // Optional-chained on purpose: `ResolvedAgent.guardrail` is non-optional by type, but a
-      // resolver answer built before this ticket (or a fixture) can carry none, and a MISSING
-      // opinion must read as INHERIT (`null`) — which the fold then resolves to ON. On a safety
-      // gate, "unreadable" must never resolve to an opt-out.
-      agent: spec.agent?.guardrail?.enabled ?? null,
-    });
-    return { spec, overrides: nodeOverrides(input.config), guardrail: { enabled: guardrail.enabled } };
+    return { spec, overrides: nodeOverrides(input.config) };
   }
 
   /**
@@ -6623,7 +6644,7 @@ return 0`;
   }
 
   private async callText(
-    promptText: string,
+    promptParts: LivePromptParts,
     tenantId: string,
     signal?: AbortSignal,
     corrective?: string,
@@ -6634,7 +6655,7 @@ return 0`;
     // TASK-876 — a `core.agent` node's RESOLVED agent (primary + ordered fallback chain) and the
     // node's own `overrides`. Trailing and optional, so every legacy-flush caller keeps its
     // arity and generates on the tenant's ASSIGNED agent instead.
-    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides; guardrail?: { enabled: boolean } },
+    textAgent?: { spec: ResolvedTextGenerationSpec; overrides: NodeOverrides },
     // TASK-890 §3.13 — attribution for the usage row this call now records. Trailing and
     // optional so every positional fixture keeps its arity.
     consultationId?: string | null,
@@ -6657,7 +6678,7 @@ return 0`;
       for (const candidate of candidates) {
         try {
           return await this.callTextCandidate(
-            promptText,
+            promptParts,
             tenantId,
             candidate,
             textAgent.overrides,
@@ -6665,7 +6686,6 @@ return 0`;
             signal,
             corrective,
             consultationId,
-            textAgent.guardrail,
             trigger,
             isRepairAttempt,
           );
@@ -6710,8 +6730,9 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
+    let deploymentKind: string | undefined;
     if (this.harnessPolicyService) {
-      ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+      ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
     // deterministic sectioned object (parsed by parseDocumentJson); ollama ignores it so we
@@ -6720,12 +6741,21 @@ return 0`;
     // the bounded auto-repair retry appends the corrective
     // instruction AFTER the stable prompt so the prefix-cache-friendly lead-in
     // (Phase 4D.1) stays byte-identical between the original and repair calls.
+    // The frozen snapshot's system prompt (identical to the exported constant whenever no agent
+    // binding customized it — the paired sha256 guards prove the constant and the seeded SYSTEM
+    // default carry the same bytes), composed through the ONE composer. It is the session's frozen
+    // text, rendered over an empty scope: a placeholder in it cannot resolve here, and refusing
+    // by name beats sending a literal `{{…}}` to the model.
+    const composed = composeLivePromptParts(
+      { source: 'inline', content: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT },
+      buildPromptScope({}),
+      'live:assigned-agent',
+      promptParts,
+      corrective,
+    );
     const payload = {
-      prompt: corrective ? `${promptText}${corrective}` : promptText,
-      // The frozen snapshot's system prompt; identical to the exported constant
-      // whenever no agent binding customized it (the paired sha256 guards prove
-      // the constant and the seeded SYSTEM default carry the same bytes).
-      system_prompt: agent?.systemPrompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
+      prompt: composed.user,
+      system_prompt: composed.system,
       provider,
       model,
       max_tokens: this.realtimeBudgets.textMaxTokens,
@@ -6737,7 +6767,7 @@ return 0`;
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, undefined, generation);
+    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, { deploymentKind: deploymentKind ?? null }, generation);
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
     // method is the live tier exclusively). TEXT itself has no notion of this key; it only
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
@@ -6761,7 +6791,7 @@ return 0`;
    * running note, so the document shape, not the agent's `responseFormat`, is the contract.
    */
   private async callTextCandidate(
-    promptText: string,
+    promptParts: LivePromptParts,
     tenantId: string,
     candidate: ResolvedTextCandidate,
     overrides: NodeOverrides,
@@ -6769,10 +6799,6 @@ return 0`;
     signal?: AbortSignal,
     corrective?: string,
     consultationId?: string | null,
-    // TASK-890 §3.14 — the FOLDED guardrail decision for this node (node > workflow > agent > on),
-    // computed once by `resolveRealtimeTextAgent`. Every candidate of one node carries the same
-    // decision: switching engines on an outage must never change whether the call is screened.
-    guardrail?: { enabled: boolean },
     // TASK-943 — the run's `trigger` root, so an agent's `{ path: 'trigger.context.*' }` bindings
     // resolve. Trailing + optional so every positional fixture keeps its arity; ABSENT ⇒ the
     // pre-943 behaviour (no trigger root), which is correct for a caller that genuinely has none.
@@ -6783,13 +6809,20 @@ return 0`;
     const includeResponseFormat = candidate.provider.toLowerCase() !== 'ollama';
     const generation = { ...asRecord(candidate.parameters.generation), ...overrides.generation };
     const instruction = asRecord(candidate.instruction);
-    const variables = { ...asRecord(instruction.variables), ...overrides.promptVariables };
-    // TASK-947 §4.1 — ONE render seam for all three instruction forms. `composed` is `null` only
-    // when the candidate carries no instruction body at all, which is the pre-947 `LIVE_DOCUMENT_
-    // SYSTEM_PROMPT` case.
+    const bindings = livePromptBindings(instruction, overrides, candidate.resolvedPrompt);
+    // TASK-947 §4.1 — ONE render seam for all three instruction forms. A candidate with no
+    // instruction body at all serves `LIVE_DOCUMENT_SYSTEM_PROMPT`, the pre-947 case.
     const promptSource = liveCandidatePromptSource(candidate.resolvedPrompt, instruction);
-    const composed = promptSource ? renderLivePrompt(promptSource, variables, candidate.agent.slug, trigger, candidate.contextSchema) : null;
-    if (composed && composed.excluded.length > 0) {
+    const composed = composeLiveMessages(
+      promptSource ?? { source: 'inline', content: LIVE_DOCUMENT_SYSTEM_PROMPT },
+      bindings,
+      candidate.agent.slug,
+      promptParts,
+      corrective,
+      trigger,
+      candidate.contextSchema,
+    );
+    if (composed.excluded.length > 0) {
       // OD-11 — KEY + REASON only. A `when` and a fragment body are authored clinical text; the
       // point of naming the exclusions at all is that an author can tell "the branch was false"
       // from "the branch could not be read", and both fit in the reason.
@@ -6801,7 +6834,7 @@ return 0`;
     }
     // Selected KEYS, and only for a composite: a single-body agent has no fragments to report, and
     // `[]` there would read as "every fragment was excluded".
-    const promptFragments = promptSource?.source === 'composite' && composed ? [...composed.selected] : null;
+    const promptFragments = promptSource?.source === 'composite' ? [...composed.selected] : null;
     // TASK-876 — the RESOLVED candidate's own credential is authoritative for this request.
     // Without it `postTextGenerate`'s enrichment recomputes `provider_overrides` from the CLS
     // tenant, so a call served by the SYSTEM platform default would be forwarded with the
@@ -6811,8 +6844,8 @@ return 0`;
     const frequencyPenalty = numberOrUndefined(generation.frequencyPenalty);
     const presencePenalty = numberOrUndefined(generation.presencePenalty);
     const payload = {
-      prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt: composed?.prompt ?? LIVE_DOCUMENT_SYSTEM_PROMPT,
+      prompt: composed.user,
+      system_prompt: composed.system,
       provider: candidate.provider,
       model: candidate.model,
       temperature: numberOrUndefined(generation.temperature),
@@ -6834,13 +6867,19 @@ return 0`;
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
       ...(candidate.providerOverride ? { provider_overrides: { [candidate.provider]: overrideEntry } } : {}),
     };
-    // The decision goes on the wire EXPLICITLY in both directions, so TEXT can tell "screened by
-    // this tenant's opinion" from "no opinion, platform posture governs".
-    if (guardrail) this.textRequestEnrichment?.applyGuardrailDecision(payload, guardrail);
     // TASK-891 C2 — `generation` already carries the node's `overrides.generation` layered
     // over the agent's own, so the reasoning posture follows the same precedence every other
     // hyper-parameter on this call does.
-    const result = await this.postTextGenerate(payload, tenantId, signal, consultationId, guardrail, generation);
+    // Each candidate states ITS OWN row's locality, and the run's open context feeds `known_phi`.
+    const triggerContext = trigger && typeof trigger.context === 'object' && trigger.context !== null && !Array.isArray(trigger.context) ? (trigger.context as Record<string, unknown>) : null;
+    const result = await this.postTextGenerate(
+      payload,
+      tenantId,
+      signal,
+      consultationId,
+      { deploymentKind: candidate.deploymentKind ?? null, context: triggerContext, agentNode: true },
+      generation,
+    );
     return {
       text: result.text,
       stats: result.stats
@@ -6892,17 +6931,15 @@ return 0`;
    * It is the session's `trajectorySessionId` — the SAME id every `AgentTrajectoryStep` of
    * this session carries — so a ledger row and a trajectory step for one flush join on it.
    */
-  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, guardrail?: { enabled: boolean }): void {
+  private recordLlmUsage(tenantId: string, data: unknown, consultationId?: string | null, agentNode?: boolean): void {
     if (!this.usageLedger) return;
     const usage = parseTextUsageDetail((data as { usage_detail?: unknown } | null)?.usage_detail);
     if (!usage) return;
     const ledger = this.usageLedger;
     const sessionId = consultationId ? (this.sessions.get(consultationId)?.trajectorySessionId ?? null) : null;
-    // TASK-890 §3.14 record (a) — a `core.agent` node stamps the DISPOSITION beside the trigger,
-    // so "this consultation ran without its guard" is a query, not an inference from graph JSON.
-    // The disposition read is async (it consults the PLATFORM kill switch, which outranks the
-    // node's opinion), so it is folded inside the same fire-and-forget chain the row already
-    // used. A legacy flush passes no decision and stamps no key, exactly as before.
+    // A `core.agent` node stamps the screening DISPOSITION beside the trigger. Since the opt-out and
+    // the platform kill switch were retired every call is screened, so it is always `screened`.
+    // A legacy flush stamps no key, exactly as before.
     // TASK-959 — the device resolution and the batch build BOTH moved inside this chain. The
     // device decides the compute UNIT, is resolved from configuration keyed by the provider that
     // actually served, and that read is asynchronous — while `recordLlmUsage` is fire-and-forget
@@ -6916,8 +6953,7 @@ return 0`;
         consultationId: consultationId ?? null,
         device: await this.llmDevice(tenantId, usage),
       });
-      const disposition = guardrail && this.textRequestEnrichment ? await this.textRequestEnrichment.guardrailDisposition(guardrail) : undefined;
-      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(disposition ? { guardrail: disposition } : {}) }, sessionId)) {
+      for (const input of usageBatches(pair, { trigger: 'CONSULTATION', ...(agentNode ? { guardrail: 'screened' as const } : {}) }, sessionId)) {
         await ledger.recordUsage(input);
       }
     };
@@ -6964,7 +7000,9 @@ return 0`;
     tenantId: string,
     signal?: AbortSignal,
     consultationId?: string | null,
-    guardrail?: { enabled: boolean },
+    // The egress hints for this hop: the serving row's `deploymentKind`, the run's open context
+    // (for `known_phi`), and whether a `core.agent` node made it (stamps the usage disposition).
+    egress?: { deploymentKind?: string | null; context?: Record<string, unknown> | null; agentNode?: boolean },
     // TASK-891 C2 — the RESOLVED agent's `parameters.generation`, when this hop is made on
     // behalf of one. Its `reasoning` block becomes the `extra` ride-along. Absent on the
     // non-agent paths, where there is no agent to have an opinion.
@@ -6983,7 +7021,12 @@ return 0`;
     // TEXT as `extra_body`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload);
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload, {
+      deploymentKind: egress?.deploymentKind ?? null,
+      consultationId: consultationId ?? null,
+      context: egress?.context ?? null,
+      phase: 'live',
+    });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.
     // every environment where the internal token is non-empty — the live loop
@@ -7007,7 +7050,7 @@ return 0`;
       headers: internalServiceHeaders({ serviceToken, tenantId, tenantlessReason: TENANTLESS.PLATFORM_OPERATOR }),
       signal,
     });
-    this.recordLlmUsage(tenantId, response.data, consultationId, guardrail);
+    this.recordLlmUsage(tenantId, response.data, consultationId, egress?.agentNode === true);
     return { text: mapTextGenerateResponse(response.data).summary, stats: this.parseGenerationStats(response.data) };
   }
 
@@ -7051,7 +7094,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
     const payload = {
       prompt: text,
       system_prompt: translateOnlyInstruction(languageName),
@@ -7061,7 +7105,7 @@ return 0`;
       stream: false as const,
     };
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, consultationId, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     await this.assertLlmQuota(tenantId);
     const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
@@ -7116,7 +7160,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The entity spans are DETECTOR HINTS: they tell the model where a clinical term was found
@@ -7132,7 +7177,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — the grammar pass is a generation like any other: gated and counted.
     await this.assertLlmQuota(tenantId);
@@ -7217,7 +7262,8 @@ return 0`;
     let provider: string | undefined;
     let model: string | undefined;
     let generation: unknown;
-    if (this.harnessPolicyService) ({ provider, model, generation } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
+    let deploymentKind: string | undefined;
+    if (this.harnessPolicyService) ({ provider, model, generation, deploymentKind } = await this.harnessPolicyService.resolveTextSelection(tenantId, 'live'));
 
     const payload = {
       // The context the owner's sentence names, handed over as authored. Entity spans ride along
@@ -7237,7 +7283,7 @@ return 0`;
     // `extra.reasoning_effort`) BEFORE the credential fold, exactly as the TEXT proxy does.
     // Caller-set fields win; an agent with no opinion injects nothing.
     await this.textRequestEnrichment?.applyTextRuntimeProfile(payload as { provider?: string; model?: string }, generation);
-    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string });
+    await this.textRequestEnrichment?.applyTenantProviderOverrides(payload as { provider?: string }, { deploymentKind: deploymentKind ?? null, phase: 'live' });
     const serviceToken = await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN');
     // TASK-890 §3.13 — Lane N's mining call is a generation too. It carries no consultation id
     // (this method is not given one), so the row is attributed to the tenant alone; threading

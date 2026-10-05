@@ -12,19 +12,25 @@
  *
  * - Every check `workflowPublishProblems` ran still runs. This is a re-emission, not a rewrite,
  *   so deleting the old export removes an unused string API and no coverage.
- * - `templateReferenceSeverity` is the OD-C ramp (WARNING in release 1, ERROR in release +1) and
- *   is the CALLER's to set — the same undeclared variable is authoring feedback in a draft and a
- *   publish refusal a release later, and neither reading belongs inside a pure function.
+ * - `PROMPT_VARIABLE_UNDECLARED` is an ERROR. The OD-C ramp that let a caller report it as a
+ *   WARNING has ended: a prompt that names a variable nothing declares fails at run time, so it
+ *   must not publish.
  */
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
 import { WORKFLOW_NODE_REGISTRY } from '../node-registry';
-import { PUBLISH_FINDING_RULE_ID, publishFindings, type PublishContext } from '../publish-findings';
+import {
+  PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY,
+  PROMPT_VARIABLE_UNDECLARED_SEVERITY,
+  PUBLISH_FINDING_RULE_ID,
+  TEMPLATE_REFERENCE_SEVERITY_RELEASE_1,
+  publishFindings,
+  type PublishContext,
+} from '../publish-findings';
 
 const ctx = (overrides: Partial<PublishContext> = {}): PublishContext => ({
   schemaValueProblems: jsonSchemaValueProblems,
-  templateReferenceSeverity: 'WARNING',
   ...overrides,
 });
 
@@ -159,17 +165,23 @@ describe('publishFindings — the template checks and the OD-C severity ramp', (
     triggerContextSchema: { type: 'object', additionalProperties: false, properties: { patientAge: { type: 'number' } } },
   });
 
-  it('reports PROMPT_VARIABLE_UNDECLARED at the caller`s severity — WARNING in release 1', () => {
+  it('reports PROMPT_VARIABLE_UNDECLARED as an ERROR — it blocks publish', () => {
     const findings = publishFindings(graphWithTemplate('{{context.absent}}'), declared).filter((f) => f.code === 'PROMPT_VARIABLE_UNDECLARED');
     expect(findings).toHaveLength(1);
-    expect(findings[0]?.severity).toBe('WARNING');
+    expect(findings[0]?.severity).toBe('ERROR');
+    expect(PROMPT_VARIABLE_UNDECLARED_SEVERITY).toBe('ERROR');
   });
 
-  it('…and at ERROR once the ramp is promoted', () => {
-    const findings = publishFindings(graphWithTemplate('{{context.absent}}'), { ...declared, templateReferenceSeverity: 'ERROR' }).filter(
+  it('…and a caller can no longer soften it to a WARNING', () => {
+    const findings = publishFindings(graphWithTemplate('{{context.absent}}'), { ...declared, templateReferenceSeverity: 'WARNING' }).filter(
       (f) => f.code === 'PROMPT_VARIABLE_UNDECLARED',
     );
     expect(findings[0]?.severity).toBe('ERROR');
+  });
+
+  it('keeps PROMPT_FRAGMENT_CONDITION_ROOT a WARNING and promotes the legacy ramp constant to ERROR', () => {
+    expect(PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY).toBe('WARNING');
+    expect(TEMPLATE_REFERENCE_SEVERITY_RELEASE_1).toBe('ERROR');
   });
 
   it('accepts a reference the trigger`s schema declares, and the agent`s own variable names', () => {
@@ -229,52 +241,7 @@ describe('publishFindings — the context-schema reference', () => {
   });
 });
 
-describe('publishFindings — GUARDRAIL_OPTED_OUT (§3.14)', () => {
-  it('WARNS, never blocks, on a `core.agent` node that opts out', () => {
-    const graph = coreGraph([{ id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' }, guardrail: { enabled: false } } }]);
-    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.severity).toBe('WARNING');
-    expect(findings[0]?.nodeId).toBe('a1');
-    expect(findings[0]?.message).toContain('node');
-  });
-
-  it('WARNS on the trigger when the WORKFLOW default is off', () => {
-    const graph = {
-      nodes: [{ id: 't1', type: 'core.trigger', config: { kinds: ['api'], guardrail: { enabled: false } }, position: { x: 0, y: 0 } }],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    const findings = publishFindings(graph, ctx()).filter((f) => f.code === 'GUARDRAIL_OPTED_OUT');
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.nodeId).toBe('t1');
-  });
-
-  it('WARNS on an agent node that INHERITS an off workflow default — the fold, not the literal', () => {
-    const graph = {
-      nodes: [
-        { id: 't1', type: 'core.trigger', config: { kinds: ['api'], guardrail: { enabled: false } }, position: { x: 0, y: 0 } },
-        { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' } }, position: { x: 1, y: 0 } },
-      ],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    const nodeIds = publishFindings(graph, ctx())
-      .filter((f) => f.code === 'GUARDRAIL_OPTED_OUT')
-      .map((f) => f.nodeId)
-      .sort();
-    expect(nodeIds).toEqual(['a1', 't1']);
-  });
-
-  it('is silent when a node re-enables screening the workflow turned off', () => {
-    const graph = {
-      nodes: [
-        { id: 't1', type: 'core.trigger', config: { kinds: ['api'] }, position: { x: 0, y: 0 } },
-        { id: 'a1', type: 'core.agent', config: { agentRef: { slug: 's' }, guardrail: { enabled: true } }, position: { x: 1, y: 0 } },
-      ],
-      edges: [],
-    } as unknown as WorkflowGraph;
-    expect(codesOf(graph)).not.toContain('GUARDRAIL_OPTED_OUT');
-  });
-
+describe('publishFindings — GUARDRAIL_OPTED_OUT on a disabled mandatory node (D-1)', () => {
   it('WARNS on a DISABLED mandatory guard node, naming its type and the classes that made it mandatory (D-1)', () => {
     // TASK-893: the mandatory clinical guards are ACTIONS behind `core.action`, so the class
     // that earns this warning is resolved PER INSTANCE from `actionKey` — a type-set lookup

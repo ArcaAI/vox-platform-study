@@ -14,17 +14,17 @@ export interface GeneratedWorkflowBlob {
   compiledConfig: Record<string, unknown>;
 }
 
-export const REGISTRY_CHECKSUM: string = "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd";
+export const REGISTRY_CHECKSUM: string = "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1";
 
 export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "GLOBAL:general-medicine-consultation": {
-    "graphChecksum": "a6967a37932d68b26a2339e945e39790dbc52434abe49b465a98298e7e0ede6c",
+    "graphChecksum": "24facccbe6d87dc8de9f147a18cf6c0680795812c5747a0a872a680615d5cb52",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -36,7 +36,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -58,19 +58,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -222,9 +329,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -248,7 +352,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -278,14 +383,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -308,7 +411,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -336,7 +444,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -349,7 +462,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -376,7 +490,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -389,14 +511,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -419,7 +539,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -432,14 +560,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -465,7 +591,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -497,7 +628,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -564,7 +700,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -573,7 +714,28 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0000-000000000040",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000051",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0000-000000000001",
         "entitlementKeys": [],
@@ -584,27 +746,34 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0000-000000000001"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "7ab9438bef403d3ae6775184f36d7364ff5313ca2d8f52ae9d3efbc26c0cfe14"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "669cca907dfa936613bc93cb6e0786327ac8f2f6dd5dd9064d01c662714ba10a"
     }
   },
   "GLOBAL:platform-default-summarization": {
-    "graphChecksum": "115386eecbd64b62058da32f7a2dd5bd3ec3aae4272cdc0744c659a5f37da0a7",
+    "graphChecksum": "259e48d572fb2923fd46499193336c2d332c5aaf95ceeeb7549182de4d6ffbdd",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -616,7 +785,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -637,19 +806,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -801,9 +1077,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -827,14 +1100,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "once"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "fail"
               },
@@ -852,7 +1123,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -884,7 +1160,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         }
@@ -893,7 +1174,18 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000051",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0000-000000000052",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0000-000000000001",
         "entitlementKeys": [],
@@ -904,27 +1196,31 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0000-000000000001"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "65a5beb804367d253ebe37e02eb9839351b3021450aa7f4b0884f3c4960211b6"
+      "settings": {
+        "connections": [
+          "api",
+          "sse"
+        ],
+        "sources": []
+      },
+      "checksum": "88ebec644237661ec0901de680d90338c27ea7afb4dcf8f97c461153efb3c375"
     }
   },
   "SYSTEM:general-medicine-consultation": {
-    "graphChecksum": "d14140c8adafc85727c9eb20d007d09c54724638afda65eaf8609efa52407fef",
+    "graphChecksum": "2b28ea89b5d6e5cfa8d144aeb8572ff15fa7a89e1ec2306b1b614b21fc1ef997",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -936,7 +1232,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -958,19 +1254,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1122,9 +1525,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -1148,7 +1548,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1178,14 +1579,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -1208,7 +1607,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -1236,7 +1640,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -1249,7 +1658,8 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1276,7 +1686,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -1289,14 +1707,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -1319,7 +1735,15 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1332,14 +1756,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -1365,7 +1787,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1397,7 +1824,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1464,7 +1896,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -1473,7 +1910,28 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0000-000000000040",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000004",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0002-000000000001",
         "entitlementKeys": [],
@@ -1484,27 +1942,34 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0002-000000000001"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "112ca2d6b6bad2586df5155b5530339a7fc270de4130f82c29aa7335a2a21ef6"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "dcc4c10c694112603e5d53a855441fd37c551242c282f2bcd6c8218756cf570f"
     }
   },
   "SYSTEM:platform-default-summarization": {
-    "graphChecksum": "13743dbf2327132b20b798016fc85bbc05ebda07345d38acb95ec9f2cc2ed3c6",
+    "graphChecksum": "90923f42e78abceddfa5cd9394bfb11ef2935d88e233c4b4c88574ae22cde632",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1516,7 +1981,7 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1537,19 +2002,126 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1701,9 +2273,6 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -1727,14 +2296,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "general-medicine-summarization"
+                  "slug": "general-medicine-summarization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "once"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "fail"
               },
@@ -1752,7 +2319,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -1784,7 +2356,12 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_summary.outputs.text"
+                }
+              }
             }
           ]
         }
@@ -1793,7 +2370,18 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000004",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary",
+            "templateId": "71000000-0000-0000-0004-000000000003",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0002-000000000001",
         "entitlementKeys": [],
@@ -1804,17 +2392,21 @@ export const WORKFLOW_LIBRARY_GENERATED: Readonly<Record<string, GeneratedWorkfl
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0002-000000000001"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "f9834548cb8f9fd4fc6be56b6c0403396b1fd11c0596a538da4f5b4b08f5d67a"
+      "settings": {
+        "connections": [
+          "api",
+          "sse"
+        ],
+        "sources": []
+      },
+      "checksum": "b0604e4973d0d33b4f6d4e951a94e2019f8741a4c37ad2e9b33cf5c809caafde"
     }
   }
 };

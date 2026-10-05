@@ -164,7 +164,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
         async def flush(self) -> None:
             return None
 
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
     monkeypatch.setattr(
         "harness.temporal.interpreter.nodes._shared.TrajectoryBatch", _CapturingBatch
     )

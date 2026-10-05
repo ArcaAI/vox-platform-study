@@ -23,6 +23,13 @@ import { renderWithProviders } from '@/test/render';
 import { WorkflowStudioEditor } from '../workflow-studio-editor';
 import type { WorkflowDefinition, WorkflowNodeDescriptor } from '../../api/types';
 
+/** TASK-1036 R-C #13 — the rare header actions (New, Edit details, Clone, …) live in the ⋯ menu. */
+function chooseMoreAction(name: RegExp | string) {
+  fireEvent.pointerDown(screen.getByRole('button', { name: 'More workflow actions' }), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+  fireEvent.click(screen.getByRole('menuitem', { name }));
+}
+
+
 const push = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const refresh = vi.hoisted(() => vi.fn());
@@ -79,21 +86,25 @@ vi.mock('../palette', () => ({
 }));
 
 /** The inspector is Lane B's; the editor's contract with it is the props it hands over. */
-let capturedInspectorProps: Record<string, unknown> | null = null;
+let _capturedInspectorProps: Record<string, unknown> | null = null;
 vi.mock('../inspector', () => ({
   InspectorPanel: (props: Record<string, unknown>) => {
-    capturedInspectorProps = props;
+    _capturedInspectorProps = props;
     // The real panel renders exactly one tab's slot at a time; the stub does the same so the
-    // editor's `problemsSlot`/`runSlot` composition is exercised rather than merely handed over.
-    const body = props.tab === 'problems' ? props.problemsSlot : props.tab === 'run' ? props.runSlot : null;
+    // editor's `problemsSlot` composition is exercised rather than merely handed over.
+    const body = props.tab === 'problems' ? props.problemsSlot : null;
     return <div data-testid="inspector-stub">{body as ReactNode}</div>;
   },
 }));
 
-vi.mock('@/shared/sandbox', () => ({
-  SandboxRunPanel: (props: { blockedReason?: string | null }) => <div data-testid="sandbox-run-panel" data-blocked={props.blockedReason ?? ''} />,
-  SandboxNodeTrace: () => <div data-testid="sandbox-node-trace" />,
-  useSandboxNodeStates: () => new Map(),
+/**
+ * The Test tab is lane C3's and has its own suite; this file pins what the EDITOR does around it
+ * (the tab switch, the "runs the saved definition" warning). Its real surface reads the session,
+ * which this file's generic fetch mock does not model.
+ */
+vi.mock('../test-tab', () => ({
+  TestTab: (props: { definitionId: string }) => <div data-testid="test-tab" data-definition-id={props.definitionId} />,
+  useNodeLastRuns: () => ({}),
 }));
 
 function definition(overrides: Partial<WorkflowDefinition> = {}): WorkflowDefinition {
@@ -203,7 +214,7 @@ afterEach(() => {
   replace.mockClear();
   refresh.mockClear();
   capturedCanvasProps = null;
-  capturedInspectorProps = null;
+  _capturedInspectorProps = null;
 });
 
 /**
@@ -240,7 +251,7 @@ describe('WorkflowStudioEditor — a read-only version is inert AND says so (TAS
     renderWithProviders(<WorkflowStudioEditor definition={definition({ status: 'PUBLISHED' })} etag='"1"' registryNodes={[NOTE]} />);
 
     // The banner is a live region and says WHY, rather than a muted sentence with no way out.
-    expect(screen.getByRole('status').textContent).toMatch(/locked/i);
+    expect(screen.getByText(/canvas and palette are locked/i).closest('[role="status"]')).toBeTruthy();
     expect(screen.getByText(/palette locked/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /edit as new draft/i })).toBeTruthy();
     // Save/Discard/Undo/Redo have nothing to act on and are not rendered at all.
@@ -248,7 +259,9 @@ describe('WorkflowStudioEditor — a read-only version is inert AND says so (TAS
     expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
   });
 
-  it('"Edit as new draft" POSTs with parentVersionId then navigates to the new draft', async () => {
+  // TASK-1036 §3.4 — the gateway branches the draft (`POST …/:id/draft`); the client no longer
+  // re-posts a copy of the graph it happened to load.
+  it('"Edit as new draft" POSTs …/:id/draft then navigates to the new draft', async () => {
     const calls = installFetchMock((call) => {
       if (call.method === 'POST') return Response.json({ ...definition({ id: 'd-2', versionNumber: 2, status: 'DRAFT' }) });
       return Response.json({ id: 'd-1', version: 2 }, { headers: { etag: '"2"' } });
@@ -259,7 +272,7 @@ describe('WorkflowStudioEditor — a read-only version is inert AND says so (TAS
 
     await waitFor(() => expect(push).toHaveBeenCalledWith('/workflow-studio/d-2'));
     const post = calls.find((call) => call.method === 'POST');
-    expect(post?.body).toMatchObject({ slug: 'discharge_summary', paletteKey: 'summarization', parentVersionId: 'd-1' });
+    expect(post?.url).toMatch(/\/admin\/workflow-definitions\/d-1\/draft$/);
   });
 });
 
@@ -323,7 +336,7 @@ describe('WorkflowStudioEditor — save model (TASK-893 OD-7)', () => {
     const calls = installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /edit details/i }));
+    chooseMoreAction(/edit details/i);
     fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'Discharge Summary v2' } });
 
     expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
@@ -408,7 +421,10 @@ describe('WorkflowStudioEditor — socket resolution on connect (TASK-893 §6.6)
       },
     });
 
-  it('a handle-less connection becomes an edge on the primary data pair', async () => {
+  // TASK-1036 C2c — the composer plans the link (`planConnection`): an ORDERING edge, with the
+  // auto-mapped data binding written into the target's `config.inputs` (OD-29), replacing the
+  // old `out -> in` data edge.
+  it('a handle-less connection becomes an ordering edge with the binding auto-mapped', async () => {
     const calls = installFetchMock();
     renderWithProviders(<WorkflowStudioEditor definition={twoNodes()} etag='"1"' registryNodes={[TRIGGER, OUTPUT]} />);
 
@@ -419,7 +435,7 @@ describe('WorkflowStudioEditor — socket resolution on connect (TASK-893 §6.6)
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patchBodies(calls)).toHaveLength(1));
-    expect(patchBodies(calls)[0]?.graph?.edges[0]).toMatchObject({ from: 'n1', fromPort: 'out', to: 'n2', toPort: 'in' });
+    expect(patchBodies(calls)[0]?.graph?.edges[0]).toMatchObject({ from: 'n1', fromPort: 'next', to: 'n2', toPort: 'after' });
   });
 
   it('maps the graph onto the single-socket canvas shape — entry nodes lose their input dot, terminals their output', () => {
@@ -438,24 +454,26 @@ describe('WorkflowStudioEditor — socket resolution on connect (TASK-893 §6.6)
 });
 
 /**
- * OD-3 — testing lives in the studio. The Workbench deep link is gone; the Run tab carries the
- * fixture picker, and a sandbox run executes the SERVER's graph, so unsaved edits are a stated
- * reason rather than a silent mismatch with what is on the canvas.
+ * OD-3 — testing lives in the studio's Test tab. The Workbench deep link is gone, and a test run
+ * executes the SERVER's graph, so unsaved edits are a stated reason rather than a silent mismatch
+ * with what is on the canvas.
  */
 describe('WorkflowStudioEditor — the inspector composition (TASK-893 §6.8)', () => {
-  it('opens the rail on Test and blocks the run while the buffer is dirty', async () => {
+  it('opens the inspector on a selection, and the Test TAB (the toolbar button is gone, R-C #13) replaces the old Run rail', async () => {
     installFetchMock();
-    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE]} />);
+    const onUrlUpdate = vi.fn();
+    renderWithProviders(<WorkflowStudioEditor definition={definition()} etag='"1"' registryNodes={[NOTE]} />, { onUrlUpdate });
 
-    // The rail is collapsed with nothing selected, so the canvas gets the width.
+    // The inspector pane is absent with nothing selected, so the canvas gets the width.
     expect(screen.queryByTestId('inspector-stub')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'palette add' }));
-    fireEvent.click(screen.getByRole('button', { name: /^test$/i }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Test' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Test' }));
 
-    await waitFor(() => expect(screen.getByTestId('inspector-stub')).toBeTruthy());
-    expect(capturedInspectorProps?.tab).toBe('run');
-    expect(screen.getByTestId('sandbox-run-panel').getAttribute('data-blocked')).toMatch(/save your changes first/i);
+    await waitFor(() => expect(onUrlUpdate.mock.calls.at(-1)?.[0].searchParams.get('tab')).toBe('test'));
+    // The Test tab runs the SAVED definition; the buffer is dirty, and the tab says so.
+    expect(await screen.findByText(/a test run executes the saved definition/i)).toBeTruthy();
   });
 
   it('no longer links out to the Workbench', () => {
@@ -493,9 +511,18 @@ describe('WorkflowStudioEditor — ordering edges survive the socket collapse (T
     renderWithProviders(<WorkflowStudioEditor definition={definitionWithOrderingEdge()} etag='"1"' registryNodes={[TRIGGER, NOTE]} />);
 
     // The canvas stub records the edges it was handed. `next`/`after` must have been projected
-    // onto `out`/`in`; leaving them verbatim is what made the edge disappear.
-    const edge = capturedCanvasProps?.edges?.[0];
-    expect(edge).toMatchObject({ id: 'e1', source: 'n1', target: 'n2', sourceHandle: 'out', targetHandle: 'in' });
+    // onto handles the canvas DRAWS (a typed port, else the primary dot); leaving them verbatim
+    // is what made the edge disappear.
+    const edge = capturedCanvasProps?.edges?.[0] as { sourceHandle?: string; targetHandle?: string } | undefined;
+    expect(edge).toMatchObject({ id: 'e1', source: 'n1', target: 'n2' });
+    const drawn = (id: string, side: 'outputPorts' | 'inputPorts', primary: string) => {
+      const node = capturedCanvasProps?.nodes?.find((candidate) => candidate.id === id) as Record<string, unknown> | undefined;
+      const ports = (node?.[side] as { id: string }[] | undefined) ?? [];
+      return ports.length > 0 ? ports.map((port) => port.id) : [primary];
+    };
+    expect(drawn('n1', 'outputPorts', 'out')).toContain(edge?.sourceHandle);
+    expect(drawn('n2', 'inputPorts', 'in')).toContain(edge?.targetHandle);
+    expect(['next', 'after']).not.toContain(edge?.sourceHandle);
   });
 
   it('leaves the STORE edge on its real wire sockets — only the drawing is projected', async () => {

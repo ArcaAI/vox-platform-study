@@ -166,10 +166,12 @@ const CONFIG_CONTENT: CheckpointModelDescriptor[] = [
       'versionNumber',
       'parentVersionId',
       'publishedAt',
+      'status',
+      'deprecatedAt',
     ],
     immutableWhen: PUBLISHED_OR_DEPRECATED,
     notes:
-      'workflow_definition_immutability_guard (latest body: the context-schema binding migration). Soft-delete retire allowed; hard DELETE of a published row is refused.',
+      'workflow_definition_immutability_guard (latest body: the TASK-1036 freeze-deprecated migration). Soft-delete retire allowed; hard DELETE of a published row is refused. `status` / `deprecatedAt` are trigger-frozen only on a DEPRECATED row (a DEPRECATED version is terminal); the registry keeps them for every PUBLISHED or DEPRECATED live row — deliberately conservative: a restore never rewinds the lifecycle of a frozen version (activation is the ACTIVE_SLUG_SLOT, handled separately).',
   }),
   rec('WorkflowAssignment', 'CONFIG_CONTENT', true),
   rec('WorkflowTestFixture', 'CONFIG_CONTENT', true),
@@ -402,6 +404,9 @@ const LOGS: CheckpointModelDescriptor[] = [
 const EXCLUDED: CheckpointModelDescriptor[] = [
   excluded('Tenant', true, { notes: 'Captured to tenant.json for identity only; never a table entry, never restored.' }),
   excluded('PasswordResetToken', true, { notes: 'Short-lived secret; reviving one would re-open a reset window.' }),
+  excluded('ComposedPromptRecord', true, {
+    notes: 'Encrypted PHI audit copy of a composed LLM prompt under a retention purge; restoring one would revive PHI past its retention.',
+  }),
   excluded('TenantEntitlement', true, { notes: 'Plan ceilings are platform-governed; carries tenantId but is never restored.' }),
   excluded('PlanEntitlement', true),
   excluded('AiPriceBook', true),

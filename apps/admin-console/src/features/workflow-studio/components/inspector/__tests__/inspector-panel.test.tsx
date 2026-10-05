@@ -39,7 +39,9 @@ afterEach(() => {
 describe('InspectorPanel', () => {
   it('shows an empty state when no node is selected', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    expect(screen.getByText(/select a node/i)).toBeTruthy();
+    // TASK-1036 E4a — the empty state names steps AND links ("Select a step or a link …").
+    expect(screen.getByText('No node selected')).toBeTruthy();
+    expect(screen.getByText(/select a step or a link on the canvas/i)).toBeTruthy();
   });
 
   it('renders a Skeleton matching the field layout while loading', () => {
@@ -85,13 +87,13 @@ describe('InspectorPanel', () => {
   it('Task 19: also renders the PromptTemplatePicker below the raw JSON editor when there is no config schema', async () => {
     stubPromptTemplatesFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText('Prompt template')).toBeTruthy();
+    expect(await screen.findByText('Hope Prompt')).toBeTruthy();
   });
 
   it('TASK-890: the deep link targets /prompt-templates?template=<id> once a template is bound (the shared picker`s quick view)', async () => {
     stubPromptTemplatesFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true, promptTemplateId: 't-1' })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    const link = (await screen.findByRole('link', { name: /open in prompt templates/i })) as HTMLAnchorElement;
+    const link = (await screen.findByRole('link', { name: /open in Hope Prompts/i })) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/prompt-templates?template=t-1');
   });
 
@@ -101,7 +103,7 @@ describe('InspectorPanel', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
     if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
-    const trigger = await screen.findByLabelText('Prompt template');
+    const trigger = await screen.findByLabelText('Hope Prompt');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     await waitFor(() => expect(screen.getByRole('option', { name: 'Discharge summary' })).toBeTruthy());
     // See prompt-template-picker.test.tsx for why `click`, not `pointerUp`, is the activation
@@ -116,7 +118,7 @@ describe('InspectorPanel', () => {
     // The schema's own generic string control ("Prompt Template Id") renders it — the Task 19
     // section (labeled exactly "Prompt template") never doubles up on the same key.
     expect(screen.getByText(/^Prompt Template Id/)).toBeTruthy();
-    expect(screen.queryByText('Prompt template')).toBeNull();
+    expect(screen.queryByText('Hope Prompt')).toBeNull();
   });
 
   it('0 axe violations with a schema-backed node selected', async () => {
@@ -153,10 +155,11 @@ describe('InspectorPanel — TASK-890 core.trigger', () => {
     expect(screen.queryByLabelText(/context schema id/i)).toBeNull();
   });
 
-  it('renders the workflow-scope GuardrailField, labelled "Workflow default"', async () => {
+  it('offers no workflow-level guardrail opt-out (retired, OD-1)', async () => {
     stubContextSchemasFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={triggerNode()} configSchema={NODE_CONFIG_SCHEMAS['core.trigger']} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByLabelText('Workflow default')).toBeTruthy();
+    expect(await screen.findByText('Context schema')).toBeTruthy();
+    expect(screen.queryByLabelText('Workflow default')).toBeNull();
   });
 
   it('still renders the schema`s other generic fields (kinds) untouched', async () => {
@@ -181,18 +184,18 @@ describe('InspectorPanel — TASK-890 core.agent', () => {
             name: 'Discharge summary',
             task: 'TEXT_GENERATION',
             instruction: { variables: { topic: { value: '' } } },
-            parameters: { guards: { enabled: false } },
           },
         ]),
       ),
     );
   }
 
-  it('renders the node-scope GuardrailField, labelled "This node", reflecting the agent`s own default', async () => {
+  it('offers no node-level guardrail opt-out (retired, OD-1)', async () => {
     stubAgentsFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={agentNode()} configSchema={NODE_CONFIG_SCHEMAS['core.agent']} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByLabelText('This node')).toBeTruthy();
-    expect(await screen.findByText(/effective: off — agent/i)).toBeTruthy();
+    expect(await screen.findByLabelText('topic')).toBeTruthy();
+    expect(screen.queryByLabelText('This node')).toBeNull();
+    expect(screen.queryByText(/effective: off/i)).toBeNull();
   });
 
   it('renders PromptVariablesField with one row per the agent`s declared variable, instead of a raw-json box', async () => {
@@ -291,7 +294,8 @@ describe('InspectorPanel — tabs (TASK-893 B4)', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByRole('tab', { name: 'Config' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /^Problems/ })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Run' })).toBeTruthy();
+    // TASK-1036 — the Run tab moved to the Studio's Test tab; Last run replaces it (OD-17).
+    expect(screen.getByRole('tab', { name: 'Last run' })).toBeTruthy();
   });
 
   it('clicking a tab reports the change — the panel does not manage its own tab state', () => {
@@ -319,9 +323,9 @@ describe('InspectorPanel — tabs (TASK-893 B4)', () => {
     expect(screen.queryByText('Problems here')).toBeNull();
   });
 
-  it('renders runSlot only while the Run tab is active', () => {
-    renderWithProviders(<InspectorPanel tab="run" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} runSlot={<p>Run panel here</p>} />);
-    expect(screen.getByText('Run panel here')).toBeTruthy();
+  it('renders the Last run panel only while the Last run tab is active', () => {
+    renderWithProviders(<InspectorPanel tab="lastRun" onTabChange={vi.fn()} node={null} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    expect(screen.getByText(/no test run yet/i)).toBeTruthy();
   });
 
   it('shows a count badge on the Problems tab when there are problems', () => {

@@ -36,6 +36,16 @@
  * call), and a workflow run over a USER JWT additionally needs a CASL ability that the agent
  * routes do not require — so the same person who can invoke an agent may get a 403 here.
  *
+ * ## TASK-1036 lane C4 — SDK 5.0
+ *
+ * The workflow and agent snippets print the 5.0 run API: `hope.workflows.run(slug, input)` /
+ * `hope.agents.run(slug, input)` return a `RunHandle` (the input itself, not the `{ input }`
+ * envelope, which is only the raw HTTP body), and the browser lane is `useRun` (marked 5.0). A
+ * TEXT_GENERATION / NER agent also gets its agent-run snippet in each lane. The numbered
+ * five-step guide (Authenticate → Connect → Send input → Receive output → Handle errors) is the
+ * Workflow Studio's Integration tab (`features/workflow-studio/components/integration-tab`),
+ * built from the same `shared/docs` snippets.
+ *
  * ## TASK-975 lanes A, B, C — the socket lane, and being findable
  *
  * **Lane A.** The panel linked exactly ONE destination, `/api-keys`, so `/developer/invoke`,
@@ -89,6 +99,9 @@ import { agentContextExample, exampleBodyFromJsonSchema } from '@/shared/docs/ex
 import { buildPostmanCollection, type PostmanCollection, type PostmanItem } from '@/shared/docs/postman-collection';
 import {
   agentCurlSnippet,
+  agentRunCurlSnippet,
+  agentRunVoxNodeSnippet,
+  agentRunVoxSnippet,
   agentVoxNodeSnippet,
   agentVoxNodeStreamSnippet,
   agentVoxSnippet,
@@ -156,6 +169,9 @@ const STREAM_NODE_LABEL = 'Streamed invocation (@arcaai/vox-node) snippet';
 const STREAM_BROWSER_LABEL = 'Streamed invocation (@arcaai/vox) snippet';
 const STREAM_SHELL_LABEL = 'Streamed invocation without an SDK (curl -N) snippet';
 const STREAM_JS_LABEL = 'Streamed invocation without an SDK (fetch) snippet';
+const AGENT_RUN_NODE_LABEL = 'Agent run (@arcaai/vox-node 5.0) snippet';
+const AGENT_RUN_BROWSER_LABEL = 'Agent run (@arcaai/vox 5.0) snippet';
+const AGENT_RUN_SHELL_LABEL = 'Agent run (curl) snippet';
 const POSTMAN_LABEL = 'Postman collection JSON';
 const SOCKET_NODE_LABEL = 'Socket (@arcaai/vox-node) snippet';
 const SOCKET_BROWSER_LABEL = 'Socket (@arcaai/vox) snippet';
@@ -959,6 +975,13 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
                 <>
                   <ScopeNote routes={[task === 'TEXT_TO_SPEECH' ? 'agentSpeech' : 'agentInvocations']} />
                   <CodeBlock label={NODE_LABEL} caption="Invoke it from a backend with @arcaai/vox-node" code={agentVoxNodeSnippet(slug, snippetTask, options)} />
+                  {invocable ? (
+                    <CodeBlock
+                      label={AGENT_RUN_NODE_LABEL}
+                      caption="Or as a durable run — asynchronous, idempotent and resumable (SDK 5.0)"
+                      code={agentRunVoxNodeSnippet(slug, options)}
+                    />
+                  ) : null}
                   {invocable ? <NoJobModeNote /> : null}
                 </>
               }
@@ -985,6 +1008,11 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
                   <ScopeNote routes={['agentInvocations']} />
                   <CodeBlock label={BROWSER_LABEL} caption="Call it from a React app with @arcaai/vox" code={agentVoxSnippet(slug, 'accessToken', options)} />
                   <CodeBlock label={BROWSER_KEY_LABEL} code={agentVoxSnippet(slug, 'apiKey', options)} />
+                  <CodeBlock
+                    label={AGENT_RUN_BROWSER_LABEL}
+                    caption="Or follow it as a run: useRun({ agent }) streams the text and survives a refresh (@arcaai/vox 5.0)"
+                    code={agentRunVoxSnippet(slug, options)}
+                  />
                   <p className="text-muted-foreground text-xs">
                     Prefer the signed-in user&apos;s session. A key shipped in a browser bundle is readable by anyone who opens the page — if you need one
                     anyway, mint it with <code className="font-mono">agent:invocation:write</code> alone, which bounds what a lifted key can do to invoking
@@ -1046,6 +1074,13 @@ function AgentIntegration({ slug, task, versionNumber, isActive = true, inputSch
                 <>
                   <ScopeNote routes={[task === 'TEXT_TO_SPEECH' ? 'agentSpeech' : 'agentInvocations']} />
                   <CodeBlock label={CURL_LABEL} caption="Any HTTP client — the same body, on the api/v1 prefix" code={agentCurlSnippet(slug, snippetTask, options)} />
+                  {invocable ? (
+                    <CodeBlock
+                      label={AGENT_RUN_SHELL_LABEL}
+                      caption="Or start a run: 202 with a run id, then poll it or follow its resumable events"
+                      code={agentRunCurlSnippet(slug, options)}
+                    />
+                  ) : null}
                   {invocable ? <NoJobModeNote /> : null}
                 </>
               }

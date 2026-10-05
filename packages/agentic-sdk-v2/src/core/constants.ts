@@ -492,6 +492,14 @@ export const CONSULTATION_JOB_ENDPOINTS = {
 } as const;
 
 /**
+ * The SSE ticket scope for a consultation job stream. Mirrors the gateway's
+ * `@StreamScope({ namespace: 'consultation_job', param: 'jobId' })`: a ticket is minted for ONE
+ * job and the guard compares the stored scope by strict equality, so the generic string the hook
+ * used to send (`consultation-jobs`) was refused (G6, TASK-1038).
+ */
+export const consultationJobStreamScope = (jobId: string): string => `consultation_job:${jobId}`;
+
+/**
  * DNA writing-style sample ingest endpoints (TASK-974).
  *
  * Business plane — `DnaWritingStyleIngestController`
@@ -717,6 +725,32 @@ export const WORKFLOW_ENDPOINTS = {
  * minted for ONE run, so the scope carries the run id.
  */
 export const workflowRunStreamScope = (runId: string): string => `workflow_run:${runId}`;
+
+/**
+ * The routes `useRun` drives, for both kinds of run (TASK-1039). A run started on either plane is
+ * read back through `/workflows/:slug/runs/:runId` (workflow) or `/agents/:slug/runs/:runId`
+ * (agent); the two differ in the name of the event stream (`stream` vs `events`) and in the
+ * run-scoped stream ticket, which only workflow runs have.
+ */
+export type RunKind = 'workflow' | 'agent';
+
+const runBase = (kind: RunKind, slug: string): string => `/${kind === 'workflow' ? 'workflows' : 'agents'}/${encodeURIComponent(slug)}/runs`;
+
+export const RUN_ENDPOINTS = {
+  /** `POST` — start. A workflow takes `{ input }`; an agent takes its flat invocation body. `Idempotency-Key` joins an in-flight run. */
+  START: (kind: RunKind, slug: string): string => runBase(kind, slug),
+  /** `GET` — status. */
+  RUN: (kind: RunKind, slug: string, runId: string): string => `${runBase(kind, slug)}/${encodeURIComponent(runId)}`,
+  /** `POST` — send the cancel signal. */
+  CANCEL: (kind: RunKind, slug: string, runId: string): string => `${runBase(kind, slug)}/${encodeURIComponent(runId)}/cancel`,
+  /** `GET` — the delivered value (`X-Hope-Result-Kind: inline | ref`; 204 = nothing; 409 `RUN_NOT_TERMINAL`; 410 expired). */
+  RESULT: (kind: RunKind, slug: string, runId: string): string => `${runBase(kind, slug)}/${encodeURIComponent(runId)}/result`,
+  /** `GET` — the SSE event stream (resume with `Last-Event-ID` / `?after=`; `?protocol=2`). */
+  EVENTS: (kind: RunKind, slug: string, runId: string): string =>
+    `${runBase(kind, slug)}/${encodeURIComponent(runId)}/${kind === 'workflow' ? 'stream' : 'events'}`,
+  /** `POST` — mint a single-use, run-scoped ticket for the stream. WORKFLOW runs only; works for API-key credentials. */
+  STREAM_TICKET: (slug: string, runId: string): string => `${runBase('workflow', slug)}/${encodeURIComponent(runId)}/stream-ticket`,
+} as const;
 
 // =============================================================================
 // Agent endpoints (TASK-865 — business plane, TASK-863 routes)

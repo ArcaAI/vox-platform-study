@@ -67,3 +67,24 @@ describe('toWorkflowGraph / fromWorkflowGraph', () => {
     expect('__position' in round.nodes[0].config).toBe(false);
   });
 });
+
+describe('TASK-1036 §3.5 — graph.settings rides the graph', () => {
+  it('writes settings when the store has them, and omits the key when it does not', () => {
+    const settings = { connections: ['api', 'sse'] as const, sources: ['consultation'] as const };
+    expect(toWorkflowGraph([], [], { connections: [...settings.connections], sources: [...settings.sources] })).toEqual({
+      version: 1,
+      nodes: [],
+      edges: [],
+      settings: { connections: ['api', 'sse'], sources: ['consultation'] },
+    });
+    expect('settings' in toWorkflowGraph([], [])).toBe(false);
+  });
+
+  it('reads settings back, and keeps a settings block it cannot validate rather than dropping it on the next save', () => {
+    const valid = fromWorkflowGraph({ version: 1, nodes: [], edges: [], settings: { connections: ['api'], sources: [] } } as WorkflowGraph);
+    expect(valid.settings).toEqual({ connections: ['api'], sources: [] });
+    const odd = fromWorkflowGraph({ version: 1, nodes: [], edges: [], settings: { connections: ['carrier-pigeon'], sources: [] } } as WorkflowGraph);
+    expect(odd.settings).toEqual({ connections: ['carrier-pigeon'], sources: [] });
+    expect(fromWorkflowGraph({ version: 1, nodes: [], edges: [] }).settings).toBeUndefined();
+  });
+});

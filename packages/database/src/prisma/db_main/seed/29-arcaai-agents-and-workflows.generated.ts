@@ -10,17 +10,17 @@
  */
 import type { GeneratedWorkflowBlob } from './28-workflow-library.generated';
 
-export const REGISTRY_CHECKSUM: string = "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd";
+export const REGISTRY_CHECKSUM: string = "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1";
 
 export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> = {
   "ARCAAI:arcaai-gen-consultation": {
-    "graphChecksum": "354672f9153a366467293dd56a47d3618b60d8e52664bccdae4678aeeb6dbfb3",
+    "graphChecksum": "b2f25b7d04a072ccb1fe474c45d224891fa434fe7665f6c8b940d9ab38c2f409",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -32,7 +32,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -54,10 +54,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -226,13 +239,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -384,9 +491,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -410,7 +514,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -440,14 +545,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -470,7 +573,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -498,7 +606,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -511,7 +624,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -538,7 +652,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -577,7 +699,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -590,14 +717,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-gen-summary-new-visit"
+                  "slug": "arcaai-gen-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-gen-soap-new-visit"
@@ -631,7 +756,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -639,14 +772,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-gen-summary-revisit"
+                  "slug": "arcaai-gen-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-gen-soap-revisit"
@@ -676,7 +807,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -689,14 +828,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -727,7 +864,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -759,7 +904,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -826,7 +976,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -835,7 +990,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000012",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000013",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -846,27 +1042,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4ee503778efd10d42dbeaf733fccd6d63eb96f63c361d7dbc52e7b6549ec1f8b"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "14cbcdf3b6df2d20562f9c77e69424b04100e33354d0bc77570ad925ccb18ecd"
     }
   },
   "ARCAAI:arcaai-surg-consultation": {
-    "graphChecksum": "bda7b9b372d07aab93733ccf50a4c03ec1dd38dad556b98c65019f6a8a3fdbe1",
+    "graphChecksum": "81e65aa995d1ce013d04dda8563af23018434b9ec59dc8d85d3791cf8d46053d",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -878,7 +1081,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -900,10 +1103,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -1072,13 +1288,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -1230,9 +1540,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -1256,7 +1563,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1286,14 +1594,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -1316,7 +1622,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -1344,7 +1655,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -1357,7 +1673,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -1384,7 +1701,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -1423,7 +1748,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1436,14 +1766,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-surg-summary-new-visit"
+                  "slug": "arcaai-surg-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-surg-soap-new-visit"
@@ -1477,7 +1805,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -1485,14 +1821,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-surg-summary-revisit"
+                  "slug": "arcaai-surg-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-surg-soap-revisit"
@@ -1522,7 +1856,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1535,14 +1877,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -1573,7 +1913,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -1605,7 +1953,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -1672,7 +2025,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -1681,7 +2039,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000010",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000011",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -1692,27 +2091,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "20f7f6cc574f782b124fed8226c81338525e2f7977e04400ccb9332a94fdf639"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "edc8bdc4216c7e1c90210a93a7dc51a396db995bfb953a6dd1941113033aec7b"
     }
   },
   "ARCAAI:arcaai-rheum-consultation": {
-    "graphChecksum": "25a8e3a0b13e3b7ef566323e33e3da047b4046b65fcc37006257d6d72dcffb38",
+    "graphChecksum": "0561d5527d820c81daeca0f875ee9597945f5578dd441f0347147ad237cc86d6",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -1724,7 +2130,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -1746,10 +2152,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -1918,13 +2337,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -2076,9 +2589,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -2102,7 +2612,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -2132,14 +2643,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -2162,7 +2671,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -2190,7 +2704,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -2203,7 +2722,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -2230,7 +2750,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -2269,7 +2797,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -2282,14 +2815,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-rheum-summary-new-visit"
+                  "slug": "arcaai-rheum-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-rheum-soap-new-visit"
@@ -2323,7 +2854,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -2331,14 +2870,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-rheum-summary-revisit"
+                  "slug": "arcaai-rheum-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-rheum-soap-revisit"
@@ -2368,7 +2905,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -2381,14 +2926,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -2419,7 +2962,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -2451,7 +3002,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -2518,7 +3074,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -2527,7 +3088,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000014",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000015",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -2538,27 +3140,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "31a182ae398b6dcea62a8b1531aa4b970a78631464b197433926393fbd796f8d"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "933c92e6b62273110af4f451da1911dc073d08138bda01ee8ed4f41eca79a7db"
     }
   },
   "ARCAAI:arcaai-neur-consultation": {
-    "graphChecksum": "0adfd0c6d085feee68bb3f9b989534984dfc0da7cacd8feede444d9625666beb",
+    "graphChecksum": "089419b517e426d1b253849561f0d73eb9f4f018bd266ea247526d854c3dfc45",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -2570,7 +3179,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -2592,10 +3201,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -2764,13 +3386,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -2922,9 +3638,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -2948,7 +3661,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -2978,14 +3692,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -3008,7 +3720,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -3036,7 +3753,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -3049,7 +3771,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -3076,7 +3799,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -3115,7 +3846,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -3128,14 +3864,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-neur-summary-new-visit"
+                  "slug": "arcaai-neur-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-neur-soap-new-visit"
@@ -3169,7 +3903,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -3177,14 +3919,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-neur-summary-revisit"
+                  "slug": "arcaai-neur-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-neur-soap-revisit"
@@ -3214,7 +3954,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -3227,14 +3975,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -3265,7 +4011,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -3297,7 +4051,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -3364,7 +4123,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -3373,7 +4137,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000016",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000017",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -3384,27 +4189,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "262b77d52dbe3e72d71772a06c5d036f58aefb28eeaa0eeadd6204cc38ad07f3"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "bb3d9b96825bdbdc7e57990f74d7ed20cf4b2ebd6ed82d60d20a29a9f1794c32"
     }
   },
   "ARCAAI:arcaai-orth-consultation": {
-    "graphChecksum": "5a4d1b3ea2b242ba6bc1ec552915dfc05d4346998930c336f7eb390a45622529",
+    "graphChecksum": "660413574e7d3646f45d1aecd74f73f455ccd7b920c73eba774f558a161f1a7d",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -3416,7 +4228,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -3438,10 +4250,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -3610,13 +4435,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -3768,9 +4687,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -3794,7 +4710,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -3824,14 +4741,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -3854,7 +4769,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -3882,7 +4802,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -3895,7 +4820,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -3922,7 +4848,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -3961,7 +4895,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -3974,14 +4913,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-orth-summary-new-visit"
+                  "slug": "arcaai-orth-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-orth-soap-new-visit"
@@ -4015,7 +4952,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -4023,14 +4968,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-orth-summary-revisit"
+                  "slug": "arcaai-orth-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-orth-soap-revisit"
@@ -4060,7 +5003,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -4073,14 +5024,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -4111,7 +5060,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -4143,7 +5100,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -4210,7 +5172,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -4219,7 +5186,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000018",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000019",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -4230,27 +5238,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "82188e636599feb6f84a2ae51c74c33995fa1391a81112953de4ea7e9e3f191a"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "a4aceadc1d67ebba96a7a7e32a86d7abb15a6d565590d3da8f1ee48af8bd4b8a"
     }
   },
   "ARCAAI:arcaai-heme-consultation": {
-    "graphChecksum": "150aa68b061a299f09187b26c79e68d46b8b15c1414bca38b6fdfd141a3b2047",
+    "graphChecksum": "30ac5fcf00fb63d4fae4df7b5e7dfca25d85c5472c2ea3e6bf629f44933175c9",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -4262,7 +5277,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -4284,10 +5299,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -4456,13 +5484,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -4614,9 +5736,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -4640,7 +5759,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -4670,14 +5790,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -4700,7 +5818,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -4728,7 +5851,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -4741,7 +5869,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -4768,7 +5897,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -4807,7 +5944,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -4820,14 +5962,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-heme-summary-new-visit"
+                  "slug": "arcaai-heme-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-heme-soap-new-visit"
@@ -4861,7 +6001,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -4869,14 +6017,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-heme-summary-revisit"
+                  "slug": "arcaai-heme-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-heme-soap-revisit"
@@ -4906,7 +6052,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -4919,14 +6073,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -4957,7 +6109,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -4989,7 +6149,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -5056,7 +6221,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -5065,7 +6235,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000020",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000021",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -5076,27 +6287,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "4c62cac8527254df7c543cbc83fa07b19fc77a94a050b090e32f38228265aaf3"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "0cf79a3e6c7609b4e2dcc473a55053a36bcbe678ad51f8f1bcb6df13c363f70a"
     }
   },
   "ARCAAI:arcaai-bren-consultation": {
-    "graphChecksum": "fdd855ec4114c0ab7f41cbe4c2e348e2805a3c8da8eb61e8b20ce51b1e48c0cb",
+    "graphChecksum": "e5fc8604db082642b73db4b15713ec0571c78482174210177d4a506cd6955222",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -5108,7 +6326,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -5130,10 +6348,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -5302,13 +6533,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -5460,9 +6785,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -5486,7 +6808,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -5516,14 +6839,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -5546,7 +6867,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -5574,7 +6900,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -5587,7 +6918,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -5614,7 +6946,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -5653,7 +6993,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -5666,14 +7011,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-bren-summary-new-visit"
+                  "slug": "arcaai-bren-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-bren-soap-new-visit"
@@ -5707,7 +7050,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -5715,14 +7066,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-bren-summary-revisit"
+                  "slug": "arcaai-bren-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-bren-soap-revisit"
@@ -5752,7 +7101,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -5765,14 +7122,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -5803,7 +7158,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -5835,7 +7198,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -5902,7 +7270,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -5911,7 +7284,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000022",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000023",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -5922,27 +7336,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "67b30eb201637b4e2dd46d4d5b24a6e8667261f57281d4f7e4c8b7d8a52bee7b"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "128ba0e65b6bd5044453de1032cdbf44a25ac285a1f029ea695f698e25ed81d7"
     }
   },
   "ARCAAI:arcaai-derm-consultation": {
-    "graphChecksum": "49b3ab99c17f5a95242c528288e81d86eed7120d5e58daae89114edd285b7b29",
+    "graphChecksum": "8ed2421262cd795fdf607e50ea2d853b9e34cb6aff06b757d4128d91e79dcd8d",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -5954,7 +7375,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -5976,10 +7397,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -6148,13 +7582,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -6306,9 +7834,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -6332,7 +7857,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -6362,14 +7888,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -6392,7 +7916,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -6420,7 +7949,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -6433,7 +7967,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -6460,7 +7995,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -6499,7 +8042,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -6512,14 +8060,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-derm-summary-new-visit"
+                  "slug": "arcaai-derm-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-derm-soap-new-visit"
@@ -6553,7 +8099,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -6561,14 +8115,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-derm-summary-revisit"
+                  "slug": "arcaai-derm-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-derm-soap-revisit"
@@ -6598,7 +8150,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -6611,14 +8171,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -6649,7 +8207,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -6681,7 +8247,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -6748,7 +8319,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -6757,7 +8333,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000025",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000026",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -6768,27 +8385,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "57b0b287c183705c7692dfd70a6bebdc3d4c3e6ca1a9c3812d0aeca529cfd7c9"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "e8e35cc89708a235608c6172ddf8056fdfb67f2148f66def3c0d8b8b1f5b5b55"
     }
   },
   "ARCAAI:arcaai-diet-consultation": {
-    "graphChecksum": "254e90b66834e437f89022e3783a5acd360e27f3100431a98324680b41b27e1c",
+    "graphChecksum": "92cc785b81cd3684655bbb206ec864c1f04f7f17046fe2e1b398f297735e3117",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -6800,7 +8424,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -6822,10 +8446,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -6994,13 +8631,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -7152,9 +8883,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -7178,7 +8906,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -7208,14 +8937,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -7238,7 +8965,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -7266,7 +8998,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -7279,7 +9016,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -7306,7 +9044,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -7345,7 +9091,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -7358,14 +9109,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-diet-summary-new-visit"
+                  "slug": "arcaai-diet-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-diet-soap-new-visit"
@@ -7399,7 +9148,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -7407,14 +9164,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-diet-summary-revisit"
+                  "slug": "arcaai-diet-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-diet-soap-revisit"
@@ -7444,7 +9199,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -7457,14 +9220,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -7495,7 +9256,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -7527,7 +9296,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -7594,7 +9368,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -7603,7 +9382,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000027",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000028",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -7614,27 +9434,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "f563cc5610a41e796caf2156e2e378ee607465e76d2791a788fa921718824841"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "7e64d279554a06af83753aab1b5471973b06cfaa5060c3c1c40a8835fc8a2c20"
     }
   },
   "ARCAAI:arcaai-neph-consultation": {
-    "graphChecksum": "95ee501d36c8df5c03e2c8bc09b1605f1cccee33ec265a2f6d93cc6825d10d1b",
+    "graphChecksum": "ec9c6b7120a752a97a31901a1dccb64cdd9d0cbf6638bd0defd4d9b5b17b53d3",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -7646,7 +9473,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -7668,10 +9495,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -7840,13 +9680,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -7998,9 +9932,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -8024,7 +9955,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -8054,14 +9986,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -8084,7 +10014,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -8112,7 +10047,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -8125,7 +10065,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -8152,7 +10093,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -8191,7 +10140,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -8204,14 +10158,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-neph-summary-new-visit"
+                  "slug": "arcaai-neph-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-neph-soap-new-visit"
@@ -8245,7 +10197,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -8253,14 +10213,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-neph-summary-revisit"
+                  "slug": "arcaai-neph-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-neph-soap-revisit"
@@ -8290,7 +10248,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -8303,14 +10269,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -8341,7 +10305,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -8373,7 +10345,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -8440,7 +10417,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -8449,7 +10431,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000029",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000030",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -8460,27 +10483,34 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "207028a80c702b3acd1a030e7042643658ae406c05e9db32254312160d619f1e"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "b411a29e4fb0fd32ebf53ee5733ef2fe80a4d5c4ef72ce2da26c0658f47b0649"
     }
   },
   "ARCAAI:arcaai-sonc-consultation": {
-    "graphChecksum": "370d81ca31deafc47c475da3077d2df3b96c974a850b4ee0acab36ad113a8409",
+    "graphChecksum": "ce77782f4ca61ecc2c3cab85e9763df132ff1f2ec14927fef44bc156a979c5df",
     "validationReport": {
       "reportVersion": 1,
       "ok": true,
       "findings": [],
       "ruleSetVersion": 1,
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "evaluatedAt": "2026-09-08T00:00:00.000Z"
     },
     "compiledConfig": {
@@ -8492,7 +10522,7 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "paletteKey": "core",
       "compiledAt": "2026-09-08T00:00:00.000Z",
       "compilerVersion": "0.1.0",
-      "registryChecksum": "5252f31aedbd060387e203d0197e26c7ae3ccce139a4e8777ca540e07edf4dfd",
+      "registryChecksum": "52a0cfd5613bd1b9f708908a5ac6d62c819367be67f685cf94efe52738fec8e1",
       "ruleSetVersion": 1,
       "stages": [
         {
@@ -8514,10 +10544,23 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     "additionalProperties": false,
                     "properties": {
                       "audio_stream": {
-                        "type": "object"
+                        "type": "object",
+                        "properties": {
+                          "sttSessionId": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
                       },
                       "transcript": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          }
+                        ]
                       },
                       "encounter": {
                         "type": "object",
@@ -8686,13 +10729,107 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                         ]
                       },
                       "work_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "case_note": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "object"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "object"
+                                }
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "attachment": {
-                        "type": "object"
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "mediaId": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "mime": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": [
+                              "mediaId",
+                              "mime"
+                            ]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "mediaId": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "size": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "required": [
+                                "mediaId",
+                                "mime"
+                              ]
+                            }
+                          }
+                        ]
                       },
                       "context": {
                         "type": "object",
@@ -8844,9 +10981,6 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                     }
                   },
                   "followsLatest": true
-                },
-                "guardrail": {
-                  "enabled": true
                 }
               },
               "timeoutSeconds": 30,
@@ -8870,7 +11004,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "realtime-transcription"
+                  "slug": "realtime-transcription",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -8900,14 +11035,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "case-notes-pre-summary"
+                  "slug": "case-notes-pre-summary",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "onStart"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade"
               },
@@ -8930,7 +11063,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             },
             {
               "nodeId": "n_transcript",
@@ -8958,7 +11096,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_trigger.outputs.context"
+                }
+              }
             }
           ]
         },
@@ -8971,7 +11114,8 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "medical-ner"
+                  "slug": "medical-ner",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
@@ -8998,7 +11142,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "degrade",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "text": {
+                  "firstOf": [
+                    "nodes.n_transcript.outputs.text",
+                    "nodes.n_asr.outputs.transcript"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -9037,7 +11189,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -9050,14 +11207,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-sonc-summary-new-visit"
+                  "slug": "arcaai-sonc-summary-new-visit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-sonc-soap-new-visit"
@@ -9091,7 +11246,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "new_visit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             },
             {
               "nodeId": "n_summary_revisit",
@@ -9099,14 +11262,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "arcaai-sonc-summary-revisit"
+                  "slug": "arcaai-sonc-summary-revisit",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "realtime",
                   "cadence": "perTurn"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "onError": "degrade",
                 "documentTemplateSlug": "arcaai-sonc-soap-revisit"
@@ -9136,7 +11297,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                   "fromNodeId": "n_visit",
                   "handle": "revisit"
                 }
-              ]
+              ],
+              "bindings": {
+                "context": {
+                  "from": "nodes.n_trigger.outputs.context"
+                },
+                "message": {
+                  "from": "nodes.n_ner.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -9149,14 +11318,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
               "activity": "interpreter.core_agent",
               "config": {
                 "agentRef": {
-                  "slug": "casenote-finalization"
+                  "slug": "casenote-finalization",
+                  "versionNumber": 1
                 },
                 "execution": {
                   "lane": "durable",
                   "cadence": "onEnd"
-                },
-                "guardrail": {
-                  "enabled": true
                 },
                 "dna": {
                   "enabled": true
@@ -9187,7 +11354,15 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "message": {
+                  "firstOf": [
+                    "nodes.n_summary_revisit.outputs.text",
+                    "nodes.n_summary_new.outputs.text"
+                  ]
+                }
+              }
             }
           ]
         },
@@ -9219,7 +11394,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.text"
+                }
+              }
             }
           ]
         },
@@ -9286,7 +11466,12 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
                 }
               ],
               "onError": "fail",
-              "emitsTrajectory": true
+              "emitsTrajectory": true,
+              "bindings": {
+                "in": {
+                  "from": "nodes.n_finalize.outputs.data"
+                }
+              }
             }
           ]
         }
@@ -9295,7 +11480,48 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
       "policyBindings": {
         "guardrailProfile": "STANDARD",
         "redactionRuleSetId": null,
-        "promptTemplateRefs": [],
+        "promptTemplateRefs": [
+          {
+            "nodeId": "n_presummary",
+            "templateId": "71000000-0000-0000-0001-000000000024",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000031",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_new",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000032",
+            "versionNumber": 3
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_summary_revisit",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000034",
+            "versionNumber": 1
+          },
+          {
+            "nodeId": "n_finalize",
+            "templateId": "71000000-0000-0000-0001-000000000033",
+            "versionNumber": 1
+          }
+        ],
         "documentTemplateRefs": [],
         "contextSchemaVersionId": "89000000-0000-0000-0001-000000000021",
         "entitlementKeys": [],
@@ -9306,17 +11532,24 @@ export const ARCAAI_GENERATED: Readonly<Record<string, GeneratedWorkflowBlob>> =
             "versionNumber": 1,
             "versionId": "89000000-0000-0000-0001-000000000021"
           }
-        ],
-        "guardrail": {
-          "enabled": true
-        }
+        ]
       },
       "caps": {
         "maxTotalSeconds": 3600,
         "maxNodeSeconds": 600,
         "maxAttempts": 5
       },
-      "checksum": "aefe3fc04f86d9a35f87f85474fb20bfd77d234825dd6d6c2115f56573b85156"
+      "settings": {
+        "connections": [
+          "api",
+          "sse",
+          "socket"
+        ],
+        "sources": [
+          "consultation"
+        ]
+      },
+      "checksum": "59c48145ae281d02bad63bc6532be0b049ef90ae5db575d4d092fe7e67ee498f"
     }
   }
 };

@@ -5,19 +5,24 @@ import { ClsService } from 'nestjs-cls';
 import type { Readable } from 'node:stream';
 import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 import {
+  buildPromptScope,
   PromptCompositionEmptyError,
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
-  composePrompt,
+  composeMessages,
   outputSchemaResponseFormat,
+  platformRules,
+  readTextAgentMessage,
+  resolvedPromptVariableDeclarations,
   unresolvedPromptVariables,
+  type PromptScopeVariableDeclaration,
 } from '@arcaai/workflow-contract';
 import type { ResolvedAgent } from '@arcaai/types';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import type { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
-import { COMPUTE_DEVICES, type ComputeDevice, type GuardrailDisposition } from '../usageLedger/usage-attributes';
+import { COMPUTE_DEVICES, type ComputeDevice } from '../usageLedger/usage-attributes';
 import {
   CONTEXT_NAMESPACE_ROOT,
   soleContextKindSchema,
@@ -25,7 +30,7 @@ import {
   type UserIdentityBinding,
 } from '../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
-import { buildAgentPromptScope } from './agent-prompt-scope';
+import { agentInputBlock } from './agent-input-block';
 import { promptVariableSlot, splitBindings, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
 
@@ -173,6 +178,31 @@ function computeDevice(value: unknown): ComputeDevice | null {
  * client, never a credential of its own). TTS and batch ASR are PREPARED here and executed by
  * the gateway's existing speech proxy / transcription-job path.
  */
+/**
+ * TASK-1036 OD-8 — a TEXT_GENERATION agent published BEFORE `message` existed froze the old
+ * default `inputSchema` (`{ text, variables }`, closed), so a caller sending the new name would be
+ * refused by a schema that predates it. For such a schema ONLY — it names `text` and does not name
+ * `message` — a body carrying `message` (and no `text`) is validated as the `text` body it is
+ * equivalent to. An agent whose own schema declares `message` is validated verbatim: its author
+ * meant that field. The runtime reads either spelling through `readTextAgentMessage`.
+ */
+function legacyMessageAlias(resolved: ResolvedAgent, input: unknown): unknown {
+  if (resolved.task !== 'TEXT_GENERATION') return input;
+  const schema = resolved.compiledConfig.inputSchema as { properties?: Record<string, unknown> } | null | undefined;
+  const properties = schema?.properties;
+  if (!properties || !('text' in properties) || 'message' in properties) return input;
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const { message, ...rest } = input as Record<string, unknown>;
+  if (message === undefined || rest.text !== undefined) return input;
+  return { ...rest, text: message };
+}
+
+/** Per-call options for `invokeText` / `invokeNer` (TASK-1038 E2 fix 4, R2). */
+export interface AgentInvocationCallOptions {
+  /** Aborts the upstream TEXT / NLP request (an agent run's cancel or ceiling). */
+  signal?: AbortSignal;
+}
+
 @Injectable()
 export class AgentInvocationService {
   private readonly logger = new Logger(AgentInvocationService.name);
@@ -206,7 +236,7 @@ export class AgentInvocationService {
 
   /** TIER 3 — the invocation body against the agent's declared `inputSchema`. */
   inputProblems(resolved: ResolvedAgent, input: unknown): string[] {
-    return jsonSchemaValueProblems(resolved.compiledConfig.inputSchema, input);
+    return jsonSchemaValueProblems(resolved.compiledConfig.inputSchema, legacyMessageAlias(resolved, input));
   }
 
   /**
@@ -245,13 +275,30 @@ export class AgentInvocationService {
       : undefined;
   }
 
-  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'blocking'): Promise<AgentTextInvocationResult>;
-  async invokeText(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>, mode: 'stream'): Promise<AgentTextStreamInvocation>;
+  /**
+   * `options.signal` (TASK-1038 E2 fix 4, R2) aborts the upstream request — an agent RUN's cancel
+   * and its ceiling. Absent, the request is unchanged.
+   */
+  async invokeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    mode: 'blocking',
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentTextInvocationResult>;
+  async invokeText(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    mode: 'stream',
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentTextStreamInvocation>;
   async invokeText(
     resolved: ResolvedAgent,
     tenantId: string,
     input: Record<string, unknown>,
     mode: 'blocking' | 'stream',
+    options?: AgentInvocationCallOptions,
   ): Promise<AgentTextInvocationResult | AgentTextStreamInvocation> {
     if (resolved.task !== 'TEXT_GENERATION') {
       throw new BadRequestException(`Agent '${resolved.slug}' is a ${resolved.task} agent; invocations apply to TEXT_GENERATION agents only.`);
@@ -305,6 +352,9 @@ export class AgentInvocationService {
     // []`), and a composite selects its fragments over THIS scope — the same object the
     // templates render against, so what a condition saw and what the prompt saw cannot differ.
     const trigger = this.contextScopeFor(resolved, input.context);
+    // The ONE composer (`composeMessages`): platform rules, then the agent's composed instruction
+    // in the SYSTEM message; the caller's text in the USER message as a delimited data block, so
+    // nothing a caller sends can read as an instruction.
     const composed = this.renderScoped(resolved.slug, () => {
       // TASK-983 R9 — EVERY missing variable, in ONE refusal, BEFORE the render.
       //
@@ -318,10 +368,23 @@ export class AgentInvocationService {
         input,
         trigger,
         templateRef: `agent:${resolved.slug}`,
+        // TASK-1036 OD-10 — the frozen template declarations: an absent OPTIONAL variable renders
+        // `""` (or its default); a required one still fails by name.
+        variableDeclarations: resolvedPromptVariableDeclarations(compiled.resolvedPrompt),
       });
-      return composePrompt(compiled.resolvedPrompt, scope, { templateRef: `agent:${resolved.slug}` });
+      return composeMessages({
+        platformRules: platformRules(),
+        resolvedPrompt: compiled.resolvedPrompt,
+        scope,
+        // TASK-1036 OD-8 — `message`, else the deprecated `text` alias; neither (a `{ variables }`
+        // body) emits an empty block, so the user message is `''`.
+        dataBlocks: [agentInputBlock(readTextAgentMessage(input))],
+        templateRef: `agent:${resolved.slug}`,
+        // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
+        dropEmptyBlocks: true,
+      });
     });
-    const systemPrompt = composed.prompt ?? undefined;
+    const systemPrompt = composed.system;
     const promptFragments = compiled.resolvedPrompt?.source === 'composite' ? { selected: [...composed.selected] } : null;
     // TASK-947 R2 M-1 — an exclusion left NO server-side record on this lane, so a safety fragment
     // dropped by a wrong-typed caller input was unreconstructible. Keys and reasons only (never the
@@ -344,7 +407,7 @@ export class AgentInvocationService {
     const wireModel = this.requireWireModelId(resolved);
 
     const body: Record<string, unknown> = {
-      prompt: String(input.text ?? ''),
+      prompt: composed.user,
       ...(systemPrompt ? { system_prompt: systemPrompt } : {}),
       ...(compiled.model.provider ? { provider: compiled.model.provider } : {}),
       model: wireModel,
@@ -381,20 +444,12 @@ export class AgentInvocationService {
       const { provider: overrideProvider, ...entry } = resolvedOverride;
       (body as { provider_overrides?: Record<string, unknown> }).provider_overrides = { [overrideProvider]: entry };
     }
-    await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
-    // TASK-890 §3.14 (OD-R) — the guardrail decision for THIS call. A standalone invocation has
-    // no workflow and no node, so the AGENT tier is the whole precedence: `ResolvedAgent.guardrail`
-    // is what `resolveGuardrailDecision` would answer with `node`/`workflow` absent, already
-    // normalised by the resolver (absent or malformed ⇒ screening ON).
-    //
-    // Stated EXPLICITLY in both directions so TEXT can tell "screened because a decision said so"
-    // from "no opinion", and safe to send unconditionally because it can only ever subtract —
-    // `apps/text` keeps the platform switch as the floor.
-    // `?? { enabled: true }` is the fail-SAFE read, not a default with an opinion: `guardrail` is
-    // non-optional on `ResolvedAgent` and the resolver normalises it, but an answer built before
-    // this ticket carries none — and on a safety gate an absent value must read as SCREENED.
-    this.textRequestEnrichment.applyGuardrailDecision(body, resolved.guardrail ?? { enabled: true });
-
+    // The primary row's `deploymentKind` decides the egress locality stamped on the body.
+    await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string }, {
+      deploymentKind: resolved.models.find((entry) => entry.role === 'primary')?.deploymentKind ?? null,
+      phase: 'invoke',
+      agentSlug: resolved.slug,
+    });
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),
       tenantId,
@@ -405,11 +460,15 @@ export class AgentInvocationService {
       const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
         headers: { ...headers, Accept: 'text/event-stream' },
         responseType: 'stream',
+        ...(options?.signal ? { signal: options.signal } : {}),
       });
       return { stream: response.data as Readable, ...actingUser };
     }
 
-    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, { headers });
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
+      headers,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
     const data = (response.data ?? {}) as {
       content?: string;
       summary?: string;
@@ -461,7 +520,12 @@ export class AgentInvocationService {
    * `X-Tenant-Id` is mandatory on this hop (owner directive 2026-08-16): an invocation always
    * has a tenant, so there is no tenant-less branch to declare.
    */
-  async invokeNer(resolved: ResolvedAgent, tenantId: string, input: Record<string, unknown>): Promise<AgentNerInvocationResult> {
+  async invokeNer(
+    resolved: ResolvedAgent,
+    tenantId: string,
+    input: Record<string, unknown>,
+    options?: AgentInvocationCallOptions,
+  ): Promise<AgentNerInvocationResult> {
     if (resolved.task !== 'NAMED_ENTITY_RECOGNITION') {
       throw new BadRequestException(
         `Agent '${resolved.slug}' is a ${resolved.task} agent; entity extraction applies to NAMED_ENTITY_RECOGNITION agents only.`,
@@ -505,7 +569,10 @@ export class AgentInvocationService {
       tenantlessReason: TENANTLESS.CONTROL_PLANE,
     });
 
-    const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, { headers });
+    const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, body, {
+      headers,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    });
     const data = asRecord(response.data);
     return {
       entities: mapNerEntities(response.data),
@@ -626,18 +693,6 @@ export class AgentInvocationService {
   }
 
   /**
-   * TASK-890 §3.14 — the SCREENING DISPOSITION this call's ledger row records.
-   *
-   * Delegated to the enrichment service (which owns the platform-switch read) rather than
-   * duplicated at the controller: the same service writes the wire field above, so "what we
-   * asked TEXT to do" and "what we recorded having done" are derived in ONE place and cannot
-   * drift into disagreeing about the same call.
-   */
-  async guardrailDisposition(decision: { enabled: boolean }): Promise<GuardrailDisposition> {
-    return this.textRequestEnrichment.guardrailDisposition(decision);
-  }
-
-  /**
    * TASK-983 R9 — refuse an incomplete invocation ONCE, naming every placeholder it did not
    * supply and the request key each one belongs under.
    *
@@ -659,16 +714,22 @@ export class AgentInvocationService {
   private assertPromptVariablesSupplied(
     agentSlug: string,
     resolvedPrompt: ResolvedAgent['compiledConfig']['resolvedPrompt'],
-    scopeInput: { variables: Record<string, unknown>; input: Record<string, unknown>; trigger?: Record<string, unknown>; templateRef: string },
+    scopeInput: {
+      variables: Record<string, unknown>;
+      input: Record<string, unknown>;
+      trigger?: Record<string, unknown>;
+      templateRef: string;
+      variableDeclarations?: readonly PromptScopeVariableDeclaration[];
+    },
   ): Record<string, unknown> {
     // The roots alone (`trigger` / `context` / `input`), with no variables — so nothing is
     // resolved yet and nothing can throw. This is the scope a BINDING is resolved against.
-    const roots = buildAgentPromptScope({ input: scopeInput.input, trigger: scopeInput.trigger, templateRef: scopeInput.templateRef });
+    const roots = buildPromptScope({ input: scopeInput.input, trigger: scopeInput.trigger, templateRef: scopeInput.templateRef });
     const { resolvable, unresolved } = splitBindings(scopeInput.variables, roots);
     // Built from the bindings that DO resolve, so the builder cannot raise and the template diff
     // below sees exactly what the render will see. A name whose binding failed is absent here,
     // which is correct: it is missing, and it is named by its PATH rather than by itself.
-    const scope = buildAgentPromptScope({ ...scopeInput, variables: resolvable });
+    const scope = buildPromptScope({ ...scopeInput, variables: resolvable });
     const failedNames = new Set(unresolved.map((binding) => binding.name));
     const missing = [
       ...unresolved.map((binding) => binding.path),
@@ -730,9 +791,12 @@ export class AgentInvocationService {
         });
       }
       if (error instanceof PromptVariableUnresolvedError) {
-        throw new BadRequestException(
-          `Agent '${agentSlug}' instruction references \`${error.path}\`, which this invocation does not supply. Provide it under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
-        );
+        throw new BadRequestException({
+          message: `Agent '${agentSlug}' instruction references ${error.paths.map((path) => `\`${path}\``).join(', ')}, which this invocation does not supply. Provide each under \`context\` / \`input\` / \`variables\`, or give the placeholder a \`default("…")\`.`,
+          code: 'PROMPT_VARIABLE_UNRESOLVED',
+          path: error.path,
+          missingVariables: [...error.paths],
+        });
       }
       if (error instanceof PromptTemplateSyntaxError) {
         // The parser's own message rides as a FIELD, never interpolated into a composed body:

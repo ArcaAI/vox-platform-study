@@ -36,10 +36,13 @@
  */
 import { actionDelegateOf } from './action-catalogue';
 import { agenticNodeConfigProblems } from './agentic-contract';
+import type { AgentTask } from './agent-schemas';
+import { bindingIssues, RUN_SCOPE_FIELDS, type BindingIssueCode } from './bindings';
+import { CONSULTATION_READ_SCHEMA_V1 } from './consultation-read-schema';
 import type { AgenticGraphContext } from './agentic-contract';
 import { coreNodeConfigProblems, loopBodyProblems } from './core-contract';
 import type { WorkflowGraph, WorkflowGraphNode } from './graph-model';
-import { guardrailOptOutOf, resolveGuardrailDecision } from './guardrail-optout';
+import { stripRetiredGraphGuardrailOptOuts } from './retired-guardrail-optout';
 import { NODE_CONFIG_SCHEMAS } from './node-config-schemas';
 import type { WorkflowNodeDescriptor } from './node-registry';
 import { WORKFLOW_NODE_REGISTRY, classesOf } from './node-registry';
@@ -47,6 +50,8 @@ import { nodeDescriptorContractProblems, workflowEdgePortProblems } from './port
 import type { WorkflowFinding, WorkflowFindingSeverity, WorkflowRuleClass } from './report';
 import { templateReferenceProblems, templateSyntaxProblems } from './template';
 import type { DeclaredNamespaces } from './template';
+import type { AgentIOResolver } from './node-io';
+import { effectiveSettings, graphSettingsOf, settingsImplications, workflowSettingsProblems, type WorkflowSettingsRuleId } from './workflow-settings';
 
 // =============================================================================================
 // The code vocabulary (§3.5) — shared with `AgentFindingCode` in the applications layer
@@ -70,6 +75,21 @@ export const WORKFLOW_PUBLISH_FINDING_CODES = Object.freeze([
   'PROMPT_VARIABLE_UNDECLARED',
   'PROMPT_TEMPLATE_SYNTAX',
   'GUARDRAIL_OPTED_OUT',
+  // TASK-1036 §9.2 / §9.3 — bindings and the consultation scope (`bindings.ts`).
+  'BINDING_UNKNOWN_PATH',
+  'BINDING_NOT_ANCESTOR',
+  'BINDING_TYPE_MISMATCH',
+  'BINDING_UNKNOWN_INPUT',
+  'REQUIRED_INPUT_UNBOUND',
+  'INPUT_MULTIPLE_PRODUCERS',
+  'CONSULTATION_SCOPE_UNAVAILABLE',
+  'AGENT_NOTHING_BOUND',
+  // TASK-1036 §3.5 — workflow settings (`workflow-settings.ts`); the four implications carry WF-SET rule ids.
+  'SETTINGS_INVALID',
+  'SETTINGS_SSE_REQUIRES_API',
+  'SETTINGS_SOCKET_REQUIRES_API',
+  'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+  'SETTINGS_UPLOAD_REQUIRES_API',
 ] as const);
 export type WorkflowPublishFindingCode = (typeof WORKFLOW_PUBLISH_FINDING_CODES)[number];
 
@@ -85,16 +105,26 @@ export const PUBLISH_FINDING_RULE_ID = 'WF-PUB';
 const MANDATORY_CLASS = 'mandatory';
 
 /**
- * The OD-C ramp (P-4), as ONE constant. `PROMPT_VARIABLE_UNDECLARED` is a WARNING in the first
- * release and an ERROR in the next, and the promotion is meant to be a one-line, reviewable diff
- * rather than a hunt through call sites — so every caller in this monorepo passes THIS, and the
- * release that decides to enforce it changes this value alone.
- *
- * It is a WARNING today because the check is new and the corpus is not: an agent whose prompt
- * references a context schema no tenant has bound yet (gap 4e) would otherwise become
- * unpublishable the moment this shipped, which is a migration disguised as a gate.
+ * `PROMPT_VARIABLE_UNDECLARED` is an ERROR: it blocks publish, for workflows (here) and agents
+ * (the gateway's agent findings). A prompt that names a variable nothing declares fails at run
+ * time — the renderer refuses an unresolved placeholder by name — so publishing it only moves the
+ * failure from the author to a clinician mid-consultation. Fixed here, not by the caller.
  */
-export const TEMPLATE_REFERENCE_SEVERITY_RELEASE_1: WorkflowFindingSeverity = 'WARNING';
+export const PROMPT_VARIABLE_UNDECLARED_SEVERITY: WorkflowFindingSeverity = 'ERROR';
+
+/**
+ * `PROMPT_FRAGMENT_CONDITION_ROOT` stays a WARNING: a `when` that reads an unknown root EXCLUDES
+ * its fragment at run time rather than failing the call, and the root might be supplied by a
+ * caller publish cannot see.
+ */
+export const PROMPT_FRAGMENT_CONDITION_ROOT_SEVERITY: WorkflowFindingSeverity = 'WARNING';
+
+/**
+ * @deprecated The release-1 ramp is over; read `PROMPT_VARIABLE_UNDECLARED_SEVERITY`. Kept for
+ * one release so existing callers compile, and promoted to `'ERROR'` so every caller that still
+ * passes it reports undeclared prompt variables as publish-blocking.
+ */
+export const TEMPLATE_REFERENCE_SEVERITY_RELEASE_1: WorkflowFindingSeverity = PROMPT_VARIABLE_UNDECLARED_SEVERITY;
 
 // =============================================================================================
 // Context
@@ -119,6 +149,13 @@ export interface PublishAgentView {
   readonly contextPayloadSchema: SchemaLike | null;
   /** Per-hyper-parameter bounds a node override must sit inside (4c). Absent = unchecked. */
   readonly generationRanges?: GenerationRanges;
+  /**
+   * TASK-1036 §9.1 — the agent's TASK, which decides the node's inputs and outputs
+   * (`agentNodeIO`). Absent, the node is checked against the union of every task's sockets.
+   */
+  readonly task?: AgentTask;
+  /** TASK-1036 §9.1 — the agent's `outputSchema`: a structured one adds a typed `data` output. */
+  readonly outputSchema?: SchemaLike | null;
 }
 
 export interface PublishContext {
@@ -134,12 +171,17 @@ export interface PublishContext {
   /** Which failure `triggerContextSchema: null` was. Defaults to `CONTEXT_SCHEMA_NOT_FOUND`. */
   readonly triggerContextSchemaFailure?: 'CONTEXT_SCHEMA_NOT_FOUND' | 'CONTEXT_SCHEMA_VERSION_NOT_FOUND';
   /**
-   * The OD-C ramp: `'WARNING'` in the first release, `'ERROR'` in the next (P-4). The CALLER
-   * owns it because the same undeclared variable is authoring feedback in a draft and a publish
-   * refusal a release later — a severity that changes with the rollout is not a property of a
-   * pure function.
+   * TASK-1036 §3.5 — the Input shape's `ConsultationContextSchemaVersion.definition` (its `kinds`),
+   * when the caller resolved it. Read by WF-SET-003/004 (stream audio ⇒ socket; an upload ⇒ api).
+   * Absent, only the agent-derived implications are checked.
    */
-  readonly templateReferenceSeverity: WorkflowFindingSeverity;
+  readonly contextSchemaDefinition?: unknown;
+  /**
+   * @deprecated Ignored. `PROMPT_VARIABLE_UNDECLARED` is always reported at
+   * `PROMPT_VARIABLE_UNDECLARED_SEVERITY` (ERROR); the field stays optional for one release so
+   * existing callers compile.
+   */
+  readonly templateReferenceSeverity?: WorkflowFindingSeverity;
   /**
    * `jsonSchemaValueProblems` from `@arcaai/json-schema-subset`. Injected, not imported: this
    * package has zero runtime dependencies. REQUIRED so the gate cannot be silently skipped.
@@ -213,11 +255,71 @@ function schemaOfKeys(keys: readonly string[]): SchemaLike {
   };
 }
 
+/** WF-SET rule id → its publish code. */
+const SETTINGS_RULE_CODES: Readonly<Record<WorkflowSettingsRuleId, WorkflowPublishFindingCode>> = Object.freeze({
+  'WF-SET-001': 'SETTINGS_SSE_REQUIRES_API',
+  'WF-SET-002': 'SETTINGS_SOCKET_REQUIRES_API',
+  'WF-SET-003': 'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+  'WF-SET-004': 'SETTINGS_UPLOAD_REQUIRES_API',
+});
+
+/** The non-INFO binding codes, each a publish code of the same name. */
+type PublishedBindingCode = Exclude<BindingIssueCode, 'BINDING_TYPE_CONVERTED'>;
+
+/** The `run.*` root as a closed object schema, so a prompt template can reference it. */
+const RUN_ROOT_SCHEMA: SchemaLike = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.fromEntries(Object.keys(RUN_SCOPE_FIELDS).map((name) => [name, {}])),
+});
+
+/**
+ * TASK-1036 — the data-contract findings: workflow settings (§3.5), bindings and the consultation
+ * scope (§9.2, §9.3). Every new check that can REFUSE a graph runs only on what a graph AUTHORED
+ * under the new model (declared `settings`, declared `inputs`, a `consultation.*` reference); a
+ * legacy graph meets the same rules as WARNINGs for one release, so nothing that published before
+ * this ticket stops publishing.
+ */
+function dataContractFindings(graph: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+  const findings: WorkflowFinding[] = [];
+  const agents: AgentIOResolver = Object.fromEntries(
+    Object.entries(ctx.agents ?? {}).map(([slug, view]) => [slug, { task: view.task, outputSchema: view.outputSchema }]),
+  );
+
+  const declared = graphSettingsOf(graph);
+  const shape = declared === undefined ? [] : workflowSettingsProblems(declared);
+  for (const problem of shape) {
+    const pointer = problem.slice(0, problem.indexOf(':'));
+    findings.push(finding('SETTINGS_INVALID', 'schema', 'ERROR', null, problem, pointer));
+  }
+  const settings = effectiveSettings(graph);
+  if (shape.length === 0) {
+    const severity: WorkflowFindingSeverity = settings.origin === 'settings' ? 'ERROR' : 'WARNING';
+    for (const implication of settingsImplications(graph, settings, { agents, contextSchemaDefinition: ctx.contextSchemaDefinition })) {
+      findings.push({
+        ...finding(SETTINGS_RULE_CODES[implication.ruleId], 'structural', severity, implication.nodeId, implication.message, '/settings/connections'),
+        ruleId: implication.ruleId,
+      });
+    }
+  }
+
+  for (const issue of bindingIssues(graph, { agents, contextPayloadSchema: ctx.triggerContextSchema, sources: settings.sources })) {
+    if (issue.severity === 'INFO') continue;
+    findings.push(
+      finding(issue.code as PublishedBindingCode, 'schema', issue.severity, issue.nodeId, `node \`${issue.nodeId}\`: ${issue.message}`, issue.path),
+    );
+  }
+  return findings;
+}
+
 // =============================================================================================
 // The gate
 // =============================================================================================
 
-export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+export function publishFindings(authored: WorkflowGraph, ctx: PublishContext): WorkflowFinding[] {
+  // A stored row may still carry the retired guardrail opt-out: accepted and stripped, never a
+  // schema refusal and never an opt-out (`retired-guardrail-optout.ts`).
+  const graph = stripRetiredGraphGuardrailOptOuts(authored).graph;
   const registry = ctx.registry === undefined ? WORKFLOW_NODE_REGISTRY : { ...WORKFLOW_NODE_REGISTRY, ...ctx.registry };
   const findings: WorkflowFinding[] = [];
   const nodes = (graph.nodes ?? []).filter((node): node is WorkflowGraphNode => typeof node?.id === 'string' && typeof node?.type === 'string');
@@ -296,7 +398,7 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
   }
 
   // ---------------------------------------------------------------------------------------
-  // The per-node schema, context-schema, guardrail and template checks. Release 1 scoped them to
+  // The per-node schema, context-schema and template checks. Release 1 scoped them to
   // `core.*` nodes so the legacy palettes' seeded graphs stayed publishable; TASK-893 retired
   // those palettes, so every check now runs on every node of every graph.
   // ---------------------------------------------------------------------------------------
@@ -332,28 +434,6 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
         ),
       );
     }
-  }
-
-  // The workflow's guardrail default, folded per `core.agent` node with the node's own opinion.
-  const workflowGuardrail = (() => {
-    for (const node of coreNodes) {
-      if (node.type !== 'core.trigger') continue;
-      const opinion = guardrailOptOutOf(node.config);
-      if (opinion !== null) return { opinion, nodeId: node.id };
-    }
-    return null;
-  })();
-  if (workflowGuardrail !== null && !workflowGuardrail.opinion) {
-    findings.push(
-      finding(
-        'GUARDRAIL_OPTED_OUT',
-        'invariant',
-        'WARNING',
-        workflowGuardrail.nodeId,
-        `This workflow turns platform guardrail screening OFF by default (source: workflow). Every \`core.agent\` node that does not override it runs unscreened, and each run records \`guardrail: "opted_out"\`.`,
-        '/guardrail/enabled',
-      ),
-    );
   }
 
   // The MANDATORY nodes this graph DISABLES (TASK-890 D-1, §3.14a #6).
@@ -393,7 +473,7 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
         node.id,
         `node \`${node.id}\` (\`${label}\`) is DISABLED, and it is a mandatory node${
           classes.length > 0 ? ` (classes: ${classes.join(', ')})` : ''
-        }. It stays in the graph — publish still refuses a graph that removed it — but it will not execute: each run records a SKIPPED(disabled_by_config) step for it and \`guardrail: "opted_out"\` on the usage row.`,
+        }. It stays in the graph — publish still refuses a graph that removed it — but it will not execute: each run records a SKIPPED(disabled_by_config) step for it.`,
         '/enabled',
       ),
     );
@@ -408,22 +488,6 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
     const slug = typeof agentRef?.slug === 'string' ? agentRef.slug : null;
     const agent = slug === null ? undefined : ctx.agents?.[slug];
     const overrides = isPlainObject(config.overrides) ? config.overrides : undefined;
-
-    // Guardrail: the FOLD, not the literal — a node inheriting an off workflow default is opted
-    // out just as surely as one that says so itself, and the record has to show both.
-    const decision = resolveGuardrailDecision({ node: guardrailOptOutOf(config), workflow: workflowGuardrail?.opinion ?? null });
-    if (!decision.enabled) {
-      findings.push(
-        finding(
-          'GUARDRAIL_OPTED_OUT',
-          'invariant',
-          'WARNING',
-          node.id,
-          `node \`${node.id}\`: platform guardrail screening is OFF for this agent node (source: ${decision.source}). The call runs unscreened and records \`guardrail: "opted_out"\`.`,
-          '/guardrail/enabled',
-        ),
-      );
-    }
 
     // 4c — the per-node override must sit inside the agent's declared range. The node schema
     // already bounds each hyper-parameter globally; this is the AGENT's narrower promise.
@@ -460,11 +524,13 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
         trigger: ctx.triggerContextSchema ?? null,
         context: ctx.triggerContextSchema ?? agent?.contextPayloadSchema ?? null,
         vars: varsSchema,
-        // Upstream node output ports are not resolved in release 1: a wildcard admits them rather
-        // than warning on every legitimate `{{nodes.x.y}}`. Narrowing it is a later ramp, like
-        // `templateReferenceSeverity` itself.
+        // `nodes.*` stays a wildcard HERE; `bindingIssues` (TASK-1036, D-G) now checks every
+        // `{{nodes.<id>…}}` against the graph — the step exists, runs earlier, outputs the field.
         nodes: null,
         input: null,
+        // TASK-1036 §9.3 — the platform read schema and the run identity are declared roots.
+        consultation: CONSULTATION_READ_SCHEMA_V1,
+        run: RUN_ROOT_SCHEMA,
       },
       variables: [...(agent?.declaredVariables ?? []), ...Object.keys(promptVariables)],
     };
@@ -482,11 +548,13 @@ export function publishFindings(graph: WorkflowGraph, ctx: PublishContext): Work
       }
       for (const problem of templateReferenceProblems(value, declared)) {
         findings.push(
-          finding('PROMPT_VARIABLE_UNDECLARED', 'schema', ctx.templateReferenceSeverity, node.id, `node \`${node.id}\`: ${problem}`, path),
+          finding('PROMPT_VARIABLE_UNDECLARED', 'schema', PROMPT_VARIABLE_UNDECLARED_SEVERITY, node.id, `node \`${node.id}\`: ${problem}`, path),
         );
       }
     }
   }
+
+  findings.push(...dataContractFindings(graph, ctx));
 
   return findings;
 }

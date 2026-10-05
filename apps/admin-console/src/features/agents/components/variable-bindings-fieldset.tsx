@@ -4,11 +4,12 @@
  * TASK-947 — the "Variable bindings" fieldset, extracted out of `InstructionBindingForm`
  * (TASK-890 §3.6) so it can be reused by `FragmentListEditor` over the UNION of declared
  * variables across every template-sourced fragment (ticket §4.1/OD-8: `instruction.variables`
- * stays ONE agent-level map, whichever of the three instruction forms is in use). Behavior and
- * markup are unchanged from the original single-template rendering — same ids, same labels —
- * so `instruction-binding-form.task890.test.tsx` keeps passing untouched.
+ * stays ONE agent-level map, whichever of the three instruction forms is in use). A static value
+ * is a plain input; a context path is a `TemplateEditor` (CEL mode) completing the effective
+ * schema's paths, so a path is picked rather than guessed.
  */
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui';
+import { TemplateEditor, type VariablePath } from '@arcaai/ui/components/custom/template-editor';
 import type { PromptPickerVariableDeclaration } from '@/shared/prompt-picker';
 import type { AgentPromptVariableBinding } from '../api';
 
@@ -24,9 +25,16 @@ export interface VariableBindingsFieldsetProps {
   disabled?: boolean;
   /** TASK-947 — one conflict line per name declared with a different `type` by two fragment templates. */
   conflicts?: string[];
+  /** Completion vocabulary for a context-path binding (the effective schema's `context.*` / `trigger.*` paths). */
+  paths?: readonly VariablePath[];
 }
 
-export function VariableBindingsFieldset({ idPrefix, declared, variables, onChange, disabled, conflicts }: VariableBindingsFieldsetProps) {
+/** A path binding names a ROOTED path; bare variable names are not bindable targets. */
+function bindablePaths(paths: readonly VariablePath[]): VariablePath[] {
+  return paths.filter((entry) => entry.path.includes('.'));
+}
+
+export function VariableBindingsFieldset({ idPrefix, declared, variables, onChange, disabled, conflicts, paths = [] }: VariableBindingsFieldsetProps) {
   if (declared.length === 0 && (!conflicts || conflicts.length === 0)) return null;
 
   function setVariable(name: string, binding: AgentPromptVariableBinding | undefined) {
@@ -52,9 +60,10 @@ export function VariableBindingsFieldset({ idPrefix, declared, variables, onChan
         const binding = variables[declaration.name];
         const isContext = bindingIsContext(binding);
         const fieldId = `${idPrefix}-var-${declaration.name}`;
+        const labelId = `${fieldId}-label`;
         return (
           <div key={declaration.name} className="flex flex-col gap-1.5">
-            <Label htmlFor={fieldId}>
+            <Label id={labelId} htmlFor={fieldId}>
               {declaration.name}
               {declaration.required ? (
                 <span aria-hidden className="text-destructive">
@@ -77,18 +86,31 @@ export function VariableBindingsFieldset({ idPrefix, declared, variables, onChan
                   <SelectItem value="context">Context path</SelectItem>
                 </SelectContent>
               </Select>
-              <Input
-                id={fieldId}
-                className="flex-1"
-                placeholder={isContext ? 'context.patientAge' : (declaration.default ?? declaration.type)}
-                value={isContext ? (binding?.path ?? '') : binding?.value !== undefined ? String(binding.value) : ''}
-                disabled={disabled}
-                onChange={(event) => {
-                  const text = event.target.value;
-                  if (isContext) setVariable(declaration.name, text ? { path: text } : undefined);
-                  else setVariable(declaration.name, text ? { value: text } : undefined);
-                }}
-              />
+              {isContext ? (
+                <TemplateEditor
+                  className="flex-1"
+                  mode="cel"
+                  minLines={1}
+                  aria-labelledby={labelId}
+                  value={binding?.path ?? ''}
+                  paths={bindablePaths(paths)}
+                  readOnly={disabled}
+                  placeholder="Type context. to pick a field"
+                  onChange={(text) => setVariable(declaration.name, { path: text })}
+                />
+              ) : (
+                <Input
+                  id={fieldId}
+                  className="flex-1"
+                  placeholder={declaration.default ?? declaration.type}
+                  value={binding?.value !== undefined ? String(binding.value) : ''}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const text = event.target.value;
+                    setVariable(declaration.name, text ? { value: text } : undefined);
+                  }}
+                />
+              )}
             </div>
           </div>
         );

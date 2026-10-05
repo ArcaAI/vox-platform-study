@@ -1,0 +1,1501 @@
+{
+  "$comment": "TASK-1038 R6 / TASK-1036 OD-23, OD-24, OD-33 (README §8.7, §10.3), frozen by lane F2 (TASK-1038 protocol-v2.md) — run protocol v2: ONE envelope `{ seq, runId, type, ts, nodeId?, data }` for SSE and WS. `header` / `query` select it (`x-hope-run-protocol: 2` or `?protocol=2`). `visibility` is the TYPE-level public/admin split; an `output.data` with `data.visibility: \"admin\"` is admin-only too (event-level audience). `nodeScope`: `required` / `optional` (transcripts sourced by the consultation session) / `forbidden`; an agent run's step nodeId is `agentRunNodeId`. `errorMessages` / `errorFallbackMessage`: `error.message` must be the fixed label of `error.code`; free text only in `error.detail` (never on the public plane). `examples` is one VALID event per type (plus extra shapes); each passes `runEventProblems` with the entry's `runKind` / `plane` when given. `invalid` entries each produce at least one problem containing `problem`. `sse` pins exact frame bytes (`event:`, `id: <seq>`, `data: <compact JSON of the whole envelope, keys in envelope order>`, blank line). `sequencer` is the ONE append script every producer uses (KEYS, stored field order, MAXLEN, closed error, terminal types, the Lua bytes); `stored` pins an append's EVAL arguments (`command`) and the resulting stream entry (`entry`, with the seq the script assigned) and the envelope it reads back as (`event`). `run.completed.data.result` is EXACTLY `{ kind: \"inline\", value }` or `{ kind: \"ref\", bucket, key, sizeBytes, sha256 }`. TypeScript: `packages/async-contract/src/__tests__/run-protocol.test.ts`; the Python mirror (wave B, B1) must read this file too.",
+  "protocolVersion": 2,
+  "header": "x-hope-run-protocol",
+  "query": "protocol",
+  "inlineResultMaxBytes": 65536,
+  "visibility": {
+    "run.started": "public",
+    "run.completed": "public",
+    "run.failed": "public",
+    "run.cancelled": "public",
+    "run.resync": "public",
+    "node.started": "public",
+    "node.completed": "public",
+    "node.failed": "public",
+    "output.text.delta": "public",
+    "output.audio.delta": "public",
+    "output.data": "public",
+    "ping": "public",
+    "input.validated": "admin",
+    "data.bound": "admin",
+    "binding.warning": "admin",
+    "consultation.read": "admin",
+    "transcript.partial": "admin",
+    "transcript.final": "admin",
+    "prompt.composed": "admin",
+    "model.request": "admin",
+    "guardrail.inbound": "admin",
+    "guardrail.outbound": "admin",
+    "output.validated": "admin"
+  },
+  "nodeScope": {
+    "run.started": "forbidden",
+    "run.completed": "forbidden",
+    "run.failed": "forbidden",
+    "run.cancelled": "forbidden",
+    "run.resync": "forbidden",
+    "node.started": "required",
+    "node.completed": "required",
+    "node.failed": "required",
+    "output.text.delta": "required",
+    "output.audio.delta": "required",
+    "output.data": "required",
+    "ping": "forbidden",
+    "input.validated": "forbidden",
+    "data.bound": "required",
+    "binding.warning": "required",
+    "consultation.read": "required",
+    "transcript.partial": "optional",
+    "transcript.final": "optional",
+    "prompt.composed": "required",
+    "model.request": "required",
+    "guardrail.inbound": "required",
+    "guardrail.outbound": "required",
+    "output.validated": "required"
+  },
+  "agentRunNodeId": "agent",
+  "errorMessages": {
+    "RUN_TIMED_OUT": "The run exceeded its time limit.",
+    "NODE_TIMED_OUT": "The step exceeded its time limit.",
+    "RUN_CANCELLED": "The run was cancelled.",
+    "INPUT_INVALID": "The run input does not match its schema.",
+    "OUTPUT_INVALID": "The output does not match its declared contract.",
+    "BINDING_UNRESOLVED": "A required input of the step has no value.",
+    "PROMPT_VARIABLE_UNRESOLVED": "A required prompt variable has no value.",
+    "PAYLOAD_TOO_LARGE": "A payload exceeded the size limit.",
+    "MODEL_UNAVAILABLE": "The model did not answer.",
+    "MODEL_ERROR": "The model returned an error.",
+    "PROVIDER_NOT_CONFIGURED": "No usable provider connection is configured.",
+    "AGENT_VERSION_UNAVAILABLE": "The pinned agent version is not available.",
+    "GUARDRAIL_BLOCKED": "A guardrail blocked the content.",
+    "CONSULTATION_READ_FAILED": "Consultation data could not be read.",
+    "DOWNSTREAM_UNAVAILABLE": "A downstream service did not answer.",
+    "INTERNAL_ERROR": "An internal error occurred."
+  },
+  "errorFallbackMessage": "The step could not be completed.",
+  "examples": [
+    {
+      "name": "run.started",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "kind": "workflow",
+          "slug": "consultation-scribe",
+          "versionNumber": 4,
+          "mode": "stream"
+        }
+      }
+    },
+    {
+      "name": "input.validated",
+      "event": {
+        "seq": 2,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "input.validated",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "valid": true,
+          "problems": [],
+          "schema": {
+            "slug": "arcaai_consultation_scribe",
+            "versionNumber": 3
+          }
+        }
+      }
+    },
+    {
+      "name": "node.started",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "kind": "core.agent",
+          "label": "Write the note",
+          "attempt": 1
+        }
+      }
+    },
+    {
+      "name": "consultation.read",
+      "event": {
+        "seq": 4,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "consultation.read",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "consultationId": "01928f3e-7b1a-7c3d-9e2f-0a1b2c3d4e5f",
+          "snapshot": "node-start",
+          "fields": [
+            {
+              "path": "consultation.patient.age",
+              "phiClass": "PHI",
+              "value": 61
+            },
+            {
+              "path": "consultation.department.name",
+              "phiClass": "NON_PHI",
+              "value": "General"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "data.bound",
+      "event": {
+        "seq": 5,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "data.bound",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "inputs": [
+            {
+              "input": "message",
+              "source": {
+                "kind": "from",
+                "path": "nodes.n_asr.transcript"
+              },
+              "value": "Patient reports cough."
+            },
+            {
+              "input": "suffix",
+              "source": {
+                "kind": "value"
+              },
+              "value": "",
+              "empty": true
+            },
+            {
+              "input": "heading",
+              "source": {
+                "kind": "template",
+                "template": "Visit: {{context.visit_type}}"
+              },
+              "value": "Visit: revisit",
+              "phiClass": "NON_PHI"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "binding.warning",
+      "event": {
+        "seq": 6,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "binding.warning",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "input": "suffix",
+          "code": "OPTIONAL_RENDERED_EMPTY",
+          "message": "Optional input `suffix` has no value and renders empty."
+        }
+      }
+    },
+    {
+      "name": "prompt.composed",
+      "event": {
+        "seq": 7,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "prompt.composed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "layers": [
+            {
+              "name": "platformRules",
+              "chars": 480
+            },
+            {
+              "name": "instruction",
+              "chars": 1360
+            },
+            {
+              "name": "outputLanguage",
+              "chars": 120
+            },
+            {
+              "name": "data",
+              "chars": 3600
+            }
+          ],
+          "charsTotal": 5560,
+          "selected": [
+            "base",
+            "revisit"
+          ],
+          "excluded": [
+            {
+              "key": "pediatric",
+              "reason": "condition_false"
+            }
+          ],
+          "blocks": [
+            {
+              "key": "transcript",
+              "chars": 3600,
+              "truncated": false
+            }
+          ],
+          "composedPromptId": "01928f3e-7b1a-7c3d-9e2f-0a1b2c3d4e60"
+        }
+      }
+    },
+    {
+      "name": "prompt.composed-with-token-counts",
+      "event": {
+        "seq": 7,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "prompt.composed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "layers": [
+            {
+              "name": "platformRules",
+              "chars": 480,
+              "tokens": 120
+            },
+            {
+              "name": "instruction",
+              "chars": 1360,
+              "tokens": 340
+            },
+            {
+              "name": "outputLanguage",
+              "chars": 120,
+              "tokens": 30
+            },
+            {
+              "name": "data",
+              "chars": 3600,
+              "tokens": 900
+            }
+          ],
+          "charsTotal": 5560,
+          "tokensTotal": 1390,
+          "selected": [
+            "base",
+            "revisit"
+          ],
+          "excluded": [
+            {
+              "key": "pediatric",
+              "reason": "condition_false"
+            }
+          ],
+          "blocks": [
+            {
+              "key": "transcript",
+              "chars": 3600,
+              "truncated": false
+            }
+          ],
+          "composedPromptId": "01928f3e-7b1a-7c3d-9e2f-0a1b2c3d4e60"
+        }
+      }
+    },
+    {
+      "name": "guardrail.inbound",
+      "event": {
+        "seq": 8,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 2,
+          "categories": [
+            "PII.NAME",
+            "PII.DATE"
+          ],
+          "mode": "detect",
+          "latencyMs": 41
+        }
+      }
+    },
+    {
+      "name": "model.request",
+      "event": {
+        "seq": 9,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "model.request",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "provider": "lm-studio",
+          "model": "gemma-4-e2b-it-qat",
+          "attempt": 1,
+          "fallback": false,
+          "stream": true,
+          "parameters": {
+            "temperature": 0.2,
+            "maxTokens": 2048
+          }
+        }
+      }
+    },
+    {
+      "name": "output.text.delta",
+      "event": {
+        "seq": 10,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "text": "Subjective: "
+        }
+      }
+    },
+    {
+      "name": "guardrail.outbound",
+      "event": {
+        "seq": 11,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.outbound",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "REDACT",
+          "detected": 1,
+          "categories": [
+            "PII.PHONE"
+          ],
+          "mode": "redact",
+          "latencyMs": 12
+        }
+      }
+    },
+    {
+      "name": "output.validated",
+      "event": {
+        "seq": 12,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.validated",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "valid": true,
+          "problems": [],
+          "field": "text"
+        }
+      }
+    },
+    {
+      "name": "node.completed",
+      "event": {
+        "seq": 13,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 5230,
+          "tokens": {
+            "in": 1390,
+            "out": 412
+          },
+          "warnings": 1
+        }
+      }
+    },
+    {
+      "name": "transcript.partial",
+      "event": {
+        "seq": 14,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "transcript.partial",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_asr",
+        "data": {
+          "text": "the patient rep",
+          "utteranceIndex": 3,
+          "stableChars": 8
+        }
+      }
+    },
+    {
+      "name": "transcript.final",
+      "event": {
+        "seq": 15,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "transcript.final",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_asr",
+        "data": {
+          "text": "The patient reports a dry cough.",
+          "utteranceIndex": 3,
+          "start": 12.4,
+          "end": 15.1,
+          "speaker": "Speaker 1",
+          "language": "en"
+        }
+      }
+    },
+    {
+      "name": "output.audio.delta",
+      "event": {
+        "seq": 16,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.audio.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_tts",
+        "data": {
+          "field": "audio",
+          "chunk": "UklGRiQAAABXQVZF",
+          "format": "wav",
+          "sampleRate": 24000
+        }
+      }
+    },
+    {
+      "name": "output.data",
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_end",
+        "data": {
+          "field": "entities",
+          "value": [
+            {
+              "text": "cough",
+              "label": "SYMPTOM",
+              "start": 27,
+              "end": 32
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "output.data-admin-trace-every-declared-output",
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
+        }
+      }
+    },
+    {
+      "name": "node.failed",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_tts",
+        "data": {
+          "durationMs": 900,
+          "error": {
+            "code": "MODEL_UNAVAILABLE",
+            "message": "The model did not answer."
+          },
+          "attempt": 1,
+          "willRetry": true
+        }
+      }
+    },
+    {
+      "name": "ping",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "ping",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {}
+      }
+    },
+    {
+      "name": "run.completed",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 1390,
+            "out": 412
+          },
+          "result": {
+            "kind": "inline",
+            "value": {
+              "text": "Subjective: dry cough."
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "run.failed",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "TIMED_OUT",
+          "durationMs": 600000,
+          "error": {
+            "code": "RUN_TIMED_OUT",
+            "message": "The run exceeded its time limit.",
+            "detail": "maxTotalSeconds=600 elapsed while n_note was running."
+          },
+          "tokens": {
+            "in": 0,
+            "out": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "run.failed-as-the-public-plane-receives-it",
+      "plane": "public",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "TIMED_OUT",
+          "durationMs": 600000,
+          "error": {
+            "code": "RUN_TIMED_OUT",
+            "message": "The run exceeded its time limit."
+          },
+          "tokens": {
+            "in": 0,
+            "out": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "run.cancelled",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.cancelled",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "CANCELED",
+          "durationMs": 3000,
+          "reason": "Cancelled by the caller."
+        }
+      }
+    },
+    {
+      "name": "run.resync",
+      "event": {
+        "seq": 12,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.resync",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "reason": "expired",
+          "snapshot": {
+            "status": "RUNNING",
+            "lastSeq": 12,
+            "nodes": {
+              "n_asr": {
+                "status": "completed",
+                "durationMs": 4100
+              },
+              "n_note": {
+                "status": "running"
+              },
+              "n_end": {
+                "status": "waiting"
+              }
+            },
+            "outputs": {
+              "n_note": {
+                "text": "Subjective: "
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "run.completed-with-result-ref",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 10,
+            "out": 20
+          },
+          "degraded": true,
+          "result": {
+            "kind": "ref",
+            "bucket": "hope-run-results",
+            "key": "tenants/t1/runs/run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B/result.json",
+            "sizeBytes": 183402,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "name": "run.completed-with-tenant-prefixed-result-ref",
+      "event": {
+        "seq": 119,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 10,
+            "out": 20
+          },
+          "degraded": true,
+          "result": {
+            "kind": "ref",
+            "bucket": "harness-claim-check",
+            "key": "t1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sizeBytes": 183402,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tenantPrefixed": true
+          }
+        }
+      }
+    },
+    {
+      "name": "run.completed-without-result",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 5,
+          "tokens": {
+            "in": 0,
+            "out": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "run.started-agent",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "kind": "agent",
+          "slug": "casenote-finalization",
+          "versionNumber": 2
+        }
+      }
+    },
+    {
+      "name": "transcript.final-from-the-consultation-session",
+      "event": {
+        "seq": 20,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "transcript.final",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "text": "No fever since Monday.",
+          "utteranceIndex": 4,
+          "start": 15.2,
+          "end": 17,
+          "language": "en"
+        }
+      }
+    },
+    {
+      "name": "node.started-agent-run",
+      "runKind": "agent",
+      "event": {
+        "seq": 2,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "agent",
+        "data": {
+          "kind": "core.agent",
+          "label": "casenote-finalization",
+          "attempt": 1
+        }
+      }
+    },
+    {
+      "name": "output.text.delta-agent-run",
+      "runKind": "agent",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "agent",
+        "data": {
+          "field": "text",
+          "text": "Assessment: "
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown-type",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.paused",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {}
+      },
+      "problem": "type"
+    },
+    {
+      "name": "negative-seq",
+      "event": {
+        "seq": -1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "kind": "workflow",
+          "slug": "s",
+          "versionNumber": 1
+        }
+      },
+      "problem": "seq"
+    },
+    {
+      "name": "zero-seq-on-a-stored-event",
+      "event": {
+        "seq": 0,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "kind": "workflow",
+          "slug": "s",
+          "versionNumber": 1
+        }
+      },
+      "problem": "seq"
+    },
+    {
+      "name": "node-event-without-nodeId",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "kind": "core.agent"
+        }
+      },
+      "problem": "nodeId"
+    },
+    {
+      "name": "delta-without-nodeId",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "field": "text",
+          "text": "x"
+        }
+      },
+      "problem": "nodeId"
+    },
+    {
+      "name": "run-event-with-nodeId",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n1",
+        "data": {
+          "kind": "workflow",
+          "slug": "s",
+          "versionNumber": 1
+        }
+      },
+      "problem": "nodeId"
+    },
+    {
+      "name": "delta-without-field",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n1",
+        "data": {
+          "text": "x"
+        }
+      },
+      "problem": "field"
+    },
+    {
+      "name": "unknown-envelope-key",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "ping",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {},
+        "extra": 1
+      },
+      "problem": "extra"
+    },
+    {
+      "name": "bad-ts",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "ping",
+        "ts": "yesterday",
+        "data": {}
+      },
+      "problem": "ts"
+    },
+    {
+      "name": "result-ref-missing-sha",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 1,
+          "tokens": {
+            "in": 0,
+            "out": 0
+          },
+          "result": {
+            "kind": "ref",
+            "bucket": "b",
+            "key": "k",
+            "sizeBytes": 1
+          }
+        }
+      },
+      "problem": "result"
+    },
+    {
+      "name": "result-unknown-kind",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 1,
+          "tokens": {
+            "in": 0,
+            "out": 0
+          },
+          "result": {
+            "kind": "url",
+            "url": "https://x"
+          }
+        }
+      },
+      "problem": "result"
+    },
+    {
+      "name": "run-completed-wrong-status",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "FAILED",
+          "durationMs": 1,
+          "tokens": {
+            "in": 0,
+            "out": 0
+          }
+        }
+      },
+      "problem": "status"
+    },
+    {
+      "name": "resync-seq-not-lastSeq",
+      "event": {
+        "seq": 5,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.resync",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "reason": "gap",
+          "snapshot": {
+            "status": "RUNNING",
+            "lastSeq": 12,
+            "nodes": {},
+            "outputs": {}
+          }
+        }
+      },
+      "problem": "lastSeq"
+    },
+    {
+      "name": "audio-chunk-not-base64",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.audio.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n1",
+        "data": {
+          "field": "audio",
+          "chunk": "not base64!",
+          "format": "wav"
+        }
+      },
+      "problem": "chunk"
+    },
+    {
+      "name": "prompt-composed-carries-content",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "prompt.composed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n1",
+        "data": {
+          "layers": [],
+          "charsTotal": 0,
+          "selected": [],
+          "excluded": [],
+          "blocks": [],
+          "content": "SECRET PROMPT"
+        }
+      },
+      "problem": "content"
+    },
+    {
+      "name": "data-not-an-object",
+      "event": {
+        "seq": 1,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "ping",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": []
+      },
+      "problem": "data"
+    },
+    {
+      "name": "agent-run-step-with-a-graph-node-id",
+      "runKind": "agent",
+      "problem": "nodeId must be 'agent'",
+      "event": {
+        "seq": 2,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "kind": "core.agent"
+        }
+      }
+    },
+    {
+      "name": "agent-run-step-without-nodeId",
+      "runKind": "agent",
+      "problem": "nodeId is required",
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z6C",
+        "type": "output.text.delta",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "field": "text",
+          "text": "x"
+        }
+      }
+    },
+    {
+      "name": "output.data-visibility-public-is-spelled-by-absence",
+      "problem": "visibility",
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_end",
+        "data": {
+          "field": "entities",
+          "value": [],
+          "visibility": "public"
+        }
+      }
+    },
+    {
+      "name": "resync-outputs-not-keyed-by-node",
+      "problem": "outputs.text",
+      "event": {
+        "seq": 12,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.resync",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "reason": "gap",
+          "snapshot": {
+            "status": "RUNNING",
+            "lastSeq": 12,
+            "nodes": {},
+            "outputs": {
+              "text": "Subjective: "
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "error-message-is-free-text",
+      "problem": "fixed label",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "durationMs": 900,
+          "error": {
+            "code": "MODEL_ERROR",
+            "message": "Model refused the note for John Doe."
+          }
+        }
+      }
+    },
+    {
+      "name": "error-code-is-not-screaming-snake",
+      "problem": "code",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "durationMs": 900,
+          "error": {
+            "code": "model error",
+            "message": "The step could not be completed."
+          }
+        }
+      }
+    },
+    {
+      "name": "error-detail-on-the-public-plane",
+      "plane": "public",
+      "problem": "detail",
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.failed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "FAILED",
+          "durationMs": 1,
+          "error": {
+            "code": "MODEL_ERROR",
+            "message": "The model returned an error.",
+            "detail": "upstream 500"
+          }
+        }
+      }
+    },
+    {
+      "name": "admin-event-on-the-public-plane",
+      "plane": "public",
+      "problem": "admin",
+      "event": {
+        "seq": 9,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "model.request",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "provider": "lm-studio",
+          "model": "gemma",
+          "attempt": 1,
+          "fallback": false,
+          "stream": true
+        }
+      }
+    }
+  ],
+  "sse": [
+    {
+      "name": "node.completed",
+      "event": {
+        "seq": 13,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 5230,
+          "tokens": {
+            "in": 1390,
+            "out": 412
+          },
+          "warnings": 1
+        }
+      },
+      "frame": "event: node.completed\nid: 13\ndata: {\"seq\":13,\"runId\":\"run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B\",\"type\":\"node.completed\",\"ts\":\"2026-10-04T10:00:00.000Z\",\"nodeId\":\"n_note\",\"data\":{\"status\":\"COMPLETED\",\"durationMs\":5230,\"tokens\":{\"in\":1390,\"out\":412},\"warnings\":1}}\n\n"
+    },
+    {
+      "name": "ping",
+      "event": {
+        "seq": 18,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "ping",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {}
+      },
+      "frame": "event: ping\nid: 18\ndata: {\"seq\":18,\"runId\":\"run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B\",\"type\":\"ping\",\"ts\":\"2026-10-04T10:00:00.000Z\",\"data\":{}}\n\n"
+    }
+  ],
+  "sequencer": {
+    "$comment": "F2 fix 2 — the ONE sequencer. Every producer (harness AND gateway) appends with EVAL/EVALSHA of `lua` over KEYS [seq, events, dedupe] and ARGV [maxLen, retentionSeconds|0, dedupeKey|\"\", ...field/value pairs after seq]. The script INCRs `seq` and XADDs `seq <n>` as the FIRST field, so stored seqs are contiguous. A terminal append sets the same EXPIRE on all three keys; an append to a stream whose events key already has an expiry is refused with `closedError`. `<runId>` in `keys` is a placeholder.",
+    "keys": {
+      "seq": "wf:run:<runId>:seq",
+      "events": "wf:run:<runId>:events",
+      "dedupe": "wf:run:<runId>:dedupe"
+    },
+    "fields": [
+      "seq",
+      "type",
+      "ts",
+      "nodeId",
+      "vis",
+      "body"
+    ],
+    "maxLen": 10000,
+    "closedError": "RUN_STREAM_CLOSED",
+    "terminalTypes": [
+      "run.completed",
+      "run.failed",
+      "run.cancelled"
+    ],
+    "lua": "-- HOPE run protocol v2: the ONE run-event sequencer (TASK-1038).\n-- KEYS: [1] wf:run:<runId>:seq  [2] wf:run:<runId>:events  [3] wf:run:<runId>:dedupe\n-- ARGV: [1] maxLen  [2] retention seconds ('0' = not terminal)  [3] dedupe key ('' = none)\n--       [4..] field/value pairs after seq: type, ts, [nodeId], vis, body\nlocal dedupe = ARGV[3]\nif dedupe ~= '' then\n  local prior = redis.call('HGET', KEYS[3], dedupe)\n  if prior then\n    local s, id = string.match(prior, '^(%d+) (.+)$')\n    return {tonumber(s), id, 1}\n  end\nend\nif redis.call('PTTL', KEYS[2]) >= 0 then\n  return redis.error_reply('RUN_STREAM_CLOSED')\nend\nlocal seq = redis.call('INCR', KEYS[1])\nlocal xadd = {'XADD', KEYS[2], 'MAXLEN', '~', ARGV[1], '*', 'seq', tostring(seq)}\nfor i = 4, #ARGV do xadd[#xadd + 1] = ARGV[i] end\nlocal id = redis.call(unpack(xadd))\nif dedupe ~= '' then redis.call('HSET', KEYS[3], dedupe, seq .. ' ' .. id) end\nlocal ttl = tonumber(ARGV[2])\nif ttl > 0 then\n  for i = 1, 3 do redis.call('EXPIRE', KEYS[i], ttl) end\nend\nreturn {seq, id, 0}\n"
+  },
+  "stored": [
+    {
+      "name": "node.started-with-dedupe-key",
+      "append": {
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "kind": "core.agent",
+          "label": "Write the note",
+          "attempt": 1
+        },
+        "dedupeKey": "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:started"
+      },
+      "command": {
+        "keys": [
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:seq",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:events",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:dedupe"
+        ],
+        "args": [
+          "10000",
+          "0",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:started",
+          "type",
+          "node.started",
+          "ts",
+          "2026-10-04T10:00:00.000Z",
+          "nodeId",
+          "n_note",
+          "vis",
+          "public",
+          "body",
+          "{\"kind\":\"core.agent\",\"label\":\"Write the note\",\"attempt\":1}"
+        ]
+      },
+      "entry": [
+        "seq",
+        "3",
+        "type",
+        "node.started",
+        "ts",
+        "2026-10-04T10:00:00.000Z",
+        "nodeId",
+        "n_note",
+        "vis",
+        "public",
+        "body",
+        "{\"kind\":\"core.agent\",\"label\":\"Write the note\",\"attempt\":1}"
+      ],
+      "event": {
+        "seq": 3,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "node.started",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "kind": "core.agent",
+          "label": "Write the note",
+          "attempt": 1
+        }
+      }
+    },
+    {
+      "name": "admin-debug-event-without-dedupe-key",
+      "append": {
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 2,
+          "categories": [
+            "PII.NAME",
+            "PII.DATE"
+          ],
+          "mode": "detect",
+          "latencyMs": 41
+        }
+      },
+      "command": {
+        "keys": [
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:seq",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:events",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:dedupe"
+        ],
+        "args": [
+          "10000",
+          "0",
+          "",
+          "type",
+          "guardrail.inbound",
+          "ts",
+          "2026-10-04T10:00:00.000Z",
+          "nodeId",
+          "n_note",
+          "vis",
+          "admin",
+          "body",
+          "{\"action\":\"ALLOW\",\"detected\":2,\"categories\":[\"PII.NAME\",\"PII.DATE\"],\"mode\":\"detect\",\"latencyMs\":41}"
+        ]
+      },
+      "entry": [
+        "seq",
+        "8",
+        "type",
+        "guardrail.inbound",
+        "ts",
+        "2026-10-04T10:00:00.000Z",
+        "nodeId",
+        "n_note",
+        "vis",
+        "admin",
+        "body",
+        "{\"action\":\"ALLOW\",\"detected\":2,\"categories\":[\"PII.NAME\",\"PII.DATE\"],\"mode\":\"detect\",\"latencyMs\":41}"
+      ],
+      "event": {
+        "seq": 8,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "guardrail.inbound",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "action": "ALLOW",
+          "detected": 2,
+          "categories": [
+            "PII.NAME",
+            "PII.DATE"
+          ],
+          "mode": "detect",
+          "latencyMs": 41
+        }
+      }
+    },
+    {
+      "name": "admin-trace-output.data",
+      "append": {
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
+        },
+        "dedupeKey": "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:output:text"
+      },
+      "command": {
+        "keys": [
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:seq",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:events",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:dedupe"
+        ],
+        "args": [
+          "10000",
+          "0",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:node:n_note:1:output:text",
+          "type",
+          "output.data",
+          "ts",
+          "2026-10-04T10:00:00.000Z",
+          "nodeId",
+          "n_note",
+          "vis",
+          "admin",
+          "body",
+          "{\"field\":\"text\",\"value\":\"Subjective: dry cough.\",\"visibility\":\"admin\"}"
+        ]
+      },
+      "entry": [
+        "seq",
+        "17",
+        "type",
+        "output.data",
+        "ts",
+        "2026-10-04T10:00:00.000Z",
+        "nodeId",
+        "n_note",
+        "vis",
+        "admin",
+        "body",
+        "{\"field\":\"text\",\"value\":\"Subjective: dry cough.\",\"visibility\":\"admin\"}"
+      ],
+      "event": {
+        "seq": 17,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "output.data",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "nodeId": "n_note",
+        "data": {
+          "field": "text",
+          "value": "Subjective: dry cough.",
+          "visibility": "admin"
+        }
+      }
+    },
+    {
+      "name": "terminal-run.completed-sets-retention",
+      "append": {
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 1390,
+            "out": 412
+          },
+          "result": {
+            "kind": "inline",
+            "value": {
+              "text": "Subjective: dry cough."
+            }
+          }
+        },
+        "dedupeKey": "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:completed",
+        "retentionSeconds": 86400
+      },
+      "command": {
+        "keys": [
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:seq",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:events",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:dedupe"
+        ],
+        "args": [
+          "10000",
+          "86400",
+          "wf:run:run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B:completed",
+          "type",
+          "run.completed",
+          "ts",
+          "2026-10-04T10:00:00.000Z",
+          "vis",
+          "public",
+          "body",
+          "{\"status\":\"COMPLETED\",\"durationMs\":18450,\"tokens\":{\"in\":1390,\"out\":412},\"result\":{\"kind\":\"inline\",\"value\":{\"text\":\"Subjective: dry cough.\"}}}"
+        ]
+      },
+      "entry": [
+        "seq",
+        "19",
+        "type",
+        "run.completed",
+        "ts",
+        "2026-10-04T10:00:00.000Z",
+        "vis",
+        "public",
+        "body",
+        "{\"status\":\"COMPLETED\",\"durationMs\":18450,\"tokens\":{\"in\":1390,\"out\":412},\"result\":{\"kind\":\"inline\",\"value\":{\"text\":\"Subjective: dry cough.\"}}}"
+      ],
+      "event": {
+        "seq": 19,
+        "runId": "run_01J9ZQ4V8W3K2N5P7R9T1X3Z5B",
+        "type": "run.completed",
+        "ts": "2026-10-04T10:00:00.000Z",
+        "data": {
+          "status": "COMPLETED",
+          "durationMs": 18450,
+          "tokens": {
+            "in": 1390,
+            "out": 412
+          },
+          "result": {
+            "kind": "inline",
+            "value": {
+              "text": "Subjective: dry cough."
+            }
+          }
+        }
+      }
+    }
+  ]
+}

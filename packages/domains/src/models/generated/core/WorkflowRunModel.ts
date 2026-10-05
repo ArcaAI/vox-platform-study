@@ -8,10 +8,14 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class WorkflowRun extends BaseTenantDataModel {
-  public workflowVersionId: string;
-  public workflowSlug: string;
-  public workflowVersionNumber: number;
-  public definitionName: string;
+  public kind: Enums.WorkflowRunKind;
+  public workflowVersionId: string | null;
+  public workflowSlug: string | null;
+  public workflowVersionNumber: number | null;
+  public definitionName: string | null;
+  public agentSlug: string | null;
+  public agentVersionId: string | null;
+  public agentVersionNumber: number | null;
   public sessionId: string;
   public runId: string;
   public trigger: string;
@@ -28,10 +32,14 @@ export class WorkflowRun extends BaseTenantDataModel {
 
   constructor(data: WorkflowRun & BaseTenantDataModel) {
     super(data);
+    this.kind = data.kind;
     this.workflowVersionId = data.workflowVersionId;
     this.workflowSlug = data.workflowSlug;
     this.workflowVersionNumber = data.workflowVersionNumber;
     this.definitionName = data.definitionName;
+    this.agentSlug = data.agentSlug;
+    this.agentVersionId = data.agentVersionId;
+    this.agentVersionNumber = data.agentVersionNumber;
     this.sessionId = data.sessionId;
     this.runId = data.runId;
     this.trigger = data.trigger;

@@ -83,6 +83,7 @@ describe('checkpoint registry', () => {
       BillingInvoice: 'LOGS CAPTURE_ONLY never tenantColumn',
       BillingInvoiceLine: 'LOGS CAPTURE_ONLY never tenantColumn',
       ChangelogEntry: 'EXCLUDED EXCLUDED never none',
+      ComposedPromptRecord: 'EXCLUDED EXCLUDED never none',
       ConsentGrant: 'CLINICAL INSERT_ONLY never tenantColumn',
       Consultation: 'CLINICAL RECONCILE softDelete tenantColumn',
       ConsultationContextSchema: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',

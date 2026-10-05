@@ -52,3 +52,7 @@ export * from './feature-availability.service';
 export * from './tenant-clamp';
 export * from './tenant-settings.service';
 export * from './descriptors/dna-regeneration.descriptors';
+// TASK-1038 — run event/result retention and delivery-plane knobs.
+export * from './descriptors/workflow-runs.descriptors';
+export * from './descriptors/media-upload.descriptors';
+export * from './descriptors/workflow-definitions.descriptors';

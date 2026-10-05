@@ -48,6 +48,7 @@ const createMockService = () => ({
   finalizePromptTemplateTest: vi.fn(),
   getUsageAnalytics: vi.fn(),
   listUsageRecords: vi.fn(),
+  listTagSuggestions: vi.fn(),
   softDeletePromptTemplate: vi.fn(),
   assignToDepartment: vi.fn(),
   // prompt governance approval.
@@ -510,6 +511,40 @@ describe('PromptManagementController', () => {
     it('is declared as a static usage-records path (not shadowed by :id routes)', () => {
       const path = Reflect.getMetadata(PATH_METADATA, PromptManagementController.prototype.listUsageRecords);
       expect(path).toBe('usage-records');
+    });
+  });
+
+  describe('GET /prompt-templates/tags (listTags — TASK-1036 R1)', () => {
+    it('parses q/limit and delegates to the service', async () => {
+      mockService.listTagSuggestions.mockResolvedValue([{ tag: 'text-v1', count: 3 }]);
+
+      const result = await controller.listTags({ q: 'text', limit: '5' });
+
+      expect(mockService.listTagSuggestions).toHaveBeenCalledWith({ q: 'text', limit: 5 });
+      expect(result).toEqual([{ tag: 'text-v1', count: 3 }]);
+    });
+
+    it('passes undefined limit when omitted or non-numeric (service applies the default)', async () => {
+      mockService.listTagSuggestions.mockResolvedValue([]);
+
+      await controller.listTags({});
+      await controller.listTags({ limit: 'abc' });
+
+      expect(mockService.listTagSuggestions).toHaveBeenNthCalledWith(1, { q: undefined, limit: undefined });
+      expect(mockService.listTagSuggestions).toHaveBeenNthCalledWith(2, { q: undefined, limit: undefined });
+    });
+
+    it('is a static `tags` path declared BEFORE every :id route so it is not shadowed', () => {
+      expect(Reflect.getMetadata(PATH_METADATA, PromptManagementController.prototype.listTags)).toBe('tags');
+      const order = Object.getOwnPropertyNames(PromptManagementController.prototype);
+      expect(order.indexOf('listTags')).toBeGreaterThan(-1);
+      for (const idRoute of ['getById', 'update', 'remove', 'getVersions', 'getUsageStats']) {
+        expect(order.indexOf('listTags')).toBeLessThan(order.indexOf(idRoute));
+      }
+    });
+
+    it('inherits the class-level manage:PromptTemplate gate (no handler-level override)', () => {
+      expect(Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PromptManagementController.prototype.listTags)).toBeUndefined();
     });
   });
 

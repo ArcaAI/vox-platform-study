@@ -86,6 +86,7 @@ import { DocumentTemplateModule } from './modules/document-template/document-tem
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
+import { PromptInspectorModule } from './modules/prompt-inspector/prompt-inspector.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // billing: SELL rate card + invoice lifecycle + tenant self-service reads.
 import { BillingApiModule } from './modules/billing/billing.module';
@@ -119,6 +120,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { MediaModule } from './modules/media/media.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
@@ -487,6 +489,8 @@ const featureModules: any[] = [
   // immutable resource, not another verb on a workflow definition.
   AgentPromotionModule,
   DnaWritingStyleModule,
+  // The Prompt Inspector (`admin/consultations/:id/prompt-preview`) + composed-prompt records (`admin/composed-prompts`).
+  PromptInspectorModule,
   // /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
   // + /tenants/me/entitlements (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
@@ -536,6 +540,8 @@ const featureModules: any[] = [
   // /admin/resource-subscriptions (CRUD + toggle).
   ResourceSubscriptionModule,
   StorageModule,
+  // TASK-1038 (F1) — `POST /media`: the tenant media upload a run's attachments / audio blobs reference.
+  MediaModule,
   StorageAccessKeyModule,
   StreamingModule,
   SpeechModule,

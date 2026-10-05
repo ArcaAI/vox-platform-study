@@ -132,9 +132,11 @@ class TestGenerateIdempotency:
         headers = {"Idempotency-Key": "wf-run:act-1"}
         r1 = await client.post("/api/v1/generate", json=_BODY, headers=headers)
 
-        # The completed response is cached under text:idem:{key} with a bounded TTL.
-        assert await redis_client.get("text:idem:wf-run:act-1") is not None
-        assert await redis_client.ttl("text:idem:wf-run:act-1") > 0
+        # The completed response is cached under text:idem:{tenant}:{key} with a
+        # bounded TTL — tenant-scoped since TASK-1035 (the default suite tenant).
+        key = "text:idem:11111111-1111-1111-1111-111111111111:wf-run:act-1"
+        assert await redis_client.get(key) is not None
+        assert await redis_client.ttl(key) > 0
 
         r2 = await client.post("/api/v1/generate", json=_BODY, headers=headers)
         data = r2.json()

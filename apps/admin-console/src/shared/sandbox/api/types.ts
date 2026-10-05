@@ -79,6 +79,29 @@ export interface SandboxRunStatus {
 export interface StartSandboxRunBody {
   fixtureId?: string;
   input?: Record<string, unknown>;
+  /** TASK-1036 OD-15 — tenant media attached by id (uploaded first; MIME on the allow-list). */
+  attachments?: Array<{ mediaId: string }>;
+  /** TASK-1036 OD-15 — a live STT streaming session the run binds to its sandbox consultation. */
+  recording?: { sttSessionId: string };
+}
+
+/** `POST audio/transcription-jobs/stream/session` 201 (`StreamSessionResponse`) — the fields the Test tab's recorder reads. */
+export interface SttStreamSession {
+  sessionId: string;
+  status: string;
+  /** Gateway-relative WS path. */
+  wsUrl: string;
+  /** One-shot stream ticket — consumed by the first WS open. */
+  ticket: string;
+  /** Epoch milliseconds. */
+  ticketExpiresAt: number;
+}
+
+/** Body of `POST audio/transcription-jobs/stream/session` — selection is an agent slug or nothing (TASK-865). */
+export interface CreateSttStreamSessionBody {
+  agentSlug?: string;
+  sampleRate?: number;
+  language?: string;
 }
 
 /**

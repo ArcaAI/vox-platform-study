@@ -93,7 +93,7 @@ export class SettingCatalogItemResponse {
   @ApiPropertyOptional({
     description:
       'Present iff this key is the TENANT half of a pair: the PLATFORM-tier key it pairs with. The two render as ONE row — the split into two keys is a transport decision (per-request push vs platform pull snapshot), not an audience one. Omitted for every key that stands alone.',
-    example: 'text.externalGuardrail.requireMedical',
+    example: 'text.externalGuardrail.includeReasoning',
   })
   platformTierKey?: string;
 
@@ -172,7 +172,7 @@ export class SettingCatalogResponse {
 export class SettingPlatformTierPairResponse {
   @ApiProperty({
     description: 'The PLATFORM-tier key this one pairs with. Write that key at `system` scope; writing THIS key there is refused 400.',
-    example: 'text.externalGuardrail.requireMedical',
+    example: 'text.externalGuardrail.includeReasoning',
   })
   platformTierKey!: string;
 

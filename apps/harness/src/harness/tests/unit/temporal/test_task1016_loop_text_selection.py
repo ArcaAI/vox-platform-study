@@ -25,8 +25,6 @@ import pytest
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
-from harness.core.config import PhiConfig, Settings
-from harness.guards.phi import PhiEgressBlocked
 from harness.services.api_client import ApiServiceError
 from harness.services.text_client import TextGenerationResult
 from harness.temporal import activities
@@ -96,13 +94,6 @@ class _FakeText:
     async def generate(self, **kwargs: Any) -> TextGenerationResult:
         self.calls.append(kwargs)
         return TextGenerationResult(content=self.content, model=kwargs.get("model") or "")
-
-
-class _BlockingRedactor:
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
-        if provider in settings.phi.local_providers:
-            return text
-        raise PhiEgressBlocked(provider=provider, reason="contract block")
 
 
 @pytest.fixture
@@ -190,27 +181,6 @@ class TestPlannerSelection:
         assert text.calls == []
         assert decision.degraded is True
         assert decision.rationale.startswith("planner_agent_unresolved")
-
-    @pytest.mark.asyncio
-    async def test_a_cloud_planner_is_screened_by_the_phi_egress_guard(
-        self, env: ActivityEnvironment, text: _FakeText, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A resolved CLOUD agent must pass the same fail-closed PHI guard ``generate`` uses."""
-        _use_api(
-            monkeypatch,
-            _StubApi(
-                {"primary": _resolved_text_agent("primary", provider="openai")},
-                policy={"phiEnabled": True, "phiFailClosed": True},
-            ),
-        )
-        monkeypatch.setattr(activities, "get_settings", lambda: Settings(phi=PhiConfig()))
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: _BlockingRedactor())
-
-        decision = await env.run(activities.plan_reasoning, _plan_input())
-
-        assert text.calls == []
-        assert decision.degraded is True
-        assert decision.rationale.startswith("phi_egress_blocked")
 
 
 class TestSpecialistSelection:

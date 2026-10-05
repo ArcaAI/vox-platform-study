@@ -53,7 +53,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from harness.temporal.interpreter.expressions import evaluate_condition
-from harness.temporal.interpreter.templating import render_template
+from harness.temporal.interpreter.templating import (
+    PromptVariableUnresolved,
+    render_template,
+    resolve_template_path,
+    template_references,
+)
 
 __all__ = [
     "AGENT_CONDITION_ROOTS",
@@ -61,9 +66,12 @@ __all__ = [
     "ComposedPrompt",
     "FragmentExclusion",
     "PromptCompositionEmpty",
+    "build_prompt_scope",
     "compose_prompt",
+    "resolved_prompt_variable_declarations",
     "select_prompt_fragments",
     "static_projection",
+    "unresolved_prompt_variables",
 ]
 
 #: The roots a ``when`` may read — the render scope's own (``_prompt_scope``), by name.
@@ -232,3 +240,177 @@ def static_projection(
     """The unconditional fragments' RAW content joined — what publish stamps as ``content``
     (OD-3), so a reader that predates fragments renders the base prompt rather than none."""
     return join.join(_content(fragment) for fragment in fragments if fragment.get("when") is None)
+
+
+def unresolved_prompt_variables(resolved_prompt: Any, scope: Mapping[str, Any]) -> list[str]:
+    """The placeholders THIS call would fail on, all of them, before rendering — sorted,
+    de-duplicated, defaulted ones excluded. Mirrors ``unresolvedPromptVariables``.
+
+    Selection runs first, over the same scope ``compose_prompt`` uses, so a fragment this call
+    excludes never asks for anything. An empty selection returns ``[]``: that case is
+    ``PromptCompositionEmpty``, a different failure with its own name.
+    """
+    data = _as_mapping(resolved_prompt)
+    if data is None:
+        return []
+    if data.get("source") == "composite":
+        selected, _ = select_prompt_fragments(_fragments(data), scope)
+        templates = [_content(fragment) for fragment in selected]
+    else:
+        templates = [_content(data)]
+
+    # A path is REQUIRED when any one of its occurrences carries no default.
+    required: dict[str, bool] = {}
+    for template in templates:
+        if not template:
+            continue
+        for reference in template_references(template):
+            required[reference.path] = required.get(reference.path, False) or (
+                not reference.has_default
+            )
+    lookup = dict(scope)
+    return sorted(
+        path
+        for path, is_required in required.items()
+        if is_required and resolve_template_path(lookup, path) is None
+    )
+
+
+def build_prompt_scope(
+    *,
+    variables: Mapping[str, Any] | None = None,
+    trigger: Mapping[str, Any] | None = None,
+    context: Mapping[str, Any] | None = None,
+    input: Mapping[str, Any] | None = None,  # noqa: A002 - the scope root is named `input`
+    vars: Mapping[str, Any] | None = None,  # noqa: A002 - the scope root is named `vars`
+    nodes: Mapping[str, Any] | None = None,
+    template_ref: str | None = None,
+    variable_declarations: Sequence[Any] | None = None,
+) -> dict[str, Any]:
+    """The ONE render scope. Mirrors ``buildPromptScope`` in ``@arcaai/workflow-contract``.
+
+    ``context`` is the canonical root and ``trigger`` its alias: whichever ONE of the two a
+    caller supplies, both resolve to the same object, so a prompt written against either spelling
+    renders on every lane. When BOTH are supplied (a workflow run whose trigger is the envelope and
+    whose context is its single-kind unwrap) they are kept as given.
+
+    Roots are bound only when present (an absent root is not ``{}``), and BEFORE the bare names, so
+    an agent that declares a variable called ``context`` still wins its own name. Each
+    ``variables`` entry is a binding — ``{"value": str}`` a literal, ``{"path": str}`` resolved
+    against the roots — or a plain value; the resolved map is also exposed as ``variables``.
+    """
+    scope: dict[str, Any] = {}
+    trigger_view = dict(trigger) if isinstance(trigger, Mapping) else None
+    context_view = dict(context) if isinstance(context, Mapping) else None
+    if trigger_view is not None:
+        scope["trigger"] = trigger_view
+        scope["context"] = trigger_view
+    if context_view is not None:
+        scope["context"] = context_view
+        if trigger_view is None:
+            scope["trigger"] = context_view
+    for name, root in (("input", input), ("vars", vars), ("nodes", nodes)):
+        if isinstance(root, Mapping):
+            scope[name] = dict(root)
+
+    declared = variables if isinstance(variables, Mapping) else {}
+    # TASK-1036 OD-10 — only when the caller opts in; `None` keeps every pre-1036 byte.
+    fallbacks = (
+        _nullable_declarations(variable_declarations)
+        if isinstance(variable_declarations, (list, tuple))
+        else None
+    )
+    resolved: dict[str, Any] = {}
+    for name, binding in declared.items():
+        ref = template_ref if template_ref is not None else f"instruction.variables.{name}"
+        if fallbacks is None or name not in fallbacks:
+            resolved[name] = _resolve_binding(binding, scope, ref)
+            continue
+        try:
+            resolved[name] = _resolve_binding(binding, scope, ref)
+        except PromptVariableUnresolved:
+            # A declared variable with a fallback absorbs an unresolved `{path}`; anything else
+            # (a syntax error, a required variable) still propagates by name.
+            resolved[name] = _ABSENT
+    if fallbacks is not None:
+        for name, fallback in fallbacks.items():
+            if name in scope:
+                continue
+            value = resolved.get(name, _ABSENT)
+            if value is _ABSENT or value is None:
+                resolved[name] = fallback
+        # An absorbed binding with no fallback stays ABSENT (not a key holding nothing).
+        resolved = {name: value for name, value in resolved.items() if value is not _ABSENT}
+    scope.update(resolved)
+    scope["variables"] = resolved
+    return scope
+
+
+#: Internal "absent" marker for OD-10's fill: distinct from `None`, which is a JSON value.
+_ABSENT = object()
+
+
+def resolved_prompt_variable_declarations(resolved_prompt: Any) -> list[dict[str, Any]]:
+    """TASK-1036 OD-10 — the variable declarations a resolved prompt froze, for
+    ``build_prompt_scope(variable_declarations=...)``: a template's own, or a composite's fragments'
+    in fragment order (the FIRST declaration of a name wins). ``[]`` for an inline prompt, no
+    prompt, or an artifact frozen before the field existed. Accepts the model or its dict form.
+    Mirrors ``resolvedPromptVariableDeclarations``.
+    """
+    if resolved_prompt is None:
+        return []
+
+    def read(holder: Any, key: str) -> Any:
+        return holder.get(key) if isinstance(holder, Mapping) else getattr(holder, key, None)
+
+    source = read(resolved_prompt, "source")
+    if source == "template":
+        lists = [read(resolved_prompt, "variables")]
+    elif source == "composite":
+        fragments = read(resolved_prompt, "fragments")
+        lists = [read(fragment, "variables") for fragment in fragments or []]
+    else:
+        lists = []
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for declarations in lists:
+        if not isinstance(declarations, (list, tuple)):
+            continue
+        for declaration in declarations:
+            if not isinstance(declaration, Mapping) or not isinstance(declaration.get("name"), str):
+                continue
+            if declaration["name"] in seen:
+                continue
+            seen.add(declaration["name"])
+            out.append(dict(declaration))
+    return out
+
+
+def _nullable_declarations(declarations: Sequence[Any]) -> dict[str, str]:
+    """OD-10 — each declared name's fallback when absent: its `default`, else `""` when it is
+    `required: false`. A required declaration with no default has NO fallback (and is omitted),
+    which keeps "a missing required variable fails by name" true. Mirrors `nullableDeclarations`.
+    """
+    fallbacks: dict[str, str] = {}
+    for declaration in declarations:
+        if not isinstance(declaration, Mapping) or not isinstance(declaration.get("name"), str):
+            continue
+        if isinstance(declaration.get("default"), str):
+            fallbacks[declaration["name"]] = declaration["default"]
+        elif declaration.get("required") is False:
+            fallbacks[declaration["name"]] = ""
+    return fallbacks
+
+
+def _resolve_binding(binding: Any, scope: dict[str, Any], template_ref: str) -> Any:
+    """``{"value": str}`` is a literal, ``{"path": str}`` a reference resolved through the grammar
+    (an unresolved one raises ``PromptVariableUnresolved`` naming the path); anything else is the
+    value itself."""
+    if not isinstance(binding, Mapping):
+        return binding
+    if isinstance(binding.get("value"), str):
+        return binding["value"]
+    path = binding.get("path")
+    if isinstance(path, str):
+        return render_template("{{" + path + "}}", scope, template_ref=template_ref)
+    return binding

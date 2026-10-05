@@ -218,6 +218,10 @@ export class HopeClient {
       // The wrapper re-exchanges once and retries once on a 401 — the
       // mid-flight-revocation path; see `ServiceAccountTokenProvider.authenticatedFetch`.
       fetch: serviceAccountTokens ? serviceAccountTokens.authenticatedFetch(options.fetch ?? fetch) : options.fetch,
+      // A signed result URL is not the gateway: fetch it WITHOUT the wrapper above, whose 401
+      // recovery (re-exchange, retry) is gateway-specific. Credentials are never sent either way —
+      // they are added by `Transport`, which `fetchExternal` bypasses.
+      rawFetch: options.fetch ?? fetch,
     });
 
     // Which credential class this client carries is fixed at construction (the

@@ -7,7 +7,7 @@
  * unchanged from the original single-template rendering, so `instruction-binding-form.task890
  * .test.tsx` keeps passing untouched.
  */
-import { Input, Label, RadioGroup, RadioGroupItem } from '@arcaai/ui';
+import { Badge, Input, Label, RadioGroup, RadioGroupItem } from '@arcaai/ui';
 
 export interface VersionPinControlProps {
   idPrefix: string;
@@ -18,6 +18,12 @@ export interface VersionPinControlProps {
   onChange: (value: number | null) => void;
   disabled?: boolean;
   legend?: string;
+  /**
+   * TASK-1036 W3 — a library prompt is always pinned in an agent: the author may change the pinned
+   * version but never clear it, so "follow approved" is not offered. A stored `null` (an agent
+   * authored before the rule) renders as the approved version it resolves to today.
+   */
+  required?: boolean;
 }
 
 export function VersionPinControl({
@@ -28,7 +34,34 @@ export function VersionPinControl({
   onChange,
   disabled,
   legend = 'Version',
+  required = false,
 }: VersionPinControlProps) {
+  if (required) {
+    const pinned = value ?? approvedVersionNumber ?? currentVersionNumber;
+    return (
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">{legend}</legend>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="font-mono text-xs">
+            Pinned to v{pinned}
+          </Badge>
+          <Label htmlFor={`${idPrefix}-pin-number`} className="text-muted-foreground text-xs font-normal">
+            Change version
+          </Label>
+          <Input
+            id={`${idPrefix}-pin-number`}
+            type="number"
+            min={1}
+            className="w-20"
+            aria-label="Pinned version number"
+            value={pinned}
+            disabled={disabled}
+            onChange={(event) => onChange(Number(event.target.value) || 1)}
+          />
+        </div>
+      </fieldset>
+    );
+  }
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-medium">{legend}</legend>

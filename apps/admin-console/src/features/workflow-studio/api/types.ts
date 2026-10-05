@@ -390,12 +390,8 @@ export interface AgentOption {
      *  when `variables` is empty, which is every seeded platform agent's state. */
     promptTemplateId?: string | null;
   } | null;
-  /**
-   * TASK-890 §3.14 — the agent-tier guardrail default (`Agent.parameters.guards.enabled`).
-   * Absent/undefined means the platform default (ON) — the same `parameters.guards.enabled`
-   * the agents form (L5) reads for its own switch.
-   */
-  parameters?: ({ guards?: { enabled?: boolean } } & Record<string, unknown>) | null;
+  /** The agent's authored `parameters`. (The retired `guards.enabled` opt-out is no longer read.) */
+  parameters?: Record<string, unknown> | null;
   /**
    * TASK-949 L1 — the rest of the payload `GET admin/agents` has always returned.
    *
@@ -480,4 +476,54 @@ export interface WorkflowRunSchema {
    *  never a valid `?mode=` query value (`modesFor`'s own doc). Filter it out before rendering
    *  a `?mode=` example. */
   modes: string[];
+}
+
+// ---------------------------------------------------------------------------
+// TASK-1036 §3.3 — the lineage register (`GET admin/workflow-definitions/lineages`), mirrored off
+// `WorkflowLineageResponse` (`packages/applications/.../dto/workflow-lineage.response.ts`).
+// ---------------------------------------------------------------------------
+
+export interface WorkflowLineageActive {
+  id: string;
+  versionNumber: number;
+  publishedAt: string | null;
+  publishedBy: string | null;
+  registryChecksum: string | null;
+  compiledConfigChecksum: string | null;
+}
+
+/** The newest OPEN draft (DRAFT or VALIDATED) of the lineage. */
+export interface WorkflowLineageDraft {
+  id: string;
+  versionNumber: number;
+  status: 'DRAFT' | 'VALIDATED';
+  updatedAt: string;
+}
+
+export interface WorkflowLineageAssignment {
+  tenantDefault: boolean;
+  departmentCount: number;
+  selectorCount: number;
+}
+
+export interface WorkflowLineage {
+  slug: string;
+  /** The ACTIVE version's name, or the newest version's when nothing is active. */
+  name: string;
+  paletteKey: string;
+  versionCount: number;
+  latestVersionNumber: number;
+  deprecatedCount: number;
+  active: WorkflowLineageActive | null;
+  draft: WorkflowLineageDraft | null;
+  assignment: WorkflowLineageAssignment;
+  origin: { sourceTemplateSlug: string | null; templateLocked: boolean; [key: string]: unknown };
+  tags: string[];
+  updatedAt: string;
+}
+
+/** `GET admin/workflow-definitions/tags` row. */
+export interface WorkflowTagSuggestion {
+  tag: string;
+  count: number;
 }

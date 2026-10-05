@@ -647,6 +647,29 @@
     },
     {
       "controller": "AgentAdminController",
+      "handler": "fetchVersionUsage",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/{slug}/versions/{versionNumber}/usage",
+      "routePath": "/admin/agents/:slug/versions/:versionNumber/usage",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
       "handler": "importBundle",
       "method": "POST",
       "path": "/api/v1/admin/agents/import",
@@ -697,6 +720,29 @@
       "method": "POST",
       "path": "/api/v1/admin/agents/promote-to-system",
       "routePath": "/admin/agents/promote-to-system",
+      "svcScopes": [
+        "svc:admin:agent:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "Agent"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentAdminController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/agents/tags",
+      "routePath": "/admin/agents/tags",
       "svcScopes": [
         "svc:admin:agent:manage"
       ],
@@ -2401,6 +2447,52 @@
       "apiExcluded": false
     },
     {
+      "controller": "ComposedPromptAdminController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/admin/composed-prompts",
+      "routePath": "/admin/composed-prompts",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ComposedPromptAdminController",
+      "handler": "getById",
+      "method": "GET",
+      "path": "/api/v1/admin/composed-prompts/{id}",
+      "routePath": "/admin/composed-prompts/:id",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsentGrantController",
       "handler": "list",
       "method": "GET",
@@ -2685,6 +2777,29 @@
       "requiredPermissions": [
         [
           "manage",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "PromptPreviewController",
+      "handler": "preview",
+      "method": "POST",
+      "path": "/api/v1/admin/consultations/{consultationId}/prompt-preview",
+      "routePath": "/admin/consultations/:consultationId/prompt-preview",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
           "Consultation"
         ]
       ],
@@ -5749,6 +5864,29 @@
         [
           "update",
           "Department"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "PromptManagementController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/prompt-templates/tags",
+      "routePath": "/admin/prompt-templates/tags",
+      "svcScopes": [
+        "svc:admin:prompt-template:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "PromptTemplate"
         ]
       ],
       "isPublic": false,
@@ -10905,6 +11043,29 @@
     },
     {
       "controller": "WorkflowDefinitionController",
+      "handler": "createDraft",
+      "method": "POST",
+      "path": "/api/v1/admin/workflow-definitions/{id}/draft",
+      "routePath": "/admin/workflow-definitions/:id/draft",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
       "handler": "export",
       "method": "GET",
       "path": "/api/v1/admin/workflow-definitions/{id}/export",
@@ -11139,6 +11300,29 @@
       "method": "POST",
       "path": "/api/v1/admin/workflow-definitions/slug/{slug}/webhook-secret",
       "routePath": "/admin/workflow-definitions/slug/:slug/webhook-secret",
+      "svcScopes": [
+        "svc:admin:workflow-definition:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "manage",
+          "WorkflowDefinition"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowDefinitionController",
+      "handler": "listTags",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-definitions/tags",
+      "routePath": "/admin/workflow-definitions/tags",
       "svcScopes": [
         "svc:admin:workflow-definition:manage"
       ],
@@ -11423,6 +11607,27 @@
       "apiExcluded": false
     },
     {
+      "controller": "WorkflowRunTraceController",
+      "handler": "streamTrace",
+      "method": "GET",
+      "path": "/api/v1/admin/workflow-runs/{runId}/trace/stream",
+      "routePath": "/admin/workflow-runs/:runId/trace/stream",
+      "svcScopes": [],
+      "forbidServiceAccount": true,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "WorkflowTestFixtureController",
       "handler": "fetchAll",
       "method": "GET",
@@ -11583,6 +11788,126 @@
       "method": "POST",
       "path": "/api/v1/agents/{slug}/invocations",
       "routePath": "/agents/:slug/invocations",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "startRun",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs",
+      "routePath": "/agents/:slug/runs",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "getRun",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}",
+      "routePath": "/agents/:slug/runs/:runId",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "cancelRun",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/cancel",
+      "routePath": "/agents/:slug/runs/:runId/cancel",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "runEvents",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/events",
+      "routePath": "/agents/:slug/runs/:runId/events",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "getRunResult",
+      "method": "GET",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/result",
+      "routePath": "/agents/:slug/runs/:runId/result",
+      "svcScopes": [
+        "svc:agent:invocation:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "agent:invocation:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AgentController",
+      "handler": "issueRunStreamTicket",
+      "method": "POST",
+      "path": "/api/v1/agents/{slug}/runs/{runId}/stream-ticket",
+      "routePath": "/agents/:slug/runs/:runId/stream-ticket",
       "svcScopes": [
         "svc:agent:invocation:write"
       ],
@@ -13834,6 +14159,22 @@
       "apiExcluded": false
     },
     {
+      "controller": "AgentVersionInternalController",
+      "handler": "resolveVersion",
+      "method": "GET",
+      "path": "/api/v1/internal/agents/{slug}/versions/{versionNumber}/resolved",
+      "routePath": "/internal/agents/:slug/versions/:versionNumber/resolved",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "AgentInternalController",
       "handler": "asrSpec",
       "method": "GET",
@@ -13866,11 +14207,43 @@
       "apiExcluded": true
     },
     {
+      "controller": "ComposedPromptInternalController",
+      "handler": "record",
+      "method": "POST",
+      "path": "/api/v1/internal/composed-prompts",
+      "routePath": "/internal/composed-prompts",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "ConsentInternalController",
       "handler": "assert",
       "method": "POST",
       "path": "/api/v1/internal/consent/assert",
       "routePath": "/internal/consent/assert",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "ConsultationReadInternalController",
+      "handler": "read",
+      "method": "POST",
+      "path": "/api/v1/internal/consultations/{consultationId}/read",
+      "routePath": "/internal/consultations/:consultationId/read",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
@@ -14622,6 +14995,56 @@
       "permissionMode": "AND",
       "requiresIfMatch": false,
       "apiExcluded": true
+    },
+    {
+      "controller": "MediaController",
+      "handler": "upload",
+      "method": "POST",
+      "path": "/api/v1/media",
+      "routePath": "/media",
+      "svcScopes": [
+        "svc:media:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "media:write"
+      ],
+      "requiredPermissions": [
+        [
+          "create",
+          "Media"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "MediaController",
+      "handler": "getReference",
+      "method": "GET",
+      "path": "/api/v1/media/{mediaId}",
+      "routePath": "/media/:mediaId",
+      "svcScopes": [
+        "svc:media:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "media:write"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
+          "Media"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
     },
     {
       "controller": "PromptTemplateController",
@@ -15890,6 +16313,31 @@
       "requiredPermissions": [
         [
           "update",
+          "WorkflowRun"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "WorkflowsController",
+      "handler": "getRunResult",
+      "method": "GET",
+      "path": "/api/v1/workflows/{slug}/runs/{runId}/result",
+      "routePath": "/workflows/:slug/runs/:runId/result",
+      "svcScopes": [
+        "svc:workflow:run:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "workflow:run:read"
+      ],
+      "requiredPermissions": [
+        [
+          "read",
           "WorkflowRun"
         ]
       ],

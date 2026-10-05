@@ -305,12 +305,12 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
   ) : (
     <EmptyState
       icon={IconRobot}
-      title="No prompt templates yet"
-      description="Prompt instruction templates are the blueprints agents and summaries are generated from. Create the first one to start versioning prompts."
+      title="No Hope Prompts yet"
+      description="Hope Prompts are the blueprints agents and summaries are generated from. Create the first one to start versioning prompts."
       action={
         <Button onClick={() => onCreatingChange(true)}>
           <IconPlus aria-hidden />
-          New template
+          New Hope Prompt
         </Button>
       }
     />
@@ -320,12 +320,12 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
     if (!deleting) return;
     deleteTemplate.mutate(deleting.id, {
       onSuccess: () => {
-        toast.success('Template deleted');
+        toast.success('Hope Prompt deleted');
         if (deleting.id === selectedParam) void setSelectedParam(null);
         setDeleting(null);
       },
       onError: (error) => {
-        toast.error(error instanceof GatewayError ? error.message : 'Could not delete the template.');
+        toast.error(error instanceof GatewayError ? error.message : 'Could not delete the Hope Prompt.');
         setDeleting(null);
       },
     });
@@ -334,7 +334,7 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
   return (
     <>
       <VirtualizedDataGrid<PromptTemplate>
-        aria-label="Prompt templates"
+        aria-label="Hope Prompts"
         columns={columns}
         data={rows}
         getRowId={(row) => row.id}
@@ -382,13 +382,13 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete template?"
+        title="Delete Hope Prompt?"
         description={
           deleting
             ? `Soft-deletes "${deleting.name}" and detaches it from consultations that reference it. Its version history stays in the database.`
             : ''
         }
-        confirmLabel="Delete template"
+        confirmLabel="Delete Hope Prompt"
         destructive
         typeToConfirm={deleting?.name}
         onConfirm={handleDeleteConfirmed}

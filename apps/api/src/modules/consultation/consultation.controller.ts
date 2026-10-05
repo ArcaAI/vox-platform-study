@@ -1912,12 +1912,37 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409.',
+  })
   @RequiredScopes('consultation:report:write')
-  async generateSummaryAsync(@Param('id') consultationId: string, @Body() request: GenerateSummaryRequest): Promise<AsyncJobResponseDto> {
+  async generateSummaryAsync(
+    @Param('id') consultationId: string,
+    @Body() request: GenerateSummaryRequest,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ): Promise<AsyncJobResponseDto> {
     await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
 
+    // TASK-1038 B3a — `Idempotency-Key`: the start below runs at most once per (key, body).
+    const { value: started } = await this.consultationJobService.runIdempotent(
+      { operation: 'summary', tenantId, principalId: userId, key: idempotencyKey },
+      { consultationId, request },
+      () => this.startHarnessSummaryJob(consultationId, request, tenantId, userId),
+    );
+    return new AsyncJobResponseDto({ jobId: started.jobId, status: 'pending', consultationId, createdAt: started.createdAt });
+  }
+
+  /** The summary START itself (see `generateSummaryAsync`): the harness seam + the job record. */
+  private async startHarnessSummaryJob(
+    consultationId: string,
+    request: GenerateSummaryRequest,
+    tenantId: string,
+    userId: string,
+  ): Promise<{ jobId: string; createdAt: string }> {
     // this route used to enqueue onto the legacy `GenerateSummary`
     // BullMQ queue (`ConsultationJobService.createSummaryJob`), which decided
     // harness-vs-legacy only later, inside `SummaryProcessor.process()`. That
@@ -1964,12 +1989,7 @@ export class ConsultationController {
     // used to create this record.
     await this.consultationJobService.registerHarnessNoteJob(decision.harnessJobId, consultationId, tenantId, userId);
 
-    return new AsyncJobResponseDto({
-      jobId: decision.harnessJobId,
-      status: 'pending',
-      consultationId,
-      createdAt: new Date().toISOString(),
-    });
+    return { jobId: decision.harnessJobId, createdAt: new Date().toISOString() };
   }
 
   @ApiEndpoint({
@@ -1981,7 +2001,17 @@ export class ConsultationController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @RequiredScopes('consultation:report:write')
   @RequiredSvcScopes('svc:consultation:report:write')
-  async generatePreSummaryAsync(@Param('id') consultationId: string, @Body() request: GeneratePreSummaryRequest): Promise<AsyncJobResponseDto> {
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409. Wins over the body field `idempotencyKey`.',
+  })
+  async generatePreSummaryAsync(
+    @Param('id') consultationId: string,
+    @Body() request: GeneratePreSummaryRequest,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ): Promise<AsyncJobResponseDto> {
     const owned = await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     // TASK-933 — the job's owner is the CLINICIAN from the row, so a machine-initiated
@@ -1999,8 +2029,8 @@ export class ConsultationController {
         options: (request as any)?.options,
       },
       undefined,
-      // Forward the SDK-supplied idempotency key.
-      (request as any)?.idempotencyKey,
+      // TASK-1038 B3a — the `Idempotency-Key` header wins; the SDK's body field stays a fallback.
+      idempotencyKey ?? (request as any)?.idempotencyKey,
     );
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return new AsyncJobResponseDto({

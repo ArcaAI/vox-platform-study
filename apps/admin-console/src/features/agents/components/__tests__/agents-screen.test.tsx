@@ -408,18 +408,18 @@ describe('AgentsScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New agent' }));
     const wizard = await screen.findByRole('dialog');
     fireEvent.change((within(wizard).getByLabelText(/^Name \*?$/) as HTMLInputElement), { target: { value: 'Ward summarizer' } });
+    // The context schema is chosen once, on the first step.
+    fireEvent.click(await screen.findByLabelText('Context schema'));
+    fireEvent.click(await screen.findByRole('option', { name: /Legacy consultation prompt context/ }));
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Model
     fireEvent.click(await screen.findByLabelText('Model'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 4 E2B/ }));
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Instruction
 
-    // Template mode is the default and is the only mode that shows the context-schema picker.
-    fireEvent.click(await screen.findByLabelText('Prompt template'));
+    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP/ }));
-    fireEvent.click(await screen.findByLabelText('Context schema'));
-    fireEvent.click(await screen.findByRole('option', { name: /Legacy consultation prompt context/ }));
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Parameters
-    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Schemas
+    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Input / Output contract
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Review
 
     const schemaRow = (await within(wizard).findByText('Context schema')).nextElementSibling;

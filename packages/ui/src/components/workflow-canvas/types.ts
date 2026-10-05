@@ -25,8 +25,30 @@ export interface WorkflowCanvasBranch {
   label: string;
 }
 
+/**
+ * TASK-1036 C2b — one TYPED port: a field of the node's I/O contract drawn as its own labelled
+ * handle. `id` is the React Flow handle id (the consumer's field handle, e.g. `in:message`);
+ * `type` is the value type (`text`, `list<entity>`, …) and `tone` its colour family. The shape
+ * also encodes the family (round = scalar, square = list, diamond = audio/file reference), so a
+ * port's kind is never conveyed by colour alone.
+ */
+export interface WorkflowCanvasPort {
+  id: string;
+  label: string;
+  type: string;
+  tone?: 'text' | 'number' | 'boolean' | 'date' | 'json' | 'list' | 'audio' | 'file' | 'any';
+  required?: boolean;
+}
+
 /** Per-node sandbox run state, rendered as a status chip in the node header. */
 export type WorkflowCanvasRunState = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
+
+/**
+ * Per-link run state (TASK-1036 F2): `idle` = no data has moved (the plain edge), `done` = the
+ * link carried data (recoloured through `--workflow-canvas-edge-done`), `active` = data is moving
+ * over it right now (recoloured and animated, never under `prefers-reduced-motion: reduce`).
+ */
+export type WorkflowCanvasEdgeRunState = 'idle' | 'done' | 'active';
 
 /** Rendered instead of a step number when a node is not linearly ordered. */
 export type WorkflowCanvasStepMarker = 'cycle' | 'unreachable';
@@ -52,6 +74,10 @@ export interface WorkflowCanvasNode {
   hasOutput?: boolean;
   /** Extra labelled SOURCE handles stacked below the primary output. Absent/empty = primary only. */
   branches?: readonly WorkflowCanvasBranch[];
+  /** TASK-1036 — typed INPUT fields. Non-empty REPLACES the primary `in` dot; absent/empty keeps it. */
+  inputPorts?: readonly WorkflowCanvasPort[];
+  /** TASK-1036 — typed OUTPUT fields. Non-empty REPLACES the primary `out` dot; absent/empty keeps it. */
+  outputPorts?: readonly WorkflowCanvasPort[];
   /** 1-based execution order badge. `null`/absent renders no badge. */
   stepNumber?: number | null;
   /** Rendered INSTEAD of `stepNumber` when the node is not linearly ordered. */
@@ -60,6 +86,8 @@ export interface WorkflowCanvasNode {
   runState?: WorkflowCanvasRunState;
   /** Wall time of the last run of this node, rendered beside `runState`. */
   runDurationMs?: number;
+  /** How many warnings this node's run raised, spelled out beside `runState` ("2 warnings"). Zero/absent renders nothing. */
+  runWarnings?: number;
   /** `group`: a container (a `core.loop` body) that other nodes nest inside via `parentId`. */
   kind?: 'node' | 'group';
   /** The enclosing group's id — the node is drawn inside it and moves with it. */
@@ -89,6 +117,8 @@ export interface WorkflowCanvasEdge {
    * labelled so the flow stays legible, never deletable or reconnectable from the canvas.
    */
   kind?: 'wire' | 'binding';
+  /** Run overlay for this link. Absent = `idle`. */
+  runState?: WorkflowCanvasEdgeRunState;
 }
 
 export interface WorkflowCanvasNodeRendererProps {
@@ -121,6 +151,21 @@ export interface WorkflowCanvasProps {
    */
   selectedNodeIds?: readonly string[];
   readOnly?: boolean;
+  /** TASK-1036 — the controlled selected EDGE (the edge inspector). */
+  selectedEdgeId?: string | null;
+  /** TASK-1036 — an edge was selected (`null` when the selection no longer holds one). */
+  onEdgeSelect?: (edgeId: string | null) => void;
+  /**
+   * TASK-1036 §8.4 item 7 — `+` on an edge: a named button at the link's midpoint asks the
+   * consumer to insert a step there (and re-wire it). Absent or `readOnly` = no button.
+   */
+  onEdgeInsert?: (edgeId: string) => void;
+  /**
+   * TASK-1036 §8.4 item 7 — a link dragged out of a SOURCE handle and dropped on empty canvas.
+   * Reports the handle it came from and the drop point in flow coordinates, so the consumer can
+   * open its add-a-step menu there and connect the new step. Never called while `readOnly`.
+   */
+  onConnectEndOnPane?: (from: { nodeId: string; handleId: string | null }, position: { x: number; y: number }) => void;
   /** Reserved for run-replay overlay (per-node status/timing/confidence badge slots). Not consumed by Studio v1. */
   overlay?: (node: WorkflowCanvasNode) => ReactNode;
   onNodesChange?: (nodes: WorkflowCanvasNode[]) => void;
@@ -183,6 +228,28 @@ export interface WorkflowCanvasProps {
    * stored no positions.
    */
   fitViewKey?: number;
+  /**
+   * TASK-1036 R-C — how much of the canvas, in px from each edge, something floats over (the
+   * Studio's docked palette and inspector). The zoom controls and the minimap move in by it, and
+   * `fitView` fits into the rectangle that is left, so neither the chrome nor the graph's ends sit
+   * under a pane. Absent = nothing floats over the canvas.
+   */
+  viewportInsets?: WorkflowCanvasInsets;
+  /**
+   * TASK-1036 R-C #9 — what the mouse wheel does. `scroll` zooms the canvas (React Flow's
+   * default); `modifier` lets the wheel scroll the page and zooms only with Ctrl/⌘ held (and on a
+   * trackpad pinch). Default: `modifier` for a `readOnly` canvas — one embedded in a scrolling page
+   * (the Test tab's Flow) must not trap the wheel — `scroll` otherwise.
+   */
+  wheelZoom?: 'scroll' | 'modifier';
   'aria-label': string;
   className?: string;
+}
+
+/** TASK-1036 R-C — pixels of the canvas covered from each edge. */
+export interface WorkflowCanvasInsets {
+  left?: number;
+  right?: number;
+  top?: number;
+  bottom?: number;
 }

@@ -70,10 +70,10 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
         <div className="relative">
           <IconSearch aria-hidden className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
           <Input
-            aria-label="Search templates"
+            aria-label="Search Hope Prompts"
             value={searchDraft}
             onChange={(event) => setSearchDraft(event.target.value)}
-            placeholder={'Search templates…'}
+            placeholder={'Search Hope Prompts…'}
             className="h-8 pl-8 text-sm"
           />
         </div>
@@ -99,7 +99,7 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
       ) : query.error ? (
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       ) : query.data.data.length === 0 ? (
-        <EmptyState icon={IconFileText} title="No templates" description="No prompt templates match the current filters." />
+        <EmptyState icon={IconFileText} title="No Hope Prompts" description="No Hope Prompts match the current filters." />
       ) : (
         <ul className="flex min-h-0 flex-col gap-1 overflow-y-auto">
           {query.data.data.map((template) => (
@@ -414,7 +414,7 @@ export function GovernanceTab() {
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-medium">Prompt governance</h2>
         <p className="text-muted-foreground text-sm">
-          Version history, field-level diffs and clinical approval for this tenant&apos;s prompt templates.
+          Version history, field-level diffs and clinical approval for this tenant&apos;s Hope Prompts.
         </p>
       </div>
       {/* Two panes side by side from `lg` up, each scrolling on its own (the
@@ -434,8 +434,8 @@ export function GovernanceTab() {
           ) : (
             <EmptyState
               icon={IconFileText}
-              title="Select a template"
-              description="Choose a prompt template to inspect its versions, diffs and approval state."
+              title="Select a Hope Prompt"
+              description="Choose a Hope Prompt to inspect its versions, diffs and approval state."
             />
           )}
         </div>

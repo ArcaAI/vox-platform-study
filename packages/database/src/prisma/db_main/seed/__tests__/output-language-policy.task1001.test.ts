@@ -30,6 +30,7 @@ import {
   ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_TEMPLATE_ID,
   ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION,
+  ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER,
   arcaaiOutputLanguagePolicyFragment,
 } from '../07b-arcaai-clinical-templates';
 import { ARCAAI_DEPARTMENT_AGENT_SPECS, ARCAAI_PRE_SUMMARY_AGENT_SPEC } from '../29-arcaai-agents-and-workflows';
@@ -134,8 +135,9 @@ describe('the FRAGMENT every department summary agent attaches', () => {
     expect((fragment as { systemPrompt?: string }).systemPrompt).toBeUndefined();
   });
 
-  it('pins NO version — a pin would freeze all 22 agents on today`s body and forfeit the single-point edit', () => {
-    expect(arcaaiOutputLanguagePolicyFragment()).not.toHaveProperty('promptVersionNumber');
+  it('is PINNED to the version the seed creates for the row (TASK-1036 W3) — still ONE shared row the admin edits, republished against a new version', () => {
+    expect(arcaaiOutputLanguagePolicyFragment()).toHaveProperty('promptVersionNumber', ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER);
+    expect(ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION.versionNumber).toBe(ARCAAI_OUTPUT_LANGUAGE_POLICY_VERSION_NUMBER);
   });
 
   it('is UNCONDITIONAL — the conditional translate-to-X sibling is deliberately not seeded (the CEL scope path is unverified)', () => {

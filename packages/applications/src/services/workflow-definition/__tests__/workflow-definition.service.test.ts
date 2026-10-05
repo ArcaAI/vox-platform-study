@@ -154,6 +154,9 @@ describe('WorkflowDefinitionService', () => {
   describe('create', () => {
     it('mints versionNumber = max + 1 inside the transaction, creates via the factory, and broadcasts ResourceCreated', async () => {
       mockWorkflowDefinitionRepository.findMaxVersionNumber.mockResolvedValue(2);
+      // TASK-1036 — a new version of an existing slug must be branched from one (parentVersionId);
+      // a bare create on a taken slug is now 409 WORKFLOW_SLUG_TAKEN.
+      mockWorkflowDefinitionRepository.findById.mockResolvedValue(createMockEntity({ id: 'parent-1', versionNumber: 2 }));
       const saved = createMockEntity({ versionNumber: 3 });
       mockWorkflowDefinitionRepository.create.mockResolvedValue(saved);
 
@@ -162,6 +165,7 @@ describe('WorkflowDefinitionService', () => {
         name: 'Discharge Summary',
         paletteKey: 'core',
         graph: VALID_GRAPH,
+        parentVersionId: 'parent-1',
       });
 
       expect(mockWorkflowDefinitionRepository.findMaxVersionNumber).toHaveBeenCalledWith('tenant-1', 'discharge_summary', {});
@@ -341,8 +345,11 @@ describe('WorkflowDefinitionService', () => {
       expect(entity.registryChecksum).toBeTruthy();
       expect(entity.isActive).toBe(true);
       expect(previousActive.isActive).toBe(false);
-      // The trailing `undefined` is the optional `tx`, which only `promoteToSystem` supplies (D-4).
-      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive, undefined);
+      // TASK-1036 (R18) — the demote and the publish write share ONE transaction client.
+      const demoteTx = mockWorkflowDefinitionRepository.update.mock.calls.find((call) => call[0] === 'def-id-0')?.[2];
+      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-0', previousActive, demoteTx);
+      expect(demoteTx).toBeDefined();
+      expect(mockWorkflowDefinitionRepository.update).toHaveBeenCalledWith('def-id-1', entity, demoteTx);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'def-id-1' }));
       expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
     });

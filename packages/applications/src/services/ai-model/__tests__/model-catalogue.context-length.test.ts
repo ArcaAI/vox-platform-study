@@ -74,7 +74,9 @@ describe('catalogue capabilities — the declared context window', () => {
   });
 
   it('does not disturb the sibling capability fields', () => {
-    expect(capabilitiesOf({ contextLength: 16384, supportedGenerationParams: ['temperature'], supportsSsml: true })).toEqual({
+    // TASK-1036 W2 — the row now also carries the `ModelCapabilities` flags (false / [] when
+    // undeclared), so this pins the three fields it always pinned rather than the whole object.
+    expect(capabilitiesOf({ contextLength: 16384, supportedGenerationParams: ['temperature'], supportsSsml: true })).toMatchObject({
       supportedGenerationParams: ['temperature'],
       supportsSsml: true,
       contextLength: 16384,

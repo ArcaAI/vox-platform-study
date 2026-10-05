@@ -149,9 +149,10 @@ describe('payloadSchemaFromDefinition', () => {
       type: 'object',
       additionalProperties: false,
       properties: {
-        // A non-STRUCTURED kind carries no `fields` contract, so it is a reference STUB —
-        // `{{context.audio_stream}}` resolves, `{{context.audio_stream.anything}}` is open.
-        audio_stream: { type: 'object' },
+        // A non-STRUCTURED kind carries no `fields` contract, so it gets the platform's shape for
+        // its substrate (TASK-1038 F1): a streamed audio kind is an OPEN object naming its STT
+        // session — `{{context.audio_stream}}` resolves, `{{context.audio_stream.anything}}` is open.
+        audio_stream: { type: 'object', properties: { sttSessionId: { type: 'string', minLength: 1 } } },
         context: {
           type: 'object',
           properties: { conversation_language: { type: 'string' }, ner_entities: { type: 'string' } },

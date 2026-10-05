@@ -252,41 +252,27 @@ describe('TASK-890 H-6 — the fallback chain of a SYSTEM agent resolved by a te
 });
 
 /**
- * TASK-890 §3.14 (OD-R) — the AGENT tier of the guardrail precedence, on the resolved shape.
- *
- * `resolveGuardrailDecision` folds node > workflow > agent > on, and the agent's own default is
- * the bottom of that chain. Every consumer of a resolved agent — the invocation path, the
- * realtime `core.agent` lane and the harness over `GET /internal/agents/resolve` — reads it from
- * HERE, so an artifact published before this ticket must resolve to `true` rather than to
- * `undefined`: absence is INHERIT, and the floor of the chain is screening ON.
+ * The guardrail opt-out is retired (OD-1): a resolved agent carries no guardrail decision, even for
+ * an artifact that still holds the old compiled stamp. What it DOES carry for LLM egress is each
+ * model row's `deploymentKind`, which the harness and the gateway read to stamp `provider_locality`.
  */
-describe('AgentResolverService.resolve — the guardrail decision (§3.14)', () => {
-  const withGuardrail = (guardrail: unknown) => published({ compiledConfig: { ...published().compiledConfig, guardrail } });
-
-  it('mirrors the agent`s compiled opt-out', async () => {
-    agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail({ enabled: false }));
+describe('AgentResolverService.resolve — egress facts on the resolved shape', () => {
+  it('carries no guardrail decision, even for an artifact still holding the retired stamp', async () => {
+    agentRepository.findPublishedActiveBySlug.mockResolvedValue(
+      published({ compiledConfig: { ...published().compiledConfig, guardrail: { enabled: false } } }),
+    );
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
-    expect(resolved.guardrail).toEqual({ enabled: false });
+    expect(resolved).not.toHaveProperty('guardrail');
   });
 
-  it('mirrors an explicit `true` as well', async () => {
-    agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail({ enabled: true }));
-    const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
-    expect(resolved.guardrail).toEqual({ enabled: true });
-  });
-
-  it('defaults to ON for an artifact published before the field existed', async () => {
+  it('carries each model row`s deploymentKind (omitted when the row has none)', async () => {
     agentRepository.findPublishedActiveBySlug.mockResolvedValue(published());
+    aiModelRepository.findById.mockResolvedValue(model({ deploymentKind: 'SELF_HOSTED' }));
     const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
-    expect(resolved.guardrail).toEqual({ enabled: true });
-  });
+    expect(resolved.models[0].deploymentKind).toBe('SELF_HOSTED');
 
-  it('a malformed compiled value reads as ON, never as an opt-out', async () => {
-    // Defensive on purpose: on a safety gate, "unparseable" must never resolve to "off".
-    for (const malformed of [{ enabled: 'false' }, {}, null, 'off']) {
-      agentRepository.findPublishedActiveBySlug.mockResolvedValue(withGuardrail(malformed));
-      const resolved = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
-      expect(resolved.guardrail).toEqual({ enabled: true });
-    }
+    aiModelRepository.findById.mockResolvedValue(model({ deploymentKind: undefined }));
+    const bare = await make().resolve({ tenantId: TENANT, agentSlug: 'clinic-summarizer' });
+    expect('deploymentKind' in bare.models[0]).toBe(false);
   });
 });

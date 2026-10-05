@@ -25,6 +25,7 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError, postJson } from '@/shared/api';
+import { useContextSchemaCatalog } from '@/shared/catalog';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { DetailDrawer } from '@/shared/detail/detail-drawer';
 import { formatDateTime } from '@/shared/format';
@@ -34,7 +35,6 @@ import {
   ActivateVersionDialog,
   ActiveBadge,
   AssignmentBadges,
-  DeprecateVersionDialog,
   DiscardDraftDialog,
   IntegrationPanel,
   OriginBadge,
@@ -68,13 +68,16 @@ import {
   type AgentProblemBody,
   type PromptFragment,
 } from '../api';
+import { AgentDeprecateDialog } from './agent-deprecate-dialog';
 import { AgentHiddenBadge, AgentTaskBadge } from './agent-status-badge';
 import { AgentPublishDialog } from './agent-publish-dialog';
 import { DraftTestPanel } from './draft-test-panel';
 import { InstructionBindingForm, instructionFromBinding, instructionToBinding, type InstructionBindingValue } from './instruction-binding-form';
 import { JsonField } from './json-field';
 import { ModelPicker, fallbackModelOptionLabel, useTaskModelCatalogue } from './model-picker';
-import { ParametersForm } from './parameters-form';
+import { AgentSimpleParameters } from '@/shared/agent-wizard/simple-parameters';
+import { documentTemplateSlugOf, withDocumentTemplate } from '@/shared/agent-wizard/instruction-extras';
+import { TagsField } from '@/shared/tags-field';
 
 /** Surfaces the gateway's coded finding when there is one — shared with the list screen's import action. */
 export function problemToast(error: unknown, fallback: string): void {
@@ -118,6 +121,30 @@ function CompositeInstructionSummary({ fragments }: { fragments: PromptFragment[
   );
 }
 
+/**
+ * The schema `{{context.*}}` resolves against for this version: the gateway's
+ * `effectiveContextSchema` when it sends one (which covers a schema lent by a workflow), else the
+ * agent's own binding. Read-only — an inherited schema is changed on the workflow's trigger.
+ */
+function EffectiveContextSchemaValue({ agent }: { agent: Agent }) {
+  const catalog = useContextSchemaCatalog();
+  const effective =
+    agent.effectiveContextSchema !== undefined
+      ? agent.effectiveContextSchema
+      : agent.contextSchemaId
+        ? { id: agent.contextSchemaId, versionNumber: agent.contextSchemaVersionNumber, inheritedFrom: 'agent' as const }
+        : null;
+  if (!effective) return <>None</>;
+  const name = (catalog.data ?? []).find((schema) => schema.id === effective.id)?.name;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {name ? <span>{name}</span> : catalog.isLoading ? <Skeleton className="h-4 w-28" /> : <span className="font-mono text-xs">{effective.id}</span>}
+      {effective.versionNumber !== null ? <span className="font-mono text-xs">v{effective.versionNumber}</span> : <span className="text-muted-foreground text-xs">follows latest</span>}
+      {effective.inheritedFrom === 'workflow' ? <Badge variant="secondary">Inherited from workflow</Badge> : null}
+    </span>
+  );
+}
+
 function FindingsList({ agent }: { agent: Agent }) {
   const report = agent.validationReport;
   if (!report) return null;
@@ -153,7 +180,9 @@ interface DraftState {
   outputSchema: Record<string, unknown> | null;
   modelId: string;
   fallbackModelIds: string[];
-  tags: string;
+  tags: string[];
+  /** TASK-1036 OD-7 — `instruction.documentTemplate.slug`; the latest approved version, never pinned. */
+  documentTemplateSlug: string | null;
   binding: InstructionBindingValue;
   initialPrompt: string;
   hotwords: string;
@@ -178,7 +207,8 @@ function draftFromAgent(agent: Agent): DraftState {
     outputSchema: agent.outputSchema,
     modelId: agent.modelId,
     fallbackModelIds: [...agent.fallbacks].sort((a, b) => a.priority - b.priority).map((fallback) => fallback.modelId),
-    tags: agent.tags.join(', '),
+    tags: agent.tags,
+    documentTemplateSlug: documentTemplateSlugOf(instruction),
     // TASK-947 — one shared pair (`instructionToBinding` / `instructionFromBinding`) for all
     // three TEXT_GENERATION instruction forms, so the wizard and this edit-draft form cannot
     // drift on how an instruction round-trips through the editor.
@@ -392,7 +422,7 @@ export function AgentLineageDrawer({
     if (!draftAgent || !draft || !draftEtag) return;
     let instruction: Record<string, unknown> | undefined;
     if (draftAgent.task === 'TEXT_GENERATION') {
-      instruction = instructionFromBinding(draft.binding);
+      instruction = withDocumentTemplate(instructionFromBinding(draft.binding), draft.documentTemplateSlug);
     } else if (draftAgent.task === 'SPEECH_TO_TEXT') {
       const hotwords = draft.hotwords
         .split(',')
@@ -408,10 +438,7 @@ export function AgentLineageDrawer({
         .filter(Boolean);
       instruction = labels.length ? { labels } : undefined;
     }
-    const tags = draft.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    const tags = draft.tags;
     try {
       await update.mutateAsync({
         id: draftAgent.id,
@@ -742,6 +769,14 @@ export function AgentLineageDrawer({
                     <dd className="font-mono">{agent.fallbacks.length ? agent.fallbacks.map((fallback) => fallback.modelSlug ?? fallback.modelId).join(' → ') : '—'}</dd>
                     <dt className="text-muted-foreground">Description</dt>
                     <dd>{agent.description ?? '—'}</dd>
+                    {agent.task === 'TEXT_GENERATION' ? (
+                      <>
+                        <dt className="text-muted-foreground">Context schema</dt>
+                        <dd>
+                          <EffectiveContextSchemaValue agent={agent} />
+                        </dd>
+                      </>
+                    ) : null}
                     <dt className="text-muted-foreground">Published</dt>
                     <dd>{agent.publishedAt ? formatDateTime(agent.publishedAt) : '—'}</dd>
                     <dt className="text-muted-foreground">Published by</dt>
@@ -866,7 +901,13 @@ export function AgentLineageDrawer({
                       {draftAgent.task === 'TEXT_GENERATION' ? (
                         <fieldset className="flex flex-col gap-3">
                           <legend className="text-sm font-medium">Instruction</legend>
-                          <InstructionBindingForm value={draft.binding} onChange={(binding) => setDraft({ ...draft, binding })} />
+                          <InstructionBindingForm
+                            simple
+                            value={draft.binding}
+                            onChange={(binding) => setDraft({ ...draft, binding })}
+                            findings={draftAgent.validationReport?.findings}
+                            inheritedContextSchema={draftAgent.effectiveContextSchema?.inheritedFrom === 'workflow' ? draftAgent.effectiveContextSchema : null}
+                          />
                         </fieldset>
                       ) : draftAgent.task === 'SPEECH_TO_TEXT' ? (
                         <fieldset className="flex flex-col gap-3">
@@ -891,12 +932,23 @@ export function AgentLineageDrawer({
                         </fieldset>
                       ) : null}
 
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="edit-tags">Tags</Label>
-                        <Input id="edit-tags" placeholder="key:value, key:value" value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} />
-                      </div>
+                      <TagsField
+                        id="edit-tags"
+                        value={draft.tags}
+                        onChange={(tags) => setDraft({ ...draft, tags })}
+                        suggestionsPath="admin/agents/tags"
+                        validate={(tag) => (AGENT_TAG_PATTERN.test(tag) ? null : `"${tag}" is not a valid agent tag. Use key:value — lower-case letters, digits, "-" and "_" (the value also allows "."), e.g. dept:cardiology.`)}
+                        description="Agent tags are key:value, e.g. dept:cardiology. Suggestions come from tags already used by this tenant's agents."
+                      />
 
-                      <ParametersForm task={draftAgent.task} value={draft.parameters} onChange={(parameters) => setDraft({ ...draft, parameters })} modelId={draft.modelId} />
+                      <AgentSimpleParameters
+                        task={draftAgent.task}
+                        modelId={draft.modelId}
+                        value={draft.parameters}
+                        onChange={(parameters) => setDraft({ ...draft, parameters })}
+                        documentTemplateSlug={draft.documentTemplateSlug}
+                        onDocumentTemplateChange={(documentTemplateSlug) => setDraft({ ...draft, documentTemplateSlug })}
+                      />
                       <JsonField label="Input schema" value={draft.inputSchema} onChange={(inputSchema) => setDraft({ ...draft, inputSchema })} />
                       <JsonField label="Output schema" value={draft.outputSchema} onChange={(outputSchema) => setDraft({ ...draft, outputSchema })} />
                       <div className="flex justify-end gap-2">
@@ -1138,7 +1190,7 @@ export function AgentLineageDrawer({
       ) : null}
 
       {lineage && dialog?.kind === 'deprecate' ? (
-        <DeprecateVersionDialog
+        <AgentDeprecateDialog
           open
           onOpenChange={(open) => !open && setDialog(null)}
           itemLabel={lineage.name}

@@ -21,9 +21,8 @@ Pinned here:
    and ITS provider-native model, with its OWN idempotency key (sharing the primary's would make
    Text replay the failed generation).
 3. `autoSwitch` off (already funding-gated by the gateway) ⇒ no switch at all.
-4. The PHI egress guard is re-screened PER CANDIDATE — a local primary can lead to a cloud
-   fallback — and a blocked FALLBACK is dropped rather than failing the run, while a blocked
-   PRIMARY still fails it (the pre-876 contract).
+4. (Retired by TASK-1035: the per-candidate harness PHI screen is gone — `apps/text` redacts
+   every candidate's call itself; see `test_task1035_activities_egress.py`.)
 5. An exhausted activity budget fails NON-RETRYABLY: a retryable failure is what makes Temporal
    re-run the activity from the primary and re-bill a generation that already completed.
 6. `HarnessPolicy.from_api` carries the block, and an answer without it reads as "primary alone".
@@ -39,7 +38,6 @@ import pytest
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
-from harness.guards.phi import PhiEgressBlocked
 from harness.services.api_client import TrajectoryReportResponse
 from harness.services.text_client import TextGenerationResult, TextServiceError
 from harness.temporal import activities
@@ -119,21 +117,11 @@ def env() -> ActivityEnvironment:
     return environment
 
 
-class _PassThroughRedactor:
-    """PHI egress is not what these tests exercise (see `test_activities_phi_egress.py`);
-    the real redactor needs the spaCy model at build time, which the hermetic CI suite
-    does not install — so every cloud candidate here would be blocked before it ran."""
-
-    def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Any) -> str:
-        return text
-
-
 @pytest.fixture
 def wired(monkeypatch: pytest.MonkeyPatch):
     def _install(text: _Text) -> _Text:
         monkeypatch.setattr(activities, "_text_client", lambda _s: text)
         monkeypatch.setattr(activities, "_trajectory_api_client", lambda _s: _CapTraj())
-        monkeypatch.setattr(activities, "_phi_redactor", lambda: _PassThroughRedactor())
         return text
 
     return _install
@@ -219,46 +207,6 @@ class TestGenerateWalksTheChain:
 
 
 class TestGuardsOnTheWalk:
-    @pytest.mark.asyncio
-    async def test_phi_egress_is_re_screened_per_candidate_and_a_blocked_fallback_is_dropped(
-        self, env, wired, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """A local primary can lead to a CLOUD fallback, so one screening of the primary's
-        provider would be no screening at all. A fallback that may not legally receive the
-        prompt is simply not a usable candidate."""
-        text = wired(_Text(failing={"azure-openai"}))
-        seen: list[str | None] = []
-
-        def _guard(value, *, provider=None, **_kwargs):
-            seen.append(provider)
-            if provider == "lm-studio":
-                raise PhiEgressBlocked(provider="lm-studio", reason="phi_detected")
-            return value
-
-        monkeypatch.setattr(activities, "ensure_egress_safe", _guard)
-
-        with pytest.raises(TextServiceError):
-            await env.run(activities.generate, _input(text_fallback=_block()))
-
-        # Screened for BOTH providers; only the primary was ever dispatched, and the blocked
-        # fallback failed the run with the PRIMARY's error, not a PHI raise.
-        assert seen == ["azure-openai", "lm-studio"]
-        assert [c["provider"] for c in text.calls] == ["azure-openai"]
-
-    @pytest.mark.asyncio
-    async def test_a_blocked_PRIMARY_still_fails_the_run(
-        self, env, wired, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        wired(_Text(failing=set()))
-
-        def _guard(_value, *, provider=None, **_kwargs):
-            raise PhiEgressBlocked(provider=provider or "", reason="phi_detected")
-
-        monkeypatch.setattr(activities, "ensure_egress_safe", _guard)
-
-        with pytest.raises(PhiEgressBlocked):
-            await env.run(activities.generate, _input(text_fallback=_block()))
-
     @pytest.mark.asyncio
     async def test_an_exhausted_budget_fails_NON_retryably(
         self, env, wired, monkeypatch: pytest.MonkeyPatch

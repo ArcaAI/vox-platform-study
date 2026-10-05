@@ -30,6 +30,7 @@ import pytest
 
 from harness.services.text_client import TextServiceError
 from harness.temporal.interpreter import output_language as ol
+from harness.temporal.interpreter.compose_messages import platform_rules
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
 from harness.temporal.interpreter.nodes import core
 
@@ -291,6 +292,11 @@ _CONVERSATION_LANGUAGE_BODY = (
 _RENDERED_BODY = _CONVERSATION_LANGUAGE_BODY.replace("{{language}}", "ml-en")
 
 
+def _SENT(*layers: str) -> str:  # noqa: N802 — reads as the constant it builds
+    """TASK-1035 — the system message `compose_messages` sends: the platform rules, then these."""
+    return "\n\n".join([platform_rules(), *layers])
+
+
 def _compiled(
     task: str,
     resolved_prompt: dict[str, Any] | None,
@@ -412,7 +418,6 @@ def run(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(core, "record_and_flush", _noop)
     monkeypatch.setattr(core, "record_generation_and_flush", _noop)
-    monkeypatch.setattr(core, "_phi_redactor", lambda: None)
 
     async def _go(
         wire: dict[str, Any],
@@ -480,14 +485,14 @@ class TestTheDurableSummaryStatesTheDefault:
         result, calls, _reads = await run(_wire(*_TEMPLATE_BOUND))
 
         assert result.status == "SUCCEEDED"
-        assert calls[0]["system_prompt"] == _RENDERED_BODY + "\n\n" + ENGLISH_STEP
+        assert calls[0]["system_prompt"] == _SENT(_RENDERED_BODY, ENGLISH_STEP)
         # The step is LAST — after, and naming, the clause it overrides.
         assert calls[0]["system_prompt"].endswith(ENGLISH_STEP)
 
     async def test_a_platform_admins_default_is_stated_by_name(self, run) -> None:
         snapshot = _Snapshot({_KEY: "ml"})
         _result, calls, _reads = await run(_wire(*_TEMPLATE_BOUND), snapshot=snapshot)
-        assert calls[0]["system_prompt"] == _RENDERED_BODY + "\n\n" + MALAYALAM_STEP
+        assert calls[0]["system_prompt"] == _SENT(_RENDERED_BODY, MALAYALAM_STEP)
 
     @pytest.mark.parametrize(
         "snapshot",
@@ -508,7 +513,7 @@ class TestTheDurableSummaryStatesTheDefault:
 
         assert result.status == "SUCCEEDED"
         assert result.prompt_fragments == ["clinical_note", "output_language_policy"]
-        assert calls[0]["system_prompt"] == _CLINICAL_NOTE + "\n\n" + _TENANT_POLICY
+        assert calls[0]["system_prompt"] == _SENT(_CLINICAL_NOTE, _TENANT_POLICY)
 
     async def test_an_excluded_tenant_policy_leaves_the_default_to_the_platform(self, run) -> None:
         """A policy whose `when` is false is NOT selected — nothing states a language, so we do."""
@@ -516,7 +521,7 @@ class TestTheDurableSummaryStatesTheDefault:
         result, calls, _reads = await run(_wire(resolved, instruction))
 
         assert result.prompt_fragments == ["clinical_note"]
-        assert calls[0]["system_prompt"] == _CLINICAL_NOTE + "\n\n" + ENGLISH_STEP
+        assert calls[0]["system_prompt"] == _SENT(_CLINICAL_NOTE, ENGLISH_STEP)
 
     async def test_each_fallback_candidate_gets_its_own_answer(self, run) -> None:
         """The primary carries the policy and fails; the fallback has none, so IT gets the step.
@@ -531,7 +536,7 @@ class TestTheDurableSummaryStatesTheDefault:
         assert result.status == "SUCCEEDED"
         assert [c["provider"] for c in calls] == ["lm-studio", "azure-openai"]
         assert ENGLISH_STEP not in calls[0]["system_prompt"]
-        assert calls[1]["system_prompt"] == "FALLBACK note.\n\n" + ENGLISH_STEP
+        assert calls[1]["system_prompt"] == _SENT("FALLBACK note.", ENGLISH_STEP)
 
     async def test_the_setting_is_read_once_per_activity(self, run) -> None:
         resolved, instruction = _composite(policy_when="false")

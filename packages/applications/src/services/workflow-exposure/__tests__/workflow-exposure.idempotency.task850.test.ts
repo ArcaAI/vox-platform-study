@@ -23,7 +23,13 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 const mockWorkflowDefinitionRepository = { findPublishedBySlug: vi.fn(), findActivePublishedByTenant: vi.fn() };
 const mockHarnessGateway = { startWorkflowRun: vi.fn(), getWorkflowRun: vi.fn(), cancelWorkflowRun: vi.fn() };
-const mockWorkflowRunService = { getRun: vi.fn(), recordRunStarted: vi.fn(), recordRunFinished: vi.fn() };
+// TASK-1038 E2 (fix 11) — `getRunRequestBodyHash`: a row with no fingerprint joins as before.
+const mockWorkflowRunService = {
+  getRun: vi.fn(),
+  recordRunStarted: vi.fn(),
+  recordRunFinished: vi.fn(),
+  getRunRequestBodyHash: vi.fn().mockResolvedValue(null),
+};
 const mockConfigService = { getConfigValue: vi.fn((key: string) => (key === 'WORKFLOW_EXPOSURE_ENABLED' ? true : undefined)) };
 const mockS3Service = { putFile: vi.fn().mockResolvedValue(undefined) };
 /** Deliberately a MISSING cache on every read — the point is that idempotency survives it. */

@@ -1,19 +1,20 @@
 import { Module } from '@nestjs/common';
-import { CommonServiceModule, WorkflowExposureServiceModule, WorkflowRunServiceModule } from '@arcaai/applications';
+import { CommonServiceModule, TenantSettingsService, WorkflowExposureServiceModule, WorkflowRunServiceModule } from '@arcaai/applications';
 import { ConsultationWorkflowRunsController } from './consultation-workflow-runs.controller';
 import { WorkflowHooksController } from './workflow-hooks.controller';
 import { WorkflowRunCompletionModule } from './workflow-run-completion.module';
 import { WorkflowsController } from './workflows.controller';
+import { WorkflowRunTraceController } from './workflow-run-trace.controller';
 import { WorkflowStreamService } from './workflow-stream.service';
 
 /**
  * `WorkflowsModule` — mounts the exposure plane at `/workflows/*` (global
  * prefix -> `/api/v1/workflows/*`),.
  *
- * `CommonServiceModule` supplies `IConfigService`, which `WorkflowStreamService` needs for the
- * Redis connection details of the run event stream it consumes (lane A — the read that
- * replaced the poll). It is injected `@Optional()` there, so a Nest context built without this
- * import degrades to snapshot-only rather than failing to construct.
+ * `WorkflowStreamService` reads the run event stream through the process-wide
+ * `RunEventStreamHub` (TASK-1038), provided by the @Global() `WorkflowRunCompletionModule`. It is
+ * injected `@Optional()` there, so a Nest context built without it degrades to snapshot-only
+ * rather than failing to construct.
  */
 @Module({
   imports: [CommonServiceModule, WorkflowExposureServiceModule, WorkflowRunServiceModule, WorkflowRunCompletionModule],
@@ -28,8 +29,11 @@ import { WorkflowStreamService } from './workflow-stream.service';
   // `@arcaai/applications`, which cannot import this app — can attach a watcher through the
   // `IWorkflowRunCompletionPort` token. Re-exported here so this module's existing consumers
   // keep resolving it exactly as before.
-  controllers: [WorkflowsController, ConsultationWorkflowRunsController, WorkflowHooksController],
-  providers: [WorkflowStreamService],
+  // TASK-1038 B3a — `WorkflowRunTraceController`: the console's live admin trace of a run.
+  controllers: [WorkflowsController, ConsultationWorkflowRunsController, WorkflowHooksController, WorkflowRunTraceController],
+  // TASK-1038 — `RunEventStreamHub` reaches `WorkflowStreamService` from the @Global()
+  // `WorkflowRunCompletionModule`; `TenantSettingsService` supplies the delivery-plane knobs.
+  providers: [WorkflowStreamService, TenantSettingsService],
   exports: [WorkflowStreamService, WorkflowRunCompletionModule],
 })
 export class WorkflowsModule {}

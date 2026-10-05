@@ -13,6 +13,7 @@ import type {
   WorkflowCanvasNode,
   WorkflowCanvasNodeRendererProps,
   WorkflowCanvasNodeTypes,
+  WorkflowCanvasPort,
   WorkflowCanvasRunState,
   WorkflowCanvasStepMarker,
 } from './types';
@@ -48,6 +49,72 @@ const SEVERITY_BADGE_VARIANT: Record<'ERROR' | 'WARNING', 'destructive' | 'secon
 const PRIMARY_HANDLE_CLASS = '!bg-[var(--workflow-canvas-handle)]';
 /** Branch handles sit inline beside their label rather than at React Flow's absolute mid-edge default (`canvas-tokens.css`). */
 const BRANCH_HANDLE_CLASS = 'workflow-canvas-branch !bg-[var(--workflow-canvas-handle-control)]';
+
+/**
+ * TASK-1036 — a typed port handle. Inline beside its label (like a branch handle), coloured by its
+ * tone through `--workflow-canvas-port-<tone>` and SHAPED by its family — round for a scalar,
+ * square for a list, a diamond for an audio/file reference — so the kind never rests on colour.
+ */
+const PORT_HANDLE_CLASS = 'workflow-canvas-port';
+
+function portTitle(port: WorkflowCanvasPort): string {
+  return `${port.label} · ${port.type}${port.required ? ' · required' : ''}`;
+}
+
+/**
+ * TASK-1036 R-C #8 — the type, SAID beside the port: number, boolean and date share a colour and a
+ * round shape, so without words the three are indistinguishable. Short on purpose (a node is
+ * narrow); the full type stays in the tooltip and in the screen-reader text.
+ */
+const PORT_TYPE_SHORT: Record<string, string> = {
+  text: 'text',
+  number: 'num',
+  boolean: 'bool',
+  date: 'date',
+  json: 'data',
+  audio: 'audio',
+  file: 'file',
+  document: 'doc',
+  any: 'any',
+};
+export function portTypeShort(type: string): string {
+  if (type.startsWith('list<')) return 'list';
+  return PORT_TYPE_SHORT[type] ?? type;
+}
+
+function PortRows({ ports, kind }: { ports: readonly WorkflowCanvasPort[]; kind: 'target' | 'source' }) {
+  const target = kind === 'target';
+  return (
+    <div
+      data-slot={target ? 'workflow-node-inputs' : 'workflow-node-outputs'}
+      role="group"
+      aria-label={target ? 'Inputs' : 'Outputs'}
+      className={cn('flex flex-col gap-1', target ? 'items-start' : 'items-end')}
+    >
+      {ports.map((port) => (
+        <div key={port.id} className={cn('flex items-center gap-1 text-[11px] leading-4', target ? 'flex-row' : 'flex-row-reverse text-right')}>
+          <Handle
+            id={port.id}
+            type={kind}
+            position={target ? Position.Left : Position.Right}
+            className={PORT_HANDLE_CLASS}
+            data-port-type={port.type}
+            data-port-tone={port.tone ?? 'any'}
+            title={portTitle(port)}
+          />
+          <span className="truncate">
+            {port.label}
+            {port.required ? <span aria-hidden> *</span> : null}
+            <span className="sr-only">{` ${target ? 'input' : 'output'}, ${port.type}${port.required ? ', required' : ''}`}</span>
+          </span>
+          <span aria-hidden data-slot="workflow-port-type" className="text-muted-foreground font-mono text-[10px]">
+            {portTypeShort(port.type)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const STEP_MARKER_GLYPH: Record<WorkflowCanvasStepMarker, string> = { cycle: '↻', unreachable: '⚠' };
 const STEP_MARKER_NAME: Record<WorkflowCanvasStepMarker, string> = {
@@ -99,7 +166,8 @@ const RUN_STATE_VARIANT: Record<WorkflowCanvasRunState, 'secondary' | 'destructi
 /** Role tint only — the chip always spells its state out, so colour is decoration (rule 11 §10). */
 const RUN_STATE_CLASS: Record<WorkflowCanvasRunState, string> = {
   pending: 'text-muted-foreground',
-  running: '',
+  // `motion-safe:` = `@media (prefers-reduced-motion: no-preference)` — the pulse never runs for a viewer who asked for less motion.
+  running: 'motion-safe:animate-pulse',
   ok: 'border-success text-success-strong',
   failed: '',
   skipped: 'text-muted-foreground',
@@ -113,14 +181,25 @@ function formatRunDuration(ms: number): string | null {
   return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
 }
 
+/** TASK-1036 R-C #10 — the spec's words (§10.2): the Test tab's legend says the same. */
+const RUN_STATE_LABEL: Record<WorkflowCanvasRunState, string> = {
+  pending: 'Waiting',
+  running: 'Running',
+  ok: 'Done',
+  failed: 'Failed',
+  skipped: 'Skipped',
+};
+
 /** The sandbox's per-node verdict, in the node header (TASK-893 §3.6). Text first, colour second. */
-function RunChip({ runState, runDurationMs }: { runState: WorkflowCanvasRunState; runDurationMs?: number }) {
+function RunChip({ runState, runDurationMs, runWarnings }: { runState: WorkflowCanvasRunState; runDurationMs?: number; runWarnings?: number }) {
   const duration = runDurationMs === undefined ? null : formatRunDuration(runDurationMs);
+  const warnings = runWarnings !== undefined && runWarnings > 0 ? `${runWarnings} warning${runWarnings === 1 ? '' : 's'}` : null;
   return (
     <Badge variant={RUN_STATE_VARIANT[runState]} data-run-state={runState} className={cn('gap-1 px-1.5 text-[11px]', RUN_STATE_CLASS[runState])}>
       <span className="sr-only">Run state: </span>
-      <span>{runState}</span>
+      <span>{RUN_STATE_LABEL[runState] ?? runState}</span>
       {duration ? <span className="tabular-nums opacity-80">{duration}</span> : null}
+      {warnings ? <span className="text-warning-strong">{warnings}</span> : null}
     </Badge>
   );
 }
@@ -149,8 +228,11 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
   const mandatory = isMandatory(node);
   const group = node.kind === 'group';
   const rendererProps: WorkflowCanvasNodeRendererProps = { node, selected: Boolean(selected) };
-  const hasInput = node.hasInput ?? true;
-  const hasOutput = node.hasOutput ?? true;
+  const inputPorts = node.inputPorts ?? [];
+  const outputPorts = node.outputPorts ?? [];
+  // A node that declares typed fields draws them INSTEAD of the primary dot on that side.
+  const hasInput = (node.hasInput ?? true) && inputPorts.length === 0;
+  const hasOutput = (node.hasOutput ?? true) && outputPorts.length === 0;
   const branches = node.branches ?? [];
 
   return (
@@ -182,7 +264,7 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
           <span className="text-sm font-medium">{node.label}</span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {node.runState ? <RunChip runState={node.runState} runDurationMs={node.runDurationMs} /> : null}
+          {node.runState ? <RunChip runState={node.runState} runDurationMs={node.runDurationMs} runWarnings={node.runWarnings} /> : null}
           {!readOnly && !mandatory ? (
             <Button
               type="button"
@@ -222,6 +304,13 @@ function WorkflowNode({ id, data, selected }: NodeProps & { data: WorkflowNodeDa
       {Renderer ? (
         <div className="nodrag mt-2">
           <Renderer {...rendererProps} />
+        </div>
+      ) : null}
+
+      {inputPorts.length > 0 || outputPorts.length > 0 ? (
+        <div className="mt-2 flex items-start justify-between gap-3" data-slot="workflow-node-ports">
+          {inputPorts.length > 0 ? <PortRows ports={inputPorts} kind="target" /> : <span />}
+          {outputPorts.length > 0 ? <PortRows ports={outputPorts} kind="source" /> : null}
         </div>
       ) : null}
 

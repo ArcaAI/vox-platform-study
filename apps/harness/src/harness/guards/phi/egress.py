@@ -1,71 +1,32 @@
-"""PHI egress chokepoint: enforce the fail-closed guard before cloud LLM calls.
+"""PHI egress screens for the DIRECT (non-``/generate``) hops the harness still owns.
 
-The cloud-bound activities call exactly one of these helpers immediately before any
-cloud LLM egress, so the fail-closed :class:`~harness.guards.phi.redactor.PhiRedactor`
-is enforced at a single, replay-safe boundary rather than scattered across call sites:
+TASK-1035 moved LLM egress safety for every ``apps/text`` ``/generate`` call into text itself
+(pseudonymize on cloud, re-identify, fail closed), so the former per-call
+``ensure_egress_safe`` chokepoint is gone from every activity and node. What remains here are
+the two hops that do NOT go through ``/generate``:
 
-* :func:`ensure_egress_safe` — gate a single string (the ``generate`` prompt /
-  system prompt before the Text call).
-* :func:`ensure_inferential_egress_safe` — fan the gate across every cloud-bound
-  field of the inferential pass (the Granite-screened note + the judge-bound
-  transcript, per-claim hypotheses & evidence quotes, and knowledge chunks),
-  redacting only the payload destined for a *cloud* consumer.
+* :func:`ensure_inferential_egress_safe` — the inferential judge posts to its selected provider
+  DIRECTLY from this process (``build_judge_client``), so its premise (transcript, per-claim
+  hypotheses & evidence quotes, knowledge chunks) is redacted here when the judge transport is
+  cloud. The local set is code (:data:`harness.core.llm_egress.LOCAL_DIRECT_TRANSPORTS`), not
+  the retired ``HARNESS_PHI_LOCAL_PROVIDERS`` env.
+* :func:`ensure_mcp_args_safe` — outbound MCP tool args to an EXTERNAL server are BLOCKED if they
+  carry PHI (never an LLM call at all).
 
 Both honour the **run-effective policy** snapshotted at workflow start
-(``phi_enabled`` / ``phi_fail_closed``) instead of re-reading config, so enforcement
-is deterministic across replay. The policy is passed as two booleans (not a temporal
-``HarnessPolicy``) to keep ``guards/`` decoupled from ``temporal/``.
-
-A :class:`~harness.guards.phi.redactor.PhiEgressBlocked` from the underlying guard
-(fail-closed: redaction failed/unconfirmed, or the Presidio extra is missing on a
-cloud run) propagates so the activity can act on it — block the cloud call and
-degrade-closed; it is never swallowed into a silent unredacted egress.
+(``phi_enabled`` / ``phi_fail_closed``) instead of re-reading config, so enforcement is
+deterministic across replay. A :class:`~harness.guards.phi.redactor.PhiEgressBlocked` propagates
+so the activity can act on it — it is never swallowed into a silent unredacted egress.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from harness.core.llm_egress import is_local_direct_transport
 from harness.guards.phi.redactor import PhiEgressBlocked, PhiRedactor
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from harness.core.config import Settings
-
-
-def ensure_egress_safe(
-    text: str,
-    *,
-    provider: str | None,
-    settings: Settings,
-    phi_enabled: bool,
-    phi_fail_closed: bool,
-    redactor: PhiRedactor | None = None,
-) -> str:
-    """Clear ``text`` for egress to ``provider`` under the run-effective PHI policy.
-
-    * ``phi_enabled`` False ⇒ pure bypass (the guard is disabled by policy);
-    * ``provider`` None ⇒ no egress target ⇒ pass-through;
-    * otherwise delegate to :meth:`PhiRedactor.ensure_safe_for_cloud` — a no-op for a
-      local (non-cloud) provider, and a fail-closed redact+confirm for a cloud one
-      (raising :class:`PhiEgressBlocked` when removal cannot be confirmed).
-
-    ``phi_fail_closed`` is the snapshotted policy value; when it differs from
-    ``settings.phi.fail_closed`` the settings are copied with the policy value so the
-    guard honours the *effective* policy without mutating the shared settings. Pass
-    ``redactor`` to reuse one lazily-built instance across an activity's calls.
-    """
-    if not phi_enabled or provider is None:
-        return text
-
-    redactor = redactor if redactor is not None else PhiRedactor()
-    effective = settings
-    if phi_fail_closed != settings.phi.fail_closed:
-        effective = settings.model_copy(
-            update={"phi": settings.phi.model_copy(update={"fail_closed": phi_fail_closed})}
-        )
-    return redactor.ensure_safe_for_cloud(text, provider=provider, settings=effective)
 
 
 def _serialize_mcp_args(args: dict[str, Any]) -> str:
@@ -95,11 +56,11 @@ def ensure_mcp_args_safe(
       **BLOCKS** the call by raising :class:`PhiEgressBlocked` when ``phi_fail_closed``
       (the default). Clean args pass through UNCHANGED.
 
-    Unlike the LLM-prompt egress (redact-and-send), tool args are BLOCKED-if-PHI, never
-    silently redacted: a READ-ONLY external tool (e.g. FHIR terminology validation) must
+    Unlike an LLM prompt (which ``apps/text`` pseudonymizes), tool args are BLOCKED-if-PHI,
+    never silently redacted: a READ-ONLY external tool (e.g. FHIR terminology validation) must
     carry only codes/terms, so PHI in its args is a defect that must fail closed, not a
     payload to sanitize. When ``phi_fail_closed`` is False the guard degrades OPEN
-    (returns the args) — an explicit per-tenant opt-out, mirroring the prompt guard.
+    (returns the args) — an explicit per-tenant opt-out.
     """
     if not phi_enabled or phi_boundary != "external":
         return args
@@ -129,46 +90,38 @@ def ensure_inferential_egress_safe(
     knowledge_chunks: dict[str, str],
     judge_provider: str | None,
     safety_provider: str | None,
-    settings: Settings,
     phi_enabled: bool,
     phi_fail_closed: bool,
     redactor: PhiRedactor | None = None,
 ) -> tuple[str, str, dict[str, Any], dict[str, str]]:
-    """Redact every cloud-bound field of the inferential pass before the judge/Granite calls.
+    """Redact every cloud-bound field of the inferential pass before the DIRECT judge calls.
 
-    The safety screen sends the **note** to ``safety_provider`` (Granite); the judge
-    sees the **transcript**, every claim hypothesis + evidence quote (the premise),
-    and the **knowledge chunks** via ``judge_provider``. Each field is gated against
-    *its own* consumer's provider, so only the payload actually destined for a cloud
-    consumer is redacted. When neither consumer is a cloud provider (the default
-    all-local deployment) the inputs are returned unchanged — identity, so the pass
-    replays byte-identical and pays no Presidio cost. A fail-closed block propagates
-    :class:`PhiEgressBlocked` so the activity can degrade the whole pass.
+    The safety screen sends the **note** to ``safety_provider``; the judge sees the
+    **transcript**, every claim hypothesis + evidence quote (the premise), and the **knowledge
+    chunks** via ``judge_provider``. Each field is gated against *its own* consumer's
+    transport, so only the payload actually destined for a cloud consumer is redacted. When
+    neither consumer is a cloud transport (the default all-local deployment) the inputs are
+    returned unchanged — identity, so the pass replays byte-identical and pays no Presidio
+    cost. A fail-closed block propagates :class:`PhiEgressBlocked` so the activity can degrade
+    the whole pass.
     """
     if not phi_enabled:
         return note_text, transcript_text, citations_map, knowledge_chunks
 
-    local = set(settings.phi.local_providers)
-
     def _is_cloud(provider: str | None) -> bool:
         # None ⇒ no egress target (pass-through); everything else defaults to
-        # cloud unless it is a recognized local provider (default-deny).
-        return provider is not None and provider not in local
+        # cloud unless it is a recognized local transport (default-deny).
+        return provider is not None and not is_local_direct_transport(provider)
 
     if not _is_cloud(judge_provider) and not _is_cloud(safety_provider):
         return note_text, transcript_text, citations_map, knowledge_chunks
 
-    redactor = redactor if redactor is not None else PhiRedactor()
+    guard = redactor if redactor is not None else PhiRedactor()
 
     def _gate(value: str, provider: str | None) -> str:
-        return ensure_egress_safe(
-            value,
-            provider=provider,
-            settings=settings,
-            phi_enabled=phi_enabled,
-            phi_fail_closed=phi_fail_closed,
-            redactor=redactor,
-        )
+        if provider is None:
+            return value
+        return guard.ensure_safe_for_cloud(value, provider=provider, fail_closed=phi_fail_closed)
 
     safe_note = _gate(note_text, safety_provider)
     safe_transcript = _gate(transcript_text, judge_provider)
