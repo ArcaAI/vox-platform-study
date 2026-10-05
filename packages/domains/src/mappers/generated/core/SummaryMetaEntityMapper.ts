@@ -57,10 +57,12 @@ export const SummaryMetaEntityMapperHandlers = createMapperHandlers<Entities.Sum
     encryptedCitationsMap: (entity) => entity.encryptedCitationsMap ?? null,
     encryptedGuardrailDecisions: (entity) => entity.encryptedGuardrailDecisions ?? null,
     encryptedRedactionManifest: (entity) => entity.encryptedRedactionManifest ?? null,
+    encryptedCoverageReport: (entity) => entity.encryptedCoverageReport ?? null,
   },
   $toDomain: {
     encryptedCitationsMap: (model) => model.encryptedCitationsMap ?? null,
     encryptedGuardrailDecisions: (model) => model.encryptedGuardrailDecisions ?? null,
     encryptedRedactionManifest: (model) => model.encryptedRedactionManifest ?? null,
+    encryptedCoverageReport: (model) => model.encryptedCoverageReport ?? null,
   },
 });

@@ -149,3 +149,12 @@ export * from './WorkflowInvariantRuleRepository';
 export * from './WorkflowWebhookSecretRepository';
 export * from './TenantCheckpointRepository';
 export * from './TenantCheckpointRestoreRepository';
+export * from './ConsultationEncounterRepository';
+export * from './ConsultationApprovalRepository';
+export * from './ConsultationAttachmentRepository';
+export * from './ConsultationFeedbackRepository';
+export * from './ConsultationFeedbackDailyRollupRepository';
+export * from './AiActivityRunRepository';
+// Siblings that patch ConsultationFeedbackRepository / ConsultationAttachmentRepository.prototype.
+export * from './ConsultationFeedbackRepository.encryption';
+export * from './ConsultationAttachmentRepository.encryption';

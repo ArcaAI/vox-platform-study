@@ -38,6 +38,18 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   // above `type` exactly as `kindKey` is. Null for every write that names no
   // document, i.e. every historical caller.
   documentKey?: string | null;
+  // Consultation record model: the encounter the item belongs to; for TRANSCRIPT_SEGMENT
+  // items the consultation-wide segmentSeq, the idempotency key segmentKey
+  // ("<sttSessionId>:<utteranceIndex>"), the recording-timeline span t0Ms/t1Ms, speaker
+  // and capture time. occurredAt is the clinical time (timeline sort key).
+  encounterSeq?: number | null;
+  segmentSeq?: number | null;
+  segmentKey?: string | null;
+  t0Ms?: number | null;
+  t1Ms?: number | null;
+  speaker?: string | null;
+  capturedAt?: Date | null;
+  occurredAt?: Date;
   qdrantSynced: boolean;
   qdrantSyncedAt?: Date | null;
   Consultation?: Entities.ConsultationEntity | null;
@@ -61,6 +73,14 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
   private _kindKey?: IContextItemEntity['kindKey'];
   private _documentKey?: IContextItemEntity['documentKey'];
+  private _encounterSeq?: IContextItemEntity['encounterSeq'];
+  private _segmentSeq?: IContextItemEntity['segmentSeq'];
+  private _segmentKey?: IContextItemEntity['segmentKey'];
+  private _t0Ms?: IContextItemEntity['t0Ms'];
+  private _t1Ms?: IContextItemEntity['t1Ms'];
+  private _speaker?: IContextItemEntity['speaker'];
+  private _capturedAt?: IContextItemEntity['capturedAt'];
+  private _occurredAt?: IContextItemEntity['occurredAt'];
   private _contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
   // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
   // ATTACHMENT lab/exam results can carry a `metadata.subType = 'LAB_RESULT'`
@@ -89,6 +109,14 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._dnaWritingStyleId = init.dnaWritingStyleId;
     this._kindKey = init.kindKey;
     this._documentKey = init.documentKey;
+    this._encounterSeq = init.encounterSeq;
+    this._segmentSeq = init.segmentSeq;
+    this._segmentKey = init.segmentKey;
+    this._t0Ms = init.t0Ms;
+    this._t1Ms = init.t1Ms;
+    this._speaker = init.speaker;
+    this._capturedAt = init.capturedAt;
+    this._occurredAt = init.occurredAt;
     this._contextSchemaVersionId = init.contextSchemaVersionId;
     this._metaData = init.metaData;
     this._qdrantSynced = init.qdrantSynced ?? false;
@@ -210,6 +238,70 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set documentKey(value: IContextItemEntity['documentKey']) {
     this.setProperty('documentKey', value);
+  }
+
+  get encounterSeq(): IContextItemEntity['encounterSeq'] {
+    return this._encounterSeq;
+  }
+
+  set encounterSeq(value: IContextItemEntity['encounterSeq']) {
+    this.setProperty('encounterSeq', value);
+  }
+
+  get segmentSeq(): IContextItemEntity['segmentSeq'] {
+    return this._segmentSeq;
+  }
+
+  set segmentSeq(value: IContextItemEntity['segmentSeq']) {
+    this.setProperty('segmentSeq', value);
+  }
+
+  get segmentKey(): IContextItemEntity['segmentKey'] {
+    return this._segmentKey;
+  }
+
+  set segmentKey(value: IContextItemEntity['segmentKey']) {
+    this.setProperty('segmentKey', value);
+  }
+
+  get t0Ms(): IContextItemEntity['t0Ms'] {
+    return this._t0Ms;
+  }
+
+  set t0Ms(value: IContextItemEntity['t0Ms']) {
+    this.setProperty('t0Ms', value);
+  }
+
+  get t1Ms(): IContextItemEntity['t1Ms'] {
+    return this._t1Ms;
+  }
+
+  set t1Ms(value: IContextItemEntity['t1Ms']) {
+    this.setProperty('t1Ms', value);
+  }
+
+  get speaker(): IContextItemEntity['speaker'] {
+    return this._speaker;
+  }
+
+  set speaker(value: IContextItemEntity['speaker']) {
+    this.setProperty('speaker', value);
+  }
+
+  get capturedAt(): IContextItemEntity['capturedAt'] {
+    return this._capturedAt;
+  }
+
+  set capturedAt(value: IContextItemEntity['capturedAt']) {
+    this.setProperty('capturedAt', value);
+  }
+
+  get occurredAt(): IContextItemEntity['occurredAt'] {
+    return this._occurredAt;
+  }
+
+  set occurredAt(value: IContextItemEntity['occurredAt']) {
+    this.setProperty('occurredAt', value);
   }
 
   get contextSchemaVersionId(): IContextItemEntity['contextSchemaVersionId'] {

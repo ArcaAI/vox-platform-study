@@ -46,6 +46,13 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   // `encryptedRedactionManifest`); `redactionApplied` is the plaintext marker.
   redactionApplied?: ISummaryMetaEntity['redactionApplied'];
   redactionManifest?: ISummaryMetaEntity['redactionManifest'];
+  // Note coverage + budget provenance. `coverageReport` is transient plaintext
+  // (encrypt-on-write via the repository sidecar into `encryptedCoverageReport`).
+  coverageStatus?: ISummaryMetaEntity['coverageStatus'];
+  coverageGapCount?: ISummaryMetaEntity['coverageGapCount'];
+  coverageReport?: ISummaryMetaEntity['coverageReport'];
+  budgetStrategy?: ISummaryMetaEntity['budgetStrategy'];
+  noteInputDigest?: ISummaryMetaEntity['noteInputDigest'];
   tenantId: ISummaryMetaEntity['tenantId'];
 
   createdAt?: ISummaryMetaEntity['createdAt'];
@@ -98,6 +105,11 @@ export class SummaryMetaFactory {
       assuranceCompletedAt: props.assuranceCompletedAt ?? null,
       redactionApplied: props.redactionApplied ?? null,
       redactionManifest: props.redactionManifest ?? null,
+      coverageStatus: props.coverageStatus ?? null,
+      coverageGapCount: props.coverageGapCount ?? null,
+      coverageReport: props.coverageReport ?? null,
+      budgetStrategy: props.budgetStrategy ?? null,
+      noteInputDigest: props.noteInputDigest ?? null,
       tenantId: props.tenantId,
     });
   }

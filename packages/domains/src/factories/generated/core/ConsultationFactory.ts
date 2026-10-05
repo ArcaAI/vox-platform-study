@@ -16,8 +16,12 @@ export interface CreateConsultationProps extends BaseEntityFactoryCreateProps {
   metadata?: IConsultationEntity['metadata'];
   // TASK-1020 D-2 — the caller's own encounter id (the `open` key when present)
   externalRef?: IConsultationEntity['externalRef'];
-  // Typed lifecycle state (defaults to OPEN)
+  // Lifecycle state (defaults to OPEN) and background processing (defaults to IDLE)
   status?: IConsultationEntity['status'];
+  processing?: IConsultationEntity['processing'];
+  // The open encounter (defaults to 1) and when the consultation was last active (defaults to now)
+  currentEncounterSeq?: IConsultationEntity['currentEncounterSeq'];
+  lastActivityAt?: IConsultationEntity['lastActivityAt'];
   // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: IConsultationEntity['degradedReasons'];
   // Typed promotion of the legacy `metadata.summaryLanguage` (TASK-1004 D-3)
@@ -56,6 +60,19 @@ export class ConsultationFactory {
       metadata: props.metadata ?? null,
       externalRef: props.externalRef ?? null,
       status: props.status ?? Enums.ConsultationStatus.OPEN,
+      processing: props.processing ?? Enums.ConsultationProcessing.IDLE,
+      processingReason: null,
+      processingRefs: [],
+      processingPrior: null,
+      processingUpdatedAt: null,
+      lastActivityAt: props.lastActivityAt ?? now,
+      reopenCount: 0,
+      currentEncounterSeq: props.currentEncounterSeq ?? 1,
+      segmentSeqHead: 0,
+      recordingCursorMs: 0,
+      approvedAt: null,
+      closedAt: null,
+      closedReason: null,
       degradedReasons: props.degradedReasons ?? [],
       spokenLanguageMode: props.spokenLanguageMode ?? null,
       tenantId: props.tenantId,

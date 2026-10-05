@@ -143,9 +143,13 @@ export const PHI_MODEL_RELATIONS: Readonly<Record<string, Readonly<Record<string
     Department: 'department',
     Doctor: 'user',
     DocumentSections: 'documentSection',
+    Approvals: 'consultationApproval',
+    Encounters: 'consultationEncounter',
     Highlights: 'highlight',
     ParentConsultation: 'consultation',
   },
+  consultationApproval: { Consultation: 'consultation' },
+  consultationEncounter: { Consultation: 'consultation' },
   consultationContextSchema: { Department: 'department', Versions: 'consultationContextSchemaVersion' },
   consultationContextSchemaVersion: { Schema: 'consultationContextSchema' },
   contextItem: {

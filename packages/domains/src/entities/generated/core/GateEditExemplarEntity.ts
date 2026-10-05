@@ -34,6 +34,12 @@ export interface IGateEditExemplarEntity extends IBaseTenantEntity {
    * few-shot retriever when `agentic.fewshot.curationMode = 'enforce'`.
    */
   curationStatus?: ExemplarCurationStatus;
+  // Where the exemplar came from: GATE (mined from a gate decision; the default) or FEEDBACK
+  // (mined from clinician feedback `feedbackId`, with its de-identified reason codes and target kind).
+  source?: string;
+  feedbackId?: string | null;
+  reasonCodes?: string[];
+  targetKind?: string | null;
 }
 
 export class GateEditExemplarEntity extends BaseTenantEntity {
@@ -51,6 +57,10 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
   private _modelName?: IGateEditExemplarEntity['modelName'];
   private _promptTemplateId?: IGateEditExemplarEntity['promptTemplateId'];
   private _curationStatus?: IGateEditExemplarEntity['curationStatus'];
+  private _source?: IGateEditExemplarEntity['source'];
+  private _feedbackId?: IGateEditExemplarEntity['feedbackId'];
+  private _reasonCodes?: IGateEditExemplarEntity['reasonCodes'];
+  private _targetKind?: IGateEditExemplarEntity['targetKind'];
 
   constructor(init: IGateEditExemplarEntity) {
     super(init);
@@ -70,6 +80,10 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
     // Default PENDING so an entity built by the factory (or an older fixture)
     // is an unreviewed proposal rather than silently un-gated.
     this._curationStatus = init.curationStatus ?? ExemplarCurationStatus.PENDING;
+    this._source = init.source ?? 'GATE';
+    this._feedbackId = init.feedbackId;
+    this._reasonCodes = init.reasonCodes ?? [];
+    this._targetKind = init.targetKind;
   }
 
   public get consultationId(): IGateEditExemplarEntity['consultationId'] {
@@ -182,6 +196,38 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
 
   public set curationStatus(value: IGateEditExemplarEntity['curationStatus']) {
     this.setProperty('curationStatus', value);
+  }
+
+  public get source(): IGateEditExemplarEntity['source'] {
+    return this._source;
+  }
+
+  public set source(value: IGateEditExemplarEntity['source']) {
+    this.setProperty('source', value);
+  }
+
+  public get feedbackId(): IGateEditExemplarEntity['feedbackId'] {
+    return this._feedbackId;
+  }
+
+  public set feedbackId(value: IGateEditExemplarEntity['feedbackId']) {
+    this.setProperty('feedbackId', value);
+  }
+
+  public get reasonCodes(): IGateEditExemplarEntity['reasonCodes'] {
+    return this._reasonCodes;
+  }
+
+  public set reasonCodes(value: IGateEditExemplarEntity['reasonCodes']) {
+    this.setProperty('reasonCodes', value);
+  }
+
+  public get targetKind(): IGateEditExemplarEntity['targetKind'] {
+    return this._targetKind;
+  }
+
+  public set targetKind(value: IGateEditExemplarEntity['targetKind']) {
+    this.setProperty('targetKind', value);
   }
 
   public validate(): void {

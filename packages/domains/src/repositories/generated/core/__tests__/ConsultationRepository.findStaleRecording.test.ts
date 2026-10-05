@@ -1,15 +1,14 @@
 /**
  * ConsultationRepository.findStaleRecording (TASK-932 OD-9)
  *
- * Pins the query shape `ConsultationTimeoutSweepService.sweepStaleRecordings`
- * depends on:
+ * Pins the query shape the stale-recording auto-pause depends on:
  *   • `status` filtered to exactly `RECORDING`.
- *   • `updatedAt` strictly before the supplied cutoff.
+ *   • `lastActivityAt` (capture activity, not row churn) strictly before the
+ *     supplied cutoff.
  *   • `resourceStatus: ENABLED` (soft-deleted rows never resurface).
- *   • NO `tenantId` filter — deliberately cross-tenant, mirroring
- *     `findTimeoutSweepEligible`'s "omit tenantId = cross-tenant read" shape,
- *     since the sweep runs with no CLS tenant context.
- *   • oldest-`updatedAt`-first ordering.
+ *   • NO `tenantId` filter — deliberately cross-tenant, since the sweep runs
+ *     with no CLS tenant context.
+ *   • oldest-`lastActivityAt`-first ordering.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConsultationStatus, ResourceStatusType } from '../../../../enums';
@@ -44,10 +43,10 @@ describe('ConsultationRepository.findStaleRecording', () => {
       take: undefined,
       where: {
         status: ConsultationStatus.RECORDING,
-        updatedAt: { lt: cutoff },
+        lastActivityAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
       },
-      orderBy: [{ updatedAt: 'asc' }],
+      orderBy: [{ lastActivityAt: 'asc' }],
       include: undefined,
     });
   });
@@ -59,7 +58,7 @@ describe('ConsultationRepository.findStaleRecording', () => {
     expect(callArgs.where).not.toHaveProperty('tenantId');
   });
 
-  it('filters on exactly RECORDING, not the sweep-eligible set', async () => {
+  it('filters on exactly RECORDING', async () => {
     await repo.findStaleRecording(cutoff);
 
     const [callArgs] = delegate.findMany.mock.calls[0];

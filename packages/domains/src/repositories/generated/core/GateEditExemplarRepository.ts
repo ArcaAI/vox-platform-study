@@ -10,6 +10,9 @@ import { GateEditExemplarEntity } from '../../../entities';
 import { GateEditExemplarEntityMapper } from '../../../mappers';
 import { GateEditExemplar } from '../../../models';
 
+/** `GateEditExemplar.source` of a gate-decision exemplar (the historical source). */
+export const GATE_EXEMPLAR_SOURCE = 'GATE';
+
 @Injectable()
 export class GateEditExemplarRepository extends Repository<GateEditExemplarEntity, GateEditExemplar> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
@@ -17,7 +20,8 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
   }
 
   /**
-   * Idempotency guard for the mining job — one exemplar per consultation.
+   * Idempotency guard for the gate mining job — one GATE exemplar per
+   * consultation (feedback-mined rows, `source = FEEDBACK`, never count).
    * Returns `null` rather than throwing so the caller can treat "already mined"
    * as a no-op.
    */
@@ -27,7 +31,7 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the optional-tx signature used across hand-authored repositories
     tx?: Prisma.TransactionClient | any,
   ): Promise<GateEditExemplarEntity | null> {
-    const where = { tenantId, consultationId };
+    const where = { tenantId, consultationId, source: GATE_EXEMPLAR_SOURCE };
 
     if (tx) {
       const model = await tx.gateEditExemplar.findFirst({ where });
