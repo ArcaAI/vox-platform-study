@@ -64,7 +64,10 @@ def section_response_format(section_keys: Sequence[str]) -> dict[str, Any]:
     A section key that collides with ``redactions`` / ``sources`` replaces that property.
     """
     keys = list(dict.fromkeys(section_keys))
-    properties: dict[str, Any] = {
+    # The section keys lead: under constrained decoding a small model fills properties in declared
+    # order, and one that met `redactions` first wrote the whole note there and ran out of tokens.
+    properties: dict[str, Any] = {key: {"type": "string"} for key in keys}
+    finalizer_properties: dict[str, Any] = {
         "redactions": {
             "type": "array",
             "items": {
@@ -87,7 +90,8 @@ def section_response_format(section_keys: Sequence[str]) -> dict[str, Any]:
             },
         },
     }
-    properties.update({key: {"type": "string"} for key in keys})
+    for name, spec in finalizer_properties.items():
+        properties.setdefault(name, spec)
     return {
         "type": "json_schema",
         "json_schema": {

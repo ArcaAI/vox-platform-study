@@ -133,10 +133,16 @@ def parse_answer(content: str, plan: NotePlanV1, section_keys: Sequence[str]) ->
     A JSON object that names none of the call's sections is read as text.
     """
     data: Any = None
+    stripped = _strip_fence(content) if isinstance(content, str) else content
     try:
-        data = json.loads(_strip_fence(content))
+        data = json.loads(stripped)
     except (TypeError, ValueError):
         data = None
+        # A JSON answer cut off mid-object (the output budget ran out) is not a note: storing it
+        # as section text would put a raw blob in the chart. Every section reads as absent, so
+        # coverage reports the gaps and the repair pass regenerates them.
+        if isinstance(stripped, str) and stripped.lstrip().startswith("{"):
+            return ParsedAnswer(sections={})
     if not isinstance(data, dict):
         return ParsedAnswer(sections=split_sections(content, plan, section_keys))
     if isinstance(data.get("case_note"), str):

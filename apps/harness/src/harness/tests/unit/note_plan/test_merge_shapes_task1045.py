@@ -226,3 +226,20 @@ async def test_the_live_shape_through_the_executor_renders_and_checks_like_markd
     assert from_json.coverage.status == "complete"
     assert from_json.coverage == as_markdown.coverage
     assert as_markdown.document["case_note"] == note
+
+
+def test_the_section_keys_come_first_in_the_schema_so_a_small_model_writes_the_note_there() -> None:
+    # Under constrained decoding a 2B model filled the first declared property (`redactions`) with
+    # the whole note and ran out of tokens; the section keys must lead.
+    schema = section_response_format(["subjective", "plan"])["json_schema"]["schema"]
+    assert list(schema["properties"])[:2] == ["subjective", "plan"]
+    assert schema["required"][:2] == ["subjective", "plan"]
+
+
+def test_a_truncated_json_answer_never_becomes_section_text() -> None:
+    plan = _plan(SINGLE)
+    truncated = '{"subjective": "Chest tightness for two days [S2 E1]", "plan": "Increase metfor'
+    sections = parse_answer(truncated, plan, ALL).sections
+    assert all("{" not in text and '"subjective"' not in text for text in sections.values())
+    note = merge_sections(plan, sections, {})
+    assert '{"subjective"' not in note
