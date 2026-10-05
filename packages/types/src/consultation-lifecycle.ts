@@ -414,12 +414,30 @@ export interface ConsultationActivityPage {
   aggregates?: Aggregates;
 }
 
+/** A source a recap line cites: a transcript segment (seekable via `t0Ms`) or an attachment. */
+export interface RecapCitation {
+  itemId: string;
+  versionNumber: number;
+  label: string;
+  kind: 'segment' | 'attachment';
+  t0Ms?: number;
+}
+
+export interface RecapLine {
+  text: string;
+  citations: RecapCitation[];
+}
+
+/** The six fixed recap keys, in display order. */
+export const RECAP_SECTION_KEYS = ['reason', 'findings', 'medicines', 'sent_for', 'since_then', 'still_open'] as const;
+export type RecapSectionKey = (typeof RECAP_SECTION_KEYS)[number];
+
 export interface EncounterRecap {
   encounterSeq: number;
   contextItemId: string;
   versionNumber: number;
   text: string;
-  sections?: Array<{ key: string; label?: string; text: string }>;
+  sections?: Array<{ key: string; label?: string; text: string; lines?: RecapLine[] }>;
   generatedAt: string;
   ledgerContextItemId: string;
 }
