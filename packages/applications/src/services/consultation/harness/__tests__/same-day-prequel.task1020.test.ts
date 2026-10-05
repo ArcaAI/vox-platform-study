@@ -37,7 +37,7 @@ const row = (over: Partial<Row> & { id: string }): Row => ({
   patientId: PATIENT,
   appointmentDate: DAY,
   parentConsultationId: null,
-  status: 'SIGNED',
+  status: 'APPROVED',
   createdAt: new Date('2026-09-29T04:15:00.000Z'),
   ...over,
 });
@@ -62,13 +62,13 @@ function readers(rows: Row[], notes: Record<string, Partial<Record<ContextItemTy
 
 describe('TASK-1020 — resolveSameDayPrequel', () => {
   it('renders the same-day parent note as one dated, attributed block', async () => {
-    const morning = row({ id: 'morning', createdAt: new Date('2026-09-29T04:15:00.000Z'), status: 'SIGNED' });
+    const morning = row({ id: 'morning', createdAt: new Date('2026-09-29T04:15:00.000Z'), status: 'APPROVED' });
     const afternoon = row({ id: 'afternoon', parentConsultationId: 'morning', status: 'RECORDING' });
     const deps = readers([morning], { morning: { [ContextItemType.SIGNED_NOTE]: [note('MORNING-SIGNED-NOTE plan: CBC, LFT')] } });
 
     const prequel = await resolveSameDayPrequel(deps, afternoon);
 
-    expect(prequel.summary).toBe('### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-SIGNED-NOTE plan: CBC, LFT');
+    expect(prequel.summary).toBe('### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-SIGNED-NOTE plan: CBC, LFT');
     expect(prequel.hasSameDayPrequel).toBe(true);
     expect(hasSameDayPrequel(prequel.summary)).toBe(true);
   });
@@ -93,9 +93,9 @@ describe('TASK-1020 — resolveSameDayPrequel', () => {
     const at = async (timeZone: string) =>
       (await resolveSameDayPrequel(deps, row({ id: 'pm', parentConsultationId: 'morning' }), { timeZone })).summary.split('\n')[0];
 
-    expect(await at('America/New_York')).toBe('### Earlier visit today (12:26 EDT, status SIGNED)');
-    expect(await at('UTC')).toBe('### Earlier visit today (16:26 UTC, status SIGNED)');
-    expect(await at('Asia/Kathmandu')).toMatch(/^### Earlier visit today \(22:11 GMT\+5:45, status SIGNED\)$/);
+    expect(await at('America/New_York')).toBe('### Earlier visit today (12:26 EDT, status APPROVED)');
+    expect(await at('UTC')).toBe('### Earlier visit today (16:26 UTC, status APPROVED)');
+    expect(await at('Asia/Kathmandu')).toMatch(/^### Earlier visit today \(22:11 GMT\+5:45, status APPROVED\)$/);
   });
 
   it('falls back to UTC for a zone this runtime cannot resolve, and when none is passed', async () => {
@@ -286,7 +286,7 @@ describe('TASK-1020 — resolveSameDayPrequel', () => {
 
     const prequel = await resolveSameDayPrequel(deps, row({ id: 'pm', parentConsultationId: 'morning' }));
 
-    expect(prequel.summary).toBe('### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-RAW');
+    expect(prequel.summary).toBe('### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-RAW');
   });
 
   it('degrades to empty — never throws — when a store read fails', async () => {

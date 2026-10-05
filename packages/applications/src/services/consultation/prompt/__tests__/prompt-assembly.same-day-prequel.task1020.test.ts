@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const PLAIN_BODY = 'Write the note in {{context.conversation_language}}.';
 const V1_BODY = ['- Tests: {{context.formatted_test_results}}', '- Language: {{context.language_name}}'].join('\n');
 
-const PREQUEL = '### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-NOTE plan: CBC, LFT';
+const PREQUEL = '### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-NOTE plan: CBC, LFT';
 const RESULTS = '- Haemoglobin: 10.2 g/dL (ref 13-17) [L]';
 
 const mockPromptResolutionService = { resolve: vi.fn() };
