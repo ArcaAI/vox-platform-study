@@ -196,6 +196,16 @@ export class GoverningWorkflowAsrReader {
   }
 
   /**
+   * TASK-1042 (C1) — a workflow slug's ACTIVE published version (tenant-scoped), or `null` for an
+   * unknown / unpublished / foreign slug. The session-create `workflowSlug` arm reads it.
+   */
+  async readPublishedWorkflow(tenantId: string, slug: string): Promise<GoverningWorkflow | null> {
+    const definition = await this.workflowDefinitions.findPublishedBySlug(tenantId, slug);
+    if (!definition || definition.tenantId !== tenantId) return null;
+    return { slug: definition.slug, versionNumber: definition.versionNumber ?? null, compiledConfig: definition.compiledConfig };
+  }
+
+  /**
    * The ONE SPEECH_TO_TEXT agent the workflow names, `null` when it names none, or a 409
    * (`ambiguous`) when it names more than one. Nodes are classified by the referenced agent's
    * TASK: its published row, else any row of its lineage (an agent unpublished after the
