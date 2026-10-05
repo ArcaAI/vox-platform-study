@@ -3,6 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { ConfigResolverModule } from '../../config-resolver';
 import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 import { INoteGenerationService } from './INoteGenerationService';
 import { NoteGenerationService } from './note-generation.service';
 
@@ -16,7 +17,7 @@ import { NoteGenerationService } from './note-generation.service';
  * realtime cascade resolver `resolveConfig` uses.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, ConfigResolverModule, HarnessGatewayServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, ConfigResolverModule, HarnessGatewayServiceModule, ConsultationLifecycleGateModule],
   providers: [
     NoteGenerationService,
     {

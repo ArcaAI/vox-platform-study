@@ -24,6 +24,8 @@ import { HarnessLiveAssistServiceModule } from '../harness/harness-live-assist.s
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { LivePreSummaryModule } from '../summary/live-pre-summary.module';
 import { ConfigResolverModule } from '../../config-resolver/config-resolver.module';
+import { HarnessInternalServiceModule } from '../harness/harness-internal.service.module';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -129,6 +131,11 @@ import { ConfigResolverModule } from '../../config-resolver/config-resolver.modu
     // finalizer. The report repository itself comes from `CoreDatabaseModule` above. Absent ⇒
     // the handoff carries no style and the note finalizes in plain clinical prose.
     ConfigResolverModule,
+    // TASK-1045 — the handoff composes the note plan (`HarnessInternalService.composeNotePlan`) and
+    // fails processing by name through the lifecycle gate when it cannot. No cycle: neither
+    // module's import closure reaches this one.
+    HarnessInternalServiceModule,
+    ConsultationLifecycleGateModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService, LoopContextSignalService],

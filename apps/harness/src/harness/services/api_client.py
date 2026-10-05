@@ -894,6 +894,7 @@ class ApiClient:
         template: str | None = None,
         dna_style_id: str | None = None,
         conversation_language: str | None = None,
+        note_plan_id: str | None = None,
     ) -> AssembleResponse:
         body = _prune(
             {
@@ -902,6 +903,9 @@ class ApiClient:
                 "template": template,
                 "dnaStyleId": dna_style_id,
                 "conversationLanguage": conversation_language,
+                # The plan this run was started with: apps/api reuses it instead of composing a
+                # second one. Pruned when None ⇒ byte-identical body for a run without a plan.
+                "notePlanId": note_plan_id,
             }
         )
         data = await self._post(f"/consultations/{consultation_id}/assemble", body)

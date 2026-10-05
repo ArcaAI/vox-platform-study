@@ -1,12 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationRepository, ResourceType } from '@arcaai/domains';
+import { ConsultationProcessing, ConsultationRepository, ResourceType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
+import { HarnessInternalService } from '../harness/harness-internal.service';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
+import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanRef } from '../note-composition/note-plan.types';
 import { ConsultationPipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../events/consultation.events';
 import { INoteGenerationService } from './INoteGenerationService';
 import { GenerateParams, GenerationDecision, GenerationTrigger, HARNESS_SUPPORTED_TRIGGERS } from './types';
@@ -45,6 +49,11 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     // TASK-882) — optional + trailing so legacy positional fixtures keep compiling; when absent,
     // resolveConfig falls back to DEFAULT_PIPELINE_CONFIG.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // The note plan is composed by `HarnessInternalService`, reached at call time: its module
+    // imports ConsultationJobServiceModule, which imports this one, so a static import would close
+    // a module cycle. Optional + trailing so positional fixtures keep compiling.
+    @Optional() private readonly moduleRef?: ModuleRef,
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
   ) {
     // NoteGenerationService wraps existing generation calls and never
     // broadcasts its own sys-events (the wrapped services already do — see
@@ -85,6 +94,8 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       });
     }
 
+    const notePlanRef = await this.composeNotePlan(params);
+
     // NOT optional-chained (`.start(` not `?.start(`) — a missing gateway
     // throws here rather than silently no-op'ing. See the constructor note.
     await this.harnessGatewayService.start(params.consultationId, {
@@ -97,6 +108,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       redactionRules: params.redactionRules,
       externalPatientId,
       ...(params.supersede ? { supersede: true } : {}),
+      ...(notePlanRef ? { notePlanRef } : {}),
     });
 
     this.logger.log({
@@ -108,6 +120,40 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     });
 
     return { generator: 'harness', harnessJobId };
+  }
+
+  /**
+   * Compose the note plan the harness run executes, before it starts. A plan that cannot fit the
+   * model's window, or a model with no declared window, fails the consultation's processing with
+   * that reason and the start is refused (rethrown) — never a run over truncated input. Any other
+   * composition failure starts the run without a plan (its `assemble` composes or refuses itself).
+   */
+  private async composeNotePlan(params: GenerateParams): Promise<NotePlanRef | undefined> {
+    let composer: HarnessInternalService | undefined;
+    try {
+      composer = this.moduleRef?.get(HarnessInternalService, { strict: false });
+    } catch {
+      composer = undefined; // swallow-ok: not wired in this composition — start without a plan
+    }
+    if (!composer) return undefined;
+    try {
+      const summary = await composer.composeNotePlan(params.consultationId, { tenantId: params.tenantId, userId: params.userId, mode: 'final' });
+      return summary.notePlanRef;
+    } catch (error) {
+      const body = error instanceof HttpException ? error.getResponse() : null;
+      const code = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).code : undefined;
+      if (code === NOTE_INPUT_EXCEEDS_CONTEXT || code === 'NOTE_MODEL_CONTEXT_UNDECLARED') {
+        await this.lifecycleGate?.setProcessing(params.consultationId, ConsultationProcessing.FAILED, code);
+        throw error;
+      }
+      this.logger.warn({
+        message: 'Note plan could not be composed before the harness start — starting without a plan',
+        consultationId: params.consultationId,
+        code: typeof code === 'string' ? code : undefined,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   /**

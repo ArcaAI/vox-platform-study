@@ -1691,6 +1691,7 @@ async def assemble_prompt(payload: AssembleInput) -> AssembleResponse:
         template=payload.template,
         dna_style_id=payload.dna_style_id,
         conversation_language=payload.conversation_language,
+        note_plan_id=payload.note_plan_id,
     )
     # Offload the (large) assembled prompts so they don't enter Temporal
     # history; ``generate`` resolves them inline-or-ref. Below the threshold they stay
