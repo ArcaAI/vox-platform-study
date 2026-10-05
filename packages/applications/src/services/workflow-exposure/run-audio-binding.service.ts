@@ -16,7 +16,8 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
 import { GoverningWorkflowAsrReader } from '../stt/agent-resolver/governing-workflow-asr';
 import { effectiveExposureSettings, isWorkflowEntryAllowed } from '../workflow-definition/exposure-settings';
 // Leaf module, not the `../workflow-run` barrel: a DI class token (see workflow-exposure.service.ts).
-import { RUN_STARTED_BY_KEY, RunPrincipalAccessService, readRunStartedBy, sameRunPrincipal, type RunPrincipal } from '../workflow-run/run-principal-access';
+import { RunPrincipalAccessService, sameRunPrincipal } from '../workflow-run/run-principal-access';
+import { RUN_AUDIO_BOUND_RUN_KEY, readBoundRun, readSessionOwner, type BoundRun } from './run-audio-metadata';
 import type { StartWorkflowRunLiveAudio } from '../consultation/harness/harness-gateway.service';
 
 /**
@@ -49,21 +50,8 @@ import type { StartWorkflowRunLiveAudio } from '../consultation/harness/harness-
  * before any read.
  */
 
-/** The `_metadata` key a streaming job records its opener under (C8). */
-export const STREAM_SESSION_OWNER_KEY = 'owner';
-/** The `_metadata` key a streaming job records the standalone run it feeds under (C8). */
-export const RUN_AUDIO_BOUND_RUN_KEY = 'boundRun';
-
 /** STT job statuses of a session that is still live — the sandbox's `LIVE_RECORDING_STATUSES`. */
 export const LIVE_STREAM_JOB_STATUSES: ReadonlySet<string> = new Set(['QUEUED', 'PROCESSING']);
-
-export interface BoundRun {
-  runId: string;
-  workflowSlug: string | null;
-  versionNumber: number | null;
-  /** ISO-8601 instant the binding was written; the C5 `timeout` clock starts here. */
-  boundAt: string | null;
-}
 
 /** The workflow version a run is starting on, as `invoke` resolved it. */
 export interface RunAudioWorkflow {
@@ -122,24 +110,6 @@ export function streamAudioKeysOf(compiledConfig: unknown): string[] {
     const kind = properties[key];
     return isPlainObject(kind) && isPlainObject(kind.properties) && isPlainObject(kind.properties.sttSessionId) && !isMediaReferenceSchema(kind);
   });
-}
-
-/** The session's opener (C8), or `null` — none recorded (a session opened before C8), or malformed. */
-export function readSessionOwner(metaData: unknown): RunPrincipal | null {
-  if (!isPlainObject(metaData)) return null;
-  return readRunStartedBy({ [RUN_STARTED_BY_KEY]: metaData[STREAM_SESSION_OWNER_KEY] });
-}
-
-/** The standalone run a streaming job is bound to, or `null`. */
-export function readBoundRun(metaData: unknown): BoundRun | null {
-  const value = isPlainObject(metaData) ? metaData[RUN_AUDIO_BOUND_RUN_KEY] : undefined;
-  if (!isPlainObject(value) || typeof value.runId !== 'string' || value.runId.length === 0) return null;
-  return {
-    runId: value.runId,
-    workflowSlug: typeof value.workflowSlug === 'string' ? value.workflowSlug : null,
-    versionNumber: typeof value.versionNumber === 'number' ? value.versionNumber : null,
-    boundAt: typeof value.boundAt === 'string' ? value.boundAt : null,
-  };
 }
 
 /** `true` while the session's job row is live (QUEUED / PROCESSING, never completed). */

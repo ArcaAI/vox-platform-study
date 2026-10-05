@@ -12,10 +12,9 @@ import {
   RunAudioBindingService,
   assertNoLiveAudio,
   liveAudioRequestsIn,
-  readBoundRun,
-  readSessionOwner,
   type RunAudioWorkflow,
 } from '../run-audio-binding.service';
+import { readBoundRun, readSessionOwner } from '../run-audio-metadata';
 
 const TENANT = 't-1';
 const RUN_ID = 'run-1';

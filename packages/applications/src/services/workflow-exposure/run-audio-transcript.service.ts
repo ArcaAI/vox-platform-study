@@ -3,7 +3,8 @@ import { TranscriptionJobRepository, TranscriptionJobType } from '@arcaai/domain
 import { IRedisCacheService } from '../baseServices/redis';
 import { WORKFLOW_RUNS_DEFAULTS, WORKFLOW_RUNS_LIVE_AUDIO_MAX_SECONDS_KEY } from '../settings-registry/descriptors/workflow-runs.descriptors';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
-import { isLiveStreamJob, liveAudioMaxSecondsOf, readBoundRun } from './run-audio-binding.service';
+import { isLiveStreamJob, liveAudioMaxSecondsOf } from './run-audio-binding.service';
+import { readBoundRun } from './run-audio-metadata';
 
 /**
  * TASK-1042 (C5) — what the harness reads of a run's bound live STT session:
