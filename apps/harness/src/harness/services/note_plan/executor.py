@@ -316,7 +316,12 @@ async def execute_plan(
             call_index=None,
             section_keys=tuple(repair_keys),
             system=system,
-            user=_user(user_prefix, repair_directive(plan, coverage, repair_keys)),
+            user=_user(
+                user_prefix,
+                repair_directive(
+                    plan, coverage, repair_keys, {k: generated.get(k, "") for k in repair_keys}
+                ),
+            ),
             max_tokens=max(
                 call.max_tokens for call in plan.calls if set(call.section_keys) & set(repair_keys)
             ),
