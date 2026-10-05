@@ -110,7 +110,8 @@ export function SettingsDialog({ open, onOpenChange, readOnly }: SettingsDialogP
           <DialogTitle>Workflow settings</DialogTitle>
           <DialogDescription>How callers reach this workflow, what starts it, and the shape of its input. Saved with the graph and frozen when you publish.</DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-1">
+        {/* Focusable so it scrolls by keyboard when every control is disabled (a published version) — WCAG 2.1.1. */}
+        <div tabIndex={0} aria-label="Workflow settings" className="focus-visible:ring-ring flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto rounded-md pr-1 outline-none focus-visible:ring-2">
           <FieldSet disabled={readOnly}>
             <FieldLegend>Connections</FieldLegend>
             <FieldDescription>Ways a developer’s app can call this workflow. Some are required by what the workflow does — those are locked on, with the reason.</FieldDescription>

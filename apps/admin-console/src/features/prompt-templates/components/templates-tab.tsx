@@ -215,13 +215,14 @@ export function TemplatesTab({ creating, onCreatingChange, onCountChange }: Temp
           const tags = row.original.tags ?? [];
           if (tags.length === 0) return <span className="text-muted-foreground">{'—'}</span>;
           return (
-            <span className="flex flex-wrap items-center gap-1">
-              {tags.slice(0, 3).map((tag) => (
-                <Badge key={tag} variant="outline" className="rounded-full font-mono text-[10px]">
+            // One line: wrapped tags overflowed the 48px virtualized row and were clipped (live check, TASK-1036).
+            <span className="flex min-w-0 items-center gap-1 overflow-hidden" title={tags.join(', ')}>
+              {tags.slice(0, 2).map((tag) => (
+                <Badge key={tag} variant="outline" className="min-w-0 shrink truncate rounded-full font-mono text-[10px]">
                   {tag}
                 </Badge>
               ))}
-              {tags.length > 3 ? <span className="text-muted-foreground text-xs">+{tags.length - 3}</span> : null}
+              {tags.length > 2 ? <span className="text-muted-foreground shrink-0 text-xs">+{tags.length - 2}</span> : null}
             </span>
           );
         },
