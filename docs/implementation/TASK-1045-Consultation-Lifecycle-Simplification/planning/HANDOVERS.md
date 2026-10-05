@@ -142,3 +142,6 @@
 | H-137 | E8 | evalGate enforcement | follow-up | no agent publish/republish path evaluates `instruction.evalGate`; the gate bites only via manual run, promotion with `targetGoldenSetId`, or node `config.evalGate` on approve/pin — rollout must run the set and require a pass | follow-up (owner) |
 | H-138 | E8 | live A/B f16 vs q4_0 KV | rollout | run the set live per KV setting on the cluster before switching (P-E risk 3) | pending (rollout) |
 | H-139 | E8 | metric wording sensitivity | follow-up | anchors match fixed words/numbers ("four weeks" vs "4 weeks") — the same matcher drives runtime coverage gaps → calibrate number-word normalisation in `coverage.py` after the live run | follow-up |
+| H-140 | FD1 | ALaaS transcript edit | U9 | owner requirement "update the transcript … save as feedback" had no UI (protocol/reducer/model supported SEGMENT corrections; only NOTE wired) → lane U9 adds the hover edit on final segments | pending (U9) |
+| H-141 | FD1 | ALaaS `hope-codegen.mjs` header comment | follow-up | comment says `--check` exits 0 without credentials; `hope-codegen-lib.js` exits 1 (lib is right) | follow-up |
+| H-142 | FD1 | ALaaS 4.x shim header | note | ALaaS's 4.x shim sends no `X-Hope-Lifecycle`, so it reads the projected old vocabulary (intended); the 5.x adapter (F8) must send it | pending (F8) |
