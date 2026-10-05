@@ -15,21 +15,30 @@ export function wantsLifecycleVocabulary(headerValue: string | string[] | undefi
   return typeof value === 'string' && value.trim() === HOPE_LIFECYCLE_VERSION;
 }
 
+/** The `processingReason` a written harness note leaves with processing IDLE: the note waits for the clinician. */
+export const NOTE_READY_REASON = 'NOTE_READY';
+
 /**
  * Project a lifecycle state onto the status an older client (ALaaS 4.1) understands.
  *
  * PAUSED reads as RECORDING (older clients have no pause); STOPPED splits by what the platform
- * is doing — summarizing reads DRAFT_PENDING_SENSORS, a draft waiting for (or failed before)
- * review reads PENDING_REVIEW, anything else reads DRAINING; APPROVED reads SIGNED. Every other
- * value exists in both vocabularies and is returned as is.
+ * is doing — summarizing reads DRAFT_PENDING_SENSORS, a note waiting for review (IDLE with
+ * reason {@link NOTE_READY_REASON}, or AWAITING_REVIEW) or failed reads PENDING_REVIEW, anything
+ * else reads DRAINING; APPROVED reads SIGNED. Every other value exists in both vocabularies and is
+ * returned as is.
  */
-export function projectLegacyConsultationStatus(status: ConsultationStatus, processing: ConsultationProcessing): LegacyConsultationStatus {
+export function projectLegacyConsultationStatus(
+  status: ConsultationStatus,
+  processing: ConsultationProcessing,
+  processingReason?: string | null,
+): LegacyConsultationStatus {
   switch (status) {
     case 'PAUSED':
       return 'RECORDING';
     case 'STOPPED':
       if (processing === 'SUMMARIZING') return 'DRAFT_PENDING_SENSORS';
       if (processing === 'AWAITING_REVIEW' || processing === 'FAILED') return 'PENDING_REVIEW';
+      if (processing === 'IDLE' && processingReason === NOTE_READY_REASON) return 'PENDING_REVIEW';
       return 'DRAINING';
     case 'APPROVED':
       return 'SIGNED';

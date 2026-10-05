@@ -380,6 +380,12 @@ describe('old-vocabulary projection', () => {
     });
   });
 
+  it('a stopped consultation whose note is written (IDLE + NOTE_READY) reads PENDING_REVIEW to older clients', () => {
+    const ready = { ...consultationRow('STOPPED', 'IDLE'), processingReason: 'NOTE_READY' };
+    expect(projectLifecycleVocabulary(ready)).toMatchObject({ status: 'PENDING_REVIEW', lifecycle: { status: 'STOPPED', processing: 'IDLE' } });
+    expect(projectLifecycleVocabulary(consultationRow('STOPPED', 'IDLE'))).toMatchObject({ status: 'DRAINING' });
+  });
+
   it('leaves other status fields alone', () => {
     const body = { ...consultationRow('APPROVED'), governingRun: { status: 'RUNNING' } };
     expect(projectLifecycleVocabulary(body)).toMatchObject({ status: 'SIGNED', governingRun: { status: 'RUNNING' } });

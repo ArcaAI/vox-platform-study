@@ -18,6 +18,7 @@ import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, Context
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HarnessDraftRequest } from '../dto';
 import fixture from '../../../../../../../tests/contracts/note-plan.fixture.json';
+import { NOTE_READY_REASON } from '../../lifecycle/legacy-status-projection';
 
 const TENANT = '50000000-0000-0000-0000-000000000045';
 const CID = '0199a000-0000-7000-8000-0000000000c1';
@@ -149,7 +150,7 @@ describe('TASK-1045 E6 — persistDraft records coverage on SummaryMeta', () => 
     // `encryptedCoverageReport`), and before the insert.
     expect(summaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(meta, expect.anything());
     expect(summaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(summaryMetaRepository.create.mock.invocationCallOrder[0]!);
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
     expect(result).toEqual({ contextItemId: 'ctx-new', versionNumber: 1 });
   });
 
@@ -181,7 +182,7 @@ describe('TASK-1045 E6 — persistDraft records coverage on SummaryMeta', () => 
     const meta = createdMeta(summaryMetaRepository);
     expect(meta.coverageStatus).toBe('unchecked');
     expect(meta.coverageGapCount).toBe(1);
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
   });
 
   it('no coverage (a run without a plan): the coverage columns stay null and nothing else changes', async () => {
@@ -193,7 +194,7 @@ describe('TASK-1045 E6 — persistDraft records coverage on SummaryMeta', () => 
     expect(meta.coverageStatus).toBeNull();
     expect(meta.coverageGapCount).toBeNull();
     expect(meta.coverageReport).toBeNull();
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
   });
 
   it('a malformed coverage never costs the note: it is persisted with no coverage recorded', async () => {
@@ -203,7 +204,7 @@ describe('TASK-1045 E6 — persistDraft records coverage on SummaryMeta', () => 
 
     expect(result.contextItemId).toBe('ctx-new');
     expect(createdMeta(summaryMetaRepository).coverageStatus).toBeNull();
-    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE);
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CID, ConsultationProcessing.IDLE, NOTE_READY_REASON);
   });
 
   it('an adopted draft re-stamps coverage on the existing meta and returns the new version number', async () => {

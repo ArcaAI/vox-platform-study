@@ -19,7 +19,7 @@ import { ConsultationPipelineEvent } from '../../events/consultation.events';
 import { ConsultationLifecycleService } from '../consultation-lifecycle.service';
 import { ConsultationLifecycleGate } from '../consultation-lifecycle.gate';
 import { ConsultationLifecycleEventPublisher, LIFECYCLE_REPLAY_SIZE, lifecycleChannel } from '../lifecycle-event.publisher';
-import { projectLegacyConsultationStatus } from '../legacy-status-projection';
+import { NOTE_READY_REASON, projectLegacyConsultationStatus } from '../legacy-status-projection';
 import { DocumentSectionService } from '../../document-section/document-section.service';
 import { encounterStoppedRedisKey } from '../../transcript-record/transcript-record.keys';
 
@@ -709,6 +709,14 @@ describe('projectLegacyConsultationStatus (ALaaS 4.1 window)', () => {
     ['CLOSED_INCOMPLETE', 'IDLE', 'CLOSED_INCOMPLETE'],
   ] as const)('%s + %s → %s', (status, processing, legacy) => {
     expect(projectLegacyConsultationStatus(status, processing)).toBe(legacy);
+  });
+
+  // A written note waits for the clinician with processing IDLE + reason NOTE_READY; an older
+  // client knew that moment as PENDING_REVIEW. Stopped + IDLE with no note yet stays DRAINING.
+  it('STOPPED + IDLE + NOTE_READY → PENDING_REVIEW; without the reason it stays DRAINING', () => {
+    expect(projectLegacyConsultationStatus('STOPPED', 'IDLE', NOTE_READY_REASON)).toBe('PENDING_REVIEW');
+    expect(projectLegacyConsultationStatus('STOPPED', 'IDLE', null)).toBe('DRAINING');
+    expect(projectLegacyConsultationStatus('STOPPED', 'SUMMARIZING', NOTE_READY_REASON)).toBe('DRAFT_PENDING_SENSORS');
   });
 });
 

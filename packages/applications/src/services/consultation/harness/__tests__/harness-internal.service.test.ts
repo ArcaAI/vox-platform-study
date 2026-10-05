@@ -16,6 +16,7 @@ import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, Harness
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
 import { ConsultationJobService } from '../../jobs/consultation-job.service';
+import { NOTE_READY_REASON } from '../../lifecycle/legacy-status-projection';
 
 /**
  * `consultationRepository.findById` fixtures used to be plain
@@ -1179,7 +1180,7 @@ describe('HarnessInternalService', () => {
       );
 
       // processing -> IDLE through the lifecycle gate; the consultation row (status, `_version`) is not written
-      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE, NOTE_READY_REASON);
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
 
       expect(result).toEqual({ contextItemId: 'ctx-draft-1', versionNumber: 1 });
@@ -1578,7 +1579,7 @@ describe('HarnessInternalService', () => {
 
       await service.persistDraft('consultation-1', draftBody());
 
-      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE, NOTE_READY_REASON);
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
@@ -1833,7 +1834,7 @@ describe('HarnessInternalService', () => {
 
     it('moves processing SUMMARIZING -> IDLE (the assured note waits for the clinician) — no status write', async () => {
       await service.finalizeAssurance('consultation-1', finalizeBody());
-      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE, NOTE_READY_REASON);
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
@@ -1962,7 +1963,7 @@ describe('HarnessInternalService', () => {
 
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
       expect(actions).not.toContain(HarnessAuditAction.POST_SIGN_FLAG);
-      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE, NOTE_READY_REASON);
     });
 
     // -----------------------------------------------------------------
@@ -2033,7 +2034,7 @@ describe('HarnessInternalService', () => {
         expect.objectContaining({ recorded: true, contextItemId: 'ctx-draft-1' }),
       );
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE, NOTE_READY_REASON);
     });
   });
 

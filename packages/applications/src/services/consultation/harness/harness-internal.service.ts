@@ -125,6 +125,7 @@ import type {
 } from './dto';
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
+import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
 
 /**
  * The routing task keys a harness worker may resolve a model for over
@@ -2238,6 +2239,8 @@ export class HarnessInternalService extends BaseService {
             consultation,
             isEarly ? ConsultationProcessing.SUMMARIZING : ConsultationProcessing.IDLE,
             adoptionSkipped ? `persistDraft (adoption skipped: ${adoptionSkipped})` : 'persistDraft',
+            // The written note waits for the clinician (older clients read PENDING_REVIEW).
+            isEarly ? undefined : NOTE_READY_REASON,
           );
         }
 
@@ -2411,7 +2414,7 @@ export class HarnessInternalService extends BaseService {
         // draft, so a retry after the move, or a consultation another writer has moved on, is a
         // no-op rather than a regression. No status write.
         if (consultation && consultation.processing === ConsultationProcessing.SUMMARIZING) {
-          await this.setHarnessProcessing(consultation, ConsultationProcessing.IDLE, 'finalizeAssurance');
+          await this.setHarnessProcessing(consultation, ConsultationProcessing.IDLE, 'finalizeAssurance', NOTE_READY_REASON);
         }
 
         // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict). TASK-1014: the

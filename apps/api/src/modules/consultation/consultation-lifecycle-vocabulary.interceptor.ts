@@ -57,7 +57,11 @@ function project(value: unknown, depth: number): unknown {
   if (pair && typeof value.status === 'string') {
     out = {
       ...value,
-      status: projectLegacyConsultationStatus(pair.status as never, pair.processing as never),
+      status: projectLegacyConsultationStatus(
+        pair.status as never,
+        pair.processing as never,
+        typeof value.processingReason === 'string' ? value.processingReason : null,
+      ),
       ...(pair.fromCapture ? { lifecycle: { status: pair.status, processing: pair.processing } } : {}),
     };
   }
