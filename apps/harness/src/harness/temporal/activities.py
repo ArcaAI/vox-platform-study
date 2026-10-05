@@ -102,6 +102,7 @@ from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.note_plan.executor import (
+    ACTIVITY_NOTE_SECTION_GROUP,
     REPAIR_STEP_OFFSET,
     NoteCallRecord,
     NoteCallRequest,
@@ -1788,6 +1789,15 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation that already
     # completed. Never start one whose per-call timeout cannot fit in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
+    # The run-record keys of this note's ONE call (the single section group of a one-call note),
+    # on the step that served and on every candidate that lost — ids and numbers only.
+    call_record: dict[str, Any] = {
+        "activity_kind": ACTIVITY_NOTE_SECTION_GROUP,
+        "call_index": 1,
+        "call_count": 1,
+    }
+    if isinstance(hp.get("max_tokens"), int) and not isinstance(hp.get("max_tokens"), bool):
+        call_record["max_tokens"] = hp["max_tokens"]
 
     prompt = user_prompt
     system_prompt = system_prompt_in
@@ -1859,12 +1869,15 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
             failed_attempts.append(
                 FailedAttempt(
                     attempt_started_at,
-                    failed_attempt_stats(
-                        provider=attempt_provider,
-                        model=attempt_model,
-                        funding_tier=attempt_funding_tier,
-                        total_ms=round((perf_counter() - attempt_started) * 1000.0),
-                    ),
+                    {
+                        **failed_attempt_stats(
+                            provider=attempt_provider,
+                            model=attempt_model,
+                            funding_tier=attempt_funding_tier,
+                            total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                        ),
+                        **call_record,
+                    },
                 )
             )
             if index + 1 < len(attempts):
@@ -1970,6 +1983,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     egress = egress_counts(result.egress)
     if egress is not None:
         llm_stats["egress"] = egress
+    llm_stats.update(call_record)
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
