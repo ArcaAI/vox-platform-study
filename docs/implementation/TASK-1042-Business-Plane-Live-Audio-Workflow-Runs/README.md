@@ -1,6 +1,6 @@
 # TASK-1042 — Live audio into standalone workflow runs (business plane)
 
-**Status:** In Progress — gate green; merging into dev-2.2. e2e and the live proof are still to run.
+**Status:** Review — merged into dev-2.2; gate, e2e and the vox-node live proof are green. Awaiting owner sign-off. The SDK changes ship with the unreleased 5.0.0 (TASK-1039), which the owner publishes locally.
 **Previously:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
 **Type:** feature (gateway + harness + SDK + docs)
 **Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
@@ -285,6 +285,7 @@ Orchestrator commits:
 | D3 | `RUN_AUDIO_AGENT_MISMATCH` also covers a graph with zero or several STT nodes. A non-string `sttSessionId` is 400 without a code. C5 answers 400 without `runId` or `X-Tenant-Id`, and 503 when Redis is unreadable. | These are additions only; the frozen rows are unchanged. |
 | D4 | `packages/domains` `TranscriptionJobEntity` / `Factory` gained `metaData`. | It is required for C8 to persist. |
 | D5 | The SDK lane edited `PluginManager`, `STTProcessor` and `StreamingBackendSTTProvider`. | These are pass-throughs; without them `workflowSlug` never reaches the wire. |
+| D7 | vox-node `runWithAudio` `finalize()` tolerates a 404 from `closeStreamSession` **after a successful socket finalize**. | **Found by the live proof:** the socket `stop` ends the session on the gateway, so the DELETE that follows answers 404 and `finalize()` threw although the audio had ended cleanly. A 404 after a FAILED finalize, or any other error, still surfaces. Pinned by two unit tests. |
 | D6 | `@arcaai/workflow-contract` `bindings.ts` + `py-workflow-contract` `bindings.py`: a `context.<kind>` path whose schema is the stream-audio payload (an object whose only property is the string `sttSessionId`) resolves as `audio`, not `json`. | **Found by the e2e spec, missed by every lane:** the publish gate refused `context.mic` → ASR `audio` with `BINDING_TYPE_MISMATCH`, so no standalone live-audio workflow could be published, the very graph WF-SET-005 requires. Pinned by two shared `bindings.fixture.json` cases (positive + narrowness). Blob-delivered audio derives to a media reference that cannot be told from a document by shape, so it still types as `json` (follow-up). |
 
 ### 6.5 Gate: one pass after the complete integration (orchestrator, 2026-10-05)
@@ -330,14 +331,37 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 - The first run surfaced D6. A workflow that DECLARES settings without `socket` cannot publish a stream-audio Input (WF-SET-003 ERROR), so `LIVE_AUDIO_UNSUPPORTED` is only reachable through a legacy definition.
 - Also fixed in this round: mypy on `py-workflow-contract` (the gate script had run mypy for the harness only) found two `arg-type` errors in WF-SET-005; both are fixed.
 
-**Not yet run:**
-- The live proof (vox-node `runWithAudio` with a WAV, browser `useRunAudio`), which needs the dev stack and STT.
+**Full e2e suite** (the final one for dev-2.2, at the TASK-1036 orchestrator's request), test API built from dev-2.2 `c04d05eec`, `RESET_DB=false`, 6.8 min: **1,436 passed, 82 skipped, 2 failed, 0 flaky.** Neither failure is caused by this ticket:
+- `task-933-service-account-consultation` › "drives the consultation…": **environmental**. Recording start needs the harness to record the governing run, and the test harness on 8966 is not running; the test API log shows 9 `ECONNREFUSED` to 8966. It fails alone too.
+- `task-959-usage-surface` › "the day bucket moves by exactly what was billed into it": **shared state under parallel workers**. It passes alone, 5/5.
+
+**Not run:** the browser `useRunAudio` live pass (console Test tab / an app). It is unit-tested and shares the gateway path the vox-node proof exercised.
+
+### 6.6 Live proof (dev stack, 2026-10-05 03:44 UTC, coordinated with the TASK-1036 session)
+
+- **Setup:** the dev stack was restarted from dev-2.2 `0f00ddc3b`, then the primary checkout was rebuilt for `@arcaai/workflow-contract` (D6) and the gateway restarted.
+- **Run:** one vox-node `hope.workflows.runWithAudio` call with an API key minted for the run, from the verify-tree build, against a workflow authored for the proof in the Global tenant: trigger (stream-audio `mic`) → `realtime-transcription` → output, with `connections: [api, socket]`. The audio was `cardiology_consult_01.wav` (21.9 s, 16 kHz mono PCM16), sent at real-time pace in 100 ms frames.
+
+| Step | Evidence |
+|---|---|
+| Publish with `context.mic` → ASR `audio` | accepted (D6 live) |
+| Session create with `workflowSlug` → run start with `{ sttSessionId }` | 202, run RUNNING at 03:44:16 |
+| Durable wait | `node.started n_trigger` at 03:44:42, after the audio ended (finalize 03:44:38) |
+| Mirror (`boundRun`) | 38 `transcript.partial` + 4 `transcript.final` in `wf:run:<id>:events` |
+| ASR session branch (C5 → C6) | `n_asr` SUCCEEDED; `output.data` `transcript` = the full 21.9 s text ("the patient presence with shortness of breath on exertion … start aspirin 81mg daily"), `segments` = 3 timed segments (0–5.632, 5.632–8.896, 8.896–21.888) |
+| Run | COMPLETED in 26.3 s; 0 failed / degraded nodes |
+| SDK | `audio.finalize()` threw 404, so **D7** was fixed |
+
+The proof graph wired no output field, so the business result was `{}`; the transcript was read from the admin `output.data` events.
+
+Left on the dev DB: workflow definition `t1042_live_710e2103bb` (Global). Its DELETE answers 409 because a run references it. The proof's API key and context schema were deleted.
 
 ### 6.4 Known limits and follow-ups
 
 - **Result-stream cap.** `stt.streaming.resultStreamMaxlen` defaults to 10000. Partials during speech run at about 2.5 entries/s, so the cap holds about 4000 s of continuous speech, just above the 3600 s ceiling. A session past it reads as `truncated` (fail-closed, never short). The owner decided (2026-10-05) to keep 10000.
 - After close, the result stream expires in 3600 s. A C5 read after that reads as `truncated` unless the row recorded zero characters. The harness reads within 5 s of the end, so only a much later re-read is affected.
 - The Integration tab passes the real `audioField` when the Input shape has exactly ONE live-audio kind (`RunShapes.streamAudioField`). With several, the snippets show the `<audioField>` placeholder.
+- Blob-delivered audio (`delivery: 'blob'`) still binds as `json` to an ASR `audio` input (D6 covers stream only); a separate follow-up.
 - The deprecated `:slug/invoke` alias also binds audio but carries no Swagger update.
 
 
@@ -352,4 +376,6 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 | 2026-10-05 | L2 and L1 merged; artifacts regenerated in the verify worktree `../hope-v2-task-1042-verify` (`5f80ef21c`). Owner: merge target dev-2.2; keep `resultStreamMaxlen` at 10000. Single gate pass running. |
 | 2026-10-05 | Single gate pass in the verify worktree; integration fixes made; the Integration tab wires `streamAudioField`; verify merged into the orchestrator branch (`e28fe7e8c`). |
 | 2026-10-05 | Merged into dev-2.2 (`2689d5da8`). E2E on the test infra found D6 (stream-audio binding typed `json`), fixed in both contract twins with shared fixture cases; mypy fix in WF-SET-005; authz inventory 41. |
+| 2026-10-05 | Full e2e on dev-2.2 `c04d05eec`: 1,436 passed, 82 skipped, 2 failed (both environmental or shared-state, triaged). |
+| 2026-10-05 | Live proof on the dev stack passed end to end (§6.6) and found D7 (`runWithAudio` finalize 404), fixed. Status → Review. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |

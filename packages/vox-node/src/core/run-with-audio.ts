@@ -18,6 +18,7 @@
  * dependencies, and `globalThis.WebSocket` only (the socket raises `SocketUnavailableError`).
  */
 
+import { NotFoundError } from './errors';
 import type { StreamSessionResponse, CreateStreamSessionRequest } from '../types/stt';
 import type { WorkflowSchemaDescription } from '../types/workflow';
 
@@ -158,10 +159,17 @@ export async function runWithAudio<TRun>(
       sendPcm16: (chunk) => socket.sendPcm16(chunk),
       finalize: () =>
         once(async () => {
+          let finalized = false;
           try {
             await socket.finalize();
+            finalized = true;
           } finally {
-            await end();
+            await end().catch((error: unknown) => {
+              // A completed `stop` ends the session on the gateway, so the DELETE that follows finds
+              // nothing: after a SUCCESSFUL finalize a 404 is the expected end, not a failure.
+              if (finalized && error instanceof NotFoundError) return;
+              throw error;
+            });
           }
         }),
       close: () => once(end),
