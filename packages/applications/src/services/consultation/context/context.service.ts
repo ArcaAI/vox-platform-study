@@ -39,6 +39,8 @@ import { contentCounters, stampContentCounters } from '../shared/contentCounters
 import { AppendContextVersionInput, IContextService } from './IContextService';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
+import { AMBIENT_TRANSACTION_CLS_KEY } from '../transcript-record/transcript-record.keys';
+import { setVersionMetaData } from '../transcript-record/version-metadata';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
 import {
@@ -621,7 +623,7 @@ export class ContextService extends BaseService implements IContextService {
       changedBy: input.changedBy,
       changeSource: input.changeSource,
     });
-    if (input.metaData) version.metaData = input.metaData;
+    if (input.metaData) setVersionMetaData(version, input.metaData);
     await this.encryptBestEffort('ContextItemVersion', () =>
       this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
     );
@@ -638,7 +640,12 @@ export class ContextService extends BaseService implements IContextService {
       await this.contextItemVersionRepository.create(version, tx);
       await this.contextItemRepository.updateWithVersion(contextItem.id, contextItem, expectedRowVersion, tx);
     };
-    if (this.unitOfWorkService) {
+    // A caller already inside `runInTransaction` (the feedback write) owns the transaction:
+    // write through its client, never open a nested one.
+    const ambientTx = this.clsService.get(AMBIENT_TRANSACTION_CLS_KEY as never) as CorePrisma.TransactionClient | undefined;
+    if (ambientTx) {
+      await persist(ambientTx);
+    } else if (this.unitOfWorkService) {
       await this.unitOfWorkService.runInTransaction((tx: CorePrisma.TransactionClient) => persist(tx));
     } else {
       await persist();
@@ -651,7 +658,20 @@ export class ContextService extends BaseService implements IContextService {
     });
 
     if (contextItem.type === ContextItemType.TRANSCRIPT_SEGMENT && this.transcriptRecord) {
-      await this.transcriptRecord.onSegmentEdited(contextItem.id, versionNumber, input.changedBy);
+      const derive = this.transcriptRecord.onSegmentEdited(contextItem.id, versionNumber, input.changedBy);
+      if (ambientTx) {
+        // Inside the caller's transaction the edit is not committed yet; the derivation waits
+        // for it, so it must not hold that transaction open.
+        void derive.catch((error: unknown) =>
+          this.logger.error({
+            message: 'context.segment_edit_derivation_failed',
+            contextItemId: contextItem.id,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      } else {
+        await derive;
+      }
     }
 
     return { versionNumber };

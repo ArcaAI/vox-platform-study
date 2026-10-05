@@ -102,9 +102,7 @@ function world() {
       return e;
     }),
     findAll: vi.fn(async ({ filters }: { filters: Record<string, any> }) =>
-      [...items.values()].filter(
-        (e) => e.consultationId === filters.consultationId && filters.segmentKey?.in?.includes(e.segmentKey),
-      ),
+      [...items.values()].filter((e) => e.consultationId === filters.consultationId && filters.segmentKey?.in?.includes(e.segmentKey)),
     ),
     findSegments: vi.fn(async (cid: string) =>
       [...items.values()]
@@ -235,6 +233,13 @@ const emitted = (w: ReturnType<typeof world>) => w.emitter.emit.mock.calls.map((
 // ingestSegments
 // ---------------------------------------------------------------------------
 
+describe('STT run keys', () => {
+  it('are stt:<sttSessionId>:<runId|empty>:<seq>', () => {
+    expect(sttStreamRunKey('abc123')).toBe('stt:abc123::0');
+    expect(sttBatchRunKey('job-1')).toBe('stt::job-1:0');
+  });
+});
+
 describe('TranscriptRecordService.ingestSegments', () => {
   let w: ReturnType<typeof world>;
   beforeEach(() => {
@@ -360,7 +365,13 @@ describe('TranscriptRecordService full transcript', () => {
   it('appends a version across encounters and ignores items carrying metaData.origin', async () => {
     await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
     w.consultation.currentEncounterSeq = 2;
-    await w.service.ingestSegments({ tenantId: TENANT, consultationId: CID, sttSessionId: 'stt-2', audioOffsetMs: 0, segments: [seg(0, 'follow up', 0)] });
+    await w.service.ingestSegments({
+      tenantId: TENANT,
+      consultationId: CID,
+      sttSessionId: 'stt-2',
+      audioOffsetMs: 0,
+      segments: [seg(0, 'follow up', 0)],
+    });
     const foreign = ContextItemFactory.CreateTranscriptSegment({
       tenantId: TENANT,
       consultationId: CID,
@@ -439,7 +450,13 @@ describe('TranscriptRecordService recording + artifacts', () => {
   it('keeps ONE AUDIO_RECORDING item with a version per part and a {parts, totalMs} manifest', async () => {
     const w = world();
     const mk = (durationMs: number, codec: string) => {
-      const a = AudioRecordingFactory.CreateAudioRecording({ tenantId: TENANT, contextItemId: 'c', mediaId: `m-${durationMs}`, duration: durationMs, sequenceNumber: 1 } as any);
+      const a = AudioRecordingFactory.CreateAudioRecording({
+        tenantId: TENANT,
+        contextItemId: 'c',
+        mediaId: `m-${durationMs}`,
+        duration: durationMs,
+        sequenceNumber: 1,
+      } as any);
       a.codec = codec;
       w.audio.set(a.id, a);
       return a;
@@ -447,9 +464,30 @@ describe('TranscriptRecordService recording + artifacts', () => {
     const p1 = mk(10_000, 'opus');
     const p2 = mk(4_000, 'opus');
 
-    const r1 = await w.service.appendRecordingPart({ consultationId: CID, audioRecordingId: p1.id, mediaId: 'm-1', durationMs: 10_000, encounterSeq: 1, sttSessionId: SID });
-    const r2 = await w.service.appendRecordingPart({ consultationId: CID, audioRecordingId: p2.id, mediaId: 'm-2', durationMs: 4_000, encounterSeq: 2, sttSessionId: 'stt-2' });
-    const replay = await w.service.appendRecordingPart({ consultationId: CID, audioRecordingId: p2.id, mediaId: 'm-2', durationMs: 4_000, encounterSeq: 2, sttSessionId: 'stt-2' });
+    const r1 = await w.service.appendRecordingPart({
+      consultationId: CID,
+      audioRecordingId: p1.id,
+      mediaId: 'm-1',
+      durationMs: 10_000,
+      encounterSeq: 1,
+      sttSessionId: SID,
+    });
+    const r2 = await w.service.appendRecordingPart({
+      consultationId: CID,
+      audioRecordingId: p2.id,
+      mediaId: 'm-2',
+      durationMs: 4_000,
+      encounterSeq: 2,
+      sttSessionId: 'stt-2',
+    });
+    const replay = await w.service.appendRecordingPart({
+      consultationId: CID,
+      audioRecordingId: p2.id,
+      mediaId: 'm-2',
+      durationMs: 4_000,
+      encounterSeq: 2,
+      sttSessionId: 'stt-2',
+    });
 
     const containers = await w.contextItemRepository.findAudioRecordings(CID);
     expect(containers).toHaveLength(1);
@@ -472,9 +510,33 @@ describe('TranscriptRecordService recording + artifacts', () => {
 
   it('upserts one artifact per (type, encounter): create then append', async () => {
     const w = world();
-    const a = await w.service.upsertEncounterArtifact({ consultationId: CID, encounterSeq: 1, type: 'FACT_LEDGER', content: '{"facts":[]}', source: 'AI', changedBy: 'system', metaData: { schema: 'v1' } });
-    const b = await w.service.upsertEncounterArtifact({ consultationId: CID, encounterSeq: 1, type: 'FACT_LEDGER', content: '{"facts":[1]}', source: 'AI', changedBy: 'system', metaData: { schema: 'v1', factCount: 1 } });
-    const c = await w.service.upsertEncounterArtifact({ consultationId: CID, encounterSeq: 2, type: 'FACT_LEDGER', content: '{"facts":[]}', source: 'AI', changedBy: 'system', metaData: {} });
+    const a = await w.service.upsertEncounterArtifact({
+      consultationId: CID,
+      encounterSeq: 1,
+      type: 'FACT_LEDGER',
+      content: '{"facts":[]}',
+      source: 'AI',
+      changedBy: 'system',
+      metaData: { schema: 'v1' },
+    });
+    const b = await w.service.upsertEncounterArtifact({
+      consultationId: CID,
+      encounterSeq: 1,
+      type: 'FACT_LEDGER',
+      content: '{"facts":[1]}',
+      source: 'AI',
+      changedBy: 'system',
+      metaData: { schema: 'v1', factCount: 1 },
+    });
+    const c = await w.service.upsertEncounterArtifact({
+      consultationId: CID,
+      encounterSeq: 2,
+      type: 'FACT_LEDGER',
+      content: '{"facts":[]}',
+      source: 'AI',
+      changedBy: 'system',
+      metaData: {},
+    });
 
     expect(a.versionNumber).toBe(1);
     expect(b).toEqual({ contextItemId: a.contextItemId, versionNumber: 2 });
@@ -621,7 +683,7 @@ describe('SttInternalService routing', () => {
 // ContextService.appendVersion
 // ---------------------------------------------------------------------------
 
-function contextService(item: ContextItemEntity, extras: { gate?: any; record?: any } = {}) {
+function contextService(item: ContextItemEntity, extras: { gate?: any; record?: any; ambientTx?: unknown; uow?: any } = {}) {
   const versions: ContextItemVersionEntity[] = [];
   const contextItemRepository = {
     findById: vi.fn(async () => item),
@@ -637,7 +699,11 @@ function contextService(item: ContextItemEntity, extras: { gate?: any; record?: 
     }),
     encryptFieldsIntoEntity: vi.fn(async () => undefined),
   };
-  const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? TENANT : k === 'user' ? { id: 'doctor-1' } : undefined)) };
+  const cls = {
+    get: vi.fn((k: string) =>
+      k === 'tenantId' ? TENANT : k === 'user' ? { id: 'doctor-1' } : k === 'coreTransactionClient' ? extras.ambientTx : undefined,
+    ),
+  };
   const service = new ContextService(
     contextItemRepository as any,
     versionRepository as any,
@@ -651,12 +717,12 @@ function contextService(item: ContextItemEntity, extras: { gate?: any; record?: 
     undefined,
     undefined,
     undefined,
-    undefined,
+    extras.uow,
     undefined,
     extras.gate,
     extras.record,
   );
-  return { service, versions, contextItemRepository };
+  return { service, versions, contextItemRepository, versionRepository };
 }
 
 describe('ContextService.appendVersion', () => {
@@ -668,7 +734,15 @@ describe('ContextService.appendVersion', () => {
   it('appends the next version and moves the item to it', async () => {
     const item = makeItem();
     const c = contextService(item);
-    const result = await c.service.appendVersion({ contextItemId: item.id, content: 'new', expectedVersion: 3, changeSource: 'feedback', changeReason: 'correction', changedBy: 'doctor-1', metaData: { feedbackId: 'fb-1' } });
+    const result = await c.service.appendVersion({
+      contextItemId: item.id,
+      content: 'new',
+      expectedVersion: 3,
+      changeSource: 'feedback',
+      changeReason: 'correction',
+      changedBy: 'doctor-1',
+      metaData: { feedbackId: 'fb-1' },
+    });
     expect(result).toEqual({ versionNumber: 4 });
     expect(item.content).toBe('new');
     expect(item.currentVersionNumber).toBe(4);
@@ -685,11 +759,38 @@ describe('ContextService.appendVersion', () => {
   });
 
   it('409s when the lifecycle gate locks content', async () => {
-    const gate = { assertContentWritable: vi.fn(async () => { throw new ConflictException('CONSULTATION_APPROVED'); }) };
+    const gate = {
+      assertContentWritable: vi.fn(async () => {
+        throw new ConflictException('CONSULTATION_APPROVED');
+      }),
+    };
     const c = contextService(makeItem(), { gate });
-    await expect(c.service.appendVersion({ contextItemId: 'x', content: 'new', changeSource: 'manual', changedBy: 'doctor-1' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      c.service.appendVersion({ contextItemId: 'x', content: 'new', changeSource: 'manual', changedBy: 'doctor-1' }),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(gate.assertContentWritable).toHaveBeenCalledWith(CID);
     expect(c.versions).toHaveLength(0);
+  });
+
+  it('writes through the ambient transaction of a caller already inside runInTransaction (no nesting)', async () => {
+    const ambientTx = { ambient: true };
+    const uow = { runInTransaction: vi.fn() };
+    const item = makeItem();
+    const c = contextService(item, { ambientTx, uow });
+    await c.service.appendVersion({ contextItemId: item.id, content: 'new', changeSource: 'feedback', changedBy: 'doctor-1' });
+    expect(uow.runInTransaction).not.toHaveBeenCalled();
+    expect(c.versionRepository.create).toHaveBeenCalledWith(expect.anything(), ambientTx);
+    expect(c.contextItemRepository.updateWithVersion).toHaveBeenCalledWith(item.id, item, expect.any(Number), ambientTx);
+  });
+
+  it('opens its own transaction when no caller transaction is in flight', async () => {
+    const ownTx = { own: true };
+    const uow = { runInTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(ownTx)) };
+    const item = makeItem();
+    const c = contextService(item, { uow });
+    await c.service.appendVersion({ contextItemId: item.id, content: 'new', changeSource: 'manual', changedBy: 'doctor-1' });
+    expect(uow.runInTransaction).toHaveBeenCalledTimes(1);
+    expect(c.versionRepository.create).toHaveBeenCalledWith(expect.anything(), ownTx);
   });
 
   it('a segment edit asks the transcript record for the derived full-transcript version', async () => {
@@ -707,7 +808,10 @@ describe('ContextService.appendVersion', () => {
 
 describe('SecretsService.encryptBatch', () => {
   it('delegates to the provider batch in one call', async () => {
-    const provider = { name: 'vault', encryptBatch: vi.fn(async (pts: Buffer[]) => pts.map((p) => `vault:v1:${p.toString('base64')}`)) } as unknown as ISecretsProvider;
+    const provider = {
+      name: 'vault',
+      encryptBatch: vi.fn(async (pts: Buffer[]) => pts.map((p) => `vault:v1:${p.toString('base64')}`)),
+    } as unknown as ISecretsProvider;
     const svc = new SecretsService(provider);
     const out = await svc.encryptBatch([Buffer.from('a'), Buffer.from('b')], 'hope-phi');
     expect(out).toHaveLength(2);

@@ -26,20 +26,17 @@ import { SecretsService, parseKeyVersionFromCiphertext } from '../../baseService
 import { IRedisCacheService } from '../../baseServices/redis';
 import { countTranscriptWords } from '../../stt/transcript-size';
 import { stampContentCounters } from '../shared/contentCounters';
-import {
-  ConsultationPipelineEvent,
-  EncounterStoppedPayload,
-  FullTranscriptRebuiltPayload,
-  TranscriptionCreatedPayload,
-} from '../events';
+import { ConsultationPipelineEvent, EncounterStoppedPayload, FullTranscriptRebuiltPayload, TranscriptionCreatedPayload } from '../events';
 import { IngestSegment, IngestSegmentsInput, IngestSegmentsResult, ITranscriptRecordService } from './ITranscriptRecordService';
 import {
+  AMBIENT_TRANSACTION_CLS_KEY,
   encounterStoppedRedisKey,
   segmentKeyOf,
   sttFinalRedisKey,
   sttStreamRunKey,
   TRANSCRIPT_RECORD_MARKER_TTL_SECONDS,
 } from './transcript-record.keys';
+import { setVersionMetaData } from './version-metadata';
 
 /** One part of the consultation recording, in timeline order. */
 export interface RecordingManifestPart {
@@ -67,6 +64,9 @@ interface VersionWrite {
 }
 
 const AWAIT_FINAL_POLL_MS = 200;
+/** How long a segment-edit rebuild waits for the edit's own transaction to commit. */
+const SEGMENT_EDIT_COMMIT_WAIT_MS = 5_000;
+const SEGMENT_EDIT_POLL_MS = 100;
 
 type Tx = unknown;
 
@@ -118,7 +118,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     const unique = [...byIndex.values()].sort((a, b) => a.utteranceIndex - b.utteranceIndex);
     const keys = unique.map((s) => segmentKeyOf(input.sttSessionId, s.utteranceIndex));
     const stored = await this.contextItemRepository.findAll({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- repository filters / tx clients are untyped Prisma shapes
       filters: { consultationId: consultation.id, segmentKey: { in: keys } } as any,
     });
     const storedKeys = new Set(stored.map((item) => item.segmentKey));
@@ -171,7 +171,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
           changedBy: 'system',
           changeSource: 'ai',
         });
-        version.metaData = { sttRunKey: runKey };
+        setVersionMetaData(version, { sttRunKey: runKey });
         if (item.encryptedContent) {
           version.encryptedContent = item.encryptedContent;
           version.keyVersion = item.contentKeyVersion ?? null;
@@ -258,6 +258,12 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     if (!segment) throw new NotFoundException(`Context item ${segmentItemId} not found`);
     if (segment.type !== ContextItemType.TRANSCRIPT_SEGMENT) return;
 
+    // The edit may still be inside its caller's transaction; the rebuild must read it committed.
+    if (!(await this.awaitSegmentVersion(segment, versionNumber))) {
+      this.logger.warn({ message: 'transcript_record.segment_edit_not_visible', segmentItemId, versionNumber });
+      return;
+    }
+
     // Before the first session final there is no FULL_TRANSCRIPT to derive from; the
     // final rebuild reads the edited version anyway.
     if (!(await this.contextItemRepository.findFullTranscript(segment.consultationId))) return;
@@ -333,12 +339,17 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     if (!container) {
       container = await this.contextItemRepository.create(ContextItemFactory.CreateAudioRecording(consultation.tenantId, consultation.id));
     }
-    const versionNumber = await this.appendVersion(container, null, {
-      changeSource: 'system',
-      changeReason: 'recording_part',
-      changedBy: 'system',
-      metaData: { manifest },
-    }, { ...(container.metaData ?? {}), manifest });
+    const versionNumber = await this.appendVersion(
+      container,
+      null,
+      {
+        changeSource: 'system',
+        changeReason: 'recording_part',
+        changedBy: 'system',
+        metaData: { manifest },
+      },
+      { ...(container.metaData ?? {}), manifest },
+    );
 
     return { contextItemId: container.id, versionNumber, totalMs: manifest.totalMs };
   }
@@ -397,6 +408,17 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
   // Internals
   // ===========================================================================
 
+  private async awaitSegmentVersion(segment: ContextItemEntity, versionNumber: number): Promise<boolean> {
+    let current: ContextItemEntity | null = segment;
+    const deadline = Date.now() + SEGMENT_EDIT_COMMIT_WAIT_MS;
+    while ((current?.currentVersionNumber ?? 0) < versionNumber) {
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, SEGMENT_EDIT_POLL_MS));
+      current = await this.contextItemRepository.findByIdOrNull(segment.id);
+    }
+    return true;
+  }
+
   private async loadConsultation(consultationId: string, tenantId?: string): Promise<ConsultationEntity> {
     const consultation = await this.consultationRepository.findByIdOrNull(consultationId);
     if (!consultation || (tenantId !== undefined && consultation.tenantId !== tenantId)) {
@@ -412,7 +434,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
    */
   private async recordingOffsetFor(consultation: ConsultationEntity, sttSessionId: string): Promise<number> {
     const [job] = await this.transcriptionJobRepository.findAll({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- repository filters / tx clients are untyped Prisma shapes
       filters: { streamSessionId: sttSessionId } as any,
       limit: 1,
       sort: [{ createdAt: 'desc' }],
@@ -495,7 +517,10 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
       metaData: itemMeta,
       createdBy: write.changedBy,
     });
-    const saved = await this.createWithFirstVersion(item, { ...write, metaData: { ...write.metaData, segmentDigest, segmentCount: segments.length } });
+    const saved = await this.createWithFirstVersion(item, {
+      ...write,
+      metaData: { ...write.metaData, segmentDigest, segmentCount: segments.length },
+    });
     return { item: saved, versionNumber: 1, segmentCount: segments.length, content, appended: true };
   }
 
@@ -546,7 +571,12 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
   }
 
   /** Append the next version and move the item to it. `content === null` keeps a media item body-less. */
-  private async appendVersion(item: ContextItemEntity, content: string | null, write: VersionWrite, itemMetaData: Record<string, unknown>): Promise<number> {
+  private async appendVersion(
+    item: ContextItemEntity,
+    content: string | null,
+    write: VersionWrite,
+    itemMetaData: Record<string, unknown>,
+  ): Promise<number> {
     const latest = await this.contextItemVersionRepository.getLatestVersionNumber(item.id);
     const versionNumber = latest + 1;
 
@@ -583,7 +613,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
       changedBy: write.changedBy,
       changeSource: write.changeSource,
     });
-    if (write.metaData) version.metaData = write.metaData;
+    if (write.metaData) setVersionMetaData(version, write.metaData);
     return version;
   }
 
@@ -659,8 +689,11 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
   }
 
   private async inTransaction<T>(work: (tx: Tx | undefined) => Promise<T>): Promise<T> {
+    // Never nest: a caller already inside `runInTransaction` gets its writes on that client.
+    const ambient = this.clsService.get(AMBIENT_TRANSACTION_CLS_KEY as never) as Tx | undefined;
+    if (ambient) return work(ambient);
     if (!this.unitOfWorkService) return work(undefined);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- repository filters / tx clients are untyped Prisma shapes
     return this.unitOfWorkService.runInTransaction(async (tx: any) => work(tx));
   }
 

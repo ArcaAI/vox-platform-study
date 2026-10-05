@@ -546,7 +546,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   private async streamSessionStartedAt(sttSessionId: string): Promise<{ at: Date; known: boolean; servedBy: ServedBy | null }> {
     try {
       const [job] = await this.jobRepository.findAll({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- streamSessionId is not in the generated filter type
         filters: { streamSessionId: sttSessionId } as any,
         limit: 1,
         sort: [{ createdAt: 'desc' }],
@@ -555,7 +555,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
         return { at: job.startedAt, known: true, servedBy: (job.servedBy as unknown as ServedBy | null) ?? null };
       }
     } catch {
-      // Bookkeeping only — the run record is written with what is known.
+      // swallow-ok: bookkeeping only — the run record is written with what is known.
     }
     return { at: new Date(), known: false, servedBy: null };
   }
