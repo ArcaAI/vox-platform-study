@@ -129,3 +129,10 @@
 | H-124 | D8 | deprecation register Sunset | owner | `Sun, 31 Jan 2027 00:00:00 GMT`, removeIn `R5` placeholders (also the controller constant) | owner to confirm |
 | H-125 | LF | `summary.service.ts` `resolveActingClinician` | follow-up | call `resolveAttributedActor` from `lifecycle/attributed-actor.ts` so one copy of the rule exists | follow-up |
 | H-126 | LF | API-key close | note | an API-key close now enforces the bound-user rule (TASK-972 semantics; stricter than the AB-8a interim) | info |
+| H-127 | E6 | `note-generation.service.ts` + module, `live-documentation.service.module.ts`, harness `assemble` `notePlanId` | orchestrator | hand-over patch | applied `111396a5a` |
+| H-128 | E6 | governed plan model | note | governed compose passes no model → platform default text model (gemma 4 E2B per D-10, so equivalent today); revisit if a tenant finalizer agent names another model | info |
+| H-129 | E6 | `harness-internal.service.test.ts` | AB-8e | `versionNumber` return + E3 legacy pins | pending (AB-8e) |
+| H-130 | E6 | loop lane compose at stop; `core.py` `note_plan_error` degrade; `failGovernedRun` keeps the specific FAILED reason | E6b | pending (E6b) |
+| H-131 | U8 | ALaaS `useConsultationWorkspace.js` | orchestrator | TDZ: `lifecycle` read after the clock effect used it (U7) | applied ALaaS `1a9b131` |
+| H-132 | U8 | ALaaS O68 `check_record_ready` | finding | browser helper `checkSummaryRecordReady` is exported but never called, and the svc never had the route (git history). Kept unchanged; no handler invented (owner: no fabrication) | info |
+| H-133 | U8 | ALaaS encounter 2 on the same session/event | note | cache design: only the current encounter's row reads/writes HOPE's note; the session/event row becomes the latest consultation-wide note; HOPE keeps every version | info |
