@@ -177,12 +177,20 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-16 | OD-C HOPE is the single source of truth for notes and versions; ALaaS DB becomes a read cache. |
 | D-17 | OD-D ALaaS opens the consultation at launch, not at Start. |
 | D-18 | Thumbs always visible on touch devices; default reason list as 3.8. |
+| D-19 | SDK 5.0.0 is not tagged (latest `SDK-4.1.0`): TASK-1045 SDK changes ship in the same 5.0.0 major as TASK-1039; `open()` returns a handle. |
+| D-20 | **Fresh deploy with a database reset** (owner, 2026-10-05): no data backfill or migration of existing rows — migrations only add schema, enum values, partial indexes and triggers; no duplicate open-key closure; no legacy offset-segment reader needed. |
+| D-21 | `ConsultationState` carries `closedReason (auto|manual|approved)` + `reopenAllowed`; lifecycle events via SSE `GET consultations/:id/events` and, for unconnected consumers, the existing sys-event → webhook fan-out (`ResourceUpdated`, `data.action='lifecycle'`). |
+| D-22 | Section-scoped regenerate: `generateSummary({sectionKey})` → `mode:'section_regen'`, other sections preserved, new note version (`changeSource=ai_section_regen`). |
+| D-23 | Tokenizer: engine (where reachable) → pinned HF `tokenizer.json` → conservative estimate `ceil(utf8Bytes/2)`; never truncate. |
+| D-24 | Uploaded-audio transcripts are a cited note input block (`attachment_transcripts`). |
+| D-25 | OD-C1: on the default engine PDF attachments are supported; images 422 until TASK-1017. |
+| D-26 | **Late Copy to EMR** on an auto-closed (CLOSED_INCOMPLETE) consultation: HOPE atomically reopens, approves and closes → CLOSED_COMPLETE, audited as a late sign-off (owner, 2026-10-05). |
+| D-27 | ALaaS lane branches merge into `refactor-hope-integaration` (owner, 2026-10-05). |
 
 ## 5. Open questions
 
 | # | Question | Default until answered |
 |---|---|---|
-| Q-1 | ALaaS merge target branch | Ask at merge time (rule 14 §5) |
 | Q-2 | Cluster rollout of the deployment change | Local `main` commit only; owner pushes |
 
 ## 6. Implementation plan
@@ -190,6 +198,8 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 Filled from the planning wave (§6.1). Waves follow the layer chain DB → domain → services → API → SDK/console/ALaaS, with disjoint file ownership per lane.
 
 ### 6.1 Planning wave
+
+Planner records (binding contracts): `planning/P-AB-lifecycle-record.md`, `planning/P-CG-attachments-feedback.md`, `planning/P-D-console-routes-sdk.md`, `planning/P-E-summarization.md` (+ "Final revision"), `planning/P-F-alaas.md`; lane rules `planning/LANE-RULES.md`.
 
 | Planner | Tier | Scope |
 |---|---|---|
@@ -215,3 +225,4 @@ _Pending._
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket opened; design approved by the owner; planning wave started. |
+| 2026-10-05 | Planning wave done (5 planners); contracts committed; D-19…D-27 recorded; wave 1 launched (AB-1 DB, AB-STT, E1, CG-STO, D3, F9, F5, U6). |
