@@ -105,3 +105,9 @@
 | H-100 | D4b | `apps/admin-console/vitest.config.ts` | orchestrator | UI-package importers map `@/components/ui` → `components/shadcn` (as the UI config does) | applied |
 | H-101 | D4b | `packages/ui` timeline band | follow-up (UI lane, wave 5) | `TimelineBand` (`role=separator`) directly inside `role=feed` violates axe `aria-required-children`; D4b's axe check disables that rule — fix the band wrapper and drop the disable | pending (wave 5) |
 | H-102 | D4b | console `consultations-screen.test.tsx` | AB-8b | 3 cases pin `SIGNED` / old status filter — legacy vocabulary from the 12→7 swap | pending (AB-8b) |
+| H-103 | AB-6 | `consultation.module.ts`, `internal.module.ts` | orchestrator | lifecycle/encounter/media modules + `ConsultationLifecycleEventsController`; `TranscriptRecordServiceModule` for segment ingest | applied `9149cb6df` |
+| H-104 | AB-6 | `lifecycle.module.ts` | orchestrator | integration slip: `TranscriptRecordServiceModule` had landed on the GATE module, so `stop` never waited — moved to `ConsultationLifecycleModule` | applied `9149cb6df` |
+| H-105 | AB-6 | `listConsultationsForTenant` | orchestrator | `processing` filter effective | applied `9149cb6df` |
+| H-106 | AB-6 | console BFF | orchestrator | send `X-Hope-Lifecycle: 2` on every proxied call (SDKs already do) | applied `069538ac2` |
+| H-107 | AB-6 | deprecation register | D8 | rows: `recording/start` → `:id/start`; `recording/stop` (never waits) → `:id/stop`; `prime` (no-op) → `:id/start`; `summary/:contextItemId/approve` → `:id/approve`; Sunset placeholder `Sun, 31 Jan 2027 00:00:00 GMT`, removeIn `R5` — owner to confirm | pending (D8) |
+| H-108 | AB-6 | apps/api legacy consultation tests | AB-8b | old per-summary approve + descriptions | pending (AB-8b) |
