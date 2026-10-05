@@ -57,6 +57,29 @@ export interface KeyedLifecycleEntry {
   entry: ActivityLifecycleEntry;
 }
 
+export const ENCOUNTER_RECAP_V2_SCHEMA = 'hope.encounter_recap.v2';
+
+export interface RecapCitation {
+  itemId: string;
+  versionNumber: number;
+  label: string;
+  kind: 'segment' | 'attachment';
+  t0Ms?: number;
+}
+
+export interface RecapLine {
+  text: string;
+  citations: RecapCitation[];
+}
+
+/** A recap section: `text` is its lines joined, `lines` keeps the citations. */
+export interface RecapSection {
+  key: string;
+  label?: string;
+  text: string;
+  lines: RecapLine[];
+}
+
 const num = (value: number | null | undefined): number => value ?? 0;
 const bigToNumber = (value: bigint | number | null | undefined): number | null => (value === null || value === undefined ? null : Number(value));
 
@@ -179,6 +202,38 @@ export class ConsultationHistoryDtoMapper {
       changeReason: meta.changeReason ?? null,
       createdAt: meta.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * A structured (v2) recap body: its sections, and a plain rendering as `## Label` blocks. Null for
+   * anything else (a v1 plain-text recap), which the caller returns as text.
+   */
+  static parseRecap(content: string | null | undefined): { text: string; sections: RecapSection[] } | null {
+    if (!content) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return null;
+    }
+    const body = parsed as { schema?: unknown; sections?: unknown };
+    if (!body || typeof body !== 'object' || body.schema !== ENCOUNTER_RECAP_V2_SCHEMA || !Array.isArray(body.sections)) return null;
+
+    const sections: RecapSection[] = body.sections
+      .filter((section): section is Record<string, unknown> => !!section && typeof section === 'object' && typeof (section as { key?: unknown }).key === 'string')
+      .map((section) => {
+        const lines: RecapLine[] = (Array.isArray(section.lines) ? section.lines : [])
+          .filter((line): line is Record<string, unknown> => !!line && typeof line === 'object' && typeof (line as { text?: unknown }).text === 'string')
+          .map((line) => ({ text: line.text as string, citations: Array.isArray(line.citations) ? (line.citations as RecapCitation[]) : [] }));
+        return {
+          key: section.key as string,
+          ...(typeof section.label === 'string' ? { label: section.label } : {}),
+          text: lines.map((line) => line.text).join('\n'),
+          lines,
+        };
+      });
+    const text = sections.map((section) => [`## ${section.label ?? section.key}`, ...section.lines.map((line) => line.text)].join('\n')).join('\n\n');
+    return { text, sections };
   }
 
   static toVersionDetail(version: {

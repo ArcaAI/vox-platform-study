@@ -516,15 +516,15 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
       const ledger = await this.contextItemRepository.findEncounterArtifact(consultationId, ContextItemType.FACT_LEDGER, encounterSeq);
       ledgerContextItemId = ledger?.id ?? '';
     }
-    const sections = Array.isArray(meta.sections) ? (meta.sections as EncounterRecap['sections']) : undefined;
+    const structured = Mapper.parseRecap(recap.content);
 
     this.audit(consultationId, options, { view: 'recap', contextItemId: recap.id, encounterSeq });
     return {
       encounterSeq,
       contextItemId: recap.id,
       versionNumber: recap.currentVersionNumber,
-      text: recap.content ?? '',
-      ...(sections ? { sections } : {}),
+      text: structured ? structured.text : (recap.content ?? ''),
+      ...(structured ? { sections: structured.sections } : {}),
       generatedAt: recap.updatedAt.toISOString(),
       ledgerContextItemId,
     };
