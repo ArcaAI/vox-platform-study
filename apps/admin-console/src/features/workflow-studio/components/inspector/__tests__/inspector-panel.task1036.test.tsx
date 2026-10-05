@@ -137,6 +137,28 @@ describe('InspectorPanel — composing inside the editor store', () => {
     expect(screen.queryByRole('textbox', { name: /^inputs/i })).toBeNull();
   });
 
+  // Live check 2026-10-05: on a published version the whole form is a disabled <fieldset>, which
+  // also disabled the step-ID copy button. Copying is a read; it works read-only.
+  it('lets a read-only (published) step copy its id while the name stays locked', () => {
+    renderInStore(
+      <InspectorPanel
+        tab="config"
+        onTabChange={vi.fn()}
+        node={NODES.find((candidate) => candidate.id === 'w') ?? null}
+        configSchema={NODE_CONFIG_SCHEMAS[NODES.find((candidate) => candidate.id === 'w')?.type ?? '']}
+        problems={[]}
+        onConfigChange={vi.fn()}
+        readOnly
+      />,
+    );
+    act(() => holder.api?.getState().hydrate(NODES, EDGES));
+    expect((screen.getByRole('textbox', { name: /step name/i }) as HTMLInputElement).disabled).toBe(true);
+    const copy = screen.getByRole('button', { name: /copy step id w/i }) as HTMLButtonElement;
+    expect(copy.disabled).toBe(false);
+    // A browser disables every control inside a disabled fieldset (jsdom does not model it).
+    expect(copy.closest('fieldset[disabled]')).toBeNull();
+  });
+
   it('tells the author Start and End can`t be deleted (W1)', () => {
     renderInStore(<Mounted nodeId="t" />);
     act(() => holder.api?.getState().hydrate(NODES, EDGES));

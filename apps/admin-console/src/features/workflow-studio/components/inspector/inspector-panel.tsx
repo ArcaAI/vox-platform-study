@@ -653,7 +653,9 @@ export function InspectorPanel({
     const conditionBranches = (Array.isArray(node.config.branches) ? node.config.branches : []) as ConditionBranch[];
 
     configTabContent = (
-      <fieldset disabled={readOnly} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
+        {/* Outside the disabled fieldset: the name locks itself (`disabled`), and copying the step
+            id is a read that must keep working on a published version. */}
         {composing ? (
           <NodeLabelField
             idPrefix={node.id}
@@ -664,197 +666,199 @@ export function InspectorPanel({
             onChange={(label) => composer.storeApi.getState().setNodeLabel(node.id, label)}
           />
         ) : null}
-        {isBoundary ? (
-          <p role="note" className="border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm">
-            {node.type === 'core.trigger' ? 'Start is the entry point' : 'Output is the exit'}. {BOUNDARY_DELETE_REASON}
-          </p>
-        ) : null}
-        {isCoreAgent ? (
-          <AgentPickerField
-            id={`${node.id}-${AGENT_SLUG_PATH}`}
-            value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
-            // TASK-1036 (lane C5's picker) — the pin is chosen with the agent: `onChange(slug,
-            // versionNumber?)` writes both, and no version clears the pin (follow the active one).
-            {...({ versionNumber: typeof getAtPath(node.config, AGENT_VERSION_PATH) === 'number' ? (getAtPath(node.config, AGENT_VERSION_PATH) as number) : undefined } as object)}
-            onChange={(slug: string, versionNumber?: number) => {
-              const current = getAtPath(node.config, AGENT_REF_PATH);
-              const { versionNumber: _pin, ...ref } = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
-              onConfigChange({ ...node.config, [AGENT_REF_PATH]: typeof versionNumber === 'number' ? { ...ref, slug, versionNumber } : { ...ref, slug } });
-            }}
-            errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
-            disabled={readOnly}
-          />
-        ) : null}
-        {/* TASK-949 L1 — what the referenced agent actually is: model, fallbacks and its
-            task-typed hyper-parameters, projected from the SAME `useAgentOptions` payload the
-            picker reads. Read-only: the node references an agent, it does not own it. */}
-        {isCoreAgent ? <AgentSummarySection agent={referencedAgent} config={node.config} /> : null}
-        {composing ? (
-          <InputsSection
-            node={node}
-            graph={{ nodes: composer.nodes, edges: composer.edges, settings: composer.settings }}
-            agents={composer.agents}
-            promptVariables={promptVariables}
-            promptSource={promptSource}
-            contextSchema={composer.contextSchema}
-            contextSchemaName={composer.contextSchemaName}
-            contextSchemaVersion={composer.contextSchemaVersion}
-            samples={samples}
-            hidePhi={hidePhi}
-            onConfigChange={onConfigChange}
-            disabled={readOnly}
-            errorsFor={(row) =>
-              errorsForPath(problems, row.origin === 'io' ? `inputs.${row.name}` : `${PROMPT_VARIABLES_PATH}.${row.name}`)
-            }
-          />
-        ) : null}
-        {composing && isTextAgent ? (
-          <GenerationSection
-            idPrefix={node.id}
-            task={referencedTask}
-            capabilities={modelCapabilities.capabilities}
-            modelName={modelCapabilities.modelName}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            disabled={readOnly}
-            errorsFor={(path) => errorsForPath(problems, path)}
-          />
-        ) : null}
-        {composing && isCoreCondition ? (
-          <ConditionBranchesField
-            idPrefix={node.id}
-            branches={conditionBranches}
-            onChange={(branches) => onConfigChange({ ...node.config, branches })}
-            groups={conditionGroups ?? []}
-            disabled={readOnly}
-            errors={errorsForPath(problems, 'branches')}
-          />
-        ) : null}
-        {outputs.length > 0 ? (
-          <section aria-labelledby={`${node.id}-outputs-heading`} className="flex flex-col gap-1">
-            <h3 id={`${node.id}-outputs-heading`} className="text-sm font-medium">
-              Output · available to later steps
-            </h3>
-            <ul className="flex flex-col gap-1">
-              {outputs.map((output) => (
-                <li key={output.name} className="flex items-center gap-2 text-xs">
-                  <span className="font-mono">{output.name}</span>
-                  <Badge variant="outline" className="px-1 font-mono text-[10px]" title={ioTypeLabel(output.type)}>
-                    {output.type}
-                  </Badge>
-                  {output.phiClass === 'PHI' ? (
-                    <Badge variant="outline" className="border-destructive text-destructive px-1 text-[10px]">
-                      PHI
+        <fieldset disabled={readOnly} className="flex flex-col gap-4">
+          {isBoundary ? (
+            <p role="note" className="border-border bg-muted/40 text-muted-foreground rounded-md border px-3 py-2 text-sm">
+              {node.type === 'core.trigger' ? 'Start is the entry point' : 'Output is the exit'}. {BOUNDARY_DELETE_REASON}
+            </p>
+          ) : null}
+          {isCoreAgent ? (
+            <AgentPickerField
+              id={`${node.id}-${AGENT_SLUG_PATH}`}
+              value={typeof getAtPath(node.config, AGENT_SLUG_PATH) === 'string' ? (getAtPath(node.config, AGENT_SLUG_PATH) as string) : ''}
+              // TASK-1036 (lane C5's picker) — the pin is chosen with the agent: `onChange(slug,
+              // versionNumber?)` writes both, and no version clears the pin (follow the active one).
+              {...({ versionNumber: typeof getAtPath(node.config, AGENT_VERSION_PATH) === 'number' ? (getAtPath(node.config, AGENT_VERSION_PATH) as number) : undefined } as object)}
+              onChange={(slug: string, versionNumber?: number) => {
+                const current = getAtPath(node.config, AGENT_REF_PATH);
+                const { versionNumber: _pin, ...ref } = current !== null && typeof current === 'object' && !Array.isArray(current) ? (current as Record<string, unknown>) : {};
+                onConfigChange({ ...node.config, [AGENT_REF_PATH]: typeof versionNumber === 'number' ? { ...ref, slug, versionNumber } : { ...ref, slug } });
+              }}
+              errors={[...errorsForPath(problems, AGENT_SLUG_PATH), ...errorsForPath(problems, AGENT_REF_PATH)]}
+              disabled={readOnly}
+            />
+          ) : null}
+          {/* TASK-949 L1 — what the referenced agent actually is: model, fallbacks and its
+              task-typed hyper-parameters, projected from the SAME `useAgentOptions` payload the
+              picker reads. Read-only: the node references an agent, it does not own it. */}
+          {isCoreAgent ? <AgentSummarySection agent={referencedAgent} config={node.config} /> : null}
+          {composing ? (
+            <InputsSection
+              node={node}
+              graph={{ nodes: composer.nodes, edges: composer.edges, settings: composer.settings }}
+              agents={composer.agents}
+              promptVariables={promptVariables}
+              promptSource={promptSource}
+              contextSchema={composer.contextSchema}
+              contextSchemaName={composer.contextSchemaName}
+              contextSchemaVersion={composer.contextSchemaVersion}
+              samples={samples}
+              hidePhi={hidePhi}
+              onConfigChange={onConfigChange}
+              disabled={readOnly}
+              errorsFor={(row) =>
+                errorsForPath(problems, row.origin === 'io' ? `inputs.${row.name}` : `${PROMPT_VARIABLES_PATH}.${row.name}`)
+              }
+            />
+          ) : null}
+          {composing && isTextAgent ? (
+            <GenerationSection
+              idPrefix={node.id}
+              task={referencedTask}
+              capabilities={modelCapabilities.capabilities}
+              modelName={modelCapabilities.modelName}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              disabled={readOnly}
+              errorsFor={(path) => errorsForPath(problems, path)}
+            />
+          ) : null}
+          {composing && isCoreCondition ? (
+            <ConditionBranchesField
+              idPrefix={node.id}
+              branches={conditionBranches}
+              onChange={(branches) => onConfigChange({ ...node.config, branches })}
+              groups={conditionGroups ?? []}
+              disabled={readOnly}
+              errors={errorsForPath(problems, 'branches')}
+            />
+          ) : null}
+          {outputs.length > 0 ? (
+            <section aria-labelledby={`${node.id}-outputs-heading`} className="flex flex-col gap-1">
+              <h3 id={`${node.id}-outputs-heading`} className="text-sm font-medium">
+                Output · available to later steps
+              </h3>
+              <ul className="flex flex-col gap-1">
+                {outputs.map((output) => (
+                  <li key={output.name} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono">{output.name}</span>
+                    <Badge variant="outline" className="px-1 font-mono text-[10px]" title={ioTypeLabel(output.type)}>
+                      {output.type}
                     </Badge>
-                  ) : null}
-                  <span className="text-muted-foreground truncate">{output.description}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {isCoreTrigger ? (
-          <ContextSchemaRefField
-            idPrefix={node.id}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
-            disabled={readOnly}
-          />
-        ) : null}
-        {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
-        {!composing ? (
-          <SecondaryInputsSection
-            node={node}
-            secondaryInputs={secondaryInputs}
-            upstreamNodes={upstreamNodes}
-            secondaryBindings={secondaryBindings}
-            onSecondaryInputChange={onSecondaryInputChange}
-            problems={problems}
-            readOnly={readOnly}
-          />
-        ) : null}
-        {actionDescriptors.map((descriptor) => (
-          <FieldRenderer
-            key={descriptor.path}
-            descriptor={descriptor}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            errorsFor={(path) => errorsForPath(problems, path)}
-            idPrefix={node.id}
-            references={references}
-            schemaPaths={triggerPaths}
-            pickerGroups={conditionGroups}
-          />
-        ))}
-        {descriptors.map((descriptor) => (
-          <FieldRenderer
-            key={descriptor.path}
-            descriptor={descriptor}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            errorsFor={(path) => errorsForPath(problems, path)}
-            idPrefix={node.id}
-            references={references}
-            schemaPaths={triggerPaths}
-            pickerGroups={conditionGroups}
-            fieldOverrides={fieldOverrides}
-          />
-        ))}
-        {composing && isCoreAgent && allDescriptors.some((descriptor) => descriptor.path === 'execution') ? (
-          <details className="rounded-md border p-2">
-            <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-            <div className="mt-2 flex flex-col gap-4">
-              {allDescriptors
-                .filter((descriptor) => descriptor.path === 'execution')
-                .map((descriptor) => (
-                  <FieldRenderer
-                    key={descriptor.path}
-                    descriptor={descriptor}
-                    config={node.config}
-                    onConfigChange={onConfigChange}
-                    errorsFor={(path) => errorsForPath(problems, path)}
-                    idPrefix={node.id}
-                    references={references}
-                    schemaPaths={triggerPaths}
-                    pickerGroups={conditionGroups}
-                  />
+                    {output.phiClass === 'PHI' ? (
+                      <Badge variant="outline" className="border-destructive text-destructive px-1 text-[10px]">
+                        PHI
+                      </Badge>
+                    ) : null}
+                    <span className="text-muted-foreground truncate">{output.description}</span>
+                  </li>
                 ))}
+              </ul>
+            </section>
+          ) : null}
+          {isCoreTrigger ? (
+            <ContextSchemaRefField
+              idPrefix={node.id}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              errors={errorsForPath(problems, CONTEXT_SCHEMA_PATH)}
+              disabled={readOnly}
+            />
+          ) : null}
+          {isCoreAction ? <ActionKeySection node={node} options={actionOptions} onConfigChange={onConfigChange} errors={errorsForPath(problems, ACTION_KEY_PATH)} /> : null}
+          {!composing ? (
+            <SecondaryInputsSection
+              node={node}
+              secondaryInputs={secondaryInputs}
+              upstreamNodes={upstreamNodes}
+              secondaryBindings={secondaryBindings}
+              onSecondaryInputChange={onSecondaryInputChange}
+              problems={problems}
+              readOnly={readOnly}
+            />
+          ) : null}
+          {actionDescriptors.map((descriptor) => (
+            <FieldRenderer
+              key={descriptor.path}
+              descriptor={descriptor}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              errorsFor={(path) => errorsForPath(problems, path)}
+              idPrefix={node.id}
+              references={references}
+              schemaPaths={triggerPaths}
+              pickerGroups={conditionGroups}
+            />
+          ))}
+          {descriptors.map((descriptor) => (
+            <FieldRenderer
+              key={descriptor.path}
+              descriptor={descriptor}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              errorsFor={(path) => errorsForPath(problems, path)}
+              idPrefix={node.id}
+              references={references}
+              schemaPaths={triggerPaths}
+              pickerGroups={conditionGroups}
+              fieldOverrides={fieldOverrides}
+            />
+          ))}
+          {composing && isCoreAgent && allDescriptors.some((descriptor) => descriptor.path === 'execution') ? (
+            <details className="rounded-md border p-2">
+              <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+              <div className="mt-2 flex flex-col gap-4">
+                {allDescriptors
+                  .filter((descriptor) => descriptor.path === 'execution')
+                  .map((descriptor) => (
+                    <FieldRenderer
+                      key={descriptor.path}
+                      descriptor={descriptor}
+                      config={node.config}
+                      onConfigChange={onConfigChange}
+                      errorsFor={(path) => errorsForPath(problems, path)}
+                      idPrefix={node.id}
+                      references={references}
+                      schemaPaths={triggerPaths}
+                      pickerGroups={conditionGroups}
+                    />
+                  ))}
+              </div>
+            </details>
+          ) : null}
+          {/* TASK-949 D-6 — LLM-only values on a node whose agent cannot read them. Named, not
+              dropped: a hidden field's value still rides along in the published graph. */}
+          {suppressLlmOnlyFields && strandedLlmOnlyValues(node.config).length > 0 ? (
+            <div data-testid="inapplicable-overrides" role="status" className="border-warning/40 bg-warning/10 text-foreground rounded-md border p-2 text-xs">
+              This node sets <span className="font-mono">{strandedLlmOnlyValues(node.config).join(', ')}</span>, which a{' '}
+              {agentTaskLabel(referencedTask).toLowerCase()} agent does not use — the values are kept but not applied. Clear them, or point this node at a
+              text generation agent.
             </div>
-          </details>
-        ) : null}
-        {/* TASK-949 D-6 — LLM-only values on a node whose agent cannot read them. Named, not
-            dropped: a hidden field's value still rides along in the published graph. */}
-        {suppressLlmOnlyFields && strandedLlmOnlyValues(node.config).length > 0 ? (
-          <div data-testid="inapplicable-overrides" role="status" className="border-warning/40 bg-warning/10 text-foreground rounded-md border p-2 text-xs">
-            This node sets <span className="font-mono">{strandedLlmOnlyValues(node.config).join(', ')}</span>, which a{' '}
-            {agentTaskLabel(referencedTask).toLowerCase()} agent does not use — the values are kept but not applied. Clear them, or point this node at a
-            text generation agent.
-          </div>
-        ) : null}
-        {hasDocumentBinding ? (
-          <DocumentBindingField
-            idPrefix={node.id}
-            config={node.config}
-            onConfigChange={onConfigChange}
-            templateErrors={errorsForPath(problems, DOCUMENT_TEMPLATE_PATH)}
-            versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
-          />
-        ) : null}
-        {/* TASK-949 L2 — this picker is rendered standalone (the path is not a schema descriptor,
-            which is why `withheld` cannot reach it), so it needs the task check spelled out. A
-            prompt template on an ASR or NER node is the same category error as a temperature. */}
-        {!knownPaths.has(PROMPT_TEMPLATE_PATH) && !suppressLlmOnlyFields ? (
-          <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
-        ) : null}
-        {graphLevelErrors.length > 0 ? (
-          <div role="alert" className="text-destructive text-sm">
-            {graphLevelErrors.map((problem) => (
-              <p key={`${problem.ruleId}-${problem.message}`}>{problem.message}</p>
-            ))}
-          </div>
-        ) : null}
-      </fieldset>
+          ) : null}
+          {hasDocumentBinding ? (
+            <DocumentBindingField
+              idPrefix={node.id}
+              config={node.config}
+              onConfigChange={onConfigChange}
+              templateErrors={errorsForPath(problems, DOCUMENT_TEMPLATE_PATH)}
+              versionErrors={errorsForPath(problems, DOCUMENT_VERSION_PATH)}
+            />
+          ) : null}
+          {/* TASK-949 L2 — this picker is rendered standalone (the path is not a schema descriptor,
+              which is why `withheld` cannot reach it), so it needs the task check spelled out. A
+              prompt template on an ASR or NER node is the same category error as a temperature. */}
+          {!knownPaths.has(PROMPT_TEMPLATE_PATH) && !suppressLlmOnlyFields ? (
+            <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
+          ) : null}
+          {graphLevelErrors.length > 0 ? (
+            <div role="alert" className="text-destructive text-sm">
+              {graphLevelErrors.map((problem) => (
+                <p key={`${problem.ruleId}-${problem.message}`}>{problem.message}</p>
+              ))}
+            </div>
+          ) : null}
+        </fieldset>
+      </div>
     );
   }
 

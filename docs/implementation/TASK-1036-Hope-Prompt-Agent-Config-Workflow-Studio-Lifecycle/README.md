@@ -1096,7 +1096,7 @@ The orchestrator confirmed:
 
 Live browser re-check (1440×900, super admin acting on Global): Studio shows "Start", "Realtime transcription (whisper.cpp ML/EN)", "Map fields", …; dragging the palette and then the inspector across it leaves both at 260×406 / 360×406 with the controls unmoved; agent Overview shows no `beamSize`/`compiledConfig`/`sha256`; axe 0 violations on the workflow list, Studio Composer/Test/Integration (dark + light), Settings dialog, Pins, Prompts (3 tabs) and the prompt + agent drawers.
 
-Known small gaps (not fixed here): the step-ID copy button is disabled on a published version because the read-only inspector is a disabled `<fieldset>`. The Studio breadcrumb showed the definition id; it now shows the workflow name.
+Also fixed after the walkthrough: the step-ID copy button works on a published version (it sat inside the read-only `<fieldset>`), and the Studio breadcrumb shows the workflow name instead of its id.
 
 ## 8. Discussion round 2 (2026-10-04)
 
