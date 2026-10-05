@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from decimal import Decimal, InvalidOperation
 
 from harness.services.note_plan.models import (
     CoverageCitationCounts,
@@ -27,6 +26,13 @@ from harness.services.note_plan.models import (
     CriticalFact,
     NotePlanV1,
 )
+from harness.services.note_plan.normalise import (
+    canonical_number,
+    canonical_unit,
+    contains,
+    contains_value,
+    normalise_text,
+)
 
 #: The measurement units the number check recognises. A lexicon of the checker, not a setting:
 #: a number with any other trailing word ("4 weeks", "2 tablets") is not checked at all, which
@@ -36,13 +42,11 @@ _UNITS = (
     "mmhg", "mcg", "µg", "μg", "ug", "mg", "kg", "ml", "iu", "bpm", "cm", "mm", "°c", "°f",
     "g", "l", "%",
 )  # fmt: skip
-_UNIT_ALIASES = {"µg": "mcg", "μg": "mcg", "ug": "mcg"}
 _UNIT_PATTERN = "|".join(re.escape(unit) for unit in sorted(_UNITS, key=len, reverse=True))
 _NUMBER_UNIT = re.compile(
     rf"(?<![\w.,/])(?P<value>\d+(?:[.,]\d+)?)\s*(?P<unit>{_UNIT_PATTERN})(?![a-z0-9/])",
     re.IGNORECASE,
 )
-_THOUSANDS = re.compile(r"^\d{1,3}(?:,\d{3})+$")
 
 _LEAD_LABEL = re.compile(r"^\s*\[(?P<label>[SAR]\d+)(?:\s[^\]]*)?\]")
 _BRACKETED_LABEL = re.compile(r"\[(?P<label>[SAR]\d+)\]")
@@ -51,31 +55,13 @@ _LEDGER_FACT_LINE = re.compile(r"^\s*(?P<fact>E\d+-F\d+)\b")
 NumberKey = tuple[str, str]
 
 
-def _norm_value(value: str) -> str:
-    raw = value.replace(",", "") if _THOUSANDS.match(value) else value.replace(",", ".")
-    try:
-        normalized = format(Decimal(raw).normalize(), "f")
-    except InvalidOperation:
-        return raw
-    return normalized
-
-
-def _norm_unit(unit: str | None) -> str:
-    lowered = (unit or "").strip().lower()
-    return _UNIT_ALIASES.get(lowered, lowered)
-
-
 def extract_numbers(text: str) -> list[NumberKey]:
     """Every ``(value, unit)`` with a recognised unit, normalised, in order, de-duplicated."""
     found = (
-        (_norm_value(m.group("value")), _norm_unit(m.group("unit")))
-        for m in _NUMBER_UNIT.finditer(text)
+        (canonical_number(m.group("value")), canonical_unit(m.group("unit")))
+        for m in _NUMBER_UNIT.finditer(normalise_text(text))
     )
     return list(dict.fromkeys(found))
-
-
-def _norm_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip().lower()
 
 
 def _source_texts(plan: NotePlanV1) -> tuple[dict[str, list[str]], set[str]]:
@@ -103,21 +89,20 @@ def _inline_labels(text: str) -> list[str]:
 
 
 def _fact_present(fact: CriticalFact, note: str, note_numbers: set[NumberKey]) -> bool:
-    if any(_norm_text(anchor) not in note for anchor in fact.anchors if anchor.strip()):
+    if not all(contains(note, anchor) for anchor in fact.anchors if anchor.strip()):
         return False
     for number in fact.numbers:
-        value = _norm_value(number.value)
         if number.unit:
-            if (value, _norm_unit(number.unit)) not in note_numbers:
+            if (canonical_number(number.value), canonical_unit(number.unit)) not in note_numbers:
                 return False
-        elif not re.search(rf"(?<![\d.]){re.escape(value)}(?![\d])", note):
+        elif not contains_value(note, number.value):
             return False
     return True
 
 
 def _fact_terms(fact: CriticalFact) -> list[str]:
     terms = [anchor for anchor in fact.anchors if anchor.strip()]
-    terms.extend(f"{n.value} {n.unit}".strip() for n in fact.numbers)
+    terms.extend(f"{n.value} {n.unit or ''}".strip() for n in fact.numbers)
     return terms
 
 
@@ -177,7 +162,7 @@ def check_coverage(
     }
 
     # Critical facts — present anywhere in the note.
-    note = _norm_text("\n\n".join(sections.get(h.key, "") for h in plan.headings))
+    note = normalise_text("\n\n".join(sections.get(h.key, "") for h in plan.headings))
     note_numbers = set(extract_numbers(note))
     facts = plan.coverage.critical_facts
     missing: list[str] = []
@@ -211,7 +196,9 @@ def check_coverage(
         supported = set(extract_numbers(support_text))
         for fact in facts:
             if labels & (set(fact.citations) | {fact.fact_id}):
-                supported.update((_norm_value(n.value), _norm_unit(n.unit)) for n in fact.numbers)
+                supported.update(
+                    (canonical_number(n.value), canonical_unit(n.unit)) for n in fact.numbers
+                )
         for value, unit in stated:
             number_total += 1
             if (value, unit) in supported:
