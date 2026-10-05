@@ -44,6 +44,8 @@ from harness.temporal.interpreter.models import (
     ContextPathResult,
     EvaluateExpressionInput,
     EvaluateExpressionResult,
+    LiveAudioStateRequest,
+    LiveAudioStateResult,
     LiveOutputsRequest,
     LiveOutputsResult,
     NodeActivityInput,
@@ -591,6 +593,49 @@ async def load_live_outputs(request: LiveOutputsRequest) -> LiveOutputsResult:
 
 
 # ---------------------------------------------------------------------------
+# TASK-1042 OD-4a — the LIVE AUDIO state (C5, state only).
+# ---------------------------------------------------------------------------
+
+#: C5 states the wait understands; anything else is read as "still live".
+_LIVE_AUDIO_STATES = frozenset({"live", "ended", "truncated", "timeout"})
+
+
+@activity.defn(name="interpreter.load_live_audio_state")
+async def load_live_audio_state(request: LiveAudioStateRequest) -> LiveAudioStateResult:
+    """Ask the gateway whether the run's bound STT session is still live (C5).
+
+    The poll behind the walk's durable live-audio wait (``workflow.py``). It returns the STATE
+    and nothing else: this result is recorded in the run's history on every poll, and the
+    transcript C5 also answers with is PHI that the ASR node reads once, itself.
+
+    Failure posture, like ``load_live_outputs``: an unreachable gateway or an answer this module
+    cannot read is ``live`` (ask again in 5 s), never mistaken for an ended session. A 4xx is
+    terminal for the call and is reported as ``unbound`` (C5 answers 404 for a session that is not
+    this tenant's or not bound to this run): the wait ends and the node fails by name.
+    """
+    try:
+        raw = await _api_client(get_settings()).get_stt_session_transcript(
+            request.stt_session_id, tenant_id=request.tenant_id, run_id=request.run_id
+        )
+    except ApiClientError as exc:
+        activity.logger.warning(
+            "harness.interpreter.live_audio_state_refused",
+            extra={"run_id": request.run_id, "status_code": exc.status_code},
+        )
+        return LiveAudioStateResult(state="unbound")
+    except ApiServiceError as exc:
+        activity.logger.warning(
+            "harness.interpreter.live_audio_state_unavailable",
+            extra={"run_id": request.run_id, "error": str(exc)},
+        )
+        return LiveAudioStateResult(state="live")
+    state = raw.get("state") if isinstance(raw, dict) else None
+    if state not in _LIVE_AUDIO_STATES:
+        return LiveAudioStateResult(state="live")
+    return LiveAudioStateResult(state=state)
+
+
+# ---------------------------------------------------------------------------
 # TASK-1036 §9.3 — declared consultation reads (OD-30)
 # ---------------------------------------------------------------------------
 
@@ -939,6 +984,7 @@ INTERPRETER_ACTIVITIES: list[Callable[..., Any]] = [
     *SERVED_NODE_ACTIVITIES,
     load_config,
     load_live_outputs,
+    load_live_audio_state,
     resolve_context_path,
     emit_run_events,
     read_consultation,

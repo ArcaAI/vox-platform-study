@@ -1266,6 +1266,38 @@ class ApiClient:
             params["nodeIds"] = ",".join(node_ids)
         return await self._get(f"/consultations/{consultation_id}/live-handoff", params)
 
+    async def get_stt_session_transcript(
+        self, session_id: str, *, tenant_id: str, run_id: str
+    ) -> dict[str, Any]:
+        """TASK-1042 C5 — the transcript of the live STT session bound to ``run_id``.
+
+            GET /api/v1/internal/stt/sessions/{sessionId}/transcript?runId=<runId>
+            headers: X-Service-Token, X-Tenant-Id (both mandatory)
+            200 -> {state: live|ended|truncated|timeout, language, transcript,
+                    finals: [{text, utteranceIndex?, start?, end?, speaker?, language?}]}
+            404 -> the session's job is not in this tenant, or not bound to this run
+
+        A SIBLING mount of the harness prefix (``/internal/stt``, not ``/internal/harness``), so
+        the URL is built off the base url, like :meth:`resolve_agent`. The session id is
+        path-escaped. **The response carries PHI** (the transcript): never logged. A 4xx raises
+        the terminal :class:`ApiClientError`, a transport fault the retryable
+        :class:`ApiServiceError`.
+        """
+        path = f"/api/v1/internal/stt/sessions/{quote(session_id, safe='')}/transcript"
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+            try:
+                resp = await client.get(
+                    f"{self._base_url}{path}",
+                    params={"runId": run_id},
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error("/internal/stt/sessions/{id}/transcript", exc) from exc
+            return cast("dict[str, Any]", resp.json())
+
     async def read_consultation(
         self,
         consultation_id: str,
