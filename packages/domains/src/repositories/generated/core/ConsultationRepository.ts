@@ -5,8 +5,31 @@ import { ConsultationEntityMapper } from '../../../mappers';
 import { ConsultationEntity } from '../../../entities';
 import { Consultation } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
-import { ConsultationStatus, ResourceStatusType } from '../../../enums';
-import { DataNotFoundException } from '@arcaai/exceptions';
+import { ConsultationProcessing, ConsultationStatus, ResourceStatusType } from '../../../enums';
+import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
+import { Prisma } from '@arcaai/database';
+
+/** The open key: one non-closed consultation per (tenant, doctor, patient, department). */
+export interface ConsultationOpenKey {
+  tenantId: string;
+  doctorId: string;
+  patientId: string;
+  departmentId?: string | null;
+}
+
+const CLOSED_STATUSES: ConsultationStatus[] = [ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.CLOSED_INCOMPLETE];
+
+/** Rows one auto-close sweep call reads at most. */
+const AUTO_CLOSE_BATCH_LIMIT = 200;
+
+function openKeyFilters(key: ConsultationOpenKey): Record<string, unknown> {
+  return {
+    tenantId: key.tenantId,
+    doctorId: key.doctorId,
+    patientId: key.patientId,
+    departmentId: key.departmentId ?? null,
+  };
+}
 
 @Injectable()
 export class ConsultationRepository extends Repository<ConsultationEntity, Consultation> {
@@ -384,16 +407,16 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * Consultations awaiting clinician review (the harness gate queue), oldest
-   * first so the longest-waiting item leads. Backs
-   * `HarnessObservabilityService.gateQueue`; SLA/escalation is computed in the
-   * service from the effective policy + the audit trail.
+   * Consultations whose draft waits for the clinician (the harness gate
+   * queue): STOPPED with `processing = AWAITING_REVIEW`, oldest first so the
+   * longest-waiting item leads. Backs `HarnessObservabilityService.gateQueue`.
    */
   async findPendingReviewForTenant(tenantId: string): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
         tenantId,
-        status: ConsultationStatus.PENDING_REVIEW,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.AWAITING_REVIEW,
         resourceStatus: ResourceStatusType.ENABLED,
       },
       sort: [{ updatedAt: 'asc' }],
@@ -401,150 +424,168 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
-   * consultations whose gate SLA was exhausted (PENDING_REVIEW →
-   * TIMED_OUT, `recordEscalation`'s terminal `GATE_ABANDONED` path), oldest
-   * first. A sibling to `findPendingReviewForTenant`: rows that time out must
-   * NOT silently drop out of the gate-queue surface — this is the explicit
-   * dedicated read state-machine.md/ pitfall 5 calls for, rather
-   * than widening the PENDING_REVIEW filter to include TIMED_OUT.
+   * The one non-closed consultation of the OPEN KEY `(tenantId, doctorId,
+   * patientId, departmentId)` — `departmentId` matched null-safely (an absent
+   * department matches only rows with none). The partial unique index
+   * `Consultation_openKey_uq` guarantees at most one; newest first is a
+   * tie-break for rows written before the index existed. `null` on a miss.
    */
-  async findTimedOutForTenant(tenantId: string): Promise<ConsultationEntity[]> {
-    return this.findAll({
+  async findOpenByKey(key: ConsultationOpenKey): Promise<ConsultationEntity | null> {
+    return this.findFirstOrNull({
       filters: {
-        tenantId,
-        status: ConsultationStatus.TIMED_OUT,
+        ...openKeyFilters(key),
+        status: { notIn: CLOSED_STATUSES },
         resourceStatus: ResourceStatusType.ENABLED,
       },
-      sort: [{ updatedAt: 'asc' }],
+      sort: [{ createdAt: 'desc' }],
     });
   }
 
   /**
-   *  — consultations sitting in a
-   * sweep-eligible state (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`,
-   * `TIMED_OUT`, `REOPENED`) whose `updatedAt` is older than `cutoff`, oldest
-   * first. Backs `ConsultationTimeoutSweepService`'s scheduled tick.
-   *
-   * Deliberately cross-tenant, like `findCreatedInRange`: the sweep runs with
-   * no CLS tenant context (a platform-wide maintenance tick, not a per-tenant
-   * request), so this must see every tenant's stale rows in one query rather
-   * than being called once per tenant. `OPEN`, `PENDING_REVIEW` and
-   * `RECORDING` are deliberately NOT in THIS query's eligible set — each is
-   * swept, if at all, by its own leg with its own threshold and its own
-   * target:
-   *   • `RECORDING` → {@link findStaleRecording} (TASK-932 OD-9).
-   *   • `PENDING_REVIEW` → {@link findIdlePendingReview} (TASK-972 Lane 8,
-   *     OD-6), landing on the RECOVERABLE `TIMED_OUT` rather than here. It
-   *     also still has the narrower gate-SLA path
-   *     (`HarnessInternalService.recordEscalation` → `TIMED_OUT`).
-   *   • `OPEN` → {@link findIdleOpen} (TASK-972 Lane 8, OD-7).
-   * Folding any of them into the five-state `in` list below would impose ONE
-   * window and ONE target on states whose clinical meanings differ.
+   * The newest CLOSED consultation of the same open key — the parent a new
+   * consultation is chained to when no non-closed one exists. `null` on a miss.
    */
-  async findTimeoutSweepEligible(cutoff: Date): Promise<ConsultationEntity[]> {
-    return this.findAll({
+  async findLatestClosedByKey(key: ConsultationOpenKey): Promise<ConsultationEntity | null> {
+    return this.findFirstOrNull({
       filters: {
-        status: {
-          in: [
-            ConsultationStatus.PRIMED,
-            ConsultationStatus.DRAINING,
-            ConsultationStatus.DRAFT_PENDING_SENSORS,
-            ConsultationStatus.TIMED_OUT,
-            ConsultationStatus.REOPENED,
-          ],
-        },
-        updatedAt: { lt: cutoff },
+        ...openKeyFilters(key),
+        status: { in: CLOSED_STATUSES },
         resourceStatus: ResourceStatusType.ENABLED,
       },
-      sort: [{ updatedAt: 'asc' }],
+      sort: [{ createdAt: 'desc' }],
     });
   }
 
   /**
-   * TASK-972 Lane 8 (OD-6) — consultations sitting in `PENDING_REVIEW` whose
-   * `updatedAt` is older than `cutoff`, oldest first. Backs the
-   * PENDING_REVIEW leg of `ConsultationTimeoutSweepService`
-   * (`sweepIdlePendingReview`), which transitions each row to the
-   * RECOVERABLE `TIMED_OUT` — never `CLOSED_INCOMPLETE`, because
-   * `TIMED_OUT → SIGNED` is a legal edge that `SummaryService.approveSummary`
-   * already accepts ("the clock never signs, a human still can"), so a
-   * clinician who reviews hours late still signs, still closes, and still
-   * yields a training pair.
+   * Every non-closed consultation whose `lastActivityAt` is older than
+   * `cutoff`, oldest first, capped at `limit` (default 200) rows per call.
+   * Backs the auto-close sweep, which applies each tenant's own window on
+   * top of this (the cutoff is the loosest window it serves).
    *
-   * Age alone is the whole predicate here, matching the existing
-   * `recordEscalation` → `TIMED_OUT` path: the target is recoverable, so a
-   * false positive costs a status label, not a record.
-   *
-   * Deliberately cross-tenant, exactly like {@link findTimeoutSweepEligible}.
+   * Cross-tenant unless `tenantId` is given: the sweep runs with no CLS tenant
+   * context (a platform-wide maintenance tick).
    */
-  async findIdlePendingReview(cutoff: Date): Promise<ConsultationEntity[]> {
+  async findAutoCloseEligible(cutoff: Date, options: { tenantId?: string; limit?: number } = {}): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
-        status: ConsultationStatus.PENDING_REVIEW,
-        updatedAt: { lt: cutoff },
+        ...(options.tenantId ? { tenantId: options.tenantId } : {}),
+        status: { notIn: CLOSED_STATUSES },
+        lastActivityAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
       },
-      sort: [{ updatedAt: 'asc' }],
+      sort: [{ lastActivityAt: 'asc' }],
+      page: 1,
+      limit: options.limit ?? AUTO_CLOSE_BATCH_LIMIT,
     });
   }
 
   /**
-   * TASK-972 Lane 8 (OD-7) — consultations abandoned in `OPEN`, the state
-   * that was structurally unclosable until the `OPEN → CLOSED_INCOMPLETE`
-   * matrix edge landed (Lane 7). Backs `ConsultationTimeoutSweepService`'s
-   * `sweepIdleOpen`.
-   *
-   * TWO signals are required, not one — mirroring the RECORDING leg's
-   * "age AND an absent live-summary lock" rule, and for the same reason:
-   * `ContextService` only ever READS the consultation row (`findById` /
-   * `assertParentInScope`), so adding a case note or an attachment to an
-   * OPEN consultation does NOT bump `Consultation.updatedAt`. Age alone
-   * would therefore close a consultation a clinician is still loading
-   * context into, and this leg's target is the IRREVERSIBLE-in-intent
-   * `CLOSED_INCOMPLETE` (whose only outgoing edge is `REOPENED`). So a row
-   * is eligible only when the row itself has been untouched for the window
-   * AND no `ContextItem` was created inside it.
-   *
-   * Deliberately cross-tenant, exactly like {@link findTimeoutSweepEligible}.
-   */
-  async findIdleOpen(cutoff: Date): Promise<ConsultationEntity[]> {
-    return this.findAll({
-      filters: {
-        status: ConsultationStatus.OPEN,
-        updatedAt: { lt: cutoff },
-        resourceStatus: ResourceStatusType.ENABLED,
-        // Relation filter — `formatFindAllProps` spreads `filters` verbatim
-        // into Prisma's `where`, so this reaches the query as written and is
-        // served by `ContextItem_consultationId_idx`.
-        ContextItems: { none: { createdAt: { gte: cutoff } } },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `DbFilters` describes scalar columns only; Prisma's relation filters have no representation in it
-      } as any,
-      sort: [{ updatedAt: 'asc' }],
-    });
-  }
-
-  /**
-   *  — consultations sitting in `RECORDING`
-   * whose `updatedAt` is older than `cutoff`, oldest first. Backs the
-   * RECORDING leg of `ConsultationTimeoutSweepService`
-   * (`sweepStaleRecordings`, TASK-932 OD-9): age alone is only HALF the
-   * eligibility test — the service additionally requires the row's
-   * `consultation:live-summary:{id}:lock` key to be ABSENT before it force-
-   * stops a row, so a genuinely live capture session is never interrupted.
-   *
-   * Deliberately cross-tenant, exactly like `findTimeoutSweepEligible`: the
-   * sweep runs with no CLS tenant context (a platform-wide maintenance tick,
-   * not a per-tenant request).
+   * Consultations sitting in RECORDING with no capture activity since
+   * `cutoff` (`lastActivityAt`, which segment ingest and the capture
+   * heartbeat advance), oldest first. Backs the stale-recording auto-pause.
+   * Deliberately cross-tenant, like {@link findAutoCloseEligible}.
    */
   async findStaleRecording(cutoff: Date): Promise<ConsultationEntity[]> {
     return this.findAll({
       filters: {
         status: ConsultationStatus.RECORDING,
-        updatedAt: { lt: cutoff },
+        lastActivityAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
       },
-      sort: [{ updatedAt: 'asc' }],
+      sort: [{ lastActivityAt: 'asc' }],
     });
+  }
+
+  // ============================================
+  // No-version-bump writers
+  // ============================================
+  //
+  // Activity, processing and cursor columns change constantly while a
+  // consultation is live. They are written here WITHOUT touching `_version`,
+  // so a client's If-Match stays valid across that churn; `updateWithVersion`
+  // remains the only OCC path (status transitions, metadata edits).
+
+  /**
+   * Move `lastActivityAt` forward to `at` (never backwards).
+   * @returns `true` when the row moved.
+   */
+  async touchActivity(id: string, at: Date = new Date(), tx?: Prisma.TransactionClient | any): Promise<boolean> {
+    const result = await this.delegate(tx).updateMany({
+      where: { id, lastActivityAt: { lt: at } },
+      data: { lastActivityAt: at },
+    });
+    return result.count > 0;
+  }
+
+  /**
+   * Set the processing axis. `processingReason` follows the entity rule (kept
+   * only on FAILED / AWAITING_REVIEW); `refs` / `prior` are written only when
+   * supplied (`null` clears `prior`).
+   * @returns `true` when the row was found.
+   */
+  async setProcessing(
+    id: string,
+    processing: ConsultationProcessing,
+    options: { reason?: string | null; refs?: string[]; prior?: ConsultationProcessing | null } = {},
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<boolean> {
+    const data: Record<string, unknown> = {
+      processing,
+      processingReason: ConsultationEntity.processingReasonFor(processing, options.reason),
+      processingUpdatedAt: new Date(),
+    };
+    if (options.refs !== undefined) data.processingRefs = options.refs;
+    if (options.prior !== undefined) data.processingPrior = options.prior;
+
+    const result = await this.delegate(tx).updateMany({ where: { id }, data });
+    return result.count > 0;
+  }
+
+  /**
+   * Atomically reserve `count` consecutive transcript segment sequence numbers
+   * (`segmentSeqHead += count`).
+   * @returns the reserved inclusive range.
+   */
+  async allocateSegmentSeqs(id: string, count: number, tx?: Prisma.TransactionClient | any): Promise<{ first: number; last: number }> {
+    if (!Number.isInteger(count) || count < 1) {
+      throw new ArgumentInvalidException(`allocateSegmentSeqs: count must be a positive integer (got ${count})`);
+    }
+    const row = await this.delegate(tx).update({
+      where: { id },
+      data: { segmentSeqHead: { increment: count } },
+      select: { segmentSeqHead: true },
+    });
+    return { first: row.segmentSeqHead - count + 1, last: row.segmentSeqHead };
+  }
+
+  /**
+   * Atomically advance the consultation-wide recording timeline by `deltaMs`
+   * (`recordingCursorMs += deltaMs`).
+   * @returns where the appended span sits on the timeline.
+   */
+  async advanceRecordingCursor(id: string, deltaMs: number, tx?: Prisma.TransactionClient | any): Promise<{ startMs: number; endMs: number }> {
+    if (!Number.isInteger(deltaMs) || deltaMs < 0) {
+      throw new ArgumentInvalidException(`advanceRecordingCursor: deltaMs must be a non-negative integer (got ${deltaMs})`);
+    }
+    const row = await this.delegate(tx).update({
+      where: { id },
+      data: { recordingCursorMs: { increment: deltaMs } },
+      select: { recordingCursorMs: true },
+    });
+    return { startMs: row.recordingCursorMs - deltaMs, endMs: row.recordingCursorMs };
+  }
+
+  private delegate(tx?: Prisma.TransactionClient | any): any {
+    return tx ? (tx as Record<string, any>).consultation : (this as any).db;
+  }
+
+  private async findFirstOrNull(props: Parameters<ConsultationRepository['findFirst']>[0]): Promise<ConsultationEntity | null> {
+    try {
+      return await this.findFirst(props);
+    } catch (error) {
+      if (error instanceof DataNotFoundException) return null;
+      throw error;
+    }
   }
 
   /**

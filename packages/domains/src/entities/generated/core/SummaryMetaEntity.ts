@@ -56,6 +56,18 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   redactionApplied?: boolean | null;
   redactionManifest?: JsonValue | null;
   encryptedRedactionManifest?: Buffer | null;
+  // Note coverage + budget provenance. `coverageStatus` is complete
+  //  gaps
+  //  unchecked;
+  // `coverageReport` is the transient plaintext CoverageResultV1, encrypt-on-write into
+  // `encryptedCoverageReport` (sharing `keyVersion`). `budgetStrategy` names how the note input
+  // was fitted to the model's context; `noteInputDigest` digests the note plan's inputs (ids + versions).
+  coverageStatus?: string | null;
+  coverageGapCount?: number | null;
+  coverageReport?: JsonValue | null;
+  encryptedCoverageReport?: Buffer | null;
+  budgetStrategy?: string | null;
+  noteInputDigest?: string | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -95,6 +107,12 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _redactionApplied?: ISummaryMetaEntity['redactionApplied'];
   private _redactionManifest?: ISummaryMetaEntity['redactionManifest'];
   private _encryptedRedactionManifest?: ISummaryMetaEntity['encryptedRedactionManifest'];
+  private _coverageStatus?: ISummaryMetaEntity['coverageStatus'];
+  private _coverageGapCount?: ISummaryMetaEntity['coverageGapCount'];
+  private _coverageReport?: ISummaryMetaEntity['coverageReport'];
+  private _encryptedCoverageReport?: ISummaryMetaEntity['encryptedCoverageReport'];
+  private _budgetStrategy?: ISummaryMetaEntity['budgetStrategy'];
+  private _noteInputDigest?: ISummaryMetaEntity['noteInputDigest'];
   private _ContextItem?: ISummaryMetaEntity['ContextItem'];
 
   constructor(init: ISummaryMetaEntity) {
@@ -134,6 +152,12 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._redactionApplied = init.redactionApplied;
     this._redactionManifest = init.redactionManifest;
     this._encryptedRedactionManifest = init.encryptedRedactionManifest;
+    this._coverageStatus = init.coverageStatus;
+    this._coverageGapCount = init.coverageGapCount;
+    this._coverageReport = init.coverageReport;
+    this._encryptedCoverageReport = init.encryptedCoverageReport;
+    this._budgetStrategy = init.budgetStrategy;
+    this._noteInputDigest = init.noteInputDigest;
     this._ContextItem = init.ContextItem;
   }
 
@@ -429,6 +453,56 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set encryptedRedactionManifest(value: ISummaryMetaEntity['encryptedRedactionManifest']) {
     this.setProperty('encryptedRedactionManifest', value);
+  }
+
+  get coverageStatus(): ISummaryMetaEntity['coverageStatus'] {
+    return this._coverageStatus;
+  }
+
+  set coverageStatus(value: ISummaryMetaEntity['coverageStatus']) {
+    this.setProperty('coverageStatus', value);
+  }
+
+  get coverageGapCount(): ISummaryMetaEntity['coverageGapCount'] {
+    return this._coverageGapCount;
+  }
+
+  set coverageGapCount(value: ISummaryMetaEntity['coverageGapCount']) {
+    this.setProperty('coverageGapCount', value);
+  }
+
+  @Secret()
+  get coverageReport(): ISummaryMetaEntity['coverageReport'] {
+    return this._coverageReport;
+  }
+
+  set coverageReport(value: ISummaryMetaEntity['coverageReport']) {
+    this.setProperty('coverageReport', value);
+  }
+
+  @Secret()
+  get encryptedCoverageReport(): ISummaryMetaEntity['encryptedCoverageReport'] {
+    return this._encryptedCoverageReport;
+  }
+
+  set encryptedCoverageReport(value: ISummaryMetaEntity['encryptedCoverageReport']) {
+    this.setProperty('encryptedCoverageReport', value);
+  }
+
+  get budgetStrategy(): ISummaryMetaEntity['budgetStrategy'] {
+    return this._budgetStrategy;
+  }
+
+  set budgetStrategy(value: ISummaryMetaEntity['budgetStrategy']) {
+    this.setProperty('budgetStrategy', value);
+  }
+
+  get noteInputDigest(): ISummaryMetaEntity['noteInputDigest'] {
+    return this._noteInputDigest;
+  }
+
+  set noteInputDigest(value: ISummaryMetaEntity['noteInputDigest']) {
+    this.setProperty('noteInputDigest', value);
   }
 
   get ContextItem(): ISummaryMetaEntity['ContextItem'] {

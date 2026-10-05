@@ -47,6 +47,11 @@ export class SummaryMeta extends BaseTenantDataModel {
   public keyVersion: number | null;
   public redactionApplied: boolean | null;
   public encryptedRedactionManifest: Uint8Array | null;
+  public coverageStatus: string | null;
+  public coverageGapCount: number | null;
+  public encryptedCoverageReport: Uint8Array | null;
+  public budgetStrategy: string | null;
+  public noteInputDigest: string | null;
   @VirtualDbProperty()
   public ContextItem: Models.ContextItem | undefined;
 
@@ -84,6 +89,11 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.keyVersion = data.keyVersion;
     this.redactionApplied = data.redactionApplied;
     this.encryptedRedactionManifest = data.encryptedRedactionManifest;
+    this.coverageStatus = data.coverageStatus;
+    this.coverageGapCount = data.coverageGapCount;
+    this.encryptedCoverageReport = data.encryptedCoverageReport;
+    this.budgetStrategy = data.budgetStrategy;
+    this.noteInputDigest = data.noteInputDigest;
     this.ContextItem = data.ContextItem;
   }
 }

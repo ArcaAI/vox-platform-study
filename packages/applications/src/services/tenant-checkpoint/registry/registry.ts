@@ -336,7 +336,13 @@ const CLINICAL: CheckpointModelDescriptor[] = [
       'Self-FK parentConsultationId. doctorId points at a global User. Consultation_encounterKey_uq keeps DELETED rows, so a retire frees the encounter key: externalRef → NULL, the original kept in _metadata.retiredExternalRef.',
   }),
   rec('ContextItem', 'CLINICAL', true),
-  rec('ContextItemVersion', 'CLINICAL', false),
+  m('ContextItemVersion', 'CLINICAL', 'RECONCILE', false, NEVER, TENANT, {
+    uniqueSlot: 'skip',
+    immutableColumns: ['*'],
+    immutableWhen: 'true',
+    notes:
+      'context_item_version_immutability_guard refuses every DELETE and every UPDATE that changes the row: reconcile degenerates to insert-missing. A version created after the checkpoint stays (a correction is a new version, never a rewrite).',
+  }),
   rec('AudioRecording', 'CLINICAL', false, { notes: 'Missing media bytes are re-uploaded from the checkpoint.' }),
   rec('SummaryMeta', 'CLINICAL', false),
   rec('NamedEntity', 'CLINICAL', false),
@@ -364,6 +370,23 @@ const CLINICAL: CheckpointModelDescriptor[] = [
   rec('EvalRun', 'CLINICAL', true),
   rec('EvalScore', 'CLINICAL', true),
   rec('GateEditExemplar', 'CLINICAL', false, { notes: 'Derived gate-edit mining store; hard-deleted when absent.' }),
+  rec('ConsultationEncounter', 'CLINICAL', false, {
+    notes: 'Visits of a consultation; no soft delete (lives and dies with its consultation), hard-deleted when absent.',
+  }),
+  m('ConsultationApproval', 'CLINICAL', 'RECONCILE', false, NEVER, TENANT, {
+    uniqueSlot: 'skip',
+    immutableColumns: ['*'],
+    immutableWhen: 'true',
+    notes:
+      'consultation_approval_immutability_guard refuses ALL updates and deletes: reconcile degenerates to insert-missing. An approval written after the checkpoint stays (the record of a clinician act is never rewound).',
+  }),
+  rec('ConsultationAttachment', 'CLINICAL', true, {
+    notes: 'The original file name is encrypted PHI, restored as ciphertext. Object bytes are referenced through Media and left in place.',
+  }),
+  rec('ConsultationFeedback', 'CLINICAL', false, {
+    notes:
+      'Append-only clinician feedback (no soft delete): rows absent from the checkpoint are hard-deleted. ConsultationFeedback_latest_uq is partial (isLatest rated rows); a claimant is skipped.',
+  }),
   rec('Notification', 'CLINICAL', true),
   rec('ResourceSubscription', 'CLINICAL', true),
 ];
@@ -383,6 +406,8 @@ const LOGS: CheckpointModelDescriptor[] = [
   log('AiUsageOutbox', false),
   log('AiUsageRollupHourly', false),
   log('AiUsageRollupDaily', false),
+  log('ConsultationFeedbackDailyRollup', false, TENANT, { notes: 'Derived per-day feedback aggregate; recomputed, never restored.' }),
+  log('AiActivityRun', false, TENANT, { notes: 'Per-AI-activity run record (ids and numbers only); telemetry, never restored.' }),
   log('TenantUsageMeter', true),
   log('TenantPlanHistory', false),
   log('BillingInvoice', true),

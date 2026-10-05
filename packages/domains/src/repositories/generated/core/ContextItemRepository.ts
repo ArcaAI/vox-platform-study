@@ -6,6 +6,26 @@ import { ContextItemEntity } from '../../../entities';
 import { ContextItem } from '../../../models';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { ResourceStatusType, ContextItemType, ContextItemSource } from '../../../enums';
+import { removeNullValues } from '../../../common/removeNullValues';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { Prisma } from '@arcaai/database';
+
+/** Optional narrowing for {@link ContextItemRepository.findSegments}. */
+export interface SegmentReadFilters {
+  encounterSeq?: number;
+  /** Inclusive lower bound on `segmentSeq`. */
+  fromSeq?: number;
+  /** Inclusive upper bound on `segmentSeq`. */
+  toSeq?: number;
+}
+
+/** Outcome of {@link ContextItemRepository.createSegmentsBatch}. */
+export interface SegmentBatchResult {
+  /** The rows this call inserted, in `segmentSeq` order. */
+  inserted: ContextItemEntity[];
+  /** `segmentKey`s that already existed (idempotent replays). */
+  duplicateKeys: string[];
+}
 
 /**
  * TASK-999 — PHI-safe length rollup for one `(consultation, type)` pair.
@@ -603,5 +623,84 @@ export class ContextItemRepository extends Repository<ContextItemEntity, Context
     });
 
     return models.map((model: ContextItem) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  // ============================================
+  // Consultation record model (transcript segments + per-encounter artifacts)
+  // ============================================
+
+  /**
+   * The consultation's TRANSCRIPT_SEGMENT items in `segmentSeq` order,
+   * optionally narrowed to one encounter and/or an inclusive seq range.
+   */
+  async findSegments(consultationId: string, filters: SegmentReadFilters = {}): Promise<ContextItemEntity[]> {
+    const where: Record<string, unknown> = {
+      consultationId,
+      type: ContextItemType.TRANSCRIPT_SEGMENT,
+      resourceStatus: ResourceStatusType.ENABLED,
+    };
+    if (filters.encounterSeq !== undefined) where.encounterSeq = filters.encounterSeq;
+    if (filters.fromSeq !== undefined || filters.toSeq !== undefined) {
+      where.segmentSeq = {
+        ...(filters.fromSeq !== undefined ? { gte: filters.fromSeq } : {}),
+        ...(filters.toSeq !== undefined ? { lte: filters.toSeq } : {}),
+      };
+    }
+    const models = await (this as any).db.findMany({ where, orderBy: [{ segmentSeq: 'asc' }] });
+    return models.map((model: ContextItem) => (this as any)._mapper.toDomainEntity(model));
+  }
+
+  /**
+   * The consultation's single live FULL_TRANSCRIPT item (rebuilt from the
+   * segments; at most one per consultation by partial unique index), or `null`.
+   */
+  async findFullTranscript(consultationId: string): Promise<ContextItemEntity | null> {
+    const model = await (this as any).db.findFirst({
+      where: { consultationId, type: ContextItemType.FULL_TRANSCRIPT, resourceStatus: ResourceStatusType.ENABLED },
+    });
+    return model ? (this as any)._mapper.toDomainEntity(model) : null;
+  }
+
+  /**
+   * The live FACT_LEDGER or ENCOUNTER_RECAP item of one encounter (at most one
+   * each by partial unique index), or `null`.
+   */
+  async findEncounterArtifact(
+    consultationId: string,
+    type: ContextItemType.FACT_LEDGER | ContextItemType.ENCOUNTER_RECAP,
+    encounterSeq: number,
+  ): Promise<ContextItemEntity | null> {
+    const model = await (this as any).db.findFirst({
+      where: { consultationId, type, encounterSeq, resourceStatus: ResourceStatusType.ENABLED },
+    });
+    return model ? (this as any)._mapper.toDomainEntity(model) : null;
+  }
+
+  /**
+   * Insert a batch of TRANSCRIPT_SEGMENT items in ONE `createMany`, idempotent
+   * on `segmentKey`: a key that already exists for the consultation (partial
+   * unique index `ContextItem_segmentKey_uq`) is skipped, never an error.
+   * Every entity must carry its own id and `segmentKey` (and its ciphertext —
+   * this method does not encrypt). Version rows are the caller's to write for
+   * `inserted`, in the same transaction when `tx` is given.
+   */
+  async createSegmentsBatch(entities: ContextItemEntity[], tx?: Prisma.TransactionClient | any): Promise<SegmentBatchResult> {
+    if (entities.length === 0) return { inserted: [], duplicateKeys: [] };
+    for (const entity of entities) {
+      if (!entity.segmentKey) {
+        throw new ArgumentInvalidException('createSegmentsBatch: every segment needs a segmentKey');
+      }
+    }
+
+    const delegate = tx ? (tx as Record<string, any>).contextItem : (this as any).db;
+    const data = entities.map((entity) => removeNullValues((this as any)._mapper.toPersistence(entity)));
+    await delegate.createMany({ data, skipDuplicates: true });
+
+    const ids = entities.map((entity) => entity.id);
+    const models = await delegate.findMany({ where: { id: { in: ids } }, orderBy: [{ segmentSeq: 'asc' }] });
+    const inserted: ContextItemEntity[] = models.map((model: ContextItem) => (this as any)._mapper.toDomainEntity(model));
+    const insertedIds = new Set(inserted.map((entity) => entity.id));
+    const duplicateKeys = entities.filter((entity) => !insertedIds.has(entity.id)).map((entity) => entity.segmentKey as string);
+    return { inserted, duplicateKeys };
   }
 }

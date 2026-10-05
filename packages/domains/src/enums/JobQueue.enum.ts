@@ -59,4 +59,8 @@ export enum JobQueue {
   // `pg` connection, so neither is DB-bound on the shared Prisma pool.
   TenantCheckpointExport = 'TenantCheckpointExport',
   TenantCheckpointRestore = 'TenantCheckpointRestore',
+
+  // Per-encounter fact ledger (and its rendered recap), built after the
+  // encounter's final transcript lands.
+  ExtractFactLedger = 'ExtractFactLedger',
 }

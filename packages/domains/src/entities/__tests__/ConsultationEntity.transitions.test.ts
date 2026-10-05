@@ -1,18 +1,14 @@
 /**
- * ConsultationEntity — session state machine
+ * ConsultationEntity — consultation lifecycle state machine
  *
- * Table-driven over the FULL Cartesian product of the 12 adopted
- * `ConsultationStatus` members (144 pairs), reproducing the legality matrix
- * verbatim as test data (NOT imported from the implementation — this test
- * is the independent source of truth the implementation must satisfy).
+ * Table-driven over the FULL Cartesian product of the seven
+ * `ConsultationStatus` members (49 pairs), reproducing the legality matrix
+ * verbatim as test data (NOT imported from the implementation — this test is
+ * the independent source of truth the implementation must satisfy).
  *
- * Revised 2026-08-16 for the owner's Q1 decision: `CLOSED` is SUPERSEDED
- * (never a legal `to` — it stays in the Cartesian product only so its
- * illegal/self-only behavior is asserted) and split into `CLOSED_COMPLETE`
- * / `CLOSED_INCOMPLETE`.
- *
- * `PAUSED` is deliberately absent from `ConsultationStatus` (see
- * so it is out of the Cartesian product entirely.
+ * CLOSED_COMPLETE → OPEN is legal only under the tenant reopen policy; it is
+ * exercised here with `allowClosedCompleteReopen: true`. The processing guard
+ * on STOPPED → APPROVED is covered by `ConsultationEntity.lifecycle.task1045.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 import { ConsultationEntity, IConsultationEntity } from '../generated/core/ConsultationEntity';
@@ -20,66 +16,37 @@ import { ConsultationStatus, ResourceStatusType } from '../../enums';
 
 const ALL_STATUSES: ConsultationStatus[] = [
   ConsultationStatus.OPEN,
-  ConsultationStatus.PRIMED,
   ConsultationStatus.RECORDING,
-  ConsultationStatus.DRAINING,
-  ConsultationStatus.DRAFT_PENDING_SENSORS,
-  ConsultationStatus.PENDING_REVIEW,
-  ConsultationStatus.SIGNED,
-  ConsultationStatus.TIMED_OUT,
-  ConsultationStatus.CLOSED,
-  ConsultationStatus.REOPENED,
+  ConsultationStatus.PAUSED,
+  ConsultationStatus.STOPPED,
+  ConsultationStatus.APPROVED,
   ConsultationStatus.CLOSED_COMPLETE,
   ConsultationStatus.CLOSED_INCOMPLETE,
 ];
 
-// one row per legal, non-reflexive transition.
+// One row per legal, non-reflexive transition.
 const LEGAL_TRANSITIONS: Array<[ConsultationStatus, ConsultationStatus]> = [
-  [ConsultationStatus.OPEN, ConsultationStatus.PRIMED],
+  [ConsultationStatus.OPEN, ConsultationStatus.RECORDING],
   [ConsultationStatus.OPEN, ConsultationStatus.CLOSED_INCOMPLETE],
-  [ConsultationStatus.PRIMED, ConsultationStatus.RECORDING],
-  [ConsultationStatus.RECORDING, ConsultationStatus.DRAINING],
-  [ConsultationStatus.DRAINING, ConsultationStatus.RECORDING],
-  [ConsultationStatus.DRAINING, ConsultationStatus.DRAFT_PENDING_SENSORS],
-  [ConsultationStatus.DRAINING, ConsultationStatus.PENDING_REVIEW],
-  [ConsultationStatus.DRAFT_PENDING_SENSORS, ConsultationStatus.PENDING_REVIEW],
-  [ConsultationStatus.DRAFT_PENDING_SENSORS, ConsultationStatus.SIGNED],
-  [ConsultationStatus.PENDING_REVIEW, ConsultationStatus.SIGNED],
-  [ConsultationStatus.PENDING_REVIEW, ConsultationStatus.TIMED_OUT],
-  [ConsultationStatus.TIMED_OUT, ConsultationStatus.SIGNED],
-  [ConsultationStatus.TIMED_OUT, ConsultationStatus.REOPENED],
-  [ConsultationStatus.SIGNED, ConsultationStatus.REOPENED],
-  [ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.REOPENED],
-  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.REOPENED],
-  [ConsultationStatus.REOPENED, ConsultationStatus.PENDING_REVIEW],
-  [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE],
-  [ConsultationStatus.TIMED_OUT, ConsultationStatus.CLOSED_INCOMPLETE],
-  [ConsultationStatus.PRIMED, ConsultationStatus.CLOSED_INCOMPLETE],
-  [ConsultationStatus.DRAINING, ConsultationStatus.CLOSED_INCOMPLETE],
-  [ConsultationStatus.DRAFT_PENDING_SENSORS, ConsultationStatus.CLOSED_INCOMPLETE],
-  [ConsultationStatus.REOPENED, ConsultationStatus.CLOSED_INCOMPLETE],
-  // TASK-1001 wave 5, owner decision D-7 (2026-09-23): a terminal gate abandon closes the
-  // consultation unsigned, and a clinician who approves AFTER that still signs — the same
-  // "the clock never signs, a human still can" rule as `TIMED_OUT → SIGNED`.
-  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.SIGNED],
-  // TASK-1001 wave 6 — the clinician resumes a session the completion timeout closed unsigned.
-  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.RECORDING],
-  // TASK-1001 wave 6 (owner) — the clinician adds more while the final note waits for approval.
-  [ConsultationStatus.PENDING_REVIEW, ConsultationStatus.RECORDING],
+  [ConsultationStatus.RECORDING, ConsultationStatus.PAUSED],
+  [ConsultationStatus.RECORDING, ConsultationStatus.STOPPED],
+  [ConsultationStatus.RECORDING, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.PAUSED, ConsultationStatus.RECORDING],
+  [ConsultationStatus.PAUSED, ConsultationStatus.STOPPED],
+  [ConsultationStatus.PAUSED, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.STOPPED, ConsultationStatus.RECORDING],
+  [ConsultationStatus.STOPPED, ConsultationStatus.OPEN],
+  [ConsultationStatus.STOPPED, ConsultationStatus.APPROVED],
+  [ConsultationStatus.STOPPED, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.APPROVED, ConsultationStatus.CLOSED_COMPLETE],
+  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.OPEN],
+  [ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.OPEN],
 ];
 
-// Reserved but disabled — must throw naming the epic that will enable them,
-// distinct from an ordinary illegal pair.
-const RESERVED_DISABLED: Array<[ConsultationStatus, ConsultationStatus, string]> = [
-  [ConsultationStatus.PENDING_REVIEW, ConsultationStatus.DRAFT_PENDING_SENSORS, 'note-sections'],
-];
+const POLICY = { allowClosedCompleteReopen: true };
 
 function isLegal(from: ConsultationStatus, to: ConsultationStatus): boolean {
   return LEGAL_TRANSITIONS.some(([f, t]) => f === from && t === to);
-}
-
-function reservedEpic(from: ConsultationStatus, to: ConsultationStatus): string | undefined {
-  return RESERVED_DISABLED.find(([f, t]) => f === from && t === to)?.[2];
 }
 
 function createInit(overrides: Partial<IConsultationEntity> = {}): IConsultationEntity {
@@ -110,8 +77,6 @@ function createInit(overrides: Partial<IConsultationEntity> = {}): IConsultation
 describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', () => {
   for (const from of ALL_STATUSES) {
     for (const to of ALL_STATUSES) {
-      const epic = reservedEpic(from, to);
-
       if (from === to) {
         it(`${from} → ${to} (self) is an idempotent no-op`, () => {
           const entity = new ConsultationEntity(createInit({ status: from }));
@@ -124,18 +89,10 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
         continue;
       }
 
-      if (epic) {
-        it(`${from} → ${to} is reserved-but-disabled (${epic})`, () => {
-          const entity = new ConsultationEntity(createInit({ status: from }));
-          expect(() => entity.transitionTo(to, 'actor-1', 'test-reason')).toThrow(epic);
-        });
-        continue;
-      }
-
       if (isLegal(from, to)) {
         it(`${from} → ${to} is legal and records the change`, () => {
           const entity = new ConsultationEntity(createInit({ status: from }));
-          const result = entity.transitionTo(to, 'actor-1', 'test-reason');
+          const result = entity.transitionTo(to, 'actor-1', 'test-reason', POLICY);
 
           expect(result).toBe(true);
           expect(entity.status).toBe(to);
@@ -145,9 +102,8 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
       } else {
         it(`${from} → ${to} is illegal and throws naming both states`, () => {
           const entity = new ConsultationEntity(createInit({ status: from }));
-          expect(() => entity.transitionTo(to, 'actor-1', 'test-reason')).toThrow();
           try {
-            entity.transitionTo(to, 'actor-1', 'test-reason');
+            entity.transitionTo(to, 'actor-1', 'test-reason', POLICY);
             throw new Error('expected transitionTo to throw');
           } catch (err) {
             const message = (err as Error).message;
@@ -159,17 +115,16 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
     }
   }
 
-  it('the count of legal transitions equals the matrix row count (26)', () => {
-    expect(LEGAL_TRANSITIONS.length).toBe(26);
+  it('the count of legal transitions equals the matrix row count (15)', () => {
+    expect(LEGAL_TRANSITIONS.length).toBe(15);
 
     let legalCount = 0;
     for (const from of ALL_STATUSES) {
       for (const to of ALL_STATUSES) {
         if (from === to) continue;
-        if (reservedEpic(from, to)) continue;
         const entity = new ConsultationEntity(createInit({ status: from }));
         try {
-          entity.transitionTo(to, 'actor-1', 'test-reason');
+          entity.transitionTo(to, 'actor-1', 'test-reason', POLICY);
           legalCount += 1;
         } catch {
           // illegal — not counted
@@ -183,20 +138,20 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
 describe('ConsultationEntity.transitionTo — actor/reason + WORM handoff', () => {
   it('records actor and reason on the entity for the caller to forward', () => {
     const entity = new ConsultationEntity(createInit({ status: ConsultationStatus.OPEN }));
-    entity.transitionTo(ConsultationStatus.PRIMED, 'clinician-42', 'consent asserted');
+    entity.transitionTo(ConsultationStatus.RECORDING, 'clinician-42', 'start');
 
     expect(entity.lastTransition).toMatchObject({
       from: ConsultationStatus.OPEN,
-      to: ConsultationStatus.PRIMED,
+      to: ConsultationStatus.RECORDING,
       actor: 'clinician-42',
-      reason: 'consent asserted',
+      reason: 'start',
     });
   });
 
   it('does not update lastTransition on a self-transition no-op', () => {
     const entity = new ConsultationEntity(createInit({ status: ConsultationStatus.OPEN }));
-    entity.transitionTo(ConsultationStatus.PRIMED, 'clinician-42', 'first');
-    entity.transitionTo(ConsultationStatus.PRIMED, 'someone-else', 'second');
+    entity.transitionTo(ConsultationStatus.RECORDING, 'clinician-42', 'first');
+    entity.transitionTo(ConsultationStatus.RECORDING, 'someone-else', 'second');
 
     expect(entity.lastTransition).toMatchObject({ actor: 'clinician-42', reason: 'first' });
   });
@@ -206,18 +161,15 @@ describe('ConsultationEntity.canTransitionTo', () => {
   it('returns true for every legal pair and for a self-transition', () => {
     for (const [from, to] of LEGAL_TRANSITIONS) {
       const entity = new ConsultationEntity(createInit({ status: from }));
-      expect(entity.canTransitionTo(to)).toBe(true);
+      expect(entity.canTransitionTo(to, POLICY)).toBe(true);
     }
     const entity = new ConsultationEntity(createInit({ status: ConsultationStatus.OPEN }));
     expect(entity.canTransitionTo(ConsultationStatus.OPEN)).toBe(true);
   });
 
-  it('returns false for an illegal pair and for a reserved-disabled pair, without throwing', () => {
+  it('returns false for an illegal pair without throwing', () => {
     const entity = new ConsultationEntity(createInit({ status: ConsultationStatus.OPEN }));
-    expect(entity.canTransitionTo(ConsultationStatus.SIGNED)).toBe(false);
-
-    const reserved = new ConsultationEntity(createInit({ status: ConsultationStatus.PENDING_REVIEW }));
-    expect(reserved.canTransitionTo(ConsultationStatus.DRAFT_PENDING_SENSORS)).toBe(false);
+    expect(entity.canTransitionTo(ConsultationStatus.APPROVED)).toBe(false);
   });
 });
 
@@ -238,11 +190,9 @@ describe('ConsultationEntity.degradedReasons', () => {
     expect(entity.degradedReasons).toEqual([]);
   });
 
-  it('transitioning to SIGNED clears degradedReasons as a side effect', () => {
-    const entity = new ConsultationEntity(
-      createInit({ status: ConsultationStatus.PENDING_REVIEW, degradedReasons: ['mcp_degraded', 'policy_degraded'] }),
-    );
-    entity.transitionTo(ConsultationStatus.SIGNED, 'clinician-1', 'approveSummary');
+  it('transitioning to APPROVED clears degradedReasons as a side effect', () => {
+    const entity = new ConsultationEntity(createInit({ status: ConsultationStatus.STOPPED, degradedReasons: ['mcp_degraded', 'policy_degraded'] }));
+    entity.transitionTo(ConsultationStatus.APPROVED, 'clinician-1', 'approve');
 
     expect(entity.degradedReasons).toEqual([]);
   });

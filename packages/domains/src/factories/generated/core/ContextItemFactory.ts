@@ -26,6 +26,17 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   // . Optional and defaulted to null, so every pre-existing
   // caller produces exactly the row it produced before.
   documentKey?: IContextItemEntity['documentKey'];
+  // Consultation record model. Optional and defaulted to null (occurredAt to
+  // now), so every pre-existing caller produces exactly the row it did before.
+  encounterSeq?: IContextItemEntity['encounterSeq'];
+  segmentSeq?: IContextItemEntity['segmentSeq'];
+  segmentKey?: IContextItemEntity['segmentKey'];
+  t0Ms?: IContextItemEntity['t0Ms'];
+  t1Ms?: IContextItemEntity['t1Ms'];
+  speaker?: IContextItemEntity['speaker'];
+  capturedAt?: IContextItemEntity['capturedAt'];
+  occurredAt?: IContextItemEntity['occurredAt'];
+  metaData?: IContextItemEntity['metaData'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];
   tenantId: IContextItemEntity['tenantId'];
 
@@ -63,9 +74,55 @@ export class ContextItemFactory {
       kindKey: props.kindKey ?? null,
       contextSchemaVersionId: props.contextSchemaVersionId ?? null,
       documentKey: props.documentKey ?? null,
+      encounterSeq: props.encounterSeq ?? null,
+      segmentSeq: props.segmentSeq ?? null,
+      segmentKey: props.segmentKey ?? null,
+      t0Ms: props.t0Ms ?? null,
+      t1Ms: props.t1Ms ?? null,
+      speaker: props.speaker ?? null,
+      capturedAt: props.capturedAt ?? null,
+      occurredAt: props.occurredAt ?? props.capturedAt ?? now,
+      metaData: props.metaData,
       qdrantSynced: props.qdrantSynced ?? false,
       qdrantSyncedAt: null,
       tenantId: props.tenantId,
+    });
+  }
+
+  /**
+   * Create one finalized transcript utterance (TRANSCRIPT_SEGMENT). The
+   * caller allocates `segmentSeq` (ConsultationRepository.allocateSegmentSeqs)
+   * and encrypts `content` before persisting.
+   */
+  static CreateTranscriptSegment(props: {
+    tenantId: string;
+    consultationId: string;
+    encounterSeq: number;
+    segmentSeq: number;
+    segmentKey: string;
+    content: string;
+    t0Ms?: number | null;
+    t1Ms?: number | null;
+    speaker?: string | null;
+    capturedAt?: Date | null;
+    metaData?: IContextItemEntity['metaData'];
+    createdBy?: string | null;
+  }): ContextItemEntity {
+    return this.CreateContextItem({
+      tenantId: props.tenantId,
+      consultationId: props.consultationId,
+      type: Enums.ContextItemType.TRANSCRIPT_SEGMENT,
+      source: Enums.ContextItemSource.TRANSCRIPTION,
+      content: props.content,
+      encounterSeq: props.encounterSeq,
+      segmentSeq: props.segmentSeq,
+      segmentKey: props.segmentKey,
+      t0Ms: props.t0Ms,
+      t1Ms: props.t1Ms,
+      speaker: props.speaker,
+      capturedAt: props.capturedAt,
+      metaData: props.metaData,
+      createdBy: props.createdBy ?? 'system',
     });
   }
 

@@ -1,24 +1,17 @@
 /**
- * ConsultationStatus wiring gate (session state machine).
+ * ConsultationStatus wiring gate (consultation lifecycle).
  *
- * This is the gate that makes another dead enum member (A-46: `CLOSED`/
- * `REOPENED` existed for years with zero live writers) STRUCTURALLY
- * impossible. It asserts, behaviourally (via `ConsultationEntity.
- * canTransitionTo` — never by importing the private `CONSULTATION_TRANSITIONS`
- * map), that every `ConsultationStatus` member is reachable as a `to` from
- * SOME other member, with exactly two documented exceptions:
- *
- *   - `OPEN` — a consultation is CREATED in `OPEN`, never transitioned into
- *   - `CLOSED` — SUPERSEDED before ever going live (split into
- * `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE`,
- *                Retained in the enum only because Postgres cannot drop a
- *                value; deliberately and permanently never a `transitionTo`
- *                target again.
+ * The gate that makes a dead enum member (A-46: `CLOSED`/`REOPENED` existed
+ * for years with zero live writers) STRUCTURALLY impossible. It asserts,
+ * behaviourally (via `ConsultationEntity.canTransitionTo` — never by importing
+ * the private `CONSULTATION_TRANSITIONS` map), that every `ConsultationStatus`
+ * member is reachable as a `to` from SOME other member. In the seven-state
+ * lifecycle there is no exception: OPEN is reached from STOPPED (a new
+ * encounter) and from both closed states (reopen).
  *
  * DO NOT delete this test as "redundant" with `ConsultationEntity.
  * transitions.test.ts` — that suite proves the matrix is IMPLEMENTED
- * correctly; this one proves it is COMPLETE (no enum member left unwired),
- * which is exactly the property that would have caught A-46 before it shipped.
+ * correctly; this one proves it is COMPLETE (no enum member left unwired).
  */
 import { describe, it, expect } from 'vitest';
 import { ConsultationEntity, IConsultationEntity } from '../../entities/generated/core/ConsultationEntity';
@@ -26,8 +19,8 @@ import { ConsultationStatus, ResourceStatusType } from '../../enums';
 
 const ALL_STATUSES: ConsultationStatus[] = Object.values(ConsultationStatus);
 
-// The two documented, permanent exceptions — see the file doc above.
-const NEVER_A_TARGET: ReadonlySet<ConsultationStatus> = new Set([ConsultationStatus.OPEN, ConsultationStatus.CLOSED]);
+// No member is exempt — see the file doc above.
+const NEVER_A_TARGET: ReadonlySet<ConsultationStatus> = new Set();
 
 function createEntity(status: ConsultationStatus): ConsultationEntity {
   return new ConsultationEntity({
@@ -54,7 +47,7 @@ function createEntity(status: ConsultationStatus): ConsultationEntity {
 }
 
 describe('ConsultationStatus wiring gate — every member is a matrix target, or documented as never-targeted', () => {
-  it('every ConsultationStatus member is reachable as a `to` from some other member, except OPEN/CLOSED', () => {
+  it('every ConsultationStatus member is reachable as a `to` from some other member', () => {
     const unreachable: ConsultationStatus[] = [];
 
     for (const to of ALL_STATUSES) {
@@ -62,7 +55,7 @@ describe('ConsultationStatus wiring gate — every member is a matrix target, or
 
       const reachableFromSomewhere = ALL_STATUSES.some((from) => {
         if (from === to) return false; // a self-pair is an idempotent no-op, not a "wired" edge.
-        return createEntity(from).canTransitionTo(to);
+        return createEntity(from).canTransitionTo(to, { allowClosedCompleteReopen: true });
       });
 
       if (!reachableFromSomewhere) unreachable.push(to);
@@ -77,14 +70,14 @@ describe('ConsultationStatus wiring gate — every member is a matrix target, or
     ).toEqual([]);
   });
 
-  it('the never-a-target allow-list is EXACTLY {OPEN, CLOSED} — not a place to quietly grow', () => {
-    expect(new Set(NEVER_A_TARGET)).toEqual(new Set([ConsultationStatus.OPEN, ConsultationStatus.CLOSED]));
+  it('the never-a-target allow-list is EMPTY — not a place to quietly grow', () => {
+    expect(NEVER_A_TARGET.size).toBe(0);
   });
 
   it('every enum member still exists as a `from` this test enumerates (sanity: catches an enum member silently dropped)', () => {
     // The full Cartesian product this file exercises must equal the enum's
     // OWN member count — otherwise the two `it`s above could pass vacuously
     // over a shrunk enum.
-    expect(ALL_STATUSES.length).toBeGreaterThanOrEqual(12);
+    expect(ALL_STATUSES.length).toBe(7);
   });
 });

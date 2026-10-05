@@ -19,6 +19,12 @@ export interface IAudioRecordingEntity extends IBaseTenantEntity {
   language?: string | null;
   sequenceNumber: number;
   recordedAt?: Date | null;
+  // Consultation record model: the encounter this part belongs to, where it starts on the
+  // consultation-wide recording timeline (ms), the capturing STT session and the stored codec.
+  encounterSeq?: number | null;
+  recordingStartMs?: number | null;
+  sttSessionId?: string | null;
+  codec?: string | null;
   ContextItem?: Entities.ContextItemEntity | null;
 }
 
@@ -35,6 +41,10 @@ export class AudioRecordingEntity extends BaseTenantEntity {
   private _language?: IAudioRecordingEntity['language'];
   private _sequenceNumber: IAudioRecordingEntity['sequenceNumber'];
   private _recordedAt?: IAudioRecordingEntity['recordedAt'];
+  private _encounterSeq?: IAudioRecordingEntity['encounterSeq'];
+  private _recordingStartMs?: IAudioRecordingEntity['recordingStartMs'];
+  private _sttSessionId?: IAudioRecordingEntity['sttSessionId'];
+  private _codec?: IAudioRecordingEntity['codec'];
   private _ContextItem?: IAudioRecordingEntity['ContextItem'];
 
   constructor(init: IAudioRecordingEntity) {
@@ -51,6 +61,10 @@ export class AudioRecordingEntity extends BaseTenantEntity {
     this._language = init.language;
     this._sequenceNumber = init.sequenceNumber ?? 1;
     this._recordedAt = init.recordedAt;
+    this._encounterSeq = init.encounterSeq;
+    this._recordingStartMs = init.recordingStartMs;
+    this._sttSessionId = init.sttSessionId;
+    this._codec = init.codec;
     this._ContextItem = init.ContextItem;
   }
 
@@ -148,6 +162,38 @@ export class AudioRecordingEntity extends BaseTenantEntity {
 
   set recordedAt(value: IAudioRecordingEntity['recordedAt']) {
     this.setProperty('recordedAt', value);
+  }
+
+  get encounterSeq(): IAudioRecordingEntity['encounterSeq'] {
+    return this._encounterSeq;
+  }
+
+  set encounterSeq(value: IAudioRecordingEntity['encounterSeq']) {
+    this.setProperty('encounterSeq', value);
+  }
+
+  get recordingStartMs(): IAudioRecordingEntity['recordingStartMs'] {
+    return this._recordingStartMs;
+  }
+
+  set recordingStartMs(value: IAudioRecordingEntity['recordingStartMs']) {
+    this.setProperty('recordingStartMs', value);
+  }
+
+  get sttSessionId(): IAudioRecordingEntity['sttSessionId'] {
+    return this._sttSessionId;
+  }
+
+  set sttSessionId(value: IAudioRecordingEntity['sttSessionId']) {
+    this.setProperty('sttSessionId', value);
+  }
+
+  get codec(): IAudioRecordingEntity['codec'] {
+    return this._codec;
+  }
+
+  set codec(value: IAudioRecordingEntity['codec']) {
+    this.setProperty('codec', value);
   }
 
   get ContextItem(): IAudioRecordingEntity['ContextItem'] {

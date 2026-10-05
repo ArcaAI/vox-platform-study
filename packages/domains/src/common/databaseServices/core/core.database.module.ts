@@ -12,6 +12,12 @@ import { ServiceAccountRepository } from '../../../repositories/generated/core/S
 import { AiRoutingPolicyRepository } from '../../../repositories/generated/core/AiRoutingPolicyRepository';
 import { TenantCheckpointRepository } from '../../../repositories/generated/core/TenantCheckpointRepository';
 import { TenantCheckpointRestoreRepository } from '../../../repositories/generated/core/TenantCheckpointRestoreRepository';
+import { ConsultationEncounterRepository } from '../../../repositories/generated/core/ConsultationEncounterRepository';
+import { ConsultationApprovalRepository } from '../../../repositories/generated/core/ConsultationApprovalRepository';
+import { ConsultationAttachmentRepository } from '../../../repositories/generated/core/ConsultationAttachmentRepository';
+import { ConsultationFeedbackRepository } from '../../../repositories/generated/core/ConsultationFeedbackRepository';
+import { ConsultationFeedbackDailyRollupRepository } from '../../../repositories/generated/core/ConsultationFeedbackDailyRollupRepository';
+import { AiActivityRunRepository } from '../../../repositories/generated/core/AiActivityRunRepository';
 import { ModelResidencyPolicyRepository } from '../../../repositories/generated/core/ModelResidencyPolicyRepository';
 import { RateLimitRuleRepository } from '../../../repositories/generated/core/RateLimitRuleRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
@@ -311,6 +317,15 @@ const repositories = [
   // Tenant checkpoint job rows — tenant-scoped, not shared-read.
   TenantCheckpointRepository,
   TenantCheckpointRestoreRepository,
+  // Consultation record model — encounters + immutable approval snapshots.
+  ConsultationEncounterRepository,
+  ConsultationApprovalRepository,
+  // Consultation attachments, clinician feedback and its derived daily rollup.
+  ConsultationAttachmentRepository,
+  ConsultationFeedbackRepository,
+  ConsultationFeedbackDailyRollupRepository,
+  // Durable per-AI-activity run records.
+  AiActivityRunRepository,
 ];
 
 @Module({

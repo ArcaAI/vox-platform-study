@@ -15,6 +15,7 @@ export interface SummaryMetaPlaintext {
   citationsMap: unknown | null;
   guardrailDecisions: unknown | null;
   redactionManifest: unknown | null;
+  coverageReport: unknown | null;
 }
 
 declare module './SummaryMetaRepository' {
@@ -67,6 +68,13 @@ SummaryMetaRepository.prototype.encryptFieldsIntoEntity = async function (
     keyVersion = redactionManifest.keyVersion;
   }
 
+  // Note coverage report — same path and the same no-op-on-null rule.
+  const coverageReport = await encryptJsonToCiphertext(secrets, entity.coverageReport);
+  if (coverageReport) {
+    entity.encryptedCoverageReport = coverageReport.ciphertext;
+    keyVersion = coverageReport.keyVersion;
+  }
+
   if (keyVersion !== null) entity.keyVersion = keyVersion;
 };
 
@@ -78,8 +86,9 @@ SummaryMetaRepository.prototype.decryptFieldsFromEntity = async function (
   const citationsMap = await decryptCiphertextToJson(secrets, entity.encryptedCitationsMap);
   const guardrailDecisions = await decryptCiphertextToJson(secrets, entity.encryptedGuardrailDecisions);
   const redactionManifest = await decryptCiphertextToJson(secrets, entity.encryptedRedactionManifest);
+  const coverageReport = await decryptCiphertextToJson(secrets, entity.encryptedCoverageReport);
   // Plaintext columns dropped; decrypt ciphertext only.
-  return { citationsMap, guardrailDecisions, redactionManifest };
+  return { citationsMap, guardrailDecisions, redactionManifest, coverageReport };
 };
 
 SummaryMetaRepository.prototype.findByIdWithDecryptedFields = async function (

@@ -26,30 +26,12 @@ import { NamedEntity } from '../models/generated/core/NamedEntityModel';
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 describe('Phase 1 — enums', () => {
-  it('ConsultationStatus has exactly the 12 lifecycle states ', () => {
-    // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
-    // PRIMED / DRAINING / TIMED_OUT are additions — see
-    
-    // CLOSED_COMPLETE / CLOSED_INCOMPLETE are a follow-up (owner
-    // decision on Q1, — CLOSED itself is retained
-    // in the enum (Postgres cannot drop a value) but is SUPERSEDED and
-    // deliberately never a legal `transitionTo` target; see
-    // PAUSED is deliberately NOT a member (deferred to checkpoint-resume).
+  it('ConsultationStatus has exactly the seven lifecycle states', () => {
+    // The old twelve-state vocabulary was mapped onto these by a type swap in
+    // the lifecycle migration; what the platform is doing in the background is
+    // the separate ConsultationProcessing axis.
     expect(new Set(Object.values(ConsultationStatus))).toEqual(
-      new Set([
-        'OPEN',
-        'PRIMED',
-        'RECORDING',
-        'DRAINING',
-        'DRAFT_PENDING_SENSORS',
-        'PENDING_REVIEW',
-        'SIGNED',
-        'TIMED_OUT',
-        'CLOSED',
-        'REOPENED',
-        'CLOSED_COMPLETE',
-        'CLOSED_INCOMPLETE',
-      ]),
+      new Set(['OPEN', 'RECORDING', 'PAUSED', 'STOPPED', 'APPROVED', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE']),
     );
   });
 
@@ -59,7 +41,7 @@ describe('Phase 1 — enums', () => {
 });
 
 describe('Phase 1 — Consultation.status', () => {
-  it('factory defaults status to OPEN and exposes isSigned=false', () => {
+  it('factory defaults status to OPEN and exposes isApproved=false', () => {
     const entity = ConsultationFactory.CreateConsultation({
       tenantId: TENANT_ID,
       patientId: 'p-1',
@@ -67,19 +49,19 @@ describe('Phase 1 — Consultation.status', () => {
       doctorId: 'd-1',
     });
     expect(entity.status).toBe(ConsultationStatus.OPEN);
-    expect(entity.isSigned).toBe(false);
+    expect(entity.isApproved).toBe(false);
   });
 
-  it('factory threads an explicit status and isSigned reflects SIGNED', () => {
+  it('factory threads an explicit status and isApproved reflects APPROVED', () => {
     const entity = ConsultationFactory.CreateConsultation({
       tenantId: TENANT_ID,
       patientId: 'p-1',
       appointmentDate: new Date('2026-06-06'),
       doctorId: 'd-1',
-      status: ConsultationStatus.SIGNED,
+      status: ConsultationStatus.APPROVED,
     });
-    expect(entity.status).toBe(ConsultationStatus.SIGNED);
-    expect(entity.isSigned).toBe(true);
+    expect(entity.status).toBe(ConsultationStatus.APPROVED);
+    expect(entity.isApproved).toBe(true);
   });
 
   it('mapper round-trips status (entity → model → entity)', () => {
@@ -89,12 +71,12 @@ describe('Phase 1 — Consultation.status', () => {
       patientId: 'p-1',
       appointmentDate: new Date('2026-06-06'),
       doctorId: 'd-1',
-      status: ConsultationStatus.PENDING_REVIEW,
+      status: ConsultationStatus.STOPPED,
     });
     const model = mapper.toPersistence(entity);
-    expect(model.status).toBe(ConsultationStatus.PENDING_REVIEW);
+    expect(model.status).toBe(ConsultationStatus.STOPPED);
     const back = mapper.toDomainEntity(model);
-    expect(back.status).toBe(ConsultationStatus.PENDING_REVIEW);
+    expect(back.status).toBe(ConsultationStatus.STOPPED);
   });
 });
 

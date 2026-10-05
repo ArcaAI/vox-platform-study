@@ -23,6 +23,11 @@ export interface CreateGateEditExemplarProps extends BaseEntityFactoryCreateProp
    * re-hydration path can build an already-curated row.
    */
   curationStatus?: IGateEditExemplarEntity['curationStatus'];
+  /** GATE (default) for a gate-decision exemplar; FEEDBACK for one mined from clinician feedback. */
+  source?: IGateEditExemplarEntity['source'];
+  feedbackId?: IGateEditExemplarEntity['feedbackId'];
+  reasonCodes?: IGateEditExemplarEntity['reasonCodes'];
+  targetKind?: IGateEditExemplarEntity['targetKind'];
   createdAt?: IGateEditExemplarEntity['createdAt'];
   updatedAt?: IGateEditExemplarEntity['updatedAt'];
   createdBy?: IGateEditExemplarEntity['createdBy'];
@@ -56,6 +61,10 @@ export class GateEditExemplarFactory {
       promptTemplateId: props.promptTemplateId ?? null,
       // Omitted ⇒ the entity constructor defaults to PENDING.
       curationStatus: props.curationStatus,
+      source: props.source ?? 'GATE',
+      feedbackId: props.feedbackId ?? null,
+      reasonCodes: props.reasonCodes ?? [],
+      targetKind: props.targetKind ?? null,
     });
   }
 }

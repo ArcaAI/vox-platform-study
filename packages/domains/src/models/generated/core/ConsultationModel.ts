@@ -17,6 +17,19 @@ export class Consultation extends BaseTenantDataModel {
   public externalRef: string | null;
   // Typed lifecycle state machine
   public status: Enums.ConsultationStatus;
+  public processing: Enums.ConsultationProcessing;
+  public processingReason: string | null;
+  public processingRefs: string[];
+  public processingPrior: Enums.ConsultationProcessing | null;
+  public processingUpdatedAt: Date | null;
+  public lastActivityAt: Date;
+  public reopenCount: number;
+  public currentEncounterSeq: number;
+  public segmentSeqHead: number;
+  public recordingCursorMs: number;
+  public approvedAt: Date | null;
+  public closedAt: Date | null;
+  public closedReason: Enums.ConsultationClosedReason | null;
   public degradedReasons: string[];
   public spokenLanguageMode: string | null;
   public resourceStatus: Enums.ResourceStatusType;
@@ -36,6 +49,10 @@ export class Consultation extends BaseTenantDataModel {
   public Highlights: Models.Highlight[] | undefined;
   @VirtualDbProperty()
   public DocumentSections: Models.DocumentSection[] | undefined;
+  @VirtualDbProperty()
+  public Encounters: Models.ConsultationEncounter[] | undefined;
+  @VirtualDbProperty()
+  public Approvals: Models.ConsultationApproval[] | undefined;
 
   constructor(data: Consultation & BaseTenantDataModel) {
     super(data);
@@ -47,6 +64,19 @@ export class Consultation extends BaseTenantDataModel {
     this.metadata = data.metadata;
     this.externalRef = data.externalRef;
     this.status = data.status;
+    this.processing = data.processing;
+    this.processingReason = data.processingReason;
+    this.processingRefs = data.processingRefs;
+    this.processingPrior = data.processingPrior;
+    this.processingUpdatedAt = data.processingUpdatedAt;
+    this.lastActivityAt = data.lastActivityAt;
+    this.reopenCount = data.reopenCount;
+    this.currentEncounterSeq = data.currentEncounterSeq;
+    this.segmentSeqHead = data.segmentSeqHead;
+    this.recordingCursorMs = data.recordingCursorMs;
+    this.approvedAt = data.approvedAt;
+    this.closedAt = data.closedAt;
+    this.closedReason = data.closedReason;
     this.degradedReasons = data.degradedReasons;
     this.spokenLanguageMode = data.spokenLanguageMode;
     this.resourceStatus = data.resourceStatus;
@@ -59,5 +89,7 @@ export class Consultation extends BaseTenantDataModel {
     this.ContextItems = data.ContextItems;
     this.Highlights = data.Highlights;
     this.DocumentSections = data.DocumentSections;
+    this.Encounters = data.Encounters;
+    this.Approvals = data.Approvals;
   }
 }

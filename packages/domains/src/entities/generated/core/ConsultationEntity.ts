@@ -8,82 +8,90 @@ import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
-// session state machine legality matrix. Source of truth:
-
-// Every unlisted (from, to) pair is illegal and `transitionTo` throws.
-// Self-pairs are handled separately (idempotent no-op) and are NOT listed
-// here. Do not widen this map without updating the state-machine.md doc AND
-// the `ConsultationEntity.transitions.test.ts` Cartesian-product suite —
-// `consultationStatus.wired.test.ts` asserts every enum member is
-// a `to` here at least once.
-// (continued, 2026-08-16) — revised per the owner's Q1 decision:
-// `CLOSED` is SUPERSEDED (never a `to` — see row 9)
-// and split into `CLOSED_COMPLETE` (human signed before closing) and
-// `CLOSED_INCOMPLETE` (timeout/manual close with no clinician sign-off,
-// including the settings-registry sweep's five eligible source states).
-// (continued, 2026-09-15) — TASK-972 OD-7: `OPEN` was structurally
-// unclosable (its only edge was `OPEN → PRIMED`), so neither a manual close
-// nor a timeout sweep could ever clear a consultation abandoned before
-// recording. Added `OPEN → CLOSED_INCOMPLETE`.
-// (continued, 2026-09-23) — TASK-1001 wave 5, owner decisions D-6/D-7: a
-// terminal harness gate abandon closes the consultation `CLOSED_INCOMPLETE`
-// (closed, unsigned), and a clinician who approves AFTER that still signs —
-// "the clock never signs, a human still can", exactly as `TIMED_OUT → SIGNED`.
-// Added `CLOSED_INCOMPLETE → SIGNED` (then `SIGNED → CLOSED_COMPLETE` as usual).
-// (continued, 2026-09-23) — TASK-1001 wave 6 (owner): the clinician may RESUME a session the
-// completion timeout closed unsigned. Added `CLOSED_INCOMPLETE → RECORDING`, so resume is a
-// sanctioned edge rather than the kill-switch-OFF bypass in `startRecording`; the next stop
-// re-finalises the note over the whole visit and starts a fresh completion timeout. Likewise
-// `PENDING_REVIEW → RECORDING`: the clinician adds more while the final note waits for approval.
-// 26 legal, non-reflexive transitions — is the source.
+// Consultation lifecycle legality matrix — WHERE the consultation is. Seven
+// states; every unlisted (from, to) pair is illegal and `transitionTo` throws
+// `CONSULTATION_TRANSITION_ILLEGAL`. Self-pairs are idempotent no-ops and are
+// NOT listed. What the platform is doing in the background is the separate
+// `processing` axis, which has no matrix of its own and constrains exactly one
+// edge: STOPPED → APPROVED is refused while the transcript is finalizing or the
+// note is being generated. CLOSED_COMPLETE → OPEN additionally needs the
+// tenant's reopen policy (`allowClosedCompleteReopen`). Do not widen this map
+// without updating `ConsultationEntity.transitions.test.ts` (the independent
+// copy of the matrix) and `consultationStatus.wired.test.ts`.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
 >([
-  [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.PRIMED, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
-  [Enums.ConsultationStatus.PRIMED, new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
-  [Enums.ConsultationStatus.RECORDING, new Set([Enums.ConsultationStatus.DRAINING])],
+  [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
   [
-    Enums.ConsultationStatus.DRAINING,
+    Enums.ConsultationStatus.RECORDING,
+    new Set([Enums.ConsultationStatus.PAUSED, Enums.ConsultationStatus.STOPPED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
+  ],
+  [
+    Enums.ConsultationStatus.PAUSED,
+    new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.STOPPED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
+  ],
+  [
+    Enums.ConsultationStatus.STOPPED,
     new Set([
       Enums.ConsultationStatus.RECORDING,
-      Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
-      Enums.ConsultationStatus.PENDING_REVIEW,
+      Enums.ConsultationStatus.OPEN,
+      Enums.ConsultationStatus.APPROVED,
       Enums.ConsultationStatus.CLOSED_INCOMPLETE,
     ]),
   ],
-  [
-    Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
-    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
-  ],
-  [
-    Enums.ConsultationStatus.PENDING_REVIEW,
-    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.TIMED_OUT, Enums.ConsultationStatus.RECORDING]),
-  ],
-  [Enums.ConsultationStatus.SIGNED, new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_COMPLETE])],
-  [
-    Enums.ConsultationStatus.TIMED_OUT,
-    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
-  ],
-  // CLOSED: deliberately no outgoing edges — superseded, never live, never a
-  // `to` either. See row 9 and the wiring-gate note in
-  // ("must allow-list CLOSED explicitly as the one intentional exception").
-  [Enums.ConsultationStatus.CLOSED, new Set()],
-  [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.REOPENED])],
-  [
-    Enums.ConsultationStatus.CLOSED_INCOMPLETE,
-    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.RECORDING]),
-  ],
-  [Enums.ConsultationStatus.REOPENED, new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.CLOSED_INCOMPLETE])],
+  [Enums.ConsultationStatus.APPROVED, new Set([Enums.ConsultationStatus.CLOSED_COMPLETE])],
+  [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.OPEN])],
+  [Enums.ConsultationStatus.CLOSED_INCOMPLETE, new Set([Enums.ConsultationStatus.OPEN])],
 ]);
 
-// Reserved but DISABLED — the pair is a legitimate future edge (owned by
-// another epic), so it must throw a distinct, named error rather than being
-// silently treated as just another illegal pair.
-const RESERVED_DISABLED_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>> = new Map<
-  Enums.ConsultationStatus,
-  ReadonlyMap<Enums.ConsultationStatus, string>
->([[Enums.ConsultationStatus.PENDING_REVIEW, new Map([[Enums.ConsultationStatus.DRAFT_PENDING_SENSORS, 'note-sections']])]]);
+/** Processing values during which a consultation cannot be approved. */
+const APPROVAL_BLOCKING_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = new Set([
+  Enums.ConsultationProcessing.FINALIZING_TRANSCRIPT,
+  Enums.ConsultationProcessing.SUMMARIZING,
+]);
+
+/** Processing values whose `processingReason` is kept (every other value clears it). */
+const REASON_BEARING_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = new Set([
+  Enums.ConsultationProcessing.FAILED,
+  Enums.ConsultationProcessing.AWAITING_REVIEW,
+]);
+
+const CLOSED_STATUSES: ReadonlySet<Enums.ConsultationStatus> = new Set([
+  Enums.ConsultationStatus.CLOSED_COMPLETE,
+  Enums.ConsultationStatus.CLOSED_INCOMPLETE,
+]);
+
+const RECORDABLE_STATUSES: ReadonlySet<Enums.ConsultationStatus> = new Set([
+  Enums.ConsultationStatus.OPEN,
+  Enums.ConsultationStatus.RECORDING,
+  Enums.ConsultationStatus.PAUSED,
+  Enums.ConsultationStatus.STOPPED,
+]);
+
+/**
+ * Machine codes carried in `BusinessException.metadata.code` by the lifecycle
+ * guards. Application services map them onto 409 responses.
+ */
+export const ConsultationLifecycleErrorCode = {
+  TRANSITION_ILLEGAL: 'CONSULTATION_TRANSITION_ILLEGAL',
+  PROCESSING_IN_FLIGHT: 'CONSULTATION_PROCESSING_IN_FLIGHT',
+  REOPEN_NOT_ALLOWED: 'CONSULTATION_REOPEN_NOT_ALLOWED',
+  ENCOUNTER_CAPTURE_ACTIVE: 'ENCOUNTER_CAPTURE_ACTIVE',
+  CONSULTATION_APPROVED: 'CONSULTATION_APPROVED',
+} as const;
+export type ConsultationLifecycleErrorCode = (typeof ConsultationLifecycleErrorCode)[keyof typeof ConsultationLifecycleErrorCode];
+
+export interface ConsultationTransitionOptions {
+  /** Tenant policy `consultation.reopen.allowClosedComplete`; gates CLOSED_COMPLETE → OPEN. */
+  allowClosedCompleteReopen?: boolean;
+  /** Why a CLOSED_INCOMPLETE close happened (default MANUAL). A close from APPROVED is always APPROVED. */
+  closedReason?: Enums.ConsultationClosedReason;
+}
+
+function lifecycleError(code: ConsultationLifecycleErrorCode, message: string, details: Record<string, unknown> = {}): BusinessException {
+  return new BusinessException(message, undefined, { code, ...details });
+}
 
 export interface ConsultationTransitionRecord {
   from: Enums.ConsultationStatus;
@@ -102,8 +110,24 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   // TASK-1020 D-2 — the caller's own id for this encounter (EMR event id), promoted from the
   // `metadata.externalRef` marker. The key `open` matches on when present; null = none sent.
   externalRef?: string | null;
-  // Typed lifecycle state (defaults to OPEN)
+  // Lifecycle state — where the consultation is (defaults to OPEN)
   status?: Enums.ConsultationStatus;
+  // Background processing — what the platform is doing (defaults to IDLE).
+  // These and the activity / cursor fields below are persisted by the
+  // repository's no-version-bump writers as well as by `updateWithVersion`.
+  processing?: Enums.ConsultationProcessing;
+  processingReason?: string | null;
+  processingRefs?: string[];
+  processingPrior?: Enums.ConsultationProcessing | null;
+  processingUpdatedAt?: Date | null;
+  lastActivityAt?: Date;
+  reopenCount?: number;
+  currentEncounterSeq?: number;
+  segmentSeqHead?: number;
+  recordingCursorMs?: number;
+  approvedAt?: Date | null;
+  closedAt?: Date | null;
+  closedReason?: Enums.ConsultationClosedReason | null;
   // Health-flag projection on the active phase; not a state of its own
   degradedReasons?: string[];
   // TASK-1004 D-3 — the declared SOURCE (spoken) language, a closed catalog
@@ -116,6 +140,8 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   ParentConsultation?: Entities.ConsultationEntity | null;
   ChildConsultations?: Entities.ConsultationEntity[] | null;
   ContextItems?: Entities.ContextItemEntity[] | null;
+  Encounters?: Entities.ConsultationEncounterEntity[] | null;
+  Approvals?: Entities.ConsultationApprovalEntity[] | null;
 }
 
 export class ConsultationEntity extends BaseTenantEntity {
@@ -127,6 +153,19 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _metadata?: IConsultationEntity['metadata'];
   private _externalRef?: IConsultationEntity['externalRef'];
   private _status: Enums.ConsultationStatus;
+  private _processing: Enums.ConsultationProcessing;
+  private _processingReason?: IConsultationEntity['processingReason'];
+  private _processingRefs: string[];
+  private _processingPrior?: IConsultationEntity['processingPrior'];
+  private _processingUpdatedAt?: IConsultationEntity['processingUpdatedAt'];
+  private _lastActivityAt: Date;
+  private _reopenCount: number;
+  private _currentEncounterSeq: number;
+  private _segmentSeqHead: number;
+  private _recordingCursorMs: number;
+  private _approvedAt?: IConsultationEntity['approvedAt'];
+  private _closedAt?: IConsultationEntity['closedAt'];
+  private _closedReason?: IConsultationEntity['closedReason'];
   private _degradedReasons: string[];
   private _spokenLanguageMode?: IConsultationEntity['spokenLanguageMode'];
   // not persisted — the last transition applied by `transitionTo`,
@@ -139,6 +178,8 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _ParentConsultation?: IConsultationEntity['ParentConsultation'];
   private _ChildConsultations?: IConsultationEntity['ChildConsultations'];
   private _ContextItems?: IConsultationEntity['ContextItems'];
+  private _Encounters?: IConsultationEntity['Encounters'];
+  private _Approvals?: IConsultationEntity['Approvals'];
 
   constructor(init: IConsultationEntity) {
     super(init);
@@ -150,6 +191,19 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._metadata = init.metadata;
     this._externalRef = init.externalRef;
     this._status = init.status ?? Enums.ConsultationStatus.OPEN;
+    this._processing = init.processing ?? Enums.ConsultationProcessing.IDLE;
+    this._processingReason = init.processingReason;
+    this._processingRefs = init.processingRefs ?? [];
+    this._processingPrior = init.processingPrior;
+    this._processingUpdatedAt = init.processingUpdatedAt;
+    this._lastActivityAt = init.lastActivityAt ?? init.createdAt ?? new Date();
+    this._reopenCount = init.reopenCount ?? 0;
+    this._currentEncounterSeq = init.currentEncounterSeq ?? 1;
+    this._segmentSeqHead = init.segmentSeqHead ?? 0;
+    this._recordingCursorMs = init.recordingCursorMs ?? 0;
+    this._approvedAt = init.approvedAt;
+    this._closedAt = init.closedAt;
+    this._closedReason = init.closedReason;
     this._degradedReasons = init.degradedReasons ?? [];
     this._spokenLanguageMode = init.spokenLanguageMode;
     this._Doctor = init.Doctor;
@@ -157,6 +211,8 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._ParentConsultation = init.ParentConsultation;
     this._ChildConsultations = init.ChildConsultations;
     this._ContextItems = init.ContextItems;
+    this._Encounters = init.Encounters;
+    this._Approvals = init.Approvals;
   }
 
   get patientId(): IConsultationEntity['patientId'] {
@@ -220,19 +276,115 @@ export class ConsultationEntity extends BaseTenantEntity {
   }
 
   /**
-   * @deprecated: bypasses the legality matrix. Use `transitionTo`
-   * instead — it is the only guarded write path. Kept public (not `private`)
-   * because `packages/applications` call sites (`consultation.service.ts`,
-   * `harness-internal.service.ts`, `summary.service.ts`, `summary.processor.ts`)
-   * still assign this setter directly; Task 6-8 migrate them,
-   * and Task 11 adds the source-scanning gate that makes a direct assignment
-   * outside `transitionTo` a hard failure. Making the setter `private` now
-   * would break `pnpm --filter @arcaai/applications build`, which is out of
-   * this ticket's database/domain-layer scope for this execution pass — see
-   * the ticket's own documented fallback (README.md Task 5).
+   * @deprecated bypasses the legality matrix — use `transitionTo`, the only
+   * guarded write path. Kept for reconstitution and legacy call sites.
    */
   set status(value: Enums.ConsultationStatus) {
     this.setProperty('status', value);
+  }
+
+  get processing(): Enums.ConsultationProcessing {
+    return this._processing;
+  }
+
+  set processing(value: Enums.ConsultationProcessing) {
+    this.setProperty('processing', value);
+  }
+
+  get processingReason(): IConsultationEntity['processingReason'] {
+    return this._processingReason;
+  }
+
+  set processingReason(value: IConsultationEntity['processingReason']) {
+    this.setProperty('processingReason', value);
+  }
+
+  get processingRefs(): string[] {
+    return this._processingRefs;
+  }
+
+  set processingRefs(value: string[]) {
+    this.setProperty('processingRefs', value);
+  }
+
+  get processingPrior(): IConsultationEntity['processingPrior'] {
+    return this._processingPrior;
+  }
+
+  set processingPrior(value: IConsultationEntity['processingPrior']) {
+    this.setProperty('processingPrior', value);
+  }
+
+  get processingUpdatedAt(): IConsultationEntity['processingUpdatedAt'] {
+    return this._processingUpdatedAt;
+  }
+
+  set processingUpdatedAt(value: IConsultationEntity['processingUpdatedAt']) {
+    this.setProperty('processingUpdatedAt', value);
+  }
+
+  get lastActivityAt(): Date {
+    return this._lastActivityAt;
+  }
+
+  set lastActivityAt(value: Date) {
+    this.setProperty('lastActivityAt', value);
+  }
+
+  get reopenCount(): number {
+    return this._reopenCount;
+  }
+
+  set reopenCount(value: number) {
+    this.setProperty('reopenCount', value);
+  }
+
+  get currentEncounterSeq(): number {
+    return this._currentEncounterSeq;
+  }
+
+  set currentEncounterSeq(value: number) {
+    this.setProperty('currentEncounterSeq', value);
+  }
+
+  get segmentSeqHead(): number {
+    return this._segmentSeqHead;
+  }
+
+  set segmentSeqHead(value: number) {
+    this.setProperty('segmentSeqHead', value);
+  }
+
+  get recordingCursorMs(): number {
+    return this._recordingCursorMs;
+  }
+
+  set recordingCursorMs(value: number) {
+    this.setProperty('recordingCursorMs', value);
+  }
+
+  get approvedAt(): IConsultationEntity['approvedAt'] {
+    return this._approvedAt;
+  }
+
+  set approvedAt(value: IConsultationEntity['approvedAt']) {
+    this.setProperty('approvedAt', value);
+  }
+
+  get closedAt(): IConsultationEntity['closedAt'] {
+    return this._closedAt;
+  }
+
+  set closedAt(value: IConsultationEntity['closedAt']) {
+    this.setProperty('closedAt', value);
+  }
+
+  get closedReason(): IConsultationEntity['closedReason'] {
+    return this._closedReason;
+  }
+
+  set closedReason(value: IConsultationEntity['closedReason']) {
+    this.setProperty('closedReason', value);
   }
 
   get degradedReasons(): string[] {
@@ -291,6 +443,22 @@ export class ConsultationEntity extends BaseTenantEntity {
     this.setProperty('ContextItems', value);
   }
 
+  get Encounters(): IConsultationEntity['Encounters'] {
+    return this._Encounters;
+  }
+
+  set Encounters(value: IConsultationEntity['Encounters']) {
+    this.setProperty('Encounters', value);
+  }
+
+  get Approvals(): IConsultationEntity['Approvals'] {
+    return this._Approvals;
+  }
+
+  set Approvals(value: IConsultationEntity['Approvals']) {
+    this.setProperty('Approvals', value);
+  }
+
   // ============================================
   // Custom Domain Methods
   // ============================================
@@ -309,82 +477,175 @@ export class ConsultationEntity extends BaseTenantEntity {
     return !!this._parentConsultationId;
   }
 
+  /** True once a clinician approved the record (APPROVED, or closed after approval). */
+  get isApproved(): boolean {
+    return this._status === Enums.ConsultationStatus.APPROVED || this._status === Enums.ConsultationStatus.CLOSED_COMPLETE;
+  }
+
+  /** True for CLOSED_COMPLETE and CLOSED_INCOMPLETE. */
+  get isClosed(): boolean {
+    return CLOSED_STATUSES.has(this._status);
+  }
+
+  /** True while audio may still be captured into the record (OPEN / RECORDING / PAUSED / STOPPED). */
+  get isRecordable(): boolean {
+    return RECORDABLE_STATUSES.has(this._status);
+  }
+
   /**
-   * True when the consultation has been clinician-attested
-   * (the documentation is committed/immutable).
+   * Whether a reopen is offered: always from CLOSED_INCOMPLETE, from
+   * CLOSED_COMPLETE only under the tenant policy, never from any other state.
    */
-  get isSigned(): boolean {
-    return this._status === Enums.ConsultationStatus.SIGNED;
+  public reopenAllowed(allowClosedCompleteReopen: boolean): boolean {
+    if (this._status === Enums.ConsultationStatus.CLOSED_INCOMPLETE) return true;
+    if (this._status === Enums.ConsultationStatus.CLOSED_COMPLETE) return allowClosedCompleteReopen;
+    return false;
   }
 
   /**
    * The last transition applied by `transitionTo` in this in-memory
    * lifetime (not persisted). Callers read `actor`/`reason` off this to
-   * build the `ResourceUpdated` sys-event and, for clinically-significant
-   * transitions, the `HarnessAuditEvent` WORM row. Undefined until the first
-   * successful (non-self) transition; unchanged by a self-transition no-op.
+   * build the `ResourceUpdated` sys-event and the WORM audit row. Undefined
+   * until the first successful (non-self) transition.
    */
   get lastTransition(): ConsultationTransitionRecord | undefined {
     return this._lastTransition;
   }
 
   /**
-   * the single guarded write path for `status`. Every other
-   * writer (the bare `status` setter above) is `@deprecated` and migrating
-   * off; this is the only place the legality matrix is consulted.
+   * The single guarded write path for `status`.
    *
-   * - Self-transition (`next === current`): idempotent no-op — no write, no
-   *   `lastTransition` update, `hasChanges` unaffected. Mirrors the
-   *   pre-existing `transitionStatus` short-circuit behaviour this ticket
-   *   replaces (`consultation.service.ts:682-685`).
-   * - Reserved-but-disabled pair: throws `BusinessException` naming the epic
-   *   that will enable it.
-   * - Any other unlisted pair: throws `BusinessException` naming both states.
-   * - Legal pair: writes through `setProperty` (change-tracked), records
-   * `lastTransition`, and — per — clears
-   *   `degradedReasons` when the destination is `SIGNED`.
+   * - Self-transition: idempotent no-op (`false`, nothing tracked).
+   * - Unlisted pair: `CONSULTATION_TRANSITION_ILLEGAL`.
+   * - STOPPED → APPROVED while `processing` is FINALIZING_TRANSCRIPT or
+   *   SUMMARIZING: `CONSULTATION_PROCESSING_IN_FLIGHT`.
+   * - CLOSED_COMPLETE → OPEN without `allowClosedCompleteReopen`:
+   *   `CONSULTATION_REOPEN_NOT_ALLOWED`.
+   * - Legal pair: writes `status` (change-tracked) plus its stamps — APPROVED
+   *   stamps `approvedAt` and clears `degradedReasons`; a close stamps
+   *   `closedAt` + `closedReason`; a reopen bumps `reopenCount` and clears
+   *   the close stamps.
    *
-   * @returns `true` if a transition was applied, `false` for a self-transition no-op.
+   * @returns `true` if a transition was applied, `false` for a self-transition.
    */
-  public transitionTo(next: Enums.ConsultationStatus, actor: string, reason: string): boolean {
+  public transitionTo(next: Enums.ConsultationStatus, actor: string, reason: string, options: ConsultationTransitionOptions = {}): boolean {
     const from = this._status;
 
     if (next === from) {
       return false;
     }
 
-    const disabledEpic = RESERVED_DISABLED_TRANSITIONS.get(from)?.get(next);
-    if (disabledEpic) {
-      throw new BusinessException(
-        `Consultation state transition ${from} → ${next} is reserved but disabled — enabled by the '${disabledEpic}' epic.`,
-      );
-    }
-
-    if (!CONSULTATION_TRANSITIONS.get(from)?.has(next)) {
-      throw new BusinessException(`Illegal consultation state transition: ${from} → ${next}`);
-    }
+    this.assertTransitionAllowed(next, options);
 
     this.setProperty('status', next);
     this._lastTransition = { from, to: next, actor, reason };
 
-    if (next === Enums.ConsultationStatus.SIGNED) {
+    const now = new Date();
+    if (next === Enums.ConsultationStatus.APPROVED) {
+      this.setProperty('approvedAt', now);
       this.clearDegradedReasons();
+    } else if (CLOSED_STATUSES.has(next)) {
+      const closedReason =
+        from === Enums.ConsultationStatus.APPROVED
+          ? Enums.ConsultationClosedReason.APPROVED
+          : (options.closedReason ?? Enums.ConsultationClosedReason.MANUAL);
+      this.setProperty('closedAt', now);
+      this.setProperty('closedReason', closedReason);
+    } else if (next === Enums.ConsultationStatus.OPEN && CLOSED_STATUSES.has(from)) {
+      this.setProperty('reopenCount', this._reopenCount + 1);
+      this.setProperty('closedAt', null);
+      this.setProperty('closedReason', null);
     }
 
     return true;
   }
 
   /**
-   * Non-throwing legality check — for callers that need to branch (e.g.
-   * `finalizeAssurance`'s idempotent-no-op guard) rather than catch. Returns
-   * `true` for a self-transition (matches `transitionTo`'s no-op treatment)
-   * and `false` for both illegal and reserved-but-disabled pairs.
+   * Non-throwing legality check — `true` for a self-transition, `false` for
+   * every pair `transitionTo` would refuse (including the processing and
+   * reopen-policy guards).
    */
-  public canTransitionTo(next: Enums.ConsultationStatus): boolean {
+  public canTransitionTo(next: Enums.ConsultationStatus, options: ConsultationTransitionOptions = {}): boolean {
     if (next === this._status) {
       return true;
     }
-    return CONSULTATION_TRANSITIONS.get(this._status)?.has(next) ?? false;
+    try {
+      this.assertTransitionAllowed(next, options);
+      return true;
+    } catch (error) {
+      if (error instanceof BusinessException) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Start the next encounter (visit) of this consultation: allowed from OPEN
+   * and STOPPED; bumps `currentEncounterSeq` and leaves the consultation OPEN.
+   * The caller persists the matching `ConsultationEncounter` row (and ends the
+   * previous one).
+   *
+   * @returns the new encounter seq.
+   */
+  public beginNextEncounter(actor: string): number {
+    const from = this._status;
+    if (from === Enums.ConsultationStatus.RECORDING || from === Enums.ConsultationStatus.PAUSED) {
+      throw lifecycleError(ConsultationLifecycleErrorCode.ENCOUNTER_CAPTURE_ACTIVE, 'A new encounter cannot start while audio is being captured.', {
+        status: from,
+      });
+    }
+    if (from === Enums.ConsultationStatus.APPROVED) {
+      throw lifecycleError(ConsultationLifecycleErrorCode.CONSULTATION_APPROVED, 'The consultation is approved; a new encounter cannot start.', {
+        status: from,
+      });
+    }
+    if (from !== Enums.ConsultationStatus.OPEN && from !== Enums.ConsultationStatus.STOPPED) {
+      throw lifecycleError(ConsultationLifecycleErrorCode.TRANSITION_ILLEGAL, `A new encounter cannot start from ${from}.`, { from });
+    }
+    this.transitionTo(Enums.ConsultationStatus.OPEN, actor, 'encounter_appended');
+    const seq = this._currentEncounterSeq + 1;
+    this.setProperty('currentEncounterSeq', seq);
+    return seq;
+  }
+
+  /**
+   * The `processingReason` rule shared with the repository's no-version-bump
+   * writer: a reason survives only on FAILED / AWAITING_REVIEW.
+   */
+  public static processingReasonFor(processing: Enums.ConsultationProcessing, reason?: string | null): string | null {
+    return REASON_BEARING_PROCESSING.has(processing) ? (reason ?? null) : null;
+  }
+
+  /** Set the processing axis (change-tracked); stamps `processingUpdatedAt`. */
+  public setProcessing(processing: Enums.ConsultationProcessing, reason?: string | null): void {
+    this.setProperty('processing', processing);
+    this.setProperty('processingReason', ConsultationEntity.processingReasonFor(processing, reason));
+    this.setProperty('processingUpdatedAt', new Date());
+  }
+
+  private assertTransitionAllowed(next: Enums.ConsultationStatus, options: ConsultationTransitionOptions): void {
+    const from = this._status;
+    if (!CONSULTATION_TRANSITIONS.get(from)?.has(next)) {
+      throw lifecycleError(ConsultationLifecycleErrorCode.TRANSITION_ILLEGAL, `Illegal consultation state transition: ${from} → ${next}`, {
+        from,
+        to: next,
+      });
+    }
+    if (next === Enums.ConsultationStatus.APPROVED && APPROVAL_BLOCKING_PROCESSING.has(this._processing)) {
+      throw lifecycleError(
+        ConsultationLifecycleErrorCode.PROCESSING_IN_FLIGHT,
+        `The consultation cannot be approved while processing is ${this._processing}.`,
+        { processing: this._processing },
+      );
+    }
+    if (from === Enums.ConsultationStatus.CLOSED_COMPLETE && next === Enums.ConsultationStatus.OPEN && !options.allowClosedCompleteReopen) {
+      throw lifecycleError(
+        ConsultationLifecycleErrorCode.REOPEN_NOT_ALLOWED,
+        'Reopening an approved, closed consultation is not allowed for this tenant.',
+        {
+          from,
+        },
+      );
+    }
   }
 
   /**
@@ -401,7 +662,7 @@ export class ConsultationEntity extends BaseTenantEntity {
 
   /**
    * Clears every degraded-reason flag. Called automatically by `transitionTo`
-   * when the destination is `SIGNED`; also callable directly.
+   * when the destination is `APPROVED`; also callable directly.
    */
   public clearDegradedReasons(): void {
     if (this._degradedReasons.length === 0) {
