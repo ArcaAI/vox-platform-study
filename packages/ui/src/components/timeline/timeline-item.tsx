@@ -30,7 +30,20 @@ function toDate(value: string | Date): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function TimelineItem({ item, expanded, density, lazyMedia, posInSet, setSize, resolveRenderer, onToggle, selected = false, onSelect, actions, onMediaOpen }: TimelineItemProps) {
+export function TimelineItem({
+  item,
+  expanded,
+  density,
+  lazyMedia,
+  posInSet,
+  setSize,
+  resolveRenderer,
+  onToggle,
+  selected = false,
+  onSelect,
+  actions,
+  onMediaOpen,
+}: TimelineItemProps) {
   const Renderer = resolveRenderer(item.variant);
   const headingId = `timeline-item-${item.id}-title`;
   const contentId = `timeline-item-${item.id}-content`;

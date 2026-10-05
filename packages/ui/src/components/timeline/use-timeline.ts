@@ -48,7 +48,10 @@ export function useTimeline<TItem = TimelineItemModel>(params: UseTimelineParams
     value: expansion?.value,
     onChange: expansion?.onChange,
     mode: expansion?.mode,
-    defaultExpandedIds: React.useMemo(() => models.filter((m): m is TimelineItemModel => m.kind !== 'band' && !!m.defaultExpanded).map((m) => m.id), [models]),
+    defaultExpandedIds: React.useMemo(
+      () => models.filter((m): m is TimelineItemModel => m.kind !== 'band' && !!m.defaultExpanded).map((m) => m.id),
+      [models],
+    ),
     onExpandedChange: onItemExpand,
   });
 

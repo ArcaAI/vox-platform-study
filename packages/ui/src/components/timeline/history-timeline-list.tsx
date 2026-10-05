@@ -151,12 +151,7 @@ export function HistoryTimelineList<TItem = TimelineItemModel>(props: HistoryTim
               );
             }
             return (
-              <div
-                key={virtualItem.key}
-                data-index={virtualItem.index}
-                ref={virtualizer.measureElement}
-                style={rowStyle}
-              >
+              <div key={virtualItem.key} data-index={virtualItem.index} ref={virtualizer.measureElement} style={rowStyle}>
                 <TimelineItem
                   item={model}
                   expanded={timeline.isExpanded(model.id)}
