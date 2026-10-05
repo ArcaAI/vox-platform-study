@@ -19,6 +19,7 @@ import type { FactLedgerV1 } from '../../fact-ledger/fact-ledger.schema';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { HarnessInternalService } from '../../harness/harness-internal.service';
 import { ChainSummaryService } from '../../summary/chain-summary.service';
+import { HARNESS_DRAFT_SUBTYPE } from '../../harness/harness-draft.constants';
 
 const SETTINGS: NoteCompositionSettings = {
   singlePassRatio: 0.6,
@@ -462,6 +463,29 @@ describe('composeFromSnapshot — the earlier draft and section regenerate', () 
     });
   });
 
+  it('withholds the previous AI draft when warm start is off — the clinician’s edits are always carried', async () => {
+    const carried = await compose(snapshot({ draft }));
+    const plan = await compose(snapshot({ draft }), { carryAiDraft: false });
+    expect(keys(plan)).not.toContain('draft_ai');
+    expect(plan.blocks.find((block) => block.key === 'draft_clinician')!.content).toBe('Plan: Metformin 1000 mg twice daily; repeat HbA1c.');
+    // The plan records the withholding: AI sections listed, no `draft_ai` block for them.
+    expect(plan.sources.draft!.aiSections).toEqual(['subjective', 'objective', 'assessment']);
+    expect(plan.budget.inputTokens).toBeLessThan(carried.budget.inputTokens);
+    expect(plan.inputDigest).not.toBe(carried.inputDigest);
+    expect(notePlanV1Schema.safeParse(plan).success).toBe(true);
+  });
+
+  it('section_regen preserves every other section whether or not the AI draft is carried', async () => {
+    const plan = await compose(snapshot({ draft }), { mode: 'section_regen', sectionKeys: ['plan'], carryAiDraft: false });
+    expect(keys(plan)).not.toContain('draft_ai');
+    expect(plan.preserve).toEqual({ contextItemId: 'draft-1', versionNumber: 4, sectionKeys: ['subjective', 'objective', 'assessment'] });
+    expect(preservedSectionsOf(snapshot({ draft }), plan)).toEqual([
+      { key: 'subjective', content: 'Chest tightness.' },
+      { key: 'objective', content: 'Normal ECG.' },
+      { key: 'assessment', content: 'Non-cardiac chest pain.' },
+    ]);
+  });
+
   it('treats every section as the clinician’s when no AI baseline exists', async () => {
     const plan = await compose(snapshot({ draft: { ...draft, aiText: null } }));
     expect(plan.sources.draft!.clinicianSections).toEqual(['subjective', 'objective', 'assessment', 'plan']);
@@ -530,7 +554,13 @@ interface Item {
 
 const CANARY = 'RECAP-CANARY-7c1e';
 
-function service(opts: { items: Item[]; contextLength?: number | null; redis?: Map<string, { value: string; ttl: number }> }) {
+function service(opts: {
+  items: Item[];
+  contextLength?: number | null;
+  redis?: Map<string, { value: string; ttl: number }>;
+  aiDraft?: string;
+  policy?: { getEffectivePolicy: (tenantId: string) => Promise<{ warmStartEnabled: boolean | null }> };
+}) {
   const items = opts.items;
   const contextItemRepository = {
     findSegments: vi.fn(async (_cid: string, filters?: { encounterSeq?: number }) =>
@@ -582,6 +612,8 @@ function service(opts: { items: Item[]; contextLength?: number | null; redis?: M
     undefined,
     redisCache as never,
     documentTemplates as never,
+    { getVersionsByChangeReason: vi.fn(async () => (opts.aiDraft ? [{ content: opts.aiDraft }] : [])) } as never,
+    opts.policy as never,
   );
   return { svc, contextItemRepository, redis, counter };
 }
@@ -688,6 +720,57 @@ describe('NoteInputComposerService', () => {
   it('fails closed when the model row declares no context window — never a default', async () => {
     const { svc } = service({ items: baseItems(), contextLength: null });
     await expect(svc.compose(request)).rejects.toMatchObject({ name: NoteModelUnavailableError.name, code: 'NOTE_MODEL_CONTEXT_UNDECLARED' });
+  });
+
+  describe('warm start — HarnessPolicy.warmStartEnabled gates the previous AI draft', () => {
+    const AI_DRAFT = '## Subjective\nChest tightness.\n## Objective\nNormal ECG.\n## Assessment\nNon-cardiac chest pain.\n## Plan\nAmlodipine 5 mg.';
+    const withDraft = (): Item[] => [
+      ...baseItems(),
+      {
+        id: 'note-1',
+        type: ContextItemType.RAW_SUMMARY,
+        content: AI_DRAFT.replace('Amlodipine 5 mg.', 'Amlodipine 5 mg; recheck BP in two weeks.'),
+        currentVersionNumber: 3,
+        metaData: { subType: HARNESS_DRAFT_SUBTYPE },
+        createdAt: at(9),
+      },
+    ];
+    const policy = (value: boolean | null | 'throws') => ({
+      getEffectivePolicy: vi.fn(async () => {
+        if (value === 'throws') throw new Error('policy backend unavailable');
+        return { warmStartEnabled: value };
+      }),
+    });
+
+    it('policy false: no draft_ai block, the clinician-edited sections still carried, resolved for the request tenant', async () => {
+      const p = policy(false);
+      const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: p });
+      const { plan } = await svc.compose(request);
+      expect(keys(plan)).not.toContain('draft_ai');
+      expect(plan.blocks.find((b) => b.key === 'draft_clinician')!.content).toBe('Plan: Amlodipine 5 mg; recheck BP in two weeks.');
+      expect(plan.sources.draft!.aiSections).toEqual(['subjective', 'objective', 'assessment']);
+      expect(p.getEffectivePolicy).toHaveBeenCalledWith('t1');
+    });
+
+    it('policy true: both draft blocks', async () => {
+      const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: policy(true) });
+      const { plan } = await svc.compose(request);
+      expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
+    });
+
+    it('policy null (no opinion) and an unwired policy keep the AI draft', async () => {
+      for (const p of [policy(null), undefined]) {
+        const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: p });
+        const { plan } = await svc.compose(request);
+        expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
+      }
+    });
+
+    it('a failed policy lookup falls back to the default (AI draft kept) and never fails the composition', async () => {
+      const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: policy('throws') });
+      const { plan } = await svc.compose(request);
+      expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
+    });
   });
 
   it('counts every text through the injected counter with the model it plans for', async () => {

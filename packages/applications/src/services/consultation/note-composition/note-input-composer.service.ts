@@ -18,6 +18,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { IDocumentTemplateService } from '../../document-template/IDocumentTemplateService';
+import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { declaredContextLengthOf } from '../../ai-model/serving-profile.util';
 import {
   NOTE_BUDGET_MAX_CALL_OUTPUT_TOKENS_KEY,
@@ -75,7 +76,9 @@ import { NoteTokenCounterToken, estimateTokens, type NoteTokenCounter, type Toke
  *   pre-summary of earlier case notes and the other background history → every encounter before
  *   the last (verbatim, or its fact ledger + the segments the ledger cites) → results → uploaded
  *   audio transcripts → the last encounter, always verbatim → the latest note split into the
- *   clinician's edited sections and the AI's untouched draft.
+ *   clinician's edited sections and the AI's untouched draft. The clinician's sections are always
+ *   carried; the AI draft only while warm start (`HarnessPolicy.warmStartEnabled`) is not off — a
+ *   withheld AI draft shows as `sources.draft.aiSections` with no `draft_ai` block.
  *
  * Never an input: the encounter recap (display-only) and the live SOAP snapshot (retired as a
  * source). Every transcript line carries its label (`[S12 E1 Doctor 03:10]`), results `[R1]`, audio
@@ -145,6 +148,8 @@ export interface ComposeFromSnapshotOptions {
   settings: NoteCompositionSettings;
   counter: (texts: readonly string[]) => Promise<TokenCountResult>;
   planId: string;
+  /** Carry the previous AI draft (`draft_ai`); absent ⇒ carried. The clinician's sections always are. */
+  carryAiDraft?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -258,7 +263,7 @@ function anchorsOf(fact: LedgerFact): string[] {
   return anchors;
 }
 
-function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
+function buildInputModel(snapshot: NoteSourceSnapshot, carryAiDraft = true): InputModel {
   const sourceIds: Record<string, NoteSourceId> = {};
   const labelOf = new Map<string, string>();
 
@@ -387,7 +392,8 @@ function buildInputModel(snapshot: NoteSourceSnapshot): InputModel {
         label: 'Clinician-edited sections (keep their meaning)',
         lines: [renderDraftSections(split.clinician)],
       });
-    if (split.ai.length > 0) drafts.push({ key: 'draft_ai', role: 'draft_ai', label: 'Previous AI draft', lines: [renderDraftSections(split.ai)] });
+    if (carryAiDraft && split.ai.length > 0)
+      drafts.push({ key: 'draft_ai', role: 'draft_ai', label: 'Previous AI draft', lines: [renderDraftSections(split.ai)] });
   }
 
   const criticalFacts: NoteCriticalFact[] = [];
@@ -453,7 +459,7 @@ function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-function digestOf(snapshot: NoteSourceSnapshot, mode: NotePlanMode, sections: readonly NoteHeading[], system: string): string {
+function digestOf(snapshot: NoteSourceSnapshot, mode: NotePlanMode, sections: readonly NoteHeading[], system: string, carryAiDraft: boolean): string {
   const lines: string[] = [];
   for (const encounter of snapshot.encounters) {
     for (const segment of encounter.segments) lines.push(`S:${segment.id}:${segment.versionNumber}`);
@@ -472,6 +478,8 @@ function digestOf(snapshot: NoteSourceSnapshot, mode: NotePlanMode, sections: re
     `background:${sha256(JSON.stringify(snapshot.background))}`,
     `results:${sha256(JSON.stringify(snapshot.results.map((r) => r.text)))}`,
     `system:${sha256(system)}`,
+    // Only when withheld, so a carried plan's digest is unchanged.
+    ...(carryAiDraft ? [] : ['ai_draft:withheld']),
   );
   return `sha256:${sha256(lines.join('\n'))}`;
 }
@@ -504,8 +512,8 @@ export function preservedSectionsOf(snapshot: NoteSourceSnapshot, plan: Pick<Not
 }
 
 /** The verbatim blocks in their fixed order, uncounted — what the system message is composed beside. */
-export function previewNoteBlocks(snapshot: NoteSourceSnapshot): NoteBlock[] {
-  return orderedBlocks(buildInputModel(snapshot), new Set()).map((block) => ({
+export function previewNoteBlocks(snapshot: NoteSourceSnapshot, carryAiDraft = true): NoteBlock[] {
+  return orderedBlocks(buildInputModel(snapshot, carryAiDraft), new Set()).map((block) => ({
     key: block.key,
     role: block.role,
     label: block.label,
@@ -541,7 +549,8 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     throw new NoteTemplateUnresolvedError('The note template declares no section headings; a note plan needs at least one.');
   }
   const sections = targetSections(snapshot, mode, options.sectionKeys);
-  const model = buildInputModel(snapshot);
+  const carryAiDraft = options.carryAiDraft !== false;
+  const model = buildInputModel(snapshot, carryAiDraft);
 
   const groups = planSectionGroups(sections, settings);
   const grouped = groups.length > 1;
@@ -679,7 +688,7 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     planId: options.planId,
     consultationId: snapshot.consultationId,
     tenantId: snapshot.tenantId,
-    inputDigest: digestOf(snapshot, mode, sections, options.system),
+    inputDigest: digestOf(snapshot, mode, sections, options.system, carryAiDraft),
     mode,
     model: { ...snapshot.model },
     budget: plan.budget,
@@ -790,6 +799,8 @@ export class NoteInputComposerService {
     // The template's headings decide the sections and the calls; absent ⇒ the latest note's own headings.
     @Optional() @Inject(IDocumentTemplateService) private readonly documentTemplates?: Pick<IDocumentTemplateService, 'resolveForGeneration'>,
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
+    // Warm start (`warmStartEnabled`, tenant → SYSTEM) decides whether the previous AI draft is carried.
+    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: Pick<HarnessPolicyService, 'getEffectivePolicy'>,
   ) {}
 
   /** Compose (and, unless a preview, cache) the plan plus the preserved section text a regenerate needs. */
@@ -797,9 +808,11 @@ export class NoteInputComposerService {
     const settings = await this.resolveSettings(request.tenantId);
     const { model, tokenizer } = await this.resolveModel(request.tenantId, request.model ?? null);
     const snapshot = await this.gather(request, model, settings.ledgerWaitSeconds);
-    const system = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot));
+    const carryAiDraft = await this.resolveCarryAiDraft(request.tenantId);
+    const system = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
     const plan = await composeFromSnapshot(snapshot, {
       mode: request.mode,
+      carryAiDraft,
       sectionKeys: request.sectionKeys,
       system,
       settings: settings.budget,
@@ -919,6 +932,25 @@ export class NoteInputComposerService {
       allowEstimate: await read(NOTE_TOKENIZER_ALLOW_ESTIMATE_KEY, d.allowEstimate as boolean, isBool),
       ledgerWaitSeconds: await read(NOTE_LEDGER_WAIT_SECONDS_KEY, d.ledgerWaitSeconds as number, int(0, 600)),
     };
+  }
+
+  /**
+   * Whether the previous AI draft is an input: the effective `HarnessPolicy.warmStartEnabled` for
+   * the tenant. Only an explicit `false` withholds it; no opinion, an unwired policy service or a
+   * failed lookup keep the default (carried) — a governance read never fails a composition.
+   */
+  private async resolveCarryAiDraft(tenantId: string): Promise<boolean> {
+    if (!this.harnessPolicyService) return true;
+    try {
+      const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId);
+      return effective.warmStartEnabled !== false;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness policy unresolved — the previous AI draft stays an input',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return true;
+    }
   }
 
   /**

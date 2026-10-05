@@ -6,13 +6,15 @@ import { CommonServiceModule } from '../../baseServices';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { DocumentTemplateServiceModule } from '../../document-template/document-template.service.module';
+import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { NoteInputComposerService } from './note-input-composer.service';
 import { NoteTokenCounterToken, TextTokenCountClient } from './text-token-count.client';
 
 /**
  * The note input composer and its token counter. The composer reads the record model through
  * `CoreDatabaseModule`, its budget settings through `EffectiveSettingsModule`, the template headings
- * through `DocumentTemplateServiceModule`, and caches plans in Redis.
+ * through `DocumentTemplateServiceModule`, the warm-start policy through `HarnessPolicyServiceModule`,
+ * and caches plans in Redis.
  */
 @Module({
   imports: [
@@ -22,6 +24,7 @@ import { NoteTokenCounterToken, TextTokenCountClient } from './text-token-count.
     HttpModule,
     EffectiveSettingsModule,
     DocumentTemplateServiceModule,
+    HarnessPolicyServiceModule,
     RedisCacheModule.register(),
   ],
   providers: [NoteInputComposerService, TextTokenCountClient, { provide: NoteTokenCounterToken, useExisting: TextTokenCountClient }],
