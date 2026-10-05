@@ -401,6 +401,8 @@ test.describe(' route authorization conformance matrix', () => {
     // the `assertAll` above still proves each one is service-token-gated.
     // TASK-1036 B3b added the 40th: POST /internal/consultations/{consultationId}/read
     // (ConsultationReadInternalController, `@Public()` + HarnessServiceTokenGuard, X-Tenant-Id required).
-    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(40);
+    // TASK-1042 added the 41st: GET /internal/stt/sessions/{sessionId}/transcript
+    // (SttSessionTranscriptInternalController, `@Public()` + HarnessServiceTokenGuard + InternalTenantLockGuard).
+    expect(casesA5Internal.length, 'inventory of @Public() /internal/* routes').toBe(41);
   });
 });

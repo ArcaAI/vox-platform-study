@@ -364,6 +364,20 @@ function label(node: WorkflowGraphNode): string {
   return typeof named === 'string' && named.length > 0 ? `"${named}" (\`${node.id}\`)` : `\`${node.id}\``;
 }
 
+/**
+ * TASK-1042 — the payload a streamed `STREAM_AUDIO` kind derives to (`STREAM_AUDIO_PAYLOAD_SCHEMA`):
+ * an object whose ONLY declared property is the string `sttSessionId`. Structurally it is an object,
+ * but what it carries is a live audio session, so a binding reads it as `audio` (the ASR agent's
+ * `audio` input resolves the session at run time). Anything with more properties stays `json`.
+ */
+function isStreamAudioPayload(schema: unknown): boolean {
+  const object = asObject(schema);
+  const properties = asObject(object?.properties);
+  if (object === undefined || properties === undefined || object.type !== 'object') return false;
+  const keys = Object.keys(properties);
+  return keys.length === 1 && keys[0] === 'sttSessionId' && asObject(properties.sttSessionId)?.type === 'string';
+}
+
 function resolveContextPath(segments: readonly string[], payloadSchema: unknown, path: string): Resolution {
   if (asObject(payloadSchema) === undefined) return { ok: { type: segments.length === 0 ? 'json' : 'any', phiClass: null } };
   let walked = walkSchema(payloadSchema, segments, 'declared');
@@ -373,6 +387,7 @@ function resolveContextPath(segments: readonly string[], payloadSchema: unknown,
     walked = walkSchema(properties.context, segments, 'declared');
   }
   if (walked === 'unknown') return { code: 'BINDING_UNKNOWN_PATH', message: `\`${path}\` is not declared by this workflow's context schema.` };
+  if (walked !== 'open' && isStreamAudioPayload(walked.schema)) return { ok: { type: 'audio', phiClass: null } };
   return { ok: { type: walked === 'open' ? 'any' : ioTypeOfJsonSchema(walked.schema), phiClass: null } };
 }
 

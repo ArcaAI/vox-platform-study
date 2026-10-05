@@ -20,6 +20,7 @@
  * with an explicit reason when the STT service is unavailable (the `stt-session-cross-tenant`
  * convention). Prerequisites: API on the test DB (`pnpm test:up:api`), seeded.
  */
+import { randomUUID } from 'node:crypto';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import {
   DEFAULT_TENANT_KEY,
@@ -39,29 +40,33 @@ interface CreatedApiKey {
   rawKey: string;
 }
 
-const stamp = () => `${Date.now() % 100000000}${Math.floor(Math.random() * 90 + 10)}`;
+const stamp = () => randomUUID().replace(/-/g, '').slice(0, 16);
 
-function chainGraph(schemaId: string, connections: string[]) {
+/** `connections: null` = a LEGACY graph with no `settings` (publish then only WARNS on WF-SET-003/005). */
+function chainGraph(schemaId: string, connections: string[] | null) {
   return {
     version: 1,
-    settings: { connections, sources: [], contextSchema: { contextSchemaId: schemaId, versionNumber: null } },
+    ...(connections ? { settings: { connections, sources: [], contextSchema: { contextSchemaId: schemaId, versionNumber: null } } } : {}),
     nodes: [
-      { id: 't', type: 'core.trigger', config: { kinds: ['api'], contextSchema: { contextSchemaId: schemaId } } },
+      { id: 'n_trigger', type: 'core.trigger', config: { kinds: ['api'], contextSchema: { contextSchemaId: schemaId } } },
       {
-        id: 'asr',
+        id: 'n_asr',
         type: 'core.agent',
         config: { agentRef: { slug: STT_AGENT_SLUG }, inputs: { audio: { from: 'context.mic' } }, onError: 'degrade' },
       },
-      { id: 'o', type: 'core.output', config: { protocols: ['http'] } },
+      { id: 'n_out', type: 'core.output', config: { protocols: ['http'] } },
     ],
     edges: [
-      { id: 'e1', from: 't', fromPort: 'next', to: 'asr', toPort: 'after' },
-      { id: 'e2', from: 'asr', fromPort: 'next', to: 'o', toPort: 'after' },
+      { id: 'e1', from: 'n_trigger', fromPort: 'next', to: 'n_asr', toPort: 'after' },
+      { id: 'e2', from: 'n_asr', fromPort: 'next', to: 'n_out', toPort: 'after' },
     ],
   };
 }
 
 test.describe('TASK-1042 — live audio bound to a standalone workflow run', () => {
+  // ONE fixture (schema + two workflows) for the whole file: `beforeAll` runs per worker otherwise.
+  test.describe.configure({ mode: 'serial' });
+
   let adminToken: string;
   let schemaId: string | null = null;
   let socketSlug: string | null = null;
@@ -84,11 +89,16 @@ test.describe('TASK-1042 — live audio bound to a standalone workflow run', () 
     return { id: body.apiKey.id, rawKey: body.rawKey };
   }
 
-  async function publishWorkflow(request: APIRequestContext, connections: string[]): Promise<string | null> {
-    const slug = `t1042_${connections.join('_')}_${stamp()}`;
+  async function publishWorkflow(request: APIRequestContext, connections: string[] | null): Promise<string | null> {
+    const slug = `t1042_${connections ? connections.join('_') : 'legacy'}_${stamp()}`;
     const created = await request.post('/api/v1/admin/workflow-definitions', {
       headers: admin(),
-      data: { slug, name: `TASK-1042 ${connections.join('+')}`, paletteKey: 'core', graph: chainGraph(schemaId as string, connections) },
+      data: {
+        slug,
+        name: `TASK-1042 ${connections ? connections.join('+') : 'legacy'}`,
+        paletteKey: 'core',
+        graph: chainGraph(schemaId as string, connections),
+      },
     });
     if (created.status() !== 201) {
       fixtureProblem = `workflow create ${created.status()}: ${(await created.text()).slice(0, 300)}`;
@@ -176,7 +186,9 @@ test.describe('TASK-1042 — live audio bound to a standalone workflow run', () 
       return;
     }
     socketSlug = await publishWorkflow(request, ['api', 'socket']);
-    if (socketSlug) noSocketSlug = await publishWorkflow(request, ['api']);
+    // A workflow that DECLARES settings without `socket` cannot publish a stream-audio Input (WF-SET-003
+    // ERROR), so the refusal is reached through a legacy definition with no settings at all.
+    if (socketSlug) noSocketSlug = await publishWorkflow(request, null);
   });
 
   test.afterAll(async ({ request }) => {
@@ -208,7 +220,7 @@ test.describe('TASK-1042 — live audio bound to a standalone workflow run', () 
       expect((await response.json()).code).toBe('RUN_AUDIO_INPUT_UNDECLARED');
     });
 
-    test('a workflow without the socket connection is 400 LIVE_AUDIO_UNSUPPORTED', async ({ request }) => {
+    test('a legacy workflow (no settings, so no socket connection) is 400 LIVE_AUDIO_UNSUPPORTED', async ({ request }) => {
       test.skip(!noSocketSlug, `fixture unavailable: ${fixtureProblem}`);
       const keyA = await key(request, 'nosocket');
       const response = await startRun(request, noSocketSlug!, { 'X-API-Key': keyA.rawKey }, { mic: { sttSessionId: SYNTHETIC_SESSION_ID } });

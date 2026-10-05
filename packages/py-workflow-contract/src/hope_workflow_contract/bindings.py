@@ -276,6 +276,21 @@ def _label(node: Mapping[str, Any]) -> str:
     return f'"{named}" (`{node["id"]}`)' if isinstance(named, str) and named else f"`{node['id']}`"
 
 
+def _is_stream_audio_payload(schema: Any) -> bool:
+    """TASK-1042 — mirrors ``isStreamAudioPayload``: an object whose ONLY declared property is the
+    string ``sttSessionId`` is a live audio session, read by a binding as ``audio``."""
+    obj = _obj(schema)
+    properties = _obj(obj.get("properties")) if obj is not None else None
+    if obj is None or properties is None or obj.get("type") != "object":
+        return False
+    session = _obj(properties.get("sttSessionId"))
+    return (
+        list(properties.keys()) == ["sttSessionId"]
+        and session is not None
+        and session.get("type") == "string"
+    )
+
+
 def _resolve_context_path(segments: list[str], payload_schema: Any, path: str) -> Any:
     if _obj(payload_schema) is None:
         return _Resolved("json" if not segments else "any", None)
@@ -292,6 +307,8 @@ def _resolve_context_path(segments: list[str], payload_schema: Any, path: str) -
         return _Unresolved(
             "BINDING_UNKNOWN_PATH", f"`{path}` is not declared by this workflow's context schema."
         )
+    if walked != "open" and _is_stream_audio_payload(walked["schema"]):
+        return _Resolved("audio", None)
     return _Resolved("any" if walked == "open" else io_type_of_json_schema(walked["schema"]), None)
 
 
