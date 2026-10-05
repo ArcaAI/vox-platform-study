@@ -75,6 +75,9 @@ export const DEFAULT_CONSULTATIONS = [
     departmentId: SEED_DEPARTMENT_IDS.OPD,
     parentConsultationId: null,
     status: ConsultationStatus.CLOSED_COMPLETE,
+    approvedAt: new Date('2025-12-15T11:00:00Z'),
+    closedAt: new Date('2025-12-15T11:00:00Z'),
+    closedReason: 'APPROVED' as const,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Persistent cough and low-grade fever for 5 days',
@@ -94,6 +97,8 @@ export const DEFAULT_CONSULTATIONS = [
     parentConsultationId: null,
     // Closed unsigned: parent of the open CARD_CROSS_DEPT on the same open key (one non-closed per key).
     status: ConsultationStatus.CLOSED_INCOMPLETE,
+    closedAt: new Date('2026-01-20T17:00:00Z'),
+    closedReason: 'AUTO' as const,
     metadata: {
       visitType: 'REVISIT',
       chiefComplaint: 'Follow-up for hypertension management and chest tightness',
@@ -111,6 +116,8 @@ export const DEFAULT_CONSULTATIONS = [
     parentConsultationId: null,
     // Closed unsigned: parent of the open SURG_FOLLOWUP on the same open key.
     status: ConsultationStatus.CLOSED_INCOMPLETE,
+    closedAt: new Date('2026-01-10T17:00:00Z'),
+    closedReason: 'AUTO' as const,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Right iliac fossa pain for 2 days with nausea and fever',
@@ -161,6 +168,9 @@ export const DEFAULT_CONSULTATIONS = [
     departmentId: SEED_DEPARTMENT_IDS.PEDS,
     parentConsultationId: null,
     status: ConsultationStatus.CLOSED_COMPLETE,
+    approvedAt: new Date('2026-02-10T15:30:00Z'),
+    closedAt: new Date('2026-02-10T15:30:00Z'),
+    closedReason: 'APPROVED' as const,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Right ear pain and fever for 3 days — 4-year-old male',
@@ -250,6 +260,8 @@ export const CUSTOMER_TENANT_CONSULTATIONS = [
     parentConsultationId: null,
     // Closed unsigned: parent of the REVISIT below on the same open key.
     status: ConsultationStatus.CLOSED_INCOMPLETE,
+    closedAt: new Date('2026-02-21T17:00:00Z'),
+    closedReason: 'AUTO' as const,
     metadata: {
       visitType: 'NEW_PATIENT',
       chiefComplaint: 'Sore throat and mild fever for 3 days',
