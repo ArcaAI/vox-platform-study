@@ -2832,6 +2832,121 @@
       "apiExcluded": false
     },
     {
+      "controller": "AdminConsultationHistoryController",
+      "handler": "getActivity",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/activity",
+      "routePath": "/admin/consultations/:id/activity",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminConsultationHistoryController",
+      "handler": "listRuns",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/items/{itemId}/runs",
+      "routePath": "/admin/consultations/:id/items/:itemId/runs",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminConsultationHistoryController",
+      "handler": "listVersions",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/items/{itemId}/versions",
+      "routePath": "/admin/consultations/:id/items/:itemId/versions",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminConsultationHistoryController",
+      "handler": "getVersion",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}",
+      "routePath": "/admin/consultations/:id/items/:itemId/versions/:n",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminConsultationHistoryController",
+      "handler": "diff",
+      "method": "GET",
+      "path": "/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}/diff",
+      "routePath": "/admin/consultations/:id/items/:itemId/versions/:n/diff",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsultationTelemetryController",
       "handler": "getTelemetry",
       "method": "GET",
@@ -3882,6 +3997,29 @@
         [
           "manage",
           "all"
+        ]
+      ],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "AdminFeedbackRollupController",
+      "handler": "rollups",
+      "method": "GET",
+      "path": "/api/v1/admin/feedback/rollups",
+      "routePath": "/admin/feedback/rollups",
+      "svcScopes": [
+        "svc:admin:consultation-admin:manage"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": true,
+      "apiKeyScopes": [],
+      "requiredPermissions": [
+        [
+          "read",
+          "Consultation"
         ]
       ],
       "isPublic": false,
@@ -12762,6 +12900,126 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "approve",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/approve",
+      "routePath": "/consultations/:id/approve",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationAttachmentController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/attachments",
+      "routePath": "/consultations/:id/attachments",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationAttachmentController",
+      "handler": "createIntent",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/attachments",
+      "routePath": "/consultations/:id/attachments",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationAttachmentController",
+      "handler": "get",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/attachments/{attachmentId}",
+      "routePath": "/consultations/:id/attachments/:attachmentId",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationAttachmentController",
+      "handler": "complete",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/attachments/{attachmentId}/complete",
+      "routePath": "/consultations/:id/attachments/:attachmentId/complete",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationAttachmentController",
+      "handler": "uploadContent",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/attachments/{attachmentId}/content",
+      "routePath": "/consultations/:id/attachments/:attachmentId/content",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "getChain",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/chain",
@@ -13050,6 +13308,106 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "listEncounters",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/encounters",
+      "routePath": "/consultations/:id/encounters",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationHistoryController",
+      "handler": "getRecap",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/encounters/{seq}/recap",
+      "routePath": "/consultations/:id/encounters/:seq/recap",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationLifecycleEventsController",
+      "handler": "streamEvents",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/events",
+      "routePath": "/consultations/:id/events",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationFeedbackController",
+      "handler": "list",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/feedback",
+      "routePath": "/consultations/:id/feedback",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationFeedbackController",
+      "handler": "create",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/feedback",
+      "routePath": "/consultations/:id/feedback",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "streamHarnessAssurance",
       "method": "GET",
       "path": "/api/v1/consultations/{id}/harness-assurance/stream",
@@ -13141,6 +13499,26 @@
       "apiExcluded": false
     },
     {
+      "controller": "ConsultationHistoryController",
+      "handler": "getHistory",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/history",
+      "routePath": "/consultations/:id/history",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
       "controller": "ConsultationController",
       "handler": "streamLiveAssist",
       "method": "GET",
@@ -13222,6 +13600,26 @@
     },
     {
       "controller": "ConsultationController",
+      "handler": "pause",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/pause",
+      "routePath": "/consultations/:id/pause",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
       "handler": "prime",
       "method": "POST",
       "path": "/api/v1/consultations/{id}/prime",
@@ -13236,6 +13634,26 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
+      "handler": "getRecording",
+      "method": "GET",
+      "path": "/api/v1/consultations/{id}/recording",
+      "routePath": "/consultations/:id/recording",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
       "apiExcluded": false
     },
     {
@@ -13330,6 +13748,46 @@
       "isPublic": false,
       "permissionMode": "AND",
       "requiresIfMatch": true,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
+      "handler": "start",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/start",
+      "routePath": "/consultations/:id/start",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationController",
+      "handler": "stop",
+      "method": "POST",
+      "path": "/api/v1/consultations/{id}/stop",
+      "routePath": "/consultations/:id/stop",
+      "svcScopes": [
+        "svc:consultation:session:write"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
       "apiExcluded": false
     },
     {
@@ -13665,6 +14123,26 @@
       "apiKeyForbidden": false,
       "apiKeyScopes": [
         "consultation:session:read"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": false
+    },
+    {
+      "controller": "ConsultationFeedbackController",
+      "handler": "reasonCodes",
+      "method": "GET",
+      "path": "/api/v1/consultations/feedback/reason-codes",
+      "routePath": "/consultations/feedback/reason-codes",
+      "svcScopes": [
+        "svc:consultation:session:read"
+      ],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "consultation:session:write"
       ],
       "requiredPermissions": [],
       "isPublic": false,
@@ -14228,6 +14706,22 @@
       "method": "POST",
       "path": "/api/v1/internal/consent/assert",
       "routePath": "/internal/consent/assert",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "HarnessNotePlanController",
+      "handler": "getNotePlan",
+      "method": "GET",
+      "path": "/api/v1/internal/consultations/{consultationId}/note-plans/{planId}",
+      "routePath": "/internal/consultations/:consultationId/note-plans/:planId",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,
@@ -14948,6 +15442,24 @@
       "method": "GET",
       "path": "/api/v1/internal/stt/provider-overrides",
       "routePath": "/internal/stt/provider-overrides",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [
+        "internal:stt:worker"
+      ],
+      "requiredPermissions": [],
+      "isPublic": false,
+      "permissionMode": "AND",
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
+      "controller": "SttInternalController",
+      "handler": "ingestSegments",
+      "method": "POST",
+      "path": "/api/v1/internal/stt/segments",
+      "routePath": "/internal/stt/segments",
       "svcScopes": [],
       "forbidServiceAccount": false,
       "apiKeyForbidden": false,

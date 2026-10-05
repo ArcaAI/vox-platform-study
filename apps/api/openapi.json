@@ -86,6 +86,169 @@
         ],
         "type": "object"
       },
+      "ActivityAggregatesResponse": {
+        "properties": {
+          "aiRunCount": {
+            "type": "number"
+          },
+          "costBasis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "costMicros": {
+            "type": "number"
+          },
+          "editedItems": {
+            "type": "number"
+          },
+          "feedbackDown": {
+            "type": "number"
+          },
+          "feedbackUp": {
+            "type": "number"
+          },
+          "tokensIn": {
+            "type": "number"
+          },
+          "tokensOut": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "aiRunCount",
+          "tokensIn",
+          "tokensOut",
+          "costMicros",
+          "costBasis",
+          "editedItems",
+          "feedbackUp",
+          "feedbackDown"
+        ],
+        "type": "object"
+      },
+      "ActivityRunRecordResponse": {
+        "properties": {
+          "activityKind": {
+            "type": "string"
+          },
+          "agentSlug": {
+            "type": "string"
+          },
+          "agentVersion": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "contextUsed": {
+            "type": "number"
+          },
+          "contextWindow": {
+            "type": "number"
+          },
+          "costBasis": {
+            "nullable": true,
+            "type": "string"
+          },
+          "costMicros": {
+            "nullable": true,
+            "type": "number"
+          },
+          "deployment": {
+            "nullable": true,
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "endedAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "nodeLabel": {
+            "type": "string"
+          },
+          "outputCap": {
+            "nullable": true,
+            "type": "number"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "stopReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tokensIn": {
+            "type": "number"
+          },
+          "tokensOut": {
+            "type": "number"
+          },
+          "versionNumber": {
+            "type": "number"
+          },
+          "workflowSlug": {
+            "type": "string"
+          },
+          "workflowVersion": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "runId",
+          "workflowSlug",
+          "workflowVersion",
+          "agentSlug",
+          "agentVersion",
+          "model",
+          "provider",
+          "durationMs",
+          "tokensIn",
+          "tokensOut",
+          "contextUsed",
+          "contextWindow",
+          "costMicros",
+          "costBasis",
+          "stopReason",
+          "startedAt",
+          "id",
+          "nodeId",
+          "activityKind",
+          "outputCap",
+          "deployment",
+          "endedAt",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
       "AddAdjustmentRequest": {
         "properties": {
           "amountMicros": {
@@ -213,7 +376,11 @@
               "CASE_NOTE",
               "ATTACHMENT",
               "SIGNED_NOTE",
-              "STRUCTURED"
+              "STRUCTURED",
+              "TRANSCRIPT_SEGMENT",
+              "FULL_TRANSCRIPT",
+              "FACT_LEDGER",
+              "ENCOUNTER_RECAP"
             ],
             "type": "string"
           }
@@ -2235,6 +2402,19 @@
         ],
         "type": "object"
       },
+      "ApproveConsultationRequest": {
+        "properties": {
+          "clinicianUserId": {
+            "description": "The clinician who approves. REQUIRED for a machine credential (API key / service account) — a machine is never the attesting clinician; a human may name another clinician only while holding SUPER_ADMIN or TENANT_ADMIN, and omits it to act as themselves.",
+            "type": "string"
+          },
+          "overrideSafetyFlag": {
+            "description": "Approve despite an open safety flag on the note (recorded on the attestation).",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "ApprovePromptTemplateRequest": {
         "properties": {
           "expectedVersion": {
@@ -2597,6 +2777,160 @@
           "status",
           "consultationId",
           "createdAt"
+        ],
+        "type": "object"
+      },
+      "AttachmentIntentResponse": {
+        "properties": {
+          "attachmentId": {
+            "type": "string"
+          },
+          "intentExpiresAt": {
+            "description": "ISO timestamp an unfinished intent is reaped.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "document",
+              "image",
+              "audio",
+              "case_note"
+            ],
+            "type": "string"
+          },
+          "maxSizeBytes": {
+            "description": "The byte ceiling the upload is signed for.",
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "INTENT"
+            ],
+            "type": "string"
+          },
+          "uploadExpiresAt": {
+            "description": "ISO timestamp the upload URL stops working.",
+            "type": "string"
+          },
+          "uploadHeaders": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttachmentUploadHeaders"
+              }
+            ],
+            "description": "Send these and no Authorization header."
+          },
+          "uploadMethod": {
+            "enum": [
+              "PUT"
+            ],
+            "type": "string"
+          },
+          "uploadMode": {
+            "enum": [
+              "presigned",
+              "gateway"
+            ],
+            "type": "string"
+          },
+          "uploadUrl": {
+            "description": "Presigned PUT URL; null when the file goes through `/content`.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachmentId",
+          "status",
+          "kind",
+          "uploadMode",
+          "uploadUrl",
+          "uploadMethod",
+          "uploadHeaders",
+          "uploadExpiresAt",
+          "intentExpiresAt",
+          "maxSizeBytes"
+        ],
+        "type": "object"
+      },
+      "AttachmentResponse": {
+        "properties": {
+          "attachmentId": {
+            "type": "string"
+          },
+          "contextItemId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "failureCode": {
+            "description": "Why a FAILED attachment failed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "document",
+              "image",
+              "audio",
+              "case_note"
+            ],
+            "type": "string"
+          },
+          "mediaId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "INTENT",
+              "UPLOADED",
+              "PROCESSING",
+              "READY",
+              "FAILED",
+              "EXPIRED"
+            ],
+            "type": "string"
+          },
+          "transcriptionJobId": {
+            "description": "Batch job transcribing an audio attachment.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attachmentId",
+          "status",
+          "kind",
+          "mime",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "AttachmentUploadHeaders": {
+        "properties": {
+          "Content-Length": {
+            "type": "string"
+          },
+          "Content-Type": {
+            "type": "string"
+          },
+          "x-amz-checksum-sha256": {
+            "description": "Base64 SHA-256 the storage layer verifies on write.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "Content-Type",
+          "Content-Length"
         ],
         "type": "object"
       },
@@ -3508,6 +3842,79 @@
           "unlimited",
           "nearLimit",
           "exceeded"
+        ],
+        "type": "object"
+      },
+      "CaptureStateResponse": {
+        "properties": {
+          "consultationId": {
+            "type": "string"
+          },
+          "encounterSeq": {
+            "description": "The encounter (visit) the capture belongs to.",
+            "type": "number"
+          },
+          "lifecycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LifecyclePairResponse"
+              }
+            ],
+            "description": "Present when `status` was projected for an older client."
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "processing": {
+            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "recording": {
+            "type": "boolean"
+          },
+          "sessionId": {
+            "description": "The STT streaming session bound by this start, echoed.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle status. Without the `X-Hope-Lifecycle: 2` request header it is answered in the previous vocabulary (PAUSED reads RECORDING, STOPPED reads DRAINING / DRAFT_PENDING_SENSORS / PENDING_REVIEW, APPROVED reads SIGNED); `lifecycle.status` always carries the current value.",
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO-8601.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The consultation `_version` after the command; the If-Match value for approve / close / reopen.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "consultationId",
+          "status",
+          "processing",
+          "encounterSeq",
+          "recording",
+          "paused",
+          "version",
+          "updatedAt"
         ],
         "type": "object"
       },
@@ -4800,6 +5207,77 @@
         ],
         "type": "object"
       },
+      "ConsultationActivityPageResponse": {
+        "properties": {
+          "aggregates": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivityAggregatesResponse"
+              }
+            ],
+            "description": "Admin plane, first page only."
+          },
+          "consultationId": {
+            "type": "string"
+          },
+          "encounters": {
+            "items": {
+              "$ref": "#/components/schemas/EncounterBlockResponse"
+            },
+            "type": "array"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "description": "Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "processing": {
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "processingReason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "consultationId",
+          "status",
+          "processing",
+          "encounters",
+          "items",
+          "nextCursor",
+          "hasMore"
+        ],
+        "type": "object"
+      },
       "ConsultationAggregateBucket": {
         "properties": {
           "end": {
@@ -4889,6 +5367,39 @@
           "total",
           "newVisits",
           "revisits"
+        ],
+        "type": "object"
+      },
+      "ConsultationApprovalResponse": {
+        "properties": {
+          "approvedAt": {
+            "description": "When the consultation was approved (ISO-8601).",
+            "type": "string"
+          },
+          "approvedBy": {
+            "description": "The clinician the approval is attributed to.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Approval ID",
+            "type": "string"
+          },
+          "itemCount": {
+            "description": "How many context items the approval pinned.",
+            "example": 4,
+            "type": "number"
+          },
+          "snapshotHash": {
+            "description": "Hash of the approved snapshot (every context item and the version it was approved at).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "approvedAt",
+          "approvedBy",
+          "snapshotHash",
+          "itemCount"
         ],
         "type": "object"
       },
@@ -5064,10 +5575,144 @@
         ],
         "type": "object"
       },
+      "ConsultationLifecycleState": {
+        "properties": {
+          "processing": {
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "example": "IDLE",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "example": "OPEN",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "processing"
+        ],
+        "type": "object"
+      },
+      "ConsultationRecordingPartResponse": {
+        "properties": {
+          "audioRecordingId": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "encounterSeq": {
+            "type": "number"
+          },
+          "expiresAt": {
+            "description": "When `url` stops working (ISO-8601).",
+            "nullable": true,
+            "type": "string"
+          },
+          "startMs": {
+            "description": "Where this part starts on the consultation recording timeline (ms).",
+            "type": "number"
+          },
+          "url": {
+            "description": "Presigned download URL, or null when the stored object could not be signed.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "audioRecordingId",
+          "encounterSeq",
+          "startMs",
+          "durationMs",
+          "url",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "ConsultationRecordingResponse": {
+        "properties": {
+          "codec": {
+            "example": "opus",
+            "nullable": true,
+            "type": "string"
+          },
+          "contextItemId": {
+            "description": "The AUDIO_RECORDING item.",
+            "type": "string"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/ConsultationRecordingPartResponse"
+            },
+            "type": "array"
+          },
+          "totalMs": {
+            "type": "number"
+          },
+          "versionNumber": {
+            "description": "Its current version (each stop appends one).",
+            "type": "number"
+          }
+        },
+        "required": [
+          "contextItemId",
+          "versionNumber",
+          "codec",
+          "totalMs",
+          "parts"
+        ],
+        "type": "object"
+      },
       "ConsultationResponse": {
         "properties": {
           "appointmentDate": {
             "description": "Appointment date (YYYY-MM-DD)",
+            "type": "string"
+          },
+          "approval": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConsultationApprovalResponse"
+              }
+            ],
+            "description": "The latest approval of this consultation while it is approved, or null.",
+            "nullable": true,
+            "type": "object"
+          },
+          "autoCloseAt": {
+            "description": "When the tenant's auto-close policy will close this consultation if nothing else happens (ISO-8601), or null when it is closed or no policy resolves.",
+            "nullable": true,
+            "type": "string"
+          },
+          "closedAt": {
+            "description": "When the consultation was closed (ISO-8601), or null.",
+            "nullable": true,
+            "type": "string"
+          },
+          "closedReason": {
+            "description": "Why the consultation was closed (AUTO, MANUAL, APPROVED), or null while it is not closed.",
+            "enum": [
+              "AUTO",
+              "MANUAL",
+              "APPROVED"
+            ],
+            "nullable": true,
             "type": "string"
           },
           "contextItems": {
@@ -5080,6 +5725,11 @@
           "createdAt": {
             "description": "Creation timestamp",
             "type": "string"
+          },
+          "currentEncounterSeq": {
+            "description": "The open encounter of this consultation (starts at 1).",
+            "example": 1,
+            "type": "number"
           },
           "department": {
             "allOf": [
@@ -5105,8 +5755,20 @@
             "description": "Doctor identifier",
             "type": "string"
           },
+          "encounterAppended": {
+            "description": "On `open`: whether this call appended a new encounter to an existing consultation.",
+            "example": false,
+            "type": "boolean"
+          },
+          "encounters": {
+            "description": "Every encounter (visit) of this consultation, in order.",
+            "items": {
+              "$ref": "#/components/schemas/EncounterResponse"
+            },
+            "type": "array"
+          },
           "externalRef": {
-            "description": "The caller's own encounter id this consultation is keyed on, or null. A later `open` with the same ref (same patient and clinician) returns this consultation; a new ref opens a new one.",
+            "description": "The caller's own id of the current encounter, or null. A later `open` with the same id (same patient and clinician) returns this consultation; a new id appends a new encounter to the open consultation of the same patient, clinician and department.",
             "example": "EVT-88213",
             "nullable": true,
             "type": "string"
@@ -5131,6 +5793,18 @@
             "example": "ml-en",
             "type": "string"
           },
+          "lastActivityAt": {
+            "description": "When the consultation last saw activity (ISO-8601) — the auto-close clock reads this.",
+            "type": "string"
+          },
+          "lifecycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ConsultationLifecycleState"
+              }
+            ],
+            "description": "The lifecycle status and processing value. Always the current vocabulary, even when `status` is projected for an older client."
+          },
           "metadata": {
             "description": "Additional metadata",
             "type": "object"
@@ -5143,24 +5817,47 @@
             "description": "Patient identifier",
             "type": "string"
           },
+          "processing": {
+            "description": "What the platform is doing in the background for this consultation.",
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "example": "IDLE",
+            "type": "string"
+          },
+          "processingReason": {
+            "description": "Why processing is FAILED or AWAITING_REVIEW, or null.",
+            "nullable": true,
+            "type": "string"
+          },
           "recordable": {
-            "description": "Whether this consultation can still be recorded. false for SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED — `recording/start` answers 409 `CONSULTATION_NOT_RECORDABLE` for them. To start a new visit, open with a new `externalRef` or with `parentConsultationId` naming this consultation.",
+            "description": "Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED and STOPPED, false for APPROVED, CLOSED_COMPLETE and CLOSED_INCOMPLETE. Starting capture on a non-recordable consultation answers 409 `CONSULTATION_NOT_RECORDABLE`; reopen it, or open without the old visit id to start a new consultation.",
             "example": true,
             "type": "boolean"
           },
+          "reopenAllowed": {
+            "description": "Whether `reopen` is offered: always for CLOSED_INCOMPLETE, for CLOSED_COMPLETE only when the tenant's policy allows it, never otherwise.",
+            "example": false,
+            "type": "boolean"
+          },
+          "reopenCount": {
+            "description": "How many times this consultation was reopened.",
+            "example": 0,
+            "type": "number"
+          },
           "status": {
-            "description": "Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).",
+            "description": "Lifecycle status (OPEN, RECORDING, PAUSED, STOPPED, APPROVED, CLOSED_COMPLETE, CLOSED_INCOMPLETE). An older client is answered in the previous vocabulary; `lifecycle.status` always carries the current value.",
             "enum": [
               "OPEN",
               "RECORDING",
-              "DRAFT_PENDING_SENSORS",
-              "PENDING_REVIEW",
-              "SIGNED",
-              "CLOSED",
-              "REOPENED",
-              "PRIMED",
-              "DRAINING",
-              "TIMED_OUT",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
               "CLOSED_COMPLETE",
               "CLOSED_INCOMPLETE"
             ],
@@ -5172,11 +5869,11 @@
             "type": "string"
           },
           "version": {
-            "description": "Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`\"<version>\"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header.",
+            "description": "Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`\"<version>\"`) required by the lifecycle routes (POST :id/approve|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header.",
             "type": "number"
           },
           "visitType": {
-            "description": "The consultation's visit type: the recorded (schema-stated) value when it matches the platform vocabulary, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
+            "description": "The visit type of the current encounter. Falls back to the consultation's recorded visit type, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
             "enum": [
               "new-visit",
               "revisit"
@@ -5191,6 +5888,18 @@
           "doctorId",
           "appointmentDate",
           "recordable",
+          "processing",
+          "processingReason",
+          "lastActivityAt",
+          "autoCloseAt",
+          "reopenCount",
+          "closedReason",
+          "closedAt",
+          "reopenAllowed",
+          "currentEncounterSeq",
+          "encounters",
+          "approval",
+          "lifecycle",
           "visitType",
           "externalRef",
           "createdAt",
@@ -5599,7 +6308,11 @@
               "CASE_NOTE",
               "ATTACHMENT",
               "SIGNED_NOTE",
-              "STRUCTURED"
+              "STRUCTURED",
+              "TRANSCRIPT_SEGMENT",
+              "FULL_TRANSCRIPT",
+              "FACT_LEDGER",
+              "ENCOUNTER_RECAP"
             ],
             "type": "string"
           },
@@ -6204,6 +6917,59 @@
         ],
         "type": "object"
       },
+      "CreateAttachmentIntentRequest": {
+        "properties": {
+          "encounterSeq": {
+            "description": "The encounter (visit sequence) the file belongs to; defaults to the current one.",
+            "type": "number"
+          },
+          "fileName": {
+            "description": "Original file name (PHI-prone: stored encrypted, never put in an object key).",
+            "type": "string"
+          },
+          "kind": {
+            "description": "What the file is.",
+            "enum": [
+              "document",
+              "image",
+              "audio",
+              "case_note"
+            ],
+            "type": "string"
+          },
+          "mime": {
+            "description": "Declared MIME type; the stored bytes are sniffed against it at completion.",
+            "example": "application/pdf",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "attachment",
+            "description": "Whether the file belongs to the consultation record or backs a feedback entry.",
+            "enum": [
+              "attachment",
+              "feedback"
+            ],
+            "type": "string"
+          },
+          "sha256": {
+            "description": "SHA-256 of the bytes, lower-case hex.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "Declared size in bytes.",
+            "example": 20480,
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "mime",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "CreateBatchJobRequest": {
         "properties": {
           "agentSlug": {
@@ -6510,6 +7276,52 @@
           "slug",
           "name"
         ],
+        "type": "object"
+      },
+      "CreateFeedbackRequest": {
+        "properties": {
+          "attachmentIds": {
+            "description": "READY `purpose=feedback` attachments backing this entry.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "client": {
+            "$ref": "#/components/schemas/FeedbackClientRequest"
+          },
+          "comment": {
+            "description": "Free text; stored encrypted. The length ceiling is a setting, enforced by the service.",
+            "type": "string"
+          },
+          "correction": {
+            "$ref": "#/components/schemas/FeedbackCorrectionRequest"
+          },
+          "rating": {
+            "description": "`cleared` withdraws the actor's earlier rating of the target.",
+            "enum": [
+              "up",
+              "down",
+              "cleared"
+            ],
+            "type": "string"
+          },
+          "reasonCodes": {
+            "description": "Only with a `down` rating; validated against the effective reason list.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "target": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackTargetRequest"
+              }
+            ],
+            "description": "Absent = consultation-level free text."
+          }
+        },
         "type": "object"
       },
       "CreateGlobalSettingRequest": {
@@ -9990,6 +10802,238 @@
         ],
         "type": "object"
       },
+      "EncounterBlockResponse": {
+        "properties": {
+          "endedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "externalRef": {
+            "nullable": true,
+            "type": "string"
+          },
+          "gapAfter": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EncounterGapResponse"
+              }
+            ],
+            "description": "Idle time between this encounter's end and the next one's start."
+          },
+          "recordingEndMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "recordingStartMs": {
+            "nullable": true,
+            "type": "number"
+          },
+          "seq": {
+            "type": "number"
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "visitType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "visitType",
+          "externalRef",
+          "startedAt",
+          "endedAt",
+          "recordingStartMs",
+          "recordingEndMs"
+        ],
+        "type": "object"
+      },
+      "EncounterGapResponse": {
+        "properties": {
+          "durationMs": {
+            "type": "number"
+          },
+          "fromAt": {
+            "type": "string"
+          },
+          "toAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fromAt",
+          "toAt",
+          "durationMs"
+        ],
+        "type": "object"
+      },
+      "EncounterRecapCitationResponse": {
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "segment",
+              "attachment"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "t0Ms": {
+            "type": "number"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "versionNumber",
+          "label",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "EncounterRecapLineResponse": {
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/EncounterRecapCitationResponse"
+            },
+            "type": "array"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "citations"
+        ],
+        "type": "object"
+      },
+      "EncounterRecapResponse": {
+        "properties": {
+          "contextItemId": {
+            "type": "string"
+          },
+          "encounterSeq": {
+            "type": "number"
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "ledgerContextItemId": {
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/EncounterRecapSectionResponse"
+            },
+            "type": "array"
+          },
+          "text": {
+            "description": "Display-only plain rendering (`## Label` blocks for a structured recap); never an input to generation.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "encounterSeq",
+          "contextItemId",
+          "versionNumber",
+          "text",
+          "generatedAt",
+          "ledgerContextItemId"
+        ],
+        "type": "object"
+      },
+      "EncounterRecapSectionResponse": {
+        "properties": {
+          "key": {
+            "description": "reason, findings, medicines, sent_for, since_then, still_open",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/EncounterRecapLineResponse"
+            },
+            "type": "array"
+          },
+          "text": {
+            "description": "The section's lines joined by newlines.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "text",
+          "lines"
+        ],
+        "type": "object"
+      },
+      "EncounterResponse": {
+        "properties": {
+          "endedAt": {
+            "description": "When the encounter ended (ISO-8601), or null while it is the open one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "externalRef": {
+            "description": "The caller's own id for this visit (an EMR event id), or null. A later `open` with the same id returns this consultation.",
+            "example": "EVT-88213",
+            "nullable": true,
+            "type": "string"
+          },
+          "recordingEndMs": {
+            "description": "Where this encounter ends on the consultation recording timeline (ms), or null.",
+            "nullable": true,
+            "type": "number"
+          },
+          "recordingStartMs": {
+            "description": "Where this encounter starts on the consultation recording timeline (ms), or null before any audio.",
+            "nullable": true,
+            "type": "number"
+          },
+          "seq": {
+            "description": "Encounter number within the consultation, starting at 1.",
+            "example": 1,
+            "type": "number"
+          },
+          "startedAt": {
+            "description": "When the encounter started (ISO-8601).",
+            "type": "string"
+          },
+          "visitType": {
+            "description": "The visit type of this encounter.",
+            "enum": [
+              "new-visit",
+              "revisit"
+            ],
+            "example": "new-visit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "visitType",
+          "externalRef",
+          "startedAt",
+          "endedAt",
+          "recordingStartMs",
+          "recordingEndMs"
+        ],
+        "type": "object"
+      },
       "EnrollBodyDto": {
         "properties": {
           "agentSlug": {
@@ -10659,6 +11703,414 @@
         ],
         "type": "object"
       },
+      "FeedbackActorResponse": {
+        "properties": {
+          "credentialClass": {
+            "enum": [
+              "jwt",
+              "api-key",
+              "service-account"
+            ],
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "credentialClass"
+        ],
+        "type": "object"
+      },
+      "FeedbackClientRequest": {
+        "properties": {
+          "app": {
+            "example": "hope-console",
+            "type": "string"
+          },
+          "surface": {
+            "example": "summary-panel",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FeedbackClientResponse": {
+        "properties": {
+          "app": {
+            "nullable": true,
+            "type": "string"
+          },
+          "surface": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FeedbackCorrectionRequest": {
+        "properties": {
+          "content": {
+            "description": "The replacement text; becomes a new version of the target item.",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "description": "Optimistic-concurrency guard: the version the clinician edited from.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "FeedbackCorrectionResponse": {
+        "properties": {
+          "contextItemId": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "contextItemId",
+          "versionNumber"
+        ],
+        "type": "object"
+      },
+      "FeedbackPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackResponse"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "description": "Opaque; pass back as `cursor` for the next page.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "FeedbackProvenanceResponse": {
+        "properties": {
+          "activityRunId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "agentSlug": {
+            "nullable": true,
+            "type": "string"
+          },
+          "agentVersion": {
+            "nullable": true,
+            "type": "number"
+          },
+          "modelName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "promptVersion": {
+            "nullable": true,
+            "type": "string"
+          },
+          "workflowRunId": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FeedbackReasonCodesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackReasonResponse"
+            },
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "tenant",
+              "system"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "source"
+        ],
+        "type": "object"
+      },
+      "FeedbackReasonResponse": {
+        "properties": {
+          "appliesTo": {
+            "items": {
+              "enum": [
+                "NOTE",
+                "SECTION",
+                "SEGMENT",
+                "ENTITY",
+                "TRANSCRIPT",
+                "RECAP"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "type": "object"
+      },
+      "FeedbackResponse": {
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/FeedbackActorResponse"
+          },
+          "attachmentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "client": {
+            "$ref": "#/components/schemas/FeedbackClientResponse"
+          },
+          "comment": {
+            "description": "Decrypted for a reader who may see it.",
+            "nullable": true,
+            "type": "string"
+          },
+          "consultationId": {
+            "type": "string"
+          },
+          "correction": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackCorrectionResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isLatest": {
+            "type": "boolean"
+          },
+          "provenance": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackProvenanceResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          },
+          "rating": {
+            "enum": [
+              "up",
+              "down",
+              "cleared"
+            ],
+            "nullable": true,
+            "type": "string"
+          },
+          "reasonCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supersedes": {
+            "description": "The earlier entry this one replaced as the actor's latest for the target.",
+            "type": "string"
+          },
+          "target": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackTargetResponse"
+              }
+            ],
+            "nullable": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "consultationId",
+          "target",
+          "rating",
+          "reasonCodes",
+          "comment",
+          "attachmentIds",
+          "correction",
+          "isLatest",
+          "provenance",
+          "actor",
+          "client",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "FeedbackRollupResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackRollupRow"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rows",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "FeedbackRollupRow": {
+        "properties": {
+          "cleared": {
+            "type": "number"
+          },
+          "comments": {
+            "type": "number"
+          },
+          "corrections": {
+            "type": "number"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "nullable": true,
+              "type": "string"
+            },
+            "description": "One entry per requested dimension.",
+            "type": "object"
+          },
+          "down": {
+            "type": "number"
+          },
+          "reasoned": {
+            "type": "number"
+          },
+          "up": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "dimensions",
+          "up",
+          "down",
+          "cleared",
+          "comments",
+          "corrections",
+          "reasoned"
+        ],
+        "type": "object"
+      },
+      "FeedbackTargetRequest": {
+        "properties": {
+          "contextItemId": {
+            "description": "The ContextItem the feedback is about.",
+            "type": "string"
+          },
+          "documentKey": {
+            "type": "string"
+          },
+          "entityRef": {
+            "description": "The NamedEntity id, for an ENTITY target.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "NOTE",
+              "SECTION",
+              "SEGMENT",
+              "ENTITY",
+              "TRANSCRIPT",
+              "RECAP"
+            ],
+            "type": "string"
+          },
+          "sectionKey": {
+            "description": "The note section, for a SECTION target.",
+            "type": "string"
+          },
+          "versionNumber": {
+            "description": "The version rated; the server pins the current one when omitted.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "contextItemId"
+        ],
+        "type": "object"
+      },
+      "FeedbackTargetResponse": {
+        "properties": {
+          "contextItemId": {
+            "type": "string"
+          },
+          "documentKey": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entityRef": {
+            "nullable": true,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "NOTE",
+              "SECTION",
+              "SEGMENT",
+              "ENTITY",
+              "TRANSCRIPT",
+              "RECAP"
+            ],
+            "type": "string"
+          },
+          "sectionKey": {
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "contextItemId"
+        ],
+        "type": "object"
+      },
       "FileInfoResponse": {
         "properties": {
           "key": {
@@ -10699,6 +12151,41 @@
           "key",
           "size",
           "contentType"
+        ],
+        "type": "object"
+      },
+      "FinalTranscriptStateResponse": {
+        "properties": {
+          "contextItemId": {
+            "description": "The FULL_TRANSCRIPT item, once rebuilt.",
+            "nullable": true,
+            "type": "string"
+          },
+          "lastSegmentSeq": {
+            "type": "number"
+          },
+          "segmentCount": {
+            "type": "number"
+          },
+          "state": {
+            "description": "`pending`: the transcript is still being finalized; re-POST stop to poll.",
+            "enum": [
+              "complete",
+              "pending"
+            ],
+            "type": "string"
+          },
+          "versionNumber": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "state",
+          "contextItemId",
+          "versionNumber",
+          "segmentCount",
+          "lastSegmentSeq"
         ],
         "type": "object"
       },
@@ -10811,8 +12298,8 @@
             "type": "string"
           },
           "status": {
-            "description": "Consultation status (always PENDING_REVIEW for queue items).",
-            "example": "PENDING_REVIEW",
+            "description": "Consultation status (always STOPPED for queue items; their processing is AWAITING_REVIEW).",
+            "example": "STOPPED",
             "type": "string"
           }
         },
@@ -11424,7 +12911,8 @@
               "SESSION_TIMED_OUT",
               "SESSION_REOPENED",
               "SESSION_CLOSED_COMPLETE",
-              "SESSION_CLOSED_INCOMPLETE"
+              "SESSION_CLOSED_INCOMPLETE",
+              "SESSION_APPROVED"
             ],
             "type": "string"
           },
@@ -11599,13 +13087,13 @@
             "type": "number"
           },
           "gateMaxEscalations": {
-            "description": "SLA breaches the clinician gate records before it abandons (terminal: the consultation is closed unsigned; a late sign-off still signs). DERIVED, not stored: 1 whenever the consultation completion timeout (`consultation.session.completionTimeoutMinutes`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.",
+            "description": "SLA breaches the clinician gate records before it abandons (terminal for the gate; the auto-close sweep, not the gate, closes the consultation). DERIVED, not stored: 1 whenever the consultation auto-close policy (`consultation.autoClose`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound.",
             "example": 1,
             "nullable": true,
             "type": "number"
           },
           "gateSlaSeconds": {
-            "description": "Clinician-gate SLA in seconds. On the effective policy this is the consultation completion timeout (`consultation.session.completionTimeoutMinutes` × 60, tenant → platform, default 300); the stored row value is superseded.",
+            "description": "Clinician-gate SLA in seconds. On the effective policy this is the consultation auto-close idle window (`consultation.autoClose.idleMinutes` × 60, tenant → platform, default 43200); the stored row value is superseded.",
             "example": 300,
             "type": "number"
           },
@@ -12477,6 +13965,76 @@
         ],
         "type": "object"
       },
+      "ItemVersionDetailResponse": {
+        "properties": {
+          "changeReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "changeSource": {
+            "type": "string"
+          },
+          "changedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "content": {
+            "description": "Decrypted snapshot.",
+            "nullable": true,
+            "type": "string"
+          },
+          "contextItemId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "mediaId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "versionNumber",
+          "changeSource",
+          "changedBy",
+          "createdAt",
+          "contextItemId",
+          "content"
+        ],
+        "type": "object"
+      },
+      "ItemVersionSummaryResponse": {
+        "properties": {
+          "changeReason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "changeSource": {
+            "type": "string"
+          },
+          "changedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "versionNumber",
+          "changeSource",
+          "changedBy",
+          "createdAt"
+        ],
+        "type": "object"
+      },
       "JobDetailResponse": {
         "properties": {
           "attempts": {
@@ -13086,6 +14644,38 @@
           "params",
           "degraded",
           "reason"
+        ],
+        "type": "object"
+      },
+      "LifecyclePairResponse": {
+        "properties": {
+          "processing": {
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "processing"
         ],
         "type": "object"
       },
@@ -21447,6 +23037,16 @@
         ],
         "type": "object"
       },
+      "ReopenConsultationRequest": {
+        "properties": {
+          "reason": {
+            "description": "Why the consultation is reopened (audited). At most 256 characters.",
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "RequestVolumePoint": {
         "properties": {
           "requests": {
@@ -23810,6 +25410,15 @@
         ],
         "type": "object"
       },
+      "StartConsultationRequest": {
+        "properties": {
+          "sessionId": {
+            "description": "The STT streaming session the audio arrives on (from `POST audio/transcription-jobs/stream/session`). A session that is no longer live is 409 `STT_SESSION_NOT_ACTIVE`.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "StartRecordingRequest": {
         "properties": {
           "sessionId": {
@@ -23849,6 +25458,28 @@
         },
         "type": "object"
       },
+      "StopConsultationRequest": {
+        "properties": {
+          "acceptedProposals": {
+            "description": "Advisory corrections the clinician accepted, to promote over the raw transcript at endpoint time.",
+            "items": {
+              "$ref": "#/components/schemas/AcceptedCorrectionProposal"
+            },
+            "type": "array"
+          },
+          "persistSnapshot": {
+            "default": false,
+            "description": "When true, persist the last running-summary snapshot as a PRE_SUMMARY context item before tearing the session down.",
+            "type": "boolean"
+          },
+          "waitForFinal": {
+            "default": true,
+            "description": "Hold the response (up to the tenant`s final-transcript timeout) until the final transcript is rebuilt. Default true. When the wait ends first, `finalTranscript.state` is `pending`: re-POST stop (an idempotent no-op on a STOPPED consultation) or wait for the `transcript_final` lifecycle event.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "StopRecordingRequest": {
         "properties": {
           "acceptedProposals": {
@@ -23864,6 +25495,83 @@
             "type": "boolean"
           }
         },
+        "type": "object"
+      },
+      "StopResultResponse": {
+        "properties": {
+          "consultationId": {
+            "type": "string"
+          },
+          "encounterSeq": {
+            "description": "The encounter (visit) the capture belongs to.",
+            "type": "number"
+          },
+          "finalTranscript": {
+            "$ref": "#/components/schemas/FinalTranscriptStateResponse"
+          },
+          "lifecycle": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LifecyclePairResponse"
+              }
+            ],
+            "description": "Present when `status` was projected for an older client."
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "processing": {
+            "description": "What the platform is doing for the consultation, independent of `status`.",
+            "enum": [
+              "IDLE",
+              "FINALIZING_TRANSCRIPT",
+              "SUMMARIZING",
+              "PROCESSING_ATTACHMENT",
+              "AWAITING_REVIEW",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "recording": {
+            "type": "boolean"
+          },
+          "sessionId": {
+            "description": "The STT streaming session bound by this start, echoed.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle status. Without the `X-Hope-Lifecycle: 2` request header it is answered in the previous vocabulary (PAUSED reads RECORDING, STOPPED reads DRAINING / DRAFT_PENDING_SENSORS / PENDING_REVIEW, APPROVED reads SIGNED); `lifecycle.status` always carries the current value.",
+            "enum": [
+              "OPEN",
+              "RECORDING",
+              "PAUSED",
+              "STOPPED",
+              "APPROVED",
+              "CLOSED_COMPLETE",
+              "CLOSED_INCOMPLETE"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "ISO-8601.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The consultation `_version` after the command; the If-Match value for approve / close / reopen.",
+            "type": "number"
+          }
+        },
+        "required": [
+          "consultationId",
+          "status",
+          "processing",
+          "encounterSeq",
+          "recording",
+          "paused",
+          "version",
+          "updatedAt",
+          "finalTranscript"
+        ],
         "type": "object"
       },
       "StreamSessionResponse": {
@@ -36411,7 +38119,12 @@
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
                 "DnaWritingSample",
-                "ComposedPromptRecord"
+                "ComposedPromptRecord",
+                "ConsultationEncounter",
+                "ConsultationApproval",
+                "ConsultationAttachment",
+                "ConsultationFeedback",
+                "ConsultationFeedbackRollup"
               ],
               "type": "string"
             }
@@ -36651,7 +38364,12 @@
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
                 "DnaWritingSample",
-                "ComposedPromptRecord"
+                "ComposedPromptRecord",
+                "ConsultationEncounter",
+                "ConsultationApproval",
+                "ConsultationAttachment",
+                "ConsultationFeedback",
+                "ConsultationFeedbackRollup"
               ],
               "type": "string"
             }
@@ -36892,7 +38610,12 @@
                 "TenantCheckpoint",
                 "TenantCheckpointRestore",
                 "DnaWritingSample",
-                "ComposedPromptRecord"
+                "ComposedPromptRecord",
+                "ConsultationEncounter",
+                "ConsultationApproval",
+                "ConsultationAttachment",
+                "ConsultationFeedback",
+                "ConsultationFeedbackRollup"
               ],
               "type": "string"
             }
@@ -38805,7 +40528,24 @@
             }
           },
           {
-            "description": "Filter by lifecycle status (e.g. RECORDING for in-progress live sessions).",
+            "description": "Filter by what the platform is doing for the consultation (e.g. AWAITING_REVIEW for drafts waiting on a clinician, FAILED).",
+            "in": "query",
+            "name": "processing",
+            "required": false,
+            "schema": {
+              "enum": [
+                "IDLE",
+                "FINALIZING_TRANSCRIPT",
+                "SUMMARIZING",
+                "PROCESSING_ATTACHMENT",
+                "AWAITING_REVIEW",
+                "FAILED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by lifecycle status (e.g. RECORDING for in-progress live sessions, STOPPED for capture ended).",
             "in": "query",
             "name": "status",
             "required": false,
@@ -38813,14 +40553,9 @@
               "enum": [
                 "OPEN",
                 "RECORDING",
-                "DRAFT_PENDING_SENSORS",
-                "PENDING_REVIEW",
-                "SIGNED",
-                "CLOSED",
-                "REOPENED",
-                "PRIMED",
-                "DRAINING",
-                "TIMED_OUT",
+                "PAUSED",
+                "STOPPED",
+                "APPROVED",
                 "CLOSED_COMPLETE",
                 "CLOSED_INCOMPLETE"
               ],
@@ -38892,6 +40627,9 @@
               }
             },
             "description": "Retrieving multiple ConsultationResponses"
+          },
+          "400": {
+            "description": "Unknown `status` or `processing` value, or a malformed `sort`."
           }
         },
         "security": [
@@ -39071,6 +40809,456 @@
           }
         ],
         "summary": "Retrieving a single ConsultationResponse by id",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/activity": {
+      "get": {
+        "description": "The consultation`s items, feedback and lifecycle moments as one oldest-first, keyset-paged series, with run summaries and first-page aggregates. Consecutive transcript segments collapse into runs unless `grouping=none`. Audited.",
+        "operationId": "AdminConsultationHistoryController_getActivity",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor from the previous page (`nextCursor`).",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated activity kinds; absent = all.",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "TRANSCRIPT_SEGMENT",
+                  "FULL_TRANSCRIPT",
+                  "NOTE",
+                  "PRE_SUMMARY",
+                  "CASE_NOTE",
+                  "ATTACHMENT",
+                  "RECORDING",
+                  "FACT_LEDGER",
+                  "ENCOUNTER_RECAP",
+                  "STRUCTURED",
+                  "FEEDBACK",
+                  "LIFECYCLE"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Only this encounter.",
+            "in": "query",
+            "name": "encounterSeq",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Only items with more than one version.",
+            "in": "query",
+            "name": "edited",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only items an AI run produced (AI or transcription source).",
+            "in": "query",
+            "name": "aiRuns",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "`runs` collapses consecutive transcript segments of one encounter.",
+            "in": "query",
+            "name": "grouping",
+            "required": false,
+            "schema": {
+              "default": "runs",
+              "enum": [
+                "runs",
+                "none"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive lower bound on the segment sequence (expanding a segment run).",
+            "in": "query",
+            "name": "segmentSeqFrom",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Inclusive upper bound on the segment sequence.",
+            "in": "query",
+            "name": "segmentSeqTo",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated extras; `versions` adds each item's version list.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "versions"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationActivityPageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid query or cursor."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read a consultation`s activity feed",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/items/{itemId}/runs": {
+      "get": {
+        "description": "The run that produced `version` (the current one when absent); empty when none is recorded. Audited.",
+        "operationId": "AdminConsultationHistoryController_listRuns",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Context item ID",
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Item version; absent = the current one.",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityRunRecordResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid `version`."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation or item in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List the AI runs behind an item version",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/items/{itemId}/versions": {
+      "get": {
+        "description": "Newest first, metadata only — no content. Audited.",
+        "operationId": "AdminConsultationHistoryController_listVersions",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Context item ID",
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemVersionSummaryResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation or item in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List an item`s versions",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}": {
+      "get": {
+        "description": "The version`s content, decrypted from Vault-Transit ciphertext. Audited.",
+        "operationId": "AdminConsultationHistoryController_getVersion",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Context item ID",
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Version number",
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemVersionDetailResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid version number."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation, item or version in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read one version of an item, decrypted",
+        "tags": [
+          "admin-consultations"
+        ]
+      }
+    },
+    "/api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}/diff": {
+      "get": {
+        "description": "Version `n` (`to`) against `against` (`from`), both decrypted. Audited.",
+        "operationId": "AdminConsultationHistoryController_diff",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Context item ID",
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Version number (the `to` side)",
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "description": "The version to diff against (the `from` side).",
+            "in": "query",
+            "name": "against",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDiffResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid version number or `against`."
+          },
+          "403": {
+            "description": "Not a super administrator or a tenant administrator of this tenant (`CONSULTATION_HISTORY_FORBIDDEN`)."
+          },
+          "404": {
+            "description": "No such consultation, item or version in this tenant."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Diff two versions of an item",
         "tags": [
           "admin-consultations"
         ]
@@ -41296,6 +43484,87 @@
         "summary": "Manually run the trial-expiry sweep (Q4): downgrade every expired TRIAL tenant to STARTER, plan-only.",
         "tags": [
           "admin-entitlements"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/rollups": {
+      "get": {
+        "description": "Counts of up / down / cleared ratings, comments, corrections and reasoned ratings. Dimensions and counts only; no content. Scoped to the caller tenant.",
+        "operationId": "AdminFeedbackRollupController_rollups",
+        "parameters": [
+          {
+            "description": "Inclusive start day (ISO 8601 date).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive end day (ISO 8601 date).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated dimensions: day, agentVersion, model, promptVersion, section, entityLabel, reason, targetKind.",
+            "in": "query",
+            "name": "groupBy",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agentSlug",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "modelName",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackRollupResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Unknown groupBy dimension or malformed date."
+          },
+          "403": {
+            "description": "API keys cannot reach administration routes."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Feedback rollups by day, agent version, model, prompt version, section, entity label, reason or target kind",
+        "tags": [
+          "admin-consultations"
         ]
       }
     },
@@ -61828,6 +64097,43 @@
         ]
       }
     },
+    "/api/v1/consultations/feedback/reason-codes": {
+      "get": {
+        "description": "Tenant value when set, else the platform list.",
+        "operationId": "ConsultationFeedbackController_reasonCodes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReasonCodesResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "description": "Not authenticated."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The effective feedback reason list for the caller tenant",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/jobs/{jobId}": {
       "get": {
         "operationId": "ConsultationJobController_getJob",
@@ -62519,6 +64825,402 @@
         ]
       }
     },
+    "/api/v1/consultations/{id}/approve": {
+      "post": {
+        "description": "STOPPED → APPROVED: one approval of the whole record — every item`s current version is pinned in an immutable snapshot, the final note (when there is one) is signed in the same act, and content locks. On CLOSED_INCOMPLETE it is a late sign-off: reopened, approved and closed in one write (CLOSED_COMPLETE). On APPROVED or CLOSED_COMPLETE it is an idempotent no-op, so a retried Copy to EMR never fails. The `If-Match` header carries the consultation version. `clinicianUserId` follows the attribution rule of `close`.",
+        "operationId": "ConsultationController_approve",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 7232 strong validator carrying the consultation version the client read (e.g. `\"7\"`).",
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveConsultationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
+          "409": {
+            "description": "`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set."
+          },
+          "412": {
+            "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
+          },
+          "428": {
+            "description": "If-Match header is required for this operation."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Approve the consultation",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/attachments": {
+      "get": {
+        "operationId": "ConsultationAttachmentController_list",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttachmentResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List the consultation attachments",
+        "tags": [
+          "consultations"
+        ]
+      },
+      "post": {
+        "description": "Same Idempotency-Key and body answers the same attachment. Errors: 404 consultation/attachment (cross-tenant); 409 CONSULTATION_APPROVED / CONSULTATION_CLOSED / QUOTA_EXCEEDED / ATTACHMENT_NOT_UPLOADED / IDEMPOTENCY_KEY_IN_FLIGHT / IDEMPOTENCY_KEY_REUSED; 410 ATTACHMENT_INTENT_EXPIRED; 413 ATTACHMENT_TOO_LARGE; 415 ATTACHMENT_TYPE_UNSUPPORTED / ATTACHMENT_CONTENT_MISMATCH; 422 ATTACHMENT_KIND_UNSUPPORTED / ATTACHMENT_CHECKSUM_MISMATCH; 503 MEDIA_STORAGE_UNAVAILABLE.",
+        "operationId": "ConsultationAttachmentController_createIntent",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Replays with the same key and body return the same attachment.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAttachmentIntentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentIntentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Validation failed."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "Consultation closed/approved, quota exceeded, or Idempotency-Key conflict."
+          },
+          "422": {
+            "description": "ATTACHMENT_KIND_UNSUPPORTED (lists supportedKinds)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Declare a file for a consultation and get an upload target",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/attachments/{attachmentId}": {
+      "get": {
+        "operationId": "ConsultationAttachmentController_get",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Attachment ID",
+            "in": "path",
+            "name": "attachmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation or attachment not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read one attachment (poll a PROCESSING one)",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/attachments/{attachmentId}/complete": {
+      "post": {
+        "description": "Verifies the object and dispatches by kind. 200 when READY, 202 while PROCESSING (audio, or a large object verified in the background). Errors: 404 consultation/attachment (cross-tenant); 409 CONSULTATION_APPROVED / CONSULTATION_CLOSED / QUOTA_EXCEEDED / ATTACHMENT_NOT_UPLOADED / IDEMPOTENCY_KEY_IN_FLIGHT / IDEMPOTENCY_KEY_REUSED; 410 ATTACHMENT_INTENT_EXPIRED; 413 ATTACHMENT_TOO_LARGE; 415 ATTACHMENT_TYPE_UNSUPPORTED / ATTACHMENT_CONTENT_MISMATCH; 422 ATTACHMENT_KIND_UNSUPPORTED / ATTACHMENT_CHECKSUM_MISMATCH; 503 MEDIA_STORAGE_UNAVAILABLE.",
+        "operationId": "ConsultationAttachmentController_complete",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Attachment ID",
+            "in": "path",
+            "name": "attachmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": "Processing continues in the background; poll the attachment."
+          },
+          "404": {
+            "description": "Consultation or attachment not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "ATTACHMENT_NOT_UPLOADED (retryable), quota, or consultation closed."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Complete an upload",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/attachments/{attachmentId}/content": {
+      "post": {
+        "description": "Multipart field `file`. Same response and 200/202 rule as complete. Errors: 404 consultation/attachment (cross-tenant); 409 CONSULTATION_APPROVED / CONSULTATION_CLOSED / QUOTA_EXCEEDED / ATTACHMENT_NOT_UPLOADED / IDEMPOTENCY_KEY_IN_FLIGHT / IDEMPOTENCY_KEY_REUSED; 410 ATTACHMENT_INTENT_EXPIRED; 413 ATTACHMENT_TOO_LARGE; 415 ATTACHMENT_TYPE_UNSUPPORTED / ATTACHMENT_CONTENT_MISMATCH; 422 ATTACHMENT_KIND_UNSUPPORTED / ATTACHMENT_CHECKSUM_MISMATCH; 503 MEDIA_STORAGE_UNAVAILABLE.",
+        "operationId": "ConsultationAttachmentController_uploadContent",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Attachment ID",
+            "in": "path",
+            "name": "attachmentId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": "Processing continues in the background."
+          },
+          "400": {
+            "description": "No `file` part."
+          },
+          "404": {
+            "description": "Consultation or attachment not found (or cross-tenant)."
+          },
+          "413": {
+            "description": "ATTACHMENT_TOO_LARGE for the gateway upload ceiling."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Upload the file through the gateway (fallback when no upload URL was issued)",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}/chain": {
       "get": {
         "operationId": "ConsultationController_getChain",
@@ -62578,7 +65280,7 @@
     },
     "/api/v1/consultations/{id}/close": {
       "post": {
-        "description": "Terminal transition of the consultation row, and the last call of the `update -> approve -> close` sequence a machine integration makes when a clinician submits their note. `PENDING_REVIEW -> CLOSED_*` is NOT a legal edge, so the sign-off must precede this call.\n\n`clinicianUserId` names the clinician this close is attributed to. A SERVICE ACCOUNT or API KEY MUST supply it — a machine is never the clinician — and an API key may name only the human it is bound to unless that human holds `SUPER_ADMIN` or `TENANT_ADMIN`. A human caller omits it to act as themselves and may name another clinician only while holding one of those roles. A clinician outside the caller`s tenant is 404, never 403.",
+        "description": "APPROVED → CLOSED_COMPLETE (`closedReason: APPROVED`); OPEN / RECORDING / PAUSED / STOPPED → CLOSED_INCOMPLETE (`closedReason: MANUAL`; a capturing consultation is flushed first). Idempotent on a closed consultation, so a retried close never fails. A machine integration approves before it closes.\n\n`clinicianUserId` names the clinician this close is attributed to. A SERVICE ACCOUNT or API KEY MUST supply it — a machine is never the clinician — and an API key may name only the human it is bound to unless that human holds `SUPER_ADMIN` or `TENANT_ADMIN`. A human caller omits it to act as themselves and may name another clinician only while holding one of those roles. A clinician outside the caller`s tenant is 404, never 403.",
         "operationId": "ConsultationController_close",
         "parameters": [
           {
@@ -62629,7 +65331,7 @@
             "description": "Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant."
           },
           "409": {
-            "description": "Illegal state transition — the consultation is not SIGNED or TIMED_OUT."
+            "description": "`CONSULTATION_TRANSITION_ILLEGAL` — the transition is not legal from the current status."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
@@ -63482,6 +66184,355 @@
         ]
       }
     },
+    "/api/v1/consultations/{id}/encounters": {
+      "get": {
+        "description": "Every encounter of the consultation, in order. `currentEncounterSeq` on the consultation names the open one.",
+        "operationId": "ConsultationController_listEncounters",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EncounterResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The encounters (visits) of a consultation",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/encounters/{seq}/recap": {
+      "get": {
+        "description": "Display-only: the recap the note composer was handed for that encounter. Audited.",
+        "operationId": "ConsultationHistoryController_getRecap",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Encounter sequence",
+            "in": "path",
+            "name": "seq",
+            "required": true,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncounterRecapResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid encounter sequence."
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Unknown or cross-tenant consultation, or no recap for that encounter."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read the live recap of one encounter",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/events": {
+      "get": {
+        "description": "Server-Sent Events, one `LifecycleEvent` JSON per frame: `{type, consultationId, status, processing, processingReason?, closedReason?, encounterSeq, version, at, seq}`. `status` here is always the seven-value lifecycle vocabulary. Frames carry state only, never content. `since` replays the buffered frames with a greater `seq` (the last 50) before the live ones; a client that reconnects passes the last `seq` it saw. A consultation silent for 30 days restarts its `seq` at 1 — re-read the consultation then. Accepts `Authorization: Bearer <jwt>`, a service-account token, or a single-use `?ticket=<ticket>` from `POST /auth/stream-ticket` with scope `consultation_lifecycle:<id>`. Consumers that hold no connection learn the same changes through the `ResourceUpdated` webhook (`data.action = \"lifecycle\"`).",
+        "operationId": "ConsultationLifecycleEventsController_streamEvents",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Replay frames with a `seq` greater than this.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "`since` is not a non-negative integer."
+          },
+          "404": {
+            "description": "Consultation not found — also the answer for a cross-tenant id, resolved before the stream opens."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Stream lifecycle events for a consultation via SSE",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/feedback": {
+      "get": {
+        "operationId": "ConsultationFeedbackController_list",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "targetKind",
+            "required": false,
+            "schema": {
+              "enum": [
+                "NOTE",
+                "SECTION",
+                "SEGMENT",
+                "ENTITY",
+                "TRANSCRIPT",
+                "RECAP"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only feedback on this context item.",
+            "in": "query",
+            "name": "contextItemId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include superseded entries (default: latest per actor + target).",
+            "in": "query",
+            "name": "includeHistory",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The `nextCursor` of the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackPageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "List consultation feedback (keyset, newest first)",
+        "tags": [
+          "consultations"
+        ]
+      },
+      "post": {
+        "description": "At least one of rating / comment / attachmentIds / correction. A rating needs a target; reasons only with `down`. A correction after approval is 409 CONSULTATION_APPROVED; version drift is 412.",
+        "operationId": "ConsultationFeedbackController_create",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Replays with the same key and body return the same entry.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "FEEDBACK_REASON_UNKNOWN / FEEDBACK_EMPTY / FEEDBACK_TARGET_REQUIRED / FEEDBACK_ATTACHMENT_INVALID."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "CONSULTATION_APPROVED, or Idempotency-Key conflict."
+          },
+          "412": {
+            "description": "The corrected item changed since `expectedVersion`."
+          },
+          "413": {
+            "description": "Comment too long."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Record feedback: rating, reasons, comment, media or a correction",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}/harness-assurance/stream": {
       "get": {
         "description": "Server-Sent Events stream relaying the Redis channel `consultation:harness-assurance:{id}`. Each event is a HarnessAssuranceEventDto JSON carrying the full accumulated claim-verdict list (no PHI — ids, sensor keys, verdict labels only). Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_harness_assurance:<id>`. The terminal `assurance_complete` event carries `closed: true` plus the aggregate gateDecision, safetyFlag, and postSignAlert.",
@@ -63723,6 +66774,182 @@
         ]
       }
     },
+    "/api/v1/consultations/{id}/history": {
+      "get": {
+        "description": "The consultation`s items, feedback and lifecycle moments as one oldest-first, keyset-paged series — the activity feed without runs or aggregates. Audited.",
+        "operationId": "ConsultationHistoryController_getHistory",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opaque cursor from the previous page (`nextCursor`).",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated activity kinds; absent = all.",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "TRANSCRIPT_SEGMENT",
+                  "FULL_TRANSCRIPT",
+                  "NOTE",
+                  "PRE_SUMMARY",
+                  "CASE_NOTE",
+                  "ATTACHMENT",
+                  "RECORDING",
+                  "FACT_LEDGER",
+                  "ENCOUNTER_RECAP",
+                  "STRUCTURED",
+                  "FEEDBACK",
+                  "LIFECYCLE"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Only this encounter.",
+            "in": "query",
+            "name": "encounterSeq",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Only items with more than one version.",
+            "in": "query",
+            "name": "edited",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only items an AI run produced (AI or transcription source).",
+            "in": "query",
+            "name": "aiRuns",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "`runs` collapses consecutive transcript segments of one encounter.",
+            "in": "query",
+            "name": "grouping",
+            "required": false,
+            "schema": {
+              "default": "runs",
+              "enum": [
+                "runs",
+                "none"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive lower bound on the segment sequence (expanding a segment run).",
+            "in": "query",
+            "name": "segmentSeqFrom",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Inclusive upper bound on the segment sequence.",
+            "in": "query",
+            "name": "segmentSeqTo",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "description": "Comma-separated extras; `versions` adds each item's version list.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "versions"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationActivityPageResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "description": "Invalid query or cursor."
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Unknown or cross-tenant consultation id."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Read a consultation`s history",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}/live-assist/stream": {
       "get": {
         "description": "Server-Sent Events stream relaying the Redis channel `consultation:live-assist:{id}`. Each event is a LiveAssistEventDto JSON carrying the current `suggestions` and `corrections` branches. CARRIES PHI: a correction proposal quotes the original span verbatim. Nothing on this feed has been applied to the note — `corrections.applied` is false and the clinician decides. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_live_assist:<id>`. The feed has no terminal event; the client closes it.",
@@ -63913,8 +67140,60 @@
         ]
       }
     },
+    "/api/v1/consultations/{id}/pause": {
+      "post": {
+        "description": "RECORDING → PAUSED. The bound STT session flushes its last final first and then drops audio without advancing its clock; `start` resumes. Idempotent while PAUSED.",
+        "operationId": "ConsultationController_pause",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureStateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is not recording."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Pause capture",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}/prime": {
       "post": {
+        "deprecated": true,
+        "description": "DEPRECATED (TASK-1045 - removed in R5; use /api/v1/consultations/{id}/start).",
         "operationId": "ConsultationController_prime",
         "parameters": [
           {
@@ -63975,8 +67254,60 @@
         ]
       }
     },
+    "/api/v1/consultations/{id}/recording": {
+      "get": {
+        "description": "The one recording of the consultation: each stop appends a part on a consultation-wide timeline (`startMs`), tagged with its encounter. Each part carries a presigned download URL valid until `expiresAt`; a part whose stored object cannot be signed carries `url: null`.",
+        "operationId": "ConsultationController_getRecording",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsultationRecordingResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "description": "The caller may not read this consultation."
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant); `RECORDING_NOT_READY` — no audio has been recorded yet."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "The consultation recording, part by part",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
     "/api/v1/consultations/{id}/recording/start": {
       "post": {
+        "deprecated": true,
+        "description": "DEPRECATED (TASK-1045 - removed in R5; use /api/v1/consultations/{id}/start).",
         "operationId": "ConsultationController_startRecording",
         "parameters": [
           {
@@ -64014,7 +67345,7 @@
             "description": "Consultation not found"
           },
           "409": {
-            "description": "`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also returned for an illegal state transition from the consultation`s current status."
+            "description": "`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also `CONSULTATION_NOT_RECORDABLE` and an illegal state transition from the consultation`s current status."
           }
         },
         "security": [
@@ -64036,6 +67367,8 @@
     },
     "/api/v1/consultations/{id}/recording/stop": {
       "post": {
+        "deprecated": true,
+        "description": "DEPRECATED (TASK-1045 - removed in R5; use /api/v1/consultations/{id}/stop).",
         "operationId": "ConsultationController_stopRecording",
         "parameters": [
           {
@@ -64071,6 +67404,9 @@
           },
           "404": {
             "description": "Consultation not found"
+          },
+          "409": {
+            "description": "`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is neither recording nor paused."
           }
         },
         "security": [
@@ -64194,6 +67530,7 @@
     },
     "/api/v1/consultations/{id}/reopen": {
       "post": {
+        "description": "CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.",
         "operationId": "ConsultationController_reopen",
         "parameters": [
           {
@@ -64216,6 +67553,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenConsultationRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -64231,7 +67578,7 @@
             "description": "Consultation not found"
           },
           "409": {
-            "description": "Illegal state transition for the consultation's current status."
+            "description": "`CONSULTATION_REOPEN_NOT_ALLOWED` — the tenant does not allow reopening an approved consultation; `CONSULTATION_TRANSITION_ILLEGAL` — not closed."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and retry with the new version."
@@ -64249,6 +67596,126 @@
           }
         ],
         "summary": "Creating a ConsultationResponse by id",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/start": {
+      "post": {
+        "description": "OPEN / PAUSED / STOPPED → RECORDING. From STOPPED the current encounter continues; to document a new visit, `open` again instead. Naming `sessionId` binds that STT streaming session (one live session per consultation: a different session supersedes the previous one). Starts the live-documentation session. Idempotent while RECORDING.",
+        "operationId": "ConsultationController_start",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartConsultationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureStateResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "`CONSULTATION_NOT_RECORDABLE` — APPROVED or closed (reopen it, or open a new consultation); `STT_SESSION_NOT_ACTIVE` — the named STT session is no longer live; `CONSULTATION_TRANSITION_ILLEGAL`."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Start (or resume) capturing audio into a consultation",
+        "tags": [
+          "consultations"
+        ]
+      }
+    },
+    "/api/v1/consultations/{id}/stop": {
+      "post": {
+        "description": "RECORDING / PAUSED → STOPPED (processing FINALIZING_TRANSCRIPT). Every live STT session bound to the consultation is finalized; with `waitForFinal` (default true) the response waits, up to the tenant`s final-transcript timeout, for the rebuilt full transcript. `finalTranscript.state` is `complete` or `pending`. On a consultation that is already STOPPED this is an idempotent no-op answering the current `finalTranscript` state, so a client polls by re-POSTing stop. The live note drains and the consultation loop is told the recording ended after the response.",
+        "operationId": "ConsultationController_stop",
+        "parameters": [
+          {
+            "description": "Consultation ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopConsultationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopResultResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "description": "Consultation not found (or cross-tenant)."
+          },
+          "409": {
+            "description": "`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is neither recording, paused nor stopped."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "api-key": []
+          },
+          {
+            "service-account": []
+          }
+        ],
+        "summary": "Stop capture and finalize the transcript",
         "tags": [
           "consultations"
         ]
@@ -64576,7 +68043,8 @@
     },
     "/api/v1/consultations/{id}/summary/{contextItemId}/approve": {
       "post": {
-        "description": "Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a Compare-And-Set against the summary row's `_version`. When the header is present, its value overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`.",
+        "deprecated": true,
+        "description": "Approves the CONSULTATION, exactly as `POST :id/approve` does, signing this summary as its note. The `If-Match` header (RFC 7232) is REQUIRED and carries the SUMMARY row's `_version`; when present it overrides the body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. Idempotent on an approved or closed-complete consultation. DEPRECATED (TASK-1045 - removed in R5; use /api/v1/consultations/{id}/approve).",
         "operationId": "ConsultationController_approveSummary",
         "parameters": [
           {
@@ -64634,6 +68102,9 @@
           },
           "404": {
             "description": "Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant."
+          },
+          "409": {
+            "description": "`CONSULTATION_PROCESSING_IN_FLIGHT`, `CONSULTATION_TRANSITION_ILLEGAL`, or the safety-flag stop — as `POST :id/approve`."
           },
           "412": {
             "description": "Optimistic concurrency conflict — re-fetch and try again with the new version."

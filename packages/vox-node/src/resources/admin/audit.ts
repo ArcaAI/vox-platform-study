@@ -127,7 +127,12 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
           | 'DnaWritingSample'
-          | 'ComposedPromptRecord';
+          | 'ComposedPromptRecord'
+          | 'ConsultationEncounter'
+          | 'ConsultationApproval'
+          | 'ConsultationAttachment'
+          | 'ConsultationFeedback'
+          | 'ConsultationFeedbackRollup';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -258,7 +263,12 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
           | 'DnaWritingSample'
-          | 'ComposedPromptRecord';
+          | 'ComposedPromptRecord'
+          | 'ConsultationEncounter'
+          | 'ConsultationApproval'
+          | 'ConsultationAttachment'
+          | 'ConsultationFeedback'
+          | 'ConsultationFeedbackRollup';
         to?: string;
         userId?: string;
       };
@@ -371,7 +381,12 @@ export class AdminAuditResource extends AdminResource {
           | 'TenantCheckpoint'
           | 'TenantCheckpointRestore'
           | 'DnaWritingSample'
-          | 'ComposedPromptRecord';
+          | 'ComposedPromptRecord'
+          | 'ConsultationEncounter'
+          | 'ConsultationApproval'
+          | 'ConsultationAttachment'
+          | 'ConsultationFeedback'
+          | 'ConsultationFeedbackRollup';
         search?: string;
         searchFields?: string;
         sort?: string;

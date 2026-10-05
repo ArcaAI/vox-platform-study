@@ -12,7 +12,7 @@
  * Request and response types for the `/api/v1/admin/**` surface, derived from
  * the gateway's own DTOs via `openapi.json`.
  *
- * Only the 547 component schemas the generated surface transitively
+ * Only the 560 component schemas the generated surface transitively
  * reaches are emitted — the document declares more, and importing shapes no
  * method can produce would be noise.
  *
@@ -21,6 +21,44 @@
  * minority of admin operations with no usable schema and the recorded decision
  * was to emit `unknown` at those call sites rather than invent one.
  */
+
+export interface ActivityAggregatesResponse {
+  aiRunCount: number;
+  costBasis: string[];
+  costMicros: number;
+  editedItems: number;
+  feedbackDown: number;
+  feedbackUp: number;
+  tokensIn: number;
+  tokensOut: number;
+}
+
+export interface ActivityRunRecordResponse {
+  activityKind: string;
+  agentSlug: string;
+  agentVersion: number | string;
+  contextUsed: number;
+  contextWindow: number;
+  costBasis: string | null;
+  costMicros: number | null;
+  deployment: string | null;
+  durationMs: number;
+  endedAt: string;
+  id: string;
+  model: string;
+  nodeId: string;
+  nodeLabel?: string;
+  outputCap: number | null;
+  provider: string;
+  runId: string;
+  startedAt: string;
+  stopReason: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  versionNumber: number;
+  workflowSlug: string;
+  workflowVersion: number | string;
+}
 
 export interface AddAdjustmentRequest {
   /** Signed integer micros as a decimal string. NEGATIVE = credit (the common case), positive = debit. */
@@ -1200,6 +1238,20 @@ export interface ConnectionModelResponse {
   wireModelId: string;
 }
 
+export interface ConsultationActivityPageResponse {
+  /** Admin plane, first page only. */
+  aggregates?: ActivityAggregatesResponse;
+  consultationId: string;
+  encounters: EncounterBlockResponse[];
+  hasMore: boolean;
+  /** Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`. */
+  items: Array<Record<string, unknown>>;
+  nextCursor: string | null;
+  processing: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
+  processingReason?: string;
+  status: 'OPEN' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'APPROVED' | 'CLOSED_COMPLETE' | 'CLOSED_INCOMPLETE';
+}
+
 export interface ConsultationAggregateBucket {
   /** Bucket end (ISO-8601, inclusive). */
   end: string;
@@ -1229,6 +1281,19 @@ export interface ConsultationAggregateTotals {
   newVisits: number;
   revisits: number;
   total: number;
+}
+
+export interface ConsultationApprovalResponse {
+  /** When the consultation was approved (ISO-8601). */
+  approvedAt: string;
+  /** The clinician the approval is attributed to. */
+  approvedBy: string;
+  /** Approval ID */
+  id: string;
+  /** How many context items the approval pinned. */
+  itemCount: number;
+  /** Hash of the approved snapshot (every context item and the version it was approved at). */
+  snapshotHash: string;
 }
 
 export interface ConsultationContextSchemaResponse {
@@ -1265,13 +1330,28 @@ export interface ConsultationContextSchemaVersionResponse {
   versionSkew?: 'IDENTICAL' | 'ADDITIVE' | 'BREAKING';
 }
 
+export interface ConsultationLifecycleState {
+  processing: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
+  status: 'OPEN' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'APPROVED' | 'CLOSED_COMPLETE' | 'CLOSED_INCOMPLETE';
+}
+
 export interface ConsultationResponse {
   /** Appointment date (YYYY-MM-DD) */
   appointmentDate: string;
+  /** The latest approval of this consultation while it is approved, or null. */
+  approval: ConsultationApprovalResponse;
+  /** When the tenant's auto-close policy will close this consultation if nothing else happens (ISO-8601), or null when it is closed or no policy resolves. */
+  autoCloseAt: string | null;
+  /** When the consultation was closed (ISO-8601), or null. */
+  closedAt: string | null;
+  /** Why the consultation was closed (AUTO, MANUAL, APPROVED), or null while it is not closed. */
+  closedReason: 'AUTO' | 'MANUAL' | 'APPROVED' | null;
   /** Context items (included when fetching single consultation) */
   contextItems?: ContextItemResponse[];
   /** Creation timestamp */
   createdAt: string;
+  /** The open encounter of this consultation (starts at 1). */
+  currentEncounterSeq: number;
   /** Department information */
   department?: DepartmentInfo;
   /** Department ID */
@@ -1280,7 +1360,11 @@ export interface ConsultationResponse {
   doctor?: DoctorInfo;
   /** Doctor identifier */
   doctorId: string;
-  /** The caller's own encounter id this consultation is keyed on, or null. A later `open` with the same ref (same patient and clinician) returns this consultation; a new ref opens a new one. */
+  /** On `open`: whether this call appended a new encounter to an existing consultation. */
+  encounterAppended?: boolean;
+  /** Every encounter (visit) of this consultation, in order. */
+  encounters: EncounterResponse[];
+  /** The caller's own id of the current encounter, or null. A later `open` with the same id (same patient and clinician) returns this consultation; a new id appends a new encounter to the open consultation of the same patient, clinician and department. */
   externalRef: string | null;
   /** The tenant-authored workflow run governing this consultation, or null when the default loop does. Always present. `status` is the PERSISTED vocabulary (RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT) — never the interpreter's SUCCEEDED/DEGRADED; `degraded` is a flag on a COMPLETED run. */
   governingRun?: Record<string, unknown> | null;
@@ -1290,33 +1374,33 @@ export interface ConsultationResponse {
   isNew: boolean;
   /** The consultation's declared SOURCE (spoken) language mode (`en`, `ml`, `ml-en`, `vi`, `vi-en`, `auto`), inherited by every live and batch transcription of this consultation that declares none. Not the language the notes are written in — that is the tenant's output-language policy, otherwise the platform default (English). Absent = undeclared. */
   language?: string;
+  /** When the consultation last saw activity (ISO-8601) — the auto-close clock reads this. */
+  lastActivityAt: string;
+  /** The lifecycle status and processing value. Always the current vocabulary, even when `status` is projected for an older client. */
+  lifecycle: ConsultationLifecycleState;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
   /** Parent consultation ID (for re-visits/referrals) */
   parentConsultationId?: string;
   /** Patient identifier */
   patientId: string;
-  /** Whether this consultation can still be recorded. false for SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED — `recording/start` answers 409 `CONSULTATION_NOT_RECORDABLE` for them. To start a new visit, open with a new `externalRef` or with `parentConsultationId` naming this consultation. */
+  /** What the platform is doing in the background for this consultation. */
+  processing: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
+  /** Why processing is FAILED or AWAITING_REVIEW, or null. */
+  processingReason: string | null;
+  /** Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED and STOPPED, false for APPROVED, CLOSED_COMPLETE and CLOSED_INCOMPLETE. Starting capture on a non-recordable consultation answers 409 `CONSULTATION_NOT_RECORDABLE`; reopen it, or open without the old visit id to start a new consultation. */
   recordable: boolean;
-  /** Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine). */
-  status?:
-    | 'OPEN'
-    | 'RECORDING'
-    | 'DRAFT_PENDING_SENSORS'
-    | 'PENDING_REVIEW'
-    | 'SIGNED'
-    | 'CLOSED'
-    | 'REOPENED'
-    | 'PRIMED'
-    | 'DRAINING'
-    | 'TIMED_OUT'
-    | 'CLOSED_COMPLETE'
-    | 'CLOSED_INCOMPLETE';
+  /** Whether `reopen` is offered: always for CLOSED_INCOMPLETE, for CLOSED_COMPLETE only when the tenant's policy allows it, never otherwise. */
+  reopenAllowed: boolean;
+  /** How many times this consultation was reopened. */
+  reopenCount: number;
+  /** Lifecycle status (OPEN, RECORDING, PAUSED, STOPPED, APPROVED, CLOSED_COMPLETE, CLOSED_INCOMPLETE). An older client is answered in the previous vocabulary; `lifecycle.status` always carries the current value. */
+  status?: 'OPEN' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'APPROVED' | 'CLOSED_COMPLETE' | 'CLOSED_INCOMPLETE';
   /** Last update timestamp */
   updatedAt: string;
-  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
+  /** Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header (`"<version>"`) required by the lifecycle routes (POST :id/approve|close|reopen — ). `ETagInterceptor` also mirrors this value onto the response `ETag` header. */
   version?: number;
-  /** The consultation's visit type: the recorded (schema-stated) value when it matches the platform vocabulary, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`. */
+  /** The visit type of the current encounter. Falls back to the consultation's recorded visit type, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`. */
   visitType: 'new-visit' | 'revisit';
 }
 
@@ -1427,7 +1511,11 @@ export interface ContextItemResponse {
     | 'CASE_NOTE'
     | 'ATTACHMENT'
     | 'SIGNED_NOTE'
-    | 'STRUCTURED';
+    | 'STRUCTURED'
+    | 'TRANSCRIPT_SEGMENT'
+    | 'FULL_TRANSCRIPT'
+    | 'FACT_LEDGER'
+    | 'ENCOUNTER_RECAP';
   updatedAt: string;
   /** Short-lived accessible (presigned) download URL for the attached media, resolved from storage when available. Absent when the item has no media or storage resolution is unavailable. */
   url?: string;
@@ -2644,6 +2732,41 @@ export interface EffectiveSettingResponse {
   version?: number;
 }
 
+export interface EncounterBlockResponse {
+  endedAt: string | null;
+  externalRef: string | null;
+  /** Idle time between this encounter's end and the next one's start. */
+  gapAfter?: EncounterGapResponse;
+  recordingEndMs: number | null;
+  recordingStartMs: number | null;
+  seq: number;
+  startedAt: string;
+  visitType: string;
+}
+
+export interface EncounterGapResponse {
+  durationMs: number;
+  fromAt: string;
+  toAt: string;
+}
+
+export interface EncounterResponse {
+  /** When the encounter ended (ISO-8601), or null while it is the open one. */
+  endedAt: string | null;
+  /** The caller's own id for this visit (an EMR event id), or null. A later `open` with the same id returns this consultation. */
+  externalRef: string | null;
+  /** Where this encounter ends on the consultation recording timeline (ms), or null. */
+  recordingEndMs: number | null;
+  /** Where this encounter starts on the consultation recording timeline (ms), or null before any audio. */
+  recordingStartMs: number | null;
+  /** Encounter number within the consultation, starting at 1. */
+  seq: number;
+  /** When the encounter started (ISO-8601). */
+  startedAt: string;
+  /** The visit type of this encounter. */
+  visitType: 'new-visit' | 'revisit';
+}
+
 export interface EntitlementCapabilitiesResponse {
   /** Global enforcement kill-switch state (entitlements.enabled). Ships OFF by default. */
   enforcementEnabled: boolean;
@@ -2866,6 +2989,22 @@ export interface FeatureMatrixWriteResponse {
   errors: FeatureMatrixCellErrorResponse[];
 }
 
+export interface FeedbackRollupResponse {
+  rows: FeedbackRollupRow[];
+  truncated: boolean;
+}
+
+export interface FeedbackRollupRow {
+  cleared: number;
+  comments: number;
+  corrections: number;
+  /** One entry per requested dimension. */
+  dimensions: Record<string, string | null>;
+  down: number;
+  reasoned: number;
+  up: number;
+}
+
 export interface FinalizeAgentTestRequest {
   /** The `taskId` the stream acknowledgement returned. */
   taskId: string;
@@ -2899,7 +3038,7 @@ export interface GateQueueItemResponse {
   slaBreached: boolean;
   /** SLA deadline (ISO-8601; pendingSince + policy gateSlaSeconds). */
   slaDueAt: string;
-  /** Consultation status (always PENDING_REVIEW for queue items). */
+  /** Consultation status (always STOPPED for queue items; their processing is AWAITING_REVIEW). */
   status: string;
 }
 
@@ -3085,7 +3224,8 @@ export interface HarnessAuditEventResponse {
     | 'SESSION_TIMED_OUT'
     | 'SESSION_REOPENED'
     | 'SESSION_CLOSED_COMPLETE'
-    | 'SESSION_CLOSED_INCOMPLETE';
+    | 'SESSION_CLOSED_INCOMPLETE'
+    | 'SESSION_APPROVED';
   /** Attestation hash captured at sign-off (null when not applicable). */
   attestationHash?: string | null;
   /** Citations recorded for the event (free-form JSON). */
@@ -3150,9 +3290,9 @@ export interface HarnessPolicyResponse {
   entityFaithfulnessThreshold: number;
   /** Clinician-gate escalation in seconds. */
   gateEscalationSeconds: number;
-  /** SLA breaches the clinician gate records before it abandons (terminal: the consultation is closed unsigned; a late sign-off still signs). DERIVED, not stored: 1 whenever the consultation completion timeout (`consultation.session.completionTimeoutMinutes`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound. */
+  /** SLA breaches the clinician gate records before it abandons (terminal for the gate; the auto-close sweep, not the gate, closes the consultation). DERIVED, not stored: 1 whenever the consultation auto-close policy (`consultation.autoClose`, which also sets gateSlaSeconds) governs the gate; null when no settings graph is wired, in which case the harness keeps its own bound. */
   gateMaxEscalations?: number | null;
-  /** Clinician-gate SLA in seconds. On the effective policy this is the consultation completion timeout (`consultation.session.completionTimeoutMinutes` × 60, tenant → platform, default 300); the stored row value is superseded. */
+  /** Clinician-gate SLA in seconds. On the effective policy this is the consultation auto-close idle window (`consultation.autoClose.idleMinutes` × 60, tenant → platform, default 43200); the stored row value is superseded. */
   gateSlaSeconds: number;
   /** Groundedness (inferential) sensor threshold (fraction in [0,1]). */
   groundednessThreshold: number;
@@ -3397,6 +3537,26 @@ export interface InferenceReadinessResponse {
   engines: ReadinessEngineResponse[];
   models: ReadinessModelResponse[];
   services: ReadinessServiceResponse[];
+}
+
+export interface ItemVersionDetailResponse {
+  changeReason?: string | null;
+  changeSource: string;
+  changedBy: string | null;
+  /** Decrypted snapshot. */
+  content: string | null;
+  contextItemId: string;
+  createdAt: string;
+  mediaId?: string | null;
+  versionNumber: number;
+}
+
+export interface ItemVersionSummaryResponse {
+  changeReason?: string | null;
+  changeSource: string;
+  changedBy: string | null;
+  createdAt: string;
+  versionNumber: number;
 }
 
 export interface JobDetailResponse {
@@ -8654,6 +8814,15 @@ export interface UserSettingsResponse {
 export interface ValidatePolicyDto {
   /** Policy rules to validate */
   rules: PolicyRuleDto[];
+}
+
+export interface VersionDiffResponse {
+  /** Context item being diffed */
+  contextItemId: string;
+  /** The earlier ("from") version snapshot */
+  from: ContextItemVersionResponse;
+  /** The later ("to") version snapshot */
+  to: ContextItemVersionResponse;
 }
 
 export interface VoiceProfileResponse {

@@ -12,14 +12,20 @@ import { encodePathSegment } from '../../core/url';
 import { AdminResource } from './admin-resource';
 import type { AdminListOptions, AdminListQuery, AdminRequestOptions, PaginatedPage } from './admin-resource';
 import type {
+  ActivityRunRecordResponse,
   ComposedPromptDetailResponse,
   ComposedPromptSummaryResponse,
+  ConsultationActivityPageResponse,
   ConsultationAggregateResponse,
   ConsultationResponse,
   ConsultationTelemetryResponse,
+  FeedbackRollupResponse,
+  ItemVersionDetailResponse,
+  ItemVersionSummaryResponse,
   PaginatedResponse,
   PromptPreviewRequest,
   PromptPreviewResponse,
+  VersionDiffResponse,
 } from './schemas';
 
 /**
@@ -29,8 +35,8 @@ import type {
  * authenticates normally and is then refused here with 403; {@link AdminResource}
  * names the scope in that error's message.
  *
- * Backed by controllers AdminConsultationController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
- * (7 routes). Several controllers sharing one scope share one
+ * Backed by controllers AdminConsultationController, AdminConsultationHistoryController, AdminFeedbackRollupController, ComposedPromptAdminController, ConsultationTelemetryController, PromptPreviewController
+ * (13 routes). Several controllers sharing one scope share one
  * resource on purpose: the scope is the permission surface, so the SDK groups
  * by it rather than by URL.
  */
@@ -96,20 +102,9 @@ export class AdminConsultationAdminResource extends AdminResource {
         limit?: number;
         page?: number;
         patientId?: string;
+        processing?: 'IDLE' | 'FINALIZING_TRANSCRIPT' | 'SUMMARIZING' | 'PROCESSING_ATTACHMENT' | 'AWAITING_REVIEW' | 'FAILED';
         sort?: string;
-        status?:
-          | 'OPEN'
-          | 'RECORDING'
-          | 'DRAFT_PENDING_SENSORS'
-          | 'PENDING_REVIEW'
-          | 'SIGNED'
-          | 'CLOSED'
-          | 'REOPENED'
-          | 'PRIMED'
-          | 'DRAINING'
-          | 'TIMED_OUT'
-          | 'CLOSED_COMPLETE'
-          | 'CLOSED_INCOMPLETE';
+        status?: 'OPEN' | 'RECORDING' | 'PAUSED' | 'STOPPED' | 'APPROVED' | 'CLOSED_COMPLETE' | 'CLOSED_INCOMPLETE';
       };
     } = {},
   ): Promise<PaginatedResponse & { data?: ConsultationResponse[] }> {
@@ -154,6 +149,118 @@ export class AdminConsultationAdminResource extends AdminResource {
   }
 
   /**
+   * Read a consultation`s activity feed
+   *
+   * The consultation`s items, feedback and lifecycle moments as one oldest-first, keyset-paged series, with run summaries and first-page aggregates. Consecutive transcript segments collapse into runs unless `grouping=none`. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/activity` — `AdminConsultationHistoryController.getActivity`.
+   */
+  getActivity(
+    id: string,
+    options: AdminRequestOptions & {
+      query?: {
+        aiRuns?: boolean;
+        cursor?: string;
+        edited?: boolean;
+        encounterSeq?: number;
+        grouping?: 'runs' | 'none';
+        include?: 'versions'[];
+        kinds?: Array<
+          | 'TRANSCRIPT_SEGMENT'
+          | 'FULL_TRANSCRIPT'
+          | 'NOTE'
+          | 'PRE_SUMMARY'
+          | 'CASE_NOTE'
+          | 'ATTACHMENT'
+          | 'RECORDING'
+          | 'FACT_LEDGER'
+          | 'ENCOUNTER_RECAP'
+          | 'STRUCTURED'
+          | 'FEEDBACK'
+          | 'LIFECYCLE'
+        >;
+        limit?: number;
+        segmentSeqFrom?: number;
+        segmentSeqTo?: number;
+      };
+    } = {},
+  ): Promise<ConsultationActivityPageResponse> {
+    return this.request<ConsultationActivityPageResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/activity`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List the AI runs behind an item version
+   *
+   * The run that produced `version` (the current one when absent); empty when none is recorded. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/items/{itemId}/runs` — `AdminConsultationHistoryController.listRuns`.
+   */
+  listRuns(id: string, itemId: string, options: AdminRequestOptions & { query?: { version?: number } } = {}): Promise<ActivityRunRecordResponse[]> {
+    return this.request<ActivityRunRecordResponse[]>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/items/${encodePathSegment(String(itemId))}/runs`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * List an item`s versions
+   *
+   * Newest first, metadata only — no content. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/items/{itemId}/versions` — `AdminConsultationHistoryController.listVersions`.
+   */
+  listVersions(id: string, itemId: string, options: AdminRequestOptions = {}): Promise<ItemVersionSummaryResponse[]> {
+    return this.request<ItemVersionSummaryResponse[]>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/items/${encodePathSegment(String(itemId))}/versions`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Read one version of an item, decrypted
+   *
+   * The version`s content, decrypted from Vault-Transit ciphertext. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}` — `AdminConsultationHistoryController.getVersion`.
+   */
+  getVersion(id: string, itemId: string, n: number, options: AdminRequestOptions = {}): Promise<ItemVersionDetailResponse> {
+    return this.request<ItemVersionDetailResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/items/${encodePathSegment(String(itemId))}/versions/${encodePathSegment(String(n))}`,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Diff two versions of an item
+   *
+   * Version `n` (`to`) against `against` (`from`), both decrypted. Audited.
+   *
+   * `GET /api/v1/admin/consultations/{id}/items/{itemId}/versions/{n}/diff` — `AdminConsultationHistoryController.diff`.
+   */
+  diff(id: string, itemId: string, n: number, options: AdminRequestOptions & { query?: { against: number } } = {}): Promise<VersionDiffResponse> {
+    return this.request<VersionDiffResponse>({
+      method: 'GET',
+      path: `admin/consultations/${encodePathSegment(String(id))}/items/${encodePathSegment(String(itemId))}/versions/${encodePathSegment(String(n))}/diff`,
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
    * Per-consultation AI telemetry
    *
    * Session span, case-note counts, transcription, pre/partial/final summary, NER and guardrail activity for one consultation. Every block is independently resolved and says WHY it is empty — `NOT_RECORDED` (the platform does not capture it), `NO_ACTIVITY` (captured, none here) or `PRUNED` (retention removed it) — so the pane never renders a fabricated zero. Read-only; nothing is cached.
@@ -180,6 +287,25 @@ export class AdminConsultationAdminResource extends AdminResource {
     return this.request<ConsultationAggregateResponse>({
       method: 'GET',
       path: 'admin/consultations/aggregate',
+      query: options.query,
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    });
+  }
+
+  /**
+   * Feedback rollups by day, agent version, model, prompt version, section, entity label, reason or target kind
+   *
+   * Counts of up / down / cleared ratings, comments, corrections and reasoned ratings. Dimensions and counts only; no content. Scoped to the caller tenant.
+   *
+   * `GET /api/v1/admin/feedback/rollups` — `AdminFeedbackRollupController.rollups`.
+   */
+  rollups(
+    options: AdminRequestOptions & { query?: { agentSlug?: string; from?: string; groupBy?: string; modelName?: string; to?: string } } = {},
+  ): Promise<FeedbackRollupResponse> {
+    return this.request<FeedbackRollupResponse>({
+      method: 'GET',
+      path: 'admin/feedback/rollups',
       query: options.query,
       signal: options.signal,
       timeoutMs: options.timeoutMs,
