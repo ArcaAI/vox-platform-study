@@ -1,6 +1,7 @@
 /**
  * The wizard asks for the context schema ONCE, in step 1 (it decides what every later editor
- * suggests), and the I/O JSON-schema step is named for what it is: the input / output contract.
+ * suggests). TASK-1036 W2 removed the raw "Input / Output contract" step: a tenant sees the task's
+ * inputs and outputs as a table on Settings instead.
  */
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,10 +28,10 @@ afterEach(() => {
 });
 
 describe('CreateAgentWizard — one schema choice, named steps', () => {
-  it('names the I/O step "Input / Output contract" and no longer "Schemas"', async () => {
+  it('has no JSON-schema step at all — neither "Input / Output contract" nor "Schemas" (TASK-1036 W2)', async () => {
     renderWithProviders(<CreateAgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} />);
     const steps = await screen.findByRole('list', { name: 'Steps' });
-    expect(within(steps).getByText(/Input \/ Output contract/)).toBeTruthy();
+    expect(within(steps).queryByText(/Input \/ Output contract/)).toBeNull();
     expect(within(steps).queryByText(/\bSchemas\b/)).toBeNull();
   });
 
