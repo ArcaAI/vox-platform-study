@@ -1,12 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { TranscriptionJobRepository, TranscriptionJobType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { frozenTriggerPayloadSchema } from '../consultation-context-schema/context-schema-usages';
@@ -188,7 +180,11 @@ export class RunAudioBindingService {
       );
     }
     if (requests.length > 1) {
-      throw coded(400, 'RUN_AUDIO_MULTIPLE', `A run binds one live STT session; 'sttSessionId' was supplied on [${requests.map((r) => r.key).join(', ')}].`);
+      throw coded(
+        400,
+        'RUN_AUDIO_MULTIPLE',
+        `A run binds one live STT session; 'sttSessionId' was supplied on [${requests.map((r) => r.key).join(', ')}].`,
+      );
     }
     const [{ sttSessionId: rawSessionId }] = requests;
     if (typeof rawSessionId !== 'string' || rawSessionId.trim().length === 0) {

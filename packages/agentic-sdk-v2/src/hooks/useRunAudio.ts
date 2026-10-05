@@ -100,7 +100,9 @@ function resolveStreamAudioField(slug: string, description: WorkflowSchemaDescri
 
   if (candidates.length === 1) return candidates[0]!;
   if (candidates.length === 0) {
-    throw new RunAudioFieldError(`Workflow "${slug}" declares no live-audio Input (a stream-delivery audio kind), so there is nowhere to put the STT session.`);
+    throw new RunAudioFieldError(
+      `Workflow "${slug}" declares no live-audio Input (a stream-delivery audio kind), so there is nowhere to put the STT session.`,
+    );
   }
   throw new RunAudioFieldError(
     `Workflow "${slug}" declares several live-audio Inputs (${candidates.join(', ')}); pass \`audioField\` to choose one.`,

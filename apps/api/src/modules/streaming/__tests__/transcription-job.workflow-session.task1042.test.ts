@@ -91,7 +91,13 @@ describe('TASK-1042 C1 — createStreamSession with workflowSlug', () => {
   it('forwards workflowSlug to the ASR resolver and echoes agentSource: workflow', async () => {
     const { controller, m } = build();
     const out = await controller.createStreamSession({ workflowSlug: 'dictate' } as never);
-    expect(m.asrResolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', agentSlug: null, departmentId: null, consultationId: null, workflowSlug: 'dictate' });
+    expect(m.asrResolver.resolve).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      agentSlug: null,
+      departmentId: null,
+      consultationId: null,
+      workflowSlug: 'dictate',
+    });
     expect(out).toMatchObject({ agentSource: 'workflow' });
   });
 

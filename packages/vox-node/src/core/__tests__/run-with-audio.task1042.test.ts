@@ -79,11 +79,23 @@ describe('runWithAudio', () => {
   it('creates the session with workflowSlug, connects, then starts the run carrying sttSessionId', async () => {
     const { deps, order } = makeDeps();
 
-    const result = await runWithAudio(deps, 'live-note', { note: 'n' }, { agentSlug: 'asr', language: 'en', sampleRate: 16000, idempotencyKey: 'k-1' });
+    const result = await runWithAudio(
+      deps,
+      'live-note',
+      { note: 'n' },
+      { agentSlug: 'asr', language: 'en', sampleRate: 16000, idempotencyKey: 'k-1' },
+    );
 
     expect(order).toEqual(['schema', 'session.create', 'socket.connect', 'run']);
-    expect(deps.createStreamSession).toHaveBeenCalledWith({ workflowSlug: 'live-note', agentSlug: 'asr', language: 'en', sampleRate: 16000 }, expect.anything());
-    expect(deps.run).toHaveBeenCalledWith('live-note', { note: 'n', audio: { sttSessionId: 'stt-1' } }, expect.objectContaining({ idempotencyKey: 'k-1' }));
+    expect(deps.createStreamSession).toHaveBeenCalledWith(
+      { workflowSlug: 'live-note', agentSlug: 'asr', language: 'en', sampleRate: 16000 },
+      expect.anything(),
+    );
+    expect(deps.run).toHaveBeenCalledWith(
+      'live-note',
+      { note: 'n', audio: { sttSessionId: 'stt-1' } },
+      expect.objectContaining({ idempotencyKey: 'k-1' }),
+    );
     expect(result.run).toEqual({ runId: 'run-1' });
   });
 

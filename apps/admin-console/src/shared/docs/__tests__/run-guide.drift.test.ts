@@ -25,7 +25,9 @@ const FULL: Omit<RunGuideInput, 'kind' | 'slug'> = {
 };
 
 const NODE_SNIPPETS = KINDS.flatMap((kind) =>
-  buildRunGuide({ ...FULL, kind, slug: 'scribe' }).flatMap((step) => step.snippets.filter((snippet) => snippet.lane === 'vox-node').map((snippet) => ({ name: snippet.label, code: snippet.code }))),
+  buildRunGuide({ ...FULL, kind, slug: 'scribe' }).flatMap((step) =>
+    step.snippets.filter((snippet) => snippet.lane === 'vox-node').map((snippet) => ({ name: snippet.label, code: snippet.code })),
+  ),
 );
 
 /** Pinned from the SDK source. Adding a name here means finding it in the SDK first. */
@@ -68,7 +70,8 @@ describe('the run guide’s vox-node snippets (static)', () => {
 
   it('every socket.<method>( call is a RealtimeSttSocket method', () => {
     for (const { name, code } of NODE_SNIPPETS) {
-      for (const match of code.matchAll(/\bsocket\.([A-Za-z0-9]+)\s*\(/g)) expect(SOCKET_METHODS, `${name}: socket.${match[1]}()`).toContain(match[1]);
+      for (const match of code.matchAll(/\bsocket\.([A-Za-z0-9]+)\s*\(/g))
+        expect(SOCKET_METHODS, `${name}: socket.${match[1]}()`).toContain(match[1]);
     }
   });
 

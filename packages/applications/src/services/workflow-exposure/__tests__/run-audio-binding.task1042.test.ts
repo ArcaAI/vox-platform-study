@@ -8,12 +8,7 @@
 import { BadRequestException, ConflictException, HttpException } from '@nestjs/common';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  RunAudioBindingService,
-  assertNoLiveAudio,
-  liveAudioRequestsIn,
-  type RunAudioWorkflow,
-} from '../run-audio-binding.service';
+import { RunAudioBindingService, assertNoLiveAudio, liveAudioRequestsIn, type RunAudioWorkflow } from '../run-audio-binding.service';
 import { readBoundRun, readSessionOwner } from '../run-audio-metadata';
 
 const TENANT = 't-1';
@@ -143,7 +138,10 @@ describe('RunAudioBindingService.bind — 400 shape and settings (C3)', () => {
 
   it('400 RUN_AUDIO_INPUT_UNDECLARED: a trigger that declares no input shape declares no live audio', async () => {
     const { service } = setup();
-    const unbound = { stages: [{ nodes: [{ nodeId: 'trigger', type: 'core.trigger', config: {} }] }], settings: { connections: ['api', 'socket'], sources: [] } };
+    const unbound = {
+      stages: [{ nodes: [{ nodeId: 'trigger', type: 'core.trigger', config: {} }] }],
+      settings: { connections: ['api', 'socket'], sources: [] },
+    };
     const r = await refusal(service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow({ compiledConfig: unbound }), input: audioInput() }));
     expect(r).toMatchObject({ status: 400, body: { code: 'RUN_AUDIO_INPUT_UNDECLARED' } });
   });
@@ -151,7 +149,9 @@ describe('RunAudioBindingService.bind — 400 shape and settings (C3)', () => {
   it('400 RUN_AUDIO_MULTIPLE: sttSessionId on more than one key', async () => {
     const { service } = setup();
     const wf = workflow({ compiledConfig: compiledConfig({ audioKeys: ['audio', 'mic2'] }) });
-    const r = await refusal(service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: wf, input: { audio: { sttSessionId: 'a' }, mic2: { sttSessionId: 'b' } } }));
+    const r = await refusal(
+      service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: wf, input: { audio: { sttSessionId: 'a' }, mic2: { sttSessionId: 'b' } } }),
+    );
     expect(r).toMatchObject({ status: 400, body: { code: 'RUN_AUDIO_MULTIPLE' } });
   });
 
@@ -197,7 +197,10 @@ describe('RunAudioBindingService.bind — 404 ownership (C3, C8)', () => {
   });
 
   it('a service account binds the session it opened', async () => {
-    const { service } = setup({ jobs: [job({ metaData: { owner: { type: 'serviceAccount', id: 'sa-1' } } })], caller: { type: 'serviceAccount', id: 'sa-1' } });
+    const { service } = setup({
+      jobs: [job({ metaData: { owner: { type: 'serviceAccount', id: 'sa-1' } } })],
+      caller: { type: 'serviceAccount', id: 'sa-1' },
+    });
     await expect(service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() })).resolves.not.toBeNull();
   });
 });
@@ -211,18 +214,24 @@ describe('RunAudioBindingService.bind — 409 state (C3)', () => {
   });
 
   it('409 RUN_AUDIO_SESSION_BOUND_ELSEWHERE: bound to a consultation', async () => {
-    const r = await refusal(setup({ jobs: [job({ consultationId: 'c-1' })] }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }));
+    const r = await refusal(
+      setup({ jobs: [job({ consultationId: 'c-1' })] }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }),
+    );
     expect(r).toMatchObject({ status: 409, body: { code: 'RUN_AUDIO_SESSION_BOUND_ELSEWHERE' } });
   });
 
   it('409 RUN_AUDIO_SESSION_BOUND_ELSEWHERE: bound to another run', async () => {
-    const bound = job({ metaData: { owner: { type: 'apiKey', id: 'key-A' }, boundRun: { runId: 'run-other', workflowSlug: 'dictate', versionNumber: 3, boundAt: 'x' } } });
+    const bound = job({
+      metaData: { owner: { type: 'apiKey', id: 'key-A' }, boundRun: { runId: 'run-other', workflowSlug: 'dictate', versionNumber: 3, boundAt: 'x' } },
+    });
     const r = await refusal(setup({ jobs: [bound] }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }));
     expect(r).toMatchObject({ status: 409, body: { code: 'RUN_AUDIO_SESSION_BOUND_ELSEWHERE' } });
   });
 
   it('409 RUN_AUDIO_AGENT_MISMATCH: the session`s ASR agent is not the graph`s STT node agent', async () => {
-    const r = await refusal(setup({ asrAgent: 'other-asr' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }));
+    const r = await refusal(
+      setup({ asrAgent: 'other-asr' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }),
+    );
     expect(r).toMatchObject({ status: 409, body: { code: 'RUN_AUDIO_AGENT_MISMATCH' } });
   });
 
@@ -248,7 +257,9 @@ describe('RunAudioBindingService.bind — the bind (C8, C7)', () => {
   });
 
   it('an idempotent retry of the same start is accepted with no second bind', async () => {
-    const bound = job({ metaData: { owner: { type: 'apiKey', id: 'key-A' }, boundRun: { runId: RUN_ID, workflowSlug: 'dictate', versionNumber: 3, boundAt: 'x' } } });
+    const bound = job({
+      metaData: { owner: { type: 'apiKey', id: 'key-A' }, boundRun: { runId: RUN_ID, workflowSlug: 'dictate', versionNumber: 3, boundAt: 'x' } },
+    });
     const s = setup({ jobs: [bound] });
     const binding = await s.service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() });
     expect(binding?.liveAudio.sttSessionId).toBe(SESSION);
@@ -259,12 +270,16 @@ describe('RunAudioBindingService.bind — the bind (C8, C7)', () => {
   });
 
   it('two concurrent starts on one session: the OCC loser gets 409 RUN_AUDIO_SESSION_BOUND_ELSEWHERE', async () => {
-    const r = await refusal(setup({ occ: 'lose-to-other' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }));
+    const r = await refusal(
+      setup({ occ: 'lose-to-other' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }),
+    );
     expect(r).toMatchObject({ status: 409, body: { code: 'RUN_AUDIO_SESSION_BOUND_ELSEWHERE' } });
   });
 
   it('an OCC loss to the SAME run (a concurrent retry) is accepted', async () => {
-    await expect(setup({ occ: 'lose-to-same' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() })).resolves.not.toBeNull();
+    await expect(
+      setup({ occ: 'lose-to-same' }).service.bind({ tenantId: TENANT, runId: RUN_ID, workflow: workflow(), input: audioInput() }),
+    ).resolves.not.toBeNull();
   });
 
   it('release() unbinds a session this call bound (the harness start failed)', async () => {
@@ -294,4 +309,3 @@ describe('assertNoLiveAudio — the consultation-bound route', () => {
     }
   });
 });
-

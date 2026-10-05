@@ -31,7 +31,17 @@ const compiledConfig = {
   stages: [{ stageIndex: 0, nodes: [{ nodeId: 'n0', type: 'core.agent', activity: 'interpreter.core_agent', config: {} }] }],
   gates: [],
 };
-const definition = () => ({ id: 'def-1', tenantId: TENANT, slug: SLUG, name: 'Dictate', description: null, paletteKey: 'core', versionNumber: 7, compiledConfig, graph: { nodes: [] } });
+const definition = () => ({
+  id: 'def-1',
+  tenantId: TENANT,
+  slug: SLUG,
+  name: 'Dictate',
+  description: null,
+  paletteKey: 'core',
+  versionNumber: 7,
+  compiledConfig,
+  graph: { nodes: [] },
+});
 
 function build(options: { withRunAudio?: boolean } = {}) {
   const positional: unknown[] = [
@@ -93,7 +103,10 @@ describe('invoke — a standalone run that names a live session', () => {
       input: withAudio,
     });
     expect(runAudio.bind.mock.invocationCallOrder[0]).toBeLessThan(runs.recordRunStarted.mock.invocationCallOrder[0]);
-    expect(harness.startWorkflowRun.mock.calls[0][0]).toMatchObject({ liveAudio: { sttSessionId: 'stt-1', maxWaitSeconds: 1800 }, payload: withAudio });
+    expect(harness.startWorkflowRun.mock.calls[0][0]).toMatchObject({
+      liveAudio: { sttSessionId: 'stt-1', maxWaitSeconds: 1800 },
+      payload: withAudio,
+    });
     expect(runs.recordRunStarted.mock.calls[0][0].metaData).toMatchObject({ sttSessionId: 'stt-1', startedBy: { type: 'apiKey', id: 'key-A' } });
     expect(release).not.toHaveBeenCalled();
   });

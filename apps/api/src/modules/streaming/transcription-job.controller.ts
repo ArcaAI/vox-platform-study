@@ -928,7 +928,8 @@ export class TranscriptionJobController {
   @ApiResponse({ status: 404, description: '`workflowSlug` names no published workflow of this tenant' })
   @ApiResponse({
     status: 409,
-    description: '`WORKFLOW_ASR_AGENT_UNAVAILABLE` — the governing or named workflow has more than one speech-to-text agent, or one that cannot serve',
+    description:
+      '`WORKFLOW_ASR_AGENT_UNAVAILABLE` — the governing or named workflow has more than one speech-to-text agent, or one that cannot serve',
   })
   async createStreamSession(@Body() body: CreateStreamSessionRequest): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();

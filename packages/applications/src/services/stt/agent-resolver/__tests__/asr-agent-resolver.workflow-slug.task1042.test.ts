@@ -38,7 +38,12 @@ const TASK_BY_SLUG: Record<string, AgentTask> = {
 };
 
 const make = () =>
-  new AsrAgentResolverService(agents as never, credentials as never, undefined, new GoverningWorkflowAsrReader(consultations as never, runs as never, definitions as never, agentRows as never));
+  new AsrAgentResolverService(
+    agents as never,
+    credentials as never,
+    undefined,
+    new GoverningWorkflowAsrReader(consultations as never, runs as never, definitions as never, agentRows as never),
+  );
 
 const published = (agentNodes: Array<[string, string]>) => ({
   id: 'wf-v2',
@@ -56,20 +61,33 @@ const published = (agentNodes: Array<[string, string]>) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   credentials.resolve.mockResolvedValue(null);
-  agentRows.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) => (TASK_BY_SLUG[slug] ? { slug, task: TASK_BY_SLUG[slug] } : null));
+  agentRows.findPublishedActiveBySlug.mockImplementation(async (_t: string, slug: string) =>
+    TASK_BY_SLUG[slug] ? { slug, task: TASK_BY_SLUG[slug] } : null,
+  );
   agentRows.findPublishedVisibleBySlugVersion.mockResolvedValue(null);
   agentRows.findAllVersionsBySlug.mockResolvedValue([]);
 });
 
 describe('TASK-1042 C1 — the workflowSlug arm', () => {
   it('resolves the published workflow`s single STT node agent, fail-closed, with source `workflow`', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(published([['n_asr', 'dictation-asr'], ['n_note', 'soap-writer']]));
+    definitions.findPublishedBySlug.mockResolvedValue(
+      published([
+        ['n_asr', 'dictation-asr'],
+        ['n_note', 'soap-writer'],
+      ]),
+    );
     agents.resolve.mockResolvedValueOnce({ ...asrAgent, slug: 'dictation-asr' });
 
     const session = await make().resolve({ tenantId: TENANT, workflowSlug: SLUG });
 
     expect(definitions.findPublishedBySlug).toHaveBeenCalledWith(TENANT, SLUG);
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: 'dictation-asr', departmentId: null, primaryBinding: 'fail-closed' });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: 'dictation-asr',
+      departmentId: null,
+      primaryBinding: 'fail-closed',
+    });
     expect(session.spec.agent.source).toBe('workflow');
     expect(session.workflowDefinitionSlug).toBe(SLUG);
     expect(consultations.findById).not.toHaveBeenCalled();
@@ -89,8 +107,15 @@ describe('TASK-1042 C1 — the workflowSlug arm', () => {
   });
 
   it('more than one STT node is 409 WORKFLOW_ASR_AGENT_UNAVAILABLE', async () => {
-    definitions.findPublishedBySlug.mockResolvedValue(published([['a', 'dictation-asr'], ['b', 'second-asr']]));
-    const error = await make().resolve({ tenantId: TENANT, workflowSlug: SLUG }).catch((e: unknown) => e);
+    definitions.findPublishedBySlug.mockResolvedValue(
+      published([
+        ['a', 'dictation-asr'],
+        ['b', 'second-asr'],
+      ]),
+    );
+    const error = await make()
+      .resolve({ tenantId: TENANT, workflowSlug: SLUG })
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toMatchObject({ code: WORKFLOW_ASR_AGENT_UNAVAILABLE, reason: 'ambiguous' });
   });
@@ -98,7 +123,9 @@ describe('TASK-1042 C1 — the workflowSlug arm', () => {
   it('a named agent that will not resolve is 409 WORKFLOW_ASR_AGENT_UNAVAILABLE (unavailable)', async () => {
     definitions.findPublishedBySlug.mockResolvedValue(published([['n_asr', 'dictation-asr']]));
     agents.resolve.mockRejectedValueOnce(new NotFoundException('agent gone'));
-    const error = await make().resolve({ tenantId: TENANT, workflowSlug: SLUG }).catch((e: unknown) => e);
+    const error = await make()
+      .resolve({ tenantId: TENANT, workflowSlug: SLUG })
+      .catch((e: unknown) => e);
     expect((error as ConflictException).getResponse()).toMatchObject({ code: WORKFLOW_ASR_AGENT_UNAVAILABLE, reason: 'unavailable' });
   });
 
@@ -106,7 +133,13 @@ describe('TASK-1042 C1 — the workflowSlug arm', () => {
     definitions.findPublishedBySlug.mockResolvedValue(published([['n_note', 'soap-writer']]));
     agents.resolve.mockResolvedValueOnce({ ...asrAgent, source: 'tenant' });
     const session = await make().resolve({ tenantId: TENANT, workflowSlug: SLUG, departmentId: 'dept-1' });
-    expect(agents.resolve).toHaveBeenCalledWith({ tenantId: TENANT, task: AgentTask.SPEECH_TO_TEXT, agentSlug: null, departmentId: 'dept-1', primaryBinding: 'mark' });
+    expect(agents.resolve).toHaveBeenCalledWith({
+      tenantId: TENANT,
+      task: AgentTask.SPEECH_TO_TEXT,
+      agentSlug: null,
+      departmentId: 'dept-1',
+      primaryBinding: 'mark',
+    });
     expect(session.spec.agent.source).toBe('tenant');
     expect(session).not.toHaveProperty('workflowDefinitionSlug');
   });

@@ -213,12 +213,11 @@ export class RunAudioTranscriptService {
   private boundTooLong(tenantId: string, boundAt: string | null): boolean {
     const since = boundAt ? Date.parse(boundAt) : Number.NaN;
     if (!Number.isFinite(since)) return false;
-    let maxSeconds: number = WORKFLOW_RUNS_DEFAULTS.liveAudioMaxSeconds;
-    try {
-      maxSeconds = liveAudioMaxSecondsOf(this.tenantSettings?.resolve<number>(WORKFLOW_RUNS_LIVE_AUDIO_MAX_SECONDS_KEY, tenantId).value);
-    } catch {
-      // fail open to the default
-    }
+    // `open-to-default` covers an ABSENT value only (the resolver returns the default then); a settings
+    // backend error propagates (the harness counts a failed poll as still live and asks again) — never disguised as the default.
+    const maxSeconds: number = this.tenantSettings
+      ? liveAudioMaxSecondsOf(this.tenantSettings.resolve<number>(WORKFLOW_RUNS_LIVE_AUDIO_MAX_SECONDS_KEY, tenantId).value)
+      : WORKFLOW_RUNS_DEFAULTS.liveAudioMaxSeconds;
     return Date.now() - since > maxSeconds * 1000;
   }
 }

@@ -186,7 +186,9 @@ function authenticate(ctx: Ctx): RunGuideStep {
       'A service account is exchanged at POST /api/v1/auth/service-token for an opaque token that lives about 15 minutes (expiresIn 900); the SDK exchanges, refreshes early and re-exchanges for you.',
       'The tenant binds to the credential: never send X-Tenant-Id with an API key or a service-account token. A service account’s working tenant binds at the exchange.',
       ...(ctx.kind === 'workflow'
-        ? ['Over a user JWT, starting a run additionally needs the create:WorkflowRun ability (read:WorkflowRun for the reads). An API key or service account carrying the scopes above does not.']
+        ? [
+            'Over a user JWT, starting a run additionally needs the create:WorkflowRun ability (read:WorkflowRun for the reads). An API key or service account carrying the scopes above does not.',
+          ]
         : []),
       ...serviceAccountNotes(keys),
     ],
@@ -259,7 +261,12 @@ function connectSnippets(ctx: Ctx): RunGuideSnippet[] {
       {
         lane: 'vox-node',
         label: label.node('Connect', 'API'),
-        code: [start, ``, `// No stream held open: poll the run until it ends.`, `const outcome = await run.wait({ poll: true, intervalMs: 2_000 });`].join('\n'),
+        code: [
+          start,
+          ``,
+          `// No stream held open: poll the run until it ends.`,
+          `const outcome = await run.wait({ poll: true, intervalMs: 2_000 });`,
+        ].join('\n'),
       },
       {
         lane: 'vox',
@@ -274,7 +281,12 @@ function connectSnippets(ctx: Ctx): RunGuideSnippet[] {
       {
         lane: 'raw',
         label: label.raw('Connect', 'API'),
-        code: [...headerEnv, `# Read where the run got to — poll this until status is terminal.`, `curl -sS "${ctx.shellBase}/runs/$RUN_ID" \\`, `  -H "X-API-Key: $HOPE_API_KEY"`].join('\n'),
+        code: [
+          ...headerEnv,
+          `# Read where the run got to — poll this until status is terminal.`,
+          `curl -sS "${ctx.shellBase}/runs/$RUN_ID" \\`,
+          `  -H "X-API-Key: $HOPE_API_KEY"`,
+        ].join('\n'),
       },
     );
   }
@@ -397,7 +409,8 @@ function connect(ctx: Ctx): RunGuideStep {
     notes.push('No connection is enabled in this workflow’s Settings, so a caller cannot reach it. Enable API (and SSE or socket to stream) first.');
   }
   if (workflow && enabled.has('sse') && enabled.has('socket')) notes.push(SOCKET_LANE_RATIONALE);
-  else if (workflow && enabled.has('sse')) notes.push('SSE is the only lane that resumes: a dropped connection reconnects with Last-Event-ID and loses no events.');
+  else if (workflow && enabled.has('sse'))
+    notes.push('SSE is the only lane that resumes: a dropped connection reconnects with Last-Event-ID and loses no events.');
   if (workflow && enabled.has('socket')) notes.push(SOCKET_RUNTIME_FLOOR);
   if (!workflow) notes.push('An agent run always has two ways in: start it and poll, or follow its resumable SSE events.');
 
@@ -409,7 +422,9 @@ function connect(ctx: Ctx): RunGuideStep {
       : 'Choose how you follow the run: poll its status, or follow its events.',
     notes,
     snippets: connectSnippets(ctx),
-    ...(workflow ? { lanes: ALL_CONNECTIONS.map((connection) => ({ connection, enabled: enabled.has(connection), summary: CONNECTION_SUMMARY[connection] })) } : {}),
+    ...(workflow
+      ? { lanes: ALL_CONNECTIONS.map((connection) => ({ connection, enabled: enabled.has(connection), summary: CONNECTION_SUMMARY[connection] })) }
+      : {}),
   };
 }
 
@@ -426,7 +441,9 @@ function send(ctx: Ctx): RunGuideStep {
       ? 'SDKs take the input itself. Raw HTTP takes the envelope { "input": … } — the agent plane takes its input flat, and mixing the two is a 400 on every call.'
       : 'The agent plane takes its input FLAT. Wrapping it in the workflow plane’s { "input": … } envelope is a 400.',
   );
-  notes.push('Every start carries an Idempotency-Key: a retry with the same key and body joins the run already in flight instead of starting — and billing — a second one.');
+  notes.push(
+    'Every start carries an Idempotency-Key: a retry with the same key and body joins the run already in flight instead of starting — and billing — a second one.',
+  );
   if (ctx.kind === 'workflow') {
     notes.push('input may not carry consultationId, externalPatientId, userId, jobId or sessionId — the server stamps those itself.');
   }
