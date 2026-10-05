@@ -1,6 +1,7 @@
 # TASK-1042 — Live audio into standalone workflow runs (business plane)
 
-**Status:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
+**Status:** In Progress — all lanes merged into the orchestrator branch; artifacts + the single gate pass next.
+**Previously:** Approved, waiting to start. On 2026-10-05 the owner approved every recommendation in §4 ("approved, go after OD-35 merges"). Lanes start once the TASK-1038 OD-35 lane is merged into dev-2.2.
 **Type:** feature (gateway + harness + SDK + docs)
 **Branch:** dev-2.2 (worktree `agent/sleepy-goldstine-f2d11d`, fast-forwarded to `92b21aee8`)
 **Raised:** 2026-10-05, from owner decision **OD-37** (TASK-1036 §6.13). It reverses that row's
@@ -235,7 +236,63 @@ The orchestrator (this session) owns:
 
 ## 6. Implementation Summary
 
-_Not started — awaiting the owner's decisions in §4._
+### 6.1 Lanes
+
+| Lane | Tier | Branch head | Merged as |
+|---|---|---|---|
+| L3 SDK + docs | sonnet | `task-1042/sdk` `0e7086c8a` | `12d2ee1ac` |
+| L2 harness + contract | opus | `task-1042/harness` `c4fdea7c0` | `9ef53ae35` |
+| L1 gateway | opus | `task-1042/gateway` `20d3e4377` | `4f0f79132` |
+
+Orchestrator commits:
+- the contract C1–C8 (§3.5) and OD-4a;
+- the docs: protocol-v2 §4, rule 08, the vox-node STT resolution order;
+- the replay-fixture registration (`bfb5f08d6`);
+- the e2e spec `apps/api/tests/e2e/workflow-run-live-audio-cross-tenant.spec.ts` (`93c90babd`).
+
+### 6.2 What shipped
+
+**Gateway (`packages/applications`, `apps/api`):**
+- `run-audio-binding.service.ts` runs the C3 checks in order, binds with OCC, releases the binding if the start fails, and refuses `sttSessionId` on the consultation route.
+- `run-audio-transcript.service.ts` and `internal/stt-session-transcript-internal.controller.ts` serve C5. The route is `@Public` + `HarnessServiceTokenGuard`, needs `X-Tenant-Id`, and reads the result stream once (`EXISTS`, `XINFO`, `XRANGE` in one EVAL).
+  - `truncated` = `entries-added > length` (fail-closed when Redis does not report it).
+  - `ended` = the job row is no longer live, or a `closed`/`cancelled` status frame.
+  - `timeout` = still live past `boundAt + liveAudioMaxSeconds`.
+- STT job rows carry `metaData.owner`, the OD-35 principal. `TranscriptionJobEntity` and its factory now expose `metaData` (L1 deviation: it was never wired).
+- Session create takes `workflowSlug`. The ASR resolver gains a workflow arm (`agentSource: 'workflow'`).
+- The transcript mirror follows `metaData.boundRun`.
+- New descriptor `workflowRuns.liveAudioMaxSeconds` (default 3600, range 60–3600, tenant-tightenable).
+- The harness start carries `liveAudio`.
+
+**Harness and contract:**
+- `StartWorkflowRunRequest.liveAudio` → `InterpreterInput.live_audio`, with `caps.LIVE_AUDIO_MAX_WAIT_SECONDS = 3600` (tighten-only) and the execution-timeout backstop term.
+- The durable wait `_await_live_audio` sits behind `inp.live_audio is not None and workflow.patched("task-1042-live-audio-wait")`. It polls the activity `interpreter.load_live_audio_state` every 5 s, and the budget clock is paused during the wait.
+- The ASR `core.agent` gains a session branch that calls C5 once.
+- WF-SET-005 (`SETTINGS_LIVE_AUDIO_UNREAD`), TS + Python, with 13 shared fixture cases.
+- A replay fixture `interpreter_task1042_live_audio_history` is registered in `INTERPRETER_FAMILY_FIXTURES`.
+
+**SDKs and console:**
+- vox-node `hope.workflows.runWithAudio` (+ `RunAudioFieldError`) and `CreateStreamSessionRequest.workflowSlug`.
+- vox `useRunAudio` standalone mode (`audioField`) and the `workflowSlug` pass-through (`PluginManager`, `@arcaai/stt` `STTProcessor` / `StreamingBackendSTTProvider`).
+- `run-guide.ts` stream-audio snippets rewritten.
+
+### 6.3 Deviations from the frozen contract (accepted by the orchestrator)
+
+| # | Deviation | Why |
+|---|---|---|
+| D1 | A `truncated` / `timeout` / unbound session ends the ASR node **DEGRADED** with no output (code in the reason and the trajectory), not FAILED. | A node activity cannot return FAILED, and `core.agent` is not critical. The run ends DEGRADED; a short transcript is still never returned. |
+| D2 | WF-SET-005 exempts workflows whose `sources` include `consultation`. | This mirrors WF-SET-003. The seeded consultation note schemas declare a stream kind that is read through the consultation session. |
+| D3 | `RUN_AUDIO_AGENT_MISMATCH` also covers a graph with zero or several STT nodes. A non-string `sttSessionId` is 400 without a code. C5 answers 400 without `runId` or `X-Tenant-Id`, and 503 when Redis is unreadable. | These are additions only; the frozen rows are unchanged. |
+| D4 | `packages/domains` `TranscriptionJobEntity` / `Factory` gained `metaData`. | It is required for C8 to persist. |
+| D5 | The SDK lane edited `PluginManager`, `STTProcessor` and `StreamingBackendSTTProvider`. | These are pass-throughs; without them `workflowSlug` never reaches the wire. |
+
+### 6.4 Known limits and follow-ups
+
+- **Result-stream cap.** `stt.streaming.resultStreamMaxlen` defaults to 10000. Partials during speech run at about 2.5 entries/s, so the cap holds about 4000 s of continuous speech, just above the 3600 s ceiling. A session past it reads as `truncated` (fail-closed, never short). Raising the default is an owner decision, not part of this ticket.
+- After close, the result stream expires in 3600 s. A C5 read after that reads as `truncated` unless the row recorded zero characters. The harness reads within 5 s of the end, so only a much later re-read is affected.
+- The console Integration tab does not yet pass the real `audioField` into the snippets (`integration-tab.tsx` / `run-shapes.ts` are owned by the TASK-1036 canvas lane). Until then the raw snippet shows `<audioField>`.
+- The deprecated `:slug/invoke` alias also binds audio but carries no Swagger update.
+
 
 ## 7. Change History
 
