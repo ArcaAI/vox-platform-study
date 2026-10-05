@@ -150,6 +150,7 @@ import { WorkflowSandboxRunModule } from './modules/workflow-sandbox-run/workflo
 import { WorkflowTestFixtureModule } from './modules/workflow-test-fixture/workflow-test-fixture.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { RateLimitHeadersInterceptor } from './modules/throttle/rate-limit-headers.interceptor';
+import { ConsultationHistoryModule } from './modules/consultation-history/consultation-history.module';
 
 const interceptors = [
   {
@@ -394,6 +395,8 @@ const common = [
   FactLedgerServiceModule,
   // Scheduled daily consultation-feedback rollup.
   FeedbackRollupServiceModule,
+  // Consultation activity feed, item version history and encounter recap (business + admin).
+  ConsultationHistoryModule,
   // TASK-992 — scheduled stranded-STT-batch-job reaper: fails a PROCESSING
   // transcription job whose worker died and whose Dramatiq message was never
   // redelivered, so it can never be reclaimed. On by default (no `enabled`

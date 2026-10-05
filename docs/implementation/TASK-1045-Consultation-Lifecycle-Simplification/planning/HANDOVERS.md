@@ -93,3 +93,5 @@
 | H-89 | integration | `chain-summary.service.ts` | E3 | text run record via `buildTextActivityRun` after `recordUsage` (rest of H-54) | pending (E3 brief) |
 | H-90 | G-ROLL | `feedback-rollup.service.ts` | orchestrator | `'feedback-rollup'` worker kind; export `feedback-rollup.module` from the feedback barrel | applied (integration step) |
 
+| H-91 | D2 | `app.module.ts` | orchestrator | register `ConsultationHistoryModule` | applied |
+| H-92 | D2 | business history access | follow-up (after CG-API) | swap `ConsultationHistoryController.verifyAccess` for the CG `consultation-access.helper.ts`; decide whether the shared-patient fallback applies to history (today narrower than `GET consultations/:id`) | pending (after CG-API) |
