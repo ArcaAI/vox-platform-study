@@ -39,7 +39,14 @@ export abstract class IConsultationLifecycleService {
     consultationId: string,
     options?: { expectedVersion?: number; clinicianUserId?: string; caller?: ClinicalCaller; auto?: boolean },
   ): Promise<ConsultationResponse>;
-  abstract reopen(consultationId: string, options: { expectedVersion: number; reason?: string }): Promise<ConsultationResponse>;
+  /**
+   * CLOSED → OPEN. Attributed like `close` when a clinician is named; a service account that names
+   * nobody reopens for the clinician the row names, a human for themselves.
+   */
+  abstract reopen(
+    consultationId: string,
+    options: { expectedVersion: number; reason?: string; clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse>;
 }
 
 export const IConsultationLifecycleServiceToken = Symbol('IConsultationLifecycleService');

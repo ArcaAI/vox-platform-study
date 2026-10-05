@@ -2044,11 +2044,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
    * Delegates to `IConsultationLifecycleService.reopen`. Without an `If-Match` version (a
    * service-to-service call) the CAS runs on the version just read.
    */
-  async reopenConsultation(id: string, expectedVersion?: number, options?: { reason?: string }): Promise<ConsultationResponse> {
+  async reopenConsultation(
+    id: string,
+    expectedVersion?: number,
+    options?: { reason?: string; clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse> {
     const version = expectedVersion ?? (await this.findOwned(id)).version;
+    const caller = toLifecycleCaller(options?.caller);
     return this.lifecycle.reopen(id, {
       expectedVersion: version,
       ...(options?.reason === undefined ? {} : { reason: options.reason }),
+      ...(options?.clinicianUserId === undefined ? {} : { clinicianUserId: options.clinicianUserId }),
+      ...(caller ? { caller } : {}),
     });
   }
 

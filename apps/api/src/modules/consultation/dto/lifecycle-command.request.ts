@@ -48,6 +48,15 @@ export class ApproveConsultationRequest {
 
 /** Body of `POST consultations/:id/reopen`. */
 export class ReopenConsultationRequest {
+  @ApiPropertyOptional({
+    description:
+      'The clinician this reopen is attributed to, under the attribution rule of `close`. Optional for every caller: a service account ' +
+      'that omits it reopens for the clinician the consultation names (a machine is never the clinician); a human or API key acts for themselves.',
+  })
+  @IsOptional()
+  @IsString()
+  clinicianUserId?: string;
+
   @ApiPropertyOptional({ description: 'Why the consultation is reopened (audited). At most 256 characters.', maxLength: 256 })
   @IsOptional()
   @IsString()
