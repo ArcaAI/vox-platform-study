@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { BusinessException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import {
   ConsultationEntity,
   ConsultationRepository,
@@ -19,18 +19,16 @@ import {
   ContextItemSource,
   ContextItemType,
   DepartmentRepository,
-  HarnessAuditAction,
   ResourceType,
   SysEventType,
-  TranscriptionJobRepository,
-  TranscriptionJobType,
   UserDepartmentRepository,
   UserRepository,
   UserRoleAssignmentRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
+import type { ConsultationOpenKey } from '@arcaai/domains';
+import type { LifecycleEventType } from '@arcaai/types';
 import { IConsultationService, type StartRecordingOptions } from './IConsultationService';
-import { STT_SESSION_SUPERSEDED_EVENT, type SttSessionSupersededEvent } from './stt-session-superseded.event';
 import {
   OpenConsultationRequest,
   UpdateConsultationRequest,
@@ -42,12 +40,14 @@ import {
   DEFAULT_CONSULTATION_SORT,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
+import type { ClinicalCaller } from '../summary/clinician-attribution';
 import {
-  assertAttributedClinicianInTenant,
-  resolveAttributedClinician,
-  tenantRoleReaderFor,
-  type ClinicalCaller,
-} from '../summary/clinician-attribution';
+  IConsultationLifecycleService,
+  IConsultationLifecycleServiceToken,
+  type ClinicalCaller as LifecycleCaller,
+} from '../lifecycle/IConsultationLifecycleService';
+import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../encounter/IConsultationEncounterService';
+import { ConsultationPipelineEvent, type LifecycleChangedPayload } from '../events/consultation.events';
 import {
   BaseService,
   assertEqualTenants,
@@ -60,7 +60,6 @@ import {
 } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
-import { HarnessAuditService } from '../../harness-audit';
 import { IConsentGrantService } from '../../consent/IConsentGrantService';
 import { IConsultationWorkflowDispatchService } from '../workflow-dispatch/IConsultationWorkflowDispatchService';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
@@ -79,7 +78,6 @@ import {
 import { DEFAULT_VISIT_TYPE_SERVICE, VisitTypeService } from '../visit-type/visit-type.service';
 import { PolicyEngine } from '../../../authorization/policy.engine';
 import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
-import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 import {
   CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT,
   CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY,
@@ -96,38 +94,14 @@ import { IContextUserIdentityService, extractUserIdentityValue } from '../../use
 // service that already knows how (schema pin, canonical content, Vault-Transit encryption, the
 // v1 audit version, the live fan-out). Reproducing those five things here is how they drift.
 import { IContextService } from '../context/IContextService';
-// TASK-1001 — `startRecording` asks apps/stt whether the STT session a request names is still live.
-// The class is the DI token (the service is provided by class); the interface is what is used.
-import { StreamingSessionService } from '../../stt/streaming/streamingSession.service';
-import type { IStreamingSessionService } from '../../stt/streaming/IStreamingSessionService';
-import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/consultation-completion-timeout.scheduler';
-
-/**
- * TASK-1001 — the stable `code` of the 409 `startRecording` answers when the request names an STT
- * streaming session that is no longer live (`closed` / `finalizing` / `rejected`, or unknown to
- * apps/stt). Body: `{ code, message, sttSessionId, sttSessionStatus }` plus the gateway envelope.
- */
-export const STT_SESSION_NOT_ACTIVE_CODE = 'STT_SESSION_NOT_ACTIVE';
-
-/**
- * TASK-1020 D-4 — `recording/start` on a consultation the state machine cannot move to RECORDING
- * (SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED, …): signed documentation is never recorded over.
- * Refused whatever the `requirePrimedBeforeRecording` kill-switch says; the switch-OFF bypass is
- * kept for `OPEN` alone. A same-day return visit is a NEW consultation (`open` with a new
- * `externalRef`, or `parentConsultationId`), never a second recording on a signed row.
- */
-export const CONSULTATION_NOT_RECORDABLE_CODE = 'CONSULTATION_NOT_RECORDABLE';
-
-/** TASK-1020 §7.1 — the code on every 409 the transition matrix answers (`applyTransition`). */
-export const CONSULTATION_TRANSITION_ILLEGAL_CODE = 'CONSULTATION_TRANSITION_ILLEGAL';
 
 /** TASK-1020 D-5 — `parentConsultationId` names a consultation of another patient (400). */
 export const PARENT_PATIENT_MISMATCH_CODE = 'PARENT_PATIENT_MISMATCH';
 
-/** TASK-1020 D-2 — the `externalRef` is already this tenant's encounter id for another patient (409). */
+/** The `externalRef` already identifies an encounter of another patient in this tenant (409). */
 export const EXTERNAL_REF_CONFLICT_CODE = 'EXTERNAL_REF_CONFLICT';
 
-/** Prisma's unique-constraint violation — the encounter-key partial unique index (TASK-1020 D-2). */
+/** Prisma's unique-constraint violation — the open-key / encounter partial unique indexes. */
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';
 }
@@ -157,6 +131,22 @@ interface ResolvedOpenContext {
   bundle: ConsultationContextSchemaBundleResponse | null;
 }
 
+/** Everything `open` settled before it looks for the encounter — threaded through the match, append and create steps. */
+interface OpenEpisodeInput {
+  tenantId: string;
+  userId: string | null | undefined;
+  request: OpenConsultationRequest;
+  openContext: ResolvedOpenContext;
+  declaredLanguageMode: ReturnType<typeof requestedLanguageMode>;
+  /** Stamped on a NEW consultation; not part of the key. */
+  appointmentDate: Date;
+  /** The create-path metadata, markers applied. */
+  metadata: unknown;
+  /** The resolved encounter id (schema-declared, else hand-posted under the marker key), or `null`. */
+  externalRef: string | null;
+  openKey: ConsultationOpenKey;
+}
+
 /**
  * The string a `{ kindKey, field }` binding points at inside an `{ [kindKey]: payload }` envelope,
  * or `null`.
@@ -179,7 +169,8 @@ function readBindingString(context: Record<string, unknown>, binding: { kindKey:
 /**
  * Consultation Service
  *
- * Simplified workflow using natural key (patientId, doctorId, appointmentDate)
+ * A consultation is an EPISODE of one patient with one clinician (and department), made of
+ * encounters; `open` resolves the encounter (see `openEpisode`).
  */
 /** A stored declaration compared as a mode — a legacy `en-IN` marker equals a declared `en`. */
 function normalizeStoredMode(value: string | null): string | null {
@@ -192,6 +183,19 @@ function normalizeStoredMode(value: string | null): string | null {
  */
 export function calendarDayIn(now: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+/** The controller's credential description, in the lifecycle service's terms. */
+function toLifecycleCaller(caller: ClinicalCaller | undefined): LifecycleCaller | undefined {
+  if (!caller) return undefined;
+  switch (caller.credentialClass) {
+    case 'service-account':
+      return { isMachine: true, serviceAccountId: caller.principalId };
+    case 'api-key':
+      return { isMachine: true, apiKeyId: caller.principalId, ...(caller.boundUserId ? { userId: caller.boundUserId } : {}) };
+    default:
+      return { isMachine: false, userId: caller.principalId };
+  }
 }
 
 @Injectable()
@@ -208,18 +212,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
     private readonly userRepository: UserRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // The encounters of the episode: `open` matches an encounter by its `externalRef`, appends one
+    // to the open consultation, or creates a consultation with its first one.
+    @Inject(IConsultationEncounterServiceToken) private readonly encounters: IConsultationEncounterService,
+    // The lifecycle commands (start / stop / close / reopen) belong to the lifecycle service; the
+    // deprecated methods on this service delegate to it.
+    @Inject(IConsultationLifecycleServiceToken) private readonly lifecycle: IConsultationLifecycleService,
     // Optional (append-only DI); enforces the plan
     // `monthlyConsultations` meter when STARTING a new consultation
     // (kill-switch-gated, → 429 when over the rolling-monthly cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // optional (append-only DI, mirrors `entitlements` above): the
-    // WORM audit trail for clinically-significant transitions (prime/close/
-    // reopen). Absent ⇒ `appendTransitionAudit` no-ops (best-effort by design
-    // for routine transitions — see the method doc).
-    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
-    // optional: resolves the `requirePrimedBeforeRecording`
-    // kill-switch. Absent ⇒ treated as OFF (the fail-safe default), mirroring
-    // `OcrEnrichmentProcessor.ocrEnabled`.
+    // optional: resolves the tenant's appointment-day time zone (`tenantToday`). Absent ⇒ UTC.
     @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
     // optional: dispatches a tenant-authored `consultation`-palette workflow at
     // open. Absent ⇒ no dispatch, and the consultation runs under the default loop (Substrate A),
@@ -274,23 +277,6 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // but nothing is written as an item, which is logged rather than silent. NOT a 503: unlike
     // validation, persistence is not a claim the open response makes.
     @Optional() @Inject(IContextService) private readonly contextService?: IContextService,
-    // TASK-1001 — optional + trailing (append-only DI). READ-ONLY: `startRecording` asks apps/stt
-    // whether the STT session the request names is still live, so a stale, superseded
-    // `recording/start` cannot re-bind the recording to a closed session. Absent ⇒ no check, and a
-    // recording binds exactly as it did before.
-    @Optional() @Inject(StreamingSessionService) private readonly streamingSessions?: Pick<IStreamingSessionService, 'getSessionStatus'>,
-    // TASK-1001 wave 6 — a recording that (re)starts means the consultation is no longer ready to
-    // complete: its pending completion timeout is cancelled; the next stop's note schedules a fresh
-    // one. Optional + trailing (append-only DI); absent ⇒ the job re-checks the status when it fires.
-    @Optional()
-    @Inject(ConsultationCompletionTimeoutScheduler)
-    private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
-    // Optional + trailing (append-only DI). READ-ONLY: the consultation's open
-    // STREAMING rows are the durable STT binding `startRecording` supersedes by when no live
-    // session is held in process. Absent ⇒ nothing is superseded here, exactly as before.
-    @Optional()
-    @Inject(TranscriptionJobRepository)
-    private readonly transcriptionJobs?: Pick<TranscriptionJobRepository, 'findAll'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -1124,14 +1110,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   /**
-   * Get or create the consultation for one ENCOUNTER — the only entry (TASK-1020 D-1).
-   *
-   * - The key: `(patientId, doctorId, externalRef)` when the caller sends an encounter id, else the
-   *   legacy `(patientId, appointmentDate, doctorId)` — see `findEncounterMatch`.
-   * - A match is returned, terminal or not; the response's `recordable` says whether it can still
-   *   be recorded. Consent is recorded on CREATE only (see the re-open branch for why).
-   * - No match creates a new consultation, chained to its parent: the caller's, or for a same-day
-   *   `revisit` the latest same-day visit of the patient (OD-4).
+   * Get or create the consultation for one ENCOUNTER — the only entry. The resolution order
+   * (encounter ref → open consultation of the key → new chained consultation) is `openEpisode`.
    *
    * `doctorId` is the clinician the CALLER resolves to: the authenticated human, or the user a
    * service account named with `clinicianUserId`. TASK-950 adds a third possibility — a machine
@@ -1193,16 +1173,16 @@ export class ConsultationService extends BaseService implements IConsultationSer
     //     swallows its own failures. A gate placed inside it would turn a refused request into a
     //     201 whose consultation is quietly governed by something else.
     //   * BEFORE the existing-consultation lookup, because the answer to "may I select this
-    //     workflow?" must not depend on whether a consultation for (patient, doctor, date)
+    //     workflow?" must not depend on whether a consultation for (patient, doctor, department)
     //     happens to already exist. Otherwise the status code itself reports that.
     await this.assertWorkflowSelectionAllowed(tenantId, request.workflowDefinitionSlug);
 
-    // TASK-1020 BP-5 — a caller-supplied date wins; otherwise TODAY in the TENANT's time zone
-    // (`consultation.appointmentDay.timeZone`), never the server's UTC date.
+    // TASK-1020 BP-5 — stamped on a NEW consultation (it is not part of the key): a caller-supplied
+    // date wins; otherwise TODAY in the TENANT's time zone (`consultation.appointmentDay.timeZone`).
     const appointmentDate = new Date(request.appointmentDate ?? this.tenantToday(tenantId));
 
-    // Create-path metadata, composed BEFORE the lookup because it is what decides the key: the
-    // encounter id `open` matches on is the `externalRef` marker exactly as it will be written.
+    // Create-path metadata, composed BEFORE the lookup because it decides the match: the encounter
+    // id `open` matches on is the `externalRef` marker exactly as it will be written.
     //
     // lane A — record the AUTHORIZED selection on the row itself, here, before dispatch
     // is even attempted.
@@ -1236,148 +1216,205 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // catalogue, and that one was neither. See `open-markers.ts` for why neither is stripped.
     const withVisitType = openContext.visitTypeKey ? withVisitTypeMarker(withLanguage, openContext.visitTypeKey) : withLanguage;
     const metadata = openContext.externalRef ? withExternalRefMarker(withVisitType, openContext.externalRef) : withVisitType;
-    // TASK-1020 D-2 — the resolved encounter id: the schema-declared value, else one hand-posted
-    // under the same marker key. `null` ⇒ the legacy key applies.
+    // The resolved encounter id: the schema-declared value, else one hand-posted under the same
+    // marker key. `null` ⇒ the open key alone decides.
     const externalRef = readExternalRef(metadata);
 
-    const existing = await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef);
+    return this.openEpisode(
+      {
+        tenantId,
+        userId,
+        request,
+        openContext,
+        declaredLanguageMode,
+        appointmentDate,
+        metadata,
+        externalRef,
+        openKey: { tenantId, doctorId: actingClinicianId, patientId: request.patientId, departmentId: openContext.departmentId ?? null },
+      },
+      true,
+    );
+  }
 
-    if (existing) {
-      // TASK-951 §D-5/D-6 — nothing is persisted or dispatched on this branch, for the same
-      // reason the selection below is ignored: this consultation was already opened, with its own
-      // context, and re-opening it must not append a second copy of the client's PRE items or
-      // start a second governing run. The mappings above still ran, so a payload the schema does
-      // not admit is still a 400 here rather than a silent 200.
-      //
-      // The selection was authorized above, but consultation-open dispatch fires on CREATE only,
-      // so there is no dispatch left to steer. Say so rather than let the caller believe their
-      // pick took effect — `GET /consultations/:id/workflow` reports what actually governs.
-      if (request.workflowDefinitionSlug) {
-        this.logger.log({
-          message: 'Workflow selection ignored — this consultation is already open and its governing engine was decided at its own open',
-          consultationId: existing.id,
-          requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+  /**
+   * TASK-1045 D-3 — resolve the encounter an `open` is for, in this order:
+   *
+   * 1. `externalRef` set → the encounter carrying it for the same patient and clinician: returned
+   *    as it is, closed or not (`recordable` says whether it can still be captured). The same ref
+   *    on another patient is 409 `EXTERNAL_REF_CONFLICT`.
+   * 2. Otherwise the non-closed consultation of the open key (tenant, doctor, patient, department —
+   *    null-safe). An encounter is APPENDED to it for a new ref, or with no ref when the visit is a
+   *    `revisit` and the current encounter has ended; anything else returns it as it is.
+   * 3. No non-closed match → a new consultation with encounter 1, chained to the caller's parent,
+   *    else to the latest closed consultation of the key (a late return after a close is a new,
+   *    chained consultation — never an implicit reopen).
+   *
+   * The appointment date is not part of the key. A race on the open-key (or encounter-ref) unique
+   * index, or on the consultation version during an append, is resolved by running the match once
+   * more: the loser answers with the winner.
+   */
+  private async openEpisode(input: OpenEpisodeInput, mayRetry: boolean): Promise<ConsultationResponse> {
+    const { tenantId, request, openKey, externalRef, metadata } = input;
+    const visitTypes = this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE;
+
+    if (externalRef) {
+      const { own, conflict } = await this.encounters.matchExternalRef(tenantId, externalRef, {
+        patientId: openKey.patientId,
+        doctorId: openKey.doctorId,
+      });
+      if (own) {
+        const consultation = await this.consultationRepository.findWithRelations(own.consultationId);
+        if (consultation) return this.answerExisting(consultation, input);
+      } else if (conflict) {
+        throw new ConflictException({
+          code: EXTERNAL_REF_CONFLICT_CODE,
+          message: `externalRef '${externalRef}' already identifies an encounter of a different patient in this tenant. An encounter id belongs to exactly one patient; send this visit's own id.`,
         });
       }
-
-      // TASK-1004 — the one thing a re-open DOES change: an explicit, DIFFERENT spoken-language
-      // mode. A clinician who picks another language before recording again means it for every
-      // later step (live, batch, workflow), so the declaration follows them rather than silently
-      // keeping the first one. Same mode (after normalization), or none at all, writes nothing.
-      if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
-        await this.reopenWithSpokenLanguageMode(existing, declaredLanguageMode);
-      }
-
-      // TASK-1020 D-6 — consent is deliberately NOT (re-)recorded here.
-      // `ensureConsultationConsent` GRANTS every purpose that has no active grant (it is the act of
-      // opening a NEW encounter, see `consent-grant.service.ts`), so calling it on a re-open would
-      // silently undo a revocation recorded since the first open — on every retry and reconnect.
-      // Leaving it out is what honours that revocation: PatientConsentGuard refuses the gated
-      // calls. A new encounter (a new `externalRef`, or a follow-up) takes the create path and
-      // records consent there.
-
-      this.broadcastSysEvent(SysEventType.ResourceViewed, {
-        resourceId: existing.id,
-        data: { action: 'getOrCreate', found: true },
-      });
-      const withRelations = await this.consultationRepository.findWithRelations(existing.id);
-      return ConsultationDtoMapper.toResponse(withRelations ?? existing, false);
     }
 
+    const open = await this.consultationRepository.findOpenByKey(openKey);
+    if (open) {
+      const statedVisitType = resolveVisitTypeKey(visitTypes, tenantId, metadata, request.parentConsultationId);
+      const append = externalRef !== null || (statedVisitType === 'revisit' && Boolean((await this.encounters.currentEncounter(open))?.endedAt));
+      if (!append) return this.answerExisting(open, input);
+      try {
+        return await this.appendEncounter(open, input);
+      } catch (error) {
+        if (mayRetry && (error instanceof OptimisticConcurrencyException || isUniqueViolation(error))) {
+          return this.openEpisode(input, false);
+        }
+        throw error;
+      }
+    }
+
+    try {
+      return await this.createEpisode(input);
+    } catch (error) {
+      if (mayRetry && isUniqueViolation(error)) {
+        return this.openEpisode(input, false);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * An `open` that lands on an existing encounter. Nothing is persisted or dispatched: the
+   * consultation was opened with its own context and governing run, and re-opening it must not
+   * append a second copy of the client's PRE items or start a second run. Consent is not
+   * re-recorded either — that would silently undo a revocation on every retry (TASK-1020 D-6).
+   */
+  private async answerExisting(existing: ConsultationEntity, input: OpenEpisodeInput): Promise<ConsultationResponse> {
+    const { request, declaredLanguageMode } = input;
+    // The selection was authorized, but consultation-open dispatch fires on CREATE only, so there
+    // is no dispatch left to steer. Say so rather than let the caller believe their pick took
+    // effect — `GET /consultations/:id/workflow` reports what actually governs.
+    if (request.workflowDefinitionSlug) {
+      this.logger.log({
+        message: 'Workflow selection ignored — this consultation is already open and its governing engine was decided at its own open',
+        consultationId: existing.id,
+        requestedWorkflowDefinitionSlug: request.workflowDefinitionSlug,
+      });
+    }
+
+    // TASK-1004 — the one thing a re-open DOES change: an explicit, DIFFERENT spoken-language mode.
+    if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(existing)) !== declaredLanguageMode) {
+      await this.reopenWithSpokenLanguageMode(existing, declaredLanguageMode);
+    }
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, {
+      resourceId: existing.id,
+      data: { action: 'getOrCreate', found: true },
+    });
+    return this.respond(existing, false, false);
+  }
+
+  /**
+   * Append the next encounter to the open consultation of the key. Opening a new encounter is the
+   * consent event, as creating a consultation is, and the context the caller sent belongs to this
+   * visit, so both happen here; no workflow is dispatched (the consultation's governing run was
+   * decided at its own open).
+   */
+  private async appendEncounter(open: ConsultationEntity, input: OpenEpisodeInput): Promise<ConsultationResponse> {
+    const { tenantId, request, openContext, declaredLanguageMode, externalRef, metadata } = input;
+    const previousVersion = open.version;
+    // A second encounter is a follow-up by definition: the stated visit type when there is one,
+    // otherwise `revisit`.
+    const visitType = resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, open.id);
+    const { consultation } = await this.encounters.appendEncounter(open, {
+      visitType,
+      externalRef,
+      actor: input.userId ?? 'system',
+    });
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: consultation.id,
+      data: {
+        action: 'lifecycle',
+        event: 'encounter_appended',
+        encounterSeq: consultation.currentEncounterSeq,
+        previousVersion,
+        newVersion: consultation.version,
+      },
+    });
+    this.emitLifecycle(consultation, 'encounter_appended');
+
+    await this.recordOpenConsent(consultation);
+    if (request.context) {
+      await this.persistOpenContext(consultation.id, request.context, openContext);
+    }
+    if (declaredLanguageMode && normalizeStoredMode(readSpokenLanguageMode(consultation)) !== declaredLanguageMode) {
+      await this.reopenWithSpokenLanguageMode(consultation, declaredLanguageMode);
+    }
+    return this.respond(consultation, false, true);
+  }
+
+  /** No non-closed consultation for the key: a new one, with encounter 1. */
+  private async createEpisode(input: OpenEpisodeInput): Promise<ConsultationResponse> {
+    const { tenantId, userId, request, openContext, declaredLanguageMode, appointmentDate, metadata, externalRef, openKey } = input;
+
     // The LAST refusal before anything is written: would the workflow that is about to govern
-    // this consultation actually accept the context the caller sent?
-    //
-    // `assertContextConformsToSchema` above already checked the payload against the tenant's
-    // CURRENT pinned schema. That is a different question: a governing workflow whose trigger the
-    // author PINNED carries the schema it was published with, frozen with
-    // `additionalProperties: false`, and `interpreter_core_trigger` validates against exactly
-    // those bytes. So a tenant that publishes a new kind gets a 201 here and a run that dies on
-    // its first node — after the meter unit, the row and the PHI context items are written.
-    //
-    // Placed on the CREATE path only (the re-open branch returned above) and only where the
-    // answer is CONCLUSIVE — see `assertGoverningWorkflowAcceptsContext`.
+    // this consultation actually accept the context the caller sent? Only where the answer is
+    // CONCLUSIVE — see `assertGoverningWorkflowAcceptsContext`.
     await this.assertGoverningWorkflowAcceptsContext(tenantId, request, openContext);
 
-    // A genuinely NEW consultation consumes a monthly
-    // meter unit. Only the create branch is metered (returning an existing
-    // consultation does not). Kill-switch-gated; → 429 when over the cap.
+    // A genuinely NEW consultation consumes a monthly meter unit (kill-switch-gated; → 429 when
+    // over the cap). Returning or appending to an existing consultation does not.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyConsultations');
 
-    // TASK-1020 OD-4 — the parent: the caller's, when it named one (always wins); otherwise, for a
-    // consultation whose visit type resolves to `revisit`, the latest same-patient consultation of
-    // the same (tenant-local) day, ANY clinician — the morning visit a same-day return follows.
-    const parentConsultationId =
-      request.parentConsultationId ??
-      (resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, null) === 'revisit'
-        ? await this.deriveSameDayParent(tenantId, request.patientId, appointmentDate)
-        : null);
+    // The parent: the caller's, when it named one (always wins); otherwise the latest CLOSED
+    // consultation of the same key — the episode this return visit follows (D-7).
+    const parentConsultationId = request.parentConsultationId ?? (await this.consultationRepository.findLatestClosedByKey(openKey))?.id ?? null;
 
-    // Create new consultation
     const consultation = ConsultationFactory.CreateNewVisit({
       tenantId,
       patientId: request.patientId,
       appointmentDate,
-      doctorId: actingClinicianId,
+      doctorId: openKey.doctorId,
       departmentId: openContext.departmentId,
       metadata: metadata as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'],
-      // TASK-1020 D-2 — the encounter key, in its column. The metadata marker above is still
-      // written for every reader that predates the column.
+      // The first encounter's ref, kept on the row as well (the TASK-1020 column and its index).
       externalRef,
       spokenLanguageMode: declaredLanguageMode,
       createdBy: userId ?? undefined,
     });
-
-    // If a parent was named or derived, set it (for re-visits/referrals)
     if (parentConsultationId) {
       consultation.parentConsultationId = parentConsultationId;
     }
 
-    let saved: ConsultationEntity;
-    try {
-      saved = await this.consultationRepository.create(consultation);
-    } catch (error) {
-      // TASK-1020 D-2 — two opens racing on the same encounter: the partial unique index lets one
-      // insert win; the loser returns the winner's row exactly as a re-open would.
-      const winner =
-        externalRef && isUniqueViolation(error)
-          ? await this.findEncounterMatch(tenantId, request, appointmentDate, actingClinicianId, externalRef)
-          : null;
-      if (!winner) throw error;
-      const withRelations = await this.consultationRepository.findWithRelations(winner.id);
-      return ConsultationDtoMapper.toResponse(withRelations ?? winner, false);
-    }
+    const { consultation: saved } = await this.encounters.createConsultation(consultation, {
+      visitType: resolveVisitTypeKey(this.visitTypes ?? DEFAULT_VISIT_TYPE_SERVICE, tenantId, metadata, parentConsultationId),
+      externalRef,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
       data: { action: 'getOrCreate', created: true },
     });
+    this.emitLifecycle(saved, 'opened');
 
-    // ─── Consent ( owner directive, 2026-08-25) ───
-    //
-    // A doctor opening a consultation IS the consent event: the clinician is
-    // with the patient and attests, by that act, that the patient consented to
-    // every purpose. Grants are written here — inside the doctor's own request
-    // context, so `grantedBy` is the doctor and each row lands on the WORM
-    // ledger — because `POST /admin/consent-grants` requires
-    // `manage:ConsentGrant`, a TENANT-ADMIN ability no clinician holds. Before
-    // this, a doctor could open a consultation they were then forbidden to
-    // record and forbidden to fix (403 `Missing permissions: manage:ConsentGrant`).
-    //
-    // FAIL-CLOSED, unlike the best-effort workflow dispatch below. Once opening
-    // a consultation MEANS consent was recorded, a consultation whose consent
-    // did not persist is not "opened with a degraded feature" — it is a
-    // consultation the clinician cannot record and cannot repair. Failing here
-    // surfaces that immediately and retryably, instead of as a mystifying 403
-    // at the moment they press Record.
-    if (!this.consentGrantService) {
-      this.logger.warn({
-        message: 'Consent grant service is NOT WIRED — recording this consultation will be refused by PatientConsentGuard',
-        consultationId: saved.id,
-      });
-    } else {
-      await this.consentGrantService.ensureConsultationConsent(saved.patientId);
-    }
+    await this.recordOpenConsent(saved);
 
     // TASK-951 §D-5 — write the validated context down, BEFORE dispatch. The warm-start
     // pre-summary reads `CASE_NOTE` items, so a graph dispatched first would warm-start on
@@ -1386,18 +1423,44 @@ export class ConsultationService extends BaseService implements IConsultationSer
       await this.persistOpenContext(saved.id, request.context, openContext);
     }
 
-    // the ONE place `WorkflowRun.trigger = 'consultation open'` is stamped.
-    // Fires only on CREATE: `getOrCreate`'s existing-consultation branch returns earlier, so a
-    // re-opened consultation is never dispatched twice. Best-effort by contract — the dispatch
-    // service swallows its own failures and returns `dispatched: false`, because a harness
-    // outage must never stop a clinician opening a consultation.
-    // day-1: which engine governs a consultation must be OBSERVABLE. Every outcome
-    // including "the dispatcher is not wired" and "no tenant workflow is assigned" — is logged.
-    // Both of those were previously SILENT, so a consultation that quietly fell through to the
-    // default engine was indistinguishable from one the dispatcher had never been asked about.
-    // TASK-951 §D-6 — built from the VALIDATED kind keys rather than from `request.context`
-    // wholesale. The two are the same set whenever validation passed (it throws on any problem),
-    // so this is not a filter so much as a statement: only what the tenant's own schema admits
+    await this.dispatchOnCreate(saved, input);
+
+    return this.respond(saved, true, false);
+  }
+
+  /**
+   * ─── Consent (owner directive, 2026-08-25) ───
+   *
+   * A doctor opening a consultation (or a new encounter of one) IS the consent event: the
+   * clinician is with the patient and attests, by that act, that the patient consented to every
+   * purpose. Grants are written inside the doctor's own request context, so `grantedBy` is the
+   * doctor and each row lands on the WORM ledger.
+   *
+   * FAIL-CLOSED, unlike the best-effort workflow dispatch: a consultation whose consent did not
+   * persist is one the clinician cannot record and cannot repair, so failing here surfaces that
+   * immediately and retryably instead of as a 403 at the moment they press Record.
+   */
+  private async recordOpenConsent(consultation: ConsultationEntity): Promise<void> {
+    if (!this.consentGrantService) {
+      this.logger.warn({
+        message: 'Consent grant service is NOT WIRED — recording this consultation will be refused by PatientConsentGuard',
+        consultationId: consultation.id,
+      });
+      return;
+    }
+    await this.consentGrantService.ensureConsultationConsent(consultation.patientId);
+  }
+
+  /**
+   * The ONE place `WorkflowRun.trigger = 'consultation open'` is stamped — on CREATE only, so a
+   * consultation is never dispatched twice. Best-effort by contract: the dispatch service swallows
+   * its own failures and returns `dispatched: false`, because a harness outage must never stop a
+   * clinician opening a consultation. Every outcome is logged, so which engine governs is
+   * observable.
+   */
+  private async dispatchOnCreate(saved: ConsultationEntity, input: OpenEpisodeInput): Promise<void> {
+    const { tenantId, userId, request, openContext } = input;
+    // TASK-951 §D-6 — built from the VALIDATED kind keys: only what the tenant's own schema admits
     // reaches the graph's trigger context.
     const authoredContext = ConsultationService.authoredContextOf(request.context, openContext.validatedKindKeys);
 
@@ -1406,105 +1469,83 @@ export class ConsultationService extends BaseService implements IConsultationSer
         message: 'Consultation workflow dispatch is NOT WIRED — the default loop governs by omission, not by decision',
         consultationId: saved.id,
       });
-    } else {
-      const dispatch = await this.workflowDispatchService.dispatchForConsultation({
-        consultationId: saved.id,
-        tenantId,
-        departmentId: saved.departmentId,
-        // TASK-950 — the ROW's clinician, not the `doctorId` PARAMETER. For a machine that
-        // identified its clinician by staff id the parameter carries no user at all, so reading
-        // it here would hand the harness `null` for a consultation that has a doctor. `saved`
-        // is the same value in every other case, so nothing else changes.
-        userId: userId ?? saved.doctorId,
-        externalPatientId: saved.patientId,
-        // Already authorized above; the dispatcher re-verifies rather than trusts.
-        workflowDefinitionSlug: request.workflowDefinitionSlug,
-        // TASK-891 — threaded in, not re-read by the dispatcher: it derives the reserved
-        // `visit-type:<key>` selector tag (OD-2/OD-3) from this, and dispatch is best-effort by
-        // contract, so a DB read inside it would change its failure profile. `saved` already
-        // carries this fact (set a few lines above), so no extra read is needed here either.
-        parentConsultationId: saved.parentConsultationId ?? null,
-        // TASK-951 §D-3 — the RECORDED visit type, read off the row rather than from
-        // `openContext`, so the dispatcher's selector tag is derived from exactly the value every
-        // LATER reader (summary, pre-summary, harness assemble, gate-edit mining) will read.
-        visitType: readRecordedVisitType(saved.metadata),
-        // TASK-951 §D-6 — the AUTHORED context, so `trigger.context.*` resolves to what the
-        // client actually sent. It rides `payload`, which the dispatcher strips every reserved
-        // identity key out of before forwarding — identity travels on `subject` and only there.
-        authoredContext: authoredContext ?? undefined,
-      });
-      this.logger.log({
-        message: dispatch.dispatched
-          ? 'Consultation governed by a tenant-authored workflow'
-          : 'Consultation governed by the default loop (no tenant workflow resolved)',
-        consultationId: saved.id,
-        departmentId: saved.departmentId ?? null,
-        dispatched: dispatch.dispatched,
-        source: dispatch.source,
-        workflowDefinitionSlug: dispatch.workflowDefinitionSlug,
-        runId: dispatch.runId,
-        skippedReason: dispatch.skippedReason,
-      });
+      return;
     }
-
-    const savedWithRelations = await this.consultationRepository.findWithRelations(saved.id);
-    return ConsultationDtoMapper.toResponse(savedWithRelations ?? saved, true);
+    const dispatch = await this.workflowDispatchService.dispatchForConsultation({
+      consultationId: saved.id,
+      tenantId,
+      departmentId: saved.departmentId,
+      // TASK-950 — the ROW's clinician, not the `doctorId` PARAMETER: for a machine that identified
+      // its clinician by staff id the parameter carries no user at all.
+      userId: userId ?? saved.doctorId,
+      externalPatientId: saved.patientId,
+      // Already authorized; the dispatcher re-verifies rather than trusts.
+      workflowDefinitionSlug: request.workflowDefinitionSlug,
+      // TASK-891 — threaded in, not re-read by the dispatcher (dispatch is best-effort by contract).
+      parentConsultationId: saved.parentConsultationId ?? null,
+      // TASK-951 §D-3 — the RECORDED visit type, read off the row, so the dispatcher's selector tag
+      // is derived from exactly the value every later reader will read.
+      visitType: readRecordedVisitType(saved.metadata),
+      // TASK-951 §D-6 — the AUTHORED context, so `trigger.context.*` resolves to what the client sent.
+      authoredContext: authoredContext ?? undefined,
+    });
+    this.logger.log({
+      message: dispatch.dispatched
+        ? 'Consultation governed by a tenant-authored workflow'
+        : 'Consultation governed by the default loop (no tenant workflow resolved)',
+      consultationId: saved.id,
+      departmentId: saved.departmentId ?? null,
+      dispatched: dispatch.dispatched,
+      source: dispatch.source,
+      workflowDefinitionSlug: dispatch.workflowDefinitionSlug,
+      runId: dispatch.runId,
+      skippedReason: dispatch.skippedReason,
+    });
   }
 
   /**
-   * TASK-1020 D-2/D-3 — the consultation an `open` resolves to, or `null` to CREATE.
-   *
-   * WITH an encounter id (`externalRef`): match on `(tenant, patient, doctor, externalRef)`. The
-   * same ref is the same encounter (a retry, a reconnect, a broker restart); a NEW ref is a new
-   * encounter even when a same-day row exists — that is the same-day return visit. A ref this
-   * tenant already used for ANOTHER patient is 409 `EXTERNAL_REF_CONFLICT`: one EMR event is one
-   * patient's encounter, and silently opening a second row under it would split its documentation.
-   *
-   * WITHOUT one: the legacy `(tenant, patient, appointmentDate, doctor)` key, newest match — except
-   * that a caller naming a `parentConsultationId` is explicitly following a visit up. Naming the
-   * match itself, or a row that is neither the match nor the match's own parent, creates a child;
-   * naming the match's own parent is a retry of that follow-up's open and returns it. A TERMINAL
-   * match is returned as it is (`recordable: false` on the response, OD-3 (a)) — never forked,
-   * because a retry after sign-off must not spawn a spurious visit.
+   * A lifecycle change made by `open` (a new consultation, an appended encounter), on the one
+   * in-process event the lifecycle publisher fans out (SSE replay, Redis). The stream sequence is
+   * the publisher's to assign; `seq` here is a placeholder.
    */
-  private async findEncounterMatch(
-    tenantId: string,
-    request: OpenConsultationRequest,
-    appointmentDate: Date,
-    doctorId: string,
-    externalRef: string | null,
-  ): Promise<ConsultationEntity | null> {
-    if (externalRef) {
-      const sameRef = await this.consultationRepository.findByExternalRef(tenantId, externalRef);
-      const own = sameRef.find((row) => row.patientId === request.patientId && row.doctorId === doctorId);
-      if (own) return own;
-      if (sameRef.some((row) => row.patientId !== request.patientId)) {
-        throw new ConflictException({
-          code: EXTERNAL_REF_CONFLICT_CODE,
-          message: `externalRef '${externalRef}' already identifies an encounter of a different patient in this tenant. An encounter id belongs to exactly one patient; send this visit's own id.`,
-        });
-      }
-      return null;
+  private emitLifecycle(consultation: ConsultationEntity, type: Extract<LifecycleEventType, 'opened' | 'encounter_appended'>): void {
+    const at = new Date().toISOString();
+    const payload: LifecycleChangedPayload = {
+      consultationId: consultation.id,
+      tenantId: consultation.tenantId,
+      userId: this.requestUserId ?? undefined,
+      timestamp: at,
+      event: {
+        type,
+        consultationId: consultation.id,
+        status: consultation.status as LifecycleChangedPayload['event']['status'],
+        processing: consultation.processing as LifecycleChangedPayload['event']['processing'],
+        encounterSeq: consultation.currentEncounterSeq,
+        version: consultation.version,
+        at,
+        seq: 0,
+      },
+    };
+    try {
+      this.eventEmitter.emit(ConsultationPipelineEvent.LifecycleChanged, payload);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Consultation lifecycle event could not be delivered',
+        consultationId: consultation.id,
+        type,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-
-    const match = await this.consultationRepository.findByUniqueKey(tenantId, request.patientId, appointmentDate, doctorId);
-    if (!match) return null;
-
-    const namedParent = request.parentConsultationId;
-    if (namedParent === match.id) return null;
-    if (namedParent && namedParent !== match.parentConsultationId) return null;
-    return match;
   }
 
   /**
-   * TASK-1020 OD-4 — the visit a same-day `revisit` follows when the caller named none: the LATEST
-   * consultation of the same tenant, patient and (tenant-local) appointment day, by any clinician.
-   * Called before the new row exists, so it can never be its own parent. `null` when the patient
-   * has no earlier visit that day — a stated revisit with nothing to follow stays parentless.
+   * A single-consultation answer: the fresh row with its relations, plus the episode facts
+   * (encounters, approval, auto-close deadline, reopen policy).
    */
-  private async deriveSameDayParent(tenantId: string, patientId: string, appointmentDate: Date): Promise<string | null> {
-    const sameDay = await this.consultationRepository.findByPatientAndDate(tenantId, patientId, appointmentDate);
-    return sameDay.length > 0 ? sameDay[sameDay.length - 1].id : null;
+  private async respond(consultation: ConsultationEntity, isNew: boolean, encounterAppended?: boolean): Promise<ConsultationResponse> {
+    const fresh = (await this.consultationRepository.findWithRelations(consultation.id)) ?? consultation;
+    const view = await this.encounters.lifecycleView(fresh);
+    return ConsultationDtoMapper.toResponse(fresh, isNew, view, encounterAppended === undefined ? undefined : { encounterAppended });
   }
 
   /**
@@ -1560,7 +1601,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { id: consultation.id },
     });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    return ConsultationDtoMapper.toResponseWithContext(consultation, false, await this.encounters.lifecycleView(consultation));
   }
 
   /**
@@ -1593,7 +1634,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       data: { id: consultation.id, withRelations: true },
     });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    return ConsultationDtoMapper.toResponseWithContext(consultation, false, await this.encounters.lifecycleView(consultation));
   }
 
   /**
@@ -1965,290 +2006,46 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // session state machine
+  // Lifecycle commands
   //
-  // `Consultation.status` is now the ONLY lifecycle tracker (the legacy
-  // `metadata.status` JSON key is deleted — see the removed `readStatus`/
-  // `transitionStatus` this replaces). Every write goes through
-  // `ConsultationEntity.transitionTo`, the single guarded path that
-  // consults the legality matrix
-
-  // `transitionTo` itself handles the idempotent self-transition
-  // no-op; the two terminal-close methods add one further no-op check
-  // (already-terminal → already-terminal is not a self-pair in the
-  // matrix's sense, since CLOSED_COMPLETE and CLOSED_INCOMPLETE are two
-  // distinct targets — see `closeConsultation`).
+  // The lifecycle (start / pause / stop / approve / close / reopen) belongs to
+  // `IConsultationLifecycleService`. The methods below are the older entry
+  // points the API still routes to for one release; each delegates and answers
+  // with the consultation as it now stands.
   // ============================================
 
   /**
-   * Illegal `transitionTo` calls throw a bare domain `BusinessException`
-   * (packages/domains has no HTTP awareness). Surfaced to callers as
-   * `409 Conflict` — the RFC-correct code for "this write conflicts with
-   * the resource's current state" — via the generic
-   * `ExceptionInterceptor` `BaseException` branch, which today maps to
-   * `500` for the whole `BusinessException` family (most of which is
-   * ordinary entity-validation, not a conflict). Catching it HERE, at the
-   * one call site this ticket controls, avoids reclassifying every other
-   * `BusinessException` use in the codebase.
+   * Deprecated: there is no PRIMED state any more — an open consultation is ready to record. A
+   * no-op that answers the consultation as it is (the consent decorator on the route still runs).
    */
-  private applyTransition(entity: ConsultationEntity, next: ConsultationStatus, actor: string, reason: string): boolean {
-    try {
-      return entity.transitionTo(next, actor, reason);
-    } catch (err) {
-      if (err instanceof BusinessException) {
-        // TASK-1020 §7.1 — coded, so a client can branch on the refusal rather than parse prose.
-        throw new ConflictException({ code: CONSULTATION_TRANSITION_ILLEGAL_CODE, message: err.message, from: entity.status, to: next });
-      }
-      throw err;
-    }
+  async primeConsultation(id: string, _expectedVersion?: number): Promise<ConsultationResponse> {
+    return this.respond(await this.findOwned(id), false);
   }
 
-  /**
-   * Best-effort WORM append for a ROUTINE transition ( pitfall
-   * 6): a failure here is logged but never rolls back the (already
-   * persisted) status write — only the `SIGNED` write itself
-   * (`summary.service.ts#approveSummary`) stays fail-closed.
-   */
-  private async appendTransitionAudit(input: {
-    tenantId: string;
-    consultationId: string;
-    action: HarnessAuditAction;
-    actor: string;
-    /** TASK-972 Lane 1 — the CREDENTIAL that submitted the transition, when it is not the actor. */
-    submittedBy?: string | null;
-  }): Promise<void> {
-    if (!this.harnessAuditService) return;
-    try {
-      await this.harnessAuditService.append({
-        tenantId: input.tenantId,
-        consultationId: input.consultationId,
-        action: input.action,
-        modelName: 'session-lifecycle',
-        modelVersion: 'v1',
-        sensorScores: {},
-        citations: [],
-        clinicianId: input.actor === 'system' ? null : input.actor,
-        // `clinicianId` is WHOSE transition this is; `createdBy` is WHICH credential submitted
-        // it. They differ only when a machine acts for a named clinician (TASK-972 Lane 1).
-        createdBy: input.submittedBy ?? (input.actor === 'system' ? null : input.actor),
-      });
-    } catch (error) {
-      this.logger.warn({
-        message: 'WORM append failed for a routine session transition (non-fatal, status write not rolled back)',
-        consultationId: input.consultationId,
-        action: input.action,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  /**
-   * `OPEN → PRIMED` — the first checkpoint of the session state machine.
-   * Idempotent (no-op if already `PRIMED`, per `transitionTo`).
-   *
-   * Consent is NOT asserted here: `POST :id/prime`
-   * (apps/api) carries `@RequiresConsent`, the single choke point
-   * that already runs before this method is reached — duplicating the
-   * check here would be a second source of truth for the same decision.
-   */
-  async primeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
-    const tenantId = this.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
-    const consultation = await this.consultationRepository.findWithRelations(id);
-    if (!consultation) {
-      throw new NotFoundException('Consultation not found');
-    }
-    assertEqualTenants(consultation, { tenantId });
-
-    const actor = this.requestUserId ?? 'system';
-    const applied = this.applyTransition(consultation, ConsultationStatus.PRIMED, actor, 'primeConsultation');
-    if (!applied) {
-      return ConsultationDtoMapper.toResponseWithContext(consultation);
-    }
-
-    if (this.requestUserId) {
-      consultation.updatedBy = this.requestUserId;
-    }
-    // The client-supplied `If-Match`/`@ExpectedVersion()` CAS predicate, when
-    // present (the `@RequiresIfMatch()`-gated route always supplies one) —
-    // otherwise the freshly-read row version (defense-in-depth against a
-    // concurrent write landing between our read and write).
-    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: id,
-      data: { action: 'primeConsultation', status: ConsultationStatus.PRIMED },
-    });
-    await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_PRIMED, actor });
-
-    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
-    // bumps _version, so returning `consultation` handed the caller version N while the
-    // row was already at N+1 — any client chaining If-Match from this response got an
-    // immediate 412. Mirrors the house pattern in department.service.ts:318.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
-  }
-
-  /**
-   * Close a consultation. The target terminal is DERIVED from the current
-   * status, per :
-   *   - `SIGNED → CLOSED_COMPLETE` (a human gave clinical feedback)
-   *   - `TIMED_OUT → CLOSED_INCOMPLETE` (manual close before the sweep fires)
-   * Any other predecessor is illegal (→ 409) — "how do I close an unsigned,
-   * still-active consultation?" is answered by the matrix itself: you
-   * cannot, until it either signs or times out. Idempotent: already
-   * `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` (or the superseded, dead
-   * `CLOSED`) short-circuits with no write.
-   */
+  /** Delegates to `IConsultationLifecycleService.close`. */
   async closeConsultation(
     id: string,
     expectedVersion?: number,
     options?: { clinicianUserId?: string; caller?: ClinicalCaller },
   ): Promise<ConsultationResponse> {
-    const tenantId = this.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
-    const consultation = await this.consultationRepository.findWithRelations(id);
-    if (!consultation) {
-      throw new NotFoundException('Consultation not found');
-    }
-    assertEqualTenants(consultation, { tenantId });
-
-    if (
-      consultation.status === ConsultationStatus.CLOSED_COMPLETE ||
-      consultation.status === ConsultationStatus.CLOSED_INCOMPLETE ||
-      consultation.status === ConsultationStatus.CLOSED
-    ) {
-      return ConsultationDtoMapper.toResponseWithContext(consultation);
-    }
-
-    // TASK-972 Lane 1 — WHOSE close this is, and WHICH credential submitted it. Resolved AFTER
-    // the terminal short-circuit above: an already-closed consultation is answered, not re-ruled.
-    const { clinicianId: actor, caller: submitter } = await this.resolveAttributedActor(tenantId, options?.clinicianUserId, options?.caller);
-    const target = consultation.status === ConsultationStatus.SIGNED ? ConsultationStatus.CLOSED_COMPLETE : ConsultationStatus.CLOSED_INCOMPLETE;
-    const worm =
-      target === ConsultationStatus.CLOSED_COMPLETE ? HarnessAuditAction.SESSION_CLOSED_COMPLETE : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
-
-    // Always applies (from !== target — the terminal-idempotency check above
-    // already ruled out every self-pair), so no `applied` guard is needed.
-    this.applyTransition(consultation, target, actor, 'closeConsultation');
-
-    consultation.updatedBy = actor;
-    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: id,
-      responsibleEntityId: actor,
-      data: {
-        action: 'closeConsultation',
-        status: target,
-        actorPrincipalId: submitter.principalId,
-        actorCredentialClass: submitter.credentialClass,
-      },
+    const caller = toLifecycleCaller(options?.caller);
+    return this.lifecycle.close(id, {
+      ...(expectedVersion === undefined ? {} : { expectedVersion }),
+      ...(options?.clinicianUserId === undefined ? {} : { clinicianUserId: options.clinicianUserId }),
+      ...(caller ? { caller } : {}),
     });
-    await this.appendTransitionAudit({ tenantId, consultationId: id, action: worm, actor, submittedBy: submitter.principalId || actor });
-
-    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
-    // bumps _version, so returning `consultation` handed the caller version N while the
-    // row was already at N+1 — any client chaining If-Match from this response got an
-    // immediate 412. Mirrors the house pattern in department.service.ts:318.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
-   * TASK-972 Lane 1 — the clinician a lifecycle write is attributed to, and the credential that
-   * submitted it. Named `resolveAttributedActor` rather than `resolveActingClinician` because
-   * that name is already taken here by TASK-950's OPEN-time resolver, which answers a different
-   * question (who the consultation BELONGS to, from a context payload). The same three steps as
-   * `SummaryService.resolveActingClinician`, and
-   * deliberately the same implementation (`consultation/summary/clinician-attribution.ts`): a
-   * clinician who may sign a note and a clinician who may close its session are the same person,
-   * and two copies of that rule would drift.
+   * Delegates to `IConsultationLifecycleService.reopen`. Without an `If-Match` version (a
+   * service-to-service call) the CAS runs on the version just read.
    */
-  private async resolveAttributedActor(
-    tenantId: string,
-    named: string | undefined,
-    caller: ClinicalCaller | undefined,
-  ): Promise<{ clinicianId: string; caller: ClinicalCaller }> {
-    const serviceAccount = this.requestServiceAccount;
-    const effectiveCaller: ClinicalCaller =
-      caller ??
-      (serviceAccount
-        ? { credentialClass: 'service-account', principalId: serviceAccount.id }
-        : { credentialClass: 'jwt', principalId: this.requestUserId ?? '' });
-
-    const clinicianId = await resolveAttributedClinician({
-      named,
-      caller: effectiveCaller,
-      tenantId,
-      requestUser: this.requestUser,
-      readTenantRoles: tenantRoleReaderFor(this.userRoleAssignmentRepository),
+  async reopenConsultation(id: string, expectedVersion?: number, options?: { reason?: string }): Promise<ConsultationResponse> {
+    const version = expectedVersion ?? (await this.findOwned(id)).version;
+    return this.lifecycle.reopen(id, {
+      expectedVersion: version,
+      ...(options?.reason === undefined ? {} : { reason: options.reason }),
     });
-
-    if (clinicianId !== this.requestUserId) {
-      await assertAttributedClinicianInTenant(
-        {
-          userRoleAssignmentRepository: this.userRoleAssignmentRepository,
-          userDepartmentRepository: this.userDepartmentRepository,
-          userRepository: this.userRepository,
-        },
-        clinicianId,
-        tenantId,
-      );
-    }
-
-    return { clinicianId, caller: effectiveCaller };
-  }
-
-  /**
-   * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
-   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE` (; any
-   * other predecessor is illegal (→ 409). Idempotent: already `REOPENED`
-   * is a self-transition, handled by `transitionTo` itself.
-   *
-   * Authority unchanged ( Q2, preserved identically for both
-   * terminal-closed variants): `verifyConsultationOwnership` at the
-   * controller admits the assigned doctor OR any caller holding
-   * `manage:Consultation` — this ticket changes *legality*, not *who may act*.
-   */
-  async reopenConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
-    const tenantId = this.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
-    const consultation = await this.consultationRepository.findWithRelations(id);
-    if (!consultation) {
-      throw new NotFoundException('Consultation not found');
-    }
-    assertEqualTenants(consultation, { tenantId });
-
-    const actor = this.requestUserId ?? 'system';
-    const applied = this.applyTransition(consultation, ConsultationStatus.REOPENED, actor, 'reopenConsultation');
-    if (!applied) {
-      return ConsultationDtoMapper.toResponseWithContext(consultation);
-    }
-
-    if (this.requestUserId) {
-      consultation.updatedBy = this.requestUserId;
-    }
-    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: id,
-      data: { action: 'reopenConsultation', status: ConsultationStatus.REOPENED },
-    });
-    await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_REOPENED, actor });
-
-    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
-    // bumps _version, so returning `consultation` handed the caller version N while the
-    // row was already at N+1 — any client chaining If-Match from this response got an
-    // immediate 412. Mirrors the house pattern in department.service.ts:318.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
@@ -2324,7 +2121,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // while the row was already at N+1 — and any client chaining `If-Match`
     // from this response would get an immediate 412. Same fix as
     // `reopenConsultation` above.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
+    return ConsultationDtoMapper.toResponseWithContext(updated, false, await this.encounters.lifecycleView(updated));
   }
 
   /**
@@ -2365,262 +2162,39 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
   }
 
-  // ============================================
-  // Recording lifecycle
-  //
-  // `startRecording`/`stopRecording` route through the same
-  // `transitionTo` legality matrix as every other lifecycle write.
-  // `PRIMED → RECORDING` carries the ONE flagged precondition in the whole
-  // matrix (`consultation.state.requirePrimedBeforeRecording`, default
-  // OFF — Task 9 / R1): OFF logs the would-be violation and lets
-  // a legacy caller through unchanged; ON enforces via the matrix itself
-  // (illegal → 409). `stopRecording` now transitions to `DRAINING`, not
-  // `OPEN` — the previous behaviour erased the fact that capture ever
-  // happened ( A-13-adjacent finding). The
-  // LiveDocumentationService session is started/stopped by the controller
-  // around these calls.
-  // ============================================
-
   /**
-   * Flip the consultation's `status` column `PRIMED → RECORDING`.
-   *
-   * TASK-1001 — when the request names the STT streaming session the recording binds to
-   * (`options.sttSessionId`), that session must still be LIVE. A client that retries `start` can
-   * have its OLDER `recording/start` land after the newer one completed, naming a session it has
-   * since closed; binding it would leave live documentation subscribed to a session that never
-   * publishes again. Such a request is refused 409 {@link STT_SESSION_NOT_ACTIVE_CODE} before
-   * anything is written. Existence and tenancy are resolved first, so a foreign id stays a 404.
+   * Deprecated alias of `POST :id/start`: delegates to `IConsultationLifecycleService.start` and
+   * answers with the consultation.
    */
   async startRecording(id: string, options: StartRecordingOptions = {}): Promise<ConsultationResponse> {
-    const tenantId = this.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-
-    const consultation = await this.consultationRepository.findWithRelations(id);
-    if (!consultation) {
-      throw new NotFoundException('Consultation not found');
-    }
-    assertEqualTenants(consultation, { tenantId });
-
-    if (options.sttSessionId) {
-      await this.assertSttSessionLive(id, options.sttSessionId, tenantId);
-    }
-
-    const actor = this.requestUserId ?? 'system';
-    const requirePrimed = this.tenantSettings?.resolvePlatform<boolean>(CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY).value === true;
-
-    // TASK-1020 D-4 — signed (or otherwise closed-to-recording) documentation is never recorded
-    // over, whatever the kill-switch says: SIGNED / CLOSED_COMPLETE / TIMED_OUT / REOPENED have no
-    // edge to RECORDING, and the switch-OFF bypass below used to write RECORDING onto them anyway.
-    // The bypass now covers exactly the legacy case it exists for: `OPEN` with no prior `prime`.
-    if (consultation.status !== ConsultationStatus.OPEN && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
-      throw new ConflictException({
-        code: CONSULTATION_NOT_RECORDABLE_CODE,
-        message: `Consultation ${id} is ${consultation.status} and cannot be recorded. Open a new consultation for a new visit (a new externalRef, or parentConsultationId naming this one).`,
-        status: consultation.status,
-      });
-    }
-
-    if (!requirePrimed && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
-      // grep-gate NOTE — Kill-switch OFF: this is the ONE matrix
-      // edge this ticket lets bypass (every other transition is enforced
-      // unconditionally from day one — Task 9 step 4). Log the
-      // would-be violation and write RECORDING directly (via the deprecated
-      // setter, NOT
-      // `transitionTo` — the matrix genuinely does not permit this pair,
-      // so going through `transitionTo` would throw regardless of the
-      // flag) so a legacy caller with no prior `prime` call keeps working
-      // unchanged.
-      this.logger.warn({
-        message: 'recording/start reached without PRIMED — kill-switch OFF, proceeding (would 409 if ON)',
-        consultationId: id,
-        currentStatus: consultation.status,
-      });
-      consultation.status = ConsultationStatus.RECORDING;
-    } else {
-      this.applyTransition(consultation, ConsultationStatus.RECORDING, actor, 'startRecording');
-    }
-
-    if (this.requestUserId) {
-      consultation.updatedBy = this.requestUserId;
-    }
-    const expectedVersion = consultation.version;
-    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
-    await this.completionTimeout?.cancel(id);
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: id,
-      data: { action: 'startRecording', status: ConsultationStatus.RECORDING },
+    await this.lifecycle.start(id, {
+      sttSessionId: options.sttSessionId,
+      supersedeByDurableBinding: options.supersedeByDurableBinding,
     });
-
-    if (options.sttSessionId && options.supersedeByDurableBinding) {
-      await this.supersedeByDurableBinding(id, tenantId, options.sttSessionId);
-    }
-
-    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
-    // bumps _version, so returning `consultation` handed the caller version N while the
-    // row was already at N+1 — any client chaining If-Match from this response got an
-    // immediate 412. Mirrors the house pattern in department.service.ts:318.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
+    return this.respond(await this.findOwned(id), false);
   }
 
   /**
-   * TASK-1001 — refuse (409) an STT session apps/stt reports as not `active`, or does not know at
-   * all (404: removed, idle-reaped, or never created). apps/stt holds live sessions in memory, so
-   * its answer is the authority on liveness.
-   *
-   * A lookup that FAILS (transport error, apps/stt down) proceeds exactly as before, logged: this
-   * guard refuses a session it KNOWS is stale, never one it merely could not check — an STT outage
-   * must not turn into a refused recording whose context-driven live note would still work.
-   *
-   * It cannot tell whether the session was opened for THIS consultation: apps/stt does not echo the
-   * `consultationId` a session was created with, and the `TranscriptionJob` row that records it is
-   * best-effort bookkeeping, so its absence proves nothing.
-   */
-  private async assertSttSessionLive(consultationId: string, sttSessionId: string, tenantId: string): Promise<void> {
-    if (!this.streamingSessions) return;
-    let status: string;
-    try {
-      const session = await this.streamingSessions.getSessionStatus(sttSessionId, tenantId);
-      status = session?.status ?? 'unknown';
-    } catch (error) {
-      this.logger.warn({
-        message: 'recording/start could not ask apps/stt whether the STT session is live — binding it unchecked',
-        consultationId,
-        sttSessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-    if (status === 'active') return;
-
-    this.logger.warn({
-      message: 'recording/start refused: the STT session it names is not live (a stale or superseded start)',
-      consultationId,
-      sttSessionId,
-      sttSessionStatus: status,
-    });
-    throw new ConflictException({
-      code: STT_SESSION_NOT_ACTIVE_CODE,
-      message: `STT streaming session ${sttSessionId} is not active (${status}); it was not bound to this recording. Create a new STT streaming session and start recording with it.`,
-      sttSessionId,
-      sttSessionStatus: status,
-    });
-  }
-
-  /**
-   * Supersede: exactly one live STT session per consultation, last writer wins,
-   * for a start whose caller holds no in-process binding to replace (a restarted gateway, another
-   * replica, live documentation switched off).
-   *
-   * The durable binding is the consultation's open STREAMING `TranscriptionJob` rows: each names a
-   * session opened for this consultation. A row is superseded only when apps/stt reports its session
-   * `active` (rows are best-effort and can outlive their session) and only when it is OLDER than the
-   * new session's own row, so two racing starts can never supersede each other. The listener
-   * finalizes each one through the normal teardown, so its recording is stored.
-   *
-   * Never throws: a supersede that cannot be decided leaves the old session to its own idle reaper,
-   * exactly as before, and never fails the start that is already persisted.
-   */
-  private async supersedeByDurableBinding(consultationId: string, tenantId: string, sttSessionId: string): Promise<void> {
-    if (!this.transcriptionJobs || !this.streamingSessions) return;
-    const streamingSessions = this.streamingSessions;
-
-    let rows: Awaited<ReturnType<TranscriptionJobRepository['findAll']>>;
-    try {
-      rows = await this.transcriptionJobs.findAll({
-        // STREAMING rows carry no transcript ciphertext, so this read decrypts nothing.
-        filters: { consultationId, jobType: TranscriptionJobType.STREAMING, completedAt: null } as never,
-        sort: [{ createdAt: 'desc' }],
-      });
-    } catch (error) {
-      this.logger.warn({
-        message: 'recording/start could not read the STT sessions bound to this consultation — none superseded',
-        consultationId,
-        sttSessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    }
-
-    const own = rows.find((row) => row.streamSessionId === sttSessionId);
-    const candidates = new Set<string>();
-    for (const row of rows) {
-      if (!row.streamSessionId || row.streamSessionId === sttSessionId) continue;
-      if (own && row.createdAt > own.createdAt) continue;
-      candidates.add(row.streamSessionId);
-    }
-
-    const live = await Promise.all(
-      [...candidates].map(async (candidate) => {
-        try {
-          return (await streamingSessions.getSessionStatus(candidate, tenantId))?.status === 'active' ? candidate : null;
-        } catch (error) {
-          this.logger.warn({
-            message: 'recording/start could not ask apps/stt whether an older STT session is live — not superseded',
-            consultationId,
-            sttSessionId: candidate,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return null;
-        }
-      }),
-    );
-
-    for (const supersededSessionId of live) {
-      if (!supersededSessionId) continue;
-      const event: SttSessionSupersededEvent = { tenantId, consultationId, supersededSessionId, supersedingSessionId: sttSessionId };
-      this.logger.log({ message: 'STT session superseded by a newer recording/start (durable binding)', ...event });
-      try {
-        this.eventEmitter.emit(STT_SESSION_SUPERSEDED_EVENT, event);
-      } catch (error) {
-        this.logger.warn({
-          message: 'STT session superseded event could not be delivered — the old session ends by its own idle reaper',
-          ...event,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  }
-
-  /**
-   * Flip the consultation's `status` column `RECORDING → DRAINING` when
-   * capture stops (manual stop, or forcing this same edge on
-   * mid-capture consent revocation). The harness later promotes a drained
-   * consult to `DRAFT_PENDING_SENSORS`/`PENDING_REVIEW` (`persistDraft`).
+   * Deprecated alias of `POST :id/stop`: delegates to `IConsultationLifecycleService.stop` without
+   * waiting for the final transcript (the alias never waited), and answers with the consultation.
    */
   async stopRecording(id: string): Promise<ConsultationResponse> {
+    await this.lifecycle.stop(id, { waitForFinal: false });
+    return this.respond(await this.findOwned(id), false);
+  }
+
+  /** The consultation of the caller's tenant, or 404 (400 without a tenant). */
+  private async findOwned(id: string): Promise<ConsultationEntity> {
     const tenantId = this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-
     const consultation = await this.consultationRepository.findWithRelations(id);
     if (!consultation) {
       throw new NotFoundException('Consultation not found');
     }
     assertEqualTenants(consultation, { tenantId });
-
-    const actor = this.requestUserId ?? 'system';
-    this.applyTransition(consultation, ConsultationStatus.DRAINING, actor, 'stopRecording');
-
-    if (this.requestUserId) {
-      consultation.updatedBy = this.requestUserId;
-    }
-    const expectedVersion = consultation.version;
-    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
-
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: id,
-      data: { action: 'stopRecording', status: ConsultationStatus.DRAINING },
-    });
-
-    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
-    // bumps _version, so returning `consultation` handed the caller version N while the
-    // row was already at N+1 — any client chaining If-Match from this response got an
-    // immediate 412. Mirrors the house pattern in department.service.ts:318.
-    return ConsultationDtoMapper.toResponseWithContext(updated);
+    return consultation;
   }
 }
 
