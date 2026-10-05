@@ -87,13 +87,13 @@ describe('InspectorPanel', () => {
   it('Task 19: also renders the PromptTemplatePicker below the raw JSON editor when there is no config schema', async () => {
     stubPromptTemplatesFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    expect(await screen.findByText('Hope Prompt')).toBeTruthy();
+    expect(await screen.findByText('Prompt')).toBeTruthy();
   });
 
   it('TASK-890: the deep link targets /prompt-templates?template=<id> once a template is bound (the shared picker`s quick view)', async () => {
     stubPromptTemplatesFetch();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true, promptTemplateId: 't-1' })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
-    const link = (await screen.findByRole('link', { name: /open in Hope Prompts/i })) as HTMLAnchorElement;
+    const link = (await screen.findByRole('link', { name: /open in Prompts/i })) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('/prompt-templates?template=t-1');
   });
 
@@ -103,7 +103,7 @@ describe('InspectorPanel', () => {
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
     if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
-    const trigger = await screen.findByLabelText('Hope Prompt');
+    const trigger = await screen.findByLabelText('Prompt');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     await waitFor(() => expect(screen.getByRole('option', { name: 'Discharge summary' })).toBeTruthy());
     // See prompt-template-picker.test.tsx for why `click`, not `pointerUp`, is the activation
@@ -118,7 +118,7 @@ describe('InspectorPanel', () => {
     // The schema's own generic string control ("Prompt Template Id") renders it — the Task 19
     // section (labeled exactly "Prompt template") never doubles up on the same key.
     expect(screen.getByText(/^Prompt Template Id/)).toBeTruthy();
-    expect(screen.queryByText('Hope Prompt')).toBeNull();
+    expect(screen.queryByText('Prompt')).toBeNull();
   });
 
   it('0 axe violations with a schema-backed node selected', async () => {

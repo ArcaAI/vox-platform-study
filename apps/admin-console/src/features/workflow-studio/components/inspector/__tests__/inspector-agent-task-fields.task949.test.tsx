@@ -69,10 +69,10 @@ describe('TASK-949 L2 — task-correct editable surface', () => {
     // Rendered outside the schema (its path is not a descriptor), so `withheld` cannot reach it
     // and it needs its own check -- found by driving the real app, not by the suite.
     const llm = renderNode(agentNode('gen-summary'), [LLM_AGENT]);
-    expect(llm.container.textContent).toContain('Hope Prompt');
+    expect(llm.container.textContent).toContain('Prompt');
     llm.unmount();
     const asr = renderNode(agentNode('realtime-transcription'), [ASR_AGENT]);
-    expect(asr.container.textContent).not.toContain('Hope Prompt');
+    expect(asr.container.textContent).not.toContain('Prompt');
   });
 
   it('keeps the task-neutral fields for every task', () => {

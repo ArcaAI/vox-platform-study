@@ -142,7 +142,7 @@ describe('DD-11 prompt pin — round-trip survival', () => {
     const onConfigChange = vi.fn();
     renderWithProviders(<InspectorPanel tab="config" onTabChange={vi.fn()} node={node()} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
 
-    const trigger = await screen.findByLabelText('Hope Prompt');
+    const trigger = await screen.findByLabelText('Prompt');
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
     fireEvent.click(await screen.findByRole('option', { name: 'Discharge' }));
 
