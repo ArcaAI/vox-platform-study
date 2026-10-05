@@ -2,6 +2,7 @@ import {
   AiProviderConnectionServiceModule,
   EntitlementsServiceModule,
   OriginRegistryServiceModule,
+  TenantLockModule,
   TtsAgentResolverServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
@@ -38,6 +39,8 @@ import { TtsWsGateway } from './tts-ws.gateway';
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
+    // TASK-1043 — `InternalTenantLockGuard` on the internal TTS controller needs the lock service.
+    TenantLockModule,
     // supplies `IOriginRegistry` to `TtsWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is
     // the only place the allow-list reaches the socket path. The gateway

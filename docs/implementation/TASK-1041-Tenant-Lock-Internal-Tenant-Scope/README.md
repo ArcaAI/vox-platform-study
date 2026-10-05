@@ -157,3 +157,4 @@ No migration, no API surface change, no artifact regeneration.
 |---|---|
 | 2026-10-05 | Ticket created; plan + owner decisions drafted |
 | 2026-10-05 | Owner go (option A). TDD RED → GREEN, fix in `TenantLockService`, live before/after + e2e on the test infra; status Review |
+| 2026-10-05 | OD-4 (unauthenticated restore-lock oracle on `/internal/*`) split out and fixed as TASK-1043 |

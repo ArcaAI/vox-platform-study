@@ -13,6 +13,7 @@ import { ApiExcludeController, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * AgentInternalController — `GET /internal/agents/resolve` (TASK-863 §3.4), the harness's
@@ -46,7 +47,7 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 @ApiExcludeController()
 @ApiTags('internal-agents')
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/agents')
 export class AgentInternalController {
   constructor(
