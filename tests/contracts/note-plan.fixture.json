@@ -1,20 +1,58 @@
 {
   "_comment": "Pinned NotePlan v1 / CoverageResult v1 wire contract (TASK-1045 README §6, P-E 'Final revision'). The TS composer (packages/applications note-composition) and the Python executor (apps/harness note_plan) both parse every case here. Synthetic data only. Change this file only together with both mirrors.",
   "conventions": {
-    "blockOrder": ["pre_summary", "encounter_transcript", "encounter_ledger", "results", "attachment_transcript", "draft_clinician", "draft_ai"],
-    "blockOrderRule": "Blocks are emitted in FIXED order for KV-prefix reuse: pre_summary, then per encounter in seq order (encounter_transcript then encounter_ledger when that encounter was reduced), then results, then attachment_transcript, then draft_clinician, then draft_ai. The per-call directive is the last message and is NOT a block.",
+    "blockOrder": [
+      "pre_summary",
+      "encounter_transcript",
+      "encounter_ledger",
+      "results",
+      "attachment_transcript",
+      "draft_clinician",
+      "draft_ai"
+    ],
+    "blockOrderRule": "Blocks are emitted in FIXED order for KV-prefix reuse: pre_summary; then every encounter BEFORE the latest one in seq order (encounter_transcript, then encounter_ledger when that encounter was reduced); then results; then attachment_transcript; then the LATEST encounter's encounter_transcript; then draft_clinician; then draft_ai. The per-call directive is the last message and is NOT a block. (P-E §1b: pre_summary → encounter_1 → ledger_1 → results → encounter_2 …)",
     "transcriptLine": "[S<segmentSeq> E<encounterSeq> <speaker> mm:ss] <text>",
-    "citationLabels": { "segment": "S<segmentSeq>", "attachmentTranscript": "A<n>", "result": "R<n>" },
+    "citationLabels": {
+      "segment": "S<segmentSeq>",
+      "attachmentTranscript": "A<n>",
+      "result": "R<n>"
+    },
     "maxCalls": 10,
-    "excludedItemTypes": ["ENCOUNTER_RECAP", "LIVE_SOAP_SNAPSHOT"],
-    "tokenizerModes": ["exact", "estimate"],
+    "excludedItemTypes": [
+      "ENCOUNTER_RECAP",
+      "LIVE_SOAP_SNAPSHOT"
+    ],
+    "tokenizerModes": [
+      "exact",
+      "estimate"
+    ],
     "estimateRule": "ceil(utf8Bytes / 2)",
-    "strategies": ["single_pass", "ledger_prior", "section_groups", "ledger_prior+section_groups"],
-    "modes": ["final", "section_regen"],
+    "strategies": [
+      "single_pass",
+      "ledger_prior",
+      "section_groups",
+      "ledger_prior+section_groups"
+    ],
+    "modes": [
+      "final",
+      "section_regen"
+    ],
     "failClosedErrorCode": "NOTE_INPUT_EXCEEDS_CONTEXT",
-    "coverageStatuses": ["complete", "gaps", "unchecked"],
-    "gapKinds": ["missing_fact", "number_mismatch", "unresolved_citation", "ungrounded", "ledger_unavailable"],
-    "finalizerOutput": "{ case_note, redactions, sources: [{ sectionKey, refs: ['S12', 'A1', 'R1'] }] } — case_note shape unchanged"
+    "coverageStatuses": [
+      "complete",
+      "gaps",
+      "unchecked"
+    ],
+    "gapKinds": [
+      "missing_fact",
+      "number_mismatch",
+      "unresolved_citation",
+      "ungrounded",
+      "ledger_unavailable"
+    ],
+    "finalizerOutput": "{ case_note, redactions, sources: [{ sectionKey, refs: ['S12', 'A1', 'R1'] }] } — case_note shape unchanged",
+    "finalizerSourcesField": "The finalizer may return citations under `refs` (canonical) or `ids` (the seeded finalizer schema); readers accept both, writers emit `refs`.",
+    "ledgerUnavailable": "coverage.criticalFacts = null means the ledger was not ready (coverage `unchecked`); [] means checked, no critical facts."
   },
   "notePlans": [
     {
@@ -26,54 +64,181 @@
         "tenantId": "0199a000-0000-7000-8000-0000000000e1",
         "inputDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         "mode": "final",
-        "model": { "slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768 },
+        "model": {
+          "slug": "gemma-4-e2b",
+          "wireModelId": "gemma-4-e2b-it-qat",
+          "provider": "lmstudio",
+          "contextWindow": 32768
+        },
         "budget": {
           "contextWindow": 32768,
           "singlePassRatio": 0.6,
           "safetyTokens": 512,
           "inputTokens": 1880,
-          "tokenizer": { "mode": "exact", "id": "lmstudio:gemma-4-e2b-it-qat" },
+          "tokenizer": {
+            "mode": "exact",
+            "id": "lmstudio:gemma-4-e2b-it-qat"
+          },
           "strategy": "single_pass",
           "reductions": []
         },
         "sources": {
           "encounters": [
-            { "seq": 1, "visitType": "new-visit", "segmentCount": 3, "rendered": "verbatim" },
-            { "seq": 2, "visitType": "re-visit", "segmentCount": 2, "rendered": "verbatim" }
+            {
+              "seq": 1,
+              "visitType": "new-visit",
+              "segmentCount": 3,
+              "rendered": "verbatim"
+            },
+            {
+              "seq": 2,
+              "visitType": "re-visit",
+              "segmentCount": 2,
+              "rendered": "verbatim"
+            }
           ],
-          "results": [{ "contextItemId": "0199a000-0000-7000-8000-0000000000a1", "versionNumber": 1 }],
+          "results": [
+            {
+              "contextItemId": "0199a000-0000-7000-8000-0000000000a1",
+              "versionNumber": 1
+            }
+          ],
           "attachmentTranscripts": [],
           "draft": null,
-          "preSummary": { "contextItemId": "0199a000-0000-7000-8000-0000000000b1", "versionNumber": 1 }
+          "preSummary": {
+            "contextItemId": "0199a000-0000-7000-8000-0000000000b1",
+            "versionNumber": 1
+          }
         },
         "system": "You write the clinical case note for this consultation in English from the sources below. Cite every statement with its source label.",
         "blocks": [
-          { "key": "pre_summary", "role": "pre_summary", "label": "Pre-summary", "content": "Known type 2 diabetes on metformin.", "tokens": 12 },
-          { "key": "encounter_1", "role": "encounter_transcript", "label": "Encounter 1 transcript (new-visit)", "content": "[S1 E1 Doctor 00:04] What brings you in today?\n[S2 E1 Patient 00:09] Chest tightness for two days.\n[S3 E1 Doctor 01:12] I am sending you for an ECG and troponin.", "tokens": 52 },
-          { "key": "results", "role": "results", "label": "Results", "content": "[R1] Troponin 12 ng/L (normal).", "tokens": 11 },
-          { "key": "encounter_2", "role": "encounter_transcript", "label": "Encounter 2 transcript (re-visit)", "content": "[S4 E2 Doctor 00:02] Your ECG and troponin are normal.\n[S5 E2 Doctor 00:40] Increase metformin to 1000 mg twice daily and review in four weeks.", "tokens": 41 }
+          {
+            "key": "pre_summary",
+            "role": "pre_summary",
+            "label": "Pre-summary",
+            "content": "Known type 2 diabetes on metformin.",
+            "tokens": 12
+          },
+          {
+            "key": "encounter_1",
+            "role": "encounter_transcript",
+            "label": "Encounter 1 transcript (new-visit)",
+            "content": "[S1 E1 Doctor 00:04] What brings you in today?\n[S2 E1 Patient 00:09] Chest tightness for two days.\n[S3 E1 Doctor 01:12] I am sending you for an ECG and troponin.",
+            "tokens": 52
+          },
+          {
+            "key": "results",
+            "role": "results",
+            "label": "Results",
+            "content": "[R1] Troponin 12 ng/L (normal).",
+            "tokens": 11
+          },
+          {
+            "key": "encounter_2",
+            "role": "encounter_transcript",
+            "label": "Encounter 2 transcript (re-visit)",
+            "content": "[S4 E2 Doctor 00:02] Your ECG and troponin are normal.\n[S5 E2 Doctor 00:40] Increase metformin to 1000 mg twice daily and review in four weeks.",
+            "tokens": 41
+          }
         ],
         "headings": [
-          { "key": "subjective", "title": "Subjective" },
-          { "key": "objective", "title": "Objective" },
-          { "key": "assessment", "title": "Assessment" },
-          { "key": "plan", "title": "Plan" }
+          {
+            "key": "subjective",
+            "title": "Subjective"
+          },
+          {
+            "key": "objective",
+            "title": "Objective"
+          },
+          {
+            "key": "assessment",
+            "title": "Assessment"
+          },
+          {
+            "key": "plan",
+            "title": "Plan"
+          }
         ],
         "calls": [
-          { "callId": "c1", "sectionKeys": ["subjective", "objective", "assessment", "plan"], "directive": "Write all sections: Subjective, Objective, Assessment, Plan.", "maxTokens": 1792, "promptTokens": 1880 }
+          {
+            "callId": "c1",
+            "sectionKeys": [
+              "subjective",
+              "objective",
+              "assessment",
+              "plan"
+            ],
+            "directive": "Write all sections: Subjective, Objective, Assessment, Plan.",
+            "maxTokens": 1792,
+            "promptTokens": 1880
+          }
         ],
         "coverage": {
           "criticalFacts": [
-            { "factId": "E2-F2", "encounterSeq": 2, "key": "med:metformin", "kind": "dose_change", "anchors": ["metformin"], "numbers": [{ "value": "1000", "unit": "mg" }], "citations": ["S5"] },
-            { "factId": "E2-F3", "encounterSeq": 2, "key": "follow_up:review", "kind": "follow_up", "anchors": ["review", "four weeks"], "numbers": [], "citations": ["S5"] }
+            {
+              "factId": "E2-F2",
+              "encounterSeq": 2,
+              "key": "med:metformin",
+              "kind": "dose_change",
+              "anchors": [
+                "metformin"
+              ],
+              "numbers": [
+                {
+                  "value": "1000",
+                  "unit": "mg"
+                }
+              ],
+              "citations": [
+                "S5"
+              ]
+            },
+            {
+              "factId": "E2-F3",
+              "encounterSeq": 2,
+              "key": "follow_up:review",
+              "kind": "follow_up",
+              "anchors": [
+                "review",
+                "four weeks"
+              ],
+              "numbers": [],
+              "citations": [
+                "S5"
+              ]
+            }
           ],
           "sourceIds": {
-            "S1": { "id": "0199a000-0000-7000-8000-000000000051", "v": 1, "kind": "segment" },
-            "S2": { "id": "0199a000-0000-7000-8000-000000000052", "v": 1, "kind": "segment" },
-            "S3": { "id": "0199a000-0000-7000-8000-000000000053", "v": 1, "kind": "segment" },
-            "S4": { "id": "0199a000-0000-7000-8000-000000000054", "v": 1, "kind": "segment" },
-            "S5": { "id": "0199a000-0000-7000-8000-000000000055", "v": 2, "kind": "segment" },
-            "R1": { "id": "0199a000-0000-7000-8000-0000000000a1", "v": 1, "kind": "result" }
+            "S1": {
+              "id": "0199a000-0000-7000-8000-000000000051",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S2": {
+              "id": "0199a000-0000-7000-8000-000000000052",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S3": {
+              "id": "0199a000-0000-7000-8000-000000000053",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S4": {
+              "id": "0199a000-0000-7000-8000-000000000054",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S5": {
+              "id": "0199a000-0000-7000-8000-000000000055",
+              "v": 2,
+              "kind": "segment"
+            },
+            "R1": {
+              "id": "0199a000-0000-7000-8000-0000000000a1",
+              "v": 1,
+              "kind": "result"
+            }
           },
           "repairPasses": 1
         },
@@ -89,54 +254,204 @@
         "tenantId": "0199a000-0000-7000-8000-0000000000e1",
         "inputDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
         "mode": "final",
-        "model": { "slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768 },
+        "model": {
+          "slug": "gemma-4-e2b",
+          "wireModelId": "gemma-4-e2b-it-qat",
+          "provider": "lmstudio",
+          "contextWindow": 32768
+        },
         "budget": {
           "contextWindow": 32768,
           "singlePassRatio": 0.6,
           "safetyTokens": 512,
           "inputTokens": 17240,
-          "tokenizer": { "mode": "estimate", "id": "estimate:utf8-bytes/2" },
+          "tokenizer": {
+            "mode": "estimate",
+            "id": "estimate:utf8-bytes/2"
+          },
           "strategy": "ledger_prior+section_groups",
-          "reductions": [{ "kind": "prior_encounter_to_ledger", "encounterSeq": 1, "tokensBefore": 14100, "tokensAfter": 2210 }]
+          "reductions": [
+            {
+              "kind": "prior_encounter_to_ledger",
+              "encounterSeq": 1,
+              "tokensBefore": 14100,
+              "tokensAfter": 2210
+            }
+          ]
         },
         "sources": {
           "encounters": [
-            { "seq": 1, "visitType": "new-visit", "segmentCount": 412, "ledgerItemId": "0199a000-0000-7000-8000-0000000000d1", "ledgerVersion": 2, "rendered": "ledger_cited" },
-            { "seq": 2, "visitType": "re-visit", "segmentCount": 188, "rendered": "verbatim" }
+            {
+              "seq": 1,
+              "visitType": "new-visit",
+              "segmentCount": 412,
+              "ledgerItemId": "0199a000-0000-7000-8000-0000000000d1",
+              "ledgerVersion": 2,
+              "rendered": "ledger_cited"
+            },
+            {
+              "seq": 2,
+              "visitType": "re-visit",
+              "segmentCount": 188,
+              "rendered": "verbatim"
+            }
           ],
           "results": [],
-          "attachmentTranscripts": [{ "contextItemId": "0199a000-0000-7000-8000-0000000000a1", "versionNumber": 1 }],
-          "draft": { "contextItemId": "0199a000-0000-7000-8000-0000000000f1", "versionNumber": 3, "clinicianSections": ["plan"], "aiSections": ["subjective", "objective", "assessment"] },
+          "attachmentTranscripts": [
+            {
+              "contextItemId": "0199a000-0000-7000-8000-0000000000a1",
+              "versionNumber": 1
+            }
+          ],
+          "draft": {
+            "contextItemId": "0199a000-0000-7000-8000-0000000000f1",
+            "versionNumber": 3,
+            "clinicianSections": [
+              "plan"
+            ],
+            "aiSections": [
+              "subjective",
+              "objective",
+              "assessment"
+            ]
+          },
           "preSummary": null
         },
         "system": "You write the clinical case note for this consultation in English from the sources below. Cite every statement with its source label.",
         "blocks": [
-          { "key": "encounter_1", "role": "encounter_transcript", "label": "Encounter 1 — cited segments", "content": "[S7 E1 Patient 03:10] I am allergic to penicillin.", "tokens": 14 },
-          { "key": "ledger_1", "role": "encounter_ledger", "label": "Encounter 1 fact ledger", "content": "E1-F4 allergy: Allergic to penicillin. [S7]", "tokens": 13 },
-          { "key": "attachment_audio", "role": "attachment_transcript", "label": "Uploaded audio transcripts", "content": "[A1] Telephone follow-up: blood pressure 150/95 at home.", "tokens": 16 },
-          { "key": "encounter_2", "role": "encounter_transcript", "label": "Encounter 2 transcript (re-visit)", "content": "[S420 E2 Doctor 00:05] Start amlodipine 5 mg once daily.", "tokens": 17 },
-          { "key": "draft_clinician", "role": "draft_clinician", "label": "Clinician-edited sections (keep their meaning)", "content": "Plan: Start amlodipine 5 mg daily; repeat BP in 2 weeks.", "tokens": 18 },
-          { "key": "draft_ai", "role": "draft_ai", "label": "Previous AI draft", "content": "Subjective: ...", "tokens": 4 }
+          {
+            "key": "encounter_1",
+            "role": "encounter_transcript",
+            "label": "Encounter 1 — cited segments",
+            "content": "[S7 E1 Patient 03:10] I am allergic to penicillin.",
+            "tokens": 14
+          },
+          {
+            "key": "ledger_1",
+            "role": "encounter_ledger",
+            "label": "Encounter 1 fact ledger",
+            "content": "E1-F4 allergy: Allergic to penicillin. [S7]",
+            "tokens": 13
+          },
+          {
+            "key": "attachment_audio",
+            "role": "attachment_transcript",
+            "label": "Uploaded audio transcripts",
+            "content": "[A1] Telephone follow-up: blood pressure 150/95 at home.",
+            "tokens": 16
+          },
+          {
+            "key": "encounter_2",
+            "role": "encounter_transcript",
+            "label": "Encounter 2 transcript (re-visit)",
+            "content": "[S420 E2 Doctor 00:05] Start amlodipine 5 mg once daily.",
+            "tokens": 17
+          },
+          {
+            "key": "draft_clinician",
+            "role": "draft_clinician",
+            "label": "Clinician-edited sections (keep their meaning)",
+            "content": "Plan: Start amlodipine 5 mg daily; repeat BP in 2 weeks.",
+            "tokens": 18
+          },
+          {
+            "key": "draft_ai",
+            "role": "draft_ai",
+            "label": "Previous AI draft",
+            "content": "Subjective: ...",
+            "tokens": 4
+          }
         ],
         "headings": [
-          { "key": "subjective", "title": "Subjective" },
-          { "key": "objective", "title": "Objective" },
-          { "key": "assessment", "title": "Assessment" },
-          { "key": "plan", "title": "Plan" }
+          {
+            "key": "subjective",
+            "title": "Subjective"
+          },
+          {
+            "key": "objective",
+            "title": "Objective"
+          },
+          {
+            "key": "assessment",
+            "title": "Assessment"
+          },
+          {
+            "key": "plan",
+            "title": "Plan"
+          }
         ],
         "calls": [
-          { "callId": "g1", "sectionKeys": ["subjective", "objective"], "directive": "Write only these sections: Subjective, Objective.", "maxTokens": 1024, "promptTokens": 17240 },
-          { "callId": "g2", "sectionKeys": ["assessment", "plan"], "directive": "Write only these sections: Assessment, Plan.", "maxTokens": 1024, "promptTokens": 17240 }
+          {
+            "callId": "g1",
+            "sectionKeys": [
+              "subjective",
+              "objective"
+            ],
+            "directive": "Write only these sections: Subjective, Objective.",
+            "maxTokens": 1024,
+            "promptTokens": 17240
+          },
+          {
+            "callId": "g2",
+            "sectionKeys": [
+              "assessment",
+              "plan"
+            ],
+            "directive": "Write only these sections: Assessment, Plan.",
+            "maxTokens": 1024,
+            "promptTokens": 17240
+          }
         ],
         "coverage": {
           "criticalFacts": [
-            { "factId": "E1-F4", "encounterSeq": 1, "key": "allergy:penicillin", "kind": "allergy", "anchors": ["penicillin"], "numbers": [], "citations": ["S7"] },
-            { "factId": "E2-F1", "encounterSeq": 2, "key": "med:amlodipine", "kind": "medication", "anchors": ["amlodipine"], "numbers": [{ "value": "5", "unit": "mg" }], "citations": ["S420"] }
+            {
+              "factId": "E1-F4",
+              "encounterSeq": 1,
+              "key": "allergy:penicillin",
+              "kind": "allergy",
+              "anchors": [
+                "penicillin"
+              ],
+              "numbers": [],
+              "citations": [
+                "S7"
+              ]
+            },
+            {
+              "factId": "E2-F1",
+              "encounterSeq": 2,
+              "key": "med:amlodipine",
+              "kind": "medication",
+              "anchors": [
+                "amlodipine"
+              ],
+              "numbers": [
+                {
+                  "value": "5",
+                  "unit": "mg"
+                }
+              ],
+              "citations": [
+                "S420"
+              ]
+            }
           ],
           "sourceIds": {
-            "S7": { "id": "0199a000-0000-7000-8000-000000000057", "v": 1, "kind": "segment" },
-            "S420": { "id": "0199a000-0000-7000-8000-000000000420", "v": 1, "kind": "segment" },
-            "A1": { "id": "0199a000-0000-7000-8000-0000000000a1", "v": 1, "kind": "attachment_transcript" }
+            "S7": {
+              "id": "0199a000-0000-7000-8000-000000000057",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S420": {
+              "id": "0199a000-0000-7000-8000-000000000420",
+              "v": 1,
+              "kind": "segment"
+            },
+            "A1": {
+              "id": "0199a000-0000-7000-8000-0000000000a1",
+              "v": 1,
+              "kind": "attachment_transcript"
+            }
           },
           "repairPasses": 1
         },
@@ -152,52 +467,151 @@
         "tenantId": "0199a000-0000-7000-8000-0000000000e1",
         "inputDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
         "mode": "section_regen",
-        "model": { "slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768 },
+        "model": {
+          "slug": "gemma-4-e2b",
+          "wireModelId": "gemma-4-e2b-it-qat",
+          "provider": "lmstudio",
+          "contextWindow": 32768
+        },
         "budget": {
           "contextWindow": 32768,
           "singlePassRatio": 0.6,
           "safetyTokens": 512,
           "inputTokens": 1880,
-          "tokenizer": { "mode": "exact", "id": "lmstudio:gemma-4-e2b-it-qat" },
+          "tokenizer": {
+            "mode": "exact",
+            "id": "lmstudio:gemma-4-e2b-it-qat"
+          },
           "strategy": "single_pass",
           "reductions": []
         },
         "sources": {
           "encounters": [
-            { "seq": 1, "visitType": "new-visit", "segmentCount": 3, "rendered": "verbatim" },
-            { "seq": 2, "visitType": "re-visit", "segmentCount": 2, "rendered": "verbatim" }
+            {
+              "seq": 1,
+              "visitType": "new-visit",
+              "segmentCount": 3,
+              "rendered": "verbatim"
+            },
+            {
+              "seq": 2,
+              "visitType": "re-visit",
+              "segmentCount": 2,
+              "rendered": "verbatim"
+            }
           ],
           "results": [],
           "attachmentTranscripts": [],
-          "draft": { "contextItemId": "0199a000-0000-7000-8000-0000000000f2", "versionNumber": 4, "clinicianSections": [], "aiSections": ["subjective", "objective", "assessment", "plan"] },
+          "draft": {
+            "contextItemId": "0199a000-0000-7000-8000-0000000000f2",
+            "versionNumber": 4,
+            "clinicianSections": [],
+            "aiSections": [
+              "subjective",
+              "objective",
+              "assessment",
+              "plan"
+            ]
+          },
           "preSummary": null
         },
         "system": "You write the clinical case note for this consultation in English from the sources below. Cite every statement with its source label.",
         "blocks": [
-          { "key": "encounter_1", "role": "encounter_transcript", "label": "Encounter 1 transcript (new-visit)", "content": "[S1 E1 Doctor 00:04] What brings you in today?", "tokens": 14 },
-          { "key": "encounter_2", "role": "encounter_transcript", "label": "Encounter 2 transcript (re-visit)", "content": "[S5 E2 Doctor 00:40] Increase metformin to 1000 mg twice daily.", "tokens": 18 },
-          { "key": "draft_ai", "role": "draft_ai", "label": "Previous AI draft", "content": "Plan: ...", "tokens": 3 }
+          {
+            "key": "encounter_1",
+            "role": "encounter_transcript",
+            "label": "Encounter 1 transcript (new-visit)",
+            "content": "[S1 E1 Doctor 00:04] What brings you in today?",
+            "tokens": 14
+          },
+          {
+            "key": "encounter_2",
+            "role": "encounter_transcript",
+            "label": "Encounter 2 transcript (re-visit)",
+            "content": "[S5 E2 Doctor 00:40] Increase metformin to 1000 mg twice daily.",
+            "tokens": 18
+          },
+          {
+            "key": "draft_ai",
+            "role": "draft_ai",
+            "label": "Previous AI draft",
+            "content": "Plan: ...",
+            "tokens": 3
+          }
         ],
         "headings": [
-          { "key": "subjective", "title": "Subjective" },
-          { "key": "objective", "title": "Objective" },
-          { "key": "assessment", "title": "Assessment" },
-          { "key": "plan", "title": "Plan" }
+          {
+            "key": "subjective",
+            "title": "Subjective"
+          },
+          {
+            "key": "objective",
+            "title": "Objective"
+          },
+          {
+            "key": "assessment",
+            "title": "Assessment"
+          },
+          {
+            "key": "plan",
+            "title": "Plan"
+          }
         ],
         "calls": [
-          { "callId": "r1", "sectionKeys": ["plan"], "directive": "Rewrite only this section: Plan.", "maxTokens": 1024, "promptTokens": 1880 }
+          {
+            "callId": "r1",
+            "sectionKeys": [
+              "plan"
+            ],
+            "directive": "Rewrite only this section: Plan.",
+            "maxTokens": 1024,
+            "promptTokens": 1880
+          }
         ],
         "coverage": {
           "criticalFacts": [
-            { "factId": "E2-F2", "encounterSeq": 2, "key": "med:metformin", "kind": "dose_change", "anchors": ["metformin"], "numbers": [{ "value": "1000", "unit": "mg" }], "citations": ["S5"] }
+            {
+              "factId": "E2-F2",
+              "encounterSeq": 2,
+              "key": "med:metformin",
+              "kind": "dose_change",
+              "anchors": [
+                "metformin"
+              ],
+              "numbers": [
+                {
+                  "value": "1000",
+                  "unit": "mg"
+                }
+              ],
+              "citations": [
+                "S5"
+              ]
+            }
           ],
           "sourceIds": {
-            "S1": { "id": "0199a000-0000-7000-8000-000000000051", "v": 1, "kind": "segment" },
-            "S5": { "id": "0199a000-0000-7000-8000-000000000055", "v": 2, "kind": "segment" }
+            "S1": {
+              "id": "0199a000-0000-7000-8000-000000000051",
+              "v": 1,
+              "kind": "segment"
+            },
+            "S5": {
+              "id": "0199a000-0000-7000-8000-000000000055",
+              "v": 2,
+              "kind": "segment"
+            }
           },
           "repairPasses": 1
         },
-        "preserve": { "contextItemId": "0199a000-0000-7000-8000-0000000000f2", "versionNumber": 4, "sectionKeys": ["subjective", "objective", "assessment"] }
+        "preserve": {
+          "contextItemId": "0199a000-0000-7000-8000-0000000000f2",
+          "versionNumber": 4,
+          "sectionKeys": [
+            "subjective",
+            "objective",
+            "assessment"
+          ]
+        }
       }
     }
   ],
@@ -208,10 +622,25 @@
         "schema": "hope.note_coverage.v1",
         "status": "complete",
         "repairPasses": 0,
-        "criticalFacts": { "total": 2, "present": 2, "missing": [] },
-        "numbers": { "total": 1, "matched": 1, "unsupported": 0 },
-        "citations": { "total": 4, "resolved": 4, "unresolved": [] },
-        "groundedness": { "score": 0.97, "passed": true },
+        "criticalFacts": {
+          "total": 2,
+          "present": 2,
+          "missing": []
+        },
+        "numbers": {
+          "total": 1,
+          "matched": 1,
+          "unsupported": 0
+        },
+        "citations": {
+          "total": 4,
+          "resolved": 4,
+          "unresolved": []
+        },
+        "groundedness": {
+          "score": 0.97,
+          "passed": true
+        },
         "gaps": []
       }
     },
@@ -221,10 +650,34 @@
         "schema": "hope.note_coverage.v1",
         "status": "gaps",
         "repairPasses": 1,
-        "criticalFacts": { "total": 2, "present": 1, "missing": ["E1-F4"] },
-        "numbers": { "total": 1, "matched": 1, "unsupported": 0 },
-        "citations": { "total": 3, "resolved": 3, "unresolved": [] },
-        "gaps": [{ "kind": "missing_fact", "factId": "E1-F4", "sectionKey": "subjective", "segmentIds": ["0199a000-0000-7000-8000-000000000057"], "detail": "Allergy to penicillin is not stated in the note." }]
+        "criticalFacts": {
+          "total": 2,
+          "present": 1,
+          "missing": [
+            "E1-F4"
+          ]
+        },
+        "numbers": {
+          "total": 1,
+          "matched": 1,
+          "unsupported": 0
+        },
+        "citations": {
+          "total": 3,
+          "resolved": 3,
+          "unresolved": []
+        },
+        "gaps": [
+          {
+            "kind": "missing_fact",
+            "factId": "E1-F4",
+            "sectionKey": "subjective",
+            "segmentIds": [
+              "0199a000-0000-7000-8000-000000000057"
+            ],
+            "detail": "Allergy to penicillin is not stated in the note."
+          }
+        ]
       }
     },
     {
@@ -233,16 +686,37 @@
         "schema": "hope.note_coverage.v1",
         "status": "unchecked",
         "repairPasses": 0,
-        "criticalFacts": { "total": 0, "present": 0, "missing": [] },
-        "numbers": { "total": 0, "matched": 0, "unsupported": 0 },
-        "citations": { "total": 0, "resolved": 0, "unresolved": [] },
-        "gaps": [{ "kind": "ledger_unavailable", "detail": "The encounter 2 ledger was not ready within the wait." }]
+        "criticalFacts": {
+          "total": 0,
+          "present": 0,
+          "missing": []
+        },
+        "numbers": {
+          "total": 0,
+          "matched": 0,
+          "unsupported": 0
+        },
+        "citations": {
+          "total": 0,
+          "resolved": 0,
+          "unresolved": []
+        },
+        "gaps": [
+          {
+            "kind": "ledger_unavailable",
+            "detail": "The encounter 2 ledger was not ready within the wait."
+          }
+        ]
       }
     }
   ],
   "harnessDelivery": {
     "route": "GET /api/v1/internal/consultations/:consultationId/note-plans/:planId",
-    "handoffRef": { "consultationId": "0199a000-0000-7000-8000-0000000000c1", "mode": "final", "planId": "0199a000-0000-7000-8000-000000000001" },
+    "handoffRef": {
+      "consultationId": "0199a000-0000-7000-8000-0000000000c1",
+      "mode": "final",
+      "planId": "0199a000-0000-7000-8000-000000000001"
+    },
     "redisKey": "note-plan:<planId>",
     "ttlSeconds": 7200,
     "cacheMiss": "recompose and record; the harness never composes"
