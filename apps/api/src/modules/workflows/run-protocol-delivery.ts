@@ -421,6 +421,11 @@ class RunDeliveryLoop {
         await this.backstop(hub, o.initialStatus);
         return;
       }
+      // A live stream says so at once: without this a client on a queued run saw nothing until
+      // the run's first event or the heartbeat (up to 15 s) and could not tell a live connection
+      // from a dead one (TASK-1038 load test). `ping` carries this connection's position — seq 0
+      // before any event (protocol v2 §6).
+      if (!(await this.writeV2({ seq: this.position, runId: o.runId, type: 'ping', ts: new Date().toISOString(), data: {} } as RunEventV2))) return;
     }
     await this.follow(hub);
   }

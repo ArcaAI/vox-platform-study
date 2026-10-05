@@ -47,6 +47,11 @@ function makeRes() {
 }
 
 /** Every v2 frame written, parsed with the contract's own SSE parser (which cross-checks `event:`/`id:`). */
+/** The run's events without keep-alives: a live stream opens with a `ping` (TASK-1038 load test). */
+function v2Events(res: ReturnType<typeof makeRes>): RunEventV2[] {
+  return v2Frames(res).filter((frame) => frame.type !== 'ping');
+}
+
 function v2Frames(res: ReturnType<typeof makeRes>): RunEventV2[] {
   return res.write.mock.calls
     .map((call) => String(call[0]))
@@ -126,7 +131,7 @@ describe('v2 on the PUBLIC plane', () => {
 
     await service.stream('flow', 'R', res as never, undefined, { protocol: '2' });
 
-    const frames = v2Frames(res);
+    const frames = v2Events(res);
     expect(frames.map((f) => `${f.seq}:${f.type}`)).toEqual([
       '1:run.started',
       '3:node.started',
@@ -155,7 +160,7 @@ describe('v2 on the PUBLIC plane', () => {
     const pub = build(server);
     const res = makeRes();
     await pub.service.stream('flow', 'R', res as never, undefined, { protocol: '2' });
-    const [failed, cancelled] = v2Frames(res);
+    const [failed, cancelled] = v2Events(res);
     expect((failed.data as unknown as { error: Record<string, unknown> }).error).toEqual({ code: 'MODEL_ERROR', message: 'The model returned an error.' });
     expect((cancelled.data as { reason: string }).reason).toBe('The run was cancelled.');
     await pub.hub.onModuleDestroy();
@@ -163,7 +168,7 @@ describe('v2 on the PUBLIC plane', () => {
     const admin = build(server);
     const resAdmin = makeRes();
     await admin.service.streamRun({ runId: 'R', res: resAdmin as never, plane: 'admin', protocol: '2', readStatus: async () => status('RUNNING') as never });
-    const [failedAdmin, cancelledAdmin] = v2Frames(resAdmin);
+    const [failedAdmin, cancelledAdmin] = v2Events(resAdmin);
     expect((failedAdmin.data as unknown as { error: { detail: string } }).error.detail).toBe('upstream said: patient X');
     expect((cancelledAdmin.data as { reason: string }).reason).toBe('Dr Smith pressed stop');
     await admin.hub.onModuleDestroy();
@@ -177,7 +182,7 @@ describe('v2 on the PUBLIC plane', () => {
 
     await service.stream('flow', 'R', res as never, '5', { protocol: '2' });
 
-    expect(v2Frames(res).map((f) => f.seq)).toEqual([6, 8, 9]);
+    expect(v2Events(res).map((f) => f.seq)).toEqual([6, 8, 9]);
     await hub.onModuleDestroy();
   });
 
@@ -194,7 +199,7 @@ describe('v2 on the PUBLIC plane', () => {
     server.appendV2(ev({ type: 'run.completed', data: { status: 'COMPLETED', durationMs: 1, tokens: { in: 0, out: 0 } }, retentionSeconds: 60 })); // 9
     await streaming;
 
-    const frames = v2Frames(res);
+    const frames = v2Events(res);
     expect(frames[0].type).toBe('run.resync');
     expect(frames[0].seq).toBe(8);
     const data = frames[0].data as { reason: string; snapshot: { lastSeq: number; outputs: Record<string, Record<string, unknown>>; status: string } };
@@ -235,7 +240,7 @@ describe('v2 on the PUBLIC plane', () => {
     const { service, hub } = build(server);
     const res = makeRes();
     await service.stream('flow', 'R', res as never, encodeResumeToken(RUN_EVENT_TRANSPORT, ids[5]), { protocol: '2' });
-    expect(v2Frames(res).map((f) => f.seq)).toEqual([8, 9]);
+    expect(v2Events(res).map((f) => f.seq)).toEqual([8, 9]);
     await hub.onModuleDestroy();
   });
 
@@ -244,7 +249,7 @@ describe('v2 on the PUBLIC plane', () => {
     const service = new WorkflowStreamService({ getRunStatus } as never, { get: vi.fn(() => TENANT) } as never, undefined, undefined);
     const res = makeRes();
     await service.stream('flow', 'R', res as never, undefined, { protocol: '2' });
-    const [resync] = v2Frames(res);
+    const [resync] = v2Events(res);
     expect(resync).toMatchObject({ seq: 0, type: 'run.resync', data: { reason: 'unavailable', snapshot: { status: 'RUNNING', lastSeq: 0 } } });
   });
 });
@@ -268,8 +273,28 @@ describe('v2 keep-alive and the terminal backstop', () => {
     await streaming;
 
     const pings = v2Frames(res).filter((f) => f.type === 'ping');
-    expect(pings.length).toBeGreaterThan(0);
-    expect(pings[0].seq).toBe(2);
+    expect(pings.length).toBeGreaterThan(1);
+    // The heartbeat ping after the replay carries the position past the filtered admin event.
+    expect(pings[pings.length - 1].seq).toBe(2);
+    await hub.onModuleDestroy();
+  });
+
+  // TASK-1038 live load test: a v2 stream on a queued run wrote NOTHING until its first event or
+  // the 15 s heartbeat, so a client could not tell a live connection from a dead one. A live
+  // stream now says so at once (`ping` at this connection's position — seq 0 before any event).
+  it('a live v2 stream writes a ping at once, before any event exists', async () => {
+    const server = new FakeRedisServer();
+    const getRunStatus = vi.fn().mockResolvedValue(status('RUNNING'));
+    const { service, hub } = build(server, getRunStatus);
+    const res = makeRes();
+    const closed = new AbortController();
+    const streaming = service.stream('flow', 'R', res as never, undefined, { protocol: '2', signal: closed.signal });
+    await vi.advanceTimersByTimeAsync(50);
+    const first = v2Frames(res)[0];
+    expect(first).toMatchObject({ type: 'ping', seq: 0 });
+    closed.abort();
+    await vi.advanceTimersByTimeAsync(100);
+    await streaming;
     await hub.onModuleDestroy();
   });
 
