@@ -482,4 +482,36 @@ describe('ConsultationHistoryService — versions and recap', () => {
     });
     await expect(makeService().getRecap(CID, 2, { admin: false })).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('parses a structured v2 recap into sections and renders text as ## Label blocks', async () => {
+    const citation = { itemId: 'seg-1', versionNumber: 1, label: 'S1', kind: 'segment', t0Ms: 1200 };
+    const v2 = {
+      schema: 'hope.encounter_recap.v2',
+      sections: [
+        { key: 'reason', label: 'Reason', lines: [{ text: 'Headache for 3 days', citations: [citation] }] },
+        { key: 'findings', label: 'Findings', lines: [{ text: 'BP 150/95', citations: [] }, { text: 'No neck stiffness', citations: [] }] },
+        { key: 'still_open', label: 'Still open', lines: [] },
+      ],
+    };
+    contextItems.findEncounterArtifact.mockResolvedValue({
+      id: 'recap-2',
+      content: JSON.stringify(v2),
+      currentVersionNumber: 1,
+      updatedAt: t(30),
+      metaData: { ledgerItemId: 'ledger-2' },
+    });
+    clsStore.user = DOCTOR;
+    const recap = await makeService().getRecap(CID, 1, { admin: false });
+    expect(recap.text).toBe('## Reason\nHeadache for 3 days\n\n## Findings\nBP 150/95\nNo neck stiffness\n\n## Still open');
+    expect(recap.sections?.map((s) => s.key)).toEqual(['reason', 'findings', 'still_open']);
+    expect(recap.sections?.[0]).toMatchObject({ key: 'reason', label: 'Reason', text: 'Headache for 3 days', lines: [{ text: 'Headache for 3 days', citations: [citation] }] });
+    expect(recap.sections?.[1].text).toBe('BP 150/95\nNo neck stiffness');
+  });
+
+  it('returns a recap that is not v2 JSON as plain text without sections', async () => {
+    contextItems.findEncounterArtifact.mockResolvedValue({ id: 'recap-3', content: '{"schema":"other"}', currentVersionNumber: 1, updatedAt: t(30), metaData: { ledgerItemId: 'l' } });
+    const recap = await makeService().getRecap(CID, 1, { admin: true });
+    expect(recap.text).toBe('{"schema":"other"}');
+    expect(recap.sections).toBeUndefined();
+  });
 });
