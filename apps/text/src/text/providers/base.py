@@ -128,6 +128,20 @@ class LLMProvider(Protocol):
 
 
 @runtime_checkable
+@runtime_checkable
+class TokenCounter(Protocol):
+    """Optional capability: count tokens with the serving engine's OWN tokenizer.
+
+    Returns one count per text, or ``None`` when the engine cannot answer (not
+    reachable, model not resident, no such facility). ``None`` is never an error:
+    the ``/tokenize`` route falls through to a pinned HF tokenizer.
+    """
+
+    async def count_tokens(
+        self, texts: list[str], *, model: str, request: object
+    ) -> list[int] | None: ...
+
+
 class ConnectionAwareProbe(Protocol):
     """An adapter that can enumerate an engine it is TOLD about.
 

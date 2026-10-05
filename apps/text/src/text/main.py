@@ -454,6 +454,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     configure_observability(app, _build_observability_config(settings))
 
     from text.api.endpoints.embeddings import router as embeddings_router
+    from text.api.endpoints.tokenize import router as tokenize_router
     from text.api.endpoints.generate import router as generate_router
     from text.api.endpoints.health import router as health_router
     from text.api.endpoints.judge import router as judge_router
@@ -473,6 +474,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(stream_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
     app.include_router(embeddings_router, prefix="/api/v1")
+    app.include_router(tokenize_router, prefix="/api/v1")
 
     # Prometheus is always exposed. `/metrics` is scrape-only and carries no PHI,
     # and a metrics endpoint that can be switched off from an env file is an
