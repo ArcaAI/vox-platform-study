@@ -25,13 +25,15 @@ function TimelineBand({ band, tone, className, ...props }: TimelineBandProps) {
   const resolvedTone = tone ?? band.tone ?? 'section';
   return (
     <div
-      role="separator"
+      role="article"
       aria-label={band.label}
       data-slot="timeline-band"
       data-tone={resolvedTone}
       className={cn(timelineBandVariants({ tone: resolvedTone }), className)}
       {...props}
     >
+      {/* A feed may only own articles (aria-required-children), so the band is an article whose
+          accessible name is the label; everything inside is decorative and aria-hidden. */}
       <span aria-hidden="true" className="h-px flex-1 bg-border" />
       <span aria-hidden="true" className="flex shrink-0 flex-col items-center">
         <span>{band.label}</span>

@@ -78,7 +78,7 @@ export interface TimelineItemModel {
 
 /**
  * A non-content row that groups or interrupts the feed (an encounter section
- * heading, a time-gap marker). Rendered as a labelled `separator`.
+ * heading, a time-gap marker). Rendered as a labelled `article` (a feed owns only articles).
  */
 export interface TimelineBandModel {
   kind: 'band';
