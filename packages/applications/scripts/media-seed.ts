@@ -319,7 +319,9 @@ async function main(): Promise<void> {
     appointmentDate: new Date('2026-06-01T00:00:00.000Z'),
     doctorId: DOCTOR_ID,
     departmentId: DEPARTMENT_ID,
-    status: 'CLOSED' as const,
+    status: 'CLOSED_COMPLETE' as const,
+    closedReason: 'MANUAL' as const,
+    closedAt: new Date('2026-06-01T12:00:00.000Z'),
     metadata: { visitType: 'NEW_PATIENT', chiefComplaint: ' media verification fixture', language: 'en' },
     createdBy: DOCTOR_ID,
   };
