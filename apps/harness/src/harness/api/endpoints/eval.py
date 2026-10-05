@@ -27,14 +27,19 @@ configured token disables the guard (local dev only).
 from __future__ import annotations
 
 import secrets
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from harness.core.config import Settings
 from harness.core.logging import get_logger
 from harness.eval.models import GoldenSet
+from harness.eval.note_completeness import (
+    NoteCompletenessCaseInput,
+    NoteCompletenessThresholds,
+    text_generate_fn,
+)
 
 logger = get_logger(__name__)
 
@@ -67,9 +72,29 @@ def require_service_token(
         raise HTTPException(status_code=401, detail="invalid or missing service token")
 
 
+class NoteCompletenessRequest(BaseModel):
+    """The ``note_completeness`` mode: multi-encounter golden cases, each with the NotePlan apps/api
+    composed from its envelope and, optionally, the note an earlier run already produced."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    version: str
+    name: str | None = None
+    #: The golden set's tenant — the X-Tenant-Id of every live Text call.
+    tenant_id: str = Field(alias="tenantId", min_length=1)
+    #: From the settings registry, always — required, never defaulted here.
+    thresholds: NoteCompletenessThresholds
+    #: Sampling temperature for a live run; absent ⇒ the engine's own.
+    temperature: float | None = None
+    cases: list[NoteCompletenessCaseInput] = Field(min_length=1)
+
+
 class EvalRunRequest(BaseModel):
     """Body for ``/eval/run`` (camelCase at the apps/api boundary).
 
+    ``mode`` selects the scorer: ``pdsqi`` (default) judges the inlined ``goldenSet`` with the
+    PDSQI-9 judge; ``note_completeness`` computes critical-fact recall, dose accuracy, the
+    unsupported-statement rate and p95 stop→note latency over ``noteCompleteness`` — no judge.
     ``golden_set`` reuses the harness eval :class:`GoldenSet` value object (its own
     validators enforce ≥1 case + unique ids). The prompt-provenance fields are
     recorded on the persisted ``EvalRun`` by apps/api.
@@ -77,13 +102,25 @@ class EvalRunRequest(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    golden_set: GoldenSet = Field(alias="goldenSet")
+    mode: Literal["pdsqi", "note_completeness"] = "pdsqi"
+    golden_set: GoldenSet | None = Field(default=None, alias="goldenSet")
+    note_completeness: NoteCompletenessRequest | None = Field(
+        default=None, alias="noteCompleteness"
+    )
     prompt_template_id: str | None = Field(default=None, alias="promptTemplateId")
     prompt_version: str | None = Field(default=None, alias="promptVersion")
     prompt_version_number: int | None = Field(default=None, alias="promptVersionNumber")
     # PDSQI-only by default: faithfulness needs a claim extractor/verifier the
     # caller is not required to provision for a promotion gate.
     no_faithfulness: bool = Field(default=True, alias="noFaithfulness")
+
+    @model_validator(mode="after")
+    def _body_matches_mode(self) -> EvalRunRequest:
+        if self.mode == "pdsqi" and self.golden_set is None:
+            raise ValueError("mode 'pdsqi' needs goldenSet")
+        if self.mode == "note_completeness" and self.note_completeness is None:
+            raise ValueError("mode 'note_completeness' needs noteCompleteness")
+        return self
 
 
 async def _resolve_evaluators(request: Request, *, no_faithfulness: bool) -> tuple[Any, Any]:
@@ -142,6 +179,13 @@ async def run_eval(body: EvalRunRequest, request: Request) -> dict[str, Any]:
 
     config = get_eval_config()
 
+    if body.mode == "note_completeness":
+        assert body.note_completeness is not None  # noqa: S101 — the request validator ensures it
+        return await _run_note_completeness(
+            body, body.note_completeness, request, max_cases=config.max_cases_per_run
+        )
+
+    assert body.golden_set is not None  # noqa: S101 — the request validator ensures it
     n_cases = len(body.golden_set.cases)
     if n_cases > config.max_cases_per_run:
         # Fail fast BEFORE scoring — a synchronous promotion gate must not block for
@@ -185,6 +229,87 @@ async def run_eval(body: EvalRunRequest, request: Request) -> dict[str, Any]:
     # here with the models, not in the TypeScript gateway.
     result["caseScores"] = _flatten_case_scores(run)
     return result
+
+
+def _note_generators(request: Request, spec: NoteCompletenessRequest) -> dict[str, Any]:
+    """How a case WITHOUT a supplied note is generated.
+
+    Tests inject ``app.state.eval_note_generate``; otherwise each plan runs on the Text service,
+    on the provider + model its plan names, under the golden set's tenant (built lazily, live only).
+    """
+    injected = getattr(request.app.state, "eval_note_generate", None)
+    if injected is not None:
+        return {"generate": injected}
+    if all(case.output is not None for case in spec.cases):
+        return {}
+
+    from harness.services.note_plan.executor import NOTE_PLAN_RESPONSE_FORMAT
+    from harness.services.note_plan.models import NotePlanV1
+    from harness.temporal.activities import _text_client
+    from harness.temporal.interpreter.nodes._text_fallback import wire_provider
+
+    client = _text_client(_settings(request))
+
+    def _for(plan: NotePlanV1) -> Any:
+        return text_generate_fn(
+            client,
+            tenant_id=spec.tenant_id,
+            provider=wire_provider(plan.model.provider) or plan.model.provider,
+            model=plan.model.wire_model_id,
+            temperature=spec.temperature,
+            response_format=NOTE_PLAN_RESPONSE_FORMAT,
+        )
+
+    return {"generate_for": _for}
+
+
+async def _run_note_completeness(
+    body: EvalRunRequest, spec: NoteCompletenessRequest, request: Request, *, max_cases: int
+) -> dict[str, Any]:
+    from harness.eval.note_completeness import (
+        NOTE_COMPLETENESS_SCORER,
+        case_score_rows,
+        run_note_completeness,
+    )
+
+    if len(spec.cases) > max_cases:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"golden set has {len(spec.cases)} cases; the synchronous eval cap is "
+                f"{max_cases}. Split the set or use the async lane."
+            ),
+        )
+    run = await run_note_completeness(
+        spec.cases,
+        thresholds=spec.thresholds,
+        **_note_generators(request, spec),
+        version=spec.version,
+        name=spec.name,
+    )
+    logger.info(
+        "harness.eval.note_completeness",
+        golden_set_version=run.golden_set_version,
+        n_cases=len(spec.cases),
+        passed=run.passed,
+        case_errors=int(run.aggregates.get("case_errors", 0)),
+        prompt_template_id=body.prompt_template_id,
+        prompt_version_number=body.prompt_version_number,
+    )
+    return {
+        "mode": "note_completeness",
+        "golden_set_version": run.golden_set_version,
+        "judge_model": NOTE_COMPLETENESS_SCORER,
+        "aggregates": run.aggregates,
+        "thresholds": run.thresholds,
+        "passed": run.passed,
+        "failures": run.failures,
+        "case_results": [score.model_dump(by_alias=True) for score in run.case_scores],
+        "caseScores": case_score_rows(run),
+        "promptTemplateId": body.prompt_template_id,
+        "promptVersion": body.prompt_version,
+        "promptVersionNumber": body.prompt_version_number,
+    }
 
 
 def _flatten_case_scores(run: Any) -> list[dict[str, Any]]:
