@@ -10,11 +10,16 @@ import {
   ConsultationRepository,
   ConsultationStatus,
   ContextItemRepository,
+  HarnessAuditAction,
   TranscriptionJobRepository,
   TranscriptionJobType,
+  UserDepartmentRepository,
+  UserRepository,
+  UserRoleAssignmentRepository,
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
 import { IRedisCacheService } from '../../baseServices/redis';
+import { HarnessAuditService } from '../../harness-audit';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import {
   CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_KEY,
@@ -30,8 +35,9 @@ import { ConsultationPipelineEvent, type EncounterStoppedPayload } from '../even
 import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
 import { TRANSCRIPT_RECORD_MARKER_TTL_SECONDS, encounterStoppedRedisKey } from '../transcript-record/transcript-record.keys';
 import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../encounter/IConsultationEncounterService';
+import { resolveAttributedActor } from './attributed-actor';
 import { toCaptureState } from './capture-state';
-import { ConsultationApprovalService, type ApproveOptions } from './consultation-approval.service';
+import { ConsultationApprovalService, toSignerCaller, type ApproveOptions } from './consultation-approval.service';
 import { ConsultationLifecycleGate } from './consultation-lifecycle.gate';
 import { IConsultationLifecycleService, type ClinicalCaller } from './IConsultationLifecycleService';
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
@@ -88,6 +94,12 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     // The once-only claim on `EncounterStopped` (SET NX), shared with the transcript record's
     // session-final path. Unwired ⇒ `stop` announces the encounter unconditionally.
     @Optional() @Inject(IRedisCacheService) private readonly markers?: Pick<IRedisCacheService, 'eval'>,
+    // The `SESSION_CLOSED_*` WORM row. Unwired ⇒ no row (best-effort, never rolls a close back).
+    @Optional() private readonly harnessAudit?: Pick<HarnessAuditService, 'append'>,
+    // Membership of a NAMED clinician on close. Unwired ⇒ a named third party is 404 (fail closed).
+    @Optional() private readonly userRoleAssignmentRepository?: UserRoleAssignmentRepository,
+    @Optional() private readonly userDepartmentRepository?: UserDepartmentRepository,
+    @Optional() private readonly userRepository?: UserRepository,
   ) {
     super();
   }
@@ -212,6 +224,12 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
    * CLOSED_COMPLETE when APPROVED (closedReason APPROVED), else CLOSED_INCOMPLETE (AUTO for the
    * sweep, MANUAL otherwise). A capturing consultation is flushed first (finalize control). The
    * current encounter ends. Idempotent on a closed consultation (D-29).
+   *
+   * A manual close is attributed by the sign-off's named-clinician rule (`attributed-actor.ts`):
+   * a machine credential must name the clinician (400), a human may name another only as a tenant
+   * or super administrator (400), a named clinician outside the tenant is 404. It is resolved
+   * after the terminal short-circuit and before anything is flushed or written. An auto close is
+   * the system's. Either way a `SESSION_CLOSED_*` WORM row names the clinician and the credential.
    */
   async close(
     consultationId: string,
@@ -222,11 +240,13 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       return this.respond(consultation);
     }
 
+    const attribution = options.auto ? null : await this.resolveCloseAttribution(consultation, options);
+    const actor = attribution?.clinicianId ?? this.actor();
+
     if (consultation.status === ConsultationStatus.RECORDING || consultation.status === ConsultationStatus.PAUSED) {
       await this.sendControl(await this.liveBoundSessions(consultation), 'finalize', consultationId);
     }
 
-    const actor = options.caller?.userId ?? options.clinicianUserId ?? this.actor();
     const target = consultation.status === ConsultationStatus.APPROVED ? ConsultationStatus.CLOSED_COMPLETE : ConsultationStatus.CLOSED_INCOMPLETE;
     applyLifecycleTransition(consultation, target, actor, options.auto ? 'auto_close' : 'close', {
       closedReason: options.auto ? ConsultationClosedReason.AUTO : ConsultationClosedReason.MANUAL,
@@ -235,6 +255,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
 
     const closed = await this.persist(consultation, options.expectedVersion ?? consultation.version);
     await this.endCurrentEncounter(closed, closed.closedAt ?? undefined);
+    await this.appendCloseAudit(closed, actor, attribution?.submittedBy ?? null);
     await this.events.publish(closed, 'closed', { userId: actor });
     return this.respond(closed);
   }
@@ -269,6 +290,58 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────────────────────
+
+  /** WHOSE close this is (the clinician) and WHICH credential submitted it. */
+  private async resolveCloseAttribution(
+    consultation: ConsultationEntity,
+    options: { clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<{ clinicianId: string; submittedBy: string }> {
+    const { clinicianId, caller } = await resolveAttributedActor({
+      tenantId: consultation.tenantId,
+      named: options.clinicianUserId,
+      caller: toSignerCaller(options.caller),
+      requestUser: this.clsService.get('user'),
+      requestServiceAccount: this.clsService.get('serviceAccount'),
+      repositories: {
+        userRoleAssignmentRepository: this.userRoleAssignmentRepository,
+        userDepartmentRepository: this.userDepartmentRepository,
+        userRepository: this.userRepository,
+      },
+    });
+    return { clinicianId, submittedBy: caller.principalId || clinicianId };
+  }
+
+  /**
+   * The `SESSION_CLOSED_COMPLETE` / `SESSION_CLOSED_INCOMPLETE` WORM row. `clinicianId` is whose
+   * close it is (none for the system); `createdBy` is the credential that submitted it. Best
+   * effort: a failed append is logged and never rolls back the persisted close.
+   */
+  private async appendCloseAudit(closed: ConsultationEntity, actor: string, submittedBy: string | null): Promise<void> {
+    if (!this.harnessAudit) return;
+    const action =
+      closed.status === ConsultationStatus.CLOSED_COMPLETE ? HarnessAuditAction.SESSION_CLOSED_COMPLETE : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
+    const clinicianId = actor === 'system' ? null : actor;
+    try {
+      await this.harnessAudit.append({
+        tenantId: closed.tenantId,
+        consultationId: closed.id,
+        action,
+        modelName: 'session-lifecycle',
+        modelVersion: 'v1',
+        sensorScores: {},
+        citations: [],
+        clinicianId,
+        createdBy: submittedBy ?? clinicianId,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'WORM append failed for a session close (non-fatal, the close stands)',
+        consultationId: closed.id,
+        action,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   private async load(consultationId: string, options: { allowTenantless?: boolean } = {}): Promise<ConsultationEntity> {
     const tenantId = this.clsService.get('tenantId') || null;
@@ -455,6 +528,32 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     return live.filter((id): id is string => id !== null);
   }
 
+  /**
+   * The sessions apps/stt REPORTS active. Unlike `liveBoundSessions` (a control command goes to a
+   * session it cannot check), a lookup that fails or is unwired verifies nothing: a supersede
+   * announces only what is known live.
+   */
+  private async verifiedActiveSessions(consultation: ConsultationEntity, sessionIds: string[]): Promise<string[]> {
+    if (!this.streamingSessions || sessionIds.length === 0) return [];
+    const streamingSessions = this.streamingSessions;
+    const active = await Promise.all(
+      sessionIds.map(async (id) => {
+        try {
+          return (await streamingSessions.getSessionStatus(id, consultation.tenantId))?.status === 'active' ? id : null;
+        } catch (error) {
+          this.logger.warn({
+            message: 'start could not ask apps/stt whether an older STT session is live — not superseded',
+            consultationId: consultation.id,
+            sttSessionId: id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        }
+      }),
+    );
+    return active.filter((id): id is string => id !== null);
+  }
+
   private async sendControl(sessionIds: string[], action: ControlAction, consultationId: string): Promise<void> {
     if (!this.audioBridge) return;
     for (const sessionId of sessionIds) {
@@ -499,8 +598,8 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   }
 
   /**
-   * One live STT session per consultation, last writer wins: every OLDER live binding is
-   * superseded (its listener finalizes it). Never throws.
+   * One live STT session per consultation, last writer wins: every OLDER binding apps/stt REPORTS
+   * active is superseded (its listener finalizes it). Never throws.
    */
   private async supersedeByDurableBinding(consultation: ConsultationEntity, sttSessionId: string): Promise<void> {
     if (!this.transcriptionJobs) return;
@@ -514,11 +613,13 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       return;
     }
     const own = rows.find((row) => row.streamSessionId === sttSessionId);
-    const older = rows.filter((row) => row.streamSessionId && row.streamSessionId !== sttSessionId && (!own || row.createdAt <= own.createdAt));
-    const live = new Set(await this.liveBoundSessions(consultation));
-    for (const row of older) {
-      const supersededSessionId = row.streamSessionId as string;
-      if (!live.has(supersededSessionId)) continue;
+    const older = new Set<string>();
+    for (const row of rows) {
+      if (!row.streamSessionId || row.streamSessionId === sttSessionId) continue;
+      if (own && row.createdAt > own.createdAt) continue;
+      older.add(row.streamSessionId);
+    }
+    for (const supersededSessionId of await this.verifiedActiveSessions(consultation, [...older])) {
       const event: SttSessionSupersededEvent = {
         tenantId: consultation.tenantId,
         consultationId: consultation.id,
