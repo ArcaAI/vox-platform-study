@@ -278,6 +278,21 @@ succeed. `PROCESSING` is absent from its terminal set, and that omission is the 
 Removed alongside it in R4: nothing. `JobConflictError`, `TERMINAL_JOB_STATUSES` and
 `STATE_TRANSITION_CODE` are all part of the replacement and stay.
 
+### TASK-1045 — consultation lifecycle simplification, deprecated (2026-10-05)
+
+Twelve statuses became seven plus an orthogonal `processing` marker. Every item below stays for **one release**, then is removed. **Owner to confirm:** the Sunset date `Sun, 31 Jan 2027 00:00:00 GMT` (sent as the RFC 8594 `Sunset` header on the deprecated routes) and the removal release `R5` are placeholders until the owner names the tag.
+
+| Item | Where | Replacement | Remove in | Status |
+|---|---|---|---|---|
+| `POST consultations/:id/recording/start` | `consultation.controller.ts` | `POST consultations/:id/start` | R5 (owner to confirm) | marked — `@ApiDeprecated`, Sunset placeholder |
+| `POST consultations/:id/recording/stop` (never waits for the final transcript) | same | `POST consultations/:id/stop` (waits by default; `waitForFinal`) | R5 (owner to confirm) | marked |
+| `POST consultations/:id/prime` (a no-op: there is no `PRIMED` state, an open consultation is ready to record) | same | `POST consultations/:id/start` | R5 (owner to confirm) | marked |
+| `POST consultations/:id/summary/:contextItemId/approve` (now approves the whole consultation, exactly as the route below) | same | `POST consultations/:id/approve` | R5 (owner to confirm) | marked |
+| The twelve-value consultation status (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `PENDING_REVIEW`, `SIGNED`, `TIMED_OUT`, `REOPENED`, `CLOSED`, plus the four shared values) in API responses | `ConsultationLifecycleVocabularyInterceptor` on `ConsultationController`; `projectLegacyConsultationStatus` | Send `X-Hope-Lifecycle: 2` to receive the seven real values; the real pair is always also under `lifecycle: { status, processing }` | R5 (owner to confirm) | marked — served by projection whenever the header is absent; responses carry `Vary: x-hope-lifecycle` |
+| Settings `consultation.state.sessionTimeoutMinutes`, `…reviewTimeoutMinutes`, `…openTimeoutMinutes`, `…requirePrimedBeforeRecording`, `consultation.session.completionTimeoutMinutes` | settings-registry descriptors | `consultation.autoClose`, `consultation.reopen.allowClosedComplete`, `consultation.stop.finalTranscriptTimeoutSeconds`, `stt.streaming.pauseMaxSeconds` | R5 (owner to confirm) | marked — labelled `(Deprecated)`, no longer read |
+| `@arcaai/vox-node` `consultations.recording.{start,stop}`, `consultations.waitForFinalNote`, and the `(id, request, { ifMatch })` signature of `consultations.close` | `packages/vox-node/src/resources/consultations.ts` | `ConsultationHandle` from `open()` / `attach()` | release after 5.0 | marked `@deprecated` |
+| `@arcaai/vox` twelve-value `ConsultationStatus`; `audio.start` / `audio.stop`; the per-summary approve in `useArcaSummary` | `types/consultation.ts`, `hooks/useArca.ts`, `hooks/useArcaSummary.ts` | `ConsultationLifecycleStatus` + `toLifecycleState`; `useConsultation().start/stop/approve` | release after 5.0 | marked `@deprecated` |
+
 ## Admin console routes and features
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |

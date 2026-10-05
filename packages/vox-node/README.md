@@ -353,6 +353,41 @@ const stopped = await hope.consultations.recording.stop(id);
 const note = await hope.consultations.waitForFinalNote(id, { since: stopped.updatedAt });
 ```
 
+### Consultation lifecycle — the `ConsultationHandle`
+
+`hope.consultations.open(request)` resolves a `ConsultationHandle`; `hope.consultations.attach(id)`
+builds one for a consultation you did not open. A consultation has seven statuses — `OPEN`,
+`RECORDING`, `PAUSED`, `STOPPED`, `APPROVED`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE` — and an
+orthogonal `processing` marker (`IDLE`, `FINALIZING_TRANSCRIPT`, `SUMMARIZING`,
+`PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED`). "The note is ready to review" is
+`status === 'STOPPED'` with `processing === 'AWAITING_REVIEW'`. A closed consultation carries
+`closedReason` (`AUTO`, `MANUAL`, `APPROVED`).
+
+```ts
+const visit = await hope.consultations.open({ patientId, clinicianUserId });
+const capture = await visit.start();          // STT session + start command + socket
+capture.socket.sendPcm16(frame);              // PCM16 LE mono
+await visit.pause();                          // visit.start() again resumes
+await visit.stop();                           // waits for the final transcript
+await visit.sendAttachment({ kind: 'case_note', data: 'Allergic to penicillin', mime: 'text/plain' });
+await visit.generateSummary({ wait: true });  // or { sectionKeys: ['plan'] } to regenerate sections
+await visit.approve();                        // If-Match comes from the handle's own version
+await visit.close();                          // CLOSED_COMPLETE after approval
+```
+
+- `visit.status`, `visit.processing` and `visit.version` follow the commands and the lifecycle
+  events. `visit.on('status', handler)` opens `GET consultations/:id/events` (replays from the last
+  `seq` on reconnect); `on('transcript' | 'capture-state' | 'error', …)` cover the socket. Call
+  `visit.dispose()` when done.
+- `history()` / `historyAll()` read the consultation's activity feed; `recap(encounterSeq)` reads one
+  encounter's recap; `sendFeedback()` takes `rating`, `comment` or `edit` inputs.
+- Every call the handle makes sends `X-Hope-Lifecycle: 2`. Without that header the gateway
+  projects `status` onto the old twelve values for one release, which is what a raw
+  `transport.request` caller sees.
+- `consultations.recording.{start,stop}` and `waitForFinalNote` still work and are `@deprecated`.
+- 409s are `ConflictError` with the gateway's `code` (e.g. `CONSULTATION_TRANSITION_ILLEGAL`); a
+  stale `If-Match` is `VersionConflictError`.
+
 ### Async jobs
 
 For long transcripts, `generateAsync` + `jobs.waitFor` hands generation to a background job;
