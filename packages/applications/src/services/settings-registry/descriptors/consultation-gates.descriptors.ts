@@ -142,7 +142,7 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     failMode: 'open-to-default',
     killSwitch: true,
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Require PRIMED before RECORDING',
+    label: '(Deprecated) Require PRIMED before RECORDING',
     description:
       "Enforces the session state machine's `PRIMED → RECORDING` guard on `POST :id/recording/start`. Defaults OFF: no existing SDK/admin-console caller invokes `POST :id/prime` yet, so flipping this ON without a prior client rollout would 409 every recording start. OFF logs the would-be violation and proceeds; ON enforces (409 without a prior `prime`). Deleted once `prime` is the end-to-end consent checkpoint.",
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY],
@@ -160,9 +160,9 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Consultation session idle timeout (minutes)',
+    label: '(Deprecated) Consultation session idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE. Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
+      'Deprecated, no longer read: superseded by `consultation.autoClose`. Kept for one release. Deprecated, no longer read: superseded by `consultation.autoClose`. Kept for one release. Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE. Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. Consumed by `ConsultationTimeoutSweepService`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
   },
   // Sweep cadence — how OFTEN
@@ -183,9 +183,9 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Consultation session-timeout sweep schedule',
+    label: 'Consultation auto-close sweep schedule',
     description:
-      'Cron expression for how often `ConsultationTimeoutSweepService` checks for sweep-eligible consultations past `consultation.state.sessionTimeoutMinutes`. Default every 15 minutes.',
+      'Cron expression for how often `ConsultationTimeoutSweepService` runs: it auto-pauses stale recordings and auto-closes consultations per `consultation.autoClose`. Default every 15 minutes.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
   },
   // TASK-972 Lane 8 (OD-6) — the PENDING_REVIEW leg's window. Same shape as
@@ -201,9 +201,9 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Consultation review idle timeout (minutes)',
+    label: '(Deprecated) Consultation review idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in PENDING_REVIEW with no clinician activity before the scheduled sweep transitions it to TIMED_OUT. Deliberately NOT CLOSED_INCOMPLETE: TIMED_OUT is RECOVERABLE — `TIMED_OUT → SIGNED` is a legal transition and `SummaryService.approveSummary` already accepts it, so a clinician who reviews and submits hours later still signs the note, still closes the consultation, and still yields a training pair. Until this leg existed, PENDING_REVIEW was the one state nothing in the platform could clear (the general sweep excludes it; the gate-SLA escalation path only fires on a terminal harness gate abandon). Default 120 (2h). Consumed by `ConsultationTimeoutSweepService.sweepIdlePendingReview`.',
+      'Deprecated, no longer read: superseded by `consultation.autoClose`. Kept for one release. Minutes a consultation may sit in PENDING_REVIEW with no clinician activity before the scheduled sweep transitions it to TIMED_OUT. Deliberately NOT CLOSED_INCOMPLETE: TIMED_OUT is RECOVERABLE — `TIMED_OUT → SIGNED` is a legal transition and `SummaryService.approveSummary` already accepts it, so a clinician who reviews and submits hours later still signs the note, still closes the consultation, and still yields a training pair. Until this leg existed, PENDING_REVIEW was the one state nothing in the platform could clear (the general sweep excludes it; the gate-SLA escalation path only fires on a terminal harness gate abandon). Default 120 (2h). Consumed by `ConsultationTimeoutSweepService.sweepIdlePendingReview`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY],
   },
   // TASK-972 Lane 8 (OD-7) — the OPEN leg's window. Same shape again.
@@ -217,9 +217,9 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Consultation open idle timeout (minutes)',
+    label: '(Deprecated) Consultation open idle timeout (minutes)',
     description:
-      'Minutes a consultation may sit in OPEN — never primed, never recorded — before the scheduled sweep transitions it to CLOSED_INCOMPLETE. OPEN was structurally unclosable before TASK-972 (its only outgoing edge was OPEN → PRIMED), so an abandoned pre-recording session leaked forever. TWO signals are required, not one: the row must have been untouched for the window AND no ContextItem may have been created inside it, because adding context does not bump `Consultation.updatedAt` and this target is a close (it leaves only by REOPENED, or a clinician approve → SIGNED). Default 120 (2h), live-tunable with no redeploy. Consumed by `ConsultationTimeoutSweepService.sweepIdleOpen`.',
+      'Deprecated, no longer read: superseded by `consultation.autoClose`. Kept for one release. Minutes a consultation may sit in OPEN — never primed, never recorded — before the scheduled sweep transitions it to CLOSED_INCOMPLETE. OPEN was structurally unclosable before TASK-972 (its only outgoing edge was OPEN → PRIMED), so an abandoned pre-recording session leaked forever. TWO signals are required, not one: the row must have been untouched for the window AND no ContextItem may have been created inside it, because adding context does not bump `Consultation.updatedAt` and this target is a close (it leaves only by REOPENED, or a clinician approve → SIGNED). Default 120 (2h), live-tunable with no redeploy. Consumed by `ConsultationTimeoutSweepService.sweepIdleOpen`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
   },
   // The RECORDING leg's own staleness window (TASK-932 OD-9, N). A tuning
@@ -235,9 +235,9 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     globalOnly: true,
     failMode: 'open-to-default',
     category: CONSULTATION_PIPELINE_CATEGORY,
-    label: 'Recording stale timeout (minutes)',
+    label: 'Recording auto-pause after (minutes)',
     description:
-      'Minutes a consultation may sit in RECORDING with no `consultation:live-summary:{id}:lock` key before the scheduled sweep force-stops it via `ConsultationService.stopRecording` (the same path a real client uses), landing it in DRAINING where `..sessionTimeoutMinutes` eventually takes over. Both signals are required — age AND an absent lock — so an active capture session is never interrupted. Default 30 minutes (OD-9). Consumed by `ConsultationTimeoutSweepService.sweepStaleRecordings`.',
+      'Minutes a consultation may sit in RECORDING with no activity (no transcript segment, no capture heartbeat) before the scheduled sweep auto-pauses it through the lifecycle service. Nothing is stopped or lost: the clinician resumes the capture. Default 30 minutes. Consumed by `ConsultationTimeoutSweepService.sweepStaleRecordings`.',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
   },
 ];

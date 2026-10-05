@@ -26,10 +26,7 @@ import { EffectiveSettingsService } from '../settings-registry/effective-setting
 import { AGENTIC_CONTEXT_KEY_PREFIX } from '../settings-registry/descriptors/agentic-context.descriptors';
 import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
-import {
-  CONSULTATION_COMPLETION_TIMEOUT_MINUTES_DEFAULT,
-  CONSULTATION_COMPLETION_TIMEOUT_MINUTES_KEY,
-} from '../settings-registry/descriptors/consultation-completion.descriptors';
+import { CONSULTATION_AUTO_CLOSE_KEY, resolveAutoClosePolicy } from '../settings-registry/descriptors/consultation-lifecycle.descriptors';
 
 /**
  * The TEXT routing tasks callers name:
@@ -372,28 +369,26 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-1001 wave 6 — `consultation.session.completionTimeoutMinutes` (tenant → SYSTEM → 5), in
-   * SECONDS, for the clinician gate.
+   * `consultation.autoClose.idleMinutes` (tenant → SYSTEM → 12 h) in SECONDS, for the clinician
+   * gate: the gate waits as long as the consultation may sit untouched.
    *
    * `open-to-default`: a settings-backend failure or an unusable stored value serves the platform's
-   * code default rather than the policy row's historical 24 h — the gate must never silently wait a
-   * day because a lookup failed. `null` only when no settings graph is wired (positional fixtures).
+   * code default rather than the policy row's historical 24 h. `null` only when no settings graph
+   * is wired (positional fixtures).
    */
-  private async resolveCompletionTimeoutSeconds(tenantId: string): Promise<number | null> {
+  private async resolveGateSlaSeconds(tenantId: string): Promise<number | null> {
     if (!this.effectiveSettings) return null;
-    let minutes: unknown;
+    let value: unknown;
     try {
-      minutes = (await this.effectiveSettings.resolveEffective(CONSULTATION_COMPLETION_TIMEOUT_MINUTES_KEY, { tenantId })).value;
+      value = (await this.effectiveSettings.resolveEffective(CONSULTATION_AUTO_CLOSE_KEY, { tenantId })).value;
     } catch (error) {
       this.logger.warn({
-        message: 'consultation.session.completionTimeoutMinutes lookup failed — the clinician gate uses the platform code default',
+        message: 'consultation.autoClose lookup failed — the clinician gate uses the platform code default',
         tenantId,
         error: error instanceof Error ? error.message : String(error),
       });
-      minutes = undefined;
     }
-    const usable = typeof minutes === 'number' && Number.isInteger(minutes) && minutes >= 1;
-    return (usable ? (minutes as number) : CONSULTATION_COMPLETION_TIMEOUT_MINUTES_DEFAULT) * 60;
+    return resolveAutoClosePolicy(value).idleMinutes * 60;
   }
 
   /**
@@ -520,17 +515,18 @@ export class HarnessPolicyService {
     // once and overlay onto every return path below (same pattern as the judge
     // selection above). Scoped to [tenant, SYSTEM] since OD-7 (tenant-owned
     // connectors), not SYSTEM alone.
-    const [mcpServers, tokenBudgetPerRun, completionTimeoutSeconds] = await Promise.all([
+    const [mcpServers, tokenBudgetPerRun, derivedGateSlaSeconds] = await Promise.all([
       this.resolveMcpServers(tid),
       this.resolveTokenBudgetPerRun(tid),
-      this.resolveCompletionTimeoutSeconds(tid),
+      this.resolveGateSlaSeconds(tid),
     ]);
-    // TASK-1001 wave 6 — the clinician gate IS the consultation completion timeout: the SLA is the
-    // tenant's (or platform's) `consultation.session.completionTimeoutMinutes`, and its first breach
-    // closes the session unsigned. `null` only without a settings graph (fixtures): the row stands.
+    // The clinician gate SLA is how long the consultation may sit untouched: the tenant's (or
+    // platform's) `consultation.autoClose.idleMinutes`, and its first breach is recorded as an
+    // escalation only (closing belongs to the auto-close sweep). `null` only without a settings
+    // graph (fixtures): the row stands.
     const applyCompletionTimeout = (resp: HarnessPolicyResponse): HarnessPolicyResponse => {
-      if (completionTimeoutSeconds !== null) {
-        resp.gateSlaSeconds = completionTimeoutSeconds;
+      if (derivedGateSlaSeconds !== null) {
+        resp.gateSlaSeconds = derivedGateSlaSeconds;
         resp.gateMaxEscalations = 1;
       }
       return resp;
@@ -952,7 +948,7 @@ function toResponse(e: HarnessPolicyEntity, source: HarnessPolicySource): Harnes
     // overlaid by `getEffectivePolicy` from the SYSTEM-shared registry.
     mcpServers: [],
     tokenBudgetPerRun: null,
-    // TASK-1001 wave 6 — derived from `consultation.session.completionTimeoutMinutes` by
+    // Derived from `consultation.autoClose` by
     // `getEffectivePolicy`; not a policy-row field.
     gateMaxEscalations: null,
     updatedAt: e.updatedAt ? e.updatedAt.toISOString() : null,

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -15,6 +15,7 @@ import {
   SummaryMetaFactory,
   PromptTemplateRepository,
   ConsultationStatus,
+  ConsultationProcessing,
   HarnessAuditAction,
   HighlightRepository,
   ContextItemEntity,
@@ -30,7 +31,7 @@ import {
   ResourceType,
   SysEventType,
 } from '@arcaai/domains';
-import { BusinessException, OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
 // Imported from the leaf modules rather than the package barrel: the barrel
@@ -88,7 +89,7 @@ import type {
   HarnessSegmentCitationRef,
 } from './dto';
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
-import { ConsultationCompletionTimeoutScheduler } from '../completion-timeout/consultation-completion-timeout.scheduler';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 
 /**
  * The routing task keys a harness worker may resolve a model for over
@@ -134,10 +135,14 @@ export interface FailGovernedRunInput {
   at?: Date;
 }
 
-/** The consultation's status AFTER the call — `transitioned: false` means it was left alone. */
+/**
+ * The consultation's status AFTER the call — `transitioned: false` means it was left alone.
+ * `processing` is present when the call set the processing axis (FAILED).
+ */
 export interface FailGovernedRunResult {
   transitioned: boolean;
   status: ConsultationStatus;
+  processing?: ConsultationProcessing;
 }
 
 /** What the gateway's run-completion watcher reports about a run that ended WITHOUT failing. */
@@ -154,29 +159,32 @@ export interface RecordGovernedRunCompletedInput {
  * The consultation states in which a governed run is still the thing writing the document, so
  * its outcome is worth recording and announcing.
  *
- * `DRAINING` is handled separately and more strongly (it CLOSES the consultation); the three
- * here record and announce without touching `status`, because the clinician is still working and
- * the default loop can still produce a note. Every other state - `PENDING_REVIEW`, `SIGNED`,
- * either `CLOSED_*` - has already moved past this run, and re-stamping it would rewrite history.
+ * `STOPPED` is handled separately and more strongly (it marks processing FAILED); the three here
+ * record and announce without touching either axis, because the clinician is still working and
+ * the default loop can still produce a note. `APPROVED` and either `CLOSED_*` have already moved
+ * past this run, and re-stamping them would rewrite history.
  */
 const GOVERNED_RUN_OBSERVABLE_STATUSES: readonly ConsultationStatus[] = [
   ConsultationStatus.OPEN,
   ConsultationStatus.RECORDING,
-  ConsultationStatus.PRIMED,
+  ConsultationStatus.PAUSED,
 ];
 
 /**
- * TASK-1001 wave 5 (D-6) — the states a TERMINAL review-gate abandon closes `CLOSED_INCOMPLETE`.
- * An EXPLICIT list rather than `canTransitionTo(CLOSED_INCOMPLETE)`: `OPEN`, `PRIMED` and
- * `REOPENED` also reach that state legally, but a consultation there is one a clinician is
- * actively working on, not one sitting at a review gate. See `closeOnTerminalGateAbandon`.
+ * The processing values the harness callbacks may replace on a STOPPED consultation. The other
+ * two belong to other writers — `FINALIZING_TRANSCRIPT` to the stop flow, `PROCESSING_ATTACHMENT`
+ * to the attachment pipeline (ref-counted) — and replacing them would let a clinician approve a
+ * note while its inputs are still landing.
  */
-const GATE_ABANDON_CLOSABLE_STATUSES: ReadonlySet<ConsultationStatus> = new Set([
-  ConsultationStatus.PENDING_REVIEW,
-  ConsultationStatus.TIMED_OUT,
-  ConsultationStatus.DRAINING,
-  ConsultationStatus.DRAFT_PENDING_SENSORS,
+const HARNESS_WRITABLE_PROCESSING: ReadonlySet<ConsultationProcessing> = new Set([
+  ConsultationProcessing.IDLE,
+  ConsultationProcessing.SUMMARIZING,
+  ConsultationProcessing.AWAITING_REVIEW,
+  ConsultationProcessing.FAILED,
 ]);
+
+/** The consultation states in which the note is signed and therefore immutable. */
+const APPROVED_STATUSES: ReadonlySet<ConsultationStatus> = new Set([ConsultationStatus.APPROVED, ConsultationStatus.CLOSED_COMPLETE]);
 
 /** The live-summary channel every realtime consultation frame shares. */
 const LIVE_SUMMARY_CHANNEL_PREFIX = 'consultation:live-summary:';
@@ -327,12 +335,11 @@ export class HarnessInternalService extends BaseService {
     // `harness-internal.service.test.ts`'s double-bill-guard test can assert
     // `recordUsage` is never called — see that test for the regression net.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
-    // clinician notification on TIMED_OUT (the terminal gate-SLA
-    // abandonment). Optional + trailing so existing positional unit fixtures
-    // keep their arity; production DI supplies it via NotificationServiceModule.
-    // Best-effort: a notification-send failure must NEVER roll back the
-    // TIMED_OUT transition or its WORM append — the record is the WORM row,
-    // the notification is the courtesy.
+    // clinician notification on the terminal gate-SLA abandonment. Optional +
+    // trailing so existing positional unit fixtures keep their arity; production
+    // DI supplies it via NotificationServiceModule. Best-effort: a
+    // notification-send failure must NEVER roll back the escalation or its WORM
+    // append — the record is the WORM row, the notification is the courtesy.
     @Optional() @Inject(INotificationService) private readonly notificationService?: INotificationService,
     // lane B — THE BYO provider plane, used ONLY by
     // `resolveProviderCredential`. Optional + trailing so existing positional
@@ -362,12 +369,6 @@ export class HarnessInternalService extends BaseService {
     // other lifecycle writer. Optional + trailing so every existing positional unit fixture
     // keeps its arity; absent ⇒ the transition still persists and only the broadcast is skipped.
     @Optional() @Inject(EventEmitter2) eventEmitter?: EventEmitter2,
-    // TASK-1001 wave 6 — the consultation COMPLETION TIMEOUT clock: `persistDraft` is the moment a
-    // consultation becomes ready to complete, whichever engine wrote the note. Optional + trailing so
-    // every positional fixture keeps its arity; absent ⇒ no timeout (the idle sweeps remain).
-    @Optional()
-    @Inject(ConsultationCompletionTimeoutScheduler)
-    private readonly completionTimeout?: ConsultationCompletionTimeoutScheduler,
     // The routing plane, used ONLY by `resolveTaskModel`. Optional + trailing so every
     // positional fixture keeps its arity; absent => every task-key resolve is a 503
     // (selection fails closed).
@@ -380,6 +381,10 @@ export class HarnessInternalService extends BaseService {
     // render them as instructions. Optional + trailing so every positional fixture keeps its arity;
     // absent ⇒ no rules text (the deterministic post-generation pass is unaffected).
     @Optional() @Inject(DnaWritingStyleReportRepository) private readonly dnaReportRepository?: DnaWritingStyleReportRepository,
+    // The consultation lifecycle gate: the harness callbacks move the PROCESSING axis through it
+    // (never `status`, never `_version`). Optional + trailing so every positional fixture keeps its
+    // arity; absent ⇒ the note still persists and only the processing signal is skipped.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -783,29 +788,52 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * `transitionTo`, with the state-machine refusal mapped to a NAMED 409.
+   * Move a STOPPED consultation's PROCESSING axis on behalf of a harness callback, best-effort.
    *
-   * `ConsultationEntity.transitionTo` throws a bare `BusinessException` (packages/domains has
-   * no HTTP awareness), and the gateway's `ExceptionInterceptor` maps the whole
-   * `BusinessException` family to 500 — most of it IS ordinary entity validation, so
-   * reclassifying it globally would be wrong. `ConsultationService.applyTransition` set the
-   * precedent of catching it at the call sites that ticket controlled; this is the same
-   * mapping for the call sites on the harness-internal surface.
+   * The harness callbacks never write `status`: the lifecycle commands own it. They report what
+   * the document pipeline is doing — a draft awaiting assurance, a finished note, a gate that wants
+   * a clinician — through the lifecycle gate, which bumps no `_version`. Only a STOPPED
+   * consultation has a pipeline to report on, and only the values in `HARNESS_WRITABLE_PROCESSING`
+   * are replaced (see there). A gate failure is logged and swallowed: the note this surface just
+   * persisted is the record, and a Temporal retry over a lost processing signal would only
+   * re-deliver the same note.
    *
-   * Why it matters more HERE than on a human-driven route: every caller of this surface is a
-   * Temporal activity carrying `_API_RETRY` (3 attempts). A 500 is retryable by definition, so
-   * a permanent state conflict burned the whole budget on an identical request and then failed
-   * the workflow — J5-F7's measured shape. 409 is terminal for the call and, paired with
-   * `ApiClientError` on the harness side, is not retried at all.
+   * @returns `true` when the processing value was written.
    */
-  private applyTransition(consultation: ConsultationEntity, next: ConsultationStatus, actor: string, reason: string): boolean {
+  private async setHarnessProcessing(
+    consultation: ConsultationEntity,
+    next: ConsultationProcessing,
+    origin: string,
+    reason?: string,
+  ): Promise<boolean> {
+    if (!this.lifecycleGate) return false;
+    if (consultation.status !== ConsultationStatus.STOPPED || !HARNESS_WRITABLE_PROCESSING.has(consultation.processing)) {
+      this.logger.log({
+        message: 'Harness callback left the consultation processing unchanged — it is not a stopped consultation the harness may report on',
+        consultationId: consultation.id,
+        origin,
+        currentStatus: consultation.status,
+        currentProcessing: consultation.processing,
+        requestedProcessing: next,
+      });
+      return false;
+    }
     try {
-      return consultation.transitionTo(next, actor, reason);
-    } catch (error) {
-      if (error instanceof BusinessException) {
-        throw new ConflictException(error.message);
+      if (reason === undefined) {
+        await this.lifecycleGate.setProcessing(consultation.id, next);
+      } else {
+        await this.lifecycleGate.setProcessing(consultation.id, next, reason);
       }
-      throw error;
+      return true;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Consultation processing update failed (best-effort — the harness write itself stands)',
+        consultationId: consultation.id,
+        origin,
+        requestedProcessing: next,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
     }
   }
 
@@ -894,25 +922,22 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * TASK-946 OD-4 — the terminal state for a governed consultation whose interpreter run ended
-   * FAILED or TIMED_OUT.
+   * TASK-946 OD-4 — the outcome for a governed consultation whose interpreter run ended FAILED or
+   * TIMED_OUT.
    *
    * WHY THIS EXISTS. Measured 2026-09-10: a degraded `n_finalize` opened a `ReviewGate` on an
    * empty payload, the gate timed out an hour later, `n_output` failed its schema, and the
-   * workflow closed FAILED. Nothing on the gateway acted on that: every consultation stopped
-   * that day stayed `DRAINING` until `ConsultationTimeoutSweepService` would have closed it
-   * 24h later, and the caller saw nothing but harness-progress heartbeats in the meantime.
-   * `CLOSED_INCOMPLETE` is the honest state — the note was never written, so there is nothing
-   * to sign — and `reopenConsultation` is the way back.
+   * workflow closed FAILED. Nothing on the gateway acted on that, and the caller saw nothing but
+   * harness-progress heartbeats in the meantime.
    *
-   * The guard is an EXPLICIT `DRAINING` check, not the broader
-   * `canTransitionTo(CLOSED_INCOMPLETE)`. `DRAFT_PENDING_SENSORS` also legally reaches that
-   * state, but a consultation there HAS a persisted draft; closing it incomplete because a
-   * later node of the same run failed would discard a written note. Every other state —
-   * `PENDING_REVIEW`, `SIGNED`, either `CLOSED_*` — is a consultation that has already moved
-   * past this run, and a retry after the flip lands on `CLOSED_INCOMPLETE` itself, so this is
-   * idempotent by the same check rather than by a dedup key (the watcher carries no
-   * Idempotency-Key: it is not a Temporal activity).
+   * A STOPPED consultation whose note was never written is marked processing `FAILED` with the
+   * run's reason. The consultation is NOT closed: the clinician can still record again, or close
+   * it, and the auto-close sweep owns the idle case. A STOPPED consultation that already holds the
+   * harness note (processing `IDLE` with the harness draft, or `AWAITING_REVIEW`) is left alone —
+   * marking it failed because a later node of the same run failed would misdescribe a written
+   * note. `APPROVED` and either `CLOSED_*` have moved past this run. A retry after the write finds
+   * `FAILED` and writes it again, which is idempotent (the watcher carries no Idempotency-Key: it
+   * is not a Temporal activity).
    *
    * 404-over-403 throughout: an unknown, cross-tenant or soft-deleted consultation id is
    * indistinguishable to the caller, exactly as on every other operation of this surface.
@@ -938,7 +963,7 @@ export class HarnessInternalService extends BaseService {
       }
 
       // TASK-1022 — a resumed recording SUPERSEDES the governing run. A late failure from the
-      // superseded run must not close, or stamp an outcome on, the run that replaced it.
+      // superseded run must not mark, or stamp an outcome on, the run that replaced it.
       const governingRunId = readGoverningEngineMarker(consultation.metadata)?.workflowRunId;
       if (governingRunId && governingRunId !== input.runId) {
         this.logger.log({
@@ -951,21 +976,21 @@ export class HarnessInternalService extends BaseService {
         return { transitioned: false, status: consultation.status };
       }
 
-      if (consultation.status !== ConsultationStatus.DRAINING) {
+      if (consultation.status !== ConsultationStatus.STOPPED) {
         // The run failed while the clinician is still working - the common case for a TRIGGER
-        // failure, which happens seconds after `open`. There is nothing to close (the default
+        // failure, which happens seconds after `open`. There is nothing to mark (the default
         // loop can still document this consultation and the clinician can still record), but the
         // outcome must stop being invisible: it goes on the marker every read surface derives
         // `governingRun` from, on the sys-event bus, and on the live feed the client is already
-        // holding open. `status` is deliberately untouched - a failed governing run is not a
-        // failed consultation.
+        // holding open. Neither axis is touched - a failed governing run is not a failed
+        // consultation.
         if (GOVERNED_RUN_OBSERVABLE_STATUSES.includes(consultation.status)) {
           await this.recordGovernedRunFailure(consultation, input);
           return { transitioned: false, status: consultation.status };
         }
 
         this.logger.log({
-          message: 'Governed run ended without a clinical result, but the consultation has already moved past DRAINING — status left unchanged',
+          message: 'Governed run ended without a clinical result, but the consultation has already moved past STOPPED — left unchanged',
           consultationId,
           runId: input.runId,
           runStatus: input.status,
@@ -974,36 +999,51 @@ export class HarnessInternalService extends BaseService {
         return { transitioned: false, status: consultation.status };
       }
 
-      const at = (input.at ?? new Date()).toISOString();
+      if (await this.hasWrittenHarnessNote(consultation)) {
+        this.logger.log({
+          message: 'Governed run ended without a clinical result after the note was written — processing left unchanged',
+          consultationId,
+          runId: input.runId,
+          runStatus: input.status,
+          currentProcessing: consultation.processing,
+        });
+        return { transitioned: false, status: consultation.status };
+      }
+
       const reason = input.reason ?? null;
-      const expectedVersion = consultation.version;
-
-      // Provenance on the row itself, so an operator reading the consultation can see WHICH run
-      // closed it and why — PHI-free (ids, a status and the interpreter's own reason string).
-      const existingMetadata =
-        typeof consultation.metadata === 'object' && consultation.metadata !== null && !Array.isArray(consultation.metadata)
-          ? (consultation.metadata as Record<string, unknown>)
-          : {};
-      consultation.metadata = {
-        ...existingMetadata,
-        terminalReason: { runId: input.runId, status: input.status, reason, at },
-      } as ConsultationEntity['metadata'];
-
-      // `transitionTo` stays the single writer of `status` (DRAINING → CLOSED_INCOMPLETE is a
-      // matrix row, so this always applies); `applyTransition` maps a refusal to a named 409.
-      this.applyTransition(consultation, ConsultationStatus.CLOSED_INCOMPLETE, 'system', 'failGovernedRun');
-      await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+      // The interpreter's own reason (PHI-free) when it gave one, otherwise the named outcome.
+      const processingReason = (reason ?? `GOVERNED_RUN_${input.status}`).slice(0, 256);
+      if (!this.lifecycleGate || !HARNESS_WRITABLE_PROCESSING.has(consultation.processing)) {
+        this.logger.log({
+          message: 'Governed run ended without a clinical result — processing not marked (no lifecycle gate, or another writer owns it)',
+          consultationId,
+          runId: input.runId,
+          runStatus: input.status,
+          currentProcessing: consultation.processing,
+        });
+        return { transitioned: false, status: consultation.status };
+      }
+      // Not best-effort: this IS the operation's one durable write, so a failure surfaces to the
+      // watcher rather than reading as success.
+      await this.lifecycleGate.setProcessing(consultation.id, ConsultationProcessing.FAILED, processingReason);
 
       if (this.eventEmitter) {
         this.broadcastSysEvent(SysEventType.ResourceUpdated, {
           resourceId: consultationId,
-          data: { action: 'failGovernedRun', status: ConsultationStatus.CLOSED_INCOMPLETE, runId: input.runId, runStatus: input.status, reason },
+          data: {
+            action: 'failGovernedRun',
+            status: consultation.status,
+            processing: ConsultationProcessing.FAILED,
+            runId: input.runId,
+            runStatus: input.status,
+            reason,
+          },
         });
       }
 
       // Best-effort, like every other push on this surface: the caller has been watching a
       // heartbeat feed for an hour, so telling it the run failed matters — but a Redis hiccup
-      // must never roll back the already-persisted terminal state.
+      // must never roll back the already-persisted outcome.
       try {
         await this.progressService?.reportProgress(consultationId, {
           tenantId,
@@ -1012,22 +1052,33 @@ export class HarnessInternalService extends BaseService {
         });
       } catch (error) {
         this.logger.warn({
-          message: 'Harness progress FAILED publish failed (best-effort — the consultation is already CLOSED_INCOMPLETE)',
+          message: 'Harness progress FAILED publish failed (best-effort — the consultation is already marked FAILED)',
           consultationId,
           error: error instanceof Error ? error.message : String(error),
         });
       }
 
       this.logger.warn({
-        message: 'Governed consultation closed incomplete — its workflow run ended without a clinical result',
+        message: 'Governed consultation marked processing FAILED — its workflow run ended without a clinical result',
         consultationId,
         runId: input.runId,
         runStatus: input.status,
         reason,
       });
 
-      return { transitioned: true, status: ConsultationStatus.CLOSED_INCOMPLETE };
+      return { transitioned: true, status: consultation.status, processing: ConsultationProcessing.FAILED };
     });
+  }
+
+  /**
+   * Does this STOPPED consultation already hold the harness note? `AWAITING_REVIEW` always does
+   * (only a written note waits for review); `IDLE` does when the harness's own draft exists — a
+   * stopped consultation with no draft is still waiting for one.
+   */
+  private async hasWrittenHarnessNote(consultation: ConsultationEntity): Promise<boolean> {
+    if (consultation.processing === ConsultationProcessing.AWAITING_REVIEW) return true;
+    if (consultation.processing !== ConsultationProcessing.IDLE) return false;
+    return (await this.findOwnHarnessDraft(consultation.id)) !== null;
   }
 
   /**
@@ -1556,21 +1607,22 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * Persist the generated draft: RAW_SUMMARY ContextItem + SummaryMeta + status
-   * + SSE progress + WORM audit.
+   * Persist the generated draft: RAW_SUMMARY ContextItem + SummaryMeta + processing
+   * + SSE progress + WORM audit. Never writes the consultation `status`.
    *
-   * Two-phase (optimistic) delivery, gated by `dto.phase`:
+   * Two-phase (optimistic) delivery, gated by `dto.phase` (the wire literal
+   * `DRAFT_PENDING_SENSORS` is the harness's phase name, not a consultation status):
    *   - EARLY (`DRAFT_PENDING_SENSORS`): persist the readable draft BEFORE the
    *     inferential assurance pass finishes. SummaryMeta carries the
    *     computational scores only; the inferential scores, gate verdict, and
-   *     `assuranceCompletedAt` are withheld (NULL) and status becomes
-   *     `DRAFT_PENDING_SENSORS`. Only the GENERATE audit is written — no
+   *     `assuranceCompletedAt` are withheld (NULL) and processing becomes
+   *     `SUMMARIZING`. Only the GENERATE audit is written — no
    *     SENSOR_RUN, because no verdict exists yet (WORM truthfulness).
-   *     `finalizeAssurance()` completes the meta + flips to PENDING_REVIEW.
+   *     `finalizeAssurance()` completes the meta + sets processing `IDLE`.
    *   - FINALIZE / absent (legacy single-shot): assurance is already complete, so
    *     the meta is fully scored, `assuranceCompletedAt` is stamped (the sign-off
-   *     guard treats legacy drafts as assured), status flips straight to
-   *     PENDING_REVIEW, and GENERATE + SENSOR_RUN (+ REDUCED_ASSURANCE) are written.
+   *     guard treats legacy drafts as assured), processing becomes `IDLE`,
+   *     and GENERATE + SENSOR_RUN (+ REDUCED_ASSURANCE) are written.
    */
   async persistDraft(consultationId: string, dto: HarnessDraftRequest, idempotencyKey?: string): Promise<HarnessDraftResponse> {
     const tenantId = dto.tenantId;
@@ -1850,56 +1902,20 @@ export class HarnessInternalService extends BaseService {
           await this.summaryMetaRepository.create(summaryMeta);
         }
 
-        // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable,
-        // assurance pending, NOT signable). LEGACY -> PENDING_REVIEW
-        // (clinician confirm-before-commit). The matrix's legal predecessors for both are
-        // DRAINING / REOPENED (plus DRAFT_PENDING_SENSORS for the second phase).
-        //
-        // J5-F7 — the advance is LEGALITY-GUARDED, not unconditional. It used to
-        // call `transitionTo` blind, on the reasoning that a draft arriving while the
-        // consultation is still RECORDING is an ordering bug worth throwing over. Measured
-        // live, that reasoning cost more than it bought:
-        //
-        //   * The BATCH entry point reaches here with the consultation still OPEN, entirely
-        //     legitimately. `sttInternal.service.ts` creates the TRANSCRIPT ContextItem and
-        //     emits `TranscriptionCreated`; it never touches the lifecycle, and nothing else
-        //     on that path does either. `OPEN -> PENDING_REVIEW` is not in the matrix.
-        //   * There is no transaction around `persistDraft`. Steps 1 and 2 have ALREADY
-        //     committed the note and its SummaryMeta by the time we get here, so throwing
-        //     keeps the draft and loses the workflow — the worst of both. Temporal then
-        //     retried the identical request twice more and marked the run FAILED (the seed's
-        //     own `harness-doc-90000000-...-01` has been FAILED since 2026-09-06 for this).
-        //
-        // So a draft persisted for a consultation with no legal path to the draft state lands
-        // as a draft in the state the consultation IS in: the artifact is kept, the lifecycle
-        // is left alone, and the skip is logged with both states named. That is the same
-        // degrade-and-continue posture the adoption branch above already takes on OCC drift,
-        // and for the same reason — a clinical artifact is not the right thing to sacrifice to
-        // a lifecycle disagreement. `transitionTo` remains the ONLY writer of `status`, and
-        // `applyTransition` still maps a genuine refusal to 409 if the matrix and
-        // `canTransitionTo` ever disagree.
+        // 3. Processing, never status. EARLY -> SUMMARIZING (readable, assurance pending, not yet
+        // approvable); final -> IDLE (the note is written and waits for the clinician). Only a
+        // STOPPED consultation is reported on: the BATCH entry point legitimately reaches here with
+        // the consultation still OPEN (`sttInternal.service.ts` creates the TRANSCRIPT and emits
+        // `TranscriptionCreated` without touching the lifecycle), and there is no transaction
+        // around `persistDraft` — steps 1 and 2 have already committed the note, so a lifecycle
+        // disagreement is logged and skipped, never thrown over (J5-F7: a throw here kept the
+        // draft and failed the workflow). `status` stays the lifecycle commands' alone.
         if (consultation) {
-          const draftTarget = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
-          if (!consultation.canTransitionTo(draftTarget)) {
-            this.logger.warn({
-              message: adoptionSkipped
-                ? 'Harness draft delivery did not advance the consultation lifecycle — the target state is not reachable from the current one ' +
-                  '(the delivered content was not applied; adoption skipped). Status unchanged.'
-                : 'Harness draft persisted WITHOUT advancing the consultation lifecycle — the target state is not reachable from the current one. ' +
-                  'The draft is on the consultation; its status is unchanged.',
-              consultationId,
-              contextItemId,
-              currentStatus: consultation.status,
-              draftTarget,
-            });
-          } else {
-            const expectedConsultationVersion = consultation.version;
-            const applied = this.applyTransition(consultation, draftTarget, userId, 'persistDraft');
-            if (applied) {
-              consultation.updatedBy = userId;
-              await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
-            }
-          }
+          await this.setHarnessProcessing(
+            consultation,
+            isEarly ? ConsultationProcessing.SUMMARIZING : ConsultationProcessing.IDLE,
+            adoptionSkipped ? `persistDraft (adoption skipped: ${adoptionSkipped})` : 'persistDraft',
+          );
         }
 
         // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft). TASK-1014: the
@@ -2008,9 +2024,6 @@ export class HarnessInternalService extends BaseService {
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           ...(adoptionSkipped ? { adoptionSkipped } : {}),
         });
-        // TASK-1001 wave 6 — READY TO COMPLETE: the final note exists. Start (or, after a resumed
-        // recording's re-finalise, restart) the completion window. Never throws.
-        await this.completionTimeout?.schedule(tenantId, consultationId);
         return { contextItemId };
       }),
     );
@@ -2019,13 +2032,13 @@ export class HarnessInternalService extends BaseService {
   /**
    * Second phase of optimistic delivery. The inferential
    * assurance pass has finished, so backfill the early-persisted SummaryMeta with
-   * the inferential scores + gate verdict, stamp `assuranceCompletedAt`, flip the
-   * consultation `DRAFT_PENDING_SENSORS → PENDING_REVIEW`, and record the
+   * the inferential scores + gate verdict, stamp `assuranceCompletedAt`, move the
+   * consultation's processing `SUMMARIZING → IDLE`, and record the
    * SENSOR_RUN (+ REDUCED_ASSURANCE) WORM audit — the verdict that early
    * `persistDraft()` deliberately withheld. Fail-closed: a missing early-persisted
    * SummaryMeta is a contract violation (no draft to finalize) and aborts.
    *
-   * Idempotent on the lifecycle flip (only DRAFT_PENDING_SENSORS advances), so a
+   * Idempotent on the processing move (only SUMMARIZING advances), so a
    * Temporal activity retry re-stamps the same verdict without regressing state.
    */
   async finalizeAssurance(
@@ -2054,7 +2067,7 @@ export class HarnessInternalService extends BaseService {
         // (Q2b) — did the clinician early-sign (Q2a) before this
         // verdict landed? If so the note is already immutable and STANDS; a late
         // adverse verdict is recorded as POST_SIGN_FLAG (below), never regressing it.
-        const alreadySigned = consultation?.status === ConsultationStatus.SIGNED;
+        const alreadySigned = !!consultation && APPROVED_STATUSES.has(consultation.status);
 
         // 1. Backfill the early-persisted SummaryMeta with the inferential verdict.
         //
@@ -2069,23 +2082,12 @@ export class HarnessInternalService extends BaseService {
         // right place to back off.
         await this.applyAssuranceBackfillWithCas(consultationId, tenantId, dto);
 
-        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (;
-        // idempotent — a retry after the flip is a no-op, never regressing a
-        // signed/closed consultation). The guard is kept as an EXPLICIT
-        // status check (not the broader `entity.canTransitionTo(PENDING_REVIEW)`
-        // Task 7 sketches) — the matrix also legally reaches
-        // PENDING_REVIEW from DRAINING and REOPENED, and `finalizeAssurance`
-        // is specifically the second phase of an EARLY draft; silently
-        // promoting a DRAINING/REOPENED consultation here would be exactly
-        // the "paper over an ordering bug" failure mode `persistDraft`
-        // above is written to AVOID. The write itself still routes through
-        // `transitionTo` (guaranteed legal — DRAFT_PENDING_SENSORS →
-        // PENDING_REVIEW is a matrix row) so it stays the single writer.
-        if (consultation && consultation.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
-          const expectedConsultationVersion = consultation.version;
-          consultation.transitionTo(ConsultationStatus.PENDING_REVIEW, userId, 'finalizeAssurance');
-          consultation.updatedBy = userId;
-          await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+        // 2. Processing SUMMARIZING -> IDLE: the assured note now waits for the clinician.
+        // EXPLICITLY only from SUMMARIZING — `finalizeAssurance` is the second phase of an EARLY
+        // draft, so a retry after the move, or a consultation another writer has moved on, is a
+        // no-op rather than a regression. No status write.
+        if (consultation && consultation.processing === ConsultationProcessing.SUMMARIZING) {
+          await this.setHarnessProcessing(consultation, ConsultationProcessing.IDLE, 'finalizeAssurance');
         }
 
         // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict). TASK-1014: the
@@ -2130,7 +2132,7 @@ export class HarnessInternalService extends BaseService {
 
         // 4b. A late ADVERSE verdict (FLAG/REGEN) for a
         // note the clinician already early-signed. The signed note is immutable and
-        // STANDS — never regressed (step 2's flip is skipped for SIGNED) — but we
+        // STANDS — never regressed (step 2 only moves a STOPPED consultation) — but we
         // append a POST_SIGN_FLAG WORM annotation so the amendment/follow-up path
         // (and the assurance SSE terminal event) can surface an alert.
         const lateAdverseVerdict = dto.gateDecision === 'FLAG' || dto.gateDecision === 'REGEN';
@@ -2295,7 +2297,10 @@ export class HarnessInternalService extends BaseService {
    * append-only WORM audit event. The durable workflow's `escalate_gate` activity
    * POSTs this when an un-signed gate passes its SLA; the `reason` encodes
    * terminal-ness (`gate_sla_abandoned` = the terminal escalation before the gate
-   * abandons) and maps to GATE_ABANDONED, else GATE_ESCALATED. Re-establishes
+   * abandons) and maps to GATE_ABANDONED, else GATE_ESCALATED. Either way the
+   * note now wants a clinician, so a STOPPED consultation's processing becomes
+   * `AWAITING_REVIEW` (reason = the escalation reason); the consultation is
+   * never closed here — auto-close owns that. Re-establishes
    * CLS from the body `tenantId` (like the other handlers) and enforces the
    * 404-over-403 tenancy posture: a cross-tenant consultation surfaces as
    * NotFoundException, never leaking that it exists under another tenant.
@@ -2338,10 +2343,8 @@ export class HarnessInternalService extends BaseService {
           createdBy: null,
         });
 
-        // the TERMINAL abandon additionally drives the session state machine.
-        // Non-terminal GATE_ESCALATED writes no status, as before.
-        if (isTerminalAbandon && consultation) {
-          await this.closeOnTerminalGateAbandon(consultation, dto, tenantId);
+        if (consultation) {
+          await this.flagGateEscalation(consultation, dto, tenantId, isTerminalAbandon);
         }
 
         this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
@@ -2351,149 +2354,53 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
-   * TASK-1001 wave 6 (owner decision 2026-09-23) — the consultation's COMPLETION TIMEOUT fired
-   * (`ConsultationCompletionTimeoutProcessor`): nobody approved the final note within the tenant's
-   * `consultation.session.completionTimeoutMinutes` of it being ready.
+   * A review gate escalated: the note waits for a clinician past its SLA. The consultation is
+   * flagged `AWAITING_REVIEW` (the harness gate queue reads exactly that) and stays open — an
+   * escalation never closes it; the auto-close sweep owns closing, and a late approval needs
+   * nothing special. Only a STOPPED consultation is flagged: recording again means the clinician
+   * resumed, and `APPROVED` / either `CLOSED_*` have moved past this gate — each a logged no-op
+   * SUCCESS, never a 409, so a retried escalation is harmless.
    *
-   * The same lifecycle outcome as a terminal harness gate abandon, through the same writer: still
-   * waiting for approval (`PENDING_REVIEW`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`) ⇒
-   * closed unsigned, `CLOSED_INCOMPLETE`; recording again, signed or already closed ⇒ left alone.
-   * A late approval still signs it. Never throws for a consultation that is gone.
+   * The TERMINAL abandon additionally notifies the clinician ("the clock never signs").
+   * Best-effort: a notification failure never rolls back the WORM row or the flag.
    */
-  async closeOnCompletionTimeout(consultationId: string, tenantId: string): Promise<void> {
-    return this.cls.run(async () => {
-      this.cls.set('tenantId', tenantId);
-      this.cls.set('user', createWorkerSession({ tenantId, kind: 'harness-internal' }));
-      const consultation = await this.consultationRepository.findById(consultationId).catch(() => null);
-      if (!consultation) {
-        this.logger.warn({ message: 'Completion timeout fired for a consultation that no longer exists', consultationId });
-        return;
-      }
-      assertEqualTenants(consultation, { tenantId });
-      await this.closeOnTerminalGateAbandon(consultation, { tenantId, reason: 'completion_timeout' } as HarnessEscalationRequest, tenantId);
-    });
-  }
+  private async flagGateEscalation(
+    consultation: ConsultationEntity,
+    dto: HarnessEscalationRequest,
+    tenantId: string,
+    isTerminalAbandon: boolean,
+  ): Promise<void> {
+    const flagged = await this.setHarnessProcessing(consultation, ConsultationProcessing.AWAITING_REVIEW, 'recordEscalation', dto.reason);
+    if (!flagged || !isTerminalAbandon) return;
 
-  /**
-   * TASK-1001 wave 5, owner decision D-6 (2026-09-23) — "time out and close the consultation
-   * session if there is no approval signal". The gate SLA itself is configuration (the harness
-   * policy); this is what the gateway does once the harness reports the TERMINAL abandon.
-   *
-   *   1. `PENDING_REVIEW → TIMED_OUT`, unchanged in meaning: the WORM `SESSION_TIMED_OUT` row and
-   *      the clinician notification ("the clock never signs", INV-177/181/182/183/413/255/147).
-   *   2. `→ CLOSED_INCOMPLETE` — closed, unsigned — from `TIMED_OUT` (step 1's result, or a sweep
-   *      that got there first), `DRAINING` (a draft persisted WITHOUT advancing the lifecycle, see
-   *      `persistDraft`) or `DRAFT_PENDING_SENSORS`. The note is not lost: D-7 made
-   *      `CLOSED_INCOMPLETE → SIGNED` legal, so a clinician's late Save still signs it through
-   *      `SummaryService.approveSummary`, and the close after that is the ordinary
-   *      `SIGNED → CLOSED_COMPLETE`.
-   *
-   * Both edges run through `transitionTo` (the single writer of `status`, matrix-validated) and
-   * land in ONE compare-and-set of the final state, so there is no window in which a persisted
-   * `TIMED_OUT` waits on a second write that might never come.
-   *
-   * Every other state is a logged no-op SUCCESS, never a 409: `RECORDING` means the clinician
-   * resumed and must not be closed under them; `SIGNED` / `CLOSED_COMPLETE` / `REOPENED` have
-   * moved past this gate; and `CLOSED_INCOMPLETE` is a retried terminal escalation, which used to
-   * answer `Illegal consultation state transition: CLOSED_INCOMPLETE → TIMED_OUT`.
-   */
-  private async closeOnTerminalGateAbandon(consultation: ConsultationEntity, dto: HarnessEscalationRequest, tenantId: string): Promise<void> {
-    const consultationId = consultation.id;
-    if (!GATE_ABANDON_CLOSABLE_STATUSES.has(consultation.status)) {
-      this.logger.log({
-        message: 'Terminal gate abandon on a consultation that is not awaiting review — status left unchanged',
-        consultationId,
-        currentStatus: consultation.status,
-        reason: dto.reason,
-      });
-      return;
-    }
-
-    const expectedConsultationVersion = consultation.version;
-    const timedOut =
-      consultation.status === ConsultationStatus.PENDING_REVIEW &&
-      this.applyTransition(consultation, ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
-    this.applyTransition(consultation, ConsultationStatus.CLOSED_INCOMPLETE, 'system', 'recordEscalation');
-    await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
-
-    if (timedOut) {
-      await this.harnessAuditService.append({
-        tenantId,
-        consultationId,
-        action: HarnessAuditAction.SESSION_TIMED_OUT,
-        modelName: 'session-lifecycle',
-        modelVersion: 'v1',
-        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
-        citations: [],
-        createdBy: null,
-      });
-
-      // Best-effort: a notification-send failure must never roll back
-      // the (already persisted + WORM-recorded) transition —
-      // the WORM row is the record, the notification is the courtesy.
-      try {
-        await this.notificationService?.create({
-          title: 'Consultation gate timed out',
-          message: `Consultation ${consultationId} reached its review SLA with no clinician sign-off and was closed unsigned. A later approval still signs it.`,
-          type: NotificationType.ACTION,
-          read: false,
-          targetUserId: consultation.doctorId,
-          tenantId,
-          data: { consultationId, action: 'SESSION_TIMED_OUT' },
-        } as CreateNotificationRequest);
-      } catch (error) {
-        this.logger.warn({
-          message: 'TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
-          consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    if (this.eventEmitter) {
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        resourceId: consultationId,
-        data: { action: 'recordEscalation', status: ConsultationStatus.CLOSED_INCOMPLETE, reason: dto.reason, jobId: dto.jobId ?? null },
-      });
-    }
-
-    // Best-effort, mirroring the timeout sweep and `ConsultationService`'s close: a WORM-append
-    // failure is logged but never rolls back the already-persisted status write.
     try {
-      await this.harnessAuditService.append({
+      await this.notificationService?.create({
+        title: 'Consultation awaiting review',
+        message: `Consultation ${consultation.id} reached its review SLA with no clinician sign-off. It stays open for approval.`,
+        type: NotificationType.ACTION,
+        read: false,
+        targetUserId: consultation.doctorId,
         tenantId,
-        consultationId,
-        action: HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
-        modelName: 'session-lifecycle',
-        modelVersion: 'v1',
-        sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
-        citations: [],
-        createdBy: null,
-      });
+        data: { consultationId: consultation.id, action: 'GATE_ABANDONED' },
+      } as CreateNotificationRequest);
     } catch (error) {
       this.logger.warn({
-        message: 'WORM append failed for a gate-abandon close (non-fatal, status write not rolled back)',
-        consultationId,
+        message: 'Gate-abandon clinician notification failed (best-effort, escalation not rolled back)',
+        consultationId: consultation.id,
         error: error instanceof Error ? error.message : String(error),
       });
     }
-
-    this.logger.warn({
-      message: 'Consultation closed incomplete — its review gate was abandoned with no clinician sign-off',
-      consultationId,
-      reason: dto.reason,
-    });
   }
 
   /**
    * TASK-1020 — has the clinician already APPROVED this harness draft? True when the consultation is
-   * SIGNED / CLOSED_COMPLETE, or when the note carries an `approved` ContextItemVersion (the row
+   * APPROVED / CLOSED_COMPLETE, or when the note carries an `approved` ContextItemVersion (the row
    * `SummaryService.approveSummary` writes) — the second catches a signed note whose consultation
    * has since moved on. A version-lookup failure answers from the status alone, so an unreadable
    * store never blocks the ordinary re-delivery of an unapproved draft.
    */
   private async isApprovedHarnessDraft(consultation: ConsultationEntity | null | undefined, contextItemId: string): Promise<boolean> {
-    if (consultation?.status === ConsultationStatus.SIGNED || consultation?.status === ConsultationStatus.CLOSED_COMPLETE) return true;
+    if (consultation && APPROVED_STATUSES.has(consultation.status)) return true;
     if (!this.contextItemVersionRepository?.getVersionsByChangeReason) return false;
     try {
       return ((await this.contextItemVersionRepository.getVersionsByChangeReason(contextItemId, 'approved')) ?? []).length > 0;

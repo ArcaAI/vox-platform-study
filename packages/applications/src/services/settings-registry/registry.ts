@@ -17,6 +17,7 @@ import { CONSULTATION_APPOINTMENT_DAY_SETTINGS } from './descriptors/consultatio
 import { CONSULTATION_COMPLETION_TIMEOUT_SETTINGS } from './descriptors/consultation-completion.descriptors';
 import { CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS } from './descriptors/consultation-attachments-feedback.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
+import { CONSULTATION_LIFECYCLE_SETTINGS } from './descriptors/consultation-lifecycle.descriptors';
 import { CONSULTATION_OUTPUT_LANGUAGE_SETTINGS } from './descriptors/consultation-output-language.descriptors';
 import { CONSULTATION_PRE_SUMMARY_SETTINGS } from './descriptors/consultation-presummary.descriptors';
 import { CONSULTATION_REALTIME_SETTINGS } from './descriptors/consultation-realtime.descriptors';
@@ -252,6 +253,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // TASK-1020 (OD-8) — the IANA zone a consultation DAY is read in: `open`'s default
   // appointmentDate, and the day same-day visits are matched and chained on. Tenant → SYSTEM; UTC default.
   ...CONSULTATION_APPOINTMENT_DAY_SETTINGS,
+  // TASK-1045 — the one auto-close policy (idle | daily), reopen of a completed consultation, and the stop's
+  // final-transcript wait. Replaces the open / review / session / completion clocks above.
+  ...CONSULTATION_LIFECYCLE_SETTINGS,
   // `consultation.endpoint.actions` was here. TASK-882 moved the stage onto the assigned graph
   // (endpoint nodes, presence + `enabled`, in edge order).
 

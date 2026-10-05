@@ -40,6 +40,8 @@ import {
   CreateAgentTrajectoryStepInput,
   GenerationMetricsAggregateResponse,
 } from './dto';
+import { ActivityRunMapper } from '../ai-activity-run/activity-run.mapper';
+import { IAiActivityRunService, IAiActivityRunServiceToken } from '../ai-activity-run/IAiActivityRunService';
 import { buildHarnessUsageBatches } from './harness-usage.mapper';
 import {
   AggregateGenerationStatsFilters,
@@ -141,6 +143,9 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // for the same reason the ledger is: a fixture without it meters every
     // self-hosted step as CPU_SECOND, the cheaper unit, never nothing.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDeviceResolver?: IComputeDeviceResolver,
+    // Optional + trailing for the same reason: a fixture without it records no
+    // run records, and nothing else about the ingest changes.
+    @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRunService?: IAiActivityRunService,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert.
     super(eventEmitter, clsService, ResourceType.SummaryMeta);
@@ -234,12 +239,14 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
       ({ count } = await this.unitOfWorkService.runInTransaction(async (tx) => {
         const result = await this.agentTrajectoryStepRepository.createMany(entities, true, tx);
         // Attempted for EVERY entity, deliberately NOT gated on `count` — see `emitUsage`.
-        await this.emitUsage(entities, steps, tx);
+        const usage = await this.emitUsage(entities, steps, tx);
+        await this.recordActivityRuns(entities, steps, usage, tx);
         return result;
       }));
     } else {
       ({ count } = await this.agentTrajectoryStepRepository.createMany(entities, true));
-      await this.emitUsage(entities, steps);
+      const usage = await this.emitUsage(entities, steps);
+      await this.recordActivityRuns(entities, steps, usage);
     }
 
     // Only republish when at least one row was actually persisted — a fully
@@ -515,8 +522,9 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     entities: AgentTrajectoryStepEntity[],
     inputs: CreateAgentTrajectoryStepInput[],
     tx?: CorePrisma.TransactionClient,
-  ): Promise<void> {
-    if (!this.usageLedgerService) return;
+  ): Promise<Array<UsageEventBatchInput | null>> {
+    const batches: Array<UsageEventBatchInput | null> = entities.map(() => null);
+    if (!this.usageLedgerService) return batches;
     for (const [index, entity] of entities.entries()) {
       const device = await this.resolveStepDevice(entity);
       // Positional, because `entities` is `inputs.map(...)` two statements up —
@@ -529,6 +537,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
         workflowVersionId: input?.workflowVersionId,
       });
       if (!event) continue;
+      batches[index] = event.batch;
 
       const operation = event.batch.common.operation;
       const trigger = event.batch.common.attributesJson?.trigger ?? undefined;
@@ -541,6 +550,39 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
       // newer row can never cost the row that has always been billed.
       if (event.platformBatch) {
         await this.emitWithRetry(event.platformBatch, operation, trigger, context, tx);
+      }
+    }
+    return batches;
+  }
+
+  /**
+   * One AI activity run record per finished LLM_CALL / NODE step that declares
+   * an `activity_kind`, written beside the usage rows (same transaction when
+   * one is open) and copying their deployment and cost basis.
+   *
+   * Attempted for every entity, like `emitUsage`: the record is an upsert on a
+   * key derived from `(sessionId, runId, seq)`, so a re-delivered batch
+   * converges on one row. Best-effort for the same reason metering is — a
+   * failed record is logged and never fails the ingest.
+   */
+  private async recordActivityRuns(
+    entities: AgentTrajectoryStepEntity[],
+    inputs: CreateAgentTrajectoryStepInput[],
+    usage: Array<UsageEventBatchInput | null>,
+    tx?: CorePrisma.TransactionClient,
+  ): Promise<void> {
+    if (!this.activityRunService) return;
+    for (const [index, entity] of entities.entries()) {
+      const run = ActivityRunMapper.fromTrajectoryStep(entity, { nodeId: inputs[index]?.nodeId }, usage[index] ?? null);
+      if (!run) continue;
+      try {
+        await this.activityRunService.record(run, tx);
+      } catch (error) {
+        this.logger.warn({
+          message: 'AI activity run record was not written',
+          runKey: run.runKey,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }

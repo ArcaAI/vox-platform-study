@@ -52,6 +52,12 @@ export class FeedbackResponse {
   @ApiProperty() createdAt!: string;
 }
 
+/** One keyset page of feedback, newest first. */
+export class FeedbackPageResponse {
+  @ApiProperty({ type: [FeedbackResponse] }) items!: FeedbackResponse[];
+  @ApiProperty({ type: String, nullable: true, description: 'Opaque; pass back as `cursor` for the next page.' }) nextCursor!: string | null;
+}
+
 export class FeedbackReasonResponse {
   @ApiProperty() code!: string;
   @ApiProperty() label!: string;

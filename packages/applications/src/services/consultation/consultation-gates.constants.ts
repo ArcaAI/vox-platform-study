@@ -88,6 +88,7 @@ export const CONSULTATION_OCR_ENABLED_KEY = 'consultation.ocr.enabled';
  * without a prior `prime`). Deleted once makes `prime` the
  * consent checkpoint end-to-end.
  */
+/** @deprecated No consumer since the auto-close policy. Kept for one release. */
 export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.state.requirePrimedBeforeRecording';
 
 /**
@@ -98,6 +99,7 @@ export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.st
  * absent value never stalls the sweep. Documented default 1440 (24h),
  * provisional.
  */
+/** @deprecated No consumer since the auto-close policy (`consultation.autoClose`). Kept for one release. */
 export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sessionTimeoutMinutes';
 
 /**
@@ -149,6 +151,7 @@ export const CONSULTATION_RECORDING_STALE_MINUTES_KEY = 'consultation.state.reco
  * NOT a kill-switch (no on/off semantics) — a tuning knob,
  * `failMode: open-to-default`. Default 120 minutes (2 h, OD-6).
  */
+/** @deprecated No consumer since the auto-close policy. Kept for one release. */
 export const CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY = 'consultation.state.reviewTimeoutMinutes';
 
 /**
@@ -175,6 +178,7 @@ export const CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY = 'consultation.state.revie
  * window can be widened with no redeploy if real abandonment data says 2 h is
  * too aggressive.
  */
+/** @deprecated No consumer since the auto-close policy. Kept for one release. */
 export const CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY = 'consultation.state.openTimeoutMinutes';
 
 /**

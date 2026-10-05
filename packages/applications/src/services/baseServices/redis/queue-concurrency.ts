@@ -175,6 +175,8 @@ export const QUEUE_CONCURRENCY: Record<string, number> = {
    * of sign-offs drains, and small enough that it never competes with `AuditLog`.
    */
   [JobQueue.MineGateEditExemplar]: 2,
+  /** Fact-ledger extraction is one LLM call per encounter stop; two keeps it off the live lane. */
+  [JobQueue.ExtractFactLedger]: 2,
 
   /**
    * TASK-1001 wave 6 — one short job per consultation that reached "ready to complete" and was not

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { DataNotFoundException } from '@arcaai/exceptions';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -25,6 +26,7 @@ import {
 } from './gate-edit-mining.settings';
 import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
+import { IEvalGateCurationSink } from '../consultation/feedback/IEvalGateCurationSink';
 
 /**
  * Quality signal thresholds.
@@ -183,6 +185,36 @@ export interface GateEditCandidate {
 }
 
 /**
+ * One clinician feedback fact offered to the miner. Text fields are TRANSIENT — only their
+ * redacted forms are stored. `rating` is the stored enum value (`'DOWN'`, …).
+ */
+export interface FeedbackExemplarCandidate {
+  tenantId: string;
+  consultationId: string;
+  feedbackId: string;
+  targetKind: string;
+  rating?: string | null;
+  reasonCodes?: readonly string[];
+  departmentId?: string | null;
+  visitType?: string | null;
+  contextItemId?: string | null;
+  modelName?: string | null;
+  /** The rejected text a thumbs-down was given on. */
+  targetContent?: string | null;
+  /** A correction's prior and replacement text. */
+  beforeContent?: string | null;
+  afterContent?: string | null;
+  /** Entity thumbs: the recognised span (PHI) and its NER class label. */
+  entityText?: string | null;
+  entityLabel?: string | null;
+}
+
+/** Quality signals of a feedback-mined exemplar, distinct from the gate path's CLEAN / HEAVILY_EDITED. */
+export const FEEDBACK_QUALITY_THUMBS_DOWN = 'THUMBS_DOWN';
+export const FEEDBACK_QUALITY_CORRECTED = 'CORRECTED';
+export const FEEDBACK_EXEMPLAR_SOURCE = 'FEEDBACK';
+
+/**
  * The gate-edit learning loop.
  *
  * WRITE half: mine an exemplar from a completed gate decision. READ half:
@@ -216,6 +248,8 @@ export class GateEditMiningService extends BaseService {
     // + trailing so existing positional fixtures keep their arity; absent ⇒ the
     // code default `off`, i.e. the pre-gate behaviour.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // Told about each mined feedback exemplar. Absent ⇒ nobody is told; mining is unaffected.
+    @Optional() @Inject(IEvalGateCurationSink) private readonly curationSink?: IEvalGateCurationSink,
   ) {
     super(eventEmitter, clsService, ResourceType.GateEditExemplar);
   }
@@ -299,6 +333,128 @@ export class GateEditMiningService extends BaseService {
         message: 'Gate-edit mining failed — the learning loop skips this encounter',
         consultationId: candidate.consultationId,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Mine one exemplar from clinician FEEDBACK — a thumbs-down or a correction, nothing else
+   * (a thumbs-up or a bare comment teaches nothing the gate path does not already).
+   *
+   * Same two invariants as {@link mineFromGateDecision}: redaction is FAIL-CLOSED (every text that
+   * would be stored must be redacted, or the whole candidate is dropped), and it never throws into
+   * its caller. Rows land PENDING with `source = FEEDBACK` — never eligible for retrieval or
+   * fine-tuning until a curator approves them.
+   *
+   * An ENTITY thumbs-down stores the redacted recognised span plus its NER class label (the
+   * de-identified label) — the span is PHI and goes through the same redactor, dropped on failure.
+   */
+  async mineFromFeedback(candidate: FeedbackExemplarCandidate): Promise<void> {
+    try {
+      const isCorrection = !!candidate.afterContent;
+      const isDown = candidate.rating === 'DOWN';
+      if (!isDown && !isCorrection) return;
+
+      const isEntity = candidate.targetKind === 'ENTITY' && !isCorrection;
+      const beforeRaw = isEntity ? candidate.entityText : isCorrection ? candidate.beforeContent : candidate.targetContent;
+      if (!beforeRaw) return;
+      if (isCorrection && !candidate.beforeContent) return;
+
+      const redactedBefore = await this.redactOrNull(beforeRaw);
+      let redactedAfter: string | null = null;
+      let failed = redactedBefore === null;
+      if (!failed && isCorrection) {
+        redactedAfter = await this.redactOrNull(candidate.afterContent as string);
+        failed = redactedAfter === null;
+      }
+      if (failed) {
+        this.logger.warn({
+          message: 'Feedback exemplar dropped — PHI redaction could not be verified (fail-closed)',
+          consultationId: candidate.consultationId,
+          feedbackId: candidate.feedbackId,
+        });
+        return;
+      }
+      // The class label is a taxonomy value, not patient text.
+      if (isEntity) redactedAfter = candidate.entityLabel ?? null;
+
+      const burden = isCorrection
+        ? computeEditBurden({ deliveredContent: candidate.beforeContent, signedContent: candidate.afterContent, decisions: [] })
+        : null;
+      const reasonCodes = [...(candidate.reasonCodes ?? [])];
+      const qualitySignal = isCorrection ? FEEDBACK_QUALITY_CORRECTED : FEEDBACK_QUALITY_THUMBS_DOWN;
+
+      let existing = null;
+      try {
+        existing = await this.exemplarRepository.findFirst({ filters: { tenantId: candidate.tenantId, feedbackId: candidate.feedbackId } });
+      } catch (error) {
+        if (!(error instanceof DataNotFoundException)) throw error;
+      }
+      if (existing) {
+        // Idempotent: a BullMQ retry refreshes the row rather than adding a second.
+        existing.qualitySignal = qualitySignal;
+        existing.editDistance = burden?.editDistance ?? null;
+        existing.editDistanceRatio = burden?.editDistanceRatio ?? null;
+        existing.redactedBefore = redactedBefore;
+        existing.redactedAfter = redactedAfter;
+        existing.reasonCodes = reasonCodes;
+        await this.exemplarRepository.update(existing.id, existing);
+        return;
+      }
+
+      const entity = GateEditExemplarFactory.CreateGateEditExemplar({
+        tenantId: candidate.tenantId,
+        consultationId: candidate.consultationId,
+        departmentId: candidate.departmentId ?? null,
+        visitType: candidate.visitType ?? null,
+        gateDecision: FEEDBACK_EXEMPLAR_SOURCE,
+        qualitySignal,
+        editDistance: burden?.editDistance ?? null,
+        editDistanceRatio: burden?.editDistanceRatio ?? null,
+        redactedBefore,
+        redactedAfter,
+        contextItemId: candidate.contextItemId ?? null,
+        modelName: candidate.modelName ?? null,
+        source: FEEDBACK_EXEMPLAR_SOURCE,
+        feedbackId: candidate.feedbackId,
+        reasonCodes,
+        targetKind: candidate.targetKind,
+        createdBy: this.requestUserId ?? undefined,
+      });
+      const saved = await this.exemplarRepository.create(entity);
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: saved.id,
+        // PHI-free: ids and kinds only.
+        data: { consultationId: candidate.consultationId, source: FEEDBACK_EXEMPLAR_SOURCE, qualitySignal, targetKind: candidate.targetKind },
+      });
+
+      await this.notifyCurationSink(saved.id, candidate, reasonCodes);
+    } catch (error) {
+      this.logger.error({
+        message: 'Feedback exemplar mining failed — the learning loop skips this feedback',
+        consultationId: candidate.consultationId,
+        feedbackId: candidate.feedbackId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async notifyCurationSink(exemplarId: string, candidate: FeedbackExemplarCandidate, reasonCodes: readonly string[]): Promise<void> {
+    if (!this.curationSink) return;
+    try {
+      await this.curationSink.onFeedbackExemplar({
+        tenantId: candidate.tenantId,
+        consultationId: candidate.consultationId,
+        exemplarId,
+        feedbackId: candidate.feedbackId,
+        targetKind: candidate.targetKind,
+        reasonCodes,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Eval-gate curation sink notification failed — the exemplar is stored regardless',
+        feedbackId: candidate.feedbackId,
+        error: error instanceof Error ? error.name : 'Error',
       });
     }
   }

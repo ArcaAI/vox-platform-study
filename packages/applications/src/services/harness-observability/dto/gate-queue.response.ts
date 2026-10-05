@@ -11,7 +11,7 @@ export class GateQueueItemResponse {
   @ApiProperty({ description: 'Consultation awaiting review.' })
   consultationId: string;
 
-  @ApiProperty({ description: 'Consultation status (always PENDING_REVIEW for queue items).', example: 'PENDING_REVIEW' })
+  @ApiProperty({ description: 'Consultation status (always STOPPED for queue items; their processing is AWAITING_REVIEW).', example: 'STOPPED' })
   status: string;
 
   @ApiProperty({ description: 'When the consultation entered review (ISO-8601; from the latest GENERATE audit event or updatedAt).' })

@@ -188,6 +188,7 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-27 | ALaaS lane branches merge into `refactor-hope-integaration` (owner, 2026-10-05). |
 | D-28 | `POST :id/stop` on a STOPPED consultation is an idempotent no-op that returns the current `finalTranscript {state: complete|pending, …}` — SDKs poll by re-POSTing stop until `complete`. |
 | D-29 | `approve` / `close` on an already CLOSED_COMPLETE consultation is an idempotent no-op (a retried Copy to EMR never fails); closing an APPROVED consultation (manual or auto) → CLOSED_COMPLETE, `closedReason: approved`; reopen clears `approvedAt`. |
+| D-30 | The ENCOUNTER_RECAP item is STRUCTURED: content = JSON `{schema:'hope.encounter_recap.v2', sections:[{key, label, lines:[{text, citations:[{itemId, versionNumber, label, kind:'segment'|'attachment', t0Ms?}]}]}]}` with the six fixed keys in order `reason, findings, medicines, sent_for, since_then, still_open` (labels Reason · Findings · Medicines · Sent for · Since then · Still open; empty sections kept with `lines: []`), plus a derived plain-text rendering for the console. Consumers map by `key`, never by position; the broker forwards citations so each line links to the E1 transcript line or attachment. |
 
 ## 5. Open questions
 
@@ -228,3 +229,4 @@ _Pending._
 |---|---|
 | 2026-10-05 | Ticket opened; design approved by the owner; planning wave started. |
 | 2026-10-05 | Planning wave done (5 planners); contracts committed; D-19…D-27 recorded; wave 1 launched (AB-1 DB, AB-STT, E1, CG-STO, D3, F9, F5, U6). |
+| 2026-10-05 | Merged into `dev-2.2`: AB-1 (schema + 2 migrations, fresh-DB D-20), AB-STT (pause/resume + segment outbox + Opus), AB-WS (gateway pause), AB-2 (domain layer), E1 (/tokenize), E7 (transcript finalizer, fact-ledger agent, gemma 32k/q4 seed), CG-STO, CG-SET, CG-POL, D3 (timeline bands), D7 (shared types), D4a (console data), D5 (vox-node handle), D6 (useConsultation); deployment `main` `ccab8bc` (gemma 32768 + q4_0, local). ALaaS `refactor-hope-integaration`: U6, F9, F5, F1, F0 (protocol v4), F3, U1. Wave-3 service contracts pinned (`94e277e29`, `planning/WAVE-3.md`); wave 3 launched (AB-3, AB-4a/b/c, AB-5, C-SVC, G-SVC, G-ROLL+MINE, E2, E4, D1) + ALaaS F2. Hand-overs tracked in `planning/HANDOVERS.md`. |
