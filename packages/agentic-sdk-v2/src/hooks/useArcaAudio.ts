@@ -401,7 +401,9 @@ export function useArcaAudio() {
       // STT stage when an `agentSlug` is provided.
       pluginManager.setRuntimeOptions?.({
         agentSlug: requestedAgentSlug,
-        consultationId: consultation?.id,
+        // TASK-1042 — a workflow-bound session and a consultation are mutually exclusive (C1).
+        consultationId: options?.workflowSlug ? undefined : consultation?.id,
+        ...(options?.workflowSlug ? { workflowSlug: options.workflowSlug } : {}),
         // Order-independent language: mirror the `languageMode` store fallback
         // below so a capture-first start (compat `useAudioCapture` starting the
         // mic before `useArcaSpeechToText.startTranscription()` runs) still pins

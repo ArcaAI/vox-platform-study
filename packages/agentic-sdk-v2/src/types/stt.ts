@@ -86,6 +86,13 @@ export interface CreateStreamingSessionRequest {
   agentSlug?: string;
   /** Optional consultation to link the session to */
   consultationId?: string;
+  /**
+   * Bind the session to a published workflow instead of a consultation (TASK-1042), so it can
+   * feed a standalone run (`useRunAudio`). Mutually exclusive with `consultationId` (both → 400
+   * `STREAM_SESSION_TARGET_CONFLICT`). With no `agentSlug` the ASR agent is the workflow's own
+   * STT node (`agentSource: 'workflow'`).
+   */
+  workflowSlug?: string;
   /** Audio sample rate in Hz (8000-48000, default: 16000) */
   sampleRate?: number;
   /** ISO 639-1 language code (e.g., "en", "th") */

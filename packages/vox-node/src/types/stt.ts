@@ -47,6 +47,15 @@ export interface CreateStreamSessionRequest {
    * resolution order on {@link CreateStreamSessionRequest} above.
    */
   consultationId?: string;
+  /**
+   * Bind the session to a published WORKFLOW instead of a consultation (TASK-1042), so the session
+   * can feed a standalone run (`hope.workflows.runWithAudio`). Mutually exclusive with
+   * {@link consultationId} — both present is a 400 `STREAM_SESSION_TARGET_CONFLICT`. With no
+   * {@link agentSlug}, the ASR agent is the workflow's single `SPEECH_TO_TEXT` node
+   * (`agentSource: 'workflow'`); an unknown slug is a 404 and several STT nodes a 409
+   * `WORKFLOW_ASR_AGENT_UNAVAILABLE`.
+   */
+  workflowSlug?: string;
   /** Hz. Default 16000 server-side; the negotiated value is what the gateway forwards to STT. */
   sampleRate?: number;
   /** ISO 639-1 override (`en`, `ml`). {@link languageMode} takes precedence. */

@@ -40,10 +40,12 @@ import { CredentialClassError, ReservedRunIdentityError, SocketUnavailableError 
 import { generateUuidV7 } from '../core/idempotency';
 import { RunHandle, type RunHandleTuning } from '../core/run-handle';
 import { reservedRunIdentityKeysIn } from '../core/run-identity';
+import { runWithAudio, type RunAudio, type RunWithAudioOptions } from '../core/run-with-audio';
 import { parseSseStream } from '../core/sse';
 import { readSocketFrames, resolveSocketUrl, type SocketFrame, type WorkflowRunStreamTicket } from '../core/socket';
 import type { Transport } from '../core/transport';
 import { encodePathSegment } from '../core/url';
+import { SttResource } from './stt';
 import type {
   StartWorkflowRunRequest,
   WorkflowReview,
@@ -656,6 +658,51 @@ export class WorkflowsResource extends WorkflowInvocationBase {
       maxReconnects: options.maxReconnects,
       reconnectDelayMs: options.reconnectDelayMs,
     });
+  }
+
+  /**
+   * Start a run that is fed by LIVE AUDIO, with no consultation (TASK-1042).
+   *
+   * The workflow's Input shape must declare a stream-delivery audio kind and its settings the
+   * `socket` connection. The order is fixed: open an STT session bound to the workflow
+   * (`workflowSlug`), connect its socket, then start the run with
+   * `input[audioField] = { sttSessionId }`. If any step after the session exists fails, the
+   * socket and the session are closed and the error is rethrown.
+   *
+   * ```ts
+   * const { run, audio } = await hope.workflows.runWithAudio('live-note', { visitType: 'follow-up' }, { language: 'en' });
+   * for await (const frame of pcm16Frames) audio.sendPcm16(frame);
+   * await audio.finalize(); // ends the audio; the run carries on to its result
+   * const delivered = await run.result();
+   * ```
+   *
+   * `audioField` defaults to the single stream-audio key of the published Input shape; zero or
+   * several keys throw a {@link RunAudioFieldError} before any request is made. Gateway refusals
+   * keep their `code`: `RUN_AUDIO_INPUT_UNDECLARED`, `RUN_AUDIO_MULTIPLE`,
+   * `LIVE_AUDIO_UNSUPPORTED` (400), `RUN_AUDIO_SESSION_NOT_LIVE`,
+   * `RUN_AUDIO_SESSION_BOUND_ELSEWHERE`, `RUN_AUDIO_AGENT_MISMATCH` (409).
+   *
+   * **Ending the audio never cancels the run** — `finalize()` and `close()` stop the audio only;
+   * `run.cancel()` is the one way to stop a run. Needs `globalThis.WebSocket` (Node 22+).
+   */
+  async runWithAudio<TInput extends object = Record<string, unknown>, TOutput = unknown>(
+    slug: string,
+    input: TInput,
+    options: RunWithAudioOptions = {},
+  ): Promise<{ run: RunHandle<TOutput>; audio: RunAudio }> {
+    const stt = new SttResource(this.transport);
+    return runWithAudio<RunHandle<TOutput>>(
+      {
+        schema: (workflowSlug, o) => this.schema(workflowSlug, o),
+        createStreamSession: (request, o) => stt.createStreamSession(request, o),
+        socket: (session) => stt.socket(session),
+        closeStreamSession: (sessionId) => stt.closeStreamSession(sessionId),
+        run: (workflowSlug, body, o) => this.run<Record<string, unknown>, TOutput>(workflowSlug, body, o),
+      },
+      slug,
+      input,
+      options,
+    );
   }
 
   /**

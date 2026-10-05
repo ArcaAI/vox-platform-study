@@ -89,6 +89,8 @@ export type {
  * than catching {@link ReservedRunIdentityError} after the fact.
  */
 export { RESERVED_RUN_IDENTITY_KEYS, reservedRunIdentityKeysIn } from './core/run-identity';
+export { RunAudioFieldError } from './core/run-with-audio';
+export type { RunAudio, RunWithAudioOptions } from './core/run-with-audio';
 
 /**
  * The run-socket ticket shape (TASK-931). Exported because the ticket is minted over an
