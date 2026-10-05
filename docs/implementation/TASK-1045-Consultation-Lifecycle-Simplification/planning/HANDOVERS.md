@@ -47,3 +47,6 @@
 | H-43 | F2/F3 | ALaaS port | follow-up | move `FAKE_DEFAULT_FEEDBACK_REASONS` from the fake into the port file (shim/service import from the fake today) | follow-up |
 | H-44 | F2 | ALaaS `generation.cancel` | follow-up | port has no cancel verb → `note.progress {step:'cancel_unsupported'}` | follow-up (HOPE cancel route) |
 | H-45 | U7 | ALaaS U8 | U8 | workspace builds priorCaseNotes/priorVisits from its own patientData (no live context fetch, no fallbackNotes) — check parity when folding in | pending (U8 brief) |
+| H-46 | F7 | ALaaS `medical-summary.module.ts` + controller spec | orchestrator | provide `HopeAttachmentService`; controller spec passes the 5th constructor arg | applied `450a278`, `18ae50f` (svc tsc clean, spec 14/14) |
+| H-47 | F7 | ALaaS upload flow (L63–L66) | U3 | **must-keep function**: for a HOPE-linked session `upload_audio` returns `{rawTranscript:'', combinedSummary:'', hopeAttachments:[…]}` immediately — the upload-processing UI must wait for the note via lifecycle (`note.final` / attachment status) instead of polling `audio/job_status`+`job_result`; unlinked sessions keep the batch polling path | pending (U3 brief) |
+| H-48 | F7 | ALaaS `RichTextEditor.jsx` | U4 | two removed-feedback comment blocks at the save call sites — no change unless a comment UI is added | info |
