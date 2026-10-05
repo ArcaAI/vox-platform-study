@@ -1,62 +1,44 @@
-"""POST /tokenize — engine tokenizer first, pinned HF tokenizer.json second, 501 last.
+"""POST /tokenize — the serving engine's own tokenizer, else 501.
 
-Hermetic: the engine is a stub provider, the HF file is a tiny WordLevel tokenizer
-written to tmp_path, and the registry's file fetcher is injected.
+There is no Hugging Face tokenizer tier: apps/text never fetches model artifacts
+(the no-serving invariant). When the engine cannot count, the route answers 501
+``TOKENIZER_UNAVAILABLE`` and the caller applies its conservative estimate.
+
+Hermetic: the engine is a stub provider.
 """
 
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
+import importlib.util
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
-from tokenizers import Tokenizer
-from tokenizers.models import WordLevel
-from tokenizers.pre_tokenizers import Whitespace
 
 from text.core.config import InternalAccessConfig, Settings
 from text.main import create_app
 from text.models.requests import ProviderOverride
 from text.providers.base import ProviderRegistry
-from text.services.tokenizer_registry import TokenizerRegistry
 
 TOKEN = "tok-secret"
 HEADERS = {"X-Service-Token": TOKEN, "X-Tenant-Id": "t-1"}
 
-
-@pytest.fixture
-def tokenizer_file(tmp_path: Path) -> tuple[Path, str]:
-    vocab = {"[UNK]": 0, "hello": 1, "world": 2, "dose": 3}
-    tok = Tokenizer(WordLevel(vocab, unk_token="[UNK]"))
-    tok.pre_tokenizer = Whitespace()
-    path = tmp_path / "tokenizer.json"
-    tok.save(str(path))
-    return path, hashlib.sha256(path.read_bytes()).hexdigest()
+#: What an older caller still sends from `AiModel._metadata.tokenizer`.
+LEGACY_SPEC = {"hubRepo": "org/model", "file": "tokenizer.json", "sha256": "a" * 64}
 
 
-def _spec(sha: str) -> dict:
-    return {"hubRepo": "org/model", "file": "tokenizer.json", "sha256": sha}
-
-
-def _app(*, engine=None, fetcher=None):
+def _app(*, engine=None, engine_error: Exception | None = None):
     settings = Settings(port=5099, internal_access=InternalAccessConfig(token=SecretStr(TOKEN)))
     app = create_app(settings_override=settings)
     registry = ProviderRegistry()
     provider = MagicMock()
-    provider.count_tokens = AsyncMock(return_value=engine)
+    provider.count_tokens = AsyncMock(return_value=engine, side_effect=engine_error)
     registry.register("lm-studio", provider)
     app.state.provider_registry = registry
-    app.state.tokenizer_registry = TokenizerRegistry(fetcher=fetcher or _no_fetch)
     app.state.engine_provider = provider
     return app
-
-
-async def _no_fetch(repo: str, file: str) -> Path:
-    raise RuntimeError("no network")
 
 
 @pytest_asyncio.fixture
@@ -90,39 +72,11 @@ async def test_engine_counts_win(make_client):
 
 
 @pytest.mark.asyncio
-async def test_hf_fallback_when_engine_unavailable(make_client, tokenizer_file):
-    path, sha = tokenizer_file
-    calls = []
-
-    async def fetch(repo, file):
-        calls.append((repo, file))
-        return path
-
-    client = await make_client(_app(engine=None, fetcher=fetch))
-    body = {**BODY, "tokenizer": _spec(sha)}
-    resp = await client.post("/api/v1/tokenize", json=body, headers=HEADERS)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["counts"] == [2, 1]
-    assert data["tokenizer"] == {"source": "hf", "id": f"org/model@{sha}"}
-    assert data["exact"] is True
-
-    await client.post("/api/v1/tokenize", json=body, headers=HEADERS)
-    assert calls == [("org/model", "tokenizer.json")]  # cached per (repo, sha)
-
-
-@pytest.mark.asyncio
-async def test_messages_total(make_client, tokenizer_file):
-    path, sha = tokenizer_file
-
-    async def fetch(repo, file):
-        return path
-
-    client = await make_client(_app(fetcher=fetch))
+async def test_messages_total_from_engine(make_client):
+    client = await make_client(_app(engine=[2, 1]))
     body = {
         **BODY,
         "texts": [],
-        "tokenizer": _spec(sha),
         "messages": [
             {"role": "user", "content": "hello world"},
             {"role": "assistant", "content": "dose"},
@@ -130,29 +84,45 @@ async def test_messages_total(make_client, tokenizer_file):
     }
     resp = await client.post("/api/v1/tokenize", json=body, headers=HEADERS)
     assert resp.status_code == 200
-    assert resp.json()["messagesTotal"] >= 3  # role-less content floor: 2 + 1
+    assert resp.json()["counts"] == []
+    assert resp.json()["messagesTotal"] == 3
 
 
 @pytest.mark.asyncio
-async def test_sha_mismatch_is_501(make_client, tokenizer_file):
-    path, _ = tokenizer_file
+async def test_501_when_engine_cannot_count(make_client):
+    client = await make_client(_app(engine=None))
+    resp = await client.post("/api/v1/tokenize", json=BODY, headers=HEADERS)
+    assert resp.status_code == 501
+    assert resp.json()["detail"]["code"] == "TOKENIZER_UNAVAILABLE"
 
-    async def fetch(repo, file):
-        return path
 
-    client = await make_client(_app(fetcher=fetch))
-    body = {**BODY, "tokenizer": _spec("0" * 64)}
+@pytest.mark.asyncio
+async def test_501_when_engine_raises(make_client):
+    client = await make_client(_app(engine_error=RuntimeError("engine down")))
+    resp = await client.post("/api/v1/tokenize", json=BODY, headers=HEADERS)
+    assert resp.status_code == 501
+    assert resp.json()["detail"]["code"] == "TOKENIZER_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_pinned_tokenizer_spec_is_not_a_fallback(make_client):
+    """A caller that still names a hub tokenizer gets 501, never a download."""
+    client = await make_client(_app(engine=None))
+    body = {**BODY, "tokenizer": LEGACY_SPEC}
     resp = await client.post("/api/v1/tokenize", json=body, headers=HEADERS)
     assert resp.status_code == 501
     assert resp.json()["detail"]["code"] == "TOKENIZER_UNAVAILABLE"
 
 
 @pytest.mark.asyncio
-async def test_501_when_nothing_works(make_client):
-    client = await make_client(_app(engine=None))
+async def test_engine_count_mismatch_is_501(make_client):
+    client = await make_client(_app(engine=[1]))
     resp = await client.post("/api/v1/tokenize", json=BODY, headers=HEADERS)
     assert resp.status_code == 501
-    assert resp.json()["detail"]["code"] == "TOKENIZER_UNAVAILABLE"
+
+
+def test_no_hub_tokenizer_registry_module():
+    assert importlib.util.find_spec("text.services.tokenizer_registry") is None
 
 
 @pytest.mark.no_default_tenant_header
