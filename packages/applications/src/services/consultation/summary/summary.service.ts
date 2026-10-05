@@ -55,7 +55,8 @@ import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto'
 import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
-import { assertAttributedClinicianInTenant, resolveAttributedClinician, tenantRoleReaderFor, type ClinicalCaller } from './clinician-attribution';
+import type { ClinicalCaller } from './clinician-attribution';
+import { resolveAttributedActor } from '../lifecycle/attributed-actor';
 import { type OutputLanguage } from '../consultation/summary-language';
 // TASK-1001 (owner decision 2026-09-23) — the platform-default language the note is WRITTEN in.
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
@@ -1315,6 +1316,8 @@ export class SummaryService extends BaseService implements ISummaryService {
    *
    * Three steps, in this order and for this reason:
    *
+   * The rule lives once, in `lifecycle/attributed-actor.ts`; the steps it applies are:
+   *
    *  1. classify the CREDENTIAL. A controller that has one passes it (the API-key class is the
    *     only one CLS cannot answer for, because there is no `apiKey` CLS key). Absent, it is
    *     derived: a service account has its own CLS principal, anything else is a human JWT — so
@@ -1330,34 +1333,18 @@ export class SummaryService extends BaseService implements ISummaryService {
     named: string | undefined,
     caller: ClinicalCaller | undefined,
   ): Promise<{ clinicianId: string; caller: ClinicalCaller }> {
-    const serviceAccount = this.requestServiceAccount;
-    const effectiveCaller: ClinicalCaller =
-      caller ??
-      (serviceAccount
-        ? { credentialClass: 'service-account', principalId: serviceAccount.id }
-        : { credentialClass: 'jwt', principalId: this.requestUserId ?? '' });
-
-    const clinicianId = await resolveAttributedClinician({
-      named,
-      caller: effectiveCaller,
+    return resolveAttributedActor({
       tenantId,
+      named,
+      caller,
       requestUser: this.requestUser,
-      readTenantRoles: tenantRoleReaderFor(this.userRoleAssignmentRepository),
+      requestServiceAccount: this.requestServiceAccount,
+      repositories: {
+        userRoleAssignmentRepository: this.userRoleAssignmentRepository,
+        userDepartmentRepository: this.userDepartmentRepository,
+        userRepository: this.userRepository,
+      },
     });
-
-    if (clinicianId !== this.requestUserId) {
-      await assertAttributedClinicianInTenant(
-        {
-          userRoleAssignmentRepository: this.userRoleAssignmentRepository,
-          userDepartmentRepository: this.userDepartmentRepository,
-          userRepository: this.userRepository,
-        },
-        clinicianId,
-        tenantId,
-      );
-    }
-
-    return { clinicianId, caller: effectiveCaller };
   }
 
   /**
