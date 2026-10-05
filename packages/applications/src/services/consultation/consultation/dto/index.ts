@@ -7,3 +7,4 @@ export * from './consultation-history.query';
 export * from './consultation-aggregate.response';
 export * from './consultation-workflow.response';
 export * from './consultation-sort';
+export * from './encounter.response';
