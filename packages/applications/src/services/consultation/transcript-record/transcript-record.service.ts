@@ -36,7 +36,6 @@ import {
   sttStreamRunKey,
   TRANSCRIPT_RECORD_MARKER_TTL_SECONDS,
 } from './transcript-record.keys';
-import { setVersionMetaData } from './version-metadata';
 
 /** One part of the consultation recording, in timeline order. */
 export interface RecordingManifestPart {
@@ -171,7 +170,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
           changedBy: 'system',
           changeSource: 'ai',
         });
-        setVersionMetaData(version, { sttRunKey: runKey });
+        version.metaData = { sttRunKey: runKey };
         if (item.encryptedContent) {
           version.encryptedContent = item.encryptedContent;
           version.keyVersion = item.contentKeyVersion ?? null;
@@ -613,7 +612,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
       changedBy: write.changedBy,
       changeSource: write.changeSource,
     });
-    if (write.metaData) setVersionMetaData(version, write.metaData);
+    if (write.metaData) version.metaData = write.metaData;
     return version;
   }
 
