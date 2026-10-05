@@ -50,3 +50,7 @@ export * from './api-key-presets.js';
 // The LLM egress wire contract (`apps/text` `/generate`): provider locality, known PHI, the
 // internal medical-judge exemption and the response's `egress` report.
 export * from './llm-egress.js';
+
+// Consultation lifecycle vocabulary: seven-value status + processing marker, lifecycle events,
+// capture/stop results, feedback, attachments and the activity (history) read model.
+export * from './consultation-lifecycle.js';
