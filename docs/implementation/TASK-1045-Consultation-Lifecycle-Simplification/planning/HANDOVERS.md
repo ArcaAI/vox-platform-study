@@ -11,3 +11,10 @@
 | H-7 | E1 | apps/api `text-token-count.client.ts` | E3 | pass `tokenizer` (from `AiModel._metadata.tokenizer`) + `provider_overrides`; implement `ceil(utf8Bytes/2)` estimate on 501; `messagesTotal` excludes chat-template overhead | pending (E3 brief) |
 | H-8 | U6 | ALaaS `RichTextEditor.jsx` | U4 | after a failed save `onSaveAndReload()` is still called — confirm it does not discard unsaved edits | pending (U4 brief) |
 | H-9 | CG-STO | attachment complete flow | C-SVC | fall back to server re-hash when `headObject` has no checksum; re-check quota at complete + `recordExternalWrite`; facade method is `presignPutIntent` (not `presignPut`) | pending (C-SVC brief) |
+| H-10 | AB-WS | `streamingAudioBridge.service.ts` + `streaming-session.dto.ts` | orchestrator | relay `audioOffsetMs` on status; relay STT `error` entries | applied `15f49ce08` |
+| H-11 | AB-1 | `packages/database/src/extensions/__tests__/tenant-scope.test.ts` | orchestrator | count 90 → 96 | applied |
+| H-12 | AB-1 | `clinical-harness-phase1-schema.postgres.test.ts:84-88`, `attestation-gate-persistence.postgres.test.ts:153` | AB-8 | old status labels / `'SIGNED'` → new vocabulary | pending (AB-8) |
+| H-13 | AB-1 | `packages/applications/src/services/tenant-checkpoint/registry/registry.ts:339` | AB-2 | ContextItemVersion `immutableColumns: ['*']` (trigger-guarded); entries for the 6 new tenant-scoped tables if the registry coverage test requires them | pending (AB-2 brief) |
+| H-14 | AB-1 | Prisma client | orchestrator | `pnpm db:generate` + database build after merge | applied |
+| H-15 | AB-1 | seed `09-consultation.ts` | note | three chain parents set CLOSED_INCOMPLETE to satisfy `Consultation_openKey_uq`; ContextItemVersion seed upsert `update: {}` (trigger) | info |
+| H-16 | AB-1 | P-CG migration folder | note | P-CG + P-E tables live in M2 (one lifecycle migration), not a separate folder | info |
