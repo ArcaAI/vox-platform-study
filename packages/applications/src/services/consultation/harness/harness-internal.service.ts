@@ -1093,6 +1093,20 @@ export class HarnessInternalService extends BaseService {
         return { transitioned: false, status: consultation.status };
       }
 
+      // The run has ended on a STOPPED consultation: the marker says so whatever processing does,
+      // or `governingRunOf` keeps reading it as RUNNING and a note request joins a dead run. A
+      // conflict here must not cost the processing write below, which the clinician sees.
+      try {
+        await this.stampGovernedRunFailed(consultation, input);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Governed run outcome could not be stamped on the marker — processing is still marked',
+          consultationId,
+          runId: input.runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       if (await this.hasWrittenHarnessNote(consultation)) {
         this.logger.log({
           message: 'Governed run ended without a clinical result after the note was written — processing left unchanged',
@@ -1198,20 +1212,9 @@ export class HarnessInternalService extends BaseService {
    * the substrate gate.
    */
   private async recordGovernedRunFailure(consultation: ConsultationEntity, input: FailGovernedRunInput): Promise<void> {
-    const marker = readGoverningEngineMarker(consultation.metadata);
+    const marker = await this.stampGovernedRunFailed(consultation, input);
     if (!marker) return;
-
     const reason = input.reason ?? null;
-    const expectedVersion = consultation.version;
-
-    consultation.metadata = withGoverningEngineMarker(consultation.metadata, {
-      ...marker,
-      runStatus: 'FAILED',
-      ...(reason ? { terminalReason: reason } : {}),
-      endedAt: (input.at ?? new Date()).toISOString(),
-    }) as ConsultationEntity['metadata'];
-
-    await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
 
     if (this.eventEmitter) {
       this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -1230,6 +1233,30 @@ export class HarnessInternalService extends BaseService {
       currentStatus: consultation.status,
       reason,
     });
+  }
+
+  /**
+   * Stamp the run's FAILED outcome on the governing marker (the system of record for it) and return
+   * the marker as it was. No marker ⇒ nothing written: an ungoverned consultation stays ungoverned.
+   */
+  private async stampGovernedRunFailed(
+    consultation: ConsultationEntity,
+    input: FailGovernedRunInput,
+  ): Promise<ReturnType<typeof readGoverningEngineMarker>> {
+    const marker = readGoverningEngineMarker(consultation.metadata);
+    if (!marker) return null;
+
+    const reason = input.reason ?? null;
+    const expectedVersion = consultation.version;
+    consultation.metadata = withGoverningEngineMarker(consultation.metadata, {
+      ...marker,
+      runStatus: 'FAILED',
+      ...(reason ? { terminalReason: reason } : {}),
+      endedAt: (input.at ?? new Date()).toISOString(),
+    }) as ConsultationEntity['metadata'];
+
+    await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
+    return marker;
   }
 
   /** The one `workflow.failed` frame, on the channel the live-summary lane already multiplexes. */

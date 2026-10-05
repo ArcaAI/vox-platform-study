@@ -83,7 +83,10 @@ describe('TASK-1045 E6 — the governed handoff carries `note_plan_ref`', () => 
       publish: vi.fn().mockResolvedValue(undefined),
       del: vi.fn().mockResolvedValue(undefined),
     };
-    const composer = options.composer === undefined ? { composeNotePlan: vi.fn().mockResolvedValue({ notePlanRef: PLAN_REF, strategy: 'single_pass', callCount: 1, promptTokens: 900 }) } : options.composer;
+    const composer =
+      options.composer === undefined
+        ? { composeNotePlan: vi.fn().mockResolvedValue({ notePlanRef: PLAN_REF, strategy: 'single_pass', callCount: 1, promptTokens: 900 }) }
+        : options.composer;
     const lifecycleGate = { setProcessing: vi.fn().mockResolvedValue(undefined) };
     const args: unknown[] = new Array(34).fill(undefined);
     args[0] = { axiosRef: { post: vi.fn() }, post: vi.fn() };
@@ -91,7 +94,14 @@ describe('TASK-1045 E6 — the governed handoff carries `note_plan_ref`', () => 
     args[2] = cache;
     args[3] = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
     args[15] = {
-      findById: vi.fn(async () => ({ id: CID, tenantId: TENANT, doctorId: null, departmentId: null, status: options.status ?? 'STOPPED', metadata: null })),
+      findById: vi.fn(async () => ({
+        id: CID,
+        tenantId: TENANT,
+        doctorId: null,
+        departmentId: null,
+        status: options.status ?? 'STOPPED',
+        metadata: null,
+      })),
     };
     args[32] = composer ?? undefined;
     args[33] = lifecycleGate;
@@ -104,7 +114,7 @@ describe('TASK-1045 E6 — the governed handoff carries `note_plan_ref`', () => 
 
     const handoff = await service.readLiveHandoff(CID, ['n_summary', 'n_ner']);
 
-    expect(composer!.composeNotePlan).toHaveBeenCalledWith(CID, { tenantId: TENANT, mode: 'final' });
+    expect(composer!.composeNotePlan).toHaveBeenCalledWith(CID, { tenantId: TENANT, mode: 'final' }, { documentTemplateSlug: null });
     expect(handoff.ended).toBe(true);
     expect(handoff.outputs.n_summary).toMatchObject({ text: '', note_plan_ref: PLAN_REF });
     // A non-note output is passed through untouched.
