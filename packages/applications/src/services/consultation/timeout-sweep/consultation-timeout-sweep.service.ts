@@ -1,34 +1,31 @@
-import { Inject, Injectable, Logger, Optional, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { CronJob } from 'cron';
-import { ConsultationEntity, ConsultationRepository, ConsultationStatus, HarnessAuditAction, ResourceType, SysEventType } from '@arcaai/domains';
-import { BaseService, createWorkerSession } from '../../../common';
+import { ConsultationRepository } from '@arcaai/domains';
+import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { HarnessAuditService } from '../../harness-audit';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
-import { IConsultationService } from '../consultation/IConsultationService';
-import { IRedisCacheService } from '../../baseServices/redis';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import { IConsultationLifecycleService, IConsultationLifecycleServiceToken } from '../lifecycle/IConsultationLifecycleService';
+import { CONSULTATION_GATE_DEFAULTS, CONSULTATION_RECORDING_STALE_MINUTES_KEY, CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY } from '../consultation-gates.constants';
+import { CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT, CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, isValidTimeZone } from '../../settings-registry/descriptors/consultation-appointment-day.descriptors';
 import {
-  CONSULTATION_GATE_DEFAULTS,
-  CONSULTATION_RECORDING_STALE_MINUTES_KEY,
-  CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
-  CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
-  CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
-  CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
-} from '../consultation-gates.constants';
+  CONSULTATION_AUTO_CLOSE_KEY,
+  CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES,
+  ConsultationAutoClosePolicy,
+  resolveAutoClosePolicy,
+} from '../../settings-registry/descriptors/consultation-lifecycle.descriptors';
 
 const JOB_NAME = 'consultation-timeout-sweep';
 const MS_PER_MINUTE = 60_000;
+/** Rows one run closes (or pauses) at most; the rest wait for the next tick. */
+export const CONSULTATION_SWEEP_BATCH_LIMIT = 200;
 
 /**
- * The live-summary lock key format `LiveDocumentationService` writes
- * (`CHANNEL_PREFIX + ':lock'`, `packages/applications/src/services/consultation/
- * live-documentation/live-documentation.service.ts`). MIRRORED here rather
- * than imported — that file belongs to a different TASK-932 lane — so keep
- * the two in sync by hand if the lock key format ever changes.
+ * The live-summary lock key format `LiveDocumentationService` writes. Kept for the one-off dev
+ * cleanup script, which still reports whether a lock protects a row.
  */
 export function liveSummaryLockKey(consultationId: string): string {
   return `consultation:live-summary:${consultationId}:lock`;
@@ -36,109 +33,85 @@ export function liveSummaryLockKey(consultationId: string): string {
 
 export interface ConsultationTimeoutSweepConfig {
   cron: string;
-  timeoutMinutes: number;
+  /** Minutes without activity before a RECORDING consultation is auto-paused. */
   recordingStaleMinutes: number;
-  /** TASK-972 Lane 8 (OD-6) — the PENDING_REVIEW leg's window. */
-  reviewTimeoutMinutes: number;
-  /** TASK-972 Lane 8 (OD-7) — the OPEN leg's window. */
-  openTimeoutMinutes: number;
 }
 
-export interface ConsultationTimeoutSweepResult {
+export interface ConsultationAutoCloseResult {
   eligible: number;
-  transitioned: number;
+  closed: number;
+  failed: number;
+}
+
+export interface ConsultationStaleRecordingResult {
+  eligible: number;
+  paused: number;
   failed: number;
 }
 
 /**
- *  — the session-timeout sweep.
+ * The offset of `timeZone` from UTC at `instant`, in milliseconds (positive east of Greenwich).
+ */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
+/**
+ * The UTC instant at which the wall clock of `timeZone` reads `HH:mm` on the calendar day that
+ * `now` falls on in that zone.
+ */
+export function todayAtInZone(now: Date, hhmm: string, timeZone: string): Date {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const [year, month, date] = day.split('-').map(Number);
+  const wallAsUtc = Date.UTC(year, month - 1, date, hour, minute);
+  // The offset depends on the instant being resolved, so converge once across a DST change.
+  let instant = wallAsUtc - zoneOffsetMs(wallAsUtc, timeZone);
+  instant = wallAsUtc - zoneOffsetMs(instant, timeZone);
+  return new Date(instant);
+}
+
+/**
+ * The consultation sweep, run on the `consultation.state.sessionTimeoutSweep.cron` cadence. Two legs:
  *
- * Transitions consultations that have sat in a sweep-eligible state
- * (`PRIMED`, `DRAINING`, `DRAFT_PENDING_SENSORS`, `TIMED_OUT`, `REOPENED`)
- * with no clinician activity past `consultation.state.sessionTimeoutMinutes`
- * to `CLOSED_INCOMPLETE` — the record closed with no human sign-off ever
- * recorded.
+ * 1. {@link sweepStaleRecordings} - a RECORDING consultation with no activity for
+ *    `consultation.state.recordingStaleMinutes` is auto-paused (never stopped or closed).
+ * 2. {@link sweepAutoClose} - every non-closed consultation past its tenant's
+ *    `consultation.autoClose` policy is closed through the lifecycle service's auto close, which
+ *    decides the outcome itself (approved -> complete, anything else -> incomplete).
  *
- * ⚠️ AMENDED 2026-09-15 — TASK-972 Lane 8, owner decisions OD-6 and OD-7.
- * This comment used to say `OPEN` and `PENDING_REVIEW` "are deliberately never
- * swept here". THAT DECISION IS REVERSED, on evidence: measured on the live
- * `hope-v2-dev` cluster, one real consultation had been stranded in
- * `PENDING_REVIEW` for 29.4 hours with nothing in the platform able to clear
- * it, while this sweep logged `eligible: 0` every 15 minutes — behaving exactly
- * as designed, because the two states that actually strand were the two it
- * excluded. Temporal reported `Running = 0`, so the durable executions had
- * already ended: the leak is ROWS, not workflows, which is why the fix belongs
- * here. Each stranding state now has its OWN leg, its OWN threshold descriptor
- * and its OWN target — see {@link sweepIdlePendingReview} and
- * {@link sweepIdleOpen}. The narrower gate-SLA path
- * (`HarnessInternalService.recordEscalation` → `PENDING_REVIEW → TIMED_OUT`)
- * still exists and is unchanged; the new leg is its backstop for the
- * Substrate-B consultations it never fires for.
+ * Self-scheduling like the other retention workers: the cron job re-syncs whenever the settings
+ * cache refreshes, so the cadence is tunable live. Deliberately without an `enabled` switch: it
+ * performs the same transitions a clinician can trigger by hand.
  *
- * TASK-932 OD-9 added a SECOND leg, {@link sweepStaleRecordings}: a
- * `RECORDING` row whose `updatedAt` is older than
- * `consultation.state.recordingStaleMinutes` (window N) AND holds no
- * `consultation:live-summary:{id}:lock` key is genuinely orphaned — the
- * capturing browser/tab is gone, not merely between chunks — and is stopped
- * through the REAL client path, `ConsultationService.stopRecording`, landing
- * it in `DRAINING`, where THIS leg (window M) eventually takes over. Both
- * signals — age AND an absent lock — are required, so an active capture
- * session is never force-terminated by a tick.
- *
- * Self-scheduling, mirroring {@link AuditRetentionService} /
- * {@link AgentTrajectoryRetentionService} / {@link DnaRegenerationScheduler}:
- * a `SchedulerRegistry` cron job that re-syncs whenever the `GlobalSetting`
- * cache refreshes (`@OnEvent('app-settings.cache-refreshed')`), so both the
- * sweep cadence (`consultation.state.sessionTimeoutSweep.cron`) and the
- * staleness window (`consultation.state.sessionTimeoutMinutes`) are tunable
- * live, with no redeploy. Deliberately WITHOUT an `enabled` kill-switch,
- * unlike those three siblings: each of them gates a HARD DELETE or an
- * expensive regeneration job behind an explicit opt-in; this worker performs
- * the same reversible-in-intent clinical status transition an authenticated
- * clinician can already trigger manually (`ConsultationService.closeConsultation`),
- * just on the platform's behalf when nobody is left to do it — so it ships
- * on by default (project posture: pre-production, no prod data, ship
- * complete rather than flag-gated).
- *
- * Per eligible row: `ConsultationEntity.transitionTo(<target>, 'system',
- * <reason>)` → `ConsultationRepository.updateWithVersion`
- * → `ResourceUpdated` sys-event → WORM `SESSION_CLOSED_INCOMPLETE` append —
- * exactly the persistence chain `ConsultationService.closeConsultation`
- * already uses for a manual close ( matrix rows).
- *
- * The eligibility QUERY (`ConsultationRepository.findTimeoutSweepEligible`)
- * runs cross-tenant with no CLS context active (a platform-wide maintenance
- * tick, not a per-tenant request — the tenant-scope Prisma extension passes
- * through when no CLS tenant is set). Each row's WRITE, however, needs the
- * correct tenant attributed on its sys-event and WORM row, so it is wrapped
- * in its own `clsService.run()` with the row's own `tenantId` bound — the
- * exact pattern `HarnessInternalService.recordEscalation` already uses for a
- * system/workflow-initiated transition, and the one `BaseService.broadcastSysEvent`'s
- * own doc comment calls out for "background/system processes... e.g. cron jobs".
+ * Both queries run cross-tenant with no CLS scope (a platform-wide tick); each row's write binds
+ * its own tenant first, so the lifecycle service attributes it correctly.
  */
 @Injectable()
-export class ConsultationTimeoutSweepService extends BaseService implements OnModuleInit, OnModuleDestroy {
+export class ConsultationTimeoutSweepService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ConsultationTimeoutSweepService.name);
   private activeCron: string | null = null;
 
   constructor(
     private readonly consultationRepository: ConsultationRepository,
-    protected override readonly eventEmitter: EventEmitter2,
-    protected override readonly clsService: ClsService<IActiveUserContext>,
+    private readonly clsService: ClsService<IActiveUserContext>,
     @Inject(IAppSettingsService) private readonly appSettingsService: IAppSettingsService,
     private readonly schedulerRegistry: SchedulerRegistry,
-    // TASK-932 OD-9 — the RECORDING leg's real stop path (the SAME method a
-    // client uses, `POST :id/recording/stop`) and the live-summary lock
-    // check that decides whether a stale row is genuinely orphaned.
-    @Inject(IConsultationService) private readonly consultationService: IConsultationService,
-    @Inject(IRedisCacheService) private readonly cacheService: IRedisCacheService,
-    // Optional, mirroring `ConsultationService`: absent ⇒ the WORM append
-    // no-ops (best-effort — a failed WORM write never rolls back the
-    // already-persisted status transition).
-    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
-  ) {
-    super(eventEmitter, clsService, ResourceType.Consultation);
-  }
+    @Inject(IConsultationLifecycleServiceToken) private readonly lifecycle: IConsultationLifecycleService,
+    @Inject(EffectiveSettingsService) private readonly effectiveSettings: EffectiveSettingsService,
+  ) {}
 
   onModuleInit(): void {
     this.syncSchedulerFromConfig();
@@ -148,10 +121,7 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
     this.stopJob();
   }
 
-  /**
-   * Reacts to `AppSettingsService` cache refreshes (every ~45s).
-   * Compares the live config against the running cron and adjusts.
-   */
+  /** Reacts to `AppSettingsService` cache refreshes (every ~45s). */
   @OnEvent('app-settings.cache-refreshed')
   onSettingsRefreshed(): void {
     this.syncSchedulerFromConfig();
@@ -163,407 +133,168 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY,
         CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_SWEEP_CRON_KEY],
       ),
-      timeoutMinutes: this.appSettingsService.getValueWithDefault<number>(
-        CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
-        CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
-      ),
       recordingStaleMinutes: this.appSettingsService.getValueWithDefault<number>(
         CONSULTATION_RECORDING_STALE_MINUTES_KEY,
         CONSULTATION_GATE_DEFAULTS[CONSULTATION_RECORDING_STALE_MINUTES_KEY],
       ),
-      reviewTimeoutMinutes: this.appSettingsService.getValueWithDefault<number>(
-        CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY,
-        CONSULTATION_GATE_DEFAULTS[CONSULTATION_REVIEW_TIMEOUT_MINUTES_KEY],
-      ),
-      openTimeoutMinutes: this.appSettingsService.getValueWithDefault<number>(
-        CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY,
-        CONSULTATION_GATE_DEFAULTS[CONSULTATION_OPEN_TIMEOUT_MINUTES_KEY],
-      ),
     };
   }
 
-  /**
-   * Reads config from `AppSettingsService` and ensures the running cron job
-   * matches. Creates or replaces the job as needed. No `enabled` gate — see
-   * the class doc comment for why this sweep ships on by default.
-   */
+  /** Ensures the running cron job matches the live config. */
   syncSchedulerFromConfig(): void {
     const { cron } = this.getConfig();
-
-    if (cron === this.activeCron) {
-      return;
-    }
-
+    if (cron === this.activeCron) return;
     this.replaceJob(cron);
   }
 
   /**
-   * The callback executed by the cron job on each tick. Runs FOUR legs, each
-   * in its own try/catch so one leg's failure never blocks the others.
-   *
-   * THE ORDER IS LOAD-BEARING, in two places:
-   *
-   * 1. The RECORDING leg runs FIRST, so a row it stops has a chance to age
-   *    into the DRAINING leg on a LATER tick, never the same one.
-   * 2. The PENDING_REVIEW leg (TASK-972 OD-6) runs AFTER the five-state leg,
-   *    not before. Its target, `TIMED_OUT`, is itself a member of
-   *    `findTimeoutSweepEligible`'s eligible set, so the other ordering would
-   *    let ONE tick carry a consultation from `PENDING_REVIEW` all the way to
-   *    `CLOSED_INCOMPLETE` — destroying the very recovery path OD-6 exists to
-   *    preserve. In practice the write refreshes `updatedAt` and the
-   *    1440-minute cutoff would exclude it anyway; ordering it last means the
-   *    guarantee does not DEPEND on that.
+   * One tick. The pause leg runs first and each leg has its own try/catch, so one failing never
+   * blocks the other.
    */
   async handleScheduledSweep(): Promise<void> {
-    this.logger.log('Starting scheduled session-timeout sweep');
+    this.logger.log('Starting scheduled consultation sweep');
 
     try {
-      const recordingResult = await this.sweepStaleRecordings();
-      this.logger.log({ message: 'Stale-recording sweep completed', ...recordingResult });
+      const paused = await this.sweepStaleRecordings();
+      this.logger.log({ message: 'Stale-recording sweep completed', ...paused });
     } catch (error) {
       this.logger.error(`Stale-recording sweep failed: ${error}`);
     }
 
     try {
-      const result = await this.sweepOnce();
-      this.logger.log({ message: 'Session-timeout sweep completed', ...result });
+      const closed = await this.sweepAutoClose();
+      this.logger.log({ message: 'Auto-close sweep completed', ...closed });
     } catch (error) {
-      this.logger.error(`Session-timeout sweep failed: ${error}`);
-    }
-
-    try {
-      const reviewResult = await this.sweepIdlePendingReview();
-      this.logger.log({ message: 'Review-timeout sweep completed', ...reviewResult });
-    } catch (error) {
-      this.logger.error(`Review-timeout sweep failed: ${error}`);
-    }
-
-    try {
-      const openResult = await this.sweepIdleOpen();
-      this.logger.log({ message: 'Open-timeout sweep completed', ...openResult });
-    } catch (error) {
-      this.logger.error(`Open-timeout sweep failed: ${error}`);
+      this.logger.error(`Auto-close sweep failed: ${error}`);
     }
   }
 
   /**
-   * One sweep pass: find every sweep-eligible consultation past the
-   * configured staleness window and transition each to `CLOSED_INCOMPLETE`.
-   * A single row's failure (an illegal-transition race, a concurrent
-   * `OptimisticConcurrencyException`) is logged and skipped — it never
-   * aborts the rest of the batch.
-   *
-   * `overrides.timeoutMinutes`, when supplied, takes precedence over the
-   * descriptor-resolved value for THIS call only (nothing is persisted) —
-   * the one-off dev cleanup script (TASK-932 O-2) uses it to sweep today's
-   * orphans without changing the platform's standing
-   * `consultation.state.sessionTimeoutMinutes` default.
+   * Auto-pauses RECORDING consultations with no activity for the stale window. A single row's
+   * failure (an illegal-transition race) is logged and skipped. `overrides.recordingStaleMinutes`
+   * applies to this call only (the dev cleanup script uses it); a window below one minute is refused.
    */
-  async sweepOnce(overrides?: { timeoutMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
-    const timeoutMinutes = overrides?.timeoutMinutes ?? this.getConfig().timeoutMinutes;
-
-    // Safety guard, mirroring `AuditRetentionService.purgeExpired`: a
-    // non-positive window would set the cutoff at (or after) "now" and sweep
-    // every eligible row in the platform in one tick. Applies to an explicit
-    // override too — there is no sanctioned way to bypass it.
-    if (timeoutMinutes < 1) {
-      this.logger.warn({
-        message: 'Session-timeout sweep window is non-positive — refusing to sweep',
-        timeoutMinutes,
-      });
-      return { eligible: 0, transitioned: 0, failed: 0 };
+  async sweepStaleRecordings(overrides?: { recordingStaleMinutes?: number }): Promise<ConsultationStaleRecordingResult> {
+    const staleMinutes = overrides?.recordingStaleMinutes ?? this.getConfig().recordingStaleMinutes;
+    if (staleMinutes < 1) {
+      this.logger.warn({ message: 'Recording stale window is non-positive - refusing to sweep', staleMinutes });
+      return { eligible: 0, paused: 0, failed: 0 };
     }
 
-    const cutoff = new Date(Date.now() - timeoutMinutes * MS_PER_MINUTE);
-    const eligible = await this.consultationRepository.findTimeoutSweepEligible(cutoff);
+    const stale = (await this.consultationRepository.findStaleRecording(new Date(Date.now() - staleMinutes * MS_PER_MINUTE))).slice(
+      0,
+      CONSULTATION_SWEEP_BATCH_LIMIT,
+    );
 
-    let transitioned = 0;
+    let paused = 0;
     let failed = 0;
+    for (const consultation of stale) {
+      try {
+        await this.inTenant(consultation.tenantId, () => this.lifecycle.pause(consultation.id, { reason: 'stale_recording' }));
+        paused++;
+      } catch (error) {
+        failed++;
+        this.logSkipped('auto-pause', consultation.id, consultation.tenantId, error);
+      }
+    }
+    return { eligible: stale.length, paused, failed };
+  }
 
+  /**
+   * Closes every non-closed consultation that is past its tenant's auto-close policy, at most
+   * {@link CONSULTATION_SWEEP_BATCH_LIMIT} per run (oldest first).
+   *
+   * The repository is asked for rows idle past the loosest window any policy can have; each
+   * tenant's own policy then decides in memory. `overrides.idleMinutes` replaces every tenant's
+   * policy with an idle window for this call only (the dev cleanup script uses it).
+   */
+  async sweepAutoClose(overrides?: { idleMinutes?: number }): Promise<ConsultationAutoCloseResult> {
+    if (overrides?.idleMinutes !== undefined && overrides.idleMinutes < 1) {
+      this.logger.warn({ message: 'Auto-close idle override is non-positive - refusing to sweep', idleMinutes: overrides.idleMinutes });
+      return { eligible: 0, closed: 0, failed: 0 };
+    }
+
+    const now = new Date();
+    const floorMinutes = Math.min(overrides?.idleMinutes ?? CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES, CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES);
+    const candidates = await this.consultationRepository.findAutoCloseEligible(new Date(now.getTime() - floorMinutes * MS_PER_MINUTE), {
+      limit: CONSULTATION_SWEEP_BATCH_LIMIT,
+    });
+
+    const cutoffByTenant = new Map<string, Date | null>();
+    const eligible = [];
+    for (const consultation of candidates.slice(0, CONSULTATION_SWEEP_BATCH_LIMIT)) {
+      let cutoff = cutoffByTenant.get(consultation.tenantId);
+      if (cutoff === undefined) {
+        cutoff = overrides?.idleMinutes !== undefined ? new Date(now.getTime() - overrides.idleMinutes * MS_PER_MINUTE) : await this.resolveCutoff(consultation.tenantId, now);
+        cutoffByTenant.set(consultation.tenantId, cutoff);
+      }
+      if (cutoff !== null && consultation.lastActivityAt < cutoff) eligible.push(consultation);
+    }
+
+    let closed = 0;
+    let failed = 0;
     for (const consultation of eligible) {
       try {
-        await this.transitionOneConsultation(consultation);
-        transitioned++;
+        await this.inTenant(consultation.tenantId, () => this.lifecycle.close(consultation.id, { auto: true }));
+        closed++;
       } catch (error) {
         failed++;
-        this.logger.warn({
-          message: 'Session-timeout sweep: failed to transition a consultation (non-fatal — the sweep continues with the next row)',
-          consultationId: consultation.id,
-          tenantId: consultation.tenantId,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.logSkipped('auto-close', consultation.id, consultation.tenantId, error);
       }
     }
-
-    return { eligible: eligible.length, transitioned, failed };
+    return { eligible: eligible.length, closed, failed };
   }
 
   /**
-   * Transitions one row, with the write correctly attributed to ITS OWN
-   * tenant. `broadcastSysEvent`'s `tenantId` is sourced exclusively from CLS
-   * (never the payload — see its doc comment), so the sweep — which runs
-   * with no CLS context of its own — must bind one per row rather than once
-   * for the whole tick. Mirrors `HarnessInternalService.recordEscalation`'s
-   * `cls.run(...)` + `createWorkerSession(...)` pattern for a
-   * system-initiated transition.
+   * The `lastActivityAt` before which a tenant's consultations are closed now, or `null` when
+   * nothing is due yet (daily mode before today's `dailyAt`). A settings outage serves the
+   * platform default policy (`open-to-default`).
    */
-  private async transitionOneConsultation(
-    consultation: ConsultationEntity,
-    // TASK-972 Lane 8 — parameterised so the three transition legs share ONE
-    // persistence chain. The defaults reproduce the original single-leg
-    // behaviour exactly, so `sweepOnce`'s call site is unchanged.
-    target: ConsultationStatus = ConsultationStatus.CLOSED_INCOMPLETE,
-    reason = 'session-timeout-sweep',
-    wormAction: HarnessAuditAction = HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
-  ): Promise<void> {
+  private async resolveCutoff(tenantId: string, now: Date): Promise<Date | null> {
+    const policy = await this.resolvePolicy(tenantId);
+    if (policy.mode === 'idle') return new Date(now.getTime() - policy.idleMinutes * MS_PER_MINUTE);
+
+    const zone = await this.resolveTimeZone(tenantId);
+    const dueAt = todayAtInZone(now, policy.dailyAt as string, zone);
+    return dueAt.getTime() <= now.getTime() ? dueAt : null;
+  }
+
+  private async resolvePolicy(tenantId: string): Promise<ConsultationAutoClosePolicy> {
+    try {
+      const { value } = await this.effectiveSettings.resolveEffective(CONSULTATION_AUTO_CLOSE_KEY, { tenantId });
+      return resolveAutoClosePolicy(value);
+    } catch (error) {
+      this.logger.warn({ message: 'consultation.autoClose lookup failed - using the platform default', tenantId, error: error instanceof Error ? error.message : String(error) });
+      return resolveAutoClosePolicy(undefined);
+    }
+  }
+
+  private async resolveTimeZone(tenantId: string): Promise<string> {
+    try {
+      const { value } = await this.effectiveSettings.resolveEffective(CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_KEY, { tenantId });
+      return isValidTimeZone(value) ? value : CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+    } catch {
+      return CONSULTATION_APPOINTMENT_DAY_TIME_ZONE_DEFAULT;
+    }
+  }
+
+  /** Runs `work` with the row's own tenant bound, as the lifecycle service reads tenancy from CLS. */
+  private async inTenant(tenantId: string, work: () => Promise<unknown>): Promise<void> {
     await this.clsService.run(async () => {
-      this.clsService.set('tenantId', consultation.tenantId);
-      this.clsService.set('user', createWorkerSession({ tenantId: consultation.tenantId, kind: 'session-timeout-sweep' }));
-
-      const expectedVersion = consultation.version;
-      // `transitionTo` THROWS on an illegal pair and returns false only for a
-      // self-transition — so a row that raced into a state this leg cannot
-      // legally leave is REFUSED here and counted `failed` by the caller's
-      // per-row catch. The sweep can never force a transition the state
-      // machine forbids.
-      const applied = consultation.transitionTo(target, 'system', reason);
-      if (!applied) {
-        return;
-      }
-
-      await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedVersion);
-
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        resourceId: consultation.id,
-        data: { action: reason, status: target },
-      });
-
-      if (!this.harnessAuditService) {
-        return;
-      }
-
-      try {
-        await this.harnessAuditService.append({
-          tenantId: consultation.tenantId,
-          consultationId: consultation.id,
-          action: wormAction,
-          modelName: 'session-lifecycle',
-          modelVersion: 'v1',
-          sensorScores: {},
-          citations: [],
-          createdBy: null,
-        });
-      } catch (error) {
-        // Best-effort, mirroring `ConsultationService.appendTransitionAudit`:
-        // a WORM-append failure is logged but never rolls back the
-        // already-persisted status write.
-        this.logger.warn({
-          message: 'WORM append failed for a session-timeout-sweep transition (non-fatal, status write not rolled back)',
-          consultationId: consultation.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      this.clsService.set('tenantId', tenantId);
+      this.clsService.set('user', createWorkerSession({ tenantId, kind: 'session-timeout-sweep' }));
+      await work();
     });
   }
 
-  /**
-   * TASK-972 Lane 8, owner decision OD-6 — the PENDING_REVIEW leg.
-   *
-   * A consultation idle in `PENDING_REVIEW` past
-   * `consultation.state.reviewTimeoutMinutes` (default 120) is transitioned to
-   * **`TIMED_OUT`, deliberately NOT `CLOSED_INCOMPLETE`**, and that choice is
-   * the whole point of the leg rather than an implementation detail:
-   *
-   *   • `TIMED_OUT → SIGNED` is a legal edge, and
-   *     `SummaryService.approveSummary` already accepts `TIMED_OUT` as a
-   *     predecessor of `SIGNED` — "the clock never signs, a human still can".
-   *     So a clinician who reviews and submits hours after the timeout still
-   *     signs the note, still closes the consultation, and still yields the
-   *     `(AI draft, clinician-edited)` training pair.
-   *   • `CLOSED_INCOMPLETE` is a CLOSE: it also accepts a late sign-off (`→ SIGNED`, TASK-1001 wave 5),
-   *     but it ends the session, which an idle review must not do on its own.
-   *
-   * This is the state a genuinely stranded consultation was measured in on the
-   * live cluster (29.4 h) and the one state nothing could clear. The narrower
-   * gate-SLA path (`HarnessInternalService.recordEscalation`) only fires on a
-   * terminal harness gate abandon, which a Substrate-B (interpreter)
-   * consultation never reports; this leg is its backstop.
-   *
-   * Age is the whole eligibility predicate here — unlike {@link sweepIdleOpen}
-   * below — precisely because the target is recoverable: a false positive
-   * costs a status label, not a record.
-   *
-   * A single row's failure never aborts the batch, mirroring {@link sweepOnce}.
-   */
-  async sweepIdlePendingReview(overrides?: { reviewTimeoutMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
-    const reviewTimeoutMinutes = overrides?.reviewTimeoutMinutes ?? this.getConfig().reviewTimeoutMinutes;
-
-    // Same non-positive guard as the other legs: a window <= 0 would put the
-    // cutoff at or after "now" and time out every PENDING_REVIEW row in the
-    // platform in one tick.
-    if (reviewTimeoutMinutes < 1) {
-      this.logger.warn({
-        message: 'Review-timeout sweep window is non-positive — refusing to sweep',
-        reviewTimeoutMinutes,
-      });
-      return { eligible: 0, transitioned: 0, failed: 0 };
-    }
-
-    const cutoff = new Date(Date.now() - reviewTimeoutMinutes * MS_PER_MINUTE);
-    const eligible = await this.consultationRepository.findIdlePendingReview(cutoff);
-
-    return this.transitionEach(eligible, ConsultationStatus.TIMED_OUT, 'review-timeout-sweep', HarnessAuditAction.SESSION_TIMED_OUT);
-  }
-
-  /**
-   * TASK-972 Lane 8, owner decision OD-7 — the OPEN leg.
-   *
-   * `OPEN` was STRUCTURALLY UNCLOSABLE until Lane 7 added the
-   * `OPEN → CLOSED_INCOMPLETE` matrix edge: its only outgoing edge was
-   * `OPEN → PRIMED`, so neither a manual `POST :id/close` nor any sweep could
-   * clear a consultation abandoned before recording ever began — which is
-   * exactly the orphan path ALaaS leaves behind when a browser disappears
-   * without sending `stop`.
-   *
-   * THE ELIGIBILITY TEST CARRIES TWO SIGNALS, NOT ONE, and the second lives in
-   * `ConsultationRepository.findIdleOpen`: no `ContextItem` may have been
-   * created inside the window either. `ContextService` only ever READS the
-   * consultation row, so adding a case note or an attachment does NOT bump
-   * `Consultation.updatedAt` — age alone would close a consultation a
-   * clinician is still loading context into, and this leg's target reaches
-   * only `REOPENED`. Same two-signal rule the RECORDING leg already applies
-   * (age AND an absent live-summary lock), applied here for the same reason:
-   * the irreversible legs are the ones that need corroboration.
-   *
-   * A single row's failure never aborts the batch.
-   */
-  async sweepIdleOpen(overrides?: { openTimeoutMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
-    const openTimeoutMinutes = overrides?.openTimeoutMinutes ?? this.getConfig().openTimeoutMinutes;
-
-    if (openTimeoutMinutes < 1) {
-      this.logger.warn({
-        message: 'Open-timeout sweep window is non-positive — refusing to sweep',
-        openTimeoutMinutes,
-      });
-      return { eligible: 0, transitioned: 0, failed: 0 };
-    }
-
-    const cutoff = new Date(Date.now() - openTimeoutMinutes * MS_PER_MINUTE);
-    const eligible = await this.consultationRepository.findIdleOpen(cutoff);
-
-    return this.transitionEach(eligible, ConsultationStatus.CLOSED_INCOMPLETE, 'open-timeout-sweep', HarnessAuditAction.SESSION_CLOSED_INCOMPLETE);
-  }
-
-  /**
-   * TASK-972 Lane 8 — the per-row loop the two new legs share: transition each
-   * row, count it, and isolate its failure. Identical in shape to
-   * {@link sweepOnce}'s own loop, which is left alone (it carries a public
-   * `overrides` contract and its own dev-cleanup documentation).
-   */
-  private async transitionEach(
-    rows: ConsultationEntity[],
-    target: ConsultationStatus,
-    reason: string,
-    wormAction: HarnessAuditAction,
-  ): Promise<ConsultationTimeoutSweepResult> {
-    let transitioned = 0;
-    let failed = 0;
-
-    for (const consultation of rows) {
-      try {
-        await this.transitionOneConsultation(consultation, target, reason, wormAction);
-        transitioned++;
-      } catch (error) {
-        failed++;
-        this.logger.warn({
-          message: `${reason}: failed to transition a consultation (non-fatal — the sweep continues with the next row)`,
-          consultationId: consultation.id,
-          tenantId: consultation.tenantId,
-          target,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return { eligible: rows.length, transitioned, failed };
-  }
-
-  /**
-   * TASK-932 OD-9 — the RECORDING leg. A `RECORDING` row whose `updatedAt`
-   * is older than `overrides.recordingStaleMinutes` (or the descriptor
-   * default, window N) is a CANDIDATE; it is only genuinely orphaned if it
-   * ALSO holds no `consultation:live-summary:{id}:lock` key — an active
-   * capture session must never be force-terminated by this tick. Each
-   * orphaned row is stopped through the SAME path a real client uses
-   * (`ConsultationService.stopRecording`), landing it in `DRAINING` — where
-   * {@link sweepOnce} (window M) eventually takes over. A single row's
-   * failure (lock lookup or the stop itself) never aborts the batch.
-   *
-   * `overrides.recordingStaleMinutes`, when supplied, takes precedence over
-   * the descriptor-resolved value for THIS call only — the one-off dev
-   * cleanup script (TASK-932 O-2) uses it the same way {@link sweepOnce}'s
-   * override is used.
-   */
-  async sweepStaleRecordings(overrides?: { recordingStaleMinutes?: number }): Promise<ConsultationTimeoutSweepResult> {
-    const recordingStaleMinutes = overrides?.recordingStaleMinutes ?? this.getConfig().recordingStaleMinutes;
-
-    // Same safety guard as `sweepOnce`, applied to the other window.
-    if (recordingStaleMinutes < 1) {
-      this.logger.warn({
-        message: 'Stale-recording sweep window is non-positive — refusing to sweep',
-        recordingStaleMinutes,
-      });
-      return { eligible: 0, transitioned: 0, failed: 0 };
-    }
-
-    const cutoff = new Date(Date.now() - recordingStaleMinutes * MS_PER_MINUTE);
-    const staleRows = await this.consultationRepository.findStaleRecording(cutoff);
-
-    let transitioned = 0;
-    let failed = 0;
-
-    for (const consultation of staleRows) {
-      try {
-        const held = await this.cacheService.get(liveSummaryLockKey(consultation.id));
-        if (held) {
-          // Still genuinely live (an active LiveDocumentationService
-          // session owns the lock) — leave it alone.
-          continue;
-        }
-
-        await this.stopOneRecording(consultation);
-        transitioned++;
-      } catch (error) {
-        failed++;
-        this.logger.warn({
-          message: 'Stale-recording sweep: failed to stop a consultation (non-fatal — the sweep continues with the next row)',
-          consultationId: consultation.id,
-          tenantId: consultation.tenantId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return { eligible: staleRows.length, transitioned, failed };
-  }
-
-  /**
-   * Calls the real stop path, `ConsultationService.stopRecording`, with the
-   * row's OWN tenant bound on CLS first — `stopRecording` reads `tenantId`
-   * from CLS via `BaseService` exactly like this service does, and the
-   * sweep runs with no CLS context of its own. Mirrors
-   * `transitionOneConsultation`'s per-row binding pattern.
-   */
-  private async stopOneRecording(consultation: ConsultationEntity): Promise<void> {
-    await this.clsService.run(async () => {
-      this.clsService.set('tenantId', consultation.tenantId);
-      this.clsService.set('user', createWorkerSession({ tenantId: consultation.tenantId, kind: 'session-timeout-sweep' }));
-
-      await this.consultationService.stopRecording(consultation.id);
+  private logSkipped(action: string, consultationId: string, tenantId: string, error: unknown): void {
+    this.logger.warn({
+      message: `Consultation sweep: ${action} failed (non-fatal - the sweep continues with the next row)`,
+      consultationId,
+      tenantId,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
-
-  // ── Private helpers ──────────────────────────────────────────
 
   private replaceJob(cron: string): void {
     this.stopJob();
@@ -578,11 +309,11 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
       job.start();
       this.activeCron = cron;
 
-      this.logger.log({ message: 'Session-timeout sweep cron job scheduled', cron });
+      this.logger.log({ message: 'Consultation sweep cron job scheduled', cron });
     } catch (error) {
       this.activeCron = null;
       this.logger.error({
-        message: 'Failed to schedule session-timeout sweep cron job',
+        message: 'Failed to schedule consultation sweep cron job',
         cron,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -597,7 +328,7 @@ export class ConsultationTimeoutSweepService extends BaseService implements OnMo
         this.schedulerRegistry.deleteCronJob(JOB_NAME);
       }
     } catch {
-      // Job doesn't exist — nothing to stop
+      // Job doesn't exist - nothing to stop
     }
     this.activeCron = null;
   }
