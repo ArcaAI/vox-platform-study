@@ -20,6 +20,8 @@ from harness.guides.retrieval.retriever import RetrievedChunk
 from harness.redaction.engine import RedactionManifest, RedactionRule
 from harness.sensors.base import NEREntity, SensorResult
 from harness.sensors.config import SensorThresholds
+from harness.services.note_plan.models import NotePlanRef
+from harness.services.text_client import TextGenerationResult
 from harness.temporal.claim_check import ClaimCheckRef
 
 # Inferential groundedness default — mirrors ``SensorThresholds.groundedness_threshold``
@@ -120,6 +122,11 @@ class HarnessDocWorkflowInput(BaseModel):
         default=None, validation_alias=AliasChoices("text_model", "smr_model")
     )
     gate: HarnessGateConfig = Field(default_factory=HarnessGateConfig)
+    # The composed NotePlan to execute instead of the assembled single prompt (apps/api composes
+    # it and keeps it in Redis; this is only the pointer). ADDITIVE-OPTIONAL: None on every
+    # legacy start payload, and the workflow consults its patch marker ONLY when it is set, so a
+    # run without a plan records no marker and replays byte-identically.
+    note_plan_ref: NotePlanRef | None = None
 
 
 class ApprovalSignal(BaseModel):
@@ -1022,8 +1029,42 @@ class PersistDraftInput(BaseModel):
     # body is byte-identical, so the audit change is replay-safe when the era is off.
     redaction_applied: bool | None = None
     redaction_manifest: dict[str, Any] | None = None
+    # The NotePlan coverage result (``CoverageResultV1`` wire shape) when the draft came from a
+    # plan. ADDITIVE-OPTIONAL: None ⇒ pruned from the persist body ⇒ byte-identical POST.
+    coverage: dict[str, Any] | None = None
+    # The note-level run-record stats (``NOTE_GENERATE`` / ``NOTE_SECTION_REGEN``) of a plan
+    # execution. The persist stamps them, with the persisted note id + version, as ONE extra
+    # NODE step — the only point where the note's identity is known. None ⇒ no step.
+    note_run_stats: dict[str, Any] | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
+
+
+class ExecuteNotePlanInput(BaseModel):
+    """Inputs for the ``execute_note_plan`` activity (the plan-driven ``generate``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    note_plan_ref: NotePlanRef
+    # The assembled sampling knobs (temperature / top_p) — the model and the per-call output
+    # cap come from the plan itself, never from here.
+    hyperparameters: dict[str, Any] = Field(default_factory=dict)
+    # The prior iteration's failed-sensor critique; rendered into the shared prefix, so every
+    # call of the plan still ends with its own directive.
+    regen_feedback: RegenFeedback | None = None
+    trajectory: TrajectoryContext | None = None
+
+
+class ExecuteNotePlanResult(BaseModel):
+    """The executed plan: the merged note as a generation, plus its coverage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    generation: TextGenerationResult
+    # ``CoverageResultV1`` wire shape (camelCase).
+    coverage: dict[str, Any] | None = None
+    note_run_stats: dict[str, Any] | None = None
 
 
 class FinalizeAssuranceInput(BaseModel):

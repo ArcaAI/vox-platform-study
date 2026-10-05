@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.provider_credentials import ProviderCredential
 from harness.sensors.base import NEREntity, normalize_text
+from harness.services.note_plan.models import NotePlanV1
 from harness.temporal import http_pool
 from harness.temporal.claim_check import ClaimCheckRef
 from harness.temporal.models import (
@@ -134,6 +135,42 @@ class DraftResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     context_item_id: str = ""
+    # The note version the persist wrote, when apps/api reports one (the run record's
+    # `output_version`). Absent on every older response.
+    version_number: int | None = None
+
+
+class NotePlanEnvelope(BaseModel):
+    """apps/api answer for ``GET /internal/consultations/:id/note-plans/:planId``.
+
+    The body is the ``NotePlanV1`` itself, or ``{plan, preservedSections}``: a ``section_regen``
+    plan carries the text of the sections it preserves (``[{key, content}]`` or
+    ``{key: content}``), because the harness has no other read of the latest note version.
+    **Carries PHI** (the plan's blocks): never logged.
+    """
+
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
+
+    plan: NotePlanV1
+    preserved_sections: dict[str, str] = Field(default_factory=dict)
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> NotePlanEnvelope:
+        if "plan" not in data:
+            return cls(plan=NotePlanV1.model_validate(data))
+        raw = data.get("preservedSections")
+        preserved: dict[str, str] = {}
+        if isinstance(raw, dict):
+            preserved = {str(k): v for k, v in raw.items() if isinstance(v, str)}
+        elif isinstance(raw, list):
+            preserved = {
+                str(item["key"]): item["content"]
+                for item in raw
+                if isinstance(item, dict)
+                and isinstance(item.get("content"), str)
+                and item.get("key")
+            }
+        return cls(plan=NotePlanV1.model_validate(data["plan"]), preserved_sections=preserved)
 
 
 class RecordGateResponse(BaseModel):
@@ -923,6 +960,7 @@ class ApiClient:
         phase: str | None = None,
         redaction_applied: bool | None = None,
         redaction_manifest: dict[str, Any] | None = None,
+        coverage: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> DraftResponse:
         body = _prune(
@@ -951,12 +989,50 @@ class ApiClient:
                 # pre-audit-era persist), so the body stays byte-identical there.
                 "redactionApplied": redaction_applied,
                 "redactionManifest": redaction_manifest,
+                # The NotePlan coverage result (CoverageResultV1, camelCase). Pruned when None,
+                # so every persist that did not run a plan sends a byte-identical body.
+                "coverage": coverage,
             }
         )
         data = await self._post(
             f"/consultations/{consultation_id}/draft", body, idempotency_key=idempotency_key
         )
-        return DraftResponse(context_item_id=data.get("contextItemId", ""))
+        version = data.get("versionNumber")
+        return DraftResponse(
+            context_item_id=data.get("contextItemId", ""),
+            version_number=(
+                version if isinstance(version, int) and not isinstance(version, bool) else None
+            ),
+        )
+
+    async def get_note_plan(
+        self, consultation_id: str, plan_id: str, *, tenant_id: str
+    ) -> NotePlanEnvelope:
+        """The composed NotePlan the harness executes (the plan stays in apps/api's Redis).
+
+            GET /api/v1/internal/consultations/{consultationId}/note-plans/{planId}
+            headers: X-Service-Token, X-Tenant-Id (both mandatory)
+
+        A SIBLING mount of the harness prefix (``/internal/consultations``), so the URL is built
+        off the base url. Both ids are path-escaped. A cache miss is apps/api's to handle (it
+        recomposes and records); the harness never composes. A 4xx raises the terminal
+        :class:`ApiClientError`, a transport fault the retryable :class:`ApiServiceError`.
+        **The response carries PHI**: never logged.
+        """
+        path = (
+            f"/api/v1/internal/consultations/{quote(consultation_id, safe='')}"
+            f"/note-plans/{quote(plan_id, safe='')}"
+        )
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+            try:
+                resp = await client.get(
+                    f"{self._base_url}{path}", headers=headers, timeout=self._timeout
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error("/internal/consultations/{id}/note-plans/{planId}", exc) from exc
+            return NotePlanEnvelope.from_wire(cast("dict[str, Any]", resp.json()))
 
     async def finalize_assurance(
         self,

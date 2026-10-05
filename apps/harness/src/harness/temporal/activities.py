@@ -101,6 +101,24 @@ from harness.services.api_client import (
 from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
+from harness.services.note_plan.executor import (
+    NOTE_PLAN_RESPONSE_FORMAT as NOTE_PLAN_RESPONSE_FORMAT,
+)
+from harness.services.note_plan.executor import (
+    REPAIR_STEP_OFFSET,
+    NoteCallRecord,
+    NoteCallRequest,
+    NoteCallResult,
+    NotePlanCallFailed,
+    call_run_stats,
+    call_step_offset,
+    execute_plan,
+    failed_step_offset,
+    note_run_stats,
+    render_user_prefix,
+    summed_usage,
+)
+from harness.services.note_plan.models import NotePlanRef, NotePlanV1
 from harness.services.reranker_client import RerankerClient
 from harness.services.sensor_runner import SensorRunOutput, run_computational_sensors
 from harness.services.text_client import (
@@ -145,6 +163,8 @@ from harness.temporal.models import (
     EntitiesResult,
     EscalateInput,
     EscalateResult,
+    ExecuteNotePlanInput,
+    ExecuteNotePlanResult,
     ExtractEntitiesInput,
     FetchLoopConfigInput,
     FetchPolicyInput,
@@ -186,6 +206,7 @@ from harness.temporal.models import (
 from harness.temporal.prompt_cache import (
     assemble_generation_prompt,
     build_segment_citations_block,
+    render_regen_feedback_block,
 )
 from harness.temporal.trajectory_delivery import (
     TRAJECTORY_HTTP_TIMEOUT_S,
@@ -490,8 +511,11 @@ class _TrajectoryBatch:
         payload_ref: dict[str, Any] | None = None,
         error_code: str | None = None,
         offset: int = 0,
+        ended: datetime | None = None,
     ) -> None:
-        ended = datetime.now(UTC)
+        # ``ended`` lets a step recorded AFTER the fact (a parallel call collected at the end of
+        # its activity) keep its own duration instead of the activity's.
+        ended = ended or datetime.now(UTC)
         elapsed_ms = max(0.0, (ended - started).total_seconds() * 1000.0)
         observe_step_duration(step_type, name, elapsed_ms / 1000.0)
         # The apps/api ingest DTO validates `durationMs` as an integer (the column
@@ -1967,6 +1991,206 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     return out
 
 
+def note_call_llm_stats(result: TextGenerationResult) -> dict[str, Any]:
+    """The billable stats block of one plan call — exactly what ``generate`` puts on its step."""
+    stats: dict[str, Any] = dict(result.stats or {})
+    if not stats.get("provider") and result.provider:
+        stats["provider"] = result.provider
+    if not stats.get("model") and result.model:
+        stats["model"] = result.model
+    stats.update(usage_detail_counters(result.usage_detail))
+    egress = egress_counts(result.egress)
+    if egress is not None:
+        stats["egress"] = egress
+    return stats
+
+
+def record_note_plan_steps(
+    batch: _TrajectoryBatch,
+    plan: NotePlanV1,
+    records: Sequence[NoteCallRecord],
+    *,
+    provider: str | None,
+    model: str | None,
+    extra_stats: dict[str, Any] | None = None,
+) -> None:
+    """One ``LLM_CALL`` step per plan call / repair / failure, at the executor's pinned offsets.
+
+    Every step carries the run-record keys (``activity_kind``, ``plan_id``, ``call_index`` …) so
+    the gateway writes one ``AiActivityRun`` per call; ids and numbers only, never note text. A
+    failure past the stride is dropped with a warning rather than allowed to collide with the
+    next activity's seq base.
+    """
+    failed = 0
+    for record in records:
+        request = record.request
+        run_stats = {**call_run_stats(plan, request), **(extra_stats or {})}
+        if record.result is not None:
+            offset = (
+                REPAIR_STEP_OFFSET
+                if request.kind == "repair"
+                else call_step_offset((request.call_index or 1) - 1)
+            )
+            batch.record(
+                step_type=STEP_LLM_CALL,
+                name="generate",
+                status=STATUS_OK,
+                started=record.started_at,
+                ended=record.ended_at,
+                stats={**record.result.stats, **run_stats},
+                offset=offset,
+            )
+            continue
+        failed_offset = failed_step_offset(failed)
+        failed += 1
+        if failed_offset is None:
+            activity.logger.warning(
+                "harness.note_plan.failed_steps_truncated", extra={"plan_id": plan.plan_id}
+            )
+            continue
+        ended = record.ended_at or _now()
+        batch.record(
+            step_type=STEP_LLM_CALL,
+            name="generate",
+            status=STATUS_ERROR,
+            started=record.started_at,
+            ended=ended,
+            stats={
+                **failed_attempt_stats(
+                    provider=provider,
+                    model=model,
+                    funding_tier=None,
+                    total_ms=max(0, round((ended - record.started_at).total_seconds() * 1000)),
+                ),
+                **run_stats,
+            },
+            offset=failed_offset,
+        )
+
+
+def _assert_plan_belongs(plan: NotePlanV1, ref: NotePlanRef, tenant_id: str) -> None:
+    """A plan served for another tenant, consultation or id is never executed (non-retryable)."""
+    if (
+        plan.tenant_id != tenant_id
+        or plan.consultation_id != ref.consultation_id
+        or plan.plan_id != ref.plan_id
+    ):
+        raise ApplicationError(
+            "the note plan served does not belong to this run",
+            type="NotePlanMismatch",
+            non_retryable=True,
+        )
+
+
+@activity.defn
+async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanResult:
+    """Execute the composed NotePlan in place of the single assembled ``generate`` call.
+
+    Fetches the plan apps/api composed, runs its calls in parallel on the PLAN's model through
+    the same Text call ``generate`` uses (same tenant header, locality stamp, per-call
+    idempotency key), merges the sections in template order, checks coverage and repairs the gap
+    sections once. The merged note travels on as an ordinary generation (offloaded like
+    ``generate``'s), so every downstream activity is unchanged.
+    """
+    settings = get_settings()
+    tenant_id = _required_tenant(payload.tenant_id, "execute_note_plan")
+    ref = payload.note_plan_ref
+    envelope = await _api_client(settings).get_note_plan(
+        ref.consultation_id, ref.plan_id, tenant_id=tenant_id
+    )
+    plan = envelope.plan
+    _assert_plan_belongs(plan, ref, tenant_id)
+    provider = wire_provider(plan.model.provider)
+    model = plan.model.wire_model_id
+    if not provider or not model:
+        raise ApplicationError(
+            "the note plan names no provider/model", type="NotePlanInvalid", non_retryable=True
+        )
+    hp = payload.hyperparameters or {}
+    prefix = render_user_prefix(plan)
+    if payload.regen_feedback is not None:
+        feedback = render_regen_feedback_block(payload.regen_feedback)
+        if feedback:
+            prefix = f"{prefix}\n\n{feedback}"
+    budget = ActivityBudget.for_activity(settings.text_timeout_s)
+
+    async def _generate(request: NoteCallRequest) -> NoteCallResult:
+        result = await _text_client(settings).generate(
+            tenant_id=tenant_id,
+            prompt=request.user,
+            system_prompt=request.system,
+            provider=provider,
+            model=model,
+            temperature=hp.get("temperature"),
+            max_tokens=request.max_tokens,
+            top_p=hp.get("top_p"),
+            response_format=NOTE_PLAN_RESPONSE_FORMAT,
+            provider_locality=provider_locality(provider, None),
+            # Stable across a retry of THIS activity, distinct per call: a re-run returns the
+            # calls that already completed from Text's cache instead of re-billing them.
+            idempotency_key=_idempotency_key(f"note-plan:{request.call_id}"),
+        )
+        composed_prompt_recorder.record_composed_prompt(
+            tenant_id=tenant_id,
+            consultation_id=ref.consultation_id,
+            phase="finalize",
+            provider=result.provider or provider,
+            egress=result.egress,
+            system=request.system,
+            user=request.user,
+        )
+        return NoteCallResult(
+            content=result.content,
+            stats=note_call_llm_stats(result),
+            provider=result.provider,
+            model=result.model,
+            usage=result.usage,
+        )
+
+    batch = _TrajectoryBatch(settings, payload.trajectory)
+    try:
+        execution = await execute_plan(
+            plan,
+            system=plan.system,
+            user_prefix=prefix,
+            generate=_generate,
+            preserved_sections=envelope.preserved_sections,
+            allow_repair=budget.allows_another,
+        )
+    except NotePlanCallFailed as exc:
+        record_note_plan_steps(batch, plan, exc.records, provider=provider, model=model)
+        await batch.flush()
+        errors = [r.error for r in exc.records if r.error is not None]
+        if any(isinstance(e, TextServiceError) and e.after_send for e in errors):
+            # Same rule as `generate`: a call that may have run must not be re-issued by a retry.
+            raise ApplicationError(str(exc), type="TextResponseLost", non_retryable=True) from exc
+        raise ApplicationError(str(exc), type="NotePlanCallFailed") from exc
+    except ValueError as exc:
+        raise ApplicationError(str(exc), type="NotePlanInvalid", non_retryable=True) from exc
+
+    record_note_plan_steps(batch, plan, execution.records, provider=provider, model=model)
+    if payload.trajectory is not None and payload.trajectory.is_regen:
+        inc_regen()
+    await batch.flush()
+
+    served = next((r.result for r in execution.records if r.result is not None), None)
+    usage = summed_usage(execution.records)
+    content_inline, content_ref = await _offload_text(settings, execution.document["case_note"])
+    generation = TextGenerationResult(
+        content=content_inline,
+        content_ref=content_ref,
+        model=(served.model if served else "") or model,
+        provider=(served.provider if served else "") or provider,
+        usage=usage,
+        stats={"usage": usage},
+    )
+    return ExecuteNotePlanResult(
+        generation=generation,
+        coverage=execution.coverage.to_wire(),
+        note_run_stats=note_run_stats(plan, execution),
+    )
+
+
 @activity.defn
 async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     """JIT hybrid retrieval for the generation prompt (flag-gated, degrade-safe).
@@ -3015,6 +3239,7 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         # pre-audit-era persist ⇒ pruned client-side ⇒ byte-identical POST body.
         redaction_applied=payload.redaction_applied,
         redaction_manifest=payload.redaction_manifest,
+        coverage=payload.coverage,
         # NOT ``_idempotency_key()`` — see ``_draft_idempotency_key``. This callback
         # is duplicated by a second workflow EXECUTION, not just by an activity retry.
         idempotency_key=_draft_idempotency_key(payload.consultation_id, content),
@@ -3032,6 +3257,22 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         started=started,
         stats={"context_item_id": result.context_item_id, "phase": payload.phase},
     )
+    if payload.note_run_stats is not None:
+        # The NOTE-level run record of a plan execution: only here is the note's id known.
+        note_stats: dict[str, Any] = {
+            **payload.note_run_stats,
+            "context_item_id": result.context_item_id or None,
+        }
+        if result.version_number is not None:
+            note_stats["output_version"] = result.version_number
+        batch.record(
+            step_type=STEP_NODE,
+            name="note",
+            status=STATUS_OK,
+            started=started,
+            stats=note_stats,
+            offset=1,
+        )
     await batch.flush()
     return result
 
@@ -3433,6 +3674,8 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     assemble_prompt,
     retrieve_context,
     generate,
+    # The plan-driven generate (`HarnessDocWorkflow`, behind its patch marker).
+    execute_note_plan,
     run_sensors,
     run_inferential_sensors,
     apply_redaction,

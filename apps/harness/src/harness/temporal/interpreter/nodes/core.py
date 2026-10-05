@@ -35,6 +35,7 @@ from typing import Any
 
 import jsonschema
 import structlog
+from pydantic import ValidationError
 from temporalio import activity
 
 from harness.core.config import get_settings
@@ -42,14 +43,28 @@ from harness.core.llm_egress import egress_counts, known_phi_from, provider_loca
 from harness.services import composed_prompt_recorder
 from harness.services.api_client import ApiClientError, ApiServiceError
 from harness.services.nlp_client import NlpServiceError
+from harness.services.note_plan.executor import (
+    NoteCallRequest,
+    NoteCallResult,
+    NotePlanCallFailed,
+    execute_plan,
+    note_run_stats,
+    summed_usage,
+)
+from harness.services.note_plan.models import NotePlanRef
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
+    STEP_NODE,
     FailedAttempt,
     _api_client,
     _config_snapshot,
     _nlp_client,
     _text_client,
     failed_attempt_stats,
+    record_note_plan_steps,
+)
+from harness.temporal.activities import (
+    _TrajectoryBatch as TrajectoryBatch,  # the one emitter — noqa: SLF001
 )
 from harness.temporal.claim_check import load_blob, open_store, should_offload, store_blob
 from harness.temporal.interpreter.compose_messages import (
@@ -1316,8 +1331,14 @@ async def _persist_finalized_note(
     *,
     provider: str | None = None,
     model: str | None = None,
+    coverage: dict[str, Any] | None = None,
+    persisted: dict[str, Any] | None = None,
 ) -> str | None:
     """Write the finalized note onto the consultation. Returns a failure reason, or ``None``.
+
+    ``coverage`` (a NotePlan execution's ``CoverageResultV1``) rides on the persist; when
+    ``persisted`` is given it receives the written note's ``context_item_id`` and
+    ``version_number`` for the run record.
 
     Reuses ``persist_draft`` — the SAME gateway write ``HarnessDocWorkflow`` has always used —
     so the note lands as a ``RAW_SUMMARY`` ``ContextItem`` with its ``SummaryMeta``
@@ -1398,7 +1419,7 @@ async def _persist_finalized_note(
     _adopt_redacted_note(output, content)
 
     try:
-        await persist_draft(
+        response = await persist_draft(
             PersistDraftInput(
                 consultation_id=identity.consultation_id or "",
                 tenant_id=payload.tenant_id,
@@ -1416,11 +1437,288 @@ async def _persist_finalized_note(
                 redaction_manifest=redaction_manifest,
                 gate_decision=gate_decision,
                 is_auto_generated=True,
+                coverage=coverage,
             )
         )
     except ApiServiceError as exc:
         return f"the finalized note was not persisted: {exc}"
+    if persisted is not None:
+        persisted["context_item_id"] = getattr(response, "context_item_id", None)
+        persisted["version_number"] = getattr(response, "version_number", None)
     return None
+
+
+def _candidate_wire_format(
+    candidate: ResolvedAgent, resolved: ResolvedAgent
+) -> dict[str, Any] | None:
+    """The ``response_format`` one candidate is called with (pure): its explicit
+    ``responseFormat`` hyper-parameter, else the output contract it declared."""
+    parameters = candidate.parameters if isinstance(candidate.parameters, dict) else {}
+    response_format = parameters.get("responseFormat")
+    response_schema = parameters.get("responseSchema")
+    wire_format: dict[str, Any] | None = None
+    if response_format == "json_schema" and isinstance(response_schema, dict):
+        wire_format = {"type": "json_schema", "json_schema": response_schema}
+    elif response_format == "json":
+        # F13 — `apps/text` declares its OWN vocabulary
+        # (`ResponseFormat.type: Literal["text","json","json_schema"]`), so the OpenAI
+        # spelling `json_object` was a 422 at the wire model before any provider was
+        # reached. The gateway's contract is the one to speak here.
+        wire_format = {"type": "json"}
+    if wire_format is None and response_format is None:
+        # TASK-930 §5 — the agent DECLARED an output contract and nobody set an explicit
+        # hyper-parameter, so the declaration becomes the constraint. Until now
+        # `outputSchema` was documentation on this lane: an agent could publish
+        # `{ case_note, redactions }` and be handed prose, and its `core.output` node then
+        # failed the very schema check the agent could have satisfied.
+        #
+        # TASK-1035 — per CANDIDATE: a fallback agent constrains to its OWN declared schema;
+        # the primary's applies only when the candidate declares none. Sending the primary's
+        # schema to every candidate forced a fallback agent into a contract it never wrote.
+        wire_format = output_schema_response_format(
+            candidate.slug,
+            (
+                candidate.output_schema
+                if candidate.output_schema is not None
+                else resolved.output_schema
+            ),
+            parameters,
+        )
+    return wire_format
+
+
+def _primary_agent(resolved: ResolvedAgent, primary: TextFallbackCandidate | None) -> ResolvedAgent:
+    """The PRIMARY candidate: the agent row plus the gateway-derived funding tier (and, when the
+    answer shipped one, its deployment kind) from ``textPrimary``."""
+    primary_agent = resolved
+    if primary is not None:
+        primary_agent = resolved.model_copy(update={"funding_tier": primary.funding_tier})
+        if primary_agent.model.deployment_kind is None and primary.deployment_kind:
+            primary_agent = primary_agent.model_copy(
+                update={
+                    "model": primary_agent.model.model_copy(
+                        update={"deployment_kind": primary.deployment_kind}
+                    )
+                }
+            )
+    return primary_agent
+
+
+#: The keys a live-handoff summary output names its NotePlan pointer under.
+_NOTE_PLAN_REF_KEYS = ("note_plan_ref", "notePlanRef")
+
+
+def _note_plan_ref(value: Any) -> NotePlanRef | None:
+    """The first NotePlan pointer bound on ``in`` (a live-handoff summary output carries one),
+    or ``None``. A pointer that is present but malformed raises ``ValueError``."""
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        for key in _NOTE_PLAN_REF_KEYS:
+            raw = item.get(key)
+            if raw is None:
+                continue
+            try:
+                return NotePlanRef.model_validate(raw)
+            except ValidationError as exc:
+                raise ValueError(
+                    f"the bound `{key}` is malformed: {exc.error_count()} error(s)"
+                ) from exc
+    return None
+
+
+async def _degrade_note_plan(
+    payload: NodeActivityInput, started: Any, code: str, detail: str
+) -> NodeActivityResult:
+    await record_and_flush(payload, status=STATUS_DEGRADED, started=started, error_code=code)
+    return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {code}: {detail}")
+
+
+async def _run_note_plan_finalizer(
+    payload: NodeActivityInput,
+    resolved: ResolvedAgent,
+    started: Any,
+    ref: NotePlanRef,
+    primary: TextFallbackCandidate | None,
+) -> NodeActivityResult:
+    """The consultation finalizer, driven by the NotePlan apps/api composed at the handoff.
+
+    The plan's blocks are the input (wrapped as data, in plan order — one byte-identical prefix
+    for every call); the SYSTEM prompt is still the agent's own composition (platform rules →
+    instruction → output-language step), so the governed agent keeps owning how the note is
+    written. Each plan call runs on the PLAN's model with the agent's generation parameters and
+    output contract; the executor merges the sections, checks coverage and repairs once. The
+    finalizer output keeps its ``{case_note, redactions, sources}`` shape, and ``case_note`` is
+    persisted exactly as before (Copy to EMR reads it).
+
+    No fallback walk: the plan was budgeted for ONE model's context window, so a different
+    model would not fit it. A failed call degrades the node (never a raise: a retry would re-run
+    every call from the start).
+    """
+    config = _config(payload)
+    settings = get_settings()
+    try:
+        envelope = await _api_client(settings).get_note_plan(
+            ref.consultation_id, ref.plan_id, tenant_id=payload.tenant_id
+        )
+    except ApiServiceError as exc:
+        return await _degrade_note_plan(payload, started, "note_plan_unavailable", str(exc))
+    except ValueError as exc:
+        return await _degrade_note_plan(payload, started, "note_plan_invalid", str(exc))
+    plan = envelope.plan
+    consultation_id = run_identity(payload.run_payload).consultation_id
+    if (
+        plan.tenant_id != payload.tenant_id
+        or plan.plan_id != ref.plan_id
+        or plan.consultation_id != ref.consultation_id
+        or plan.consultation_id != consultation_id
+    ):
+        return await _degrade_note_plan(
+            payload, started, "note_plan_mismatch", "the plan served is not this run's"
+        )
+    provider = wire_provider(plan.model.provider)
+    model = plan.model.wire_model_id
+    if not provider or not model:
+        return await _degrade_note_plan(
+            payload, started, "note_plan_invalid", "the plan names no provider/model"
+        )
+
+    candidate = _primary_agent(resolved, primary)
+    run_context = _scope_context(payload)
+    platform_default = resolve_platform_output_language(await _output_language_snapshot())
+    try:
+        composed, _policy_selected = _compose_agent_messages(
+            candidate,
+            config,
+            run_context,
+            data_blocks=[
+                {"key": block.key, "label": block.label, "content": block.content}
+                for block in plan.blocks
+            ],
+            output_language=platform_default,
+        )
+    except PromptVariableUnresolved as exc:
+        return await _degrade_note_plan(payload, started, "prompt_variable_unresolved", str(exc))
+    except PromptCompositionEmpty as exc:
+        return await _degrade_note_plan(payload, started, "prompt_composition_empty", str(exc))
+    generation = _generation_params(candidate, config)
+    wire_format = _candidate_wire_format(candidate, resolved)
+    # The candidate's own connection and locality apply only when the plan names ITS model.
+    same_model = plan.model.slug == candidate.model.slug
+    deployment_kind = candidate.model.deployment_kind if same_model else None
+    provider_override = candidate.provider_override if same_model else None
+    known_phi = known_phi_from(payload.run_payload, run_context.get("trigger"))
+    budget = ActivityBudget.for_activity(settings.text_timeout_s)
+
+    async def _generate(request: NoteCallRequest) -> NoteCallResult:
+        result = await _text_client(settings).generate(
+            tenant_id=payload.tenant_id,
+            prompt=request.user,
+            system_prompt=request.system,
+            provider=provider,
+            model=model,
+            temperature=generation.get("temperature"),
+            max_tokens=request.max_tokens,
+            top_p=generation.get("topP"),
+            response_format=wire_format,
+            provider_locality=provider_locality(provider, deployment_kind),
+            known_phi=known_phi,
+            provider_override=provider_override,
+        )
+        composed_prompt_recorder.record_composed_prompt(
+            tenant_id=payload.tenant_id,
+            consultation_id=consultation_id,
+            agent_slug=candidate.slug,
+            phase=_record_phase(config),
+            provider=result.provider or provider,
+            egress=getattr(result, "egress", None),
+            system=request.system,
+            user=request.user,
+        )
+        return NoteCallResult(
+            content=result.content,
+            stats=_generation_stats(
+                result, provider=provider, model=model, funding_tier=candidate.funding_tier
+            ),
+            provider=result.provider or provider,
+            model=result.model or model,
+            usage=result.usage,
+        )
+
+    agent_stats: dict[str, Any] = {"agent_slug": candidate.slug}
+    if candidate.version_number is not None:
+        agent_stats["agent_version"] = candidate.version_number
+    batch = TrajectoryBatch(settings, payload.trajectory)
+    try:
+        execution = await execute_plan(
+            plan,
+            system=composed.system or None,
+            user_prefix=composed.user,
+            generate=_generate,
+            preserved_sections=envelope.preserved_sections,
+            allow_repair=budget.allows_another,
+        )
+    except NotePlanCallFailed as exc:
+        batch.record(
+            step_type=STEP_NODE,
+            name=payload.node_type,
+            status=STATUS_DEGRADED,
+            started=started,
+            error_code="note_plan_call_failed",
+        )
+        record_note_plan_steps(
+            batch, plan, exc.records, provider=provider, model=model, extra_stats=agent_stats
+        )
+        await batch.flush()
+        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {exc}")
+    except ValueError as exc:
+        return await _degrade_note_plan(payload, started, "note_plan_invalid", str(exc))
+
+    usage = summed_usage(execution.records)
+    coverage = execution.coverage.to_wire()
+    output: dict[str, Any] = {
+        "text": json.dumps(execution.document, ensure_ascii=False),
+        "data": execution.document,
+        "provider": provider,
+        "model": model,
+        "usage": usage,
+        "agent": {"slug": candidate.slug, "versionNumber": candidate.version_number},
+        "selectionSource": "agent",
+        "fundingTier": candidate.funding_tier,
+        "guardrail": {"enabled": True, "source": "default"},
+        "notePlan": {"planId": plan.plan_id, "mode": plan.mode, "coverage": coverage},
+    }
+    persisted: dict[str, Any] = {}
+    failure = await _persist_finalized_note(
+        payload,
+        candidate,
+        output,
+        provider=provider,
+        model=model,
+        coverage=coverage,
+        persisted=persisted,
+    )
+
+    node_stats: dict[str, Any] = {**note_run_stats(plan, execution), **agent_stats}
+    if persisted.get("context_item_id"):
+        node_stats["context_item_id"] = persisted["context_item_id"]
+    if persisted.get("version_number") is not None:
+        node_stats["output_version"] = persisted["version_number"]
+    batch.record(
+        step_type=STEP_NODE,
+        name=payload.node_type,
+        status=STATUS_OK if failure is None else STATUS_DEGRADED,
+        started=started,
+        stats=node_stats,
+        error_code=None if failure is None else "note_persist_failed",
+    )
+    record_note_plan_steps(
+        batch, plan, execution.records, provider=provider, model=model, extra_stats=agent_stats
+    )
+    await batch.flush()
+    if failure is not None:
+        return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {failure}", output=output)
+    return NodeActivityResult(status="SUCCEEDED", output=output)
 
 
 async def _run_text_generation(
@@ -1459,6 +1757,15 @@ async def _run_text_generation(
     """
     config = _config(payload)
     bound = _bound(payload)
+    # The finalizer of a consultation whose live handoff carries a NotePlan pointer executes
+    # that plan instead of generating once from the bound text.
+    if _is_consultation_finalizer(payload, config):
+        try:
+            plan_ref = _note_plan_ref(bound.get("in"))
+        except ValueError as exc:
+            return await _degrade_note_plan(payload, started, "note_plan_ref_invalid", str(exc))
+        if plan_ref is not None:
+            return await _run_note_plan_finalizer(payload, resolved, started, plan_ref, primary)
     # TASK-1022 — a bound note keeps its headings; see `_render_input_for_generation`.
     input_text = "\n\n".join(_render_input_for_generation(bound.get("in")))
     context_values = [value for value in _as_list(bound.get("context")) if value is not None]
@@ -1507,17 +1814,7 @@ async def _run_text_generation(
 
     # The PRIMARY carries the gateway-derived funding tier (and, when the answer shipped one, its
     # deployment kind) from `textPrimary`; the agent row is otherwise unchanged.
-    primary_agent = resolved
-    if primary is not None:
-        primary_agent = resolved.model_copy(update={"funding_tier": primary.funding_tier})
-        if primary_agent.model.deployment_kind is None and primary.deployment_kind:
-            primary_agent = primary_agent.model_copy(
-                update={
-                    "model": primary_agent.model.model_copy(
-                        update={"deployment_kind": primary.deployment_kind}
-                    )
-                }
-            )
+    primary_agent = _primary_agent(resolved, primary)
     candidates: list[tuple[str, ResolvedAgent]] = [("agent", primary_agent)]
     candidates.extend(
         ("agent-fallback", candidate_as_resolved_agent(candidate))
@@ -1616,37 +1913,7 @@ async def _run_text_generation(
                 reason=exclusion.reason,
             )
         generation = _generation_params(candidate, config)
-        parameters = candidate.parameters if isinstance(candidate.parameters, dict) else {}
-        response_format = parameters.get("responseFormat")
-        response_schema = parameters.get("responseSchema")
-        wire_format: dict[str, Any] | None = None
-        if response_format == "json_schema" and isinstance(response_schema, dict):
-            wire_format = {"type": "json_schema", "json_schema": response_schema}
-        elif response_format == "json":
-            # F13 — `apps/text` declares its OWN vocabulary
-            # (`ResponseFormat.type: Literal["text","json","json_schema"]`), so the OpenAI
-            # spelling `json_object` was a 422 at the wire model before any provider was
-            # reached. The gateway's contract is the one to speak here.
-            wire_format = {"type": "json"}
-        if wire_format is None and response_format is None:
-            # TASK-930 §5 — the agent DECLARED an output contract and nobody set an explicit
-            # hyper-parameter, so the declaration becomes the constraint. Until now
-            # `outputSchema` was documentation on this lane: an agent could publish
-            # `{ case_note, redactions }` and be handed prose, and its `core.output` node then
-            # failed the very schema check the agent could have satisfied.
-            #
-            # TASK-1035 — per CANDIDATE: a fallback agent constrains to its OWN declared schema;
-            # the primary's applies only when the candidate declares none. Sending the primary's
-            # schema to every candidate forced a fallback agent into a contract it never wrote.
-            wire_format = output_schema_response_format(
-                candidate.slug,
-                (
-                    candidate.output_schema
-                    if candidate.output_schema is not None
-                    else resolved.output_schema
-                ),
-                parameters,
-            )
+        wire_format = _candidate_wire_format(candidate, resolved)
 
         attempt_started_at = now()
         attempt_started = perf_counter()
