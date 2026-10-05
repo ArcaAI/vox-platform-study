@@ -37,11 +37,13 @@ import {
   IWorkflowRunService,
   principalScopedIdempotencyKey,
   readPersistedRunResult,
-  RunPrincipalAccessService,
   terminalStatusOf,
   workflowRunNotFound,
   WorkflowRunResponse,
 } from '../workflow-run';
+// Imported from its LEAF module, not the `../workflow-run` barrel: it is a DI class token
+// (`emitDecoratorMetadata`), and a barrel cycle would leave it undefined at decoration time.
+import { RunPrincipalAccessService } from '../workflow-run/run-principal-access';
 import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';

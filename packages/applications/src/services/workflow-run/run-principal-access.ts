@@ -154,6 +154,9 @@ export class RunPrincipalAccessService {
 
   /** May the current request read a run of `kind` that `startedBy` started? */
   async canRead(kind: RunKind, startedBy: RunPrincipal | null): Promise<boolean> {
+    // The common case first, with no role read: the caller started this run. (A status poll or a
+    // stream's periodic re-check would otherwise read the role list every time.)
+    if (sameRunPrincipal(this.currentPrincipal(), startedBy)) return true;
     const reader = await this.resolveReader(kind);
     if (reader.tenantWide) return true;
     return sameRunPrincipal(reader.principal, startedBy);
