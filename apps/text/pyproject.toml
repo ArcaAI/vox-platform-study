@@ -28,8 +28,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.15.0",
     "httpx>=0.28.1",
-    # `/tokenize` HF fallback; huggingface_hub (its dependency) fetches the pinned tokenizer.json.
-    "tokenizers>=0.22.2",
     # `providers/pool.py` imports httpx2 DIRECTLY. It arrives
     # transitively via `openai>=3` (which migrated to it) while `anthropic` is
     # still on httpx — two structurally identical, NOT interchangeable client

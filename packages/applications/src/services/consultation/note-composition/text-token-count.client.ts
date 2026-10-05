@@ -8,8 +8,7 @@ import { NOTE_TOKEN_ESTIMATE_ID, type NoteTokenizerMode } from './note-plan.type
 /**
  * Token counts for note-budget planning, from `apps/text` `POST /api/v1/tokenize`.
  *
- * Order (D-23): the serving engine's tokenizer, then the sha-pinned HF tokenizer the model row
- * declares (`AiModel._metadata.tokenizer`), both decided by `apps/text`; when it answers 501
+ * Order (D-33): the serving engine's tokenizer, decided by `apps/text`; when it answers 501
  * `TOKENIZER_UNAVAILABLE` — or cannot be reached — the conservative estimate `ceil(utf8Bytes / 2)`,
  * which only ever over-counts, and the plan records `tokenizer.mode = 'estimate'`. With the
  * estimate disallowed the refusal propagates. Counts are content-only; the planner adds the
