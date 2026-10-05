@@ -41,3 +41,8 @@
 | H-37 | G-ROLL+MINE | module composition | orchestrator (integration) | import `FeedbackRollupServiceModule` where scheduled services are composed (needs ScheduleModule, EventEmitter, Redis) | pending (integration) |
 | H-38 | G-ROLL+MINE | G-SVC | G-SVC | enqueue `{source:'feedback', feedbackId, gateDecision:'FEEDBACK', tenantId, consultationId}` post-commit for thumbs-down + corrections | sent to G-SVC |
 | H-39 | G-ROLL+MINE | rollup settings | follow-up | rollup keys read via local constants; descriptor file exports none — export constants from `consultation-attachments-feedback.descriptors.ts` later | follow-up |
+| H-40 | F2 | ALaaS F8 adapter | F8 | read `sttSessionId` from `start` options and `metadata`/`parentConsultationId` from the `open` request (passed beyond F1 types); `legacy4x` flag only to keep the grace wait | pending (F8 brief) |
+| H-41 | F2 | ALaaS F4 | F4 | replace `{provide: CONSULTATION_NOTIFIER, useClass: NoopConsultationNotifier}`; subscribe to `ConsultationLifecycleEvents`; notice kinds `state`, `note.ready`, `note.failed` (carry `consultantId`, `clinicianUserId`); `notice.notify(frame)` pushes a `notification` frame | pending (F4 brief) |
+| H-42 | F2 | ALaaS gate | orchestrator gate | run existing broker, gateway, stt-lane, visit-lifecycle, language, final-note-skew specs | pending (gate) |
+| H-43 | F2/F3 | ALaaS port | follow-up | move `FAKE_DEFAULT_FEEDBACK_REASONS` from the fake into the port file (shim/service import from the fake today) | follow-up |
+| H-44 | F2 | ALaaS `generation.cancel` | follow-up | port has no cancel verb → `note.progress {step:'cancel_unsupported'}` | follow-up (HOPE cancel route) |
