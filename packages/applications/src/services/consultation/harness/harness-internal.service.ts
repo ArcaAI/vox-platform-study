@@ -1523,7 +1523,11 @@ export class HarnessInternalService extends BaseService {
    * @throws UnprocessableEntityException `NOTE_INPUT_EXCEEDS_CONTEXT` (non-retryable; processing → failed).
    * @throws ConflictException when a section regenerate targets an approved note or there is no note.
    */
-  async composeNotePlan(consultationId: string, dto: HarnessAssembleRequest): Promise<HarnessNotePlanSummary> {
+  async composeNotePlan(
+    consultationId: string,
+    dto: HarnessAssembleRequest,
+    options: { documentTemplateSlug?: string | null } = {},
+  ): Promise<HarnessNotePlanSummary> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId is required');
@@ -1538,6 +1542,7 @@ export class HarnessInternalService extends BaseService {
         mode: dto.mode ?? 'final',
         cache: true,
         waitForLedgers: true,
+        documentTemplateSlug: options.documentTemplateSlug ?? null,
       });
       return {
         notePlanRef: { consultationId, mode: plan.mode, planId: plan.planId },
@@ -1587,6 +1592,7 @@ export class HarnessInternalService extends BaseService {
         cache: true,
         waitForLedgers: false,
         planId,
+        documentTemplateSlug: recipe?.documentTemplateSlug ?? null,
       });
       this.logger.warn({
         message: 'Note plan was not cached — recomposed for the harness under the same plan id',
@@ -1608,7 +1614,7 @@ export class HarnessInternalService extends BaseService {
     tenantId: string,
     built: Awaited<ReturnType<HarnessInternalService['buildAssembleParams']>>,
     dto: HarnessAssembleRequest,
-    options: { mode: NotePlanMode; cache: boolean; waitForLedgers: boolean; planId?: string },
+    options: { mode: NotePlanMode; cache: boolean; waitForLedgers: boolean; planId?: string; documentTemplateSlug?: string | null },
   ): Promise<NotePlanEnvelope> {
     const composer = this.noteComposer!;
     if (options.mode === 'section_regen') {
@@ -1626,6 +1632,7 @@ export class HarnessInternalService extends BaseService {
       cache: options.cache,
       waitForLedgers: options.waitForLedgers,
       ...(options.planId ? { planId: options.planId } : {}),
+      ...(options.documentTemplateSlug ? { documentTemplateSlug: options.documentTemplateSlug } : {}),
     };
     try {
       return await composer.compose(request);

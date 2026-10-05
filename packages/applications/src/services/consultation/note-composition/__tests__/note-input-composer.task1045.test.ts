@@ -615,7 +615,7 @@ function service(opts: {
     { getVersionsByChangeReason: vi.fn(async () => (opts.aiDraft ? [{ content: opts.aiDraft }] : [])) } as never,
     opts.policy as never,
   );
-  return { svc, contextItemRepository, redis, counter };
+  return { svc, contextItemRepository, redis, counter, documentTemplates };
 }
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 5, 9, minute));
@@ -960,6 +960,10 @@ describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan th
       promptTokens: plan.calls[0].promptTokens,
     });
     expect(composer.compose.mock.calls[0][0]).toMatchObject({ waitForLedgers: true, cache: true, model: 'lms-gemma-4-e2b-it-qat' });
+    expect('documentTemplateSlug' in composer.compose.mock.calls[0][0]).toBe(false);
+
+    await service.composeNotePlan('c1', { tenantId: 't1' }, { documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
+    expect(composer.compose.mock.calls[1][0]).toMatchObject({ documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
   });
 
   it('getNotePlan answers from the cache, recomposes a miss under the same id from its recipe, and hides another consultation’s plan', async () => {
@@ -978,6 +982,20 @@ describe('HarnessInternalService — assemble / composeNotePlan / getNotePlan th
       cache: true,
       waitForLedgers: false,
     });
+
+    // E2E-27 — a recomposed plan keeps the template the consultation froze.
+    const dept = await harness({
+      recipe: {
+        consultationId: 'c1',
+        tenantId: 't1',
+        mode: 'final',
+        sectionKeys: [],
+        model: null,
+        documentTemplateSlug: 'arcaai-bren-soap-new-visit',
+      },
+    });
+    await dept.service.getNotePlan('c1', 'plan-d', 't1');
+    expect(dept.composer.compose.mock.calls[0][0]).toMatchObject({ planId: 'plan-d', documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
 
     const foreign = await harness({ recipe: { consultationId: 'other', tenantId: 't1', mode: 'final', sectionKeys: [], model: null } });
     await expect(foreign.service.getNotePlan('c1', 'plan-y', 't1')).rejects.toMatchObject({ status: 404 });
@@ -1038,5 +1056,58 @@ describe('ChainSummaryService — the chain summary records its text run (H-89)'
       contextItemId: 'note-9',
       outputVersionNumber: 1,
     });
+  });
+});
+
+describe('NoteInputComposerService — the note follows the template the consultation froze (E2E-27)', () => {
+  // Live 2026-10-05: the governed finalizer's prompt listed the department template's 14 Breast &
+  // Endocrine headings (the shape the live session froze from its governing workflow) while the
+  // plan asked for the tenant default's four SOAP keys, so the final note came out as SOAP.
+  const DEPT = [
+    { key: 'new_complaints', title: 'New Complaints' },
+    { key: 'history_of_presenting_illness', title: 'History of Presenting Illness' },
+    { key: 'treatment_plan', title: 'Treatment Plan' },
+  ];
+  const request = {
+    tenantId: 't1',
+    consultationId: 'c1',
+    mode: 'final' as const,
+    model: 'lms-gemma-4-e2b-it-qat',
+    system: async () => 'SYSTEM',
+    waitForLedgers: false,
+  };
+
+  function departmentAware(h: ReturnType<typeof service>) {
+    h.documentTemplates.resolveForGeneration.mockImplementation(async (_tenant: string, slug?: string) => ({
+      compiled: { checklist: (slug === 'arcaai-bren-soap-new-visit' ? DEPT : SOAP).map((s) => ({ ...s, form: 'PROSE', required: false })) },
+    }));
+    return h;
+  }
+
+  it('plans the frozen department template’s sections when the slug is named', async () => {
+    const h = departmentAware(service({ items: [seg(1, 1, 'Lump in the left breast for a month.')] }));
+
+    const { plan } = await h.svc.compose({ ...request, documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
+
+    expect(h.documentTemplates.resolveForGeneration).toHaveBeenCalledWith('t1', 'arcaai-bren-soap-new-visit');
+    expect(plan.headings).toEqual(DEPT);
+    expect(plan.calls.flatMap((c) => c.sectionKeys)).toEqual(DEPT.map((d) => d.key));
+  });
+
+  it('keeps the tenant default when no template was frozen', async () => {
+    const h = departmentAware(service({ items: [seg(1, 1, 'Cough.')] }));
+
+    const { plan } = await h.svc.compose(request);
+
+    expect(h.documentTemplates.resolveForGeneration).toHaveBeenCalledWith('t1', undefined);
+    expect(plan.headings.map((x) => x.key)).toEqual(SOAP.map((x) => x.key));
+  });
+
+  it('records the slug in the recipe, so a cache-miss recompose plans the same sections', async () => {
+    const h = departmentAware(service({ items: [seg(1, 1, 'Lump.')] }));
+
+    const { plan } = await h.svc.compose({ ...request, documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
+
+    expect(await h.svc.loadRecipe(plan.planId)).toMatchObject({ documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
   });
 });

@@ -142,8 +142,28 @@ describe('readLiveHandoff — the plan reaches the finalizer when the live lane 
     const answer = await service.readLiveHandoff(CID, ['n_asr', 'n_ner', 'n_presummary', 'n_summary']);
 
     expect(answer.ended).toBe(true);
-    expect(composer!.composeNotePlan).toHaveBeenCalledWith(CID, { tenantId: TENANT, mode: 'final' });
+    expect(composer!.composeNotePlan).toHaveBeenCalledWith(CID, { tenantId: TENANT, mode: 'final' }, { documentTemplateSlug: null });
     expect(answer.outputs).toEqual({ n_summary: { text: '', note_plan_ref: REF } });
+  });
+
+  it('composes the plan against the document template the live session froze (E2E-27)', async () => {
+    const record = {
+      endedAt: '2026-10-05T19:33:41.000Z',
+      tenantId: TENANT,
+      outputs: {},
+      noteNodeIds: ['n_summary'],
+      documentHeadings: ['New Complaints', 'Treatment Plan'],
+      documentTemplateSlug: 'arcaai-bren-soap-new-visit',
+    };
+    const { service, composer } = buildService({ record });
+
+    await service.readLiveHandoff(CID, ['n_summary']);
+
+    expect(composer!.composeNotePlan).toHaveBeenCalledWith(
+      CID,
+      { tenantId: TENANT, mode: 'final' },
+      { documentTemplateSlug: 'arcaai-bren-soap-new-visit' },
+    );
   });
 
   it('a fail-closed composer refusal reaches the note node as `note_plan_error`', async () => {

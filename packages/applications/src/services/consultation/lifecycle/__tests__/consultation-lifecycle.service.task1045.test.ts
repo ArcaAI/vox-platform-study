@@ -284,10 +284,7 @@ describe('ConsultationLifecycleService — start', () => {
     await h.service.start(ID, { sttSessionId: 'stt-a' });
 
     expect(h.transcriptionJobs.update).toHaveBeenCalledTimes(1);
-    expect(h.transcriptionJobs.update).toHaveBeenCalledWith(
-      'job-a',
-      expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }),
-    );
+    expect(h.transcriptionJobs.update).toHaveBeenCalledWith('job-a', expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }));
   });
 
   it('stamps the current encounter with the recording cursor as its recording start when it has none', async () => {

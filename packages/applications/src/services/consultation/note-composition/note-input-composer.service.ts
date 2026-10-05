@@ -730,6 +730,12 @@ export interface NoteComposeRequest {
   sectionKeys?: readonly string[];
   /** The model the harness will generate with (`AiModel` slug or wire id); absent ⇒ the platform default text model. */
   model?: string | null;
+  /**
+   * The document template the note follows: the one the consultation's governing workflow FROZE
+   * for its live session (the department's note shape — the same headings the finalizer is told
+   * to keep). Absent ⇒ the tenant's default template.
+   */
+  documentTemplateSlug?: string | null;
   /** Inputs the caller has already rendered: background history and extra cited items. */
   extras?: { background?: NoteSourceSnapshot['background']; results?: NoteSnapshotText[] };
   /** The system message, or a function composing it beside the (uncounted) verbatim blocks. */
@@ -749,6 +755,8 @@ export interface NotePlanRecipe {
   mode: NotePlanMode;
   sectionKeys: string[];
   model: string | null;
+  /** Absent on a recipe recorded before the field existed (the tenant default then applies). */
+  documentTemplateSlug?: string | null;
 }
 
 export const NOTE_PLAN_RECIPE_REDIS_PREFIX = 'note-plan-recipe:';
@@ -824,6 +832,7 @@ export class NoteInputComposerService {
         mode: request.mode,
         sectionKeys: [...(request.sectionKeys ?? [])],
         model: request.model ?? null,
+        ...(request.documentTemplateSlug ? { documentTemplateSlug: request.documentTemplateSlug } : {}),
       });
     }
     return envelope;
@@ -986,10 +995,10 @@ export class NoteInputComposerService {
     return rows[0] ?? null;
   }
 
-  private async resolveHeadings(tenantId: string): Promise<NoteHeading[]> {
+  private async resolveHeadings(tenantId: string, slug?: string | null): Promise<NoteHeading[]> {
     if (!this.documentTemplates) return [];
     try {
-      const resolved = await this.documentTemplates.resolveForGeneration(tenantId);
+      const resolved = await this.documentTemplates.resolveForGeneration(tenantId, slug ?? undefined);
       return (resolved.compiled?.checklist ?? [])
         .filter((entry) => entry.key && entry.title)
         .map((entry) => ({ key: entry.key, title: entry.title }));
@@ -1087,7 +1096,7 @@ export class NoteInputComposerService {
     const preSummaryText = latestPreSummary ? await text(latestPreSummary) : '';
 
     const draft = await this.readDraft(consultationId, text);
-    let headings = await this.resolveHeadings(tenantId);
+    let headings = await this.resolveHeadings(tenantId, request.documentTemplateSlug);
     if (headings.length === 0 && draft) {
       headings = [...noteSections(draft.latestText, [])].map(([key, section]) => ({ key, title: section.title }));
     }
