@@ -77,7 +77,15 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     setProcessing: vi.fn(async () => true),
     touchActivity: vi.fn(async () => true),
   };
-  const encounters = { endEncounter: vi.fn(async () => true) };
+  const openEncounter = { id: 'enc-1', endedAt: new Date('2026-10-05T08:30:00Z'), recordingEndMs: 4000 } as Record<string, unknown>;
+  const encounters = {
+    endEncounter: vi.fn(async () => true),
+    findBySeq: vi.fn(async () => openEncounter),
+    update: vi.fn(async (_id: string, e: unknown) => e),
+  };
+  const encounterService = {
+    lifecycleView: vi.fn(async () => ({ encounters: [], approval: null, autoCloseAt: null, allowClosedCompleteReopen: false })),
+  };
   const transcriptionJobs = {
     findAll: vi.fn(async () => [
       { streamSessionId: 'stt-a', createdAt: new Date('2026-10-05T08:01:00Z') },
@@ -122,6 +130,7 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     bridge as never,
     transcriptRecord as never,
     settings as never,
+    encounterService as never,
   );
 
   const lifecycleEvents = () =>
@@ -136,6 +145,8 @@ function makeHarness(row: ConsultationEntity | null, opts: { tenantId?: string |
     publisher,
     consultations,
     encounters,
+    encounterService,
+    openEncounter,
     transcriptionJobs,
     streamingSessions,
     bridge,
@@ -228,6 +239,13 @@ describe('ConsultationLifecycleService — start', () => {
     expect(h.bridge.writeControlCommand).not.toHaveBeenCalledWith('stt-dead', expect.anything());
   });
 
+  it('STOPPED → RECORDING continues the current encounter: its endedAt / recordingEndMs are cleared', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, currentEncounterSeq: 2 }));
+    await h.service.start(ID);
+    expect(h.encounters.findBySeq).toHaveBeenCalledWith(ID, 2);
+    expect(h.encounters.update).toHaveBeenCalledWith('enc-1', expect.objectContaining({ endedAt: null, recordingEndMs: null }));
+  });
+
   it('is a no-op on RECORDING (no write, no event)', async () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.RECORDING }));
     const state = await h.service.start(ID);
@@ -284,6 +302,8 @@ describe('ConsultationLifecycleService — stop', () => {
     const encounterStopped = h.eventEmitter.emit.mock.calls.find(([name]) => name === ConsultationPipelineEvent.EncounterStopped);
     expect(encounterStopped?.[1]).toMatchObject({ consultationId: ID, tenantId: TENANT, encounterSeq: 2 });
     expect(h.lifecycleEvents().map((e) => e.type)).toEqual(['stopped', 'transcript_final']);
+    // the encounter's speech ended: a later re-visit open appends encounter 3
+    expect(h.encounters.endEncounter).toHaveBeenCalledWith(ID, 2, { endedAt: expect.any(Date), recordingEndMs: 0 });
 
     expect(result).toMatchObject({
       status: 'STOPPED',
@@ -337,6 +357,8 @@ describe('ConsultationLifecycleService — close', () => {
     expect(h.current()?.closedReason).toBe(ConsultationClosedReason.MANUAL);
     expect(h.encounters.endEncounter).toHaveBeenCalledWith(ID, 1, expect.any(Object));
     expect(h.lifecycleEvents()).toEqual([expect.objectContaining({ type: 'closed', closedReason: 'MANUAL' })]);
+    // the response carries the episode view (encounters, approval, auto-close, reopen policy)
+    expect(h.encounterService.lifecycleView).toHaveBeenCalledWith(h.current());
   });
 
   it('APPROVED → CLOSED_COMPLETE with closedReason APPROVED (D-29)', async () => {
@@ -375,7 +397,9 @@ describe('ConsultationLifecycleService — close', () => {
 
 describe('ConsultationLifecycleService — reopen', () => {
   it('CLOSED_INCOMPLETE → OPEN always; reopenCount++, approvedAt cleared, emits reopened', async () => {
-    const h = makeHarness(consultation({ status: ConsultationStatus.CLOSED_INCOMPLETE, closedReason: ConsultationClosedReason.AUTO, closedAt: new Date() }));
+    const h = makeHarness(
+      consultation({ status: ConsultationStatus.CLOSED_INCOMPLETE, closedReason: ConsultationClosedReason.AUTO, closedAt: new Date() }),
+    );
     const response = await h.service.reopen(ID, { expectedVersion: 3 });
     expect(response.status).toBe('OPEN');
     expect(h.current()?.reopenCount).toBe(1);
@@ -393,7 +417,10 @@ describe('ConsultationLifecycleService — reopen', () => {
       settings: { 'consultation.reopen.allowClosedComplete': true },
     });
     await allowed.service.reopen(ID, { expectedVersion: 3 });
-    expect(allowed.settings.resolveEffective).toHaveBeenCalledWith('consultation.reopen.allowClosedComplete', expect.objectContaining({ tenantId: TENANT }));
+    expect(allowed.settings.resolveEffective).toHaveBeenCalledWith(
+      'consultation.reopen.allowClosedComplete',
+      expect.objectContaining({ tenantId: TENANT }),
+    );
     expect(allowed.current()?.status).toBe(ConsultationStatus.OPEN);
     expect(allowed.current()?.approvedAt).toBeNull();
   });
@@ -436,9 +463,7 @@ describe('ConsultationLifecycleGate', () => {
 
   it('assertContentWritable answers 404 for a missing or foreign consultation', async () => {
     expect(await rejectionOf(makeHarness(null).gate.assertContentWritable(ID))).toBeInstanceOf(NotFoundException);
-    expect(await rejectionOf(makeHarness(consultation({ tenantId: OTHER_TENANT })).gate.assertContentWritable(ID))).toBeInstanceOf(
-      NotFoundException,
-    );
+    expect(await rejectionOf(makeHarness(consultation({ tenantId: OTHER_TENANT })).gate.assertContentWritable(ID))).toBeInstanceOf(NotFoundException);
   });
 
   it('beginProcessing records the ref and the prior marker without a version bump, and emits processing_changed', async () => {
@@ -495,6 +520,42 @@ describe('ConsultationLifecycleGate', () => {
     await h.gate.touchActivity(ID);
     expect(h.consultations.touchActivity).toHaveBeenCalledWith(ID);
     expect(await h.gate.currentEncounterSeq(ID)).toBe(3);
+  });
+});
+
+describe('ConsultationLifecycleEventPublisher — events emitted elsewhere (open / encounter_appended)', () => {
+  it('sequences an unsequenced LifecycleChanged, buffers + publishes the frame and fans out the sys-event', async () => {
+    const h = makeHarness(consultation());
+    await h.publisher.onLifecycleChanged({
+      consultationId: ID,
+      tenantId: TENANT,
+      timestamp: '2026-10-05T08:00:00.000Z',
+      event: {
+        type: 'opened',
+        consultationId: ID,
+        status: 'OPEN',
+        processing: 'IDLE',
+        encounterSeq: 1,
+        version: 1,
+        at: '2026-10-05T08:00:00.000Z',
+        seq: 0,
+      },
+    });
+    const frame = JSON.parse(String(h.cache.eval.mock.calls[0].find((a: unknown) => typeof a === 'string' && a.startsWith('{'))));
+    expect(frame).toMatchObject({ type: 'opened', seq: 7, version: 1 });
+    expect(h.sysEvents()).toEqual([expect.objectContaining({ data: expect.objectContaining({ action: 'lifecycle', event: 'opened', seq: 7 }) })]);
+  });
+
+  it('ignores the events it published itself (already sequenced)', async () => {
+    const h = makeHarness(consultation());
+    await h.publisher.onLifecycleChanged({
+      consultationId: ID,
+      tenantId: TENANT,
+      timestamp: 'x',
+      event: { type: 'started', consultationId: ID, status: 'RECORDING', processing: 'IDLE', version: 2, at: 'x', seq: 3 },
+    });
+    expect(h.cache.incr).not.toHaveBeenCalled();
+    expect(h.sysEvents()).toEqual([]);
   });
 });
 

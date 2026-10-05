@@ -1,5 +1,14 @@
 import { DNA_MEMORY_CAPTURE_EVENT, type DnaMemoryCaptureRequest } from '../../dna-writing-style/dna-memory.events';
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { BusinessException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
@@ -28,7 +37,6 @@ import {
   ConsultationEntity,
   ConsultationProcessing,
   AiActivityKind,
-  HarnessAuditAction,
   JsonValue,
   AgentSessionKind,
   AgentStepStatus,

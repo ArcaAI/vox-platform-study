@@ -15,6 +15,10 @@ import {
 } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import {
+  CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_KEY,
+  CONSULTATION_STOP_FINAL_TRANSCRIPT_TIMEOUT_KEY,
+} from '../../settings-registry/descriptors/consultation-lifecycle.descriptors';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
 import { StreamingSessionService } from '../../stt/streaming/streamingSession.service';
 import type { IStreamingSessionService } from '../../stt/streaming/IStreamingSessionService';
@@ -23,17 +27,13 @@ import type { ConsultationResponse } from '../consultation/dto/consultation.resp
 import { STT_SESSION_SUPERSEDED_EVENT, type SttSessionSupersededEvent } from '../consultation/stt-session-superseded.event';
 import { ConsultationPipelineEvent, type EncounterStoppedPayload } from '../events/consultation.events';
 import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
+import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../encounter/IConsultationEncounterService';
 import { toCaptureState } from './capture-state';
 import { ConsultationApprovalService, type ApproveOptions } from './consultation-approval.service';
 import { ConsultationLifecycleGate } from './consultation-lifecycle.gate';
 import { IConsultationLifecycleService, type ClinicalCaller } from './IConsultationLifecycleService';
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
 import { ConsultationLifecycleEventPublisher, type LifecycleSubject } from './lifecycle-event.publisher';
-
-/** Tenant policy: may an approved, closed consultation be reopened. */
-export const CONSULTATION_REOPEN_ALLOW_CLOSED_COMPLETE_KEY = 'consultation.reopen.allowClosedComplete';
-/** How long `stop` holds the request for the final transcript. */
-export const CONSULTATION_STOP_FINAL_TRANSCRIPT_TIMEOUT_KEY = 'consultation.stop.finalTranscriptTimeoutSeconds';
 
 /**
  * Used only when the settings service is unwired or cannot answer — the same value the
@@ -70,13 +70,19 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     private readonly events: ConsultationLifecycleEventPublisher,
     private readonly eventEmitter: EventEmitter2,
     private readonly clsService: ClsService<IActiveUserContext>,
-    @Optional() @Inject(TranscriptionJobRepository)
+    @Optional()
+    @Inject(TranscriptionJobRepository)
     private readonly transcriptionJobs?: Pick<TranscriptionJobRepository, 'findAll'>,
-    @Optional() @Inject(StreamingSessionService)
+    @Optional()
+    @Inject(StreamingSessionService)
     private readonly streamingSessions?: Pick<IStreamingSessionService, 'getSessionStatus'>,
     @Optional() private readonly audioBridge?: Pick<StreamingAudioBridgeService, 'writeControlCommand'>,
     @Optional() @Inject(ITranscriptRecordServiceToken) private readonly transcriptRecord?: Pick<ITranscriptRecordService, 'awaitFinal'>,
     @Optional() private readonly effectiveSettings?: Pick<EffectiveSettingsService, 'resolveEffective'>,
+    // The episode facts a consultation response carries; unwired ⇒ the row alone.
+    @Optional()
+    @Inject(IConsultationEncounterServiceToken)
+    private readonly encounterService?: Pick<IConsultationEncounterService, 'lifecycleView'>,
   ) {
     super();
   }
@@ -101,6 +107,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     const current = changed ? await this.persist(consultation, consultation.version) : consultation;
     await this.consultationRepository.touchActivity(consultationId);
 
+    if (changed && from === ConsultationStatus.STOPPED) {
+      await this.continueCurrentEncounter(current);
+    }
     if (changed && from === ConsultationStatus.PAUSED) {
       await this.sendControl(await this.liveBoundSessions(consultation), 'resume', consultationId);
     }
@@ -146,6 +155,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     consultation.setProcessing(ConsultationProcessing.FINALIZING_TRANSCRIPT);
     consultation.processingPrior = prior;
     const stopped = await this.persist(consultation, consultation.version);
+    // The encounter's speech has ended: a later re-visit `open` (no new ref) appends the next
+    // encounter. `start` from STOPPED re-opens this one.
+    await this.endCurrentEncounter(stopped);
     await this.events.publish(stopped, 'stopped');
 
     const sessions = await this.liveBoundSessions(consultation);
@@ -196,7 +208,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   ): Promise<ConsultationResponse> {
     const consultation = await this.load(consultationId, { allowTenantless: options.auto === true });
     if (consultation.isClosed) {
-      return ConsultationDtoMapper.toResponseWithContext(consultation);
+      return this.respond(consultation);
     }
 
     if (consultation.status === ConsultationStatus.RECORDING || consultation.status === ConsultationStatus.PAUSED) {
@@ -211,17 +223,9 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     if (!options.auto) consultation.updatedBy = actor;
 
     const closed = await this.persist(consultation, options.expectedVersion ?? consultation.version);
-    try {
-      await this.encounterRepository.endEncounter(consultationId, closed.currentEncounterSeq, { endedAt: closed.closedAt ?? new Date() });
-    } catch (error) {
-      this.logger.warn({
-        message: 'Closing the current encounter failed (the consultation close stands)',
-        consultationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await this.endCurrentEncounter(closed, closed.closedAt ?? undefined);
     await this.events.publish(closed, 'closed', { userId: actor });
-    return ConsultationDtoMapper.toResponseWithContext(closed);
+    return this.respond(closed);
   }
 
   /**
@@ -231,10 +235,14 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   async reopen(consultationId: string, options: { expectedVersion: number; reason?: string }): Promise<ConsultationResponse> {
     const consultation = await this.load(consultationId);
     if (!consultation.isClosed) {
-      throw lifecycleConflict(LifecycleConflictCode.TRANSITION_ILLEGAL, `Only a closed consultation can be reopened (it is ${consultation.status}).`, {
-        from: consultation.status,
-        to: ConsultationStatus.OPEN,
-      });
+      throw lifecycleConflict(
+        LifecycleConflictCode.TRANSITION_ILLEGAL,
+        `Only a closed consultation can be reopened (it is ${consultation.status}).`,
+        {
+          from: consultation.status,
+          to: ConsultationStatus.OPEN,
+        },
+      );
     }
     const allowClosedCompleteReopen =
       consultation.status === ConsultationStatus.CLOSED_COMPLETE ? await this.allowClosedCompleteReopen(consultation) : false;
@@ -246,7 +254,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
 
     const reopened = await this.persist(consultation, options.expectedVersion);
     await this.events.publish(reopened, 'reopened');
-    return ConsultationDtoMapper.toResponseWithContext(reopened);
+    return this.respond(reopened);
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────────────────────
@@ -261,6 +269,41 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
       throw new NotFoundException('Consultation not found');
     }
     return consultation;
+  }
+
+  private async respond(entity: ConsultationEntity): Promise<ConsultationResponse> {
+    const view = this.encounterService ? await this.encounterService.lifecycleView(entity) : undefined;
+    return ConsultationDtoMapper.toResponseWithContext(entity, false, view);
+  }
+
+  /** End the current encounter (if still open), closing its span at the recording cursor. Never throws. */
+  private async endCurrentEncounter(entity: ConsultationEntity, endedAt: Date = new Date()): Promise<void> {
+    try {
+      await this.encounterRepository.endEncounter(entity.id, entity.currentEncounterSeq, { endedAt, recordingEndMs: entity.recordingCursorMs });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Ending the current encounter failed (the lifecycle change stands)',
+        consultationId: entity.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Recording resumed after a stop: the current encounter continues, so its end is cleared. Never throws. */
+  private async continueCurrentEncounter(entity: ConsultationEntity): Promise<void> {
+    try {
+      const encounter = await this.encounterRepository.findBySeq(entity.id, entity.currentEncounterSeq);
+      if (!encounter || (encounter.endedAt == null && encounter.recordingEndMs == null)) return;
+      encounter.endedAt = null;
+      encounter.recordingEndMs = null;
+      await this.encounterRepository.update(encounter.id, encounter);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Re-opening the current encounter failed (the recording start stands)',
+        consultationId: entity.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private persist(consultation: ConsultationEntity, expectedVersion: number): Promise<ConsultationEntity> {

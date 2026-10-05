@@ -6,6 +6,7 @@ import {
   ConsultationApprovalFactory,
   ConsultationApprovalRepository,
   ConsultationEncounterRepository,
+  ConsultationEntity,
   ConsultationProcessing,
   ConsultationRepository,
   ConsultationStatus,
@@ -22,6 +23,7 @@ import { HarnessAuditService } from '../../harness-audit';
 import { ConsultationDtoMapper } from '../consultation/consultation.dto.mapper';
 import type { ConsultationResponse } from '../consultation/dto/consultation.response';
 import type { ClinicalCaller } from './IConsultationLifecycleService';
+import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../encounter/IConsultationEncounterService';
 import { LifecycleConflictCode, applyLifecycleTransition, lifecycleConflict } from './lifecycle-errors';
 import { ConsultationLifecycleEventPublisher } from './lifecycle-event.publisher';
 import { SESSION_NOTE_SIGNER, type PreparedSessionSignature, type SessionNoteSigner, type SessionSignerCaller } from './session-note-signer';
@@ -106,6 +108,10 @@ export class ConsultationApprovalService extends BaseService {
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // Optional so direct-construction fixtures build; unwired ⇒ the writes run in sequence.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
+    // The episode facts a consultation response carries; unwired ⇒ the row alone.
+    @Optional()
+    @Inject(IConsultationEncounterServiceToken)
+    private readonly encounterService?: Pick<IConsultationEncounterService, 'lifecycleView'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -122,7 +128,7 @@ export class ConsultationApprovalService extends BaseService {
     }
 
     if (consultation.status === ConsultationStatus.APPROVED || consultation.status === ConsultationStatus.CLOSED_COMPLETE) {
-      return ConsultationDtoMapper.toResponseWithContext(consultation);
+      return this.respond(consultation);
     }
 
     const lateSignOff = consultation.status === ConsultationStatus.CLOSED_INCOMPLETE;
@@ -181,7 +187,12 @@ export class ConsultationApprovalService extends BaseService {
     const write = async (tx?: unknown) => {
       if (note?.version) {
         await this.contextItemVersionRepository.create(note.version, tx);
-        await this.contextItemRepository.updateWithVersion(note.contextItem.id, note.contextItem, legacy ? options.expectedVersion : note.contextItem.version, tx);
+        await this.contextItemRepository.updateWithVersion(
+          note.contextItem.id,
+          note.contextItem,
+          legacy ? options.expectedVersion : note.contextItem.version,
+          tx,
+        );
       }
       const updated = await this.consultationRepository.updateWithVersion(consultationId, consultation, consultationExpectedVersion, tx);
 
@@ -195,7 +206,7 @@ export class ConsultationApprovalService extends BaseService {
         snapshot: snapshot as unknown as JsonValue,
         snapshotHash,
         attestationHash,
-        metaData: lateMeta as unknown as JsonValue,
+        metaData: lateMeta,
         createdBy,
       });
       const savedApproval = await this.approvalRepository.create(approval, tx);
@@ -227,7 +238,12 @@ export class ConsultationApprovalService extends BaseService {
     }
     await this.noteSigner.afterSessionSigned({ tenantId, consultation: updated, note, approvedBy, actor });
 
-    return ConsultationDtoMapper.toResponseWithContext(updated);
+    return this.respond(updated);
+  }
+
+  private async respond(entity: ConsultationEntity): Promise<ConsultationResponse> {
+    const view = this.encounterService ? await this.encounterService.lifecycleView(entity) : undefined;
+    return ConsultationDtoMapper.toResponseWithContext(entity, false, view);
   }
 
   private async buildSnapshot(consultationId: string, prepared: PreparedSessionSignature): Promise<ApprovalSnapshot> {
@@ -307,4 +323,3 @@ export class ConsultationApprovalService extends BaseService {
     });
   }
 }
-

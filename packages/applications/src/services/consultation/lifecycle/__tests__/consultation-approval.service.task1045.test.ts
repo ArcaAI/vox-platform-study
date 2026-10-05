@@ -118,6 +118,9 @@ function makeHarness(row: ConsultationEntity, opts: { prepared?: PreparedSession
     }),
   };
   const cache = { incr: vi.fn(async () => 1), eval: vi.fn(async () => 1) };
+  const encounterService = {
+    lifecycleView: vi.fn(async () => ({ encounters: [], approval: null, autoCloseAt: null, allowClosedCompleteReopen: false })),
+  };
   const eventEmitter = { emit: vi.fn() };
   const clsService = {
     get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : key === 'user' ? { id: DOCTOR, roles: [] } : undefined)),
@@ -137,12 +140,27 @@ function makeHarness(row: ConsultationEntity, opts: { prepared?: PreparedSession
     eventEmitter as never,
     clsService as never,
     unitOfWork as never,
+    encounterService as never,
   );
   const lifecycleEvents = () =>
     eventEmitter.emit.mock.calls
       .filter(([name]) => name === ConsultationPipelineEvent.LifecycleChanged)
       .map(([, payload]) => (payload as { event: { type: string; status: string } }).event);
-  return { service, consultations, contextItems, versions, contextItemWriter, approvals, audit, signer, unitOfWork, order, lifecycleEvents, current: () => current };
+  return {
+    service,
+    encounterService,
+    consultations,
+    contextItems,
+    versions,
+    contextItemWriter,
+    approvals,
+    audit,
+    signer,
+    unitOfWork,
+    order,
+    lifecycleEvents,
+    current: () => current,
+  };
 }
 
 const caller = { userId: DOCTOR, isMachine: false };
@@ -168,6 +186,7 @@ describe('ConsultationApprovalService.approve — STOPPED → APPROVED', () => {
 
     expect(response.status).toBe('APPROVED');
     expect(h.current().approvedAt).toBeInstanceOf(Date);
+    expect(h.encounterService.lifecycleView).toHaveBeenCalledWith(h.current());
 
     const approval = h.approvals.create.mock.calls[0][0] as ConsultationApprovalEntity;
     const expectedSnapshot = {
@@ -198,7 +217,13 @@ describe('ConsultationApprovalService.approve — STOPPED → APPROVED', () => {
       'tx.commit',
     ]);
     const attest = h.audit.append.mock.calls[0][0];
-    expect(attest).toMatchObject({ tenantId: TENANT, consultationId: ID, contextItemVersionId: 'ver-4', clinicianId: DOCTOR, attestationHash: 'note-hash' });
+    expect(attest).toMatchObject({
+      tenantId: TENANT,
+      consultationId: ID,
+      contextItemVersionId: 'ver-4',
+      clinicianId: DOCTOR,
+      attestationHash: 'note-hash',
+    });
     const session = h.audit.append.mock.calls[1][0];
     expect(session).toMatchObject({ action: HarnessAuditAction.SESSION_APPROVED, clinicianId: DOCTOR, contextItemVersionId: 'ver-4' });
   });
@@ -215,7 +240,9 @@ describe('ConsultationApprovalService.approve — STOPPED → APPROVED', () => {
         caller: { credentialClass: 'jwt', principalId: DOCTOR },
       }),
     );
-    expect(h.signer.afterSessionSigned).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT, approvedBy: DOCTOR, note: expect.objectContaining({ versionId: 'ver-4' }) }));
+    expect(h.signer.afterSessionSigned).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT, approvedBy: DOCTOR, note: expect.objectContaining({ versionId: 'ver-4' }) }),
+    );
     expect(h.lifecycleEvents()).toEqual([expect.objectContaining({ type: 'approved', status: 'APPROVED' })]);
   });
 

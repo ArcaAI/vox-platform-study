@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional, type MessageEvent } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import type { Observable } from 'rxjs';
 import type { ConsultationClosedReason, ConsultationProcessing, ConsultationStatus, LifecycleEvent, LifecycleEventType } from '@arcaai/types';
@@ -79,6 +79,8 @@ export interface LifecycleSubject {
 @Injectable()
 export class ConsultationLifecycleEventPublisher extends BaseService {
   private readonly logger = new Logger(ConsultationLifecycleEventPublisher.name);
+  /** Payloads this publisher emitted itself — already fanned out, even when Redis gave no seq. */
+  private readonly ownPayloads = new WeakSet<LifecycleChangedPayload>();
 
   constructor(
     protected override readonly eventEmitter: EventEmitter2,
@@ -89,7 +91,11 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
 
-  async publish(subject: LifecycleSubject, type: LifecycleEventType, extras: { encounterSeq?: number; userId?: string } = {}): Promise<LifecycleEvent> {
+  async publish(
+    subject: LifecycleSubject,
+    type: LifecycleEventType,
+    extras: { encounterSeq?: number; userId?: string } = {},
+  ): Promise<LifecycleEvent> {
     const event: LifecycleEvent = {
       type,
       consultationId: subject.id,
@@ -115,22 +121,8 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
         timestamp: event.at,
         event,
       };
+      this.ownPayloads.add(payload);
       this.eventEmitter.emit(ConsultationPipelineEvent.LifecycleChanged, payload);
-
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        resourceId: subject.id,
-        resourceType: ResourceType.Consultation,
-        data: {
-          action: 'lifecycle',
-          event: type,
-          status: event.status,
-          processing: event.processing,
-          ...(event.closedReason ? { closedReason: event.closedReason } : {}),
-          encounterSeq: event.encounterSeq,
-          version: event.version,
-          seq: event.seq,
-        },
-      });
     } catch (error) {
       this.logger.warn({
         message: 'Lifecycle event fan-out failed (best-effort, the change stands)',
@@ -139,8 +131,25 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    this.broadcastLifecycle(event);
 
     return event;
+  }
+
+  /**
+   * A lifecycle change announced by another service (`open` emits `opened` /
+   * `encounter_appended` with `seq: 0`): sequence it, buffer + publish its frame and fan out its
+   * sys-event, so the SSE stream and its replay see EVERY change. Frames this publisher emitted
+   * itself carry their seq already and are skipped.
+   */
+  @OnEvent(ConsultationPipelineEvent.LifecycleChanged)
+  async onLifecycleChanged(payload: LifecycleChangedPayload): Promise<void> {
+    if (!payload?.event || payload.event.seq > 0 || this.ownPayloads.has(payload)) return;
+    const event: LifecycleEvent = { ...payload.event, seq: await this.nextSeq(payload.consultationId) };
+    if (event.seq > 0) {
+      await this.pushFrame(payload.consultationId, event);
+    }
+    this.broadcastLifecycle(event);
   }
 
   /** Buffered frames with `seq > since` (all of them when `since` is absent), oldest first. */
@@ -195,6 +204,33 @@ export class ConsultationLifecycleEventPublisher extends BaseService {
       setupErrorPayload: JSON.stringify({ type: 'error', consultationId, message: 'Lifecycle event stream could not be opened' }),
       logContext: { consultationId },
     });
+  }
+
+  /** The sys-event fan-out: audit log + webhooks (`ResourceUpdated`, `data.action = 'lifecycle'`). */
+  private broadcastLifecycle(event: LifecycleEvent): void {
+    try {
+      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+        resourceId: event.consultationId,
+        resourceType: ResourceType.Consultation,
+        data: {
+          action: 'lifecycle',
+          event: event.type,
+          status: event.status,
+          processing: event.processing,
+          ...(event.closedReason ? { closedReason: event.closedReason } : {}),
+          encounterSeq: event.encounterSeq,
+          version: event.version,
+          seq: event.seq,
+        },
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Lifecycle sys-event not broadcast (best-effort, the change stands)',
+        consultationId: event.consultationId,
+        type: event.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async nextSeq(consultationId: string): Promise<number> {

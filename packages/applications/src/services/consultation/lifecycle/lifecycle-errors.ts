@@ -1,6 +1,11 @@
 import { ConflictException } from '@nestjs/common';
 import { BusinessException } from '@arcaai/exceptions';
-import { ConsultationLifecycleErrorCode, type ConsultationEntity, type ConsultationStatus, type ConsultationTransitionOptions } from '@arcaai/domains';
+import {
+  ConsultationLifecycleErrorCode,
+  type ConsultationEntity,
+  type ConsultationStatus,
+  type ConsultationTransitionOptions,
+} from '@arcaai/domains';
 
 /**
  * Every 409 the lifecycle answers, by code. The first five mirror the domain guards

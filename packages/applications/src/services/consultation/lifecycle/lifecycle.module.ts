@@ -8,6 +8,7 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
 import { SummaryService } from '../summary/summary.service';
 import { SummaryServiceModule } from '../summary/summary.service.module';
+import { ConsultationEncounterServiceModule } from '../encounter/consultation-encounter.service.module';
 import { ConsultationApprovalService } from './consultation-approval.service';
 import { ConsultationLifecycleGate } from './consultation-lifecycle.gate';
 import { ConsultationLifecycleService } from './consultation-lifecycle.service';
@@ -52,6 +53,9 @@ export class ConsultationLifecycleGateModule {}
     HarnessAuditServiceModule,
     EffectiveSettingsModule,
     StreamingSessionServiceModule,
+    // The episode view for responses. NOT ConsultationServiceModule: that one injects the
+    // lifecycle token, so importing it here would be a cycle.
+    ConsultationEncounterServiceModule,
   ],
   providers: [
     ConsultationApprovalService,
