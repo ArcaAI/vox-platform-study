@@ -1,11 +1,11 @@
 # TASK-1044 — E2E spec hygiene after the TASK-1036 gate (S1–S8)
 
-| Field     | Value                                                                      |
-| --------- | -------------------------------------------------------------------------- |
-| Status    | Review — committed in the worktree, awaiting merge into the active branch  |
-| Type      | bugfix (tests and test config only — no product code changes)              |
-| Branch    | `agent/infallible-hodgkin-426e4d` (worktree) → `dev-2.2` (to be confirmed) |
-| Raised by | TASK-1036 §6.15 e2e triage (46 failures, 0 programme regressions)          |
+| Field     | Value                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------- |
+| Status    | Completed — merged into `dev-2.2` at `5e8801cb0` (`--no-ff`, by the TASK-1036 orchestrator) |
+| Type      | bugfix (tests and test config only — no product code changes)                               |
+| Branch    | `agent/infallible-hodgkin-426e4d` (worktree) → `dev-2.2` (to be confirmed)                  |
+| Raised by | TASK-1036 §6.15 e2e triage (46 failures, 0 programme regressions)                           |
 
 > Ticket number: TASK-1041 (tenant-lock fix), TASK-1042 (live audio) and TASK-1043 (internal-lock
 > ordering) were all claimed by parallel sessions during this one.
@@ -108,8 +108,20 @@ Static checks on every changed file:
 - `eslint` (apps/api config): rc 0.
 - `tsc` on the changed specs: the only errors are 4 in `password-security-hardening.spec.ts` (the `db` handle typing). They are identical on `HEAD`, so they predate this ticket; e2e specs are not type-gated.
 
+## 5a. Known coverage gap
+
+The live e2e probe of the Prisma `P2002` → 409 mapping is gone. `task-776-request-validation` used
+a duplicate `GlobalSetting` create to reach `ExceptionInterceptor`'s P2002 branch. Since TASK-932
+S2-1, `GlobalSettingService.create` refuses that duplicate with a 400 first, so the test now asserts
+the precheck. The P2002 → 409 mapping and its sanitised envelope are covered **only by unit tests**
+(`apps/api/src/interceptors/__tests__/exception.interceptor.test.ts`,
+`apps/api/src/filters/__tests__/error-envelope.contract.test.ts`). Restoring a live probe needs a
+write path where an ACTIVE unique collision still reaches Prisma unguarded. None was identified in
+this ticket; flagged in the orchestrator's merge review.
+
 ## 6. Change History
 
-| Date       | Change                                                                                                       |
-| ---------- | ------------------------------------------------------------------------------------------------------------ |
-| 2026-10-05 | Ticket created and work done in one session. The number moved 1041 → 1043 → 1044 because of parallel claims. |
+| Date       | Change                                                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-05 | Ticket created and work done in one session. The number moved 1041 → 1043 → 1044 because of parallel claims.                              |
+| 2026-10-05 | Merged into `dev-2.2` at `5e8801cb0` by the orchestrator. Recorded the P2002 live-coverage gap (§5a) from its review. Status → Completed. |
