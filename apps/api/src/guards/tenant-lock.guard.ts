@@ -17,7 +17,8 @@ const TENANT_HEADER = 'x-tenant-id';
  *
  * Internal service-token routes (`/internal/*`) are `@Public()`, so no CLS tenant exists when
  * this guard runs; most pin it later inside the handler. For those the guard falls back to the
- * `X-Tenant-Id` header, which internal calls must carry.
+ * `X-Tenant-Id` header, which internal calls must carry. `TenantLockService` runs its read under
+ * the tenant it is asked about, so the missing CLS tenant does not trip the tenant-scope extension.
  */
 @Injectable()
 export class TenantLockGuard implements CanActivate {
