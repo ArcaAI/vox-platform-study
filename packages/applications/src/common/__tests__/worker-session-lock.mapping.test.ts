@@ -13,8 +13,11 @@ const MAPPING: [string, string, string][] = [
   ['consultation/jobs/processors/pre-summary.processor.ts', "['CLINICAL']", 'ContextItem / summaries'],
   ['dna-writing-style/dna-writing-style.processor.ts', "['CLINICAL']", 'DnaWritingStyleReport'],
   ['gate-edit-mining/gate-edit-mining.processor.ts', "['CLINICAL']", 'ContextItem'],
-  ['consultation/completion-timeout/consultation-completion-timeout.processor.ts', "['CLINICAL']", 'Consultation'],
+  ['consultation/fact-ledger/fact-ledger.processor.ts', "['CLINICAL']", 'ContextItem (FACT_LEDGER / ENCOUNTER_RECAP)'],
 ];
+
+// Drain-only processors: they write nothing, so they must not wait on a restore.
+const NO_WRITE: string[] = ['consultation/completion-timeout/consultation-completion-timeout.processor.ts'];
 
 describe('postponed BullMQ processors declare the categories they conflict with', () => {
   it.each(MAPPING)('%s → %s (%s)', (file, declared) => {
@@ -22,5 +25,12 @@ describe('postponed BullMQ processors declare the categories they conflict with'
     const calls = source.match(/postponeIfTenantLocked\(this\.tenantLock,[^;]*\);/g) ?? [];
     expect(calls).toHaveLength(1);
     expect(calls[0].endsWith(`${declared});`)).toBe(true);
+  });
+});
+
+describe('drain-only BullMQ processors take no tenant lock', () => {
+  it.each(NO_WRITE)('%s', (file) => {
+    const source = readFileSync(join(SERVICES, file), 'utf8');
+    expect(source).not.toMatch(/postponeIfTenantLocked\(/);
   });
 });
