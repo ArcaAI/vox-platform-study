@@ -24,7 +24,14 @@ export class FeedbackRollupQuery {
 
   @ApiPropertyOptional({ description: `Comma-separated dimensions: ${FEEDBACK_ROLLUP_DIMENSIONS.join(', ')}.`, type: String })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((s) => s.trim()).filter(Boolean) : value))
+  @Transform(({ value }) =>
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : value,
+  )
   @IsArray()
   @ArrayUnique()
   @ArrayMaxSize(FEEDBACK_ROLLUP_DIMENSIONS.length)
@@ -54,7 +61,8 @@ export class AdminFeedbackRollupController {
   @CanRead('Consultation')
   @ApiOperation({
     summary: 'Feedback rollups by day, agent version, model, prompt version, section, entity label, reason or target kind',
-    description: 'Counts of up / down / cleared ratings, comments, corrections and reasoned ratings. Dimensions and counts only; no content. Scoped to the caller tenant.',
+    description:
+      'Counts of up / down / cleared ratings, comments, corrections and reasoned ratings. Dimensions and counts only; no content. Scoped to the caller tenant.',
   })
   @ApiResponse({ status: 200, type: FeedbackRollupResponse })
   @ApiResponse({ status: 400, description: 'Unknown groupBy dimension or malformed date.' })

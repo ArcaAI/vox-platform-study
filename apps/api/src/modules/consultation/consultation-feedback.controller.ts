@@ -69,7 +69,10 @@ export class ConsultationFeedbackController {
   // Declared before `:id/feedback` so the literal `feedback/reason-codes` never binds as `:id`.
   @Get('feedback/reason-codes')
   @RequiredSvcScopes('svc:consultation:session:read')
-  @ApiOperation({ summary: 'The effective feedback reason list for the caller tenant', description: 'Tenant value when set, else the platform list.' })
+  @ApiOperation({
+    summary: 'The effective feedback reason list for the caller tenant',
+    description: 'Tenant value when set, else the platform list.',
+  })
   @ApiResponse({ status: 200, type: FeedbackReasonCodesResponse })
   @ApiResponse({ status: 401, description: 'Not authenticated.' })
   async reasonCodes(): Promise<FeedbackReasonCodesResponse> {
