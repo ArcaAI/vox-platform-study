@@ -40,6 +40,8 @@ export interface IConsultationJobService {
     callbackUrl?: string,
     /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
+    /** The acting principal starting the job (user or service account) — `ConsultationJobStatus.initiatorId`. */
+    initiatorId?: string,
   ): Promise<JobResponse>;
 
   /**
@@ -55,7 +57,7 @@ export interface IConsultationJobService {
    * write it; this restores the endpoint's contract that the returned jobId is
    * resolvable by its creator.
    */
-  registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string): Promise<void>;
+  registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string, initiatorId?: string): Promise<void>;
 
   /**
    * TASK-1038 B3a — run a job START at most once per `Idempotency-Key` (same key + same body ⇒
@@ -111,6 +113,7 @@ export class ConsultationJobService implements IConsultationJobService {
     request: GeneratePreSummaryJobPayload['request'],
     callbackUrl?: string,
     idempotencyKey?: string,
+    initiatorId?: string,
   ): Promise<JobResponse> {
     // TASK-1038 B3a — `Idempotency-Key`: the same key with the same request is the same job;
     // a different request under the same key is a 409. A pre-TASK-1038 record (a bare job id)
@@ -118,7 +121,7 @@ export class ConsultationJobService implements IConsultationJobService {
     const { value: jobId } = await this.idempotency.run(
       { operation: 'pre-summary', tenantId, principalId: userId, key: idempotencyKey },
       { consultationId, request, callbackUrl: callbackUrl ?? null },
-      () => this.enqueuePreSummaryJob(consultationId, tenantId, userId, request, callbackUrl),
+      () => this.enqueuePreSummaryJob(consultationId, tenantId, userId, request, callbackUrl, initiatorId),
       (legacyJobId) => legacyJobId,
     );
     return { jobId, status: 'PENDING', sseUrl: consultationJobStreamUrl(jobId), estimatedSeconds: 30 };
@@ -130,6 +133,7 @@ export class ConsultationJobService implements IConsultationJobService {
     userId: string,
     request: GeneratePreSummaryJobPayload['request'],
     callbackUrl?: string,
+    initiatorId?: string,
   ): Promise<string> {
     const jobId = uuidv7();
 
@@ -159,6 +163,7 @@ export class ConsultationJobService implements IConsultationJobService {
       createdAt: new Date(),
       tenantId,
       userId,
+      ...(initiatorId ? { initiatorId } : {}),
     });
 
     this.logger.log({
@@ -174,7 +179,7 @@ export class ConsultationJobService implements IConsultationJobService {
    * Publish the status record for a harness-owned note-generation run.
    * See the interface declaration for why this exists.
    */
-  async registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string): Promise<void> {
+  async registerHarnessNoteJob(jobId: string, consultationId: string, tenantId: string, userId: string, initiatorId?: string): Promise<void> {
     await this.storeJobStatus(jobId, {
       jobId,
       type: 'SUMMARY',
@@ -184,6 +189,7 @@ export class ConsultationJobService implements IConsultationJobService {
       createdAt: new Date(),
       tenantId,
       userId,
+      ...(initiatorId ? { initiatorId } : {}),
     });
 
     this.logger.log({

@@ -72,8 +72,24 @@ describe('POST :id/summary/pre-summary/async — Idempotency-Key', () => {
   it('forwards the HEADER key (the body field remains a fallback)', async () => {
     const { controller, consultationJobService } = build();
     await controller.generatePreSummaryAsync('c-1', { idempotencyKey: 'body-key' } as never, 'header-key');
-    expect(consultationJobService.createPreSummaryJob).toHaveBeenLastCalledWith('c-1', TENANT, 'doc-1', expect.any(Object), undefined, 'header-key');
+    expect(consultationJobService.createPreSummaryJob).toHaveBeenLastCalledWith(
+      'c-1',
+      TENANT,
+      'doc-1',
+      expect.any(Object),
+      undefined,
+      'header-key',
+      'doc-1',
+    );
     await controller.generatePreSummaryAsync('c-1', { idempotencyKey: 'body-key' } as never);
-    expect(consultationJobService.createPreSummaryJob).toHaveBeenLastCalledWith('c-1', TENANT, 'doc-1', expect.any(Object), undefined, 'body-key');
+    expect(consultationJobService.createPreSummaryJob).toHaveBeenLastCalledWith(
+      'c-1',
+      TENANT,
+      'doc-1',
+      expect.any(Object),
+      undefined,
+      'body-key',
+      'doc-1',
+    );
   });
 });

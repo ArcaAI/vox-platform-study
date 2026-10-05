@@ -407,6 +407,18 @@ export class ConsultationController {
   }
 
   /**
+   * The acting principal that STARTS a note job — a user, else the service account — recorded as
+   * the job's `initiatorId`. Resolved exactly as `TenantOwnedResourceInterceptor` resolves the
+   * caller, so the principal that started a job is the one its creator check later recognises.
+   */
+  private getJobInitiatorId(): string | undefined {
+    const userId = this.cls.get('user')?.id;
+    if (typeof userId === 'string' && userId.length > 0) return userId;
+    const serviceAccountId = this.getServiceAccountId();
+    return serviceAccountId && serviceAccountId.length > 0 ? serviceAccountId : undefined;
+  }
+
+  /**
    * TASK-972 Lane 4 — WHICH CREDENTIAL is making this clinical write, read off the REQUEST.
    *
    * CLS cannot answer this, and the failure mode of pretending it can is silent. There is no
@@ -2297,7 +2309,7 @@ export class ConsultationController {
     const { value: started } = await this.consultationJobService.runIdempotent(
       { operation: 'summary', tenantId, principalId: userId, key: idempotencyKey },
       { consultationId, request },
-      () => this.startHarnessSummaryJob(consultationId, request, tenantId, userId),
+      () => this.startHarnessSummaryJob(consultationId, request, tenantId, userId, this.getJobInitiatorId()),
     );
     return new AsyncJobResponseDto({ jobId: started.jobId, status: 'pending', consultationId, createdAt: started.createdAt });
   }
@@ -2308,6 +2320,7 @@ export class ConsultationController {
     request: GenerateSummaryRequest,
     tenantId: string,
     userId: string,
+    initiatorId?: string,
   ): Promise<{ jobId: string; createdAt: string }> {
     // this route used to enqueue onto the legacy `GenerateSummary`
     // BullMQ queue (`ConsultationJobService.createSummaryJob`), which decided
@@ -2353,7 +2366,7 @@ export class ConsultationController {
     // `/stream`) 404s inside `TenantOwnedResourceInterceptor`, which reads
     // `getJobStatus` for its tenancy check. The legacy queue path deleted in
     // used to create this record.
-    await this.consultationJobService.registerHarnessNoteJob(decision.harnessJobId, consultationId, tenantId, userId);
+    await this.consultationJobService.registerHarnessNoteJob(decision.harnessJobId, consultationId, tenantId, userId, initiatorId);
 
     return { jobId: decision.harnessJobId, createdAt: new Date().toISOString() };
   }
@@ -2397,6 +2410,8 @@ export class ConsultationController {
       undefined,
       // TASK-1038 B3a — the `Idempotency-Key` header wins; the SDK's body field stays a fallback.
       idempotencyKey ?? (request as any)?.idempotencyKey,
+      // Who started it (a service account may cancel only the jobs it started).
+      this.getJobInitiatorId(),
     );
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return new AsyncJobResponseDto({

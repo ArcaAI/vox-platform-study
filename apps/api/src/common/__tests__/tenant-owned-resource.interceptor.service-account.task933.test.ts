@@ -28,7 +28,7 @@ function build(opts: {
   options: Record<string, unknown>;
   cls: Record<string, unknown>;
   binding?: { tenantId: string; userId: string | null } | null;
-  jobStatus?: { tenantId?: string | null; userId?: string | null } | null;
+  jobStatus?: { tenantId?: string | null; userId?: string | null; initiatorId?: string | null } | null;
   params?: Record<string, string>;
 }) {
   const reflector = { getAllAndOverride: vi.fn((key: string) => (key === TENANT_OWNED_RESOURCE_KEY ? opts.options : undefined)) };
@@ -154,6 +154,66 @@ describe("ConsultationJob scope:'creator' — the creator may be a machine", () 
       options: JOB_CREATOR_OPTS,
       cls: { tenantId: TENANT, serviceAccount: { id: SVC_ACCOUNT_ID } },
       jobStatus: { tenantId: TENANT, userId: null },
+    });
+
+    await expect(interceptor.assertAccess(context)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+/**
+ * TASK-1045 (owner decision 2026-10-06) — a service account may cancel the note jobs IT started.
+ * A machine-started job is filed under the CLINICIAN (`userId`), so the creator check also accepts
+ * the recorded `initiatorId`. It widens to the initiator only: another machine in the same tenant,
+ * a cross-tenant row and a row with neither recorded stay 404.
+ */
+describe("ConsultationJob scope:'creator' — the initiator of a clinician-owned job", () => {
+  const OTHER_SVC_ACCOUNT_ID = 'e0000000-0000-0000-0000-0000000000ff';
+
+  it('admits the service account that initiated a job filed under the doctor', async () => {
+    const { interceptor, context } = build({
+      options: JOB_CREATOR_OPTS,
+      cls: { tenantId: TENANT, serviceAccount: { id: SVC_ACCOUNT_ID } },
+      jobStatus: { tenantId: TENANT, userId: HUMAN_ID, initiatorId: SVC_ACCOUNT_ID },
+    });
+
+    await expect(interceptor.assertAccess(context)).resolves.toBeUndefined();
+  });
+
+  it('404s ANOTHER service account in the same tenant', async () => {
+    const { interceptor, context } = build({
+      options: JOB_CREATOR_OPTS,
+      cls: { tenantId: TENANT, serviceAccount: { id: OTHER_SVC_ACCOUNT_ID } },
+      jobStatus: { tenantId: TENANT, userId: HUMAN_ID, initiatorId: SVC_ACCOUNT_ID },
+    });
+
+    await expect(interceptor.assertAccess(context)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('still admits the human the job is filed under', async () => {
+    const { interceptor, context } = build({
+      options: JOB_CREATOR_OPTS,
+      cls: { tenantId: TENANT, user: { id: HUMAN_ID } },
+      jobStatus: { tenantId: TENANT, userId: HUMAN_ID, initiatorId: SVC_ACCOUNT_ID },
+    });
+
+    await expect(interceptor.assertAccess(context)).resolves.toBeUndefined();
+  });
+
+  it('404s the initiator on a cross-tenant row', async () => {
+    const { interceptor, context } = build({
+      options: JOB_CREATOR_OPTS,
+      cls: { tenantId: TENANT, serviceAccount: { id: SVC_ACCOUNT_ID } },
+      jobStatus: { tenantId: 'tenant-other', userId: HUMAN_ID, initiatorId: SVC_ACCOUNT_ID },
+    });
+
+    await expect(interceptor.assertAccess(context)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('404s a legacy row with neither a creator nor an initiator', async () => {
+    const { interceptor, context } = build({
+      options: JOB_CREATOR_OPTS,
+      cls: { tenantId: TENANT, serviceAccount: { id: SVC_ACCOUNT_ID } },
+      jobStatus: { tenantId: TENANT },
     });
 
     await expect(interceptor.assertAccess(context)).rejects.toBeInstanceOf(NotFoundException);

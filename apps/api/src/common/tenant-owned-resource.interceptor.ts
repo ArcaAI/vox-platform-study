@@ -24,7 +24,11 @@
  *                           Workflow Playground WS1 — live-summary SSE).
  *   - `ConsultationJob`   — `jobService.getJobStatus(jobId)`; status struct
  *                           carries `tenantId` after W3.3. Assert
- *                           `status.tenantId === cls.tenantId`.
+ *                           `status.tenantId === cls.tenantId`; under
+ *                           `scope: 'creator'` the acting principal must also
+ *                           be the job's `userId` (the clinician) or its
+ *                           `initiatorId` (who started it — e.g. a service
+ *                           account starting a clinician's note job).
  *   - `StreamSession`     — `sessionId -> { tenantId, userId }` binding; assert BOTH, where
  *                           `userId` is the acting principal (a user OR, since TASK-933, a
  *                           service account — `resolveCallerPrincipalId`).
@@ -235,9 +239,13 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
   }
 
   private async assertConsultationJob(opts: TenantOwnedResourceOptions, jobId: string, callerTenantId: string): Promise<void> {
-    let status: { tenantId?: string | null; userId?: string | null } | null;
+    let status: { tenantId?: string | null; userId?: string | null; initiatorId?: string | null } | null;
     try {
-      status = (await this.consultationJobService.getJobStatus(jobId)) as { tenantId?: string | null; userId?: string | null } | null;
+      status = (await this.consultationJobService.getJobStatus(jobId)) as {
+        tenantId?: string | null;
+        userId?: string | null;
+        initiatorId?: string | null;
+      } | null;
     } catch (err) {
       if (err instanceof DataNotFoundException) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);
@@ -262,7 +270,10 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
       if (!callerPrincipalId) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);
       }
-      if (!status.userId || status.userId !== callerPrincipalId) {
+      // A machine-started job is filed under the clinician (`userId`); the principal that started
+      // it is `initiatorId`. Either one may act on it — nobody else in the tenant may.
+      const isCreator = status.userId === callerPrincipalId || status.initiatorId === callerPrincipalId;
+      if (!isCreator) {
         throw new NotFoundException(RESOURCE_NOT_FOUND);
       }
     }

@@ -215,7 +215,7 @@ describe('ConsultationController — the CLINICIAN comes from the ROW, never fro
 
     await controller.generatePreSummaryAsync(CONSULT, {} as any);
 
-    expect(jobService.createPreSummaryJob).toHaveBeenCalledWith(CONSULT, TENANT, DOCTOR, expect.anything(), undefined, undefined);
+    expect(jobService.createPreSummaryJob).toHaveBeenCalledWith(CONSULT, TENANT, DOCTOR, expect.anything(), undefined, undefined, SVC_ACCOUNT_ID);
   });
 
   it('stopRecording works for a machine principal', async () => {
