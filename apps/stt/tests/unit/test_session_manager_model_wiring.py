@@ -992,6 +992,7 @@ class TestFrameHandlerWithModels:
         session = MagicMock()
         session.session_id = "s-1"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -1040,6 +1041,7 @@ class TestFrameHandlerWithModels:
         session = MagicMock()
         session.session_id = "s-1"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock()
         session.record_frame = MagicMock()
@@ -1416,6 +1418,7 @@ class TestReaper:
         session = MagicMock()
         session.session_id = "s-old"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.last_activity = (datetime.utcnow() - timedelta(seconds=120)).isoformat()
 
         mgr._sessions["s-old"] = session
@@ -1446,6 +1449,7 @@ class TestReaper:
         session = MagicMock()
         session.session_id = "s-fresh"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.last_activity = datetime.utcnow().isoformat()
 
         mgr._sessions["s-fresh"] = session
@@ -1468,6 +1472,7 @@ class TestReaper:
         session = MagicMock()
         session.session_id = "s-old"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.last_activity = (datetime.utcnow() - timedelta(seconds=120)).isoformat()
 
         preprocessor = AsyncMock()
@@ -1521,6 +1526,7 @@ class TestReaper:
         session = MagicMock()
         session.session_id = "s-paused"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.last_activity = (datetime.utcnow() - timedelta(seconds=120)).isoformat()
         mgr._sessions["s-paused"] = session
         mgr._finalize_session = AsyncMock()
@@ -1593,6 +1599,7 @@ class TestFrameHandlerFinalFrame:
         session = MagicMock()
         session.session_id = "s-1"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.pending_segments = asyncio.Queue()
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
@@ -2021,6 +2028,7 @@ class TestReaperEdgeCases:
         session = MagicMock()
         session.session_id = "s-bad-ts"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.last_activity = "not-a-timestamp"
 
         mgr._sessions["s-bad-ts"] = session

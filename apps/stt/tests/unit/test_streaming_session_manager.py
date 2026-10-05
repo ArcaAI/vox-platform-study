@@ -197,6 +197,7 @@ class TestFirePartialCommitPolicy:
         session = MagicMock()
         session.session_id = "sess-1"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
 
@@ -243,6 +244,7 @@ class TestSteadyStateEnqueueDrop:
         session = MagicMock()
         session.session_id = "sess-full"
         session.status = SessionStatus.ACTIVE
+        session.capture_paused = False
         session.persist_if_needed = AsyncMock(return_value=False)
         session.record_frame = MagicMock()
 
