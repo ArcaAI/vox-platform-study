@@ -761,7 +761,12 @@ export class AgentController {
   @ApiParam({ name: 'slug', type: String })
   @ApiParam({ name: 'runId', type: String })
   @ApiResponse({ status: 200, description: 'The run: status, timings, the public error of a failed run, and its links.' })
-  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or ' +
+      'service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async getRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStatusResponse> {
     const state = await this.readableRun(slug, runId);
     return {
@@ -793,7 +798,12 @@ export class AgentController {
   @ApiParam({ name: 'runId', type: String })
   @ApiResponse({ status: 200, description: 'The agent output.' })
   @ApiResponse({ status: 204, description: 'The run is terminal and produced no output.' })
-  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or ' +
+      'service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status.' })
   @ApiResponse({ status: 410, description: '`RESULT_EXPIRED` — the result existed and has passed its retention window.' })
   async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
@@ -831,7 +841,12 @@ export class AgentController {
   @ApiParam({ name: 'slug', type: String })
   @ApiParam({ name: 'runId', type: String })
   @ApiResponse({ status: 200, description: '`{ runId, status }` after the cancel.' })
-  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or ' +
+      'service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async cancelRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<{ runId: string; status: string }> {
     // OD-35 — the binding FIRST: a run another principal started is the unknown-run 404 and is
     // never cancelled.
@@ -868,7 +883,12 @@ export class AgentController {
   @ApiResponse({ status: 201, description: '`{ ticket, expiresAt (epoch ms), scope, sseUrl }`. The ticket is single-use.' })
   @ApiResponse({ status: 401, description: 'No caller identity to bind the ticket to.' })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
-  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or ' +
+      'service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   @ApiResponse({ status: 503, description: 'Stream tickets or the agent run store are not available on this gateway.' })
   async issueRunStreamTicket(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStreamTicketResponse> {
     if (!this.streamTicketService) {
@@ -920,7 +940,12 @@ export class AgentController {
   @ApiQuery({ name: 'protocol', required: false, enum: ['2'] })
   @ApiResponse({ status: 200, description: '`text/event-stream` of run protocol v2 frames.' })
   @ApiResponse({ status: 400, description: 'An unsupported protocol, or a malformed resume cursor.' })
-  @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Another tenant’s run, a runId that does not belong to this agent, or (OD-35) a run another credential started — an API key or ' +
+      'service account reads only the runs it started unless it holds `agent:run:read-all`; a non-admin user only its own. One answer for all.',
+  })
   async runEvents(@Param('slug') slug: string, @Param('runId') runId: string, @Req() req: Request, @Res() res: Response): Promise<void> {
     const runs = this.requireRuns();
     const tenantId = this.requireTenant();

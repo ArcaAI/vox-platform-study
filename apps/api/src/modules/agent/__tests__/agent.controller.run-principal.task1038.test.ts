@@ -65,7 +65,11 @@ function make() {
     invokeText: vi.fn(() => new Promise(() => undefined)),
     invokeNer: vi.fn(),
   };
-  const runs = new AgentRunService(repository as never, redis as never, { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never);
+  const runs = new AgentRunService(
+    repository as never,
+    redis as never,
+    { resolvePlatform: () => ({ value: 24 }), resolve: () => ({ value: 30 }) } as never,
+  );
   const streamTickets = { issueTicket: vi.fn(async (input: { scope: string }) => ({ ticket: 'T', expiresAt: 1, scope: input.scope })) };
   const runAccess = new RunPrincipalAccessService(cls as never, { findAll: vi.fn(async () => roleRows) } as never);
   const controller = new AgentController(

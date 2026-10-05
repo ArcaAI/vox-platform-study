@@ -125,7 +125,8 @@ export class RunPrincipalAccessService {
     const apiKey = this.apiKey();
     if (apiKey) return { type: 'apiKey', id: apiKey.id };
     const serviceAccount = this.get<{ id?: unknown }>('serviceAccount');
-    if (serviceAccount && typeof serviceAccount.id === 'string' && serviceAccount.id.length > 0) return { type: 'serviceAccount', id: serviceAccount.id };
+    if (serviceAccount && typeof serviceAccount.id === 'string' && serviceAccount.id.length > 0)
+      return { type: 'serviceAccount', id: serviceAccount.id };
     const userId = this.get<{ id?: unknown }>('user')?.id;
     if (typeof userId === 'string' && userId.length > 0) return { type: 'user', id: userId };
     return null;
@@ -176,7 +177,11 @@ export class RunPrincipalAccessService {
         ),
       );
     } catch (error) {
-      this.logger.warn({ message: 'Could not read role assignments; run reads fall back to the caller’s own runs', userId: user.id, error: String(error) });
+      this.logger.warn({
+        message: 'Could not read role assignments; run reads fall back to the caller’s own runs',
+        userId: user.id,
+        error: String(error),
+      });
       return false;
     }
   }

@@ -92,13 +92,25 @@ const stampedMeta = (deps: ReturnType<typeof service>['deps']) =>
 describe('OD-35 — consultation dispatch stamps the starting principal', () => {
   it('consultation open: the principal that opened it', async () => {
     const { svc, deps } = service({ principal: { type: 'serviceAccount', id: 'sa-alaas' } });
-    await svc.dispatchForConsultation({ consultationId: CONSULTATION, tenantId: TENANT, departmentId: null, userId: 'u-1', externalPatientId: 'p-1' });
+    await svc.dispatchForConsultation({
+      consultationId: CONSULTATION,
+      tenantId: TENANT,
+      departmentId: null,
+      userId: 'u-1',
+      externalPatientId: 'p-1',
+    });
     expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION, startedBy: { type: 'serviceAccount', id: 'sa-alaas' } });
   });
 
   it('consultation open with no principal in context: no stamp (tenant-wide readers only)', async () => {
     const { svc, deps } = service({ principal: null });
-    await svc.dispatchForConsultation({ consultationId: CONSULTATION, tenantId: TENANT, departmentId: null, userId: 'u-1', externalPatientId: 'p-1' });
+    await svc.dispatchForConsultation({
+      consultationId: CONSULTATION,
+      tenantId: TENANT,
+      departmentId: null,
+      userId: 'u-1',
+      externalPatientId: 'p-1',
+    });
     expect(stampedMeta(deps)).toEqual({ consultationId: CONSULTATION });
   });
 

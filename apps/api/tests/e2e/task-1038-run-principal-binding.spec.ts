@@ -58,7 +58,12 @@ async function findWorkflow(request: APIRequestContext, rawKey: string): Promise
 }
 
 /** Every business-plane read of one run, as one credential sees it: the status codes. */
-async function readStatuses(request: APIRequestContext, base: string, headers: Record<string, string>, eventsPath: string): Promise<Record<string, number>> {
+async function readStatuses(
+  request: APIRequestContext,
+  base: string,
+  headers: Record<string, string>,
+  eventsPath: string,
+): Promise<Record<string, number>> {
   return {
     status: (await request.get(base, { headers })).status(),
     result: (await request.get(`${base}/result`, { headers })).status(),
@@ -130,8 +135,14 @@ test.describe('OD-35 — run reads bound to the starting principal', () => {
     const slug = await findTextAgent(request, keyA.rawKey);
     test.skip(slug === null, 'no published TEXT_GENERATION agent in the default tenant');
     const idem = `od35-${Date.now()}`;
-    const a = await request.post(`/api/v1/agents/${slug}/runs`, { headers: { 'X-API-Key': keyA.rawKey, 'Idempotency-Key': idem }, data: { message: 'x' } });
-    const b = await request.post(`/api/v1/agents/${slug}/runs`, { headers: { 'X-API-Key': keyB.rawKey, 'Idempotency-Key': idem }, data: { message: 'x' } });
+    const a = await request.post(`/api/v1/agents/${slug}/runs`, {
+      headers: { 'X-API-Key': keyA.rawKey, 'Idempotency-Key': idem },
+      data: { message: 'x' },
+    });
+    const b = await request.post(`/api/v1/agents/${slug}/runs`, {
+      headers: { 'X-API-Key': keyB.rawKey, 'Idempotency-Key': idem },
+      data: { message: 'x' },
+    });
     test.skip(a.status() !== 202 || b.status() !== 202, 'a run start was refused before the 202');
     expect((await a.json()).runId).not.toBe((await b.json()).runId);
   });
@@ -177,8 +188,14 @@ test.describe('OD-35 — run reads bound to the starting principal', () => {
     const slug = await findWorkflow(request, keyA.rawKey);
     test.skip(slug === null, 'no exposed published workflow in the default tenant');
     const idem = `od35-${Date.now()}`;
-    const a = await request.post(`/api/v1/workflows/${slug}/runs`, { headers: { 'X-API-Key': keyA.rawKey, 'Idempotency-Key': idem }, data: { input: {} } });
-    const b = await request.post(`/api/v1/workflows/${slug}/runs`, { headers: { 'X-API-Key': keyB.rawKey, 'Idempotency-Key': idem }, data: { input: {} } });
+    const a = await request.post(`/api/v1/workflows/${slug}/runs`, {
+      headers: { 'X-API-Key': keyA.rawKey, 'Idempotency-Key': idem },
+      data: { input: {} },
+    });
+    const b = await request.post(`/api/v1/workflows/${slug}/runs`, {
+      headers: { 'X-API-Key': keyB.rawKey, 'Idempotency-Key': idem },
+      data: { input: {} },
+    });
     test.skip(a.status() !== 202 || b.status() !== 202, 'a run start was refused before the 202');
     expect((await a.json()).runId).not.toBe((await b.json()).runId);
   });

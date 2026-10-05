@@ -29,11 +29,23 @@ describe('WorkflowWsGateway — run reader on redemption (OD-35)', () => {
   });
 
   it('restores the ticket’s reader before the ownership read', async () => {
-    const getRunStatus = vi.fn(async () => ({ runId: RUN, workflowVersionNumber: 1, status: 'COMPLETED', stages: [], startedAt: null, endedAt: null }));
-    const { gateway, cls } = build({ scope: `${WORKFLOW_RUN_TICKET_NAMESPACE}:${RUN}`, tenantId: TENANT, userId: 'human-1', runReader: READER }, getRunStatus);
+    const getRunStatus = vi.fn(async () => ({
+      runId: RUN,
+      workflowVersionNumber: 1,
+      status: 'COMPLETED',
+      stages: [],
+      startedAt: null,
+      endedAt: null,
+    }));
+    const { gateway, cls } = build(
+      { scope: `${WORKFLOW_RUN_TICKET_NAMESPACE}:${RUN}`, tenantId: TENANT, userId: 'human-1', runReader: READER },
+      getRunStatus,
+    );
     await gateway.handleConnection(socket() as never, request as never);
     expect(cls.set).toHaveBeenCalledWith('runReader', READER);
-    expect(cls.set.mock.invocationCallOrder[cls.set.mock.calls.findIndex((c) => c[0] === 'runReader')]).toBeLessThan(getRunStatus.mock.invocationCallOrder[0]!);
+    expect(cls.set.mock.invocationCallOrder[cls.set.mock.calls.findIndex((c) => c[0] === 'runReader')]).toBeLessThan(
+      getRunStatus.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('a run the reader may not read is the generic auth close (the read answered 404)', async () => {
@@ -42,7 +54,10 @@ describe('WorkflowWsGateway — run reader on redemption (OD-35)', () => {
       throw notFound;
     });
     const client = socket();
-    const { gateway } = build({ scope: `${WORKFLOW_RUN_TICKET_NAMESPACE}:${RUN}`, tenantId: TENANT, userId: 'human-1', runReader: READER }, getRunStatus);
+    const { gateway } = build(
+      { scope: `${WORKFLOW_RUN_TICKET_NAMESPACE}:${RUN}`, tenantId: TENANT, userId: 'human-1', runReader: READER },
+      getRunStatus,
+    );
     await gateway.handleConnection(client as never, request as never);
     expect(client.close).toHaveBeenCalledWith(WORKFLOW_WS_CLOSE_AUTH_FAILED, expect.any(String));
     expect(client.send).not.toHaveBeenCalled();

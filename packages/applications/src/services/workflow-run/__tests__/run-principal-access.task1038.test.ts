@@ -199,7 +199,9 @@ describe('OD-35 — the stamp and the idempotency scope', () => {
 
 describe('OD-35 — cost', () => {
   it('reading your OWN run never reads the role list', async () => {
-    const { svc, roleAssignments } = access({ tenantId: TENANT, user: { id: 'doctor-1' } }, [{ tenantId: TENANT, Roles: [{ name: 'TENANT_ADMIN' }] }]);
+    const { svc, roleAssignments } = access({ tenantId: TENANT, user: { id: 'doctor-1' } }, [
+      { tenantId: TENANT, Roles: [{ name: 'TENANT_ADMIN' }] },
+    ]);
     await expect(svc.canRead('workflow', doctor)).resolves.toBe(true);
     expect(roleAssignments.findAll).not.toHaveBeenCalled();
   });

@@ -145,7 +145,9 @@ describe('OD-35 — invoke records the starting principal', () => {
     await build().invoke(SLUG, { input: {} }, {});
     asHuman('doctor-1');
     await build().invoke(SLUG, { input: {} }, {});
-    const stamps = mockWorkflowRunService.recordRunStarted.mock.calls.map((c) => (c[0] as { metaData?: Record<string, unknown> }).metaData?.startedBy);
+    const stamps = mockWorkflowRunService.recordRunStarted.mock.calls.map(
+      (c) => (c[0] as { metaData?: Record<string, unknown> }).metaData?.startedBy,
+    );
     expect(stamps).toEqual([
       { type: 'serviceAccount', id: 'sa-1' },
       { type: 'user', id: 'doctor-1' },
@@ -252,7 +254,8 @@ describe('OD-35 — wiring (the binding is @Optional() for fixtures, so producti
   it('WorkflowRunServiceModule provides and exports RunPrincipalAccessService; the exposure and dispatch modules import it', async () => {
     const { WorkflowRunServiceModule } = await import('../../workflow-run/workflow-run.service.module');
     const { WorkflowExposureServiceModule } = await import('../workflow-exposure.service.module');
-    const { ConsultationWorkflowDispatchServiceModule } = await import('../../consultation/workflow-dispatch/consultation-workflow-dispatch.service.module');
+    const { ConsultationWorkflowDispatchServiceModule } =
+      await import('../../consultation/workflow-dispatch/consultation-workflow-dispatch.service.module');
     expect(Reflect.getMetadata('providers', WorkflowRunServiceModule)).toContain(RunPrincipalAccessService);
     expect(Reflect.getMetadata('exports', WorkflowRunServiceModule)).toContain(RunPrincipalAccessService);
     expect(Reflect.getMetadata('imports', WorkflowExposureServiceModule)).toContain(WorkflowRunServiceModule);

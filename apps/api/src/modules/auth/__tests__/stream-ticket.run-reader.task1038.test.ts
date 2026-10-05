@@ -52,7 +52,13 @@ describe('StreamTicketService — runReader', () => {
     const svc = new StreamTicketService(c as never);
     c.store.set(
       'stream-ticket:bad',
-      JSON.stringify({ userId: 'u', tenantId: 't', scope: 'workflow_run:r', exp: Date.now() + 10_000, runReader: { principal: { type: 'robot', id: 'x' }, tenantWide: 'yes' } }),
+      JSON.stringify({
+        userId: 'u',
+        tenantId: 't',
+        scope: 'workflow_run:r',
+        exp: Date.now() + 10_000,
+        runReader: { principal: { type: 'robot', id: 'x' }, tenantWide: 'yes' },
+      }),
     );
     const consumed = await svc.consumeTicket('bad');
     expect(consumed).not.toBeNull();
@@ -63,7 +69,9 @@ describe('StreamTicketService — runReader', () => {
 describe('JwtAuthGuard — restores runReader on CLS when a ticket carries one', () => {
   function guardFor(stored: Record<string, unknown>) {
     const reflector = {
-      getAllAndOverride: vi.fn((key: unknown) => (key === SKIP_AUTH_KEY ? false : key === STREAM_SCOPE_METADATA ? { namespace: 'workflow_run', param: 'runId' } : undefined)),
+      getAllAndOverride: vi.fn((key: unknown) =>
+        key === SKIP_AUTH_KEY ? false : key === STREAM_SCOPE_METADATA ? { namespace: 'workflow_run', param: 'runId' } : undefined,
+      ),
     } as unknown as Reflector;
     const cls = { set: vi.fn(), get: vi.fn() };
     const tickets = { consumeTicket: vi.fn(async () => stored) };
@@ -77,13 +85,26 @@ describe('JwtAuthGuard — restores runReader on CLS when a ticket carries one',
   }
 
   it('sets CLS runReader', async () => {
-    const { guard, cls, context } = guardFor({ userId: 'human-1', tenantId: 't-1', scope: 'workflow_run:r-1', exp: Date.now() + 10_000, impersonatedBy: null, runReader: READER });
+    const { guard, cls, context } = guardFor({
+      userId: 'human-1',
+      tenantId: 't-1',
+      scope: 'workflow_run:r-1',
+      exp: Date.now() + 10_000,
+      impersonatedBy: null,
+      runReader: READER,
+    });
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(cls.set).toHaveBeenCalledWith('runReader', READER);
   });
 
   it('does not set it for a ticket without one', async () => {
-    const { guard, cls, context } = guardFor({ userId: 'human-1', tenantId: 't-1', scope: 'workflow_run:r-1', exp: Date.now() + 10_000, impersonatedBy: null });
+    const { guard, cls, context } = guardFor({
+      userId: 'human-1',
+      tenantId: 't-1',
+      scope: 'workflow_run:r-1',
+      exp: Date.now() + 10_000,
+      impersonatedBy: null,
+    });
     await guard.canActivate(context);
     expect(cls.set).not.toHaveBeenCalledWith('runReader', expect.anything());
   });

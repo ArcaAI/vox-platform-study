@@ -50,7 +50,15 @@ describe('UnifiedAuthGuard — CLS `apiKey` for run-principal binding (OD-35)', 
       hasScope: (key: { scopes: string[] | null }, required: string) => Array.isArray(key.scopes) && key.scopes.includes(required),
     };
     const cls = { get: (key: string) => clsStore.get(key), set: (key: string, value: unknown) => clsStore.set(key, value) };
-    const guard = new UnifiedAuthGuard(new Reflector(), apiKeyService as never, {} as unknown as PolicyEngine, cls as never, undefined, undefined, undefined);
+    const guard = new UnifiedAuthGuard(
+      new Reflector(),
+      apiKeyService as never,
+      {} as unknown as PolicyEngine,
+      cls as never,
+      undefined,
+      undefined,
+      undefined,
+    );
     await guard.canActivate(context());
   });
 
