@@ -63,8 +63,8 @@ describe('the PRELOADED LM Studio row', () => {
     expect(preloaded?.metaData?.serving?.parallel).toEqual(expect.any(Number));
   });
 
-  it('is served at 65536 — the value TASK-995 lowered LMS_CONTEXT to, which this must not exceed', () => {
-    expect(preloaded?.metaData?.serving?.contextLength).toBe(65536);
+  it('is served at 32768 — the value TASK-1045 lowered LMS_CONTEXT to, which this must not exceed', () => {
+    expect(preloaded?.metaData?.serving?.contextLength).toBe(32768);
   });
 });
 
@@ -80,17 +80,19 @@ describe('the JIT-loaded LM Studio rows', () => {
  * TASK-1031 (owner, 2026-10-01) — the serving layout is a rule for the ROLE, and it REVERSES
  * the TASK-996 one (summarization was GPU 0, guardrail GPU 1):
  *
- *   summarization  65536 ctx · 10 concurrent · GPU 1
+ *   summarization  32768 ctx (was 65536, TASK-1045) · 10 concurrent · GPU 1 · q4_0 KV
  *   guardrail      16384 ctx · 10 concurrent · GPU 0 · q8_0 KV (fits beside STT)
  */
 describe('TASK-1031 — the owner serving layout', () => {
   const bySlug = (slug: string) => LLM_AI_MODELS.find((model) => model.slug === slug);
 
-  it('serves the summarization model at 65536 x 10 on GPU 1 only', () => {
+  it('serves the summarization model at 32768 x 10 on GPU 1 only, with a q4_0 KV cache (TASK-1045)', () => {
     expect(bySlug('lms-gemma-4-e2b-it-qat')?.metaData?.serving).toEqual({
-      contextLength: 65536,
+      contextLength: 32768,
       parallel: 10,
+      flashAttention: true,
       gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
+      kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
     });
   });
 

@@ -128,13 +128,17 @@ const LM_STUDIO_GENERATION_PARAMS: GenerationParamName[] = [...TEXT_PLANE_GENERA
  * cannot drift apart. The deploy must not lag behind a RAISE of this value; a LOWER is safe
  * in either order, because the safe direction of the invariant is to under-claim.
  */
-const LM_STUDIO_CONTEXT_LENGTH = 65536;
+const LM_STUDIO_CONTEXT_LENGTH = 32768;
+// TASK-1045: 65536 -> 32768, with the KV cache quantized to q4_0 (K and V) and flash attention on.
+// The note planner budgets against this declared window (never a constant) and falls back to a
+// ledger + cited-transcript plan when a case does not fit, so a smaller window costs no facts.
+// Mirrored in the deployment repo's `base/lmstudio.yaml` (`LMS_CONTEXT`, `LMS_PRELOAD_PLAN`).
 
 /**
  * Decode slots the preloaded row is SERVED with — `LMS_PARALLEL` -> `lms load --parallel`,
  * lowered 10 -> 4 alongside the context window above, and raised back 4 -> 10 by TASK-1031
  * (owner, 2026-10-01: "at least 10" concurrent requests per model; the summarization model
- * now owns GPU 1 alone, so its 65536 x 10 KV cache no longer shares a card with STT). It
+ * now owns GPU 1 alone, so its 32768 x 10 KV cache no longer shares a card with STT). It
  * matches the platform default `lmStudio.serving.parallel`.
  *
  * Declared here, beside the context window, because the two are ONE residency decision: each
@@ -298,12 +302,13 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       // from the SAME constants as the declaration above, so the lockstep holds
       // structurally rather than by anyone remembering to update two numbers.
       //
-      // `flashAttention` and `kvCacheQuant` are deliberately ABSENT: this row
-      // inherits them from the platform default (`lmStudio.serving.*`).
+      // `flashAttention` and `kvCacheQuant` are declared (a Q4 KV cache requires flash
+      // attention): the summarization row halves its window to 32768 and quantizes K and V
+      // to q4_0, so the 10 slots hold roughly a quarter of the former f16 KV memory.
       //
       // ── TASK-1031 owner layout (2026-10-01) — the SUMMARIZATION role: GPU 1 ──
       // REVERSES the TASK-996 layout (this row was pinned to GPU 0, granite to
-      // GPU 1). Summarization now owns GPU 1 alone (65536 x 10); GPU 0 carries the
+      // GPU 1). Summarization now owns GPU 1 alone (32768 x 10); GPU 0 carries the
       // guardrail model, STT and NLP. The two rows are still ONE decision — change
       // them together or not at all; leaving either on `evenly` re-creates the
       // cross-card split TASK-996 measured. These values equal the platform
@@ -312,7 +317,9 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
       serving: {
         contextLength: LM_STUDIO_CONTEXT_LENGTH,
         parallel: LM_STUDIO_PARALLEL,
+        flashAttention: true,
         gpuSplit: { strategy: 'priorityOrder', priority: [1], disabledGpus: [0] },
+        kvCacheQuant: { k: 'q4_0', v: 'q4_0' },
       },
     },
   },
