@@ -102,9 +102,6 @@ from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.note_plan.executor import (
-    NOTE_PLAN_RESPONSE_FORMAT as NOTE_PLAN_RESPONSE_FORMAT,
-)
-from harness.services.note_plan.executor import (
     REPAIR_STEP_OFFSET,
     NoteCallRecord,
     NoteCallRequest,
@@ -2125,7 +2122,7 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             temperature=hp.get("temperature"),
             max_tokens=request.max_tokens,
             top_p=hp.get("top_p"),
-            response_format=NOTE_PLAN_RESPONSE_FORMAT,
+            response_format=request.response_format,
             provider_locality=provider_locality(provider, None),
             # Stable across a retry of THIS activity, distinct per call: a re-run returns the
             # calls that already completed from Text's cache instead of re-billing them.

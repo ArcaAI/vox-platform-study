@@ -221,7 +221,7 @@ def text_generate_fn(
             model=model,
             temperature=temperature,
             max_tokens=request.max_tokens,
-            response_format=response_format,
+            response_format=request.response_format or response_format,
         )
         return NoteCallResult(
             content=result.content,

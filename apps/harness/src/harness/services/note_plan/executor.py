@@ -54,43 +54,53 @@ ACTIVITY_NOTE_SECTION_REGEN = "NOTE_SECTION_REGEN"
 ACTIVITY_NOTE_SECTION_GROUP = "NOTE_SECTION_GROUP"
 ACTIVITY_NOTE_REPAIR = "NOTE_REPAIR"
 
-#: The answer shape every plan call is asked for — the finalizer's own output contract.
-NOTE_PLAN_RESPONSE_FORMAT: dict[str, Any] = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "note_plan_call_output",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["case_note", "redactions", "sources"],
-            "properties": {
-                "case_note": {"type": "string"},
-                "redactions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": ["text", "label"],
-                        "properties": {"text": {"type": "string"}, "label": {"type": "string"}},
-                    },
-                },
-                "sources": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": ["sectionKey", "refs"],
-                        "properties": {
-                            "sectionKey": {"type": "string"},
-                            "refs": {"type": "array", "items": {"type": "string"}},
-                        },
-                    },
+
+def section_response_format(section_keys: Sequence[str]) -> dict[str, Any]:
+    """The answer shape ONE call is asked for: one string per section it was given, keyed by
+    section key, beside the finalizer's ``redactions`` and ``sources``.
+
+    Constraining each call to its own keys is what keeps a model from inventing its own layout
+    (a title-keyed object, a list per section) that the merge would otherwise have to guess at.
+    A section key that collides with ``redactions`` / ``sources`` replaces that property.
+    """
+    keys = list(dict.fromkeys(section_keys))
+    properties: dict[str, Any] = {
+        "redactions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "label"],
+                "properties": {"text": {"type": "string"}, "label": {"type": "string"}},
+            },
+        },
+        "sources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["sectionKey", "refs"],
+                "properties": {
+                    "sectionKey": {"type": "string", "enum": keys},
+                    "refs": {"type": "array", "items": {"type": "string"}},
                 },
             },
         },
-    },
-}
+    }
+    properties.update({key: {"type": "string"} for key in keys})
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "note_plan_sections_output",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [*keys, *(k for k in properties if k not in keys)],
+                "properties": properties,
+            },
+        },
+    }
 
 
 def call_step_offset(index: int) -> int:
@@ -115,6 +125,8 @@ class NoteCallRequest:
     user: str
     max_tokens: int
     kind: Literal["call", "repair"] = "call"
+    #: The structured-output constraint this call is sent with (:func:`section_response_format`).
+    response_format: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +241,7 @@ async def execute_plan(
             system=system,
             user=_user(user_prefix, call.directive),
             max_tokens=call.max_tokens,
+            response_format=section_response_format(call.section_keys),
         )
         for index, call in enumerate(plan.calls)
     ]
@@ -267,6 +280,7 @@ async def execute_plan(
                 call.max_tokens for call in plan.calls if set(call.section_keys) & set(repair_keys)
             ),
             kind="repair",
+            response_format=section_response_format(repair_keys),
         )
         [repaired] = await asyncio.gather(_run(generate, repair, gate))
         records.append(repaired)

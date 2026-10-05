@@ -418,6 +418,14 @@ async def test_the_activity_records_one_step_per_group_at_the_pinned_offsets(mon
         ("lmstudio", "gemma-4-e2b-it-qat", 1024)
     }
     assert {c["temperature"] for c in text.calls} == {0}
+    # Each call is constrained to exactly its own sections.
+    assert sorted(
+        tuple(sorted(c["response_format"]["json_schema"]["schema"]["properties"]))
+        for c in text.calls
+    ) == [
+        ("assessment", "plan", "redactions", "sources"),
+        ("objective", "redactions", "sources", "subjective"),
+    ]
     assert result.coverage is not None and result.coverage["status"] == "complete"
     assert result.generation.content.startswith("## Subjective")
     assert result.generation.model == "gemma-4-e2b-it-qat"
@@ -640,6 +648,14 @@ async def test_the_governed_finalizer_executes_the_handoff_note_plan(monkeypatch
     prefixes = {c["prompt"].rsplit("\n\n", 1)[0] for c in text.calls}
     assert len(prefixes) == 1
     assert "Finalize the case note." in text.calls[0]["system_prompt"]
+    # The plan call's own section schema, not the agent's whole-note contract.
+    assert sorted(
+        tuple(sorted(c["response_format"]["json_schema"]["schema"]["properties"]))
+        for c in text.calls
+    ) == [
+        ("assessment", "plan", "redactions", "sources"),
+        ("objective", "redactions", "sources", "subjective"),
+    ]
 
     # The finalizer output keeps its shape; case_note is the merged note.
     data = result.output["data"]
