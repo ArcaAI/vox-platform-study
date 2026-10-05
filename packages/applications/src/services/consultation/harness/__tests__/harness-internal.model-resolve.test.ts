@@ -75,7 +75,6 @@ function buildService(aiModelRepository: unknown, cls = makeCls().cls, routingPo
     aiModelRepository as never, // aiModelRepository
     undefined as never, // progressService
     undefined as never, // eventEmitter
-    undefined as never, // completionTimeout
     routingPolicies as never, // routingPolicies
   );
 }

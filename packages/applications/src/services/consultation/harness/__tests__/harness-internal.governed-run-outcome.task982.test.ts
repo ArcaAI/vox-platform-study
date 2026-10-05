@@ -1,9 +1,9 @@
 /**
- * A governed run that fails BEFORE the consultation reaches `DRAINING`.
+ * A governed run that fails BEFORE the consultation is `STOPPED`.
  *
  * ## The gap
  *
- * `failGovernedRun` acts only on `DRAINING`, which is the state a consultation reaches when the
+ * `failGovernedRun` marks only a `STOPPED` consultation, which is the state a consultation reaches when the
  * clinician has stopped recording. A trigger that refuses its payload fails the run on its FIRST
  * node — seconds after `open`, while the consultation is still `OPEN` — and nothing on any
  * surface said so: no status change (correctly: the clinician can still record and the default
@@ -12,17 +12,17 @@
  *
  * ## What changes, and what deliberately does not
  *
- * For `OPEN` / `RECORDING` / `PRIMED` the run's outcome is RECORDED and ANNOUNCED — the marker
+ * For `OPEN` / `RECORDING` / `PAUSED` the run's outcome is RECORDED and ANNOUNCED — the marker
  * gains `runStatus: 'FAILED'` with its reason, the sys-event fires, and one `workflow.failed`
  * frame goes out on the live-summary channel the client is already subscribed to. The
  * consultation's own `status` is untouched: a failed governing run is not a failed consultation
  * (owner decision), and the clinician keeps working.
  *
- * `DRAINING` keeps its existing behaviour exactly — `CLOSED_INCOMPLETE`, because there the
- * clinician has finished and there is nothing left to write the note.
+ * `STOPPED` is handled more strongly (TASK-1045: processing `FAILED`, never a close) — see
+ * `harness-internal.fail-governed-run.task946.test.ts`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConsultationEntity, ConsultationStatus, ResourceStatusType, SysEventType } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, ResourceStatusType, SysEventType } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
@@ -108,7 +108,7 @@ function markerOf(consultation: ConsultationEntity): Record<string, unknown> {
   return (consultation.metadata as Record<string, Record<string, unknown>>).governingEngine;
 }
 
-describe.each([ConsultationStatus.OPEN, ConsultationStatus.RECORDING, ConsultationStatus.PRIMED])(
+describe.each([ConsultationStatus.OPEN, ConsultationStatus.RECORDING, ConsultationStatus.PAUSED])(
   'a governed run that fails while the consultation is %s',
   (status) => {
     let consultation: ConsultationEntity;
@@ -181,8 +181,8 @@ describe.each([ConsultationStatus.OPEN, ConsultationStatus.RECORDING, Consultati
 );
 
 describe('the outcome is recorded only for a consultation a run can still be governing', () => {
-  it('leaves a SIGNED consultation entirely alone — it has already moved past this run', async () => {
-    const consultation = consultationFixture({ status: ConsultationStatus.SIGNED });
+  it('leaves an APPROVED consultation entirely alone — it has already moved past this run', async () => {
+    const consultation = consultationFixture({ status: ConsultationStatus.APPROVED });
     const { service, consultationRepository, published, eventEmitter } = build(consultation);
 
     const result = await service.failGovernedRun(CONSULTATION, failedRun);
@@ -205,7 +205,7 @@ describe('the outcome is recorded only for a consultation a run can still be gov
 
 describe('recordGovernedRunCompleted — the COMPLETED half of the same marker', () => {
   it('stamps COMPLETED with the degraded flag and the end time, leaving status alone', async () => {
-    const consultation = consultationFixture({ status: ConsultationStatus.DRAFT_PENDING_SENSORS });
+    const consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.SUMMARIZING });
     const { service, consultationRepository } = build(consultation);
 
     await service.recordGovernedRunCompleted(CONSULTATION, {
@@ -216,12 +216,13 @@ describe('recordGovernedRunCompleted — the COMPLETED half of the same marker',
     });
 
     expect(markerOf(consultation)).toMatchObject({ runStatus: 'COMPLETED', degraded: true, endedAt: '2026-09-17T09:30:00.000Z' });
-    expect(consultation.status).toBe(ConsultationStatus.DRAFT_PENDING_SENSORS);
+    expect(consultation.status).toBe(ConsultationStatus.STOPPED);
+    expect(consultation.processing).toBe(ConsultationProcessing.SUMMARIZING);
     expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
   });
 
   it('omits the degraded flag when the run had no degraded or skipped node', async () => {
-    const consultation = consultationFixture({ status: ConsultationStatus.DRAFT_PENDING_SENSORS });
+    const consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.SUMMARIZING });
     const { service } = build(consultation);
 
     await service.recordGovernedRunCompleted(CONSULTATION, { tenantId: TENANT, runId: RUN_ID, degraded: false });
@@ -231,7 +232,7 @@ describe('recordGovernedRunCompleted — the COMPLETED half of the same marker',
   });
 
   it('writes nothing when the marker names a DIFFERENT run — a stale watcher never overwrites the live one', async () => {
-    const consultation = consultationFixture({ status: ConsultationStatus.DRAFT_PENDING_SENSORS });
+    const consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.SUMMARIZING });
     const { service, consultationRepository } = build(consultation);
 
     await service.recordGovernedRunCompleted(CONSULTATION, { tenantId: TENANT, runId: 'some-other-run', degraded: false });
@@ -240,7 +241,7 @@ describe('recordGovernedRunCompleted — the COMPLETED half of the same marker',
   });
 
   it('never throws when the consultation cannot be read — the run row is already recorded', async () => {
-    const consultation = consultationFixture({ status: ConsultationStatus.DRAFT_PENDING_SENSORS });
+    const consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.SUMMARIZING });
     const { service, consultationRepository } = build(consultation);
     consultationRepository.findById.mockRejectedValue(new Error('database unavailable'));
 

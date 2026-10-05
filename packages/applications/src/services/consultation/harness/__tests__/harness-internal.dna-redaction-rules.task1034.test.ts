@@ -92,7 +92,7 @@ function build(opts: { redaction?: boolean | 'throw'; rules?: unknown; repo?: bo
     configResolver,
   ];
   // Pad every optional dependency up to the trailing DNA report repository.
-  while (positional.length < 28) positional.push(undefined);
+  while (positional.length < 27) positional.push(undefined);
   positional.push(opts.repo === false ? undefined : dnaReportRepository);
   const service = new (HarnessInternalService as unknown as new (...args: unknown[]) => HarnessInternalService)(...positional);
   return { service, promptAssemblyService, dnaReportRepository };

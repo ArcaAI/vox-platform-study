@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationProcessing, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE, HARNESS_PROGRESS_FAILED_STAGE, HARNESS_PROGRESS_TERMINAL_STAGE } from '../dto';
 import { ConsultationJobService } from '../../jobs/consultation-job.service';
@@ -183,12 +183,12 @@ const createMockConsultationRepository = () => ({
       departmentId: 'dept-1',
       doctorId: 'doctor-1',
       parentConsultationId: null,
-      // DRAINING is the realistic (and only legal) predecessor
-      // for persistDraft's DRAFT_PENDING_SENSORS/PENDING_REVIEW targets
-      // (; most tests in this file exercise persistDraft
-      // and rely on this default. `recordEscalation`'s own describe block
-      // overrides to PENDING_REVIEW (its real-world predecessor).
-      status: ConsultationStatus.DRAINING,
+      // STOPPED (transcript final, processing IDLE) is the state a draft lands on: the harness
+      // callbacks move only its PROCESSING axis (SUMMARIZING / IDLE / AWAITING_REVIEW) through
+      // the lifecycle gate, never `status`. Most tests in this file exercise persistDraft and
+      // rely on this default.
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.IDLE,
       updatedBy: null,
       // F-10: write-back paths reject a non-ENABLED consultation. Default
       // fixture is ENABLED (live) so every pre-existing test is unaffected;
@@ -349,6 +349,8 @@ describe('HarnessInternalService', () => {
   let assuranceService: ReturnType<typeof createMockHarnessAssuranceService>;
   let contextItemVersionRepository: ReturnType<typeof createMockContextItemVersionRepository>;
   let secretsService: ReturnType<typeof createMockSecretsService>;
+  // The lifecycle gate the harness callbacks move the processing axis through.
+  let lifecycleGate: { setProcessing: ReturnType<typeof vi.fn> };
 
   // (re)build the service with the warm-start flag in a
   // known state. Default OFF mirrors prod; warm-start tests call buildService(true).
@@ -403,6 +405,11 @@ describe('HarnessInternalService', () => {
       undefined, // visitTypes
       undefined, // aiModelRepository
       progressService as any,
+      undefined, // eventEmitter
+      undefined, // routingPolicies
+      undefined, // effectiveSettings
+      undefined, // dnaReportRepository
+      lifecycleGate as any,
     );
   };
 
@@ -418,6 +425,7 @@ describe('HarnessInternalService', () => {
     harnessAuditService = createMockHarnessAuditService();
     jobService = createMockJobService();
     progressService = createMockProgressService();
+    lifecycleGate = { setProcessing: vi.fn().mockResolvedValue(true) };
     highlightRepository = createMockHighlightRepository();
     assuranceService = createMockHarnessAssuranceService();
     contextItemVersionRepository = createMockContextItemVersionRepository();
@@ -1131,19 +1139,7 @@ describe('HarnessInternalService', () => {
       expect(contextItemRepository.create.mock.calls[0][0]).toBe(entityArg);
     });
 
-    // TASK-1001 wave 6 — persisting the draft is the moment the consultation becomes READY TO
-    // COMPLETE, whichever engine wrote it; the gateway starts the completion timeout here.
-    it('starts the completion timeout for the consultation once the draft is persisted', async () => {
-      const completionTimeout = { schedule: vi.fn().mockResolvedValue(null), cancel: vi.fn() };
-      (service as unknown as { completionTimeout: unknown }).completionTimeout = completionTimeout;
-
-      await service.persistDraft('consultation-1', draftBody());
-
-      expect(completionTimeout.schedule).toHaveBeenCalledWith('tenant-1', 'consultation-1');
-      expect(completionTimeout.schedule.mock.invocationCallOrder[0]).toBeGreaterThan(contextItemRepository.create.mock.invocationCallOrder[0]);
-    });
-
-    it('creates RAW_SUMMARY, persists SummaryMeta with scores+citations, sets PENDING_REVIEW, and returns contextItemId', async () => {
+    it('creates RAW_SUMMARY, persists SummaryMeta with scores+citations, sets processing IDLE (awaiting the clinician), and returns contextItemId', async () => {
       const result = await service.persistDraft('consultation-1', draftBody());
 
       expect(cls.run).toHaveBeenCalledTimes(1);
@@ -1169,12 +1165,9 @@ describe('HarnessInternalService', () => {
         }),
       );
 
-      // status -> PENDING_REVIEW
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
-        expect.any(Number),
-      );
+      // processing -> IDLE through the lifecycle gate; the consultation row (status, `_version`) is not written
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
 
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
     });
@@ -1415,14 +1408,14 @@ describe('HarnessInternalService', () => {
       delete (body as any).jobId;
       const result = await service.persistDraft('consultation-1', body);
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).toHaveBeenCalled();
     });
 
     it('still persists the draft when the best-effort SSE notify throws', async () => {
       jobService.notifyProgress.mockRejectedValue(new Error('redis down'));
       const result = await service.persistDraft('consultation-1', draftBody());
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).toHaveBeenCalled();
     });
 
     it('throws BadRequestException when tenantId is missing', async () => {
@@ -1532,6 +1525,7 @@ describe('HarnessInternalService', () => {
         tenantId: 'tenant-1',
         doctorId: 'doctor-1',
         status,
+        processing: ConsultationProcessing.IDLE,
         resourceStatus: ResourceStatusType.ENABLED,
       });
 
@@ -1553,6 +1547,8 @@ describe('HarnessInternalService', () => {
 
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       expect(consultationRepository.update).not.toHaveBeenCalled();
+      // …and no processing report: only a STOPPED consultation has a document pipeline to report on.
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     });
 
     it('still writes the GENERATE WORM audit for the un-advanced consultation', async () => {
@@ -1564,16 +1560,13 @@ describe('HarnessInternalService', () => {
       expect(actions).toContain(HarnessAuditAction.GENERATE);
     });
 
-    it('applies the transition normally from a LEGAL predecessor (DRAINING → PENDING_REVIEW)', async () => {
-      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.DRAINING));
+    it('reports processing normally on a STOPPED consultation (the note now waits for the clinician)', async () => {
+      consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.STOPPED));
 
       await service.persistDraft('consultation-1', draftBody());
 
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
     it('skips (does not throw) from RECORDING too — the draft is kept and the ordering is logged, not lost', async () => {
@@ -1581,49 +1574,46 @@ describe('HarnessInternalService', () => {
 
       await expect(service.persistDraft('consultation-1', draftBody())).resolves.toEqual({ contextItemId: 'ctx-draft-1' });
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     });
 
-    it('EARLY phase is guarded the same way (OPEN → DRAFT_PENDING_SENSORS is illegal too)', async () => {
+    it('EARLY phase is guarded the same way (an OPEN consultation gets no SUMMARIZING report)', async () => {
       consultationRepository.findById.mockResolvedValue(inState(ConsultationStatus.OPEN));
 
       await expect(service.persistDraft('consultation-1', { ...draftBody(), phase: HARNESS_DRAFT_PHASE.EARLY } as any)).resolves.toEqual({
         contextItemId: 'ctx-draft-1',
       });
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     });
   });
 
   // =========================================================================
-  // J5-F7 (a) — a state-machine violation that DOES reach `transitionTo` on this
-  // internal surface must leave the gateway as a NAMED 409, never a 500.
-  //
-  // 500 is what made the Temporal retry loop pathological: the activity cannot tell an
-  // infrastructure blip from a permanent state conflict, so it burned its whole budget on an
-  // answer that could not change. `ConsultationService.applyTransition` already established
-  // the mapping (`BusinessException` → `ConflictException`) at the one call site IT controls;
-  // this is the same mapping at the harness-internal call sites, for the same reason — and
-  // deliberately still NOT a global reclassification of `BusinessException`.
+  // J5-F7 (a) pinned that a state-machine violation on this internal surface left the gateway
+  // as a NAMED 409, never a 500 (a 500 made the Temporal retry loop burn its whole budget). Since
+  // TASK-1045 the harness surface never writes `status` at all — it moves only the processing
+  // axis through the lifecycle gate — so there is no transition left to refuse. What stays
+  // pinned is the outcome the old 409 protected: a terminal abandon on a stopped consultation is
+  // a success that leaves it open, never an error the activity retries.
   // =========================================================================
-  describe('a state-machine violation on the harness surface is a 409, not a 500', () => {
-    // TASK-1001 wave 5 (D-6): this used to pin a 409 for a terminal abandon on a DRAINING
-    // consultation (DRAINING → TIMED_OUT is illegal). The terminal abandon now CLOSES a DRAINING
-    // consultation (DRAINING → CLOSED_INCOMPLETE is a matrix row) and answers every state it does
-    // not close with a logged no-op success, so that route no longer has a 409 to pin. The full
-    // per-state contract lives in `harness-internal.gate-abandon-close.task1001-wave5.test.ts`.
-    it('recordEscalation closes a DRAINING consultation on a terminal abandon instead of answering 409', async () => {
-      const draining = consultationFixture({
+  describe('a terminal gate abandon on the harness surface is a success, never a retried error', () => {
+    it('recordEscalation flags a STOPPED consultation AWAITING_REVIEW on a terminal abandon — it does not close it', async () => {
+      const stopped = consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         doctorId: 'doctor-1',
-        status: ConsultationStatus.DRAINING,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.IDLE,
         resourceStatus: ResourceStatusType.ENABLED,
       });
-      consultationRepository.findById.mockResolvedValue(draining);
+      consultationRepository.findById.mockResolvedValue(stopped);
 
       await expect(
         service.recordEscalation('consultation-1', { tenantId: 'tenant-1', reason: 'gate_sla_abandoned', jobId: 'harness-doc-1' } as any),
       ).resolves.toEqual({ recorded: true });
-      expect(draining.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+      expect(stopped.status).toBe(ConsultationStatus.STOPPED);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.AWAITING_REVIEW, 'gate_sla_abandoned');
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
   });
 
@@ -1679,13 +1669,10 @@ describe('HarnessInternalService', () => {
       phase: HARNESS_DRAFT_PHASE.EARLY,
     });
 
-    it('sets status DRAFT_PENDING_SENSORS (readable, not yet signable)', async () => {
+    it('sets processing SUMMARIZING (readable, not yet approvable) — no status write', async () => {
       await service.persistDraft('consultation-1', earlyBody());
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.DRAFT_PENDING_SENSORS }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.SUMMARIZING);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
     it('persists computational scores but WITHHOLDS the inferential verdict (gateDecision/assuranceCompletedAt/ragTriad/citations/guardrails NULL)', async () => {
@@ -1773,11 +1760,12 @@ describe('HarnessInternalService', () => {
     });
 
     beforeEach(() => {
-      // At finalize time the consultation sits in DRAFT_PENDING_SENSORS.
+      // At finalize time the consultation is STOPPED with the early draft SUMMARIZING.
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.SUMMARIZING,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -1829,13 +1817,10 @@ describe('HarnessInternalService', () => {
       expect(updated.assuranceCompletedAt).toBeInstanceOf(Date);
     });
 
-    it('flips DRAFT_PENDING_SENSORS -> PENDING_REVIEW', async () => {
+    it('moves processing SUMMARIZING -> IDLE (the assured note waits for the clinician) — no status write', async () => {
       await service.finalizeAssurance('consultation-1', finalizeBody());
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
     it('records the DEFERRED SENSOR_RUN WORM audit (verdict + guardrails)', async () => {
@@ -1850,15 +1835,17 @@ describe('HarnessInternalService', () => {
       );
     });
 
-    it('is idempotent on the lifecycle flip (no status write when already PENDING_REVIEW)', async () => {
+    it('is idempotent on the processing move (nothing written when processing is already past SUMMARIZING)', async () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.PENDING_REVIEW,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.IDLE,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
       await service.finalizeAssurance('consultation-1', finalizeBody());
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       // …but it still re-stamps the verdict (safe to repeat).
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
@@ -1874,6 +1861,7 @@ describe('HarnessInternalService', () => {
       summaryMetaRepository.findByContextItem.mockResolvedValue(null);
       await expect(service.finalizeAssurance('consultation-1', finalizeBody())).rejects.toThrow(BadRequestException);
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when tenantId is missing', async () => {
@@ -1885,8 +1873,8 @@ describe('HarnessInternalService', () => {
     // -----------------------------------------------------------------
     // Q2b — late adverse verdict AFTER an early sign (note immutable).
     // If the clinician early-signed (Q2a) before assurance landed, the
-    // consultation is already SIGNED at finalize time. The signed note
-    // STANDS (no status regression); an adverse verdict (FLAG/REGEN) is
+    // consultation is already APPROVED at finalize time. The signed note
+    // STANDS (no status regression, no processing move); an adverse verdict (FLAG/REGEN) is
     // recorded as a POST_SIGN_FLAG WORM annotation for amendment/follow-up.
     // -----------------------------------------------------------------
 
@@ -1894,7 +1882,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.SIGNED,
+        status: ConsultationStatus.APPROVED,
+        processing: ConsultationProcessing.IDLE,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -1909,6 +1898,7 @@ describe('HarnessInternalService', () => {
       expect(actions).toContain(HarnessAuditAction.POST_SIGN_FLAG);
       // Note stands — the signed consultation is NEVER regressed.
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
       // The verdict is still backfilled onto the meta (audit completeness).
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
     });
@@ -1917,7 +1907,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.SIGNED,
+        status: ConsultationStatus.APPROVED,
+        processing: ConsultationProcessing.IDLE,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -1932,7 +1923,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.SIGNED,
+        status: ConsultationStatus.APPROVED,
+        processing: ConsultationProcessing.IDLE,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -1945,8 +1937,8 @@ describe('HarnessInternalService', () => {
       expect(actions).toContain(HarnessAuditAction.SENSOR_RUN);
     });
 
-    it('does NOT record POST_SIGN_FLAG on the normal DRAFT_PENDING_SENSORS path even with a FLAG verdict', async () => {
-      // Default beforeEach status is DRAFT_PENDING_SENSORS (not signed yet) —
+    it('does NOT record POST_SIGN_FLAG on the normal SUMMARIZING path even with a FLAG verdict', async () => {
+      // Default beforeEach is STOPPED + SUMMARIZING (not approved yet) —
       // a FLAG here surfaces through the normal verdict, not the post-sign path.
       await service.finalizeAssurance('consultation-1', {
         ...finalizeBody(),
@@ -1956,11 +1948,7 @@ describe('HarnessInternalService', () => {
 
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
       expect(actions).not.toContain(HarnessAuditAction.POST_SIGN_FLAG);
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
     });
 
     // -----------------------------------------------------------------
@@ -2007,7 +1995,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.SIGNED,
+        status: ConsultationStatus.APPROVED,
+        processing: ConsultationProcessing.IDLE,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -2023,18 +2012,14 @@ describe('HarnessInternalService', () => {
       expect(payload.safetyFlag).toBe(true);
     });
 
-    it('still finalizes (verdict backfilled + status flipped) when the assurance publish throws — best-effort', async () => {
+    it('still finalizes (verdict backfilled + processing moved) when the assurance publish throws — best-effort', async () => {
       assuranceService.publishComplete.mockRejectedValue(new Error('redis down'));
 
       await expect(service.finalizeAssurance('consultation-1', finalizeBody())).resolves.toEqual(
         expect.objectContaining({ recorded: true, contextItemId: 'ctx-draft-1' }),
       );
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.IDLE);
     });
   });
 
@@ -2108,17 +2093,16 @@ describe('HarnessInternalService', () => {
     });
 
     beforeEach(() => {
-      // the gate SLA escalation's real-world predecessor is
-      // PENDING_REVIEW (the state a gate-queue item sits in while awaiting
-      // clinician sign-off); the file-level default is DRAINING (persistDraft's
-      // predecessor). `PENDING_REVIEW → TIMED_OUT` is the only legal target
-      // for the terminal `gate_sla_abandoned` reason
+      // the gate SLA escalation's real-world predecessor is a STOPPED
+      // consultation whose written note waits for the clinician (processing
+      // IDLE). An escalation flags it AWAITING_REVIEW — it never closes it.
       consultationRepository.findById.mockResolvedValue(
         consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           doctorId: 'doctor-1',
-          status: ConsultationStatus.PENDING_REVIEW,
+          status: ConsultationStatus.STOPPED,
+          processing: ConsultationProcessing.IDLE,
           resourceStatus: ResourceStatusType.ENABLED,
         }),
       );
@@ -2146,32 +2130,21 @@ describe('HarnessInternalService', () => {
     it('gate_sla_abandoned → GATE_ABANDONED (terminal) WORM append, returns { recorded: true }', async () => {
       const result = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
 
-      // the terminal abandon ALSO drives PENDING_REVIEW -> TIMED_OUT,
-      // which appends a second WORM row (SESSION_TIMED_OUT) alongside the
-      // pre-existing GATE_ABANDONED event — and, since TASK-1001 wave 5 (D-6),
-      // closes the consultation, which appends a third (SESSION_CLOSED_INCOMPLETE).
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(3);
+      // The terminal abandon no longer drives a session transition (no TIMED_OUT
+      // leg, no close — TASK-1045), so GATE_ABANDONED is the only WORM row.
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
-      expect(actions).toContain(HarnessAuditAction.GATE_ABANDONED);
-      expect(actions).toContain(HarnessAuditAction.SESSION_TIMED_OUT);
-      expect(actions).toContain(HarnessAuditAction.SESSION_CLOSED_INCOMPLETE);
+      expect(actions).toEqual([HarnessAuditAction.GATE_ABANDONED]);
       expect(result).toEqual({ recorded: true });
     });
 
-    it('gate_sla_abandoned transitions PENDING_REVIEW -> TIMED_OUT -> CLOSED_INCOMPLETE, persisted via ONE updateWithVersion', async () => {
-      // TASK-1001 wave 5 (D-6): the TIMED_OUT leg is kept and the consultation is then closed
-      // unsigned; both edges land in one compare-and-set of the final state.
+    it('gate_sla_abandoned flags processing AWAITING_REVIEW through the lifecycle gate and never closes (no status write)', async () => {
       await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
 
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
-        'consultation-1',
-        expect.objectContaining({ status: ConsultationStatus.CLOSED_INCOMPLETE }),
-        expect.any(Number),
-      );
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledWith('consultation-1', ConsultationProcessing.AWAITING_REVIEW, 'gate_sla_abandoned');
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('gate_sla_breached (non-terminal) writes no status and no SESSION_TIMED_OUT WORM row', async () => {
+    it('gate_sla_breached (non-terminal) writes no status and only its own WORM row', async () => {
       await service.recordEscalation('consultation-1', escBody('gate_sla_breached'));
 
       expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
@@ -2442,25 +2415,25 @@ describe('HarnessInternalService', () => {
     const escBody = (reason = 'gate_sla_breached') => ({ tenantId: 'tenant-1', reason, jobId: 'harness-doc-1' });
 
     it('recordEscalation: SAME key twice → ONE WORM append + identical replay', async () => {
-      // gate_sla_abandoned's real predecessor is PENDING_REVIEW
-      // (the file-level default, DRAINING, is persistDraft's predecessor).
+      // A terminal escalation's real predecessor: a STOPPED consultation whose note waits.
       consultationRepository.findById.mockResolvedValue(
-        consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', doctorId: 'doctor-1', status: ConsultationStatus.PENDING_REVIEW }),
+        consultationFixture({
+          id: 'consultation-1',
+          tenantId: 'tenant-1',
+          doctorId: 'doctor-1',
+          status: ConsultationStatus.STOPPED,
+          processing: ConsultationProcessing.IDLE,
+        }),
       );
       const first = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
       const second = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
 
       // The idempotency cache replays the whole prior response, so the
-      // underlying work — including every WORM append (GATE_ABANDONED +
-      // SESSION_TIMED_OUT + SESSION_CLOSED_INCOMPLETE, the last since TASK-1001
-      // wave 5 D-6) — runs exactly once despite two calls.
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(3);
+      // underlying work — the GATE_ABANDONED WORM append and the AWAITING_REVIEW
+      // flag — runs exactly once despite two calls.
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
-      expect(actions).toEqual([
-        HarnessAuditAction.GATE_ABANDONED,
-        HarnessAuditAction.SESSION_TIMED_OUT,
-        HarnessAuditAction.SESSION_CLOSED_INCOMPLETE,
-      ]);
+      expect(actions).toEqual([HarnessAuditAction.GATE_ABANDONED]);
+      expect(lifecycleGate.setProcessing).toHaveBeenCalledTimes(1);
       expect(second).toEqual(first);
       expect(second).toEqual({ recorded: true });
     });
@@ -2615,7 +2588,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.SUMMARIZING,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -2637,7 +2611,8 @@ describe('HarnessInternalService', () => {
       consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.SUMMARIZING,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       }));
@@ -2691,7 +2666,8 @@ describe('HarnessInternalService', () => {
       departmentId: 'dept-1',
       doctorId: 'doctor-1',
       parentConsultationId: null,
-      status: ConsultationStatus.PENDING_REVIEW,
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.IDLE,
       updatedBy: null,
       resourceStatus: ResourceStatusType.DELETED,
     });
@@ -2957,7 +2933,8 @@ describe('HarnessInternalService', () => {
       consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.DRAFT_PENDING_SENSORS,
+        status: ConsultationStatus.STOPPED,
+        processing: ConsultationProcessing.SUMMARIZING,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
       });
