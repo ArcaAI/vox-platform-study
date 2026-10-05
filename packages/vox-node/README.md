@@ -343,7 +343,7 @@ OCC-guarded write in this SDK.
 - **`consultations.chain(id)`** reads the chain the visit belongs to (`GET consultations/:id/chain`).
 - **`consultations.waitForFinalNote(id, { since, timeoutMs?, pollIntervalMs?, signal? })`** resolves
   with the latest summary only once it is NEWER than `since` (pass the moment you stopped — the
-  `updatedAt` of the `recording.stop` response) and the status is note-ready. A stale note from an
+  `updatedAt` of the `recording.stop` response) and the note is ready (`isNoteReady`). A stale note from an
   earlier recording is never returned. It rejects with `FinalNoteUnavailableError` when the
   consultation closes `CLOSED_INCOMPLETE` with no fresh note, and `FinalNoteTimeoutError` on
   timeout.
@@ -353,14 +353,24 @@ const stopped = await hope.consultations.recording.stop(id);
 const note = await hope.consultations.waitForFinalNote(id, { since: stopped.updatedAt });
 ```
 
+### Citation labels
+
+A generated note carries inline source labels (`[S7 E1]`, `[A2]`, `[R1]`). HOPE keeps them in the stored
+note; text that leaves HOPE for an EMR or export must not. `stripCitationLabels(text)` removes them
+(line breaks and every other bracket are kept byte for byte) and `citationLabelsOf(text)` lists their
+inner text in order. Both are implemented locally (this package has no runtime dependencies) and follow
+the shared `tests/contracts/citation-labels.fixture.json`.
+
 ### Consultation lifecycle — the `ConsultationHandle`
 
 `hope.consultations.open(request)` resolves a `ConsultationHandle`; `hope.consultations.attach(id)`
 builds one for a consultation you did not open. A consultation has seven statuses — `OPEN`,
 `RECORDING`, `PAUSED`, `STOPPED`, `APPROVED`, `CLOSED_COMPLETE`, `CLOSED_INCOMPLETE` — and an
 orthogonal `processing` marker (`IDLE`, `FINALIZING_TRANSCRIPT`, `SUMMARIZING`,
-`PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED`). "The note is ready to review" is
-`status === 'STOPPED'` with `processing === 'AWAITING_REVIEW'`. A closed consultation carries
+`PROCESSING_ATTACHMENT`, `AWAITING_REVIEW`, `FAILED`). "The note is ready" is
+`isNoteReady({ status, processing, processingReason })`: `STOPPED` with `processing === 'IDLE'` and
+`processingReason === 'NOTE_READY'`, or `AWAITING_REVIEW` when a human must look first. Never infer it
+from `status` alone. A closed consultation carries
 `closedReason` (`AUTO`, `MANUAL`, `APPROVED`).
 
 ```ts

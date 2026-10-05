@@ -68,7 +68,7 @@ export interface WaitForFinalNoteOptions {
  * Statuses at which the finalize run has produced a note the caller may read.
  *
  * @deprecated Part of the pre-lifecycle twelve-value vocabulary. Read `status` and `processing`
- * (`STOPPED` + `AWAITING_REVIEW`) from a {@link ConsultationHandle}, or watch its `status` events.
+ * (`STOPPED` + `IDLE` with `NOTE_READY`, or `AWAITING_REVIEW` when a human must look) from a {@link ConsultationHandle}, or watch its `status` events.
  */
 const NOTE_READY_STATUSES: ReadonlySet<ConsultationStatus> = new Set<ConsultationStatus>([
   'PENDING_REVIEW',
@@ -366,7 +366,7 @@ export class ConsultationsResource {
    *
    * @deprecated Use {@link ConsultationHandle.stop} (it waits for the final transcript) with
    * {@link ConsultationHandle.generateSummary}`({ wait: true })`, or watch the handle's `status`
-   * events for `processing` to reach `AWAITING_REVIEW`.
+   * events for `isNoteReady` (IDLE with `NOTE_READY`, or `AWAITING_REVIEW` when a human must look).
    */
   async waitForFinalNote(id: string, options: WaitForFinalNoteOptions): Promise<ConsultationSummaryResponse> {
     const sinceMs = parseSince(options.since);

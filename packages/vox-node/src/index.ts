@@ -210,6 +210,9 @@ export type {
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
+/** Note-ready predicate and the citation-label helpers (labels are stripped before text leaves HOPE for an EMR). */
+export { NOTE_READY_REASON, isNoteReady, CITATION_LABEL_PATTERN, citationLabelsOf, stripCitationLabels } from './types';
+
 /** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox`, and ALaaS (TASK-1004). */
 export type {
   LanguageModeId,

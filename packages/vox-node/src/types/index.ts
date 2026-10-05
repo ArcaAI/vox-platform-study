@@ -201,3 +201,5 @@ export type {
   StopCaptureOptions,
   StopResult,
 } from './consultation-lifecycle';
+export { NOTE_READY_REASON, isNoteReady } from './consultation-lifecycle';
+export { CITATION_LABEL_PATTERN, citationLabelsOf, stripCitationLabels } from './citation-labels';

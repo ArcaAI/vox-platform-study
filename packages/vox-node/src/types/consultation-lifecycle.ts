@@ -227,3 +227,22 @@ export interface CaptureHandle {
 }
 
 export type CaptureStateName = 'capturing' | 'paused' | 'pause_expired' | 'stopped';
+
+/** The `processingReason` a finished, ready-to-read note carries while `processing` is IDLE. */
+export const NOTE_READY_REASON = 'NOTE_READY';
+
+/**
+ * A note is ready to read when the consultation is STOPPED and either processing is IDLE with the
+ * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone.
+ */
+export function isNoteReady(state: {
+  status: string;
+  processing: string;
+  processingReason?: string | null;
+}): boolean {
+  return (
+    state.status === 'STOPPED' &&
+    ((state.processing === 'IDLE' && state.processingReason === NOTE_READY_REASON) ||
+      state.processing === 'AWAITING_REVIEW')
+  );
+}

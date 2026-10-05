@@ -8,7 +8,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CaptureState, StopResult } from '@arcaai/types';
+import { isNoteReady } from '@arcaai/types';
+import type { CaptureState, ConsultationActivityPage, EncounterRecap, StopResult } from '@arcaai/types';
 import { useAgenticStore } from '../store';
 import { useArcaSession } from './useArcaSession';
 import { useArcaAudio } from './useArcaAudio';
@@ -80,6 +81,10 @@ export interface UseConsultationReturn {
   consultation: Consultation | null;
   status: ConsultationLifecycleStatus;
   processing: ConsultationProcessingState;
+  /** Why `processing` is what it is (e.g. `NOTE_READY` once the note is finished); null when none is reported. */
+  processingReason: string | null;
+  /** STOPPED with the note finished (IDLE + `NOTE_READY`) or waiting on a human (AWAITING_REVIEW). */
+  noteReady: boolean;
   isCapturing: boolean;
   level: number;
   segments: TranscriptSegment[];
@@ -95,14 +100,16 @@ export interface UseConsultationReturn {
   approve: (options?: { overrideSafetyFlag?: boolean; clinicianUserId?: string }) => Promise<Consultation>;
   close: () => Promise<Consultation>;
   reopen: (options?: { reason?: string }) => Promise<Consultation>;
-  history: (query?: Record<string, string | number | undefined>) => Promise<unknown>;
-  recap: (encounterSeq: number) => Promise<unknown>;
+  history: (query?: Record<string, string | number | undefined>) => Promise<ConsultationActivityPage>;
+  /** The display-only encounter recap (`hope.encounter_recap.v2`). */
+  recap: (encounterSeq: number) => Promise<EncounterRecap>;
 }
 
 interface LifecycleOverlay {
   consultationId: string;
   status: ConsultationLifecycleStatus;
   processing: ConsultationProcessingState;
+  processingReason: string | null;
   version?: number;
 }
 
@@ -123,6 +130,24 @@ function httpStatusOf(error: unknown): number | undefined {
   return e?.status ?? e?.context?.status;
 }
 
+/**
+ * Seconds to wait from a `Retry-After` value (delta-seconds or an HTTP date); undefined when absent
+ * or unreadable. Read off the error's `context.retryAfter` / `retryAfter` / `headers`.
+ */
+export function retryAfterMs(error: unknown, now: number = Date.now()): number | undefined {
+  const e = error as {
+    retryAfter?: unknown;
+    context?: { retryAfter?: unknown };
+    headers?: { get?: (name: string) => string | null };
+  } | null;
+  const raw = e?.context?.retryAfter ?? e?.retryAfter ?? e?.headers?.get?.('retry-after');
+  if (raw === undefined || raw === null) return undefined;
+  const text = String(raw).trim();
+  if (/^\d+(\.\d+)?$/.test(text)) return Math.round(Number(text) * 1000);
+  const at = Date.parse(text);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now);
+}
+
 /** Retry only what is worth retrying: network failures, 5xx and 429 — never any other 4xx. */
 function isRetryable(error: unknown): boolean {
   if ((error as { name?: string } | null)?.name === 'AbortError') return false;
@@ -138,8 +163,10 @@ async function withRetry<T>(work: () => Promise<T>, maxRetries: number, signal?:
       return await work();
     } catch (error) {
       if (signal?.aborted || attempt >= maxRetries || !isRetryable(error)) throw error;
+      const status = httpStatusOf(error);
+      const hinted = status === 429 || status === 503 ? retryAfterMs(error) : undefined;
       const base = Math.min(250 * 2 ** attempt, 4000);
-      await sleep(base / 2 + Math.random() * (base / 2));
+      await sleep(hinted ?? base / 2 + Math.random() * (base / 2));
       attempt += 1;
     }
   }
@@ -191,10 +218,17 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
     setOverlay((current) => (current && current.consultationId !== consultationId ? null : current));
   }, [consultationId]);
 
-  const base = useMemo(() => toLifecycleState(consultation?.status as string | undefined), [consultation?.status]);
+  const consultationReason = (consultation as { processingReason?: string | null } | null)?.processingReason;
+  const consultationProcessing = (consultation as { processing?: string } | null)?.processing as ConsultationProcessingState | undefined;
+  const base = useMemo(
+    () => toLifecycleState(consultation?.status as string | undefined, consultationProcessing, consultationReason),
+    [consultation?.status, consultationProcessing, consultationReason],
+  );
   const live = overlay && overlay.consultationId === consultationId ? overlay : null;
   const status = live?.status ?? base.status;
   const processing = live?.processing ?? base.processing;
+  const processingReason = (live ? live.processingReason : base.processingReason) ?? null;
+  const noteReady = isNoteReady({ status, processing, processingReason });
 
   const requireContext = useCallback((): { apiClient: NonNullable<typeof store.apiClient>; id: string; version?: number } => {
     const apiClient = store.apiClient;
@@ -210,9 +244,9 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
     return pm?.getTranscriptionPipeline?.()?.getStreamingSessionManager?.() ?? null;
   }, [store]);
 
-  const remember = useCallback((id: string, next: { status?: string; processing?: string; version?: number }) => {
-    const state = toLifecycleState(next.status, next.processing as ConsultationProcessingState | undefined);
-    setOverlay({ consultationId: id, status: state.status, processing: state.processing, version: next.version });
+  const remember = useCallback((id: string, next: { status?: string; processing?: string; processingReason?: string | null; version?: number }) => {
+    const state = toLifecycleState(next.status, next.processing as ConsultationProcessingState | undefined, next.processingReason ?? null);
+    setOverlay({ consultationId: id, status: state.status, processing: state.processing, processingReason: state.processingReason ?? null, version: next.version });
   }, []);
 
   /** POST a lifecycle command; failures land in `error` and rethrow. */
@@ -431,7 +465,7 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       const params = new URLSearchParams();
       for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) params.set(k, String(v));
       const qs = params.toString();
-      return apiClient.get(`${CONSULTATION_ENDPOINTS.HISTORY(id)}${qs ? `?${qs}` : ''}`);
+      return apiClient.get<ConsultationActivityPage>(`${CONSULTATION_ENDPOINTS.HISTORY(id)}${qs ? `?${qs}` : ''}`);
     },
     [requireContext],
   );
@@ -439,7 +473,7 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
   const recap = useCallback(
     (encounterSeq: number) => {
       const { apiClient, id } = requireContext();
-      return apiClient.get(CONSULTATION_ENDPOINTS.RECAP(id, encounterSeq));
+      return apiClient.get<EncounterRecap>(CONSULTATION_ENDPOINTS.RECAP(id, encounterSeq));
     },
     [requireContext],
   );
@@ -449,6 +483,8 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       consultation,
       status,
       processing,
+      processingReason,
+      noteReady,
       isCapturing: audio.isCapturing,
       level: audio.level,
       segments: audio.transcriptSegments,
@@ -469,6 +505,8 @@ export function useConsultation(opts: UseConsultationOptions = {}): UseConsultat
       consultation,
       status,
       processing,
+      processingReason,
+      noteReady,
       audio.isCapturing,
       audio.level,
       audio.transcriptSegments,

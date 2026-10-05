@@ -240,7 +240,7 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
           meta={
             <>
               <span className="font-mono text-xs break-all">{consultationId}</span>
-              {first ? <ConsultationStatusBadge status={first.status} processing={first.processing} /> : null}
+              {first ? <ConsultationStatusBadge status={first.status} processing={first.processing} processingReason={first.processingReason} /> : null}
             </>
           }
           actions={

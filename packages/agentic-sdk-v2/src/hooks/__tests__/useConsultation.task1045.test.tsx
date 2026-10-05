@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useConsultation } from '../useConsultation';
+import { useConsultation, retryAfterMs } from '../useConsultation';
 
 const apiClient = {
   get: vi.fn(),
@@ -146,6 +146,61 @@ describe('useConsultation', () => {
     session.consultation = { id: 'c1', status: 'PENDING_REVIEW', version: 4 };
     const { result } = renderHook(() => useConsultation());
     expect(result.current.status).toBe('STOPPED');
-    expect(result.current.processing).toBe('AWAITING_REVIEW');
+    expect(result.current.processing).toBe('IDLE');
+    expect(result.current.processingReason).toBe('NOTE_READY');
+    expect(result.current.noteReady).toBe(true);
+  });
+
+  it('noteReady follows the row: STOPPED + IDLE + NOTE_READY, or AWAITING_REVIEW; not a bare STOPPED', () => {
+    session.consultation = { id: 'c1', status: 'STOPPED', processing: 'IDLE', processingReason: 'NOTE_READY', version: 4 };
+    expect(renderHook(() => useConsultation()).result.current.noteReady).toBe(true);
+    session.consultation = { id: 'c1', status: 'STOPPED', processing: 'AWAITING_REVIEW', version: 4 };
+    expect(renderHook(() => useConsultation()).result.current.noteReady).toBe(true);
+    session.consultation = { id: 'c1', status: 'STOPPED', processing: 'SUMMARIZING', version: 4 };
+    expect(renderHook(() => useConsultation()).result.current.noteReady).toBe(false);
+    session.consultation = { id: 'c1', status: 'STOPPED', version: 4 };
+    expect(renderHook(() => useConsultation()).result.current.noteReady).toBe(false);
+  });
+
+  it('history() and recap() return the typed pages', async () => {
+    apiClient.get.mockResolvedValueOnce({ consultationId: 'c1', items: [], hasMore: false, nextCursor: null });
+    apiClient.get.mockResolvedValueOnce({ encounterSeq: 2, text: 'recap', sections: [] });
+    const { result } = renderHook(() => useConsultation());
+    const page = await result.current.history({ limit: 5 });
+    const recap = await result.current.recap(2);
+    expect(page.hasMore).toBe(false);
+    expect(recap.encounterSeq).toBe(2);
+  });
+
+  it('sendAttachment waits for Retry-After (seconds) on a 429 before retrying', async () => {
+    vi.useFakeTimers();
+    try {
+      const err = Object.assign(new Error('slow down'), { status: 429, context: { status: 429, retryAfter: '3' } });
+      apiClient.postWithHeaders
+        .mockRejectedValueOnce(err)
+        .mockResolvedValueOnce({ attachmentId: 'a1', uploadUrl: null, uploadHeaders: {} });
+      apiClient.postFormData.mockResolvedValue({ status: 'READY', contextItemId: 'ci', mediaId: 'm' });
+      const { result } = renderHook(() => useConsultation());
+      const pending = result.current.sendAttachment({ kind: 'document', data: new Uint8Array([1]), mime: 'text/plain', sha256: 'x' });
+      await vi.advanceTimersByTimeAsync(2900);
+      expect(apiClient.postWithHeaders).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(pending).resolves.toMatchObject({ attachmentId: 'a1', status: 'READY' });
+      expect(apiClient.postWithHeaders).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('retryAfterMs', () => {
+  it('reads delta-seconds and HTTP dates, and ignores junk', () => {
+    expect(retryAfterMs({ context: { retryAfter: '2' } })).toBe(2000);
+    expect(retryAfterMs({ retryAfter: 1.5 })).toBe(1500);
+    const now = Date.parse('2026-10-05T00:00:00Z');
+    expect(retryAfterMs({ context: { retryAfter: 'Mon, 05 Oct 2026 00:00:07 GMT' } }, now)).toBe(7000);
+    expect(retryAfterMs({ headers: { get: () => '4' } })).toBe(4000);
+    expect(retryAfterMs({ context: { retryAfter: 'soon' } })).toBeUndefined();
+    expect(retryAfterMs(new Error('x'))).toBeUndefined();
   });
 });

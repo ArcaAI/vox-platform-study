@@ -44,9 +44,29 @@ export type LegacyConsultationStatus =
   | 'CLOSED_COMPLETE'
   | 'CLOSED_INCOMPLETE';
 
+/** The `processingReason` a finished, ready-to-read note carries while `processing` is IDLE. */
+export const NOTE_READY_REASON = 'NOTE_READY';
+
 export interface NormalizedConsultationState {
   status: ConsultationStatus;
   processing: ConsultationProcessing;
+  processingReason?: string | null;
+}
+
+/**
+ * A note is ready to read when the consultation is STOPPED and either processing is IDLE with the
+ * NOTE_READY reason, or AWAITING_REVIEW (a human must look). Never infer it from `status` alone.
+ */
+export function isNoteReady(state: {
+  status: string;
+  processing: string;
+  processingReason?: string | null;
+}): boolean {
+  return (
+    state.status === 'STOPPED' &&
+    ((state.processing === 'IDLE' && state.processingReason === NOTE_READY_REASON) ||
+      state.processing === 'AWAITING_REVIEW')
+  );
 }
 
 /** Legacy value -> the status and the processing marker it implied. */
@@ -59,7 +79,7 @@ export const LEGACY_STATUS_MAP: Readonly<
   RECORDING: { status: 'RECORDING', processing: 'IDLE' },
   DRAINING: { status: 'STOPPED', processing: 'FINALIZING_TRANSCRIPT' },
   DRAFT_PENDING_SENSORS: { status: 'STOPPED', processing: 'SUMMARIZING' },
-  PENDING_REVIEW: { status: 'STOPPED', processing: 'AWAITING_REVIEW' },
+  PENDING_REVIEW: { status: 'STOPPED', processing: 'IDLE', processingReason: NOTE_READY_REASON },
   SIGNED: { status: 'APPROVED', processing: 'IDLE' },
   TIMED_OUT: { status: 'CLOSED_INCOMPLETE', processing: 'IDLE' },
   CLOSED: { status: 'CLOSED_COMPLETE', processing: 'IDLE' },
@@ -78,7 +98,14 @@ export function normalizeLegacyConsultationStatus(
   const legacy = Object.prototype.hasOwnProperty.call(LEGACY_STATUS_MAP, value)
     ? LEGACY_STATUS_MAP[value as LegacyConsultationStatus]
     : undefined;
-  if (legacy) return { status: legacy.status, processing: processing ?? legacy.processing };
+  if (legacy) {
+    return {
+      ...legacy,
+      processing: processing ?? legacy.processing,
+      // An explicit processing value replaces the one the legacy value implied, reason included.
+      ...(processing && processing !== legacy.processing ? { processingReason: undefined } : {}),
+    };
+  }
   if ((CONSULTATION_STATUSES as readonly string[]).includes(value)) {
     return { status: value as ConsultationStatus, processing: processing ?? 'IDLE' };
   }
