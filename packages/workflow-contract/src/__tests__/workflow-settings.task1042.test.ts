@@ -28,7 +28,7 @@ describe('liveAudioUnread — workflow-settings.fixture.json `liveAudio`', () =>
     expect(expected.some((found: unknown[]) => found.length > 0)).toBe(true);
   });
 
-  it.each(FIXTURE.liveAudio.map((entry: any) => [entry.name, entry]))('%s', (_name, entry: any) => {
+  it.each(FIXTURE.liveAudio as any[])('$name', (entry: any) => {
     const found = liveAudioUnread(entry.graph, entry.settings, entry.context).map((finding) => ({
       ruleId: finding.ruleId,
       nodeId: finding.nodeId,

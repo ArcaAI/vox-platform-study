@@ -208,7 +208,7 @@ export function useRunAudio<TInput = Record<string, unknown>, TOutput = unknown>
 }
 
 /** The id of the STT session the capture just opened, read the way `useArcaAudio.switchProvider` reads it. */
-function readSttSessionId(store: ReturnType<typeof useAgenticStore>): string | null {
+function readSttSessionId(store: { pluginManager?: unknown }): string | null {
   const pluginManager = store.pluginManager as
     | { getTranscriptionPipeline?: () => { getStreamingSessionManager?: () => { getSessionId?: () => string | null } | null } | null }
     | null

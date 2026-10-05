@@ -30,7 +30,7 @@ const NODE_SNIPPETS = KINDS.flatMap((kind) =>
 
 /** Pinned from the SDK source. Adding a name here means finding it in the SDK first. */
 const HOPE_METHODS: Record<string, readonly string[]> = {
-  workflows: ['run', 'attach', 'runAndWait'],
+  workflows: ['run', 'attach', 'runAndWait', 'runWithAudio'],
   agents: ['run', 'attach'],
   stt: ['createStreamSession', 'socket'],
 };
