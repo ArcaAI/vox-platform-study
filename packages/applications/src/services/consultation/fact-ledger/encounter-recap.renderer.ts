@@ -1,4 +1,5 @@
 import type { FactKind, FactLedgerV1, LedgerFact } from './fact-ledger.schema';
+import { normaliseFactKind } from './fact-ledger-normalise';
 
 /** Recorded on every ENCOUNTER_RECAP version (`metaData.renderer`). */
 export const ENCOUNTER_RECAP_RENDERER = 'recap.v2';
@@ -108,12 +109,16 @@ function lineText(line: RecapLine): string {
 
 /** Only `diagnosis` trails its section's other kinds; every other fact keeps transcript order. */
 function byKindGroup(a: LedgerFact, b: LedgerFact): number {
-  return Number(a.kind === 'diagnosis') - Number(b.kind === 'diagnosis');
+  const isDiagnosis = (fact: LedgerFact) => normaliseFactKind(fact.key, fact.kind) === 'diagnosis';
+  return Number(isDiagnosis(a)) - Number(isDiagnosis(b));
 }
 
 function sectionFor(fact: LedgerFact, late: ReadonlySet<string>): RecapSectionKey | null {
   if (fact.citations.length > 0 && fact.citations.every((id) => late.has(id))) return 'since_then';
-  return SECTIONS.find((section) => section.kinds.includes(fact.kind))?.key ?? null;
+  // The kind as the key's prefix names it: a ledger stored before the extractor's drift was
+  // repaired (`medication:metformin` with kind `history`) still renders under the right heading.
+  const kind = normaliseFactKind(fact.key, fact.kind);
+  return SECTIONS.find((section) => section.kinds.includes(kind))?.key ?? null;
 }
 
 /** Segments before attachments, then numerically by label. */
