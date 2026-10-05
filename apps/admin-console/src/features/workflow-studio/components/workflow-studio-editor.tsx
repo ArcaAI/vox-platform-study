@@ -144,6 +144,7 @@ import { TestTab, useNodeLastRuns } from './test-tab';
 import { IntegrationTab } from './integration-tab';
 import { VersionHistorySheet } from './management/version-history-sheet';
 import { SettingsDialog } from './settings/settings-dialog';
+import { useTrailingBreadcrumb } from '@/shared/navigation/breadcrumb-store';
 
 /** The one container node type: its body is the set of nodes naming it as `parentId` (TASK-864). */
 const LOOP_NODE_TYPE = 'core.loop';
@@ -278,6 +279,8 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   /** Bumped after a layout pass so the canvas re-fits; `fitView` on mount would otherwise stay zoomed into the origin pile. */
   const [fitViewKey, setFitViewKey] = useState(0);
   const [name, setName] = useState(definition.name);
+  // The topbar breadcrumb shows the workflow's name, not its id (owner: "weird names").
+  useTrailingBreadcrumb(definition.name);
   const [description, setDescription] = useState(definition.description ?? '');
   const [metadataDirty, setMetadataDirty] = useState(false);
   const [tab, setTab] = useQueryState('tab', parseAsStringLiteral(STUDIO_TABS).withDefault('composer'));
