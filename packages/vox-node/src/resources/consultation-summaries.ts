@@ -151,6 +151,8 @@ export class ConsultationSummariesResource {
    * `CLOSED_INCOMPLETE` — a consultation the completion timeout closed unsigned still signs
    * (TASK-1001); any other state is a 409. The gateway compare-and-sets against the summary row's
    * `_version` — see {@link ApproveSummaryOptions.ifMatch}.
+   *
+   * @deprecated Use `ConsultationHandle.approve()` — approval now covers the whole consultation.
    */
   async approve(
     consultationId: string,

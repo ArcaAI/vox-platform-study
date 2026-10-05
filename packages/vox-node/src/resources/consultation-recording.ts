@@ -40,6 +40,8 @@ export class ConsultationRecordingResource {
    * **Never retried** (no idempotency key on the route). A second start against
    * an already-recording consultation is answered by the state machine, not by
    * this SDK.
+   *
+   * @deprecated Use `ConsultationHandle.start()`.
    */
   async start(consultationId: string, request: StartRecordingRequest = {}, options: RecordingRequestOptions = {}): Promise<RecordingStateResponse> {
     return this.transport.request<RecordingStateResponse>({
@@ -70,6 +72,8 @@ export class ConsultationRecordingResource {
    * transcript. Send them only when a human actually accepted them: they are
    * re-verified server-side, and a proposal still marked `PROPOSED` stays
    * advisory whatever this SDK sends.
+   *
+   * @deprecated Use `ConsultationHandle.stop()`, which resolves after the final transcript.
    */
   async stop(consultationId: string, request: StopRecordingRequest = {}, options: RecordingRequestOptions = {}): Promise<RecordingStateResponse> {
     return this.transport.request<RecordingStateResponse>({

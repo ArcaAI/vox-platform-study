@@ -455,7 +455,7 @@ describe('ConsultationsResource#open — TASK-1020 response contract', () => {
 
     const result = await resource.open({ patientId: 'p1' });
     // Compile-time: these must be the narrow types, not string / boolean | undefined.
-    const status: import('../../types/consultation').ConsultationStatus = result.status;
+    const status: import('../../types/consultation-lifecycle').ConsultationLifecycleStatus = result.status;
     const visitType: 'new-visit' | 'revisit' = result.visitType;
     const externalRef: string | null = result.externalRef;
     const recordable: boolean = result.recordable;

@@ -230,7 +230,7 @@ export class HopeClient {
     // that acts on it — see `resources/workflows.ts#assertApiKeyPlane`.
     const isServiceAccount = options.serviceAccount !== undefined;
 
-    this.consultations = new ConsultationsResource(transport, isServiceAccount);
+    this.consultations = new ConsultationsResource(transport, isServiceAccount, { fetch: options.fetch ?? fetch });
     this.jobs = new JobsResource(transport);
     this.stt = new SttResource(transport);
     this.tenants = new TenantsResource(transport);

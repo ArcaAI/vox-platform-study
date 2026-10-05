@@ -309,6 +309,15 @@ export class RealtimeSttSocket {
   }
 
   /**
+   * Send a capture-control frame on the open session — `{ type: 'pause' }` stops capture after the
+   * last bytes already sent are transcribed; `{ type: 'resume-capture' }` continues on the same
+   * session and recording timeline.
+   */
+  sendControl(frame: Record<string, unknown>): void {
+    this.requireSocket().send(JSON.stringify(frame));
+  }
+
+  /**
    * Finalize the current utterance — and, despite the name, END THE SESSION.
    *
    * Sends the `{type:'stop'}` wire frame. The gateway forwards it to the
