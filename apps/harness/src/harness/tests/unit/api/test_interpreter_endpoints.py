@@ -157,6 +157,14 @@ class TestGetWorkflowRun:
     @pytest.mark.asyncio
     async def test_returns_status_and_state_query_shape(self, harness):
         http, _client, handle, _settings = harness
+        handle.describe = AsyncMock(
+            return_value=SimpleNamespace(
+                run_id="temporal-run-1",
+                status=SimpleNamespace(name="COMPLETED"),
+                start_time=datetime(2026, 8, 16, 0, 0, tzinfo=UTC),
+                close_time=datetime(2026, 8, 16, 0, 1, tzinfo=UTC),
+            )
+        )
         handle.query = AsyncMock(
             return_value=SimpleNamespace(
                 run_id="run-1",
@@ -170,6 +178,37 @@ class TestGetWorkflowRun:
         assert body["runId"] == "run-1"
         assert body["status"] == "SUCCEEDED"
         assert body["stages"] == [{"stageIndex": 0, "nodes": []}]
+
+    @pytest.mark.asyncio
+    async def test_running_execution_is_running_even_when_the_interpreter_has_decided(self, harness):
+        """TASK-1038 live load test: the interpreter sets its verdict BEFORE it emits
+        ``run.completed`` (workflow.py), and the activity queue can hold that emit for seconds.
+        Reporting the verdict while Temporal still runs the execution made the gateway's terminal
+        fallbacks close the run's event stream, so the late ``run.completed`` — the one carrying
+        the result — was refused and the result lost (20 of 200 runs). A run is terminal only once
+        its execution has CLOSED."""
+        http, _client, handle, _settings = harness
+        handle.query = AsyncMock(
+            return_value=SimpleNamespace(run_id="run-1", status="SUCCEEDED", stages=[])
+        )
+        resp = await http.get(f"{_BASE}/workflow-runs/run-1", headers=_HEADERS)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "RUNNING"
+        assert resp.json()["endedAt"] is None
+
+    @pytest.mark.asyncio
+    async def test_closed_execution_whose_state_never_left_running_keeps_temporals_word(self, harness):
+        http, _client, handle, _settings = harness
+        handle.describe = AsyncMock(
+            return_value=SimpleNamespace(
+                run_id="temporal-run-1",
+                status=SimpleNamespace(name="FAILED"),
+                start_time=datetime(2026, 8, 16, 0, 0, tzinfo=UTC),
+                close_time=datetime(2026, 8, 16, 0, 1, tzinfo=UTC),
+            )
+        )
+        resp = await http.get(f"{_BASE}/workflow-runs/run-1", headers=_HEADERS)
+        assert resp.json()["status"] == "FAILED"
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self, harness):

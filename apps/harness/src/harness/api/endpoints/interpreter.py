@@ -272,11 +272,14 @@ async def get_workflow_run(run_id: str, request: Request) -> dict[str, Any]:
     try:
         state = await handle.query(WorkflowInterpreter.state)
         stages_payload = [s.model_dump(mode="json") for s in state.stages]
-        # The interpreter's own verdict wins over Temporal's word — except when the execution
-        # already CLOSED and the state never left RUNNING: that is a run that died before the
-        # walk began (a config that failed to load), and the query answers the state at the
-        # moment of death, not an outcome.
-        if state.status != "RUNNING" or status == "RUNNING":
+        # The interpreter's own verdict (SUCCEEDED / DEGRADED / …) is more precise than Temporal's
+        # word, but only once the execution has CLOSED. The interpreter sets its verdict BEFORE it
+        # emits `run.completed`, and under load that emit can wait seconds in the activity queue;
+        # reporting the verdict early let the gateway close the run's event stream, so the late
+        # `run.completed` carrying the result was refused (TASK-1038 load test: 20 of 200 runs).
+        # A closed execution whose state never left RUNNING died before the walk began (a config
+        # that failed to load): Temporal's word stands there too.
+        if status != "RUNNING" and state.status != "RUNNING":
             status = state.status
     except Exception as exc:  # noqa: BLE001 — the query is best-effort once the run has closed
         logger.info(
