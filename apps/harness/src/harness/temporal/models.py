@@ -1057,6 +1057,10 @@ class ExecuteNotePlanInput(BaseModel):
     # call of the plan still ends with its own directive.
     regen_feedback: RegenFeedback | None = None
     trajectory: TrajectoryContext | None = None
+    # The run's RESOLVED `textFallback` block, raw (the one `GenerateInput` carries). A plan call
+    # switches only to a candidate serving the PLAN's model (`note_plan/fallback.py`).
+    # ADDITIVE-OPTIONAL: `None` ⇒ no switch, exactly the behaviour before it existed.
+    text_fallback: dict[str, Any] | None = None
 
 
 class ExecuteNotePlanResult(BaseModel):

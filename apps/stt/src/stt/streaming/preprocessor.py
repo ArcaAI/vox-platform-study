@@ -587,7 +587,7 @@ class StreamingPreprocessor:
             return None
         frames = np.concatenate(self._conditioned_out)
         self._conditioned_out.clear()
-        return cast(np.ndarray, frames)
+        return frames
 
     def _normalize_frame(self, frame: np.ndarray) -> np.ndarray:
         """Bounded-window peak normalization (causal).

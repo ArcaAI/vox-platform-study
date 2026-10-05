@@ -142,6 +142,21 @@ class NoteCallResult:
     usage: dict[str, Any] = field(default_factory=dict)
     #: The caller's own result object, carried for the caller (never inspected here).
     raw: Any = None
+    #: The candidate that served, when the call walked a fallback chain (``fallback.py``).
+    attempt: Any = None
+    #: The candidates tried and lost before the one that served (``fallback.FailedLeg``).
+    failed_legs: tuple[Any, ...] = ()
+
+
+class NoteCallAttemptsLost(Exception):  # noqa: N818 — a carrier, raised for the executor
+    """Every candidate a call was allowed to try lost. Carries the LAST error (what the activity
+    judges retry-safety on), the candidate that raised it, and the legs lost before it."""
+
+    def __init__(self, error: BaseException, attempt: Any, failed_legs: tuple[Any, ...]) -> None:
+        super().__init__(str(error))
+        self.error = error
+        self.attempt = attempt
+        self.failed_legs = failed_legs
 
 
 @dataclass
@@ -151,6 +166,10 @@ class NoteCallRecord:
     ended_at: datetime | None = None
     result: NoteCallResult | None = None
     error: BaseException | None = None
+    #: The candidate that served (or lost last); ``None`` without a fallback walk.
+    attempt: Any = None
+    #: Candidates tried and lost before ``attempt`` (``fallback.FailedLeg``).
+    failed_legs: tuple[Any, ...] = ()
 
     @property
     def call_id(self) -> str:
@@ -166,6 +185,10 @@ class NotePlanExecution:
     records: list[NoteCallRecord]
     #: The sections this run wrote (``section_regen``: only the regenerated ones).
     regenerated_keys: tuple[str, ...]
+    #: Why gaps went unrepaired: ``"budget"`` (no room left in the activity for the call) or
+    #: ``"disabled"`` (the plan allows no repair). ``None`` when no repair was needed or it ran.
+    #: The coverage stays ``gaps`` either way, so the note goes to review.
+    repair_skipped: Literal["budget", "disabled"] | None = None
 
 
 class NotePlanCallFailed(RuntimeError):
@@ -204,6 +227,12 @@ async def _run(
         record = NoteCallRecord(request=request, started_at=_now())
         try:
             record.result = await generate(request)
+            record.attempt = record.result.attempt
+            record.failed_legs = record.result.failed_legs
+        except NoteCallAttemptsLost as lost:
+            record.error = lost.error
+            record.attempt = lost.attempt
+            record.failed_legs = lost.failed_legs
         except Exception as exc:  # noqa: BLE001 — recorded, then raised as NotePlanCallFailed
             record.error = exc
         record.ended_at = _now()
@@ -273,7 +302,12 @@ async def execute_plan(
 
     coverage = _check(0)
     repair_keys = gap_section_keys(plan, coverage)
-    if repair_keys and plan.coverage.repair_passes >= 1 and allow_repair():
+    repair_skipped: Literal["budget", "disabled"] | None = None
+    if repair_keys and plan.coverage.repair_passes < 1:
+        repair_skipped = "disabled"
+    elif repair_keys and not allow_repair():
+        repair_skipped = "budget"
+    if repair_keys and repair_skipped is None:
         repair = NoteCallRequest(
             call_id="repair",
             call_index=None,
@@ -310,6 +344,7 @@ async def execute_plan(
         coverage=coverage,
         records=records,
         regenerated_keys=regenerated,
+        repair_skipped=repair_skipped,
     )
 
 
@@ -354,6 +389,8 @@ def note_run_stats(plan: NotePlanV1, execution: NotePlanExecution) -> dict[str, 
         "coverage_gap_count": len(execution.coverage.gaps),
         "repair_passes": execution.coverage.repair_passes,
     }
+    if execution.repair_skipped is not None:
+        stats["repair_skipped"] = execution.repair_skipped
     seq = last_encounter_seq(plan)
     if seq is not None:
         stats["encounter_seq"] = seq

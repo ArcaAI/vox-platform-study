@@ -553,6 +553,8 @@ class APIGatewayClient:
         processed_media_id: str | None = None,
         consultation_id: str | None = None,
         duration_ms: int | None = None,
+        stt_session_id: str | None = None,
+        codec: str | None = None,
     ) -> dict[str, Any]:
         """Create an AudioRecording linked to a ContextItem.
 
@@ -560,7 +562,8 @@ class APIGatewayClient:
         ids (pre-filter / post-filter audio) when the pipeline opts in. The
         streaming finalize path has no pre-resolved ``context_item_id``, so it
         may instead pass ``consultation_id`` for the gateway to attach the
-        recording to.
+        recording to. ``stt_session_id`` names the streaming session that captured
+        the part and ``codec`` the stored encoding (``opus`` / ``pcm_s16le``).
         """
         payload: dict[str, Any] = {"sequenceNumber": sequence_number}
 
@@ -590,6 +593,10 @@ class APIGatewayClient:
             payload["rawMediaId"] = raw_media_id
         if processed_media_id:
             payload["processedMediaId"] = processed_media_id
+        if stt_session_id:
+            payload["sttSessionId"] = stt_session_id
+        if codec:
+            payload["codec"] = codec
 
         return await self._request(
             "POST",

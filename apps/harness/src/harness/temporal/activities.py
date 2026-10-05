@@ -102,6 +102,7 @@ from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpClient
 from harness.services.note_plan.executor import (
+    ACTIVITY_NOTE_SECTION_GROUP,
     REPAIR_STEP_OFFSET,
     NoteCallRecord,
     NoteCallRequest,
@@ -114,6 +115,12 @@ from harness.services.note_plan.executor import (
     note_run_stats,
     render_user_prefix,
     summed_usage,
+)
+from harness.services.note_plan.fallback import (
+    FailedLeg,
+    PlanAttempt,
+    plan_attempts,
+    walk_attempts,
 )
 from harness.services.note_plan.models import NotePlanRef, NotePlanV1
 from harness.services.reranker_client import RerankerClient
@@ -1782,6 +1789,15 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     # out mid-call and Temporal re-runs it FROM THE PRIMARY, re-billing a generation that already
     # completed. Never start one whose per-call timeout cannot fit in what is left.
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
+    # The run-record keys of this note's ONE call (the single section group of a one-call note),
+    # on the step that served and on every candidate that lost — ids and numbers only.
+    call_record: dict[str, Any] = {
+        "activity_kind": ACTIVITY_NOTE_SECTION_GROUP,
+        "call_index": 1,
+        "call_count": 1,
+    }
+    if isinstance(hp.get("max_tokens"), int) and not isinstance(hp.get("max_tokens"), bool):
+        call_record["max_tokens"] = hp["max_tokens"]
 
     prompt = user_prompt
     system_prompt = system_prompt_in
@@ -1853,12 +1869,15 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
             failed_attempts.append(
                 FailedAttempt(
                     attempt_started_at,
-                    failed_attempt_stats(
-                        provider=attempt_provider,
-                        model=attempt_model,
-                        funding_tier=attempt_funding_tier,
-                        total_ms=round((perf_counter() - attempt_started) * 1000.0),
-                    ),
+                    {
+                        **failed_attempt_stats(
+                            provider=attempt_provider,
+                            model=attempt_model,
+                            funding_tier=attempt_funding_tier,
+                            total_ms=round((perf_counter() - attempt_started) * 1000.0),
+                        ),
+                        **call_record,
+                    },
                 )
             )
             if index + 1 < len(attempts):
@@ -1964,6 +1983,7 @@ async def generate(payload: GenerateInput) -> TextGenerationResult:
     egress = egress_counts(result.egress)
     if egress is not None:
         llm_stats["egress"] = egress
+    llm_stats.update(call_record)
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
@@ -2016,13 +2036,51 @@ def record_note_plan_steps(
 
     Every step carries the run-record keys (``activity_kind``, ``plan_id``, ``call_index`` …) so
     the gateway writes one ``AiActivityRun`` per call; ids and numbers only, never note text. A
-    failure past the stride is dropped with a warning rather than allowed to collide with the
-    next activity's seq base.
+    fallback candidate that lost before another served (``record.failed_legs``) takes a failed
+    slot like a call that failed outright. A failure past the stride is dropped with a warning
+    rather than allowed to collide with the next activity's seq base.
     """
     failed = 0
+
+    def _failed_step(
+        run_stats: dict[str, Any],
+        started: datetime,
+        ended: datetime | None,
+        attempt: PlanAttempt | None,
+    ) -> None:
+        nonlocal failed
+        failed_offset = failed_step_offset(failed)
+        failed += 1
+        if failed_offset is None:
+            activity.logger.warning(
+                "harness.note_plan.failed_steps_truncated", extra={"plan_id": plan.plan_id}
+            )
+            return
+        ended = ended or _now()
+        batch.record(
+            step_type=STEP_LLM_CALL,
+            name="generate",
+            status=STATUS_ERROR,
+            started=started,
+            ended=ended,
+            stats={
+                **failed_attempt_stats(
+                    provider=attempt.provider if attempt else provider,
+                    model=attempt.model if attempt else model,
+                    funding_tier=attempt.funding_tier if attempt else None,
+                    total_ms=max(0, round((ended - started).total_seconds() * 1000)),
+                ),
+                **run_stats,
+            },
+            offset=failed_offset,
+        )
+
     for record in records:
         request = record.request
         run_stats = {**call_run_stats(plan, request), **(extra_stats or {})}
+        for leg in record.failed_legs:
+            if isinstance(leg, FailedLeg):
+                _failed_step(run_stats, leg.started_at, leg.ended_at, leg.attempt)
         if record.result is not None:
             offset = (
                 REPAIR_STEP_OFFSET
@@ -2039,31 +2097,8 @@ def record_note_plan_steps(
                 offset=offset,
             )
             continue
-        failed_offset = failed_step_offset(failed)
-        failed += 1
-        if failed_offset is None:
-            activity.logger.warning(
-                "harness.note_plan.failed_steps_truncated", extra={"plan_id": plan.plan_id}
-            )
-            continue
-        ended = record.ended_at or _now()
-        batch.record(
-            step_type=STEP_LLM_CALL,
-            name="generate",
-            status=STATUS_ERROR,
-            started=record.started_at,
-            ended=ended,
-            stats={
-                **failed_attempt_stats(
-                    provider=provider,
-                    model=model,
-                    funding_tier=None,
-                    total_ms=max(0, round((ended - record.started_at).total_seconds() * 1000)),
-                ),
-                **run_stats,
-            },
-            offset=failed_offset,
-        )
+        attempt = record.attempt if isinstance(record.attempt, PlanAttempt) else None
+        _failed_step(run_stats, record.started_at, record.ended_at, attempt)
 
 
 def _assert_plan_belongs(plan: NotePlanV1, ref: NotePlanRef, tenant_id: str) -> None:
@@ -2111,28 +2146,45 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
         if feedback:
             prefix = f"{prefix}\n\n{feedback}"
     budget = ActivityBudget.for_activity(settings.text_timeout_s)
+    # The plan's own model first, then the run's fallback candidates that serve THAT model —
+    # the plan was budgeted against it, so another model is never switched to.
+    attempts = plan_attempts(
+        plan,
+        PlanAttempt(provider=provider, model=model),
+        chain_candidates(read_text_fallback({"textFallback": payload.text_fallback})),
+    )
 
-    async def _generate(request: NoteCallRequest) -> NoteCallResult:
+    async def _generate(
+        request: NoteCallRequest, attempt: PlanAttempt, index: int
+    ) -> NoteCallResult:
         result = await _text_client(settings).generate(
             tenant_id=tenant_id,
             prompt=request.user,
             system_prompt=request.system,
-            provider=provider,
-            model=model,
+            provider=attempt.provider,
+            model=attempt.model,
             temperature=hp.get("temperature"),
             max_tokens=request.max_tokens,
             top_p=hp.get("top_p"),
             response_format=request.response_format,
-            provider_locality=provider_locality(provider, None),
+            provider_locality=provider_locality(attempt.provider, attempt.deployment_kind),
             # Stable across a retry of THIS activity, distinct per call: a re-run returns the
-            # calls that already completed from Text's cache instead of re-billing them.
-            idempotency_key=_idempotency_key(f"note-plan:{request.call_id}"),
+            # calls that already completed from Text's cache instead of re-billing them. A
+            # fallback is a DIFFERENT generation and takes its own suffix (as in `generate`).
+            idempotency_key=_idempotency_key(
+                f"note-plan:{request.call_id}"
+                if index == 0
+                else f"note-plan:{request.call_id}:fallback:{index}"
+            ),
+            # A same-model candidate on another account carries its own credential; the plan's
+            # own attempt carries none (`TextClient` then resolves by provider name, as before).
+            provider_override=attempt.provider_override,
         )
         composed_prompt_recorder.record_composed_prompt(
             tenant_id=tenant_id,
             consultation_id=ref.consultation_id,
             phase="finalize",
-            provider=result.provider or provider,
+            provider=result.provider or attempt.provider,
             egress=result.egress,
             system=request.system,
             user=request.user,
@@ -2151,7 +2203,7 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             plan,
             system=plan.system,
             user_prefix=prefix,
-            generate=_generate,
+            generate=walk_attempts(attempts, _generate, allows_another=budget.allows_another),
             preserved_sections=envelope.preserved_sections,
             allow_repair=budget.allows_another,
         )
@@ -2167,6 +2219,16 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
         raise ApplicationError(str(exc), type="NotePlanInvalid", non_retryable=True) from exc
 
     record_note_plan_steps(batch, plan, execution.records, provider=provider, model=model)
+    if execution.repair_skipped is not None:
+        # Never silent: the gaps go to review, and the run record says the repair did not run.
+        activity.logger.warning(
+            "harness.note_plan.repair_skipped",
+            extra={
+                "plan_id": plan.plan_id,
+                "reason": execution.repair_skipped,
+                "gap_count": len(execution.coverage.gaps),
+            },
+        )
     if payload.trajectory is not None and payload.trajectory.is_regen:
         inc_regen()
     await batch.flush()

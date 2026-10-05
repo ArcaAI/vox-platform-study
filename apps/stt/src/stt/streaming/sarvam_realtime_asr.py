@@ -146,7 +146,7 @@ def _as_str(value: Any) -> str | None:
 def _to_pcm16(samples: np.ndarray) -> bytes:
     """float32 [-1, 1] mono -> 16-bit signed little-endian PCM."""
     scaled = np.asarray(samples, dtype=np.float32) * 32767.0
-    return cast(bytes, scaled.clip(-32768, 32767).astype("<i2").tobytes())
+    return scaled.clip(-32768, 32767).astype("<i2").tobytes()
 
 
 def _realtime_ws_url(base_url: str, params: dict[str, str]) -> str:

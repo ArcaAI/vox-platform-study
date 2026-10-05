@@ -226,7 +226,7 @@ def _resample(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarr
             return np.zeros(0, dtype=np.float32)
         source_x = np.linspace(0.0, 1.0, num=audio.size, endpoint=False, dtype=np.float64)
         target_x = np.linspace(0.0, 1.0, num=count, endpoint=False, dtype=np.float64)
-        return np.interp(target_x, source_x, audio).astype(np.float32)
+        return np.asarray(np.interp(target_x, source_x, audio), dtype=np.float32)
 
 
 def _ticks_to_seconds(value: Any) -> float | None:

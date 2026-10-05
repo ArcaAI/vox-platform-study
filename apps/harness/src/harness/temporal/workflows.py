@@ -297,6 +297,15 @@ def _tokens_from_stats(stats: dict[str, Any] | None) -> int:
     return total
 
 
+def _single_call_note_stats() -> dict[str, Any]:
+    """The note-level run record of a note ``generate`` wrote in ONE call (no NotePlan).
+
+    ``persist_draft`` adds the note's ``context_item_id`` / ``output_version``; without this a
+    note written outside a plan left no NOTE_GENERATE record at all. Data only — no command.
+    """
+    return {"activity_kind": "NOTE_GENERATE", "call_count": 1}
+
+
 def _budget_exhausted(per_run_budget: int, tokens_used: int) -> bool:
     """True when a per-run token budget is set AND spent.
 
@@ -898,6 +907,8 @@ class HarnessDocWorkflow:
                         hyperparameters=assembled.hyperparameters,
                         regen_feedback=regen_feedback,
                         trajectory=self._traj(inp, is_regen=regens_used > 0),
+                        # Data only: a lost call may switch to the plan's model elsewhere.
+                        text_fallback=text_fallback,
                     ),
                     start_to_close_timeout=_GENERATE_TIMEOUT,
                     retry_policy=_GENERATE_RETRY,
@@ -937,6 +948,7 @@ class HarnessDocWorkflow:
                     start_to_close_timeout=_GENERATE_TIMEOUT,
                     retry_policy=_GENERATE_RETRY,
                 )
+                note_run_stats = _single_call_note_stats()
 
             note_entities: list[NEREntity] = []
             try:
@@ -1214,7 +1226,13 @@ class HarnessDocWorkflow:
                 (apps/api): a re-delivery must UPSERT the existing
                 DRAFT_PENDING_SENSORS draft (update content + computational scores),
                 not create a second draft.
+
+                The note-level run record (``note_run_stats``) is CONSUMED here: it describes
+                the generation that produced ``gen_``, so it is stamped on that generation's
+                delivery only — a later delivery stamps only what a later generation set.
                 """
+                nonlocal note_run_stats
+                stamp, note_run_stats = note_run_stats, None
                 return await workflow.execute_activity(
                     persist_draft,
                     PersistDraftInput(
@@ -1244,42 +1262,19 @@ class HarnessDocWorkflow:
                         redaction_applied=redaction_marker_applied,
                         redaction_manifest=redaction_marker_manifest,
                         coverage=note_coverage,
-                        note_run_stats=note_run_stats,
+                        note_run_stats=stamp,
                         trajectory=self._traj(inp),
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
                 )
 
-            async def _regen_compute() -> (
-                tuple[AssembleResponse, TextGenerationResult, SensorRunOutput, bool]
-            ):
-                """One regen pass (assemble → generate → extract → run_sensors).
-
-                Mirrors the computational loop body so the post-delivery regen-if-untouched
-                path can re-generate WITHOUT re-entering (and risking the replay history
-                of) the legacy loop. Returns ``(assembled, generated, sensors, degraded)``.
-                """
-                asm_ = await workflow.execute_activity(
-                    assemble_prompt,
-                    AssembleInput(
-                        consultation_id=inp.consultation_id,
-                        tenant_id=inp.tenant_id,
-                        user_id=inp.user_id,
-                        template=inp.template,
-                        dna_style_id=inp.dna_style_id,
-                        conversation_language=inp.conversation_language,
-                        trajectory=self._traj(inp),
-                        # Data only (no new command): a run started with a plan reuses it in
-                        # ``assemble`` rather than composing a second one; None otherwise.
-                        note_plan_id=inp.note_plan_ref.plan_id if inp.note_plan_ref else None,
-                    ),
-                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
-                    retry_policy=_API_RETRY,
-                )
+            async def _regen_generate(asm_: AssembleResponse) -> TextGenerationResult:
+                """The single-call regen ``generate`` (a run without a plan, or a history
+                that recorded it here before plans regenerated through the executor)."""
                 # thread the (offloaded) prompt refs + RAG block to generate
                 # (which resolves + folds the block); mirrors the legacy loop.
-                gen_ = await workflow.execute_activity(
+                return await workflow.execute_activity(
                     generate,
                     GenerateInput(
                         tenant_id=inp.tenant_id,
@@ -1306,6 +1301,63 @@ class HarnessDocWorkflow:
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_GENERATE_RETRY,
                 )
+
+            async def _regen_compute() -> (
+                tuple[AssembleResponse, TextGenerationResult, SensorRunOutput, bool]
+            ):
+                """One regen pass (assemble → generate → extract → run_sensors).
+
+                Mirrors the computational loop body so the post-delivery regen-if-untouched
+                path can re-generate WITHOUT re-entering (and risking the replay history
+                of) the legacy loop. Returns ``(assembled, generated, sensors, degraded)``;
+                the regenerated note's coverage + run stats replace the delivered one's.
+                """
+                nonlocal note_coverage, note_run_stats
+                asm_ = await workflow.execute_activity(
+                    assemble_prompt,
+                    AssembleInput(
+                        consultation_id=inp.consultation_id,
+                        tenant_id=inp.tenant_id,
+                        user_id=inp.user_id,
+                        template=inp.template,
+                        dna_style_id=inp.dna_style_id,
+                        conversation_language=inp.conversation_language,
+                        trajectory=self._traj(inp),
+                        # Data only (no new command): a run started with a plan reuses it in
+                        # ``assemble`` rather than composing a second one; None otherwise.
+                        note_plan_id=inp.note_plan_ref.plan_id if inp.note_plan_ref else None,
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_API_RETRY,
+                )
+                # A run started WITH a NotePlan regenerates through the plan too (parallel
+                # groups, coverage, one repair) with the critique in its prefix — the same
+                # execution the delivered draft came from, never a single assembled prompt.
+                # ``note_plan_ref`` is the FIRST operand (a run without a plan never calls
+                # ``workflow.patched``); a history that already recorded the legacy ``generate``
+                # here replays with ``patched`` False. The change-id is DATA; never rename it.
+                if inp.note_plan_ref is not None and workflow.patched("task-1045-note-plan-regen"):
+                    executed_ = await workflow.execute_activity(
+                        execute_note_plan,
+                        ExecuteNotePlanInput(
+                            tenant_id=inp.tenant_id,
+                            note_plan_ref=inp.note_plan_ref,
+                            hyperparameters=asm_.hyperparameters,
+                            regen_feedback=regen_feedback,
+                            trajectory=self._traj(inp, is_regen=True),
+                            text_fallback=text_fallback,
+                        ),
+                        start_to_close_timeout=_GENERATE_TIMEOUT,
+                        retry_policy=_GENERATE_RETRY,
+                    )
+                    gen_ = executed_.generation
+                    note_coverage = executed_.coverage
+                    note_run_stats = executed_.note_run_stats
+                else:
+                    gen_ = await _regen_generate(asm_)
+                    # A single-call note: the plan's coverage does not describe it.
+                    note_coverage = None
+                    note_run_stats = _single_call_note_stats()
                 note_ents: list[NEREntity] = []
                 deg_ = False
                 try:
