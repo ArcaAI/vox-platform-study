@@ -331,7 +331,9 @@ def live_audio_unread(
         return []
     agents = ctx.get("agents")
     nodes = [n for n in graph.get("nodes") or [] if isinstance(n, dict)]
-    trigger_ids = {n.get("id") for n in nodes if n.get("type") == "core.trigger"}
+    trigger_ids = {
+        n["id"] for n in nodes if n.get("type") == "core.trigger" and isinstance(n.get("id"), str)
+    }
     bindings = compiled_bindings(graph, agents)
     reader_paths: list[str] = []
     for node in nodes:
@@ -340,7 +342,10 @@ def live_audio_unread(
         task = agent_task_of(_obj(node.get("config")), agents)
         if task not in (None, "SPEECH_TO_TEXT"):
             continue
-        reader_paths.extend(_binding_paths((bindings.get(node.get("id")) or {}).get("audio")))
+        node_id = node.get("id")
+        if not isinstance(node_id, str):
+            continue
+        reader_paths.extend(_binding_paths((bindings.get(node_id) or {}).get("audio")))
     found: list[dict[str, Any]] = []
     for kind in streamed:
         key = kind["key"]

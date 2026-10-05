@@ -285,6 +285,7 @@ Orchestrator commits:
 | D3 | `RUN_AUDIO_AGENT_MISMATCH` also covers a graph with zero or several STT nodes. A non-string `sttSessionId` is 400 without a code. C5 answers 400 without `runId` or `X-Tenant-Id`, and 503 when Redis is unreadable. | These are additions only; the frozen rows are unchanged. |
 | D4 | `packages/domains` `TranscriptionJobEntity` / `Factory` gained `metaData`. | It is required for C8 to persist. |
 | D5 | The SDK lane edited `PluginManager`, `STTProcessor` and `StreamingBackendSTTProvider`. | These are pass-throughs; without them `workflowSlug` never reaches the wire. |
+| D6 | `@arcaai/workflow-contract` `bindings.ts` + `py-workflow-contract` `bindings.py`: a `context.<kind>` path whose schema is the stream-audio payload (an object whose only property is the string `sttSessionId`) resolves as `audio`, not `json`. | **Found by the e2e spec, missed by every lane:** the publish gate refused `context.mic` → ASR `audio` with `BINDING_TYPE_MISMATCH`, so no standalone live-audio workflow could be published, the very graph WF-SET-005 requires. Pinned by two shared `bindings.fixture.json` cases (positive + narrowness). Blob-delivered audio derives to a media reference that cannot be told from a document by shape, so it still types as `json` (follow-up). |
 
 ### 6.5 Gate: one pass after the complete integration (orchestrator, 2026-10-05)
 
@@ -323,8 +324,13 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 | Harness pytest, including replay-compat with `interpreter_task1042_live_audio_history` | rc 0 |
 | TASK-1043 lock coverage (after its fix) | 4 passed; our controller is covered |
 
+**E2E** on the isolated test infra (released by the TASK-1044 session), test API built from the verify tree, `RESET_DB=false`:
+- `task-776-route-authz-matrix`: all 7 pass. 758 routes swept, 0 anomalies. The `@Public()` `/internal/*` inventory pin moved 40 → 41 for the new transcript route, which answers 401 without a service token.
+- `workflow-run-live-audio-cross-tenant`: the 4 STT-free cases pass (unknown session 404, `RUN_AUDIO_INPUT_UNDECLARED`, `LIVE_AUDIO_UNSUPPORTED` via a legacy definition, `STREAM_SESSION_TARGET_CONFLICT`). The 4 live-session cases skip with a reason: the STT service is not running in the test environment (session create 503 `GATEWAY.DOWNSTREAM_UNAVAILABLE`). They are covered by unit tests and are part of the live proof.
+- The first run surfaced D6. A workflow that DECLARES settings without `socket` cannot publish a stream-audio Input (WF-SET-003 ERROR), so `LIVE_AUDIO_UNSUPPORTED` is only reachable through a legacy definition.
+- Also fixed in this round: mypy on `py-workflow-contract` (the gate script had run mypy for the harness only) found two `arg-type` errors in WF-SET-005; both are fixed.
+
 **Not yet run:**
-- The e2e spec `workflow-run-live-audio-cross-tenant.spec.ts` and the route-authz matrix, which need the test infrastructure owned by the e2e-repair session.
 - The live proof (vox-node `runWithAudio` with a WAV, browser `useRunAudio`), which needs the dev stack and STT.
 
 ### 6.4 Known limits and follow-ups
@@ -345,4 +351,5 @@ Run in the sibling verify worktree `../hope-v2-task-1042-verify`: a real `pnpm i
 | 2026-10-05 | L3 merged (`12d2ee1ac`). OD-35 merged on dev-2.2 (`ee31a7e67`, `71c3ebeda`) and brought in (`b263f0627`). C8 pins session ownership to the OD-35 principal helper. The service-account run-ticket gap does not affect this ticket: vox-node `RunHandle` streams SSE with header credentials and mints no ticket. L1 launched. |
 | 2026-10-05 | L2 and L1 merged; artifacts regenerated in the verify worktree `../hope-v2-task-1042-verify` (`5f80ef21c`). Owner: merge target dev-2.2; keep `resultStreamMaxlen` at 10000. Single gate pass running. |
 | 2026-10-05 | Single gate pass in the verify worktree; integration fixes made; the Integration tab wires `streamAudioField`; verify merged into the orchestrator branch (`e28fe7e8c`). |
+| 2026-10-05 | Merged into dev-2.2 (`2689d5da8`). E2E on the test infra found D6 (stream-audio binding typed `json`), fixed in both contract twins with shared fixture cases; mypy fix in WF-SET-005; authz inventory 41. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
