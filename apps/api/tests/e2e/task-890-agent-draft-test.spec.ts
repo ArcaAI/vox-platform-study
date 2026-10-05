@@ -79,7 +79,11 @@ test.describe('TASK-890 §3.8 — POST /admin/agents/:id/test', () => {
         name: 'Draft bench agent',
         task: 'TEXT_GENERATION',
         modelId,
-        instruction: { systemPrompt: 'You are a scribe for {{context.clinic}}.' },
+        // A DECLARED name: `current_department` is a platform context variable
+        // (`PLATFORM_CONTEXT_VARIABLES`) every TEXT_GENERATION prompt may read. An ad-hoc
+        // `{{context.clinic}}` is refused by the bench once the tenant binds a closed context schema
+        // (`PROMPT_VARIABLE_UNDECLARED`).
+        instruction: { systemPrompt: 'You are a scribe for {{context.current_department}}.' },
         ...overrides,
       },
     });
@@ -93,12 +97,15 @@ test.describe('TASK-890 §3.8 — POST /admin/agents/:id/test', () => {
     const id = await createDraft(request);
     const res = await request.post(`${ADMIN_AGENTS}/${id}/test`, {
       headers: { Authorization: `Bearer ${adminJwt}` },
-      data: { context: { clinic: 'Ward B' } },
+      data: { context: { current_department: 'Ward B' } },
     });
     expect(res.status(), await res.text()).toBe(200);
     const body = await res.json();
     expect(body.mode).toBe('dry-run');
-    expect(body.assembledSystemPrompt).toBe('You are a scribe for Ward B.');
+    // The agent's own instruction comes LAST, after the platform rules block assembly prepends to
+    // every clinical-documentation prompt — so assert the rendered tail, not the whole string.
+    expect(body.assembledSystemPrompt).toMatch(/You are a scribe for Ward B\.$/);
+    expect(body.assembledSystemPrompt).not.toContain('{{');
     expect(body.resolved).toMatchObject({ provider: expect.any(String), model: expect.any(String), source: 'row' });
     expect(['platform', 'tenant']).toContain(body.resolved.fundingTier);
     // A dry run is the DEFAULT and never opens a generation.
@@ -111,14 +118,14 @@ test.describe('TASK-890 §3.8 — POST /admin/agents/:id/test', () => {
     expect(res.status()).toBe(400);
     const body = await res.json();
     expect(body.code ?? body.message?.code).toBe('PROMPT_VARIABLE_UNRESOLVED');
-    expect(JSON.stringify(body)).toContain('context.clinic');
+    expect(JSON.stringify(body)).toContain('context.current_department');
   });
 
   test('the strict ValidationPipe refuses an undeclared field on the request DTO', async ({ request }) => {
     const id = await createDraft(request);
     const res = await request.post(`${ADMIN_AGENTS}/${id}/test`, {
       headers: { Authorization: `Bearer ${adminJwt}` },
-      data: { context: { clinic: 'Ward B' }, temperature: 0.9 },
+      data: { context: { current_department: 'Ward B' }, temperature: 0.9 },
     });
     expect(res.status(), 'forbidNonWhitelisted rejects `temperature`').toBe(400);
   });
@@ -139,7 +146,7 @@ test.describe('TASK-890 §3.8 — POST /admin/agents/:id/test', () => {
       const id = await createDraft(request);
       const res = await request.post(`${ADMIN_AGENTS}/${id}/test`, {
         headers: { Authorization: `Bearer ${adminJwt}` },
-        data: { context: { clinic: 'x' } },
+        data: { context: { current_department: 'x' } },
       });
       expect(res.status()).toBe(200);
     });
@@ -164,7 +171,7 @@ test.describe('TASK-890 §3.8 — POST /admin/agents/:id/test', () => {
       // `workingTenantId` binds at EXCHANGE, so `X-Tenant-Id` is never sent alongside it.
       const res = await request.post(`${ADMIN_AGENTS}/${id}/test`, {
         headers: { 'X-Service-Account-Token': svcToken },
-        data: { context: { clinic: 'x' } },
+        data: { context: { current_department: 'x' } },
       });
       const text = await res.text();
       // The seeded SA does not carry the scope today (see above) — a 403 naming exactly that is

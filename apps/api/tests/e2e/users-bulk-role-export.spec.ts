@@ -22,7 +22,7 @@
 import zlib from 'node:zlib';
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import ExcelJS from 'exceljs';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, generateUniqueSuffix } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, generateUniqueSuffix, createTenantUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -55,10 +55,7 @@ function asArray<T>(raw: unknown): T[] {
 }
 
 async function createUser(request: APIRequestContext, username: string): Promise<CreatedUser> {
-  const res = await request.post('/api/v1/admin/users', {
-    headers: bearer(saGlobalToken),
-    data: { username, password: 'Password123!' },
-  });
+  const res = await createTenantUser(request, saGlobalToken, { username, password: 'Password123!' });
   expect(res.status(), `create throwaway user ${username}`).toBeLessThan(300);
   return (await res.json()) as CreatedUser;
 }

@@ -26,7 +26,7 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, createTenantUser } from '../../../../tests/helpers';
 
 interface UserRow {
   password: string;
@@ -59,38 +59,12 @@ const UPDATED_PW = `Updated${UNIQUE}!cD`;
 
 let saGlobalToken: string;
 
-function asArray<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: T[] }).data)) return (raw as { data: T[] }).data;
-  return [];
-}
-
 /** Create a throwaway user + role + department so it can authenticate into __GLOBAL__. */
 async function createLoginableUser(request: APIRequestContext, username: string, password: string): Promise<{ id: string }> {
-  const res = await request.post('/api/v1/admin/users', {
-    headers: bearer(saGlobalToken),
-    data: { username, password, email: `${username}@example.com` },
-  });
-  expect(res.status(), `create throwaway user ${username}`).toBeLessThan(300);
-  const u = (await res.json()) as { id: string };
-
-  const rolesRes = await request.get('/api/v1/admin/rbac/roles', { headers: bearer(saGlobalToken) });
-  const roles = asArray<{ id: string; name: string }>(await rolesRes.json());
-  const role = roles.find((r) => r.name === 'DOCTOR') ?? roles[0];
-  expect(role, 'a seeded role exists').toBeTruthy();
-  const assignRole = await request.post(`/api/v1/admin/users/${u.id}/roles`, { headers: bearer(saGlobalToken), data: { roleId: role.id } });
-  expect([200, 201]).toContain(assignRole.status());
-
-  const deptRes = await request.get('/api/v1/admin/departments', { headers: bearer(saGlobalToken) });
-  const depts = asArray<{ id: string }>(await deptRes.json());
-  expect(depts.length, 'a seeded department exists').toBeGreaterThan(0);
-  const assignDept = await request.post(`/api/v1/admin/users/${u.id}/departments`, {
-    headers: bearer(saGlobalToken),
-    data: { departmentId: depts[0].id, isPrimary: true },
-  });
-  expect([200, 201]).toContain(assignDept.status());
-
-  return u;
+  // Role + department ride on the create (TASK-983 R6 / OD-4), so the row can log in at once.
+  const res = await createTenantUser(request, saGlobalToken, { username, password, email: `${username}@example.com` });
+  expect(res.status(), `create throwaway user ${username}: ${await res.text()}`).toBeLessThan(300);
+  return (await res.json()) as { id: string };
 }
 
 test.beforeAll(async ({ request }) => {
@@ -133,10 +107,7 @@ test.describe.serial('A — admin-created password is hashed and immediately log
   });
 
   test('A3 — weak creation-time password → 400 listing the unmet rules', async ({ request }) => {
-    const res = await request.post('/api/v1/admin/users', {
-      headers: bearer(saGlobalToken),
-      data: { username: `t402weak_${UNIQUE}`, password: 'weak' },
-    });
+    const res = await createTenantUser(request, saGlobalToken, { username: `t402weak_${UNIQUE}`, password: 'weak' });
     expect(res.status(), 'policy rejects the weak password').toBe(400);
     const body = JSON.stringify(await res.json());
     expect(body).toMatch(/at least 12 characters/i);

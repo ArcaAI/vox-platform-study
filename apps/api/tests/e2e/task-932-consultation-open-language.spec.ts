@@ -13,7 +13,8 @@
  * ## The distinction being pinned
  *
  * `language` is the consultation's SOURCE language — what is spoken — stored as declared and
- * echoed back (`en`, `ml`, `en-IN`, or a code-switch mode such as `ml-en`). It is NOT the language
+ * echoed back normalized to one spoken-language mode (`en`, `ml`, or a code-switch mode such as
+ * `ml-en`; a regional tag like `en-IN` becomes `en` since TASK-1004). It is NOT the language
  * the NOTE is written in: owner decision TASK-1001 OD-12 — the pre-summary and the summary are
  * written in the tenant's output-language policy, or the platform default (English) when there is
  * none, and never in this value. Nor is it the STT language mode that decodes a capture, which
@@ -82,9 +83,12 @@ test.describe('TASK-932 — POST /consultations/open declares the summary langua
     expect(((await read.json()) as OpenedConsultation).language).toBe('ml');
   });
 
-  test('a REGIONAL tag survives intact — `en-IN` is not flattened to `en`', async ({ request }) => {
+  test('a REGIONAL tag is normalized to its spoken-language mode — `en-IN` becomes `en`', async ({ request }) => {
+    // TASK-1004 reversed the TASK-932 wording: `language` is normalized at the edge to ONE
+    // spoken-language mode (`en-US` → `en`), so the regional suffix is not kept. A tag naming
+    // no mode is still refused (400 `LANGUAGE_MODE_UNKNOWN`, below).
     const opened = await openOk(request, token, { patientId: uniquePatientId('region'), language: 'en-IN' });
-    expect(opened.language).toBe('en-IN');
+    expect(opened.language).toBe('en');
   });
 
   test('ABSENT means undeclared, which is not English', async ({ request }) => {
@@ -115,11 +119,12 @@ test.describe('TASK-932 — visit type is derived from the parent, and is observ
     const patientId = uniquePatientId('revisit');
     const first = await openOk(request, token, { patientId, language: 'en' });
 
-    // A second open for the SAME patient on the same day returns the same row (get-or-create), so
-    // the revisit is opened for a different patient id that names the first as its parent — which
-    // is what the console's own control does with a picked previous consultation.
+    // The follow-up is for the SAME patient: a parent of a different patient is refused (400
+    // `PARENT_PATIENT_MISMATCH` — "a follow-up must belong to the same patient as the visit it
+    // follows"). Naming the parent is what opens a new, chained visit rather than returning the
+    // first row.
     const followUp = await openOk(request, token, {
-      patientId: `${patientId}-fu`,
+      patientId,
       parentConsultationId: first.id,
       language: 'ml',
     });

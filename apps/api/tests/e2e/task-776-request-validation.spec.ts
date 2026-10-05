@@ -246,7 +246,7 @@ test.describe('request validation', () => {
       expect(body.metadata).toMatchObject({ expectedVersion: staleVersion, currentVersion: 1 });
     });
 
-    test('Prisma P2002 (unique constraint) => 409 with the sanitised unified-envelope body', async ({ request }) => {
+    test('duplicate GlobalSetting key => 400 from the service precheck, which pre-empts Prisma P2002', async ({ request }) => {
       const key = `t776.p2002.${Date.now()}`;
       const payload = { name: 'T776 dup', key, value: '1', dataType: 'String' };
 
@@ -256,30 +256,24 @@ test.describe('request validation', () => {
       });
       expect(first.status()).toBe(201);
 
-      // Plain duplicate create (no prior soft-delete) has no service-level
-      // precheck for an ACTIVE collision — `GlobalSettingService.create` only
-      // pre-checks for a DELETED row to resurrect — so the raw Prisma unique
-      // violation reaches `ExceptionInterceptor`'s P2002 branch unmodified.
+      // This used to be the live P2002 => 409 probe: a plain duplicate create
+      // reached `ExceptionInterceptor`'s P2002 branch unmodified. TASK-932 S2-1
+      // added an ACTIVE-collision precheck to `GlobalSettingService.create`
+      // (one live row per `(tenantId, key)`, in any namespace), so the duplicate
+      // is now refused with a 400 that names the occupying namespace before the
+      // INSERT is attempted. The P2002 => 409 mapping itself stays pinned by
+      // `apps/api/src/interceptors/__tests__/exception.interceptor.test.ts` and
+      // `filters/__tests__/error-envelope.contract.test.ts`.
       const dup = await request.post('/api/v1/admin/settings', {
         headers: auth(tenantAdminToken),
         data: payload,
       });
-      expect(dup.status()).toBe(409);
+      expect(dup.status()).toBe(400);
       const body = await dup.json();
-      // DIVERGENCE: the briefed contract said "Prisma P2002 => 409" without
-      // specifying a body shape beyond the general exception-mapping section.
-      // The body is sanitised: it never carries the raw Prisma message or
-      // `meta` (constraint/column names). Since REST review H-2 it DOES carry
-      // the unified envelope — `message` and `code` were added, both derived
-      // from the Prisma error CODE alone, never from its text.
-      expect(body).toMatchObject({
-        statusCode: 409,
-        code: 'PERSISTENCE.UNIQUE_CONSTRAINT_VIOLATION',
-        message: 'Unique constraint violation',
-        error: 'Unique constraint violation',
-      });
+      expect(body.statusCode).toBe(400);
+      expect(String(body.message)).toContain(`Setting key '${key}' already exists`);
       expect(typeof body.correlationId).toBe('string');
-      // The sanitisation this test exists for: no Prisma text reaches the client.
+      // Still sanitised: no Prisma text reaches the client.
       expect(JSON.stringify(body)).not.toContain('Unique constraint failed');
     });
 

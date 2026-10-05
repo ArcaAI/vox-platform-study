@@ -77,6 +77,23 @@ const EXCLUSIVE_SPECS = ['**/streaming-backpressure-recovery.spec.ts'];
  */
 const ISOLATED_GATEWAY_SPECS = ['**/auth-throttle-per-endpoint.spec.ts', '**/byo-llm-credentials.spec.ts'];
 
+/**
+ * Specs that WRITE ArcaAI's tenant-default consultation context schema.
+ *
+ * `task-658` creates a probe schema as the tenant default; `task-950` and `task-951` publish a
+ * marked version onto the default and pin the original back afterwards. Each restores what it
+ * changed, but while one holds its version the others validate against the wrong declaration —
+ * measured 2026-10-05: `CLINICIAN_REQUIRED` in task-950 while task-951 had its own version pinned,
+ * and `CONTEXT_SCHEMA_VIOLATION … no published context schema` while task-658's probe was the
+ * default. They run in their own project, ONE FILE AT A TIME (`workers: 1`), beside the shared
+ * project. No `dependencies`: an unrelated red test elsewhere must not skip them.
+ */
+const ARCAAI_DEFAULT_SCHEMA_SPECS = [
+  '**/task-658-context-schema-plane.spec.ts',
+  '**/task-950-consultation-identity.spec.ts',
+  '**/task-951-open-mappings.spec.ts',
+];
+
 /** Where that second gateway listens. Unset ⇒ the project is skipped, not silently run against the shared one. */
 const isolatedApiUrl = process.env.E2E_ISOLATED_API_URL;
 
@@ -139,7 +156,12 @@ export default defineConfig({
     {
       name: 'api-tests',
       testMatch: '**/*.spec.ts',
-      testIgnore: [...INFERENCE_SPECS, ...EXCLUSIVE_SPECS, ...ISOLATED_GATEWAY_SPECS],
+      testIgnore: [...INFERENCE_SPECS, ...EXCLUSIVE_SPECS, ...ISOLATED_GATEWAY_SPECS, ...ARCAAI_DEFAULT_SCHEMA_SPECS],
+    },
+    {
+      name: 'api-arcaai-schema-tests',
+      testMatch: ARCAAI_DEFAULT_SCHEMA_SPECS,
+      workers: 1,
     },
     {
       // Specs that drive REAL model inference (STT/LLM/guardrail) rather than a

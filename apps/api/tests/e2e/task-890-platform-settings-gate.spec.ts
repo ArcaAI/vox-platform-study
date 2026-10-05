@@ -22,8 +22,12 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /** `enable-local-raw-capture` — a seeded, LOCKED, SYSTEM-tenant row (11-global-setting.ts). */
 const SYSTEM_ROW_ID = '00000000-0000-0000-0002-000000000001';
-/** `pipeline.templateResync.enabled` — a second seeded SYSTEM row, used for the DELETE probe. */
-const SYSTEM_ROW_ID_2 = '00000000-0000-0000-0002-000000000002';
+/**
+ * `identity.autoProvision.enabled` — a second seeded SYSTEM row, used for the DELETE probe. (It was
+ * `pipeline.templateResync.enabled`, `…0002-000000000002`, which the seed no longer ships, so the
+ * probe hit a 404 before the tier gate could answer.)
+ */
+const SYSTEM_ROW_ID_2 = '00000000-0000-0000-0002-000000000005';
 
 async function tenantAdminToken(request: APIRequestContext): Promise<string> {
   const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);

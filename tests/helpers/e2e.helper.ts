@@ -386,6 +386,45 @@ export async function createTestUser(
 }
 
 /**
+ * Seeded Global (`__GLOBAL__`) membership used by {@link createTenantUser} by
+ * default: the DOCTOR role and the OPD care-setting department.
+ */
+export const SEEDED_GLOBAL_DOCTOR_ROLE_ID = '00000000-0000-0000-0000-000000000010';
+export const SEEDED_GLOBAL_OPD_DEPARTMENT_ID = '70000000-0000-0000-0003-000000000001';
+
+/**
+ * Create a user through `POST /admin/users` INSIDE a tenant.
+ *
+ * Since TASK-983 R6 / OD-4 a tenant-scoped create must name a role AND a
+ * department (400 `USER_ROLE_REQUIRED` / `USER_DEPARTMENT_REQUIRED`
+ * otherwise); the membership lands atomically with the user, so the row can
+ * sign in immediately. Defaults to the seeded Global DOCTOR role + OPD
+ * department — pass `roleId` / `departmentId` for any other tenant.
+ *
+ * Returns the raw response so a spec keeps asserting the status itself.
+ */
+export async function createTenantUser(
+  request: APIRequestContext,
+  token: string,
+  data: { username: string; password: string; roleId?: string; departmentId?: string } & Record<string, unknown>,
+) {
+  const url = '/api/v1/admin/users';
+  try {
+    return await request.post(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: {
+        roleId: SEEDED_GLOBAL_DOCTOR_ROLE_ID,
+        departmentId: SEEDED_GLOBAL_OPD_DEPARTMENT_ID,
+        isPrimaryDepartment: true,
+        ...data,
+      },
+    });
+  } catch (error) {
+    throw wrapTransportError('POST', url, error);
+  }
+}
+
+/**
  * Delete a test user via API.
  *
  * Network failures rethrow (wrapped); non-2xx responses log a structured

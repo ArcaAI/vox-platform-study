@@ -34,7 +34,13 @@ const bearer = (token: string, tenantId?: string) => ({
   ...(tenantId ? { 'X-Tenant-Id': tenantId } : {}),
 });
 
-const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+/**
+ * The FOREIGN tenant, pinned to the seeded ARCAAI customer (`seed/05-tenant.ts`, plan ENTERPRISE).
+ * It used to be "the first listed tenant that is not ours", which on a shared DB is a throwaway
+ * tenant another spec created — on a plan whose `maxWorkflowDefinitions` is 1, so authoring a
+ * second row there is 409 `DOMAIN.QUOTA_EXCEEDED`, not a row.
+ */
+const ARCAAI_TENANT_ID = '50000000-0000-0000-0000-000000000001';
 const WORKFLOWS = '/api/v1/admin/workflow-definitions';
 const AGENTS = '/api/v1/admin/agents';
 /** A well-formed uuid that names nothing — the "unknown id" probe, which must look like a foreign one. */
@@ -148,17 +154,13 @@ test.beforeAll(async ({ request }) => {
   tenantAdminToken = admin!.token;
   superAdminToken = sa!.token;
 
-  const tenants = await request.get('/api/v1/admin/tenants?page=0&limit=50', { headers: bearer(superAdminToken) });
-  expect(tenants.status(), 'list tenants').toBe(200);
-  const rows = ((await tenants.json()).data as Array<{ id: string }>).filter((row) => row.id !== SYSTEM_TENANT_ID);
-  expect(rows.length, 'at least two customer tenants must be seeded').toBeGreaterThanOrEqual(2);
-
   const probe = await createDefinition(request, tenantAdminToken, 'probe');
   expect(probe.status, 'tenant admin can author a definition').toBe(201);
   const probeRow = await request.get(`${WORKFLOWS}/${probe.body.id}`, { headers: bearer(tenantAdminToken) });
   expect(probeRow.status()).toBe(200);
   ownTenantId = (await probeRow.json()).tenantId as string;
-  foreignTenantId = rows.find((row) => row.id !== ownTenantId)!.id;
+  expect(ownTenantId, 'the tenant admin authors in Global, so ARCAAI is foreign to it').not.toBe(ARCAAI_TENANT_ID);
+  foreignTenantId = ARCAAI_TENANT_ID;
 });
 
 test.afterAll(async ({ request }) => {

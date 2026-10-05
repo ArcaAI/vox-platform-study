@@ -29,7 +29,7 @@ import { readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, createTenantUser } from '../../../../tests/helpers';
 
 /**
  * The reserved SYSTEM tenant — the SOLE platform-configuration tier (owner
@@ -99,12 +99,6 @@ interface OutboxEntry {
   capturedAt: string;
 }
 
-function asArray<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[];
-  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: T[] }).data)) return (raw as { data: T[] }).data;
-  return [];
-}
-
 /** Latest dev-outbox capture for an email — the ONLY sanctioned way to obtain a self-service token. */
 function latestOutboxTokenFor(email: string): OutboxEntry | null {
   if (!existsSync(OUTBOX_FILE)) return null;
@@ -124,32 +118,10 @@ const sha256 = (raw: string) => createHash('sha256').update(raw).digest('hex');
 
 /** Create a throwaway user (with a profile email) that can authenticate into __GLOBAL__. */
 async function createLoginableUser(request: APIRequestContext, username: string, email: string): Promise<CreatedUser> {
-  const res = await request.post('/api/v1/admin/users', {
-    headers: bearer(saGlobalToken),
-    data: { username, password: CREATED_PW, email },
-  });
-  expect(res.status(), `create throwaway user ${username}`).toBeLessThan(300);
-  const u = (await res.json()) as CreatedUser;
-
-  const rolesRes = await request.get('/api/v1/admin/rbac/roles', { headers: bearer(saGlobalToken) });
-  expect(rolesRes.status(), 'list roles for loginable-user setup').toBe(200);
-  const roles = asArray<{ id: string; name: string }>(await rolesRes.json());
-  const role = roles.find((r) => r.name === 'DOCTOR') ?? roles[0];
-  expect(role, 'a seeded role exists').toBeTruthy();
-  const assignRole = await request.post(`/api/v1/admin/users/${u.id}/roles`, { headers: bearer(saGlobalToken), data: { roleId: role.id } });
-  expect([200, 201], 'assign role to throwaway user').toContain(assignRole.status());
-
-  const deptRes = await request.get('/api/v1/admin/departments', { headers: bearer(saGlobalToken) });
-  expect(deptRes.status(), 'list departments for loginable-user setup').toBe(200);
-  const depts = asArray<{ id: string }>(await deptRes.json());
-  expect(depts.length, 'a seeded department exists').toBeGreaterThan(0);
-  const assignDept = await request.post(`/api/v1/admin/users/${u.id}/departments`, {
-    headers: bearer(saGlobalToken),
-    data: { departmentId: depts[0].id, isPrimary: true },
-  });
-  expect([200, 201], 'assign department to throwaway user').toContain(assignDept.status());
-
-  return u;
+  // Role + department ride on the create (TASK-983 R6 / OD-4), so the row can log in at once.
+  const res = await createTenantUser(request, saGlobalToken, { username, password: CREATED_PW, email });
+  expect(res.status(), `create throwaway user ${username}: ${await res.text()}`).toBeLessThan(300);
+  return (await res.json()) as CreatedUser;
 }
 
 async function deleteUser(request: APIRequestContext, id: string | undefined): Promise<void> {
