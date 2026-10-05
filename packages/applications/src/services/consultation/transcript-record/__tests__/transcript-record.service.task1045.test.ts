@@ -188,6 +188,12 @@ function world() {
     update: vi.fn(async (_id: string, a: any) => a),
   };
 
+  const encounter = { id: 'enc-1', seq: 1, recordingStartMs: null as number | null, recordingEndMs: 0 as number | null };
+  const encounterRepository = {
+    findBySeq: vi.fn(async (_id: string, seq: number) => (seq === encounter.seq ? encounter : null)),
+    update: vi.fn(async (_id: string, e: unknown) => e),
+  };
+
   const emitter = { emit: vi.fn() };
   const cls = { get: vi.fn(() => undefined) };
   const secrets = transit();
@@ -205,10 +211,13 @@ function world() {
     secrets as any,
     redis as any,
     uow as any,
+    encounterRepository as any,
   );
 
   return {
     service,
+    encounter,
+    encounterRepository,
     items,
     versions,
     consultation,
@@ -527,6 +536,74 @@ describe('TranscriptRecordService full transcript', () => {
 // Recording manifest + encounter artifacts
 // ---------------------------------------------------------------------------
 
+describe('TranscriptRecordService recording span from the captured audio (no recording part)', () => {
+  const ingest = (w: ReturnType<typeof world>, sid: string, starts: number[]) =>
+    w.service.ingestSegments({
+      tenantId: TENANT,
+      consultationId: CID,
+      sttSessionId: sid,
+      audioOffsetMs: 0,
+      segments: starts.map((s, i) => seg(i, `utterance ${i}`, s)),
+    });
+
+  it('advances the cursor to the end of the session audio and closes the encounter window on session final', async () => {
+    const w = world();
+    w.jobs.push({ id: 'job-1', streamSessionId: SID, metaData: { recordingOffsetMs: 0 }, tenantId: TENANT });
+    await ingest(w, SID, [0, 2_000, 40_000]);
+
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+
+    expect(w.consultation.recordingCursorMs).toBe(40_900);
+    expect(w.encounter.recordingStartMs).toBe(0);
+    expect(w.encounter.recordingEndMs).toBe(40_900);
+  });
+
+  it('is idempotent on a redelivered final', async () => {
+    const w = world();
+    w.jobs.push({ id: 'job-1', streamSessionId: SID, metaData: { recordingOffsetMs: 0 }, tenantId: TENANT });
+    await ingest(w, SID, [0, 5_000]);
+
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+
+    expect(w.consultation.recordingCursorMs).toBe(5_900);
+  });
+
+  it('a recording part that lands after the fallback advance does not count the audio twice', async () => {
+    const w = world();
+    w.jobs.push({ id: 'job-1', streamSessionId: SID, metaData: { recordingOffsetMs: 0 }, tenantId: TENANT });
+    await ingest(w, SID, [0, 5_000]);
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+    const part = AudioRecordingFactory.CreateAudioRecording({ tenantId: TENANT, contextItemId: 'c', mediaId: 'm-1', duration: 6_500, sequenceNumber: 1 } as any);
+    w.audio.set(part.id, part);
+
+    await w.service.appendRecordingPart({
+      consultationId: CID,
+      audioRecordingId: part.id,
+      mediaId: 'm-1',
+      durationMs: 6_500,
+      encounterSeq: 1,
+      sttSessionId: SID,
+    });
+
+    expect(w.consultation.recordingCursorMs).toBe(6_500);
+    expect(part.recordingStartMs).toBe(0);
+  });
+
+  it('a second session continues after the first on the recording timeline', async () => {
+    const w = world();
+    w.jobs.push({ id: 'job-1', streamSessionId: SID, metaData: { recordingOffsetMs: 0 }, tenantId: TENANT });
+    await ingest(w, SID, [0, 5_000]);
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: SID });
+    w.jobs.push({ id: 'job-2', streamSessionId: 'stt-2', metaData: { recordingOffsetMs: w.consultation.recordingCursorMs }, tenantId: TENANT });
+    await ingest(w, 'stt-2', [0, 3_000]);
+
+    await w.service.onSessionFinal({ tenantId: TENANT, consultationId: CID, sttSessionId: 'stt-2' });
+
+    expect(w.consultation.recordingCursorMs).toBe(5_900 + 3_900);
+  });
+});
+
 describe('TranscriptRecordService recording + artifacts', () => {
   it('keeps ONE AUDIO_RECORDING item with a version per part and a {parts, totalMs} manifest', async () => {
     const w = world();
@@ -634,7 +711,7 @@ describe('TranscriptRecordService recording + artifacts', () => {
 // SttInternalService call sites
 // ---------------------------------------------------------------------------
 
-function sttInternal(overrides: { record?: any; sink?: any; runs?: any; job?: any } = {}) {
+function sttInternal(overrides: { record?: any; sink?: any; runs?: any; job?: any; consultations?: any } = {}) {
   const items: ContextItemEntity[] = [];
   const job = overrides.job ?? null;
   const jobRepository = {
@@ -671,6 +748,7 @@ function sttInternal(overrides: { record?: any; sink?: any; runs?: any; job?: an
     overrides.record,
     overrides.sink,
     overrides.runs,
+    overrides.consultations,
   );
   return { service, items, emitter, jobRepository, contextItemRepository };
 }
@@ -695,6 +773,30 @@ describe('SttInternalService routing', () => {
         status: AiActivityRunStatus.OK,
         contextItemId: 'full-1',
         outputVersionNumber: 1,
+      }),
+    );
+  });
+
+  it('streaming run record carries the ASR agent, model and encounter even before the job reports servedBy', async () => {
+    const record = { onSessionFinal: vi.fn(async () => ({ contextItemId: 'full-1', versionNumber: 1, segmentCount: 2 })) };
+    const runs = { record: vi.fn(async () => undefined) };
+    const spec = {
+      agent: { slug: 'realtime-transcription', versionId: 'v-1', versionNumber: 2 },
+      models: { asr: { slug: 'whisper-ml-en', provider: 'built-in', format: 'WHISPER_CPP' } },
+    };
+    const job = { id: 'job-s', streamSessionId: SID, startedAt: new Date('2026-10-05T10:00:00Z'), servedBy: null, resolvedSpec: spec };
+    const consultations = { findByIdOrNull: vi.fn(async () => ({ currentEncounterSeq: 2 })) };
+    const s = sttInternal({ record, runs, job, consultations });
+
+    await s.service.createTranscript({ transcriptText: 'hello', consultationId: CID, tenantId: TENANT, metadata: { sessionId: SID } } as any);
+
+    expect(runs.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activityKind: AiActivityKind.TRANSCRIBE_STREAM,
+        agentSlug: 'realtime-transcription',
+        model: 'whisper-ml-en',
+        provider: 'built-in',
+        encounterSeq: 2,
       }),
     );
   });

@@ -107,3 +107,16 @@ export function resolveServedBy(spec: unknown, engine: string | null | undefined
   // Guessing an entry here would put a wrong model on a billing-adjacent row.
   return { chainIndex: -1, source: 'fallback', agentSlug: null, modelSlug: null, provider: null, engine: engineName };
 }
+
+/**
+ * The primary spec as the server of a session still in flight: a streaming session reports its
+ * engine only when the job completes, so a run record written at the final transcript names the
+ * agent and model the session was resolved to, which is what is serving until a fallback is
+ * reported.
+ */
+export function primaryServedBy(spec: unknown): ServedBy | null {
+  if (!spec || typeof spec !== 'object') return null;
+  const resolved = spec as unknown as ResolvedAsrSpec;
+  if (!resolved.agent?.slug && !resolved.models?.asr?.slug) return null;
+  return { chainIndex: -1, source: 'primary', ...entryFacts(resolved, null) };
+}

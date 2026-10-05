@@ -3,6 +3,7 @@ import {
   AudioRecordingRepository,
   ConsultationEntity,
   ConsultationProcessing,
+  ConsultationEncounterRepository,
   ConsultationRepository,
   ConsultationStatus,
   ContextItemEntity,
@@ -104,6 +105,7 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     @Optional() @Inject(IRedisCacheService) private readonly redisCache?: IRedisCacheService,
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    @Optional() private readonly encounterRepository?: ConsultationEncounterRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -230,6 +232,8 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     // which this restore must never overwrite.
     await this.completePendingStop(consultation.id);
 
+    await this.settleSessionSpan(consultation, input.sttSessionId);
+
     if (rebuilt?.appended) {
       const timestamp = new Date().toISOString();
       this.eventEmitter.emit(ConsultationPipelineEvent.FullTranscriptRebuilt, {
@@ -340,7 +344,13 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     }
 
     const durationMs = Math.max(0, Math.round(input.durationMs));
-    const span = await this.consultationRepository.advanceRecordingCursor(consultation.id, durationMs);
+    const settled = await this.settledSessionSpan(input.sttSessionId);
+    const span = settled
+      ? {
+          startMs: settled.offsetMs,
+          endMs: (await this.consultationRepository.advanceRecordingCursor(consultation.id, Math.max(0, durationMs - settled.spanMs))).endMs,
+        }
+      : await this.consultationRepository.advanceRecordingCursor(consultation.id, durationMs);
     const codec = current.codec ?? audio.codec ?? audio.format ?? null;
 
     audio.encounterSeq = input.encounterSeq;
@@ -381,6 +391,78 @@ export class TranscriptRecordService extends BaseService implements ITranscriptR
     );
 
     return { contextItemId: container.id, versionNumber, totalMs: manifest.totalMs };
+  }
+
+  /**
+   * A session whose capture was never stored (dual capture off) still occupied the recording
+   * timeline: advance the cursor to the end of its last segment and close its encounter's
+   * window there. The advance is recorded on the session job (`recordingSpanMs`) so a recording
+   * part that arrives afterwards only adds what the segments did not already cover. Never throws.
+   */
+  private async settleSessionSpan(consultation: ConsultationEntity, sttSessionId: string): Promise<void> {
+    try {
+      const container = (await this.contextItemRepository.findAudioRecordings(consultation.id))[0] ?? null;
+      if (this.manifestOf(container).parts.some((part) => part.sttSessionId === sttSessionId)) return;
+
+      const segments = (await this.contextItemRepository.findSegments(consultation.id)).filter(
+        (segment) => (segment.metaData as Record<string, unknown> | undefined)?.sttSessionId === sttSessionId,
+      );
+      if (segments.length === 0) return;
+      const sessionEndMs = segments.reduce((max, segment) => Math.max(max, segment.t1Ms ?? 0), 0);
+      const offsetMs = segments.reduce((min, segment) => Math.min(min, segment.t0Ms ?? min), sessionEndMs);
+
+      const current = await this.loadConsultation(consultation.id, consultation.tenantId);
+      let cursorMs = current.recordingCursorMs ?? 0;
+      if (sessionEndMs > cursorMs) {
+        cursorMs = (await this.consultationRepository.advanceRecordingCursor(consultation.id, sessionEndMs - cursorMs)).endMs;
+        await this.stampSessionSpan(sttSessionId, sessionEndMs - offsetMs);
+      }
+
+      const encounterSeq = segments[segments.length - 1].encounterSeq;
+      const encounter = this.encounterRepository && encounterSeq != null ? await this.encounterRepository.findBySeq(consultation.id, encounterSeq) : null;
+      if (encounter && this.encounterRepository) {
+        const startMs = encounter.recordingStartMs ?? offsetMs;
+        const endMs = Math.max(encounter.recordingEndMs ?? 0, cursorMs);
+        if (encounter.recordingStartMs !== startMs || encounter.recordingEndMs !== endMs) {
+          encounter.recordingStartMs = startMs;
+          encounter.recordingEndMs = endMs;
+          await this.encounterRepository.update(encounter.id, encounter);
+        }
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'transcript_record.session_span_not_settled',
+        consultationId: consultation.id,
+        sttSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async stampSessionSpan(sttSessionId: string, spanMs: number): Promise<void> {
+    const [job] = await this.transcriptionJobRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- repository filters / tx clients are untyped Prisma shapes
+      filters: { streamSessionId: sttSessionId } as any,
+      limit: 1,
+      sort: [{ createdAt: 'desc' }],
+    });
+    if (!job) return;
+    job.metaData = { ...((job.metaData ?? {}) as Record<string, unknown>), recordingSpanMs: spanMs };
+    await this.transcriptionJobRepository.update(job.id, job);
+  }
+
+  /** The span the segments already put on the timeline for this session, when the fallback ran. */
+  private async settledSessionSpan(sttSessionId: string): Promise<{ offsetMs: number; spanMs: number } | null> {
+    if (!sttSessionId) return null;
+    const [job] = await this.transcriptionJobRepository.findAll({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- repository filters / tx clients are untyped Prisma shapes
+      filters: { streamSessionId: sttSessionId } as any,
+      limit: 1,
+      sort: [{ createdAt: 'desc' }],
+    });
+    const meta = (job?.metaData ?? {}) as Record<string, unknown>;
+    if (typeof meta.recordingSpanMs !== 'number' || typeof meta.recordingOffsetMs !== 'number') return null;
+    return { offsetMs: meta.recordingOffsetMs, spanMs: meta.recordingSpanMs };
   }
 
   // ===========================================================================

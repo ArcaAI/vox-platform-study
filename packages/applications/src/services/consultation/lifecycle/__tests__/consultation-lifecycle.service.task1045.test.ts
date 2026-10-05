@@ -287,6 +287,15 @@ describe('ConsultationLifecycleService — start', () => {
     expect(h.transcriptionJobs.update).toHaveBeenCalledWith('job-a', expect.objectContaining({ metaData: { agentSlug: 'asr', recordingOffsetMs: 61_500 } }));
   });
 
+  it('stamps the current encounter with the recording cursor as its recording start when it has none', async () => {
+    const h = makeHarness(consultation({ status: ConsultationStatus.OPEN, recordingCursorMs: 61_500 } as Partial<Row>));
+    h.encounters.findBySeq.mockResolvedValueOnce({ id: 'enc-2', endedAt: null, recordingStartMs: null, recordingEndMs: null } as never);
+
+    await h.service.start(ID, { sttSessionId: 'stt-a' });
+
+    expect(h.encounters.update).toHaveBeenCalledWith('enc-2', expect.objectContaining({ recordingStartMs: 61_500 }));
+  });
+
   it('never overwrites a recordingOffsetMs the session job already carries', async () => {
     const h = makeHarness(consultation({ status: ConsultationStatus.STOPPED, recordingCursorMs: 61_500 } as Partial<Row>));
     const job = { id: 'job-a', streamSessionId: 'stt-a', metaData: { recordingOffsetMs: 12_000 } };
