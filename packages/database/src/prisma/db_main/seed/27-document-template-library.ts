@@ -686,7 +686,13 @@ export const DOCUMENT_TEMPLATE_LIBRARY: readonly DocumentTemplateLibraryEntry[] 
 // Seeding
 // =============================================================================
 
-/** Upsert-by-id the SYSTEM reference rows. */
+/** Insert a template version snapshot unless it already exists: snapshots are immutable, so a re-seed must not touch one. */
+async function createVersionOnce(client: CorePrismaClient, data: Parameters<CorePrismaClient['documentTemplateVersion']['create']>[0]['data']): Promise<void> {
+  const existing = await client.documentTemplateVersion.findUnique({ where: { id: data.id as string }, select: { id: true } });
+  if (!existing) await client.documentTemplateVersion.create({ data });
+}
+
+/** Upsert-by-id the SYSTEM reference rows (their immutable version snapshots are inserted once). */
 async function seedSystemLibrary(client: CorePrismaClient): Promise<void> {
   for (const item of DOCUMENT_TEMPLATE_LIBRARY) {
     const head = {
@@ -704,10 +710,9 @@ async function seedSystemLibrary(client: CorePrismaClient): Promise<void> {
     };
     await client.documentTemplate.upsert({ where: { id: item.id }, update: head, create: head });
 
-    // The version row is IMMUTABLE by design, so the update payload restates the
-    // same derived bytes rather than carrying operator-owned state. Refreshing
-    // it is what lets a corrected shape reach a dev database that already ran
-    // the phase; a real environment reaches a new shape through `publish`.
+    // The version row is IMMUTABLE by design (a database trigger rejects any UPDATE), so it is
+    // written once and an existing one is left alone; a corrected shape reaches an environment
+    // through `publish` as a new version.
     const version = {
       id: item.versionId,
       tenantId: SYSTEM_TENANT_ID,
@@ -720,7 +725,7 @@ async function seedSystemLibrary(client: CorePrismaClient): Promise<void> {
       changeReason: 'Platform reference shape (TASK-891)',
       createdBy: SYSTEM_USER_ID,
     };
-    await client.documentTemplateVersion.upsert({ where: { id: item.versionId }, update: version, create: version });
+    await createVersionOnce(client, version);
   }
 }
 
@@ -1018,8 +1023,7 @@ export const ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES: readonly DocumentTemplateLibr
  * Write the 22 department shapes to the ArcaAI tenant.
  *
  * Called from phase 29, not from `seedDocumentTemplateLibrary`: these are one CUSTOMER's rows and
- * `safe` mode is platform configuration only. Upsert-by-id like the SYSTEM pair, for the same
- * reason — a corrected shape has to be able to reach a dev database that already ran the phase.
+ * `safe` mode is platform configuration only. Upsert-by-id like the SYSTEM pair; the immutable version snapshot is inserted once and skipped when it exists, so a second seed run is clean.
  */
 export const seedArcaaiDepartmentDocumentTemplates = async (client: CorePrismaClient, tenantId: string): Promise<number> => {
   for (const item of ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES) {
@@ -1053,7 +1057,7 @@ export const seedArcaaiDepartmentDocumentTemplates = async (client: CorePrismaCl
       changeReason: 'ArcaAI department running-note shape (TASK-932)',
       createdBy: SYSTEM_USER_ID,
     };
-    await client.documentTemplateVersion.upsert({ where: { id: item.versionId }, update: version, create: version });
+    await createVersionOnce(client, version);
   }
   return ARCAAI_DEPARTMENT_DOCUMENT_TEMPLATES.length;
 };

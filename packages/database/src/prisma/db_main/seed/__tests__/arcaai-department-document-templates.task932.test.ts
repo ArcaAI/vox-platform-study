@@ -233,7 +233,10 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
     const versions: Array<Record<string, unknown>> = [];
     const client = {
       documentTemplate: { upsert: async ({ create }: { create: Record<string, unknown> }) => templates.push(create) },
-      documentTemplateVersion: { upsert: async ({ create }: { create: Record<string, unknown> }) => versions.push(create) },
+      documentTemplateVersion: {
+        findUnique: async () => null,
+        create: async ({ data }: { data: Record<string, unknown> }) => versions.push(data),
+      },
     };
 
     const written = await seedArcaaiDepartmentDocumentTemplates(client as never, ARCAAI);
@@ -249,5 +252,25 @@ describe('TASK-932 §3.7 — ArcaAI department note shapes', () => {
     // note for ten of the eleven.
     expect(templates.filter((row) => row.isDefault === true)).toEqual([]);
     for (const row of versions) expect(row).toMatchObject({ tenantId: ARCAAI, versionNumber: 1 });
+  });
+
+  it('a second run writes no version row: a snapshot is immutable, so an existing one is skipped, never updated', async () => {
+    const stored = new Map<string, Record<string, unknown>>();
+    const updates: string[] = [];
+    const client = {
+      documentTemplate: { upsert: async () => undefined },
+      documentTemplateVersion: {
+        findUnique: async ({ where }: { where: { id: string } }) => stored.get(where.id) ?? null,
+        create: async ({ data }: { data: Record<string, unknown> }) => void stored.set(data.id as string, data),
+        update: async ({ where }: { where: { id: string } }) => void updates.push(where.id),
+        upsert: async ({ where }: { where: { id: string } }) => void updates.push(where.id),
+      },
+    };
+
+    await seedArcaaiDepartmentDocumentTemplates(client as never, ARCAAI);
+    expect(stored.size).toBe(22);
+    await seedArcaaiDepartmentDocumentTemplates(client as never, ARCAAI);
+    expect(stored.size).toBe(22);
+    expect(updates).toEqual([]);
   });
 });
