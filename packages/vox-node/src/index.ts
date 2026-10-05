@@ -19,6 +19,9 @@ export type { HopeClientOptions, HopeLogger } from './client';
 export {
   AGENT_PLANE_ROUTES,
   AgentsResource,
+  AttachmentFailedError,
+  AttachmentUploadError,
+  ConsultationHandle,
   ConsultationRecordingResource,
   ConsultationStreamsResource,
   ConsultationSummariesResource,
@@ -35,7 +38,10 @@ export {
 } from './resources';
 export type {
   AddContextOptions,
+  ConsultationHandleEventName,
+  ConsultationHandleEvents,
   ConsultationRequestOptions,
+  ConsultationsResourceOptions,
   InvokeAgentOptions,
   ContextSchemaDiscoveryOptions,
   ConsultationSummaryRequestOptions,
@@ -326,4 +332,31 @@ export type {
   DnaWritingSample,
   DnaWritingSampleKind,
   DnaWritingSamplesIngestRequest,
+} from './types';
+
+/** The consultation LIFECYCLE vocabulary and the `ConsultationHandle` request/response types. */
+export type {
+  ActivityEntry,
+  ActivityKind,
+  ApproveOptions,
+  AttachmentInput,
+  AttachmentResult,
+  CaptureHandle,
+  CaptureState,
+  CloseOptions,
+  ConsultationActivityPage,
+  ConsultationLifecycleStatus,
+  ConsultationProcessing,
+  ConsultationState,
+  EncounterRecap,
+  FeedbackInput,
+  FeedbackResponse,
+  GenerateSummaryOptions,
+  HistoryQuery,
+  LifecycleEvent,
+  ReopenOptions,
+  SendAttachmentOptions,
+  StartCaptureOptions,
+  StopCaptureOptions,
+  StopResult,
 } from './types';

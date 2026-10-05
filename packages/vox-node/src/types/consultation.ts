@@ -7,7 +7,8 @@
  * `/api/v1/consultations/jobs/:jobId*`.
  */
 
-import type { GoverningRunSummary } from '@arcaai/types';
+import type { ConsultationProcessing, GoverningRunSummary } from '@arcaai/types';
+import type { ConsultationStatus as ConsultationLifecycleStatus } from '@arcaai/types';
 
 // -----------------------------------------------------------------------------
 // Requests
@@ -31,6 +32,13 @@ export interface GenerateSummaryRequest {
   contextItemIds?: string[];
   /** Additional options for summarization. */
   options?: Record<string, unknown>;
+  /** The language the note is written in. Omit it for the tenant's configured output language. */
+  outputLanguage?: string;
+  /**
+   * Regenerate only these sections. The other sections are carried over from the latest note
+   * version into a new one. A 409 once the consultation is approved.
+   */
+  sectionKeys?: string[];
   /**
    * Idempotency key (UUID) for safe POST retries / double-clicks.
    *
@@ -143,6 +151,11 @@ export interface SummaryApprovalResponse {
  *
  * Only `OPEN`, `PRIMED`, `RECORDING` and `DRAINING` can take a recording; see
  * {@link ConsultationOpenResponse.recordable} (`./consultation-realtime`).
+ *
+ * @deprecated The twelve-value status is the pre-lifecycle vocabulary. The gateway now answers
+ * `OPEN | RECORDING | PAUSED | STOPPED | APPROVED | CLOSED_COMPLETE | CLOSED_INCOMPLETE` plus a
+ * separate `processing` marker when a call sends `X-Hope-Lifecycle: 2` (every call from
+ * `hope.consultations.*` does) — see `ConsultationLifecycleStatus`. Removed in the release after next.
  */
 export type ConsultationStatus =
   | 'OPEN'
@@ -183,6 +196,8 @@ export interface ConsultationGetResponse {
    * `'OPEN'` server-side for a freshly-created consultation.
    */
   status?: ConsultationStatus;
+  /** The real lifecycle status and processing marker, present on every response regardless of the projected `status`. */
+  lifecycle?: { status: ConsultationLifecycleStatus; processing: ConsultationProcessing };
   /** The PRIOR consultation, when this visit is a revisit or a referral — see `OpenConsultationRequest.parentConsultationId`. */
   parentConsultationId?: string;
   /**

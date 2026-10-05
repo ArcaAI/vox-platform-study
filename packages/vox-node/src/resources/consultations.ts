@@ -33,9 +33,12 @@ import type {
   OpenConsultationRequest,
   UpdateConsultationLanguageRequest,
 } from '../types/consultation-realtime';
+import { ConsultationHandle, withLifecycleHeader } from './consultation-handle';
+import type { ConsultationOpenResult } from './consultation-handle';
 import { ConsultationRecordingResource } from './consultation-recording';
 import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
+import { SttResource } from './stt';
 import { ConsultationWorkflowsResource } from './workflows';
 
 /** Per-call options for {@link ConsultationsResource.get}. */
@@ -62,7 +65,12 @@ export interface WaitForFinalNoteOptions {
   signal?: AbortSignal;
 }
 
-/** Statuses at which the finalize run has produced a note the caller may read. */
+/**
+ * Statuses at which the finalize run has produced a note the caller may read.
+ *
+ * @deprecated Part of the pre-lifecycle twelve-value vocabulary. Read `status` and `processing`
+ * (`STOPPED` + `AWAITING_REVIEW`) from a {@link ConsultationHandle}, or watch its `status` events.
+ */
 const NOTE_READY_STATUSES: ReadonlySet<ConsultationStatus> = new Set<ConsultationStatus>([
   'PENDING_REVIEW',
   'DRAFT_PENDING_SENSORS',
@@ -156,6 +164,16 @@ export interface AddContextOptions extends ConsultationRequestOptions {
   contextSchemaVersionId?: string;
 }
 
+/** Construction options for {@link ConsultationsResource}. */
+export interface ConsultationsResourceOptions {
+  /** Used by handles for the direct-to-storage upload, which must carry no gateway credentials. */
+  fetch?: typeof fetch;
+  /** Injectable for tests. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable for tests. */
+  random?: () => number;
+}
+
 export class ConsultationsResource {
   /** Consultation-bound summarization — `hope.consultations.summaries.*`. */
   readonly summaries: ConsultationSummariesResource;
@@ -169,22 +187,33 @@ export class ConsultationsResource {
    */
   readonly workflows: ConsultationWorkflowsResource;
   /**
-   * The RECORDING lifecycle — `hope.consultations.recording.start/stop`
-   * (TASK-933).
+   * The RECORDING lifecycle — `hope.consultations.recording.start/stop`.
    *
    * A sub-resource rather than two methods on this class, because the pair is
    * one state machine with one invariant worth keeping visible: an STT
    * streaming session is created FIRST and its id handed to `start`, so the
    * live-documentation layer can subscribe to that session's results directly.
+   *
+   * @deprecated Use {@link ConsultationHandle.start}, {@link ConsultationHandle.pause} and
+   * {@link ConsultationHandle.stop} (from `open()` / `attach()`): they compose the STT session,
+   * the start command and the socket, and `stop` waits for the final transcript.
    */
   readonly recording: ConsultationRecordingResource;
   /** The four LIVE SSE planes — `hope.consultations.streams.*` (TASK-933). */
   readonly streams: ConsultationStreamsResource;
 
-  constructor(
-    private readonly transport: Transport,
-    isServiceAccount = false,
-  ) {
+  private readonly transport: Transport;
+  private readonly handleOptions: ConsultationsResourceOptions;
+
+  /**
+   * @param options What the handles `open`/`attach` return need beyond the transport. `HopeClient`
+   *   passes its raw `fetch`, which the direct-to-storage attachment upload uses so no gateway
+   *   credential reaches the storage host; unset, the global `fetch` is used.
+   */
+  constructor(transport: Transport, isServiceAccount = false, options: ConsultationsResourceOptions = {}) {
+    // Every consultation call asks for the real seven-value status.
+    this.transport = withLifecycleHeader(transport);
+    this.handleOptions = options;
     this.summaries = new ConsultationSummariesResource(transport);
     this.workflows = new ConsultationWorkflowsResource(transport, isServiceAccount);
     this.recording = new ConsultationRecordingResource(transport);
@@ -193,7 +222,10 @@ export class ConsultationsResource {
 
   /**
    * `POST /api/v1/consultations/open` — GET-OR-CREATE the consultation for one
-   * VISIT.
+   * VISIT, and return the {@link ConsultationHandle} that drives it: the open response's fields
+   * (read-only, plus the lifecycle ones — `processing`, `reopenCount`, `encounters`, …) and the
+   * verbs `start`, `pause`, `stop`, `generateSummary`, `approve`, `close`, `reopen`,
+   * `sendAttachment`, `sendFeedback` and `history`.
    *
    * **The visit key.** With an `externalRef` (the value of the schema's
    * `externalRef`-marked context field, e.g. an EMR encounter/event id) the
@@ -241,16 +273,44 @@ export class ConsultationsResource {
   async open<TContext extends Record<string, unknown> = Record<string, unknown>>(
     request: OpenConsultationRequest<TContext>,
     options: ConsultationRequestOptions = {},
-  ): Promise<ConsultationOpenResponse> {
+  ): Promise<ConsultationHandle> {
     if (typeof request.patientId !== 'string' || request.patientId.trim() === '') {
       throw new TypeError('open: `patientId` is required and must be a non-empty string — a consultation is always about a patient.');
     }
 
-    return this.transport.request<ConsultationOpenResponse>({
+    const response = await this.transport.request<ConsultationOpenResult>({
       method: 'POST',
       path: 'consultations/open',
       body: request,
       signal: options.signal,
+    });
+    return this.handleFor(response);
+  }
+
+  /**
+   * Build a {@link ConsultationHandle} for a consultation you did not open in this process — a
+   * worker picking up a visit, a second service reading history. Reads the consultation once
+   * (`GET /api/v1/consultations/:id`); a missing id and another tenant's id are both a 404.
+   *
+   * The handle's `visitType`, `externalRef` and `governingRun` are whatever the gateway returns on
+   * a read; call {@link open} instead when you need the open-time answers (`recordable`,
+   * `encounterAppended`).
+   */
+  async attach(id: string, options: ConsultationRequestOptions = {}): Promise<ConsultationHandle> {
+    const response = await this.transport.request<ConsultationOpenResult>({
+      path: `consultations/${encodePathSegment(id)}`,
+      signal: options.signal,
+    });
+    return this.handleFor(response);
+  }
+
+  private handleFor(response: ConsultationOpenResult): ConsultationHandle {
+    return new ConsultationHandle(response, {
+      transport: this.transport,
+      stt: new SttResource(this.transport),
+      fetch: this.handleOptions.fetch,
+      sleep: this.handleOptions.sleep,
+      random: this.handleOptions.random,
     });
   }
 
@@ -303,6 +363,10 @@ export class ConsultationsResource {
    * call again or read `summaries.latest` later.
    * @throws TypeError — locally, for an unparseable `since`.
    * @throws The signal's reason (an `AbortError` by default) when `signal` aborts.
+   *
+   * @deprecated Use {@link ConsultationHandle.stop} (it waits for the final transcript) with
+   * {@link ConsultationHandle.generateSummary}`({ wait: true })`, or watch the handle's `status`
+   * events for `processing` to reach `AWAITING_REVIEW`.
    */
   async waitForFinalNote(id: string, options: WaitForFinalNoteOptions): Promise<ConsultationSummaryResponse> {
     const sinceMs = parseSince(options.since);
@@ -463,6 +527,10 @@ export class ConsultationsResource {
    * `close` is real and OCC-guarded at the gateway today — the **browser**
    * SDK's `useArcaSession().close()` already calls it. What was missing was
    * this wrapper, not the capability.
+   *
+   * @deprecated Use {@link ConsultationHandle.close}, which sends the handle's own version as
+   * `If-Match` and re-reads once on a 412. This `(id, request, { ifMatch })` signature is removed
+   * in the release after next.
    */
   async close(consultationId: string, request: CloseConsultationRequest = {}, options: CloseConsultationOptions): Promise<ConsultationGetResponse> {
     return this.transport.request<ConsultationGetResponse>({
