@@ -200,6 +200,8 @@ Realign, never remove, never invent. One routed consultation screen carrying all
 | D-39 | **H-164 provider envelope** → its own ticket TASK-1046 (per-provider normalisation + contract tests); not in TASK-1045. |
 | D-40 | **E2E only after all implementation** (owner, 2026-10-05). |
 | D-41 | **SDK family → 5.0.0** (owner, 2026-10-05: "for SDKs, increase the version number to 5.0"). Resolves D-36 and keeps D-19: TASK-1039's RunHandle/useRun code is already on `dev-2.2` (TASK-1036 wave C), so 5.0.0 = TASK-1039 + TASK-1042 + TASK-1045 (changesets for all three). Versioned locally after W6-F8's handle additions merge; publishing follows the local runbook and needs the owner's go. ALaaS pins 5.0.0 once published. |
+| D-42 | ALaaS queue routing: Cardiology and Endocrinology map to the general (`gen`) workflow until they have their own (owner, 2026-10-05). |
+| D-43 | **Final verification** (owner, 2026-10-05): once TASK-1045 is finished, one end-to-end run from ALaaS (svc + web_ui) into the local HOPE stack incl. the admin console, covering TASK-1038/1039/1040/1041/1042/1043/1044 surfaces too; logs and database state are monitored and evaluated during the run; a detailed report follows. Defects found are fixed by lanes; major changes or re-architecture go to the owner first. |
 
 ## 5. Open questions
 
