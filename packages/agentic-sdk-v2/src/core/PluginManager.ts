@@ -47,6 +47,13 @@ export interface PluginManagerRuntimeOptions {
   agentSlug?: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
+  /**
+   * Bind the streaming session to a published workflow instead of a consultation (TASK-1042).
+   * Mutually exclusive with `consultationId`; it also counts as "naming" the capture, so the
+   * backend transport is built even when no `agentSlug` is given (the gateway then resolves the
+   * workflow's own STT node).
+   */
+  workflowSlug?: string;
   /** Optional language override (forwarded to createSession). */
   language?: string;
   /**
@@ -542,7 +549,7 @@ export class PluginManager {
    */
   buildStreamingTransport(sttConfig: STTPluginConfig, agentSlug?: string): unknown {
     const provider = sttConfig.provider ?? DEFAULT_STT_CONFIG.provider;
-    const named = Boolean(agentSlug);
+    const named = Boolean(agentSlug) || Boolean(this.runtimeOptions.workflowSlug);
     // Nothing named: only an EXPLICIT backend provider opens a session on the
     // tenant default. 'auto' keeps its pre-865 resolution, and a legacy
     // `sttSocket` keeps the RemoteSTTProvider path.
@@ -619,6 +626,7 @@ export class PluginManager {
       wsClient,
       ...(agentSlug ? { agentSlug } : {}),
       consultationId: this.runtimeOptions.consultationId,
+      ...(this.runtimeOptions.workflowSlug ? { workflowSlug: this.runtimeOptions.workflowSlug } : {}),
       // Per-capture stop-drain ceiling. Spread only
       // when positive so the provider keeps seeing `undefined` — and therefore
       // its own default — for every caller that does not set it.

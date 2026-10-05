@@ -372,6 +372,13 @@ export interface AudioStartOptions {
    */
   agentSlug?: string;
   /**
+   * Bind the STT session to a published WORKFLOW instead of the open consultation (TASK-1042).
+   * Set by {@link useRunAudio} when no consultation is open; the session id then feeds a
+   * standalone run's `input.<audioField>.sttSessionId`. Overrides the open consultation for this
+   * capture (the two are mutually exclusive on the gateway).
+   */
+  workflowSlug?: string;
+  /**
    * Primary microphone deviceId. Forwarded as
    * `getUserMedia({ audio: { deviceId: { exact } } })`. Omit for the default mic.
    */
