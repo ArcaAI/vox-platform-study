@@ -1,5 +1,7 @@
 export { HistoryTimelineList } from './history-timeline-list';
 export { TimelineItem } from './timeline-item';
+export { TimelineBand, timelineBandVariants } from './timeline-band';
+export type { TimelineBandProps } from './timeline-band';
 export { useTimeline } from './use-timeline';
 export type { UseTimelineParams, UseTimelineResult } from './use-timeline';
 export type { TimelineItemProps } from './timeline-item';
@@ -24,6 +26,8 @@ export type {
   TimelineContent,
   TimelineItemModel,
   TimelineBadge,
+  TimelineBandModel,
+  TimelineRow,
   TimelineWord,
   TimelineImage,
   TimelineTranscriptSegment,

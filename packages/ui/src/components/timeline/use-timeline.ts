@@ -4,10 +4,13 @@ import * as React from 'react';
 
 import { useExpansion, type AsyncCollection } from '@/lib/shared';
 
-import type { TimelineExpansion, TimelineItemModel } from './types';
+import type { TimelineExpansion, TimelineItemModel, TimelineRow } from './types';
 
 export interface UseTimelineParams<TItem = TimelineItemModel> {
   items: TItem[];
+  /** Order `items` arrive in. Default `'desc'` (newest-first). */
+  inputOrder?: 'desc' | 'asc';
+  /** Displayed order; defaults to `inputOrder` (no reordering). */
   order?: 'desc' | 'asc';
   mapItem?: (raw: TItem) => TimelineItemModel;
   collection?: AsyncCollection<TItem>;
@@ -16,7 +19,8 @@ export interface UseTimelineParams<TItem = TimelineItemModel> {
 }
 
 export interface UseTimelineResult {
-  items: TimelineItemModel[];
+  /** Rows in display order; `kind: 'band'` rows are not expandable items. */
+  items: TimelineRow[];
   expandedIds: string[];
   isExpanded: (id: string) => boolean;
   toggle: (id: string) => void;
@@ -32,19 +36,19 @@ export interface UseTimelineResult {
  * triggering against a transport-agnostic `AsyncCollection` (D5).
  */
 export function useTimeline<TItem = TimelineItemModel>(params: UseTimelineParams<TItem>): UseTimelineResult {
-  const { items, order = 'desc', mapItem, collection, expansion, onItemExpand } = params;
+  const { items, inputOrder = 'desc', order = inputOrder, mapItem, collection, expansion, onItemExpand } = params;
 
-  const models = React.useMemo<TimelineItemModel[]>(() => {
-    const mapped = mapItem ? items.map(mapItem) : (items as unknown as TimelineItemModel[]);
-    // Input is newest-first by contract; only `asc` reorders.
-    return order === 'asc' ? [...mapped].reverse() : mapped;
-  }, [items, order, mapItem]);
+  const models = React.useMemo<TimelineRow[]>(() => {
+    const mapped = mapItem ? items.map(mapItem) : (items as unknown as TimelineRow[]);
+    // Reverse only when the requested display order differs from the input order.
+    return order !== inputOrder ? [...mapped].reverse() : mapped;
+  }, [items, inputOrder, order, mapItem]);
 
   const { expandedIds, isExpanded, toggle, setExpanded } = useExpansion({
     value: expansion?.value,
     onChange: expansion?.onChange,
     mode: expansion?.mode,
-    defaultExpandedIds: React.useMemo(() => models.filter((m) => m.defaultExpanded).map((m) => m.id), [models]),
+    defaultExpandedIds: React.useMemo(() => models.filter((m): m is TimelineItemModel => m.kind !== 'band' && !!m.defaultExpanded).map((m) => m.id), [models]),
     onExpandedChange: onItemExpand,
   });
 

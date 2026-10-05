@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/shadcn/skeleton';
 import { cn } from '@/lib/utils';
 
 import { resolveRenderer as resolveDefaultRenderer } from './renderers/registry';
+import { TimelineBand } from './timeline-band';
 import { TimelineItem } from './timeline-item';
 import { useTimeline } from './use-timeline';
 import type { HistoryTimelineListProps, TimelineContentVariant, TimelineItemModel, TimelineRenderer } from './types';
@@ -16,6 +17,7 @@ import type { HistoryTimelineListProps, TimelineContentVariant, TimelineItemMode
 export function HistoryTimelineList<TItem = TimelineItemModel>(props: HistoryTimelineListProps<TItem>) {
   const {
     items,
+    inputOrder,
     order,
     mapItem,
     collection,
@@ -23,6 +25,9 @@ export function HistoryTimelineList<TItem = TimelineItemModel>(props: HistoryTim
     expansion,
     onItemExpand,
     onMediaOpen,
+    selectedId,
+    onItemSelect,
+    actions,
     onRetry,
     isLoading,
     error,
@@ -36,8 +41,15 @@ export function HistoryTimelineList<TItem = TimelineItemModel>(props: HistoryTim
     className,
   } = props;
 
-  const timeline = useTimeline<TItem>({ items, order, mapItem, collection, expansion, onItemExpand });
+  const timeline = useTimeline<TItem>({ items, inputOrder, order, mapItem, collection, expansion, onItemExpand });
   const models = timeline.items;
+
+  // Position among content rows only (bands are not part of the set).
+  const itemCount = React.useMemo(() => models.filter((m) => m.kind !== 'band').length, [models]);
+  const itemPositions = React.useMemo(() => {
+    let n = 0;
+    return models.map((m) => (m.kind === 'band' ? 0 : ++n));
+  }, [models]);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -130,20 +142,31 @@ export function HistoryTimelineList<TItem = TimelineItemModel>(props: HistoryTim
           {virtualItems.map((virtualItem) => {
             const model = models[virtualItem.index];
             if (!model) return null;
+            const rowStyle = { position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItem.start}px)` } as const;
+            if (model.kind === 'band') {
+              return (
+                <div key={virtualItem.key} data-index={virtualItem.index} ref={virtualizer.measureElement} style={rowStyle}>
+                  <TimelineBand band={model} />
+                </div>
+              );
+            }
             return (
               <div
                 key={virtualItem.key}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItem.start}px)` }}
+                style={rowStyle}
               >
                 <TimelineItem
                   item={model}
                   expanded={timeline.isExpanded(model.id)}
                   density={density}
                   lazyMedia={lazyMedia}
-                  posInSet={virtualItem.index + 1}
-                  setSize={models.length}
+                  posInSet={itemPositions[virtualItem.index]}
+                  setSize={itemCount}
+                  selected={selectedId != null && selectedId === model.id}
+                  onSelect={onItemSelect}
+                  actions={actions}
                   resolveRenderer={resolve}
                   onToggle={timeline.toggle}
                   onMediaOpen={onMediaOpen}

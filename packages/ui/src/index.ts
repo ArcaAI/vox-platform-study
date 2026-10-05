@@ -407,6 +407,7 @@ export type { ColumnDef, RowData, RowSelectionState } from './components/data-gr
 export {
   HistoryTimelineList,
   useTimeline,
+  TimelineBand,
   ScrollSpyTimeline,
   useScrollSpy,
   MarkdownRenderer,
@@ -425,6 +426,8 @@ export type {
   TimelineContent,
   TimelineItemModel,
   TimelineBadge,
+  TimelineBandModel,
+  TimelineRow,
   TimelineWord,
   TimelineImage,
   TimelineTranscriptSegment,
