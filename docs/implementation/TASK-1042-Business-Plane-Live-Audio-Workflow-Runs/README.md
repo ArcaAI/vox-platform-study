@@ -288,7 +288,7 @@ Orchestrator commits:
 
 ### 6.4 Known limits and follow-ups
 
-- **Result-stream cap.** `stt.streaming.resultStreamMaxlen` defaults to 10000. Partials during speech run at about 2.5 entries/s, so the cap holds about 4000 s of continuous speech, just above the 3600 s ceiling. A session past it reads as `truncated` (fail-closed, never short). Raising the default is an owner decision, not part of this ticket.
+- **Result-stream cap.** `stt.streaming.resultStreamMaxlen` defaults to 10000. Partials during speech run at about 2.5 entries/s, so the cap holds about 4000 s of continuous speech, just above the 3600 s ceiling. A session past it reads as `truncated` (fail-closed, never short). The owner decided (2026-10-05) to keep 10000.
 - After close, the result stream expires in 3600 s. A C5 read after that reads as `truncated` unless the row recorded zero characters. The harness reads within 5 s of the end, so only a much later re-read is affected.
 - The console Integration tab does not yet pass the real `audioField` into the snippets (`integration-tab.tsx` / `run-shapes.ts` are owned by the TASK-1036 canvas lane). Until then the raw snippet shows `<audioField>`.
 - The deprecated `:slug/invoke` alias also binds audio but carries no Swagger update.
@@ -302,4 +302,5 @@ Orchestrator commits:
 | 2026-10-05 | **Owner approved** OD-1..12 as recommended. Start is gated on the OD-35 merge (OD-12). Status → Approved, waiting to start. |
 | 2026-10-05 | OD-35 is not yet merged (the lane is still running). On the owner's instruction the SDK lane (L3) and the harness lane (L2) start now and the gateway lane (L1) is held. Contract C1–C7 frozen. **OD-4a**: the owner chose the durable wait, because the 900 s / 3600 s caps make OD-4 impossible. |
 | 2026-10-05 | L3 merged (`12d2ee1ac`). OD-35 merged on dev-2.2 (`ee31a7e67`, `71c3ebeda`) and brought in (`b263f0627`). C8 pins session ownership to the OD-35 principal helper. The service-account run-ticket gap does not affect this ticket: vox-node `RunHandle` streams SSE with header credentials and mints no ticket. L1 launched. |
+| 2026-10-05 | L2 and L1 merged; artifacts regenerated in the verify worktree `../hope-v2-task-1042-verify` (`5f80ef21c`). Owner: merge target dev-2.2; keep `resultStreamMaxlen` at 10000. Single gate pass running. |
 | 2026-10-05 | File ownership agreed with the TASK-1036/1038 session: no collision except `workflow-exposure.service.ts` (sequenced after OD-35). TASK-1036 §6.13 and §8.7 stay with that session. |
