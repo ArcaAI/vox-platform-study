@@ -16,12 +16,15 @@
  * compare p95s.
  *
  * Usage (Node >= 22, no dependencies):
- *   node sse-load.mjs <baseUrl> <apiKey> <slug> [runCount=200] [--input='<json>'] [--timeout=180] [--start-concurrency=20]
+ *   node sse-load.mjs <baseUrl> <apiKey> <slug> [runCount=200] [--input='<json>'] [--timeout=180] [--start-concurrency=20] [--protocol=2]
  *
  *   baseUrl   e.g. http://localhost:8868   (the /api/v1 prefix is added here)
  *   apiKey    a tenant API key holding workflow:run:write + workflow:run:read
  *   slug      a PUBLISHED workflow whose output declares http-sse (mode=stream is not used;
  *             runs start with mode=async and the stream route is opened separately)
+ *   --protocol=2  read run protocol v2 (`x-hope-run-protocol: 2`): terminal `run.completed`,
+ *             envelope `ts`. Without it the legacy shapes are read (`workflow.run.completed`,
+ *             envelope `occurredAt`).
  *
  * The key is sent as `X-API-Key` and is never printed. Exit code 1 when any stream failed or
  * timed out before its terminal event.
@@ -48,6 +51,9 @@ const runCount = Number(runCountArg ?? 200);
 const input = flags.input ? JSON.parse(flags.input) : {};
 const timeoutMs = Number(flags.timeout ?? 180) * 1000;
 const startConcurrency = Number(flags['start-concurrency'] ?? 20);
+const protocolV2 = flags.protocol === '2';
+const completedType = protocolV2 ? 'run.completed' : 'workflow.run.completed';
+const terminalTypes = new Set(protocolV2 ? ['run.completed', 'run.failed', 'run.cancelled'] : ['workflow.run.completed', 'workflow.run.failed']);
 const api = `${baseUrl}/api/v1/workflows/${encodeURIComponent(slug)}`;
 const runTag = `sse-load-${Date.now()}`;
 
@@ -85,7 +91,7 @@ async function watch(runId) {
   const startedAt = performance.now();
   try {
     const response = await fetch(`${api}/runs/${runId}/stream`, {
-      headers: { Accept: 'text/event-stream', 'X-API-Key': apiKey },
+      headers: { Accept: 'text/event-stream', 'X-API-Key': apiKey, ...(protocolV2 ? { 'x-hope-run-protocol': '2' } : {}) },
       signal: controller.signal,
     });
     if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
@@ -114,20 +120,22 @@ async function watch(runId) {
           if (lastPushAt !== null) result.gaps.push(now - lastPushAt);
           lastPushAt = now;
           try {
-            const occurredAt = Date.parse(JSON.parse(data).occurredAt);
+            const envelope = JSON.parse(data);
+            const occurredAt = Date.parse(protocolV2 ? envelope.ts : envelope.occurredAt);
             if (Number.isFinite(occurredAt)) result.lags.push(Date.now() - occurredAt);
           } catch {
             /* a frame without a parseable envelope contributes no lag sample */
           }
         }
-        if (type === 'workflow.run.completed') {
+        if (terminalTypes.has(type)) {
+          if (type !== completedType) result.error = `terminal ${type}: ${data?.slice(0, 200)}`;
           result.terminalMs = elapsed;
           controller.abort();
           return result;
         }
       }
     }
-    if (result.terminalMs === null) result.error = 'stream ended before workflow.run.completed';
+    if (result.terminalMs === null) result.error = 'stream ended before a terminal event';
   } catch (err) {
     if (result.terminalMs === null) result.error = controller.signal.aborted ? `timed out after ${timeoutMs / 1000}s` : String(err?.message ?? err);
   } finally {

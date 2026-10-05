@@ -182,11 +182,23 @@ function BodyRow<TData extends RowData>({
       data-slot="data-grid-row"
       className={cn(
         'absolute left-0 flex w-full items-center border-b bg-card transition-colors hover:bg-muted/50 data-[state=selected]:bg-accent',
-        onRowClick && 'cursor-pointer',
+        onRowClick && 'focus-visible:ring-ring cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset',
       )}
       // scroll-mt keeps a focused row clear of the sticky header (WCAG 2.4.11).
       style={{ height: size, transform: `translateY(${virtualStart}px)`, scrollMarginTop: headerHeight }}
       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+      // A clickable row is also keyboard-operable (WCAG 2.1.1): Tab to it, Enter or Space opens it.
+      // Keys aimed at a control inside the row (a checkbox, a menu) stay with that control.
+      tabIndex={onRowClick ? 0 : undefined}
+      onKeyDown={
+        onRowClick
+          ? (event) => {
+              if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+              event.preventDefault();
+              onRowClick(row.original);
+            }
+          : undefined
+      }
     >
       {row.getVisibleCells().map((cell, i) => (
         <div

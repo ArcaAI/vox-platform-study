@@ -27,8 +27,11 @@ const nonEmpty = (value: unknown): string | null => {
  *
  * Apply it at controller level AFTER the controller's own service-token guard
  * (`@UseGuards(XServiceTokenGuard, InternalTenantLockGuard)`), so only authenticated callers
- * reach the lock lookup. Reads are not blocked: they write nothing, and refusing them would
- * only stall callers that retry.
+ * reach the lock lookup — every `@Public()` internal controller must (coverage test). A tenant
+ * named in `X-Tenant-Id` is checked for EVERY method: the global `TenantLockGuard` no longer reads
+ * the header on `@Public()` routes, because it runs before authentication. A tenant named only in
+ * `x-internal-tenant-id`, the query or the body is checked for mutating calls only — those reads
+ * write nothing, and refusing them would only stall callers that retry.
  */
 @Injectable()
 export class InternalTenantLockGuard implements CanActivate {
@@ -37,9 +40,7 @@ export class InternalTenantLockGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (context.getType() !== 'http') return true;
     const req = context.switchToHttp().getRequest<InternalRequest>();
-    if (!MUTATING_METHODS.has((req.method ?? '').toUpperCase())) return true;
-
-    const tenantId = this.resolveTenantId(req);
+    const tenantId = MUTATING_METHODS.has((req.method ?? '').toUpperCase()) ? this.resolveTenantId(req) : nonEmpty(req.headers?.['x-tenant-id']);
     if (!tenantId) return true;
 
     try {

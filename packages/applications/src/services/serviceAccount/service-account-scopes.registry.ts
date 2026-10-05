@@ -207,7 +207,8 @@ export const ADMIN_PLANE_PRE_CONVENTION_SVC_SCOPES: readonly string[] = ADMIN_PL
  *
  * ─── What is deliberately ABSENT ────────────────────────────────────────────
  *
- * Nothing beyond the five above. This family is the UNBOUND plane only.
+ * Nothing beyond the five above (plus the two OD-35 run read-all widenings of them, TASK-1038).
+ * This family is the UNBOUND plane only.
  *
  * SUPERSEDED (owner decision, 2026-09-09 — TASK-933): this docblock used to record the
  * CONSULTATION-BOUND plane (`workflows:` plural — `POST /consultations/:id/workflows/...`) as
@@ -229,6 +230,10 @@ export const AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES = [
   'workflow:definition:read',
   'workflow:run:read',
   'workflow:run:write',
+  // TASK-1038 OD-35 — a service account reads only the runs it started; these widen it to every
+  // run of its working tenant. Checked as EXACT grants (`svc:*` never implies them).
+  'workflow:run:read-all',
+  'agent:run:read-all',
 ] as const;
 
 /** The renamespaced form of {@link AGENT_WORKFLOW_BUSINESS_PLANE_SCOPE_SOURCES}. */

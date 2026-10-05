@@ -4,6 +4,7 @@ import { IComposedPromptService, RecordComposedPromptAcceptedResponse, RecordCom
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * `POST /internal/composed-prompts?service=harness` — the harness records the composed messages
@@ -20,7 +21,7 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 @ApiExcludeController()
 @ApiTags('internal-composed-prompts')
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/composed-prompts')
 export class ComposedPromptInternalController {
   constructor(@Inject(IComposedPromptService) private readonly composedPrompts: IComposedPromptService) {}

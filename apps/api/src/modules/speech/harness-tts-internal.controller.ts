@@ -24,6 +24,7 @@ import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from './tts-provider-classification';
 import { resolveTtsRequestConfig } from './tts-tenant-config';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 // Raw s16le mono PCM: 2 bytes/sample; WAV carries the same payload behind a fixed 44-byte
 // header. Same constants (and same reason) as `speech-proxy.controller.ts`.
@@ -134,7 +135,7 @@ class HarnessSynthesizeSpeechResponse {
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(HarnessServiceTokenGuard)
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/harness/tts')
 export class HarnessTtsInternalController {
   private readonly logger = new Logger(HarnessTtsInternalController.name);

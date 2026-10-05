@@ -221,6 +221,24 @@ describe('QueryBuilder', () => {
 
       expect(narrowedBuilder).toBeDefined();
     });
+
+    // Prisma rejects `select` and `include` together (PrismaClientValidationError) — the default
+    // empty include made every Select().ToList() a 400 PERSISTENCE.QUERY_INVALID (TASK-1036 live check:
+    // the prompt and workflow tag suggestions).
+    it('never sends include alongside select', async () => {
+      mockDbContext.findMany.mockResolvedValueOnce([]);
+      await queryBuilder.Select(['name']).ToList();
+      const args = mockDbContext.findMany.mock.calls[mockDbContext.findMany.mock.calls.length - 1]?.[0] as Record<string, unknown>;
+      expect(args.select).toEqual({ name: true });
+      expect('include' in args && args.include !== undefined).toBe(false);
+    });
+
+    it('omits an empty include when nothing was included', async () => {
+      mockDbContext.findMany.mockResolvedValueOnce([]);
+      await queryBuilder.ToList();
+      const args = mockDbContext.findMany.mock.calls[mockDbContext.findMany.mock.calls.length - 1]?.[0] as Record<string, unknown>;
+      expect(args.include).toBeUndefined();
+    });
   });
 
   describe('OrderBy', () => {

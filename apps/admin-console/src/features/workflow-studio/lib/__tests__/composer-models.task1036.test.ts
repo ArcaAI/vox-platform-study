@@ -124,6 +124,17 @@ describe('inputRows — the Inputs panel (§8.4 item 5, §10.1)', () => {
     expect(rows[0]).toMatchObject({ name: 'text', status: 'bound', implied: true, binding: { from: 'nodes.w.outputs.text' } });
   });
 
+  it('flags an unbound required input as missing only when the node authors inputs, like REQUIRED_INPUT_UNBOUND (live check)', () => {
+    // The seeded realtime ASR agent: legacy (no config.inputs), audio from the live session.
+    const legacy = node('asr1', 'core.agent', { agentRef: { slug: 'asr' }, execution: { lane: 'realtime' } });
+    const legacyRows = inputRows({ node: legacy, nodes: [node('t', 'core.trigger'), legacy], edges: [EDGES[0]!], agents: AGENTS, promptVariables: [] });
+    expect(legacyRows.find((row) => row.name === 'audio')).toMatchObject({ required: true, status: 'empty' });
+
+    const authored = node('asr1', 'core.agent', { agentRef: { slug: 'asr' }, inputs: {} });
+    const authoredRows = inputRows({ node: authored, nodes: [node('t', 'core.trigger'), authored], edges: [EDGES[0]!], agents: AGENTS, promptVariables: [] });
+    expect(authoredRows.find((row) => row.name === 'audio')).toMatchObject({ required: true, status: 'missing' });
+  });
+
   it('round-trips prompt-variable text and bindings', () => {
     expect(promptVariableBinding('{{ nodes.a.outputs.text }}')).toEqual({ from: 'nodes.a.outputs.text' });
     expect(promptVariableBinding('Summary: {{nodes.a.outputs.text}}')).toEqual({ template: 'Summary: {{nodes.a.outputs.text}}' });

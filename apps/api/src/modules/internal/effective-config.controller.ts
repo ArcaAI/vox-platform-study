@@ -6,6 +6,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * EffectiveConfigController.
@@ -25,7 +26,7 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/effective-config')
 export class EffectiveConfigController {
   constructor(

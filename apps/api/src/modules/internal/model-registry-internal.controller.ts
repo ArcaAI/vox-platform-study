@@ -6,6 +6,7 @@ import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { resolveModelRegistryCredential } from './model-registry-credential.util';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /**
  * ModelRegistryInternalController — lane L3 follow-on.
@@ -56,7 +57,7 @@ import { resolveModelRegistryCredential } from './model-registry-credential.util
 @ApiTags('internal-model-registry')
 @ApiExcludeController()
 @Public()
-@UseGuards(InternalServiceTokenGuard)
+@UseGuards(InternalServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal')
 export class ModelRegistryInternalController {
   constructor(

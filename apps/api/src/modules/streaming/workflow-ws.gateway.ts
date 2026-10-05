@@ -137,6 +137,9 @@ export class WorkflowWsGateway implements OnGatewayConnection {
       this.cls.run(async () => {
         this.cls.set('tenantId', tenantId);
         this.cls.set('user', { id: stored.userId, tenantId, roles: [] });
+        // TASK-1038 OD-35 — the reader the ticket was minted under: the run-principal binding is
+        // enforced on redemption by the same `getRunStatus` read the SSE route makes.
+        if (stored.runReader) this.cls.set('runReader', stored.runReader);
         return this.workflowExposureService.getRunStatus(slug, runId);
       });
     let snapshot: WorkflowRunStatusResponse;

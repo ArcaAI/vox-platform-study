@@ -726,6 +726,9 @@ export class UnifiedAuthGuard implements CanActivate {
     this.enforceApiKeyScopes(context, apiKeyEntity);
 
     request['apiKey'] = apiKeyEntity;
+    // TASK-1038 OD-35 — the KEY, on its own CLS key: a run started with it is bound to the key,
+    // not to the human below (`RunPrincipalAccessService`). `user` stays `{ id, tenantId }`.
+    this.cls.set('apiKey', { id: apiKeyEntity.id, scopes: Array.isArray(apiKeyEntity.scopes) ? [...(apiKeyEntity.scopes as string[])] : [] });
     if (apiKeyEntity.userId) {
       this.cls.set('user', {
         id: apiKeyEntity.userId,

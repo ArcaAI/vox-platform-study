@@ -13,6 +13,11 @@
  *
  * Status: `bound`, `missing` (required and unbound — red at the field and a canvas problem), or
  * `empty` (optional and unbound — "renders empty", OD-10).
+ *
+ * A NodeIO input counts as `missing` only on a node that authors `config.inputs` — the same rule as
+ * the server's `REQUIRED_INPUT_UNBOUND` (`bindingIssues` → `checkRequired`). A legacy node gets its
+ * value from the runtime (a realtime-lane ASR agent reads the live session's audio), so flagging it
+ * here put an error chip on a graph the publish gate accepts with 0 errors.
  */
 import type { AgentIOResolver, Binding, IoType } from '@arcaai/workflow-contract';
 import type { GraphStoreEdge, GraphStoreNode } from '../store/types';
@@ -86,6 +91,10 @@ function ioTypeOfVariable(type: string | undefined): IoType {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function status(binding: Binding | null, required: boolean): InputRow['status'] {
   if (binding !== null) return 'bound';
   return required ? 'missing' : 'empty';
@@ -105,6 +114,7 @@ export function inputRows({ node, nodes, edges, agents, promptVariables }: Input
   const ports = canvasPortsOf(node, agents);
   if (ports) {
     const effective = effectiveBindings(nodes, edges, node.id, agents);
+    const authorsInputs = isPlainObject((node.config as Record<string, unknown> | undefined)?.inputs);
     for (const port of ports.inputs) {
       const entry = effective[port.name];
       const binding = entry?.binding ?? null;
@@ -117,7 +127,7 @@ export function inputRows({ node, nodes, edges, agents, promptVariables }: Input
         origin: 'io',
         binding,
         implied: entry?.implied ?? false,
-        status: status(binding, port.required),
+        status: status(binding, port.required && authorsInputs),
       });
     }
   }

@@ -6,6 +6,7 @@ import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsNotEmpty, IsString } from 'clas
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
 import { HarnessServiceTokenGuard } from './harness-service-token.guard';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 
 /** Body of `POST internal/consultations/:consultationId/read`. */
 export class ConsultationReadRequestDto {
@@ -43,7 +44,7 @@ export class ConsultationReadRequestDto {
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(HarnessServiceTokenGuard)
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/consultations')
 export class ConsultationReadInternalController {
   constructor(

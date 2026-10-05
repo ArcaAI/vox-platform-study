@@ -248,6 +248,24 @@ describe('VirtualizedDataGrid (shell)', () => {
     expect(screen.getByRole('grid')).toBeInTheDocument();
   });
 
+  it('makes a clickable row keyboard-operable: focusable, Enter and Space open it (WCAG 2.1.1)', () => {
+    const onRowClick = vi.fn();
+    renderGrid({ data: makeData(2), onRowClick });
+    const row = screen.getByText('Person 1').closest('[role="row"]') as HTMLElement;
+    expect(row.tabIndex).toBe(0);
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+    fireEvent.keyDown(row, { key: 'a' });
+    expect(onRowClick).toHaveBeenCalledTimes(2);
+    expect(onRowClick).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'p1' }));
+  });
+
+  it('leaves a row without onRowClick out of the tab order', () => {
+    renderGrid({ data: makeData(1) });
+    const row = screen.getByText('Person 0').closest('[role="row"]') as HTMLElement;
+    expect(row.hasAttribute('tabindex')).toBe(false);
+  });
+
   it('renders an empty state when data is empty and not loading', () => {
     renderGrid({ data: [] });
     // The pager status also reads "No results" for 0 rows ; scope to the grid body.
