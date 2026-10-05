@@ -25,7 +25,7 @@
  *     reports a fabricated pass when those aren't wired up.
  *
  * Cases covered :
- *   1. POST :id/close on a never-recorded (OPEN) consultation -> rejected (409) — the A-13 repro.
+ *   1. POST :id/close on a never-recorded (OPEN) consultation -> 200, CLOSED_INCOMPLETE (TASK-972 OD-7; was 409, the A-13 repro).
  *   2. Full walk: OPEN -> PRIMED -> RECORDING -> DRAINING -> PENDING_REVIEW -> SIGNED (RUN_FULL).
  *   3. recording/start without prime: kill-switch OFF (default) -> 200 (logged, not blocked);
  *      kill-switch ON -> 409.
@@ -118,21 +118,23 @@ test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)',
   });
 
   // ── Case 1: the A-13 repro — closing a never-recorded consultation ──
-  test('case 1: POST :id/close on a never-recorded (OPEN) consultation is rejected (409), not silently closed', async ({ request }) => {
+  test('case 1: POST :id/close on a never-recorded (OPEN) consultation closes it CLOSED_INCOMPLETE (TASK-972 OD-7)', async ({ request }) => {
     const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case1'));
 
     const res = await request.post(`/api/v1/consultations/${id}/close`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
     });
 
-    // The matrix has no OPEN -> CLOSED_COMPLETE/CLOSED_INCOMPLETE edge —
-    // ConsultationService.applyTransition maps the domain BusinessException
-    // to 409, never silently succeeding the way the pre-711
-    // metadata.status tracker did (A-13).
-    expect(res.status(), 'closing a never-recorded consultation must be rejected').toBe(409);
+    // The A-13 repro was a SILENT close via the pre-711 metadata.status
+    // tracker. TASK-972 OD-7 then added the explicit `OPEN → CLOSED_INCOMPLETE`
+    // edge (OPEN used to be structurally unclosable, so an abandoned visit
+    // could never be cleared): the close is now a sanctioned, typed transition
+    // to the UNSIGNED terminal state — never CLOSED_COMPLETE, which needs a
+    // clinician sign-off.
+    expect(res.status(), 'closing a never-recorded consultation takes the OD-7 edge').toBe(200);
 
     const after = await getConsultation(request, doctorToken, id);
-    expect(after.status, 'status must remain OPEN — never silently closed').toBe('OPEN');
+    expect(after.status, 'a never-recorded close is unsigned — CLOSED_INCOMPLETE').toBe('CLOSED_INCOMPLETE');
   });
 
   // ── Case 3: the one flagged precondition (kill-switch default OFF) ──

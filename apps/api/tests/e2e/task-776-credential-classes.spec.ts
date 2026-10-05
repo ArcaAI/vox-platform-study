@@ -225,7 +225,11 @@ test.describe('credential-class semantics', () => {
     });
 
     test('the same route is reachable by a JWT — the 403 is about the CREDENTIAL CLASS, not the route', async ({ request }) => {
-      const res = await request.get(CONTEXT_SHARED(CONSULTATION_GLOBAL), { headers: { Authorization: `Bearer ${tenantAdminJwt}` } });
+      // A CLINICIAN JWT: the shared-context view is a clinical read the tenant admin's role does
+      // not hold, so the admin's 403 would be about ability, not credential class.
+      const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
+      expect(doctor, 'doctor login').not.toBeNull();
+      const res = await request.get(CONTEXT_SHARED(CONSULTATION_GLOBAL), { headers: { Authorization: `Bearer ${doctor!.token}` } });
       expect(res.status()).toBe(200);
     });
 
@@ -233,7 +237,9 @@ test.describe('credential-class semantics', () => {
       // The counterpart of the two cases above: this used to be the deny-by-default example
       // (see the constant's block comment), and the 403 it used to return would now be a
       // regression.
-      const res = await request.get(GOVERNING_WORKFLOW(CONSULTATION_GLOBAL), { headers: { 'X-Service-Account-Token': svcToken } });
+      // The seeded service account is bound to ArcaAI, so it reads ArcaAI's consultation; a
+      // Global id is cross-tenant for it (404-over-403).
+      const res = await request.get(GOVERNING_WORKFLOW(CONSULTATION_ARCAAI), { headers: { 'X-Service-Account-Token': svcToken } });
       expect(res.status()).toBe(200);
     });
 
@@ -246,10 +252,14 @@ test.describe('credential-class semantics', () => {
     });
 
     test('API key without the declared scope is refused by scope, not by ability', async ({ request }) => {
-      // SDK_DOCTOR does not hold 'workflow:definition:read'.
-      const res = await request.get(WORKFLOWS, { headers: { 'X-API-Key': SEEDED_API_KEY } });
+      // SDK_DOCTOR carries the day-1 set (consultation-app + types-codegen presets), which now
+      // includes 'workflow:definition:read' but NOT 'workflow:run:read' — so a run read is the
+      // live scope-refusal case. The scope gate answers before the row is looked up.
+      const res = await request.get(`${WORKFLOWS}/t776-any-slug/runs/00000000-0000-7000-8000-000000000776`, {
+        headers: { 'X-API-Key': SEEDED_API_KEY },
+      });
       expect(res.status()).toBe(403);
-      expect((await res.json()).message).toContain('does not have required scope(s): workflow:definition:read');
+      expect((await res.json()).message).toContain('does not have required scope(s): workflow:run:read');
     });
   });
 

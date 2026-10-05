@@ -79,8 +79,10 @@ test.describe('AI model discovery', () => {
   const createdIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'super admin login (ARCAAI) failed').toBeTruthy();
+    // Tenant-LESS: the model registry is a platform route, and since TASK-1019 a
+    // super admin acting inside a working tenant is refused (403) there.
+    const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    expect(ga, 'super admin login (tenant-less) failed').toBeTruthy();
     superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);

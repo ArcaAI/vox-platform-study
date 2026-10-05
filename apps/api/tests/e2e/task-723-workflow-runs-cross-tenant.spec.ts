@@ -14,13 +14,14 @@
  * reaching into the database directly, which the e2e convention in this
  * directory never does (every spec here drives the API only).
  *
- * What THIS spec proves instead, against a genuinely empty table:
+ * What THIS spec proves instead, whatever the table holds (Global is shared by
+ * every spec that starts a run, so it is NOT assumed empty):
  *  - the tenant-scope gate (`WorkflowRunController.resolveWorkingTenantId`):
  *    a tenant admin resolves its own tenant, an unscoped SUPER_ADMIN gets
  *    403 "no tenant selected", and `X-Tenant-Id` lets a super admin act on
  *    behalf of a specific tenant;
  *  - the keyset list envelope shape (`{ data, nextCursor, hasMore, limit }`)
- *    on an empty result set;
+ *    and its `hasMore` / `nextCursor` agreement;
  *  - a malformed cursor -> 400;
  *  - a nonexistent run id -> **404, never 403** on both `GET :runId` and
  *    `GET :runId/trace` — the strongest form of this invariant available
@@ -62,7 +63,7 @@ test.describe('/api/v1/admin/workflow-runs', () => {
     // A real tenant id for the X-Tenant-Id header (M3-style pattern, mirrors
     // `role-members-cross-tenant.spec.ts`): list tenants as the super admin
     // and use the tenant-admin's own tenant so both callers act on the same
-    // (empty) table for a like-for-like comparison.
+    // table for a like-for-like comparison.
     const tenants = await request.get('/api/v1/admin/tenants?page=0&limit=20', { headers: bearer(superAdminToken) });
     expect(tenants.status(), 'list tenants').toBe(200);
     const tenantsBody = await tenants.json();
@@ -71,7 +72,10 @@ test.describe('/api/v1/admin/workflow-runs', () => {
     defaultTenantId = found!.id;
   });
 
-  test('a tenant admin lists its own (empty) runs with the keyset envelope shape', async ({ request }) => {
+  test('a tenant admin lists its own runs with the keyset envelope shape', async ({ request }) => {
+    // The table is NOT assumed empty: Global is shared by every spec that starts a run, so the
+    // page may be full. The envelope invariant that holds either way: `hasMore` and `nextCursor`
+    // agree, and the page never exceeds `limit`.
     const response = await request.get('/api/v1/admin/workflow-runs', { headers: bearer(tenantAdminToken) });
     expect(response.status()).toBe(200);
     const body = await response.json();
@@ -80,8 +84,12 @@ test.describe('/api/v1/admin/workflow-runs', () => {
     expect(body).toHaveProperty('hasMore');
     expect(body).toHaveProperty('limit');
     expect(Array.isArray(body.data)).toBe(true);
-    expect(body.hasMore).toBe(false);
-    expect(body.nextCursor).toBeNull();
+    expect(body.data.length).toBeLessThanOrEqual(body.limit);
+    if (body.hasMore) {
+      expect(typeof body.nextCursor).toBe('string');
+    } else {
+      expect(body.nextCursor).toBeNull();
+    }
   });
 
   test('includeSandbox=true is accepted and still returns the same envelope shape', async ({ request }) => {
@@ -111,7 +119,7 @@ test.describe('/api/v1/admin/workflow-runs', () => {
     expect(response.status()).toBe(403);
   });
 
-  test('a super admin acting via X-Tenant-Id can list that tenant’s (empty) runs', async ({ request }) => {
+  test('a super admin acting via X-Tenant-Id can list that tenant’s runs', async ({ request }) => {
     const response = await request.get('/api/v1/admin/workflow-runs', { headers: bearer(superAdminToken, defaultTenantId) });
     expect(response.status()).toBe(200);
     const body = await response.json();

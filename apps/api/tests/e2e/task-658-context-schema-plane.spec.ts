@@ -207,6 +207,15 @@ test.describe.serial('Context-schema plane end to end', () => {
   let arcaaiDoctorToken: string;
   let superAdminToken: string;
   let schemaId: string;
+  /**
+   * ARCAAI's TENANT default before this block ran (seeded: `arcaai_consultation_scribe`). The
+   * probe below is created `isDefault: true` — discovery must resolve IT — which DEMOTES the
+   * seeded default, and soft-deleting the probe afterwards does not promote anything back. Left
+   * that way, every later ARCAAI open that carries context kinds fails with
+   * `CONTEXT_SCHEMA_VIOLATION … no published context schema` (task-950 / task-951 specs). So
+   * `afterAll` re-promotes it.
+   */
+  let previousDefaultId: string | undefined;
   let publishedEtag: string;
   let pinnedVersionId: string;
   /**
@@ -241,6 +250,11 @@ test.describe.serial('Context-schema plane end to end', () => {
     expect(globalAdmin, 'tenant_admin login (__GLOBAL__) failed — is the stack seeded?').toBeTruthy();
     superAdminToken = globalAdmin!.token;
 
+    const schemas = await request.get(ADMIN_SCHEMAS, { headers: auth(adminToken) });
+    expect(schemas.status(), 'list ARCAAI schemas').toBe(200);
+    const rows = (await schemas.json()) as Array<{ id: string; scope: string; departmentId: string | null; isDefault: boolean }>;
+    previousDefaultId = rows.find((row) => row.scope === 'TENANT' && !row.departmentId && row.isDefault)?.id;
+
     // No `departmentId` — see `planeConsultationId` above.
     const consultation = await request.post('/api/v1/consultations/open', {
       headers: auth(arcaaiDoctorToken),
@@ -253,6 +267,18 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test.afterAll(async ({ request }) => {
+    // Re-promote the seeded default FIRST (promotion demotes the probe), then drop the probe.
+    if (previousDefaultId) {
+      const current = await request.get(`${ADMIN_SCHEMAS}/${previousDefaultId}`, { headers: auth(adminToken) });
+      const etag = current.headers()['etag'];
+      if (current.status() === 200 && etag) {
+        const restored = await request.patch(`${ADMIN_SCHEMAS}/${previousDefaultId}`, {
+          headers: { ...auth(adminToken), 'If-Match': etag },
+          data: { isDefault: true },
+        });
+        expect(restored.status(), `restore ARCAAI's default schema: ${await restored.text()}`).toBe(200);
+      }
+    }
     if (schemaId) {
       await request.delete(`${ADMIN_SCHEMAS}/${schemaId}`, { headers: auth(adminToken) });
     }

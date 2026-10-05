@@ -25,7 +25,7 @@
  *      endpoints.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser, createTenantUser } from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const UNIQUE = Date.now();
@@ -281,9 +281,10 @@ test.describe.serial('E — safeguards', () => {
     // mirroring E4's create-mutate-cleanup shape. Targeting the seeded
     // super-admin user directly is impossible here: it IS the caller, so the
     // self-guard (E2) answers first and the elevated-tier guard never runs.
-    const create = await request.post('/api/v1/admin/users', {
-      headers: bearer(saToken),
-      data: { username: `t401elevated_${UNIQUE}`, password: 'Password123!', email: `t401.elevated.${UNIQUE}@example.com` },
+    const create = await createTenantUser(request, saToken, {
+      username: `t401elevated_${UNIQUE}`,
+      password: 'Password123!',
+      email: `t401.elevated.${UNIQUE}@example.com`,
     });
     expect(create.status(), 'create throwaway target').toBeLessThan(300);
     const target = (await create.json()) as { id: string };
@@ -309,9 +310,10 @@ test.describe.serial('E — safeguards', () => {
 
   test('E4 — disabled target is rejected; unknown target is 404', async ({ request }) => {
     // Throwaway target — created ENABLED, then disabled via the API (no seed mutation).
-    const create = await request.post('/api/v1/admin/users', {
-      headers: bearer(saToken),
-      data: { username: `t401disabled_${UNIQUE}`, password: 'Password123!', email: `t401.disabled.${UNIQUE}@example.com` },
+    const create = await createTenantUser(request, saToken, {
+      username: `t401disabled_${UNIQUE}`,
+      password: 'Password123!',
+      email: `t401.disabled.${UNIQUE}@example.com`,
     });
     expect(create.status(), 'create throwaway target').toBeLessThan(300);
     const target = (await create.json()) as { id: string };
