@@ -14,7 +14,7 @@
  *   4. The attestation columns landed on `ContextItemVersion`.
  *   5. The ontology-code + transcript-span columns (and the
  *      `transcriptContextItemId` FK) landed on `NamedEntity`.
- *   6. The sensor/citation columns landed on `SummaryMeta`.
+ *   6. The sensor columns and the ENCRYPTED citation/guardrail provenance columns landed on `SummaryMeta`.
  *
  * Read-only: the suite only SELECTs from the catalog + information_schema and
  * never mutates data. Excluded from `pnpm test:unit` (the `*.postgres.test.ts`
@@ -159,16 +159,20 @@ describe('Phase 1 additive schema', () => {
       'entityFaithfulnessScore',
       'coverageScore',
       'ragTriadScore',
-      'citationsMap',
-      'guardrailDecisions',
+      'encryptedCitationsMap',
+      'encryptedGuardrailDecisions',
+      'keyVersion',
       'attestationRef',
       'modelName',
     ]) {
       expect(cols.has(name), `SummaryMeta.${name} should exist`).toBe(true);
       expect(cols.get(name)?.isNullable).toBe('YES');
     }
-    expect(cols.get('citationsMap')?.dataType).toBe('jsonb');
-    expect(cols.get('guardrailDecisions')?.dataType).toBe('jsonb');
+    // The provenance blobs persist as Vault-Transit ciphertext only; the plaintext JSONB columns are gone.
+    expect(cols.get('encryptedCitationsMap')?.dataType).toBe('bytea');
+    expect(cols.get('encryptedGuardrailDecisions')?.dataType).toBe('bytea');
+    expect(cols.has('citationsMap'), 'plaintext SummaryMeta.citationsMap must stay dropped').toBe(false);
+    expect(cols.has('guardrailDecisions'), 'plaintext SummaryMeta.guardrailDecisions must stay dropped').toBe(false);
     expect(cols.get('entityFaithfulnessScore')?.dataType).toContain('double');
   });
 });
