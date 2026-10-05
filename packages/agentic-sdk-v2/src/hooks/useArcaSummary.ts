@@ -299,6 +299,8 @@ export function useArcaSummary() {
   /**
    * Approve and lock a summary, preventing further edits.
    * Once approved, the summary status transitions to APPROVED → LOCKED.
+   *
+   * @deprecated Use `useConsultation().approve()` — approval now covers the whole consultation.
    */
   const approveSummary = useCallback(
     async (contextItemId: string, options?: { expectedVersion?: number }): Promise<SummaryApprovalResponse> => {

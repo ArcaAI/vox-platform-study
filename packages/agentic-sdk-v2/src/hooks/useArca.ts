@@ -155,12 +155,14 @@ export interface UseArcaAudio {
    * not streaming on a backend pipeline (local STT / idle).
    */
   activePipeline: ActivePipelineInfo | null;
+  /** @deprecated Use `useConsultation().start()`, which also records the start on the consultation. */
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
    * Start capture from the user's persisted preferences
    * (device(s), language, workflow mode → local/backend STT, dual-capture).
    */
   startFromPreferences: () => Promise<void>;
+  /** @deprecated Use `useConsultation().stop()`, which resolves after the final transcript. */
   stop: () => Promise<void>;
   /**
    * Switch the live streaming session to the tenant's fallback ASR engine (R4).

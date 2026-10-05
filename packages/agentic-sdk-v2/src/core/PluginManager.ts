@@ -575,6 +575,8 @@ export class PluginManager {
       },
       this._debugMode,
     );
+    // Lets useConsultation().pause()/start() send the capture-control frames on this socket.
+    sessionManager.bindControlChannel(wsClient);
 
     // Wire the streaming client's connection-lifecycle callbacks — previously
     // implemented but dangling — into the plugin callback bus so the hook/store
