@@ -134,3 +134,29 @@ describe('HarnessInternalService.failGovernedRun keeps an existing FAILED reason
     expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CONSULTATION, ConsultationProcessing.FAILED, 'n_output schema failure');
   });
 });
+
+describe('HarnessInternalService.reportProgress(failed) keeps an existing FAILED reason (TASK-1045)', () => {
+  const failedProgress = { tenantId: TENANT, stage: 'failed', label: 'assemble refused' };
+
+  it('a harness-doc run that fails after the note plan failed by name does not overwrite the reason', async () => {
+    const consultation = consultationFixture({
+      status: ConsultationStatus.STOPPED,
+      processing: ConsultationProcessing.FAILED,
+      processingReason: 'NOTE_INPUT_EXCEEDS_CONTEXT',
+    });
+    const { service, lifecycleGate } = build(consultation);
+
+    await service.reportProgress(CONSULTATION, failedProgress as never);
+
+    expect(lifecycleGate.setProcessing).not.toHaveBeenCalled();
+  });
+
+  it('a STOPPED consultation with no note and no reason is failed with NOTE_GENERATION_FAILED', async () => {
+    const consultation = consultationFixture({ status: ConsultationStatus.STOPPED, processing: ConsultationProcessing.SUMMARIZING });
+    const { service, lifecycleGate } = build(consultation);
+
+    await service.reportProgress(CONSULTATION, failedProgress as never);
+
+    expect(lifecycleGate.setProcessing).toHaveBeenCalledWith(CONSULTATION, ConsultationProcessing.FAILED, 'NOTE_GENERATION_FAILED');
+  });
+});

@@ -934,6 +934,8 @@ export class HarnessInternalService extends BaseService {
         const consultation = await this.consultationRepository.findById(consultationId);
         if (!consultation || consultation.tenantId !== tenantId || consultation.status !== ConsultationStatus.STOPPED) return;
         if (await this.hasWrittenHarnessNote(consultation)) return;
+        // Already failed by name (e.g. the note plan did not fit): keep that reason, as `failGovernedRun` does.
+        if (consultation.processing === ConsultationProcessing.FAILED && consultation.processingReason) return;
         await this.setHarnessProcessing(consultation, ConsultationProcessing.FAILED, 'reportProgress (failed)', NOTE_GENERATION_FAILED);
       });
     } catch (error) {
