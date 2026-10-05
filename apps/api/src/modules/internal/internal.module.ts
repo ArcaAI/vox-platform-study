@@ -11,7 +11,7 @@ import {
   SttInternalServiceModule,
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
-import { TenantLockModule } from '@arcaai/applications';
+import { TenantLockModule, TranscriptRecordServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { AgentInternalController } from './agent-internal.controller';
@@ -35,6 +35,8 @@ import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.
   // and the superseded STT-specific one on `SttInternalController` — the
   // weight fetcher's route to the HF token and the model-store S3 pair.
   imports: [
+    // `internal/stt/segments` ingest.
+    TranscriptRecordServiceModule,
     TenantLockModule,
     SttInternalServiceModule,
     EffectiveConfigServiceModule,

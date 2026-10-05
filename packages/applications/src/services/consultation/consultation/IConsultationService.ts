@@ -1,4 +1,4 @@
-import { ConsultationStatus } from '@arcaai/domains';
+import { ConsultationProcessing, ConsultationStatus } from '@arcaai/domains';
 import type { ClinicalCaller } from '../summary/clinician-attribution';
 import {
   OpenConsultationRequest,
@@ -115,6 +115,8 @@ export abstract class IConsultationService {
     doctorId?: string;
     departmentId?: string;
     status?: ConsultationStatus;
+    /** Optional processing-axis filter (e.g. AWAITING_REVIEW, FAILED). */
+    processing?: ConsultationProcessing;
     /** Pre-validated by the controller (`parseConsultationSort`); absent → `DEFAULT_CONSULTATION_SORT`. */
     sort?: ConsultationSort;
   }): Promise<PaginatedConsultationResponse>;

@@ -3,6 +3,9 @@ import {
   ConsultationAttachmentServiceModule,
   ConsultationFeedbackServiceModule,
   FeedbackRollupServiceModule,
+  ConsultationLifecycleModule,
+  ConsultationEncounterServiceModule,
+  MediaServiceModule,
   TenantLockModule,
 } from '@arcaai/applications';
 import {
@@ -58,6 +61,7 @@ import { HarnessInternalController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
 import { ConsultationReadInternalController } from './consultation-read-internal.controller';
 import { AdminFeedbackRollupController } from './admin-feedback-rollup.controller';
+import { ConsultationLifecycleEventsController } from './consultation-lifecycle-events.controller';
 import { ConsultationAccessHelper } from './consultation-access.helper';
 import { ConsultationAttachmentController } from './consultation-attachment.controller';
 import { ConsultationFeedbackController } from './consultation-feedback.controller';
@@ -128,6 +132,10 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     ConsultationFeedbackServiceModule,
     // `IFeedbackRollupReaderToken` for the admin rollups read.
     FeedbackRollupServiceModule,
+    // Lifecycle commands + event stream, the episode encounters, and recording part URLs.
+    ConsultationLifecycleModule,
+    ConsultationEncounterServiceModule,
+    MediaServiceModule,
   ],
   controllers: [
     ConsultationController,
@@ -144,6 +152,7 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     ConsultationAttachmentController,
     ConsultationFeedbackController,
     AdminFeedbackRollupController,
+    ConsultationLifecycleEventsController,
   ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's

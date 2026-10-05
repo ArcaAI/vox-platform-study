@@ -23,7 +23,7 @@ import { TranscriptRecordServiceModule } from '../transcript-record/transcript-r
  * THIS module without a cycle.
  */
 @Module({
-  imports: [TranscriptRecordServiceModule, CommonServiceModule, CoreDatabaseModule, RedisCacheModule.register()],
+  imports: [CommonServiceModule, CoreDatabaseModule, RedisCacheModule.register()],
   providers: [
     RedisSubscriberService,
     ConsultationLifecycleEventPublisher,
@@ -49,6 +49,8 @@ export class ConsultationLifecycleGateModule {}
     CommonServiceModule,
     CoreDatabaseModule,
     ConsultationLifecycleGateModule,
+    // `stop` waits for the final transcript of the last bytes.
+    TranscriptRecordServiceModule,
     HarnessAuditServiceModule,
     EffectiveSettingsModule,
     StreamingSessionServiceModule,

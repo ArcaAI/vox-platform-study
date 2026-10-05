@@ -15,6 +15,7 @@ import {
   ConsultationEntity,
   ConsultationRepository,
   ConsultationFactory,
+  ConsultationProcessing,
   ConsultationStatus,
   ContextItemSource,
   ContextItemType,
@@ -1870,6 +1871,8 @@ export class ConsultationService extends BaseService implements IConsultationSer
     doctorId?: string;
     departmentId?: string;
     status?: ConsultationStatus;
+    /** Optional processing-axis filter (e.g. AWAITING_REVIEW, FAILED). */
+    processing?: ConsultationProcessing;
     /** Pre-validated by the controller (`parseConsultationSort`); absent → `DEFAULT_CONSULTATION_SORT`. */
     sort?: ConsultationSort;
   }): Promise<PaginatedConsultationResponse> {
@@ -1885,7 +1888,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new BadRequestException('Tenant ID is required');
     }
 
-    const { page, pageSize, patientId, doctorId, departmentId, status, sort } = params;
+    const { page, pageSize, patientId, doctorId, departmentId, status, processing, sort } = params;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filters: any = {};
@@ -1896,6 +1899,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // Optional lifecycle-status filter (indexed by [tenantId, status]);
     // the admin live console uses ?status=RECORDING to find in-progress recordings.
     if (status) filters.status = status;
+    if (processing) filters.processing = processing;
 
     // `sort` arrives pre-validated (`parseConsultationSort`, allow-listed against
     // CONSULTATION_SORTABLE_FIELDS) or absent — default: latest-updated first.
