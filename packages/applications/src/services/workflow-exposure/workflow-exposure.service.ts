@@ -35,8 +35,11 @@ import {
   interpreterSessionId,
   isResultKeyInTenantPrefix,
   IWorkflowRunService,
+  principalScopedIdempotencyKey,
   readPersistedRunResult,
+  RunPrincipalAccessService,
   terminalStatusOf,
+  workflowRunNotFound,
   WorkflowRunResponse,
 } from '../workflow-run';
 import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
@@ -197,6 +200,12 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // gate applies). `@Optional()` like every other cross-cutting dependency here; absent, a
     // `ref` result answers 503 rather than a URL nobody can open.
     @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
+    // TASK-1038 OD-35 — binds every business-plane run read (status — and through it the SSE
+    // stream, the socket and the stream-ticket mint — result, cancel) to the principal that
+    // started the run, and records that principal at `invoke`. Provided by
+    // `WorkflowRunServiceModule` (imported by this service's module); `@Optional()` only so the
+    // positional unit fixtures keep constructing — absent, reads are tenant-scoped as before.
+    @Optional() private readonly runAccess?: RunPrincipalAccessService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -231,12 +240,21 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     this.assertExposureEnabled();
     const tenantId = this.requireTenantId();
 
+    // TASK-1038 OD-35 — who is starting this run: the API key, the service account, or the human
+    // of a JWT (`null` on the public webhook plane). Recorded on the row; every business-plane read
+    // of the run is bound to it.
+    const startedBy = this.runAccess?.currentPrincipal() ?? null;
+
     // step 6. With an `Idempotency-Key` the run id is DERIVED, so a retry addresses the
     // same durable row and the same Temporal workflow id with no coordination. Without one, a
     // fresh id per call is correct — the caller asked for a new run.
-    const runId = opts.idempotencyKey ? deterministicRunId(tenantId, slug, opts.idempotencyKey) : generateId();
+    //
+    // OD-35 — the key is scoped to the principal presenting it: two credentials that happen to
+    // send the same key derive two runs, so one can never join (or learn the id of) the other's.
+    const scopedIdempotencyKey = opts.idempotencyKey ? principalScopedIdempotencyKey(startedBy, opts.idempotencyKey) : undefined;
+    const runId = scopedIdempotencyKey ? deterministicRunId(tenantId, slug, scopedIdempotencyKey) : generateId();
 
-    const idempotencyRedisKey = opts.idempotencyKey ? `${IDEMPOTENCY_KEY_PREFIX}${tenantId}:${slug}:${opts.idempotencyKey}` : null;
+    const idempotencyRedisKey = scopedIdempotencyKey ? `${IDEMPOTENCY_KEY_PREFIX}${tenantId}:${slug}:${scopedIdempotencyKey}` : null;
     // TASK-1038 E2 (fix 11) — the agent-run semantic on workflow runs: the key names ONE intent.
     // Same key + same body joins; a DIFFERENT body is 409 `IDEMPOTENCY_KEY_REUSED`. The body is
     // the caller's `input` plus the server-resolved consultation the run is bound to.
@@ -436,12 +454,16 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       //
       // TASK-1038 E2 (fix 11) — an `Idempotency-Key` start also stamps its body fingerprint, the
       // DURABLE half of "a different body under the same key is a 409".
+      //
+      // TASK-1038 OD-35 — and the principal that started it (`startedBy`), which every
+      // business-plane read of the run is bound to.
       metaData:
-        actingUserId || subject?.consultationId || requestBodyHash
+        actingUserId || subject?.consultationId || requestBodyHash || startedBy
           ? {
               ...(actingUserId ? { actingUserId } : {}),
               ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
               ...(requestBodyHash ? { requestBodyHash } : {}),
+              ...(startedBy ? { startedBy } : {}),
             }
           : undefined,
     });
@@ -510,7 +532,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
   async getRunStatus(slug: string, runId: string): Promise<WorkflowRunStatusResponse> {
     const tenantId = this.requireTenantId();
-    const run = await this.resolveOwnedRun(tenantId, slug, runId);
+    const run = await this.resolveReadableRun(tenantId, slug, runId);
 
     let upstream: GetWorkflowRunResult;
     // TASK-1036 (lane B6b) — the v2 terminal event carries no node counts; when the row has none
@@ -550,7 +572,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
   async getRunResult(slug: string, runId: string): Promise<WorkflowRunResult> {
     const tenantId = this.requireTenantId();
-    let run = await this.resolveOwnedRun(tenantId, slug, runId);
+    let run = await this.resolveReadableRun(tenantId, slug, runId);
 
     // The read model can lag the run by one missed completion event: ask the live status (which
     // reconciles the row) before refusing, then re-read the row for the result it now carries.
@@ -563,7 +585,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
           status: live.status,
         });
       }
-      run = await this.resolveOwnedRun(tenantId, slug, runId);
+      run = await this.resolveReadableRun(tenantId, slug, runId);
     }
     const status = terminalStatusOf(run.status) ?? run.status;
     const stored = readPersistedRunResult(run.resultRef);
@@ -614,7 +636,7 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
 
   async cancelRun(slug: string, runId: string): Promise<WorkflowRunCancelResponse> {
     const tenantId = this.requireTenantId();
-    const run = await this.resolveOwnedRun(tenantId, slug, runId);
+    const run = await this.resolveReadableRun(tenantId, slug, runId);
 
     const result = await this.harnessGateway.cancelWorkflowRun(runId);
 
@@ -996,6 +1018,25 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // TASK-1038 E2 (fix 11) — a row started before fingerprints existed carries none and joins.
     if (storedHash !== null && storedHash !== requestBodyHash) throw idempotencyKeyReused();
     return WorkflowExposureDtoMapper.toInvokeResponse(runId, slug, 'already_running');
+  }
+
+  /**
+   * TASK-1038 OD-35 — {@link resolveOwnedRun} plus the starting-principal binding: a run another
+   * principal started answers the SAME 404 as an unknown run (`workflowRunNotFound`), unless the
+   * reader is tenant-wide (`RunPrincipalAccessService`). Used by every business-plane run read
+   * (status — and through it the SSE stream, the socket and the stream-ticket mint — result,
+   * cancel). Reviews stay tenant-scoped: a reviewer is routinely not the run's starter.
+   */
+  private async resolveReadableRun(tenantId: string, slug: string, runId: string): Promise<WorkflowRunResponse> {
+    if (!this.runAccess) return this.resolveOwnedRun(tenantId, slug, runId);
+    const { run, startedBy } = await this.workflowRunService.getRunForReader(tenantId, runId);
+    // The lineage check keeps its own (pre-existing) answer; the principal check answers exactly
+    // what an unknown id answers.
+    if (run.workflowSlug !== slug) {
+      throw new NotFoundException(`Run '${runId}' not found for workflow '${slug}'.`);
+    }
+    if (!(await this.runAccess.canRead('workflow', startedBy))) throw workflowRunNotFound(runId);
+    return run;
   }
 
   /** Cross-tenant `runId`, or a `runId` whose lineage does not belong to `slug` -> 404 (never 403). */
