@@ -75,7 +75,7 @@ export function callReserve(sectionCount: number, settings: NoteBudgetSettings):
 }
 
 /** Contiguous, balanced groups in template order, each within the per-call output ceiling. */
-function sectionGroups(sections: readonly NoteHeading[], settings: NoteBudgetSettings): NoteHeading[][] {
+export function planSectionGroups(sections: readonly NoteHeading[], settings: NoteBudgetSettings): NoteHeading[][] {
   if (sections.length === 0 || callReserve(sections.length, settings) <= settings.maxCallOutputTokens) return [[...sections]];
   const perGroup = Math.max(1, Math.floor((settings.maxCallOutputTokens - settings.outputOverheadTokens) / settings.outputTokensPerSection));
   const count = Math.ceil(sections.length / perGroup);
@@ -95,7 +95,7 @@ export function planNoteBudget(input: BudgetPlanInput): BudgetPlan {
   const { contextWindow, settings } = input;
   const overhead = CHAT_OVERHEAD_TOKENS_PER_MESSAGE;
 
-  const groups = sectionGroups(input.sections, settings);
+  const groups = planSectionGroups(input.sections, settings);
   const maxGroups = Math.min(settings.maxSectionGroups, NOTE_PLAN_MAX_CALLS);
   if (groups.length > maxGroups) {
     return {
