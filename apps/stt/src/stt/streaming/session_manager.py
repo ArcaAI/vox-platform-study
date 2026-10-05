@@ -5979,9 +5979,11 @@ class SessionManager:
 
             raw_media_id: str | None = None
             processed_media_id: str | None = None
+            raw_codec: str | None = None
+            processed_codec: str | None = None
 
             if capture_raw:
-                raw_media_id = await self._register_capture_media(
+                raw_media_id, raw_codec = await self._register_capture_media(
                     session,
                     gateway,
                     side="raw",
@@ -5992,7 +5994,7 @@ class SessionManager:
                 )
 
             if capture_processed:
-                processed_media_id = await self._register_capture_media(
+                processed_media_id, processed_codec = await self._register_capture_media(
                     session,
                     gateway,
                     side="processed",
@@ -6011,6 +6013,8 @@ class SessionManager:
                 processed_media_id=processed_media_id,
                 sample_rate=session.sample_rate,
                 duration_ms=int(round(session.total_duration_seconds * 1000)),
+                stt_session_id=session.session_id,
+                codec=processed_codec or raw_codec,
             )
 
             logger.info(
@@ -6037,12 +6041,15 @@ class SessionManager:
         pcm: bytes,
         sample_rate: int,
         created_by: str | None,
-    ) -> str | None:
+    ) -> tuple[str | None, str]:
         """Register one side of the consultation recording as a ``Media`` row.
 
         The recording is stored as Ogg/Opus next to the consultation; the
         ``complete.wav`` already uploaded stays as it is. If the Opus encode or
         upload fails, the WAV is registered instead, exactly as before.
+
+        Returns ``(media_id, codec)`` — ``"opus"`` for the Ogg path,
+        ``"pcm_s16le"`` for the WAV fallback.
         """
         name = f"{session.session_id}-{side}"
         try:
@@ -6065,6 +6072,7 @@ class SessionManager:
                 hash="",
                 created_by=created_by,
             )
+            codec = "opus"
         except Exception as exc:  # noqa: BLE001 — fall back to the WAV already stored
             logger.warning(
                 "stt.stream.recording_opus_failed",
@@ -6082,7 +6090,8 @@ class SessionManager:
                 hash="",
                 created_by=created_by,
             )
-        return (media or {}).get("id") or (media or {}).get("mediaId")
+            codec = "pcm_s16le"
+        return (media or {}).get("id") or (media or {}).get("mediaId"), codec
 
     async def _persist_streaming_transcript(self, session: StreamSession) -> None:
         """Persist a streaming-session transcript as a TRANSCRIPT context item.
