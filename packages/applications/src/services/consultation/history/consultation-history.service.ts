@@ -198,15 +198,17 @@ export class ConsultationHistoryService extends BaseService implements IConsulta
 
     const itemTypes = (kinds ? [...kinds] : [...ACTIVITY_KINDS]).flatMap((kind) => ACTIVITY_KIND_ITEM_TYPES[kind] ?? []);
 
-    const [encounters, approvals, feedback] = await Promise.all([
+    const [encounters, approvals, feedback, lifecycleAudit] = await Promise.all([
       this.encounterRepository.findByConsultation(consultationId),
       this.approvalRepository.findByConsultation(consultationId),
       this.readFeedback(consultationId),
+      wants('LIFECYCLE') && !itemFiltered ? this.historyReads.listLifecycleEvents(tenantId, consultationId) : Promise.resolve([]),
     ]);
 
     const synthetic: Array<Key & { entry: ActivityEntry }> = [];
     if (wants('LIFECYCLE') && !itemFiltered) {
-      synthetic.push(...Mapper.toLifecycleEntries(encounters, approvals, consultation.closedAt));
+      const audited = Mapper.fromLifecycleAudit(lifecycleAudit);
+      synthetic.push(...(audited.length > 0 ? audited : Mapper.toLifecycleEntries(encounters, approvals, consultation.closedAt)));
     }
     if (wants('FEEDBACK') && !itemFiltered) {
       for (const record of feedback) synthetic.push({ at: new Date(record.createdAt), id: record.id, entry: Mapper.toFeedbackEntry(record) });

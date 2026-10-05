@@ -43,6 +43,7 @@ const reads = {
   readContents: vi.fn(),
   findItem: vi.fn(),
   countEditedItems: vi.fn(),
+  listLifecycleEvents: vi.fn(),
 };
 const feedback = { listForActivity: vi.fn() };
 const runs = { findProducerOf: vi.fn(), listForConsultation: vi.fn() };
@@ -139,6 +140,7 @@ beforeEach(() => {
   reads.listVersionMeta.mockImplementation(async (_tenant: string, ids: string[]) => metas.filter((m) => ids.includes(m.contextItemId)));
   reads.readContents.mockImplementation(async (_tenant: string, ids: string[]) => new Map(ids.map((id) => [id, `text of ${id}`])));
   reads.countEditedItems.mockResolvedValue(0);
+  reads.listLifecycleEvents.mockResolvedValue([]);
   feedback.listForActivity.mockResolvedValue({ items: [], nextCursor: null });
   runs.findProducerOf.mockResolvedValue(null);
   runs.listForConsultation.mockResolvedValue([]);
@@ -272,6 +274,55 @@ describe('ConsultationHistoryService — activity page', () => {
     const timeline = page.items.map((e) => (e.entryType === 'lifecycle' ? (e as ActivityLifecycleEntry).type : e.entryType));
     expect(timeline).toEqual(['opened', 'item', 'stopped', 'encounter_appended', 'approved']);
     expect((page.items[4] as ActivityLifecycleEntry).actor).toEqual({ userId: 'doctor-1' });
+  });
+
+  describe('lifecycle moments from the lifecycle audit rows', () => {
+    const audit = (id: string, sec: number, seq: number, event: string, extra: Record<string, unknown> = {}, who: { user?: string; svc?: string } = {}) => ({
+      id,
+      createdAt: t(sec),
+      data: { action: 'lifecycle', event, seq, ...extra },
+      responsibleUserId: who.user ?? null,
+      responsibleServiceAccountId: who.svc ?? null,
+    });
+    const lifecycleOf = (page: { items: unknown[] }) =>
+      (page.items as ActivityLifecycleEntry[]).filter((e) => e.entryType === 'lifecycle');
+
+    it('open -> close -> reopen -> close (never recorded) reads opened, closed, reopened, closed', async () => {
+      // the row keeps only the LAST close and the encounter's end is the FIRST close's moment
+      encounters.findByConsultation.mockResolvedValue([{ seq: 1, visitType: 'NEW', startedAt: t(0), endedAt: t(10), recordingStartMs: null, recordingEndMs: 0 }]);
+      consultations.findByIdOrNull.mockResolvedValue({ id: CID, tenantId: TENANT, status: 'CLOSED_INCOMPLETE', processing: 'IDLE', processingReason: null, closedAt: t(30) });
+      reads.listLifecycleEvents.mockResolvedValue([
+        audit('a1', 0, 1, 'opened', {}, { svc: 'svc-1' }),
+        audit('a2', 10, 2, 'closed', { closedReason: 'MANUAL' }, { user: 'doctor-1' }),
+        audit('a3', 20, 3, 'reopened', {}, { user: 'doctor-1' }),
+        audit('a4', 30, 4, 'closed', { closedReason: 'MANUAL' }, { user: 'doctor-1' }),
+      ]);
+      const page = await makeService().getActivity(CID, { grouping: 'none' }, { admin: false });
+      const entries = lifecycleOf(page);
+      expect(entries.map((e) => e.type)).toEqual(['opened', 'closed', 'reopened', 'closed']);
+      expect(entries[1]).toMatchObject({ actor: { userId: 'doctor-1' }, closedReason: 'MANUAL' });
+      expect(entries[0].actor).toEqual({ userId: 'svc-1', credentialClass: 'service_account' });
+      expect(reads.listLifecycleEvents).toHaveBeenCalledWith(TENANT, CID);
+    });
+
+    it('open -> start -> stop -> close keeps the recording moments and leaves out capture-internal events', async () => {
+      reads.listLifecycleEvents.mockResolvedValue([
+        audit('a1', 0, 1, 'opened'),
+        audit('a2', 5, 2, 'started'),
+        audit('a3', 6, 3, 'processing_changed'),
+        audit('a4', 20, 4, 'stopped'),
+        audit('a5', 21, 5, 'transcript_final'),
+        audit('a6', 30, 6, 'closed', { closedReason: 'MANUAL' }),
+      ]);
+      const page = await makeService().getActivity(CID, { grouping: 'none' }, { admin: false });
+      expect(lifecycleOf(page).map((e) => e.type)).toEqual(['opened', 'started', 'stopped', 'closed']);
+    });
+
+    it('falls back to the encounter/approval derivation when a consultation has no lifecycle audit rows', async () => {
+      encounters.findByConsultation.mockResolvedValue([{ seq: 1, visitType: 'NEW', startedAt: t(0), endedAt: t(10), recordingStartMs: 0, recordingEndMs: 10000 }]);
+      const page = await makeService().getActivity(CID, { grouping: 'none' }, { admin: false });
+      expect(lifecycleOf(page).map((e) => e.type)).toEqual(['opened', 'stopped']);
+    });
   });
 
   it('merges feedback entries and counts the latest ratings on their target item', async () => {

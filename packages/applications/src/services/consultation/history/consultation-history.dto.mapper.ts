@@ -52,6 +52,25 @@ interface ApprovalLike {
   approvedBy: string;
 }
 
+interface LifecycleAuditLike {
+  id: string;
+  createdAt: Date;
+  data: Record<string, unknown> | null;
+  responsibleUserId: string | null;
+  responsibleServiceAccountId: string | null;
+}
+
+const HISTORY_LIFECYCLE_EVENTS: ReadonlySet<string> = new Set([
+  'opened',
+  'encounter_appended',
+  'started',
+  'paused',
+  'stopped',
+  'approved',
+  'closed',
+  'reopened',
+]);
+
 /** A lifecycle entry plus the synthetic id that orders it on the keyset. */
 export interface KeyedLifecycleEntry {
   id: string;
@@ -100,7 +119,40 @@ export class ConsultationHistoryDtoMapper {
   }
 
   /**
-   * Lifecycle entries derivable from stored rows: each encounter's start (`opened` for the first,
+   * Lifecycle entries from the durable lifecycle audit rows — every move in time order, a repeated
+   * close/reopen included. Capture-internal events (`transcript_final`, `processing_changed`) are
+   * not moments of the consultation's life and are left out. The actor is the audited principal.
+   */
+  static fromLifecycleAudit(rows: readonly LifecycleAuditLike[]): Array<KeyedLifecycleEntry & { at: Date }> {
+    const out: Array<KeyedLifecycleEntry & { at: Date }> = [];
+    for (const row of rows) {
+      const data = row.data ?? {};
+      const type = typeof data.event === 'string' ? data.event : '';
+      if (!HISTORY_LIFECYCLE_EVENTS.has(type)) continue;
+      const actor = row.responsibleUserId
+        ? { userId: row.responsibleUserId }
+        : row.responsibleServiceAccountId
+          ? { userId: row.responsibleServiceAccountId, credentialClass: 'service_account' }
+          : undefined;
+      const seq = typeof data.seq === 'number' ? data.seq : null;
+      out.push({
+        id: `lifecycle:${seq !== null ? String(seq).padStart(6, '0') : row.id}:${type}`,
+        at: row.createdAt,
+        entry: {
+          entryType: 'lifecycle',
+          at: row.createdAt.toISOString(),
+          type,
+          ...(actor ? { actor } : {}),
+          ...(typeof data.closedReason === 'string' ? { closedReason: data.closedReason } : {}),
+        },
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Lifecycle entries derivable from stored rows (the fallback for a consultation with no
+   * lifecycle audit rows): each encounter's start (`opened` for the first,
    * `encounter_appended` after) and end (`stopped`), each approval, and the close.
    */
   static toLifecycleEntries(
