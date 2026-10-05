@@ -741,14 +741,11 @@ describe('PromptAssemblyService', () => {
     });
   });
 
-  // ── Pre-summary warm-start injection ──
-  // The harness warm-starts `generate` from the live SOAP snapshot. Mirrors
-  // the NER / notes / highlights fallback: the seed templates DECLARE
-  // {{context.pre_summary_text}} in their variables map but never INLINE the placeholder
-  // in content, so without an append-fallback the snapshot would silently never
-  // reach the LLM (the latent no-op the legacy path also suffered).
-  describe('pre-summary warm-start injection (Phase C)', () => {
-    it('appends the prior-draft block + refinement instruction when the template has no {{context.pre_summary_text}} placeholder', async () => {
+  // ── Prior draft: placed only where a governed body names it ──
+  // Warm start is decided by the note plan (the composer carries or withholds the previous AI
+  // draft), so assembly never appends an unnamed prior draft and adds no refine instruction.
+  describe('prior draft placement', () => {
+    it('never appends an unnamed prior draft, even with warm start ON', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
         createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
       );
@@ -761,48 +758,9 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
       });
 
-      // Proves the latent no-op is fixed: the snapshot text reaches the prompt as DATA …
-      expect(result.userPrompt).toContain('S: chest pain O: BP 120/80 A: stable P: review');
-      expect(result.userPrompt).toContain('PRIOR DRAFT');
-      // … with a refinement INSTRUCTION in the system message that keeps the transcript authoritative.
-      expect(result.systemPrompt).toContain('Refine');
-      expect(result.systemPrompt).toContain('source of truth');
-    });
-
-    // Mature the single-append fallback into the explicit
-    // two-stage scratchpad→final lineage: the live draft is
-    // STAGE 1 (scratchpad), the harness note is STAGE 2 (final), and the transcript
-    // stays authoritative on conflict. RED before the block names the two stages.
-    it('frames the prior draft as a two-stage scratchpad→final lineage, transcript authoritative on conflict', async () => {
-      mockPromptTemplateRepository.findById.mockResolvedValue(
-        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
-      );
-      service = await getService(true); // warm-start ON
-      const result = await service.assemble({
-        departmentId: 'dept-001',
-        promptType: 'new-patient',
-        transcript: 'Patient reports chest pain.',
-        conversationLanguage: 'English',
-        preSummaryText: 'S: chest pain O: BP 120/80 A: stable P: review',
-      });
-
-      const prompt = result.systemPrompt;
-      // The prior live draft is the STAGE 1 SCRATCHPAD; the harness produces the STAGE 2 FINAL.
-      expect(prompt).toContain('SCRATCHPAD');
-      expect(prompt).toContain('FINAL');
-      // Refine, never regenerate cold …
-      expect(prompt).toContain('Do not regenerate from scratch');
-      // … and the transcript stays the single source of truth on a draft↔transcript conflict.
-      expect(prompt).toContain('single source of truth');
-      expect(prompt.toLowerCase()).toContain('follow the transcript');
-      // 2026-09-13 — the draft is VERIFIED, not preserved: every statement is a claim to check,
-      // repeats and leaked guidance are removed, what the transcript supports is added.
-      expect(prompt).toContain('CLAIM to check');
-      expect(prompt).toContain('REMOVE a statement the transcript does not support');
-      expect(prompt).toContain('repeated or near-repeated sentence');
-      expect(prompt).toContain('guidance that leaked into the draft');
-      expect(prompt).toContain('ADD what the transcript supports');
-      expect(prompt).not.toContain('preserve correct content and revise only where');
+      expect(result.userPrompt).not.toContain('PRIOR DRAFT');
+      expect(result.userPrompt).not.toContain('S: chest pain O: BP 120/80 A: stable P: review');
+      expect(result.systemPrompt).not.toContain('Do not regenerate from scratch');
     });
 
     it('points {{context.pre_summary_text}} at the ONE prior-draft data section', async () => {
@@ -1014,9 +972,9 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).toContain('ignore previous instructions');
     });
 
-    it('keeps the warm-start refine INSTRUCTION in the system message, apart from the prior-draft data', async () => {
+    it('a body-named prior draft is DATA in the user message, with no refine instruction', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(
-        createMockPromptTemplate({ content: 'Summarize for {{context.conversation_language}}.' }),
+        createMockPromptTemplate({ content: 'Prior: {{context.pre_summary_text}}. Summarize for {{context.conversation_language}}.' }),
       );
       service = await getService(true); // warm-start ON
       const result = await service.assemble({
@@ -1027,11 +985,9 @@ describe('PromptAssemblyService', () => {
         preSummaryText: 'S: draft body',
       });
 
-      // The draft is DATA in the user message; the refine instruction is a genuine instruction
-      // and lives in the system message — never inside (or beside) the data block.
       expect(result.userPrompt).toContain('<<<EXTERNAL_DATA section="prior_draft">>>');
       expect(result.userPrompt).not.toContain('Do not regenerate from scratch');
-      expect(result.systemPrompt).toContain('Do not regenerate from scratch');
+      expect(result.systemPrompt).not.toContain('Do not regenerate from scratch');
     });
   });
 });

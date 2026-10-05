@@ -1,23 +1,9 @@
 /**
- * Lineage-present warm start is UNCONDITIONAL.
+ * Finalize lineage — the pinned agent still reaches the resolver.
  *
- * R-N2 ("the same specific agent reviews and finalizes") is the product
- * contract, not an opt-in optimization. Once a session has PROVABLY run the live
- * agent — the lineage block exists only because the live loop wrote it — the
- * prior draft is injected regardless of `HarnessPolicy.warmStartEnabled`.
- *
- * The flag is DEMOTED, not deleted: it still governs the LEGACY no-lineage path
- * (a case-notes PRE_SUMMARY, or a session recorded before C3 shipped), where
- * injection remains a genuine opt-in behaviour change.
- *
- * Gating table locked here:
- *
- *   | lineage | flag  | prior draft injected |
- *   |---------|-------|----------------------|
- *   | present | OFF   | YES  (R-N2)          |
- *   | present | ON    | YES                  |
- *   | absent  | OFF   | NO   (unchanged)     |
- *   | absent  | ON    | YES  (unchanged)     |
+ * The live-snapshot prior draft is no longer an input (the note plan carries the note's own
+ * draft instead), so the lineage-gated warm-start injection is gone. What survives is the
+ * resolver pin: `pinnedAgentId` passes straight through, and its absence stays absent.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -27,15 +13,6 @@ const mockDnaWritingStyleRepository = { findById: vi.fn() };
 
 const TENANT = 'tenant-lineage';
 const PRIOR_DRAFT = 'Running SOAP note from the live session.';
-
-const LINEAGE = {
-  agentId: 'agent-session',
-  agentName: 'Surgery Default',
-  promptTemplateId: 'tpl-live',
-  promptVersionNumber: 3,
-  resolvedFrom: 'agent' as const,
-  frozenAt: '2026-08-08T00:00:00.000Z',
-};
 
 function createTemplate() {
   return {
@@ -47,11 +24,10 @@ function createTemplate() {
   };
 }
 
-async function buildService(opts: { flag: boolean }) {
+async function buildService() {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const getEffectivePolicy = vi.fn(async () => ({ warmStartEnabled: opts.flag }));
+  const getEffectivePolicy = vi.fn(async () => ({ warmStartEnabled: true }));
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
-
   const service = new PromptAssemblyService(
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
@@ -59,7 +35,7 @@ async function buildService(opts: { flag: boolean }) {
     { getEffectivePolicy } as never,
     cls as never,
   );
-  return { service, getEffectivePolicy };
+  return { service };
 }
 
 const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string }> }, extra: Record<string, unknown>) =>
@@ -72,8 +48,6 @@ const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: str
     ...extra,
   });
 
-const injected = (assembled: { userPrompt: string }) => assembled.userPrompt.includes(PRIOR_DRAFT);
-
 describe('PromptAssemblyService — finalize lineage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,37 +56,21 @@ describe('PromptAssemblyService — finalize lineage', () => {
     mockDnaWritingStyleRepository.findById.mockResolvedValue(null);
   });
 
-  it('lineage present + flag OFF ⇒ prior draft injected (R-N2)', async () => {
-    const { service, getEffectivePolicy } = await buildService({ flag: false });
-    expect(injected(await assemble(service as never, { preSummaryLineage: LINEAGE }))).toBe(true);
-    // Short-circuited: lineage makes the governance read unnecessary.
-    expect(getEffectivePolicy).not.toHaveBeenCalled();
-  });
-
-  it('lineage present + flag ON ⇒ prior draft injected', async () => {
-    const { service } = await buildService({ flag: true });
-    expect(injected(await assemble(service as never, { preSummaryLineage: LINEAGE }))).toBe(true);
-  });
-
-  it('LEGACY LOCK — lineage absent + flag OFF ⇒ NOT injected', async () => {
-    const { service } = await buildService({ flag: false });
-    expect(injected(await assemble(service as never, {}))).toBe(false);
-  });
-
-  it('LEGACY LOCK — lineage absent + flag ON ⇒ injected', async () => {
-    const { service } = await buildService({ flag: true });
-    expect(injected(await assemble(service as never, {}))).toBe(true);
+  it('a pinned agent does not make the unnamed prior draft an input', async () => {
+    const { service } = await buildService();
+    const assembled = await assemble(service as never, { pinnedAgentId: 'agent-session' });
+    expect(assembled.userPrompt).not.toContain(PRIOR_DRAFT);
   });
 
   it('passes pinnedAgentId through to the resolver', async () => {
-    const { service } = await buildService({ flag: false });
-    await assemble(service as never, { preSummaryLineage: LINEAGE, pinnedAgentId: LINEAGE.agentId, departmentId: 'dept-1' });
+    const { service } = await buildService();
+    await assemble(service as never, { pinnedAgentId: 'agent-session', departmentId: 'dept-1' });
 
     expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ pinnedAgentId: 'agent-session' }));
   });
 
-  it('REGRESSION LOCK — no lineage ⇒ resolver sees pinnedAgentId undefined', async () => {
-    const { service } = await buildService({ flag: false });
+  it('REGRESSION LOCK — no pin ⇒ resolver sees pinnedAgentId undefined', async () => {
+    const { service } = await buildService();
     await assemble(service as never, { departmentId: 'dept-1' });
 
     expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ pinnedAgentId: undefined }));

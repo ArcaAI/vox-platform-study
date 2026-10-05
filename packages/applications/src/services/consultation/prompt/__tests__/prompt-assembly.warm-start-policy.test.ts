@@ -1,16 +1,9 @@
 /**
- * PromptAssemblyService — effective `warmStartEnabled` is the `HarnessPolicy` column, alone.
+ * PromptAssemblyService — warm start is no longer a prompt-assembly decision.
  *
- * TASK-882: `harness.warmStartEnabled` (`HARNESS_WARM_START_ENABLED`) was an env DUPLICATE of the
- * SUPER_ADMIN_ONLY `HarnessPolicy.warmStartEnabled` column — the env var survived only as the
- * fallback for a null policy value. It is gone: the column is the one source, a null column is
- * the code default (OFF), and there is no env branch to fall back to.
- *
- * The contract this pins:
- *   1. the effective POLICY value decides, both directions
- *   2. a null policy value is the code default — OFF — never an env read
- *   3. resolution is PER-CALL: a policy change is picked up with no redeploy
- *   4. a policy-resolution failure degrades to OFF rather than throwing
+ * `HarnessPolicy.warmStartEnabled` now governs the note plan (the composer withholds or carries the
+ * previous AI draft). Assembly neither reads the policy nor appends an unnamed prior draft; a
+ * governed body that names `pre_summary_text` still places it itself (prompt-assembly.service.test.ts).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -21,7 +14,6 @@ const mockDnaWritingStyleRepository = { findById: vi.fn() };
 const TENANT = 'tenant-warm-start';
 const PRIOR_DRAFT = 'Running SOAP note from the live session.';
 
-/** The template echoes the prompt body; warm start appends the PRIOR DRAFT block. */
 function createTemplate() {
   return {
     id: 'template-warm',
@@ -32,38 +24,21 @@ function createTemplate() {
   };
 }
 
-async function buildService(opts: { policy?: boolean | null; policyThrows?: boolean; unwired?: boolean } = {}) {
+async function buildService(policy: boolean | null) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  const getEffectivePolicy = vi.fn(async () => {
-    if (opts.policyThrows) throw new Error('policy backend unavailable');
-    return { warmStartEnabled: opts.policy ?? null };
-  });
-  const harnessPolicyService = opts.unwired ? undefined : { getEffectivePolicy };
+  const getEffectivePolicy = vi.fn(async () => ({ warmStartEnabled: policy }));
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? TENANT : undefined)) };
-
   const service = new PromptAssemblyService(
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    harnessPolicyService as never,
+    { getEffectivePolicy } as never,
     cls as never,
   );
   return { service, getEffectivePolicy };
 }
 
-const assembleWithPriorDraft = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string }> }) =>
-  service.assemble({
-    promptType: 'new-patient',
-    transcript: 'patient transcript',
-    conversationLanguage: 'en',
-    preSummaryText: PRIOR_DRAFT,
-    tenantId: TENANT,
-  });
-
-/** Warm start is ON iff the prior-draft block reached the user prompt. */
-const warmStarted = (assembled: { userPrompt: string }) => assembled.userPrompt.includes(PRIOR_DRAFT);
-
-describe('PromptAssemblyService — effective warmStartEnabled (HarnessPolicy column only)', () => {
+describe('PromptAssemblyService — warm start is not an assembly decision', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPromptResolutionService.resolve.mockResolvedValue({ promptId: 'template-warm', resolvedFrom: 'default' });
@@ -71,46 +46,17 @@ describe('PromptAssemblyService — effective warmStartEnabled (HarnessPolicy co
     mockDnaWritingStyleRepository.findById.mockResolvedValue(null);
   });
 
-  it('policy=false → warm start OFF', async () => {
-    const { service } = await buildService({ policy: false });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
-  });
-
-  it('policy=true → warm start ON', async () => {
-    const { service } = await buildService({ policy: true });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(true);
-  });
-
-  it('policy=null is the code default (OFF) — there is no env fallback any more', async () => {
-    const { service } = await buildService({ policy: null });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
-  });
-
-  it('an unwired policy service is the code default (OFF)', async () => {
-    const { service } = await buildService({ unwired: true });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
-  });
-
-  it('resolves PER CALL — a policy flip takes effect with no reconstruction', async () => {
-    const { service, getEffectivePolicy } = await buildService({ policy: false });
-
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
-
-    // Super admin flips the knob. Same service instance, no redeploy.
-    getEffectivePolicy.mockResolvedValue({ warmStartEnabled: true } as never);
-
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(true);
-    expect(getEffectivePolicy).toHaveBeenCalledTimes(2);
-  });
-
-  it('resolves the policy for the calling tenant', async () => {
-    const { service, getEffectivePolicy } = await buildService({ policy: true });
-    await assembleWithPriorDraft(service as never);
-    expect(getEffectivePolicy).toHaveBeenCalledWith(TENANT);
-  });
-
-  it('degrades to OFF when the policy lookup fails (never blocks assembly, never reads env)', async () => {
-    const { service } = await buildService({ policyThrows: true });
-    expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
+  it.each([true, false, null])('policy=%s: an unnamed prior draft is never appended and the policy is never read', async (policy) => {
+    const { service, getEffectivePolicy } = await buildService(policy);
+    const assembled = await service.assemble({
+      promptType: 'new-patient',
+      transcript: 'patient transcript',
+      conversationLanguage: 'en',
+      preSummaryText: PRIOR_DRAFT,
+      tenantId: TENANT,
+    });
+    expect(assembled.userPrompt).not.toContain(PRIOR_DRAFT);
+    expect(assembled.systemPrompt).not.toContain('Do not regenerate from scratch');
+    expect(getEffectivePolicy).not.toHaveBeenCalled();
   });
 });

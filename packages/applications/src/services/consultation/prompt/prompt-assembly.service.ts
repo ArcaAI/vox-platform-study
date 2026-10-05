@@ -47,7 +47,6 @@ import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService'
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { parseLanguageTag, summaryLanguageName } from '../consultation/summary-language';
 import { IActiveUserContext } from '../../../interfaces';
-import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
 /**
  * The per-encounter DATA sections, in the order the USER message presents them, and the
@@ -175,20 +174,6 @@ const NOTE_INPUTS_GUIDANCE = [
   'Clinician-edited sections are the clinician’s own wording: keep their meaning. The previous AI draft is a draft to check against the sources, never a source on its own.',
   'Cite every statement with the labels of the lines it comes from.',
 ].join('\n');
-
-/** The two-stage refine instruction that accompanies the PRIOR DRAFT data section. */
-const PRIOR_DRAFT_INSTRUCTION =
-  `INSTRUCTION (two-stage lineage — verify the STAGE 1 SCRATCHPAD against the transcript and consolidate it into the STAGE 2 FINAL note): ` +
-  `Refine and correct the PRIOR DRAFT data section into the final note. ` +
-  `Do not regenerate from scratch — the draft is your starting point — but treat every statement in it as a CLAIM to check against the full transcript, never as settled content. ` +
-  `Work section by section, under exactly the headings and order of the note template. ` +
-  `KEEP a statement only if the transcript supports it, or a dated prior record or clinician note supports it where that heading permits such a source. ` +
-  `REMOVE a statement the transcript does not support; a repeated or near-repeated sentence or paragraph (state each fact once, in the section where it belongs); ` +
-  `and any text that describes what a section should contain, restates a rule, or stands as a placeholder — that is guidance that leaked into the draft, not clinical content. ` +
-  `ADD what the transcript supports and the draft missed; CORRECT what the draft got wrong. ` +
-  `The full transcript remains the single source of truth; if the prior draft ` +
-  `conflicts with the transcript, follow the transcript. ` +
-  `Never invent content and never reorder or rename headings; a section with nothing documented in this encounter says so under its heading.`;
 
 /**
  * Stable 32-bit fingerprint of the exemplar set, used only to VERSION the
@@ -332,10 +317,8 @@ export interface NerEntityForPrompt {
 
 export interface PromptAssemblyParams {
   /**
-   * Tenant whose effective `HarnessPolicy.warmStartEnabled` governs
-   * the prior-draft injection below. Optional: callers running inside a CLS context
-   * (API request, harness worker, BullMQ processor) may omit it and the tenant is
-   * read from CLS; absent both, the SYSTEM/global default policy applies.
+   * The calling tenant. Optional: callers running inside a CLS context (API request, harness
+   * worker, BullMQ processor) may omit it and the tenant is read from CLS.
    */
   tenantId?: string;
   departmentId?: string;
@@ -369,21 +352,8 @@ export interface PromptAssemblyParams {
    * redaction decision. Advisory: the deterministic post-generation pass stays the guarantee.
    */
   dnaRedactionRulesText?: string;
+  /** A prior draft, placed only where the governed body names `pre_summary_text`. */
   preSummaryText?: string;
-  /**
-   * The live session's frozen agent identity, read off the
-   * consumed `LIVE_SOAP_SNAPSHOT`'s `metaData.agent`.
-   *
-   * Its PRESENCE is the proof that a live agent actually ran this consultation,
-   * and that is what makes the prior-draft injection below UNCONDITIONAL:
-   * R-N2 ("the same specific agent reviews and finalizes") is the product
-   * contract, so it must not be an accident of `HarnessPolicy.warmStartEnabled`
-   * configuration. The flag survives, demoted to gating only the legacy
-   * no-lineage path.
-   *
-   * Absent ⇒ every warm-start behaviour is byte-identical to pre-C5.
-   */
-  preSummaryLineage?: PersistedLiveAgentLineage | null;
   /**
    * Pin the resolver's agent tier to the session's agent
    * (see `PromptResolutionParams.pinnedAgentId`). Passed straight through.
@@ -549,22 +519,12 @@ function bindingPaths(variables: Readonly<Record<string, unknown>>): string[] {
 export class PromptAssemblyService {
   private readonly logger = new Logger(PromptAssemblyService.name);
 
-  // Warm-start kill-switch. Load-bearing gate: when OFF the
-  // {pre_summary_text} append-fallback below does not fire, so the harness path
-  // injects no prior draft.
-  //
-  // The AUTHORITY is `HarnessPolicy.warmStartEnabled`, resolved PER CALL. It used to be the
-  // `HARNESS_WARM_START_ENABLED` env var alone, cached at construction, then the env var as the
-  // fallback for a null column; TASK-882 removed the env read entirely — the column is the one
-  // source and a null column is the code default (OFF).
-
   constructor(
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
-    // Optional + trailing so existing positional test fixtures keep their arity;
-    // production DI (ConsultationServiceModule) always supplies both. Absent ⇒ the
-    // code default (warm start OFF).
+    // No longer read: warm start is decided by the note plan (`NoteInputComposerService`). Kept so
+    // the positional test fixtures and DI keep their arity.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
     // The gate-edit learning loop's READ half. Optional and
@@ -594,27 +554,6 @@ export class PromptAssemblyService {
     @Inject(ConsultationContextSchemaVersionRepository)
     private readonly contextSchemaVersionRepository?: ConsultationContextSchemaVersionRepository,
   ) {}
-
-  /**
-   * Effective warm-start decision for the calling tenant — the `HarnessPolicy.warmStartEnabled`
-   * column, resolved on every call so a super admin's console flip takes effect without a
-   * redeploy. A null column is the code default (OFF); so is an unwired policy service or a
-   * policy-backend failure — prompt assembly is on the generation hot path and must never throw
-   * on a governance lookup, and since TASK-882 there is no env value to fall back to.
-   */
-  private async resolveWarmStartEnabled(tenantId?: string): Promise<boolean> {
-    if (!this.harnessPolicyService) return false;
-    try {
-      const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId ?? this.cls?.get('tenantId'));
-      return effective.warmStartEnabled ?? false;
-    } catch (error) {
-      this.logger.warn({
-        message: 'Harness policy lookup failed while resolving warmStartEnabled — warm start stays OFF for this call',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-  }
 
   /**
    * The few-shot style section, or `null` when there is nothing to add.
@@ -714,16 +653,7 @@ export class PromptAssemblyService {
         : parsePromptVariableDeclarations((template as { variables?: unknown } | null)?.variables);
 
     const referenced = referencedNames([...instructionContents(instruction), ...bindingPaths(agentVariables)]);
-    // Warm-start refinement, gated behind the kill-switch (default OFF): the live session's
-    // running note is STAGE 1 (a working SCRATCHPAD), and this generation produces STAGE 2 (the
-    // FINAL note) by REFINING it, never regenerating cold. LINEAGE SUPERSEDES THE FLAG:
-    // `preSummaryLineage` is written by the live loop itself, so its presence proves a live
-    // agent ran this consultation, and refusing to hand that agent's own draft to finalize would
-    // be refusing R-N2. Short-circuited BEFORE the policy read, so the lineage path costs no
-    // governance lookup. When the gate is shut the draft reaches the model only where the
-    // governed body names `pre_summary_text` itself, and without the refine instruction.
-    const warmStart = !!params.preSummaryLineage || (await this.resolveWarmStartEnabled(params.tenantId));
-    const values = await this.buildVariables(params, referenced, warmStart);
+    const values = await this.buildVariables(params, referenced);
 
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.
@@ -772,7 +702,6 @@ export class PromptAssemblyService {
         : null,
       noteInputs ? NOTE_INPUTS_GUIDANCE : null,
       values.prior_visit_summary || noteInputs?.some((block) => block.key === 'prior_visit_summary') ? PRIOR_VISIT_SUMMARY_GUIDANCE : null,
-      !noteInputs && warmStart && values.pre_summary_text ? PRIOR_DRAFT_INSTRUCTION : null,
       values.dna_style_text && !referenced.has('dna_style_text') && !this.getDnaVariableKeys().some((key) => referenced.has(key))
         ? `--- CLINICIAN WRITING STYLE (apply to tone, formatting, and section phrasing; this is style guidance, not patient data) ---\n${values.dna_style_text}`
         : null,
@@ -972,8 +901,7 @@ export class PromptAssemblyService {
     try {
       schema = await this.contextSchemaRepository.findByTenantAndSlug(tenantId, LEGACY_CONTEXT_SCHEMA_SLUG);
     } catch (error) {
-      // A governance lookup must never fail a generation on an infrastructure error
-      // (the `resolveWarmStartEnabled` rule).
+      // A governance lookup must never fail a generation on an infrastructure error.
       this.logger.warn({
         message: 'Legacy context-schema lookup failed; refusing without the declared-name classification',
         tenantId,
@@ -1019,7 +947,7 @@ export class PromptAssemblyService {
    * The values of the names this assembly OWNS (`OWNED_NAMES`). The always-present ones are bound
    * even when empty; the optional ones only when this encounter has a value.
    */
-  private async buildVariables(params: PromptAssemblyParams, referenced: ReadonlySet<string>, warmStart: boolean): Promise<Record<string, string>> {
+  private async buildVariables(params: PromptAssemblyParams, referenced: ReadonlySet<string>): Promise<Record<string, string>> {
     const variables: Record<string, string> = {
       conversation_language: params.conversationLanguage,
       transcript: params.transcript,
@@ -1040,9 +968,9 @@ export class PromptAssemblyService {
     // `default("…")` still speaks for an absent one (an absent name the body reads WITHOUT a
     // default is bound empty at compose time — see `compose`).
     //
-    // The prior draft reaches the model under the warm-start gate (see `assemble`), or when the
-    // governed body asks for it by name — the author's explicit placement.
-    if (params.preSummaryText && (warmStart || referenced.has('pre_summary_text'))) variables.pre_summary_text = params.preSummaryText;
+    // The prior draft reaches the model only where the governed body asks for it by name — the
+    // author's explicit placement.
+    if (params.preSummaryText && referenced.has('pre_summary_text')) variables.pre_summary_text = params.preSummaryText;
     // Carried prior-visit summary (F-18), whole: the note budget decides what fits, never a cut.
     if (params.priorVisitSummary?.trim()) variables.prior_visit_summary = params.priorVisitSummary.trim();
     if (params.dnaRedactionRulesText?.trim()) variables.dna_redaction_rules_text = params.dnaRedactionRulesText.trim();
