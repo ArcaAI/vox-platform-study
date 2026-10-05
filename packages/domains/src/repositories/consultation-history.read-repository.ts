@@ -21,6 +21,15 @@ export interface HistoryItemRow {
   createdAt: Date;
 }
 
+/** One durable lifecycle moment of a consultation, read from its `lifecycle` audit rows. */
+export interface HistoryLifecycleRow {
+  id: string;
+  createdAt: Date;
+  data: Record<string, unknown> | null;
+  responsibleUserId: string | null;
+  responsibleServiceAccountId: string | null;
+}
+
 /** One version of an item without its snapshot. */
 export interface HistoryVersionMetaRow {
   contextItemId: string;
@@ -116,6 +125,22 @@ export class ConsultationHistoryReadRepository {
       select: ITEM_COLUMNS,
       orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
       take: input.take,
+    });
+  }
+
+  /**
+   * The consultation's lifecycle moments, oldest first. Every lifecycle change (opened, closed,
+   * reopened, ...) leaves one audit row (`data.action = 'lifecycle'`); the consultation row and its
+   * encounters keep only the latest of each, so this is the one durable record of a repeated move.
+   * Named columns only — the ciphertext columns are never read.
+   */
+  async listLifecycleEvents(tenantId: string, consultationId: string): Promise<HistoryLifecycleRow[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the database service is indexed by model name
+    const delegate = (this.unitOfWorkService.getDatabaseService() as Record<string, any>)['auditLog'];
+    return delegate.findMany({
+      where: { tenantId, resourceType: 'Consultation', resourceId: consultationId, data: { path: ['action'], equals: 'lifecycle' } },
+      select: { id: true, createdAt: true, data: true, responsibleUserId: true, responsibleServiceAccountId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
   }
 

@@ -410,6 +410,7 @@ export interface ActivityLifecycleEntry {
   at: string;
   type: LifecycleEventType | string;
   actor?: { userId: string; credentialClass?: string };
+  closedReason?: string;
 }
 
 export type ActivityEntry =
