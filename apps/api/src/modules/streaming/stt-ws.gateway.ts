@@ -344,6 +344,13 @@ interface SessionInfo {
    */
   stopRequested?: boolean;
   /**
+   * Capture is paused: inbound audio is dropped at the gateway (no forward, no seq or audio-clock
+   * advance) until a `resume-capture`. Separate from the reconnect `resume` handshake.
+   */
+  capturePaused?: boolean;
+  /** A pause/resume control was sent and STT has not answered; an STT error in this window means the control is unsupported. */
+  captureControlPending?: boolean;
+  /**
    * TASK-985 M-47 — consecutive keepalive pings this socket has not answered.
    *
    * Reset to 0 by every `pong` (and by a rebind). At
@@ -1469,6 +1476,17 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    */
   private relayResult(client: WebSocket, session: SessionInfo, msg: { type: string; isFinal?: boolean; [key: string]: unknown }): void {
     const isTranscript = msg?.type === 'transcript';
+    if (msg?.type === 'status' && (msg.status === 'paused' || msg.status === 'capturing' || msg.status === 'pause_expired')) {
+      session.captureControlPending = false;
+    }
+    // An older STT rejects pause/resume with an error entry. Surface it as PAUSE_UNSUPPORTED and
+    // keep capturing, so the clinician's audio is never silently dropped on both sides.
+    if (msg?.type === 'error' && session.captureControlPending) {
+      session.captureControlPending = false;
+      session.capturePaused = false;
+      this.sendError(client, 'PAUSE_UNSUPPORTED', 'Capture pause is not supported by the streaming backend');
+      return;
+    }
     // TASK-1004 — an engine switch re-resolves the language; keep the new receipt as the session's
     // current one so a later `ready` (rebind) reports what is serving now. The bridge has already
     // validated + camelCased it; the frame itself is relayed unchanged below.
@@ -2011,6 +2029,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // (`isBinary` is undefined only on direct unit-test calls; a bare string is
     // then treated as JSON, a Buffer must set the flag explicitly.)
     if (isBinary === true) {
+      if (session.capturePaused) return;
       session.binarySeq++;
       const audio = Buffer.isBuffer(rawData) ? rawData : Buffer.from(String(rawData));
       this.forwardAudioFrame(session, session.binarySeq, audio);
@@ -2031,6 +2050,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     try {
       switch (type) {
         case 'audio': {
+          if (session.capturePaused) break;
           const seq = typeof msg.seq === 'number' ? msg.seq : ++session.binarySeq;
           const data = Buffer.from(String(msg.data), 'base64');
           // TASK-951 R2 (clarified) — a JSON audio frame may carry its metadata inline. SET
@@ -2078,6 +2098,20 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
           // during. This frame carries the client's own count so the loss is at least
           // ATTRIBUTABLE. It is a claim, recorded and metered as such.
           this.recordClientStats(session, msg);
+          break;
+        }
+
+        case 'pause': {
+          session.capturePaused = true;
+          session.captureControlPending = true;
+          await this.bridgeService.writeControlCommand(session.sessionId, 'pause');
+          break;
+        }
+
+        case 'resume-capture': {
+          session.capturePaused = false;
+          session.captureControlPending = true;
+          await this.bridgeService.writeControlCommand(session.sessionId, 'resume');
           break;
         }
 
