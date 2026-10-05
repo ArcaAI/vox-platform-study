@@ -14961,6 +14961,22 @@
       "apiExcluded": true
     },
     {
+      "controller": "SttSessionTranscriptInternalController",
+      "handler": "transcript",
+      "method": "GET",
+      "path": "/api/v1/internal/stt/sessions/{sessionId}/transcript",
+      "routePath": "/internal/stt/sessions/:sessionId/transcript",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "SttInternalController",
       "handler": "recordStreamingUsage",
       "method": "POST",
