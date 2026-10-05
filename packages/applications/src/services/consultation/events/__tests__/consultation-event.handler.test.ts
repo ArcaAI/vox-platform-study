@@ -78,8 +78,13 @@ const createMockNoteGenerationService = (consultationRepo: { findById: (id: stri
 
 // (Lane G) — the handler loads the triggering transcript's
 // content so it can forward it to the harness workflow (NER + sensors run on it).
+// The resumed-recording check reads the consultation's transcripts and drafts first; a read it
+// cannot make is now a reported failure (never a silent first-session fallback), so the base
+// fixture answers a first recording: no other aggregate, no draft.
 const createMockContextItemRepository = () => ({
   findById: vi.fn().mockResolvedValue({ id: 'ctx-transcript-001', content: 'Patient reports chest pain.' }),
+  findTranscripts: vi.fn().mockResolvedValue([]),
+  findByType: vi.fn().mockResolvedValue([]),
 });
 
 // Mock ClsService. EventEmitter2 async handlers
