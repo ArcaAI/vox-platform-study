@@ -34,6 +34,9 @@ import {
   TranscriptionJobStatusCountResponse,
 } from './dto';
 import { TranscriptionJobDtoMapper } from './transcriptionJob.dto.mapper';
+// Leaf modules (DI class token / constant), not barrels — no cycle through the workflow plane.
+import { RunPrincipalAccessService } from '../../workflow-run/run-principal-access';
+import { STREAM_SESSION_OWNER_KEY } from '../../workflow-exposure/run-audio-metadata';
 
 @Injectable()
 export class TranscriptionJobService extends BaseService implements ITranscriptionJobService {
@@ -167,7 +170,12 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
    * the session it belongs to.
    */
   async createForStreamSession(input: CreateStreamSessionJobInput): Promise<TranscriptionJobResponse> {
+    // TASK-1042 (C8) — the principal that OPENED the session (the API key / service account
+    // CREDENTIAL, or the human of a JWT), read from the request CLS. A standalone run may bind only
+    // a session its own principal opened; a row with no owner (no principal) is never bindable.
+    const owner = new RunPrincipalAccessService(this.clsService).currentPrincipal();
     const job = TranscriptionJobFactory.CreateTranscriptionJob({
+      ...(owner ? { metaData: { [STREAM_SESSION_OWNER_KEY]: owner } } : {}),
       tenantId: input.tenantId,
       jobType: TranscriptionJobType.STREAMING,
       streamSessionId: input.streamSessionId,

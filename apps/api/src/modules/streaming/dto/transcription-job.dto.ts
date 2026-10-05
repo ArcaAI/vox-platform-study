@@ -141,6 +141,24 @@ export class CreateStreamSessionRequest {
   @IsOptional()
   consultationId?: string;
 
+  /**
+   * TASK-1042 (C1) — the published workflow whose STANDALONE run this session will feed
+   * (`input.<audio>.sttSessionId` on `POST /workflows/{slug}/runs`). Mutually exclusive with
+   * `consultationId`. Without an `agentSlug`, the ASR agent resolves from that workflow's single
+   * speech-to-text step (`agentSource: 'workflow'`), so the run's agent-agreement check passes.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Slug of the published workflow whose standalone run this session will feed. Without agentSlug, the speech-to-text agent ' +
+      "resolves from that workflow's speech-to-text step (agentSource 'workflow'). Mutually exclusive with consultationId " +
+      '(400 STREAM_SESSION_TARGET_CONFLICT).',
+  })
+  @IsString()
+  @IsOptional()
+  @MinLength(1)
+  @MaxLength(128)
+  workflowSlug?: string;
+
   @ApiPropertyOptional({ description: 'Audio sample rate in Hz', default: 16000 })
   @IsNumber()
   @IsOptional()

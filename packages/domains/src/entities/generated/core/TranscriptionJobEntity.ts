@@ -60,6 +60,15 @@ export interface ITranscriptionJobEntity extends IBaseTenantEntity {
    */
   reclaimCount: number;
   workerId?: string | null;
+  /**
+   * TASK-1042 (C8) — the row's `_metadata` JSONB, re-declared for the reason `WorkflowRunEntity`
+   * re-declares it: `IBaseEntity.metaData` is never wired on the abstract `BaseEntity`, so without
+   * a local backing field the column is unreadable through the entity. A streaming row carries
+   * `owner` (the principal that opened the session) and `boundRun` (the standalone workflow run
+   * the session feeds). A BAG: every key is `unknown` on read and is narrowed at the read site.
+   * Omitted stays omitted (no `?? null`), so a caller that records nothing writes nothing.
+   */
+  metaData?: Record<string, unknown> | null;
 }
 
 export class TranscriptionJobEntity extends BaseTenantEntity {
@@ -90,6 +99,7 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
   private _maxRetries: ITranscriptionJobEntity['maxRetries'];
   private _reclaimCount: ITranscriptionJobEntity['reclaimCount'];
   private _workerId?: ITranscriptionJobEntity['workerId'];
+  private _metaData?: ITranscriptionJobEntity['metaData'];
 
   constructor(init: ITranscriptionJobEntity) {
     super(init);
@@ -120,6 +130,15 @@ export class TranscriptionJobEntity extends BaseTenantEntity {
     this._maxRetries = init.maxRetries;
     this._reclaimCount = init.reclaimCount;
     this._workerId = init.workerId;
+    this._metaData = init.metaData;
+  }
+
+  get metaData(): ITranscriptionJobEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: ITranscriptionJobEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   // Getters and Setters

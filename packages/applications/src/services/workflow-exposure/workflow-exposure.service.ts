@@ -46,6 +46,7 @@ import {
 import { RunPrincipalAccessService } from '../workflow-run/run-principal-access';
 import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
+import { assertNoLiveAudio, liveAudioRequestsIn, RunAudioBindingService, type RunAudioBinding } from './run-audio-binding.service';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
@@ -208,6 +209,9 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // `WorkflowRunServiceModule` (imported by this service's module); `@Optional()` only so the
     // positional unit fixtures keep constructing — absent, reads are tenant-scoped as before.
     @Optional() private readonly runAccess?: RunPrincipalAccessService,
+    // TASK-1042 — binds a live STT session named in a standalone run's `input` (C3/C8). Optional for
+    // the positional fixtures; absent, a start that names a session is refused (503), never unchecked.
+    @Optional() private readonly runAudio?: RunAudioBindingService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -367,6 +371,8 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
           'Consultation identity comes from the request path and is resolved server-side.',
       );
     }
+    // TASK-1042 — a consultation run gets its audio through the consultation: `sttSessionId` is 400.
+    if (consultationBound) assertNoLiveAudio(dto.input);
 
     // The binding itself: RE-RESOLVED against the caller's tenant, never taken on trust. A
     // foreign or unknown id reads as absent (the Prisma tenant-scope extension filters it) and
@@ -420,9 +426,25 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const effective = this.effectiveTriggerSchema
       ? await this.effectiveTriggerSchema.resolve(tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest)
       : { config: definition.compiledConfig };
+    // TASK-1042 (C3/C8) — a live STT session named in a STANDALONE run's input is checked and bound
+    // here, before the claim-check, the run row and the harness start; a start that then fails releases it.
+    let audio: RunAudioBinding | null = null;
+    if (!consultationBound && liveAudioRequestsIn(dto.input).length > 0) {
+      if (!this.runAudio) throw new ServiceUnavailableException('Live audio is unavailable: the run-audio binding is not configured.');
+      audio = await this.runAudio.bind({
+        tenantId,
+        runId,
+        workflow: { slug: definition.slug, versionNumber: definition.versionNumber ?? null, compiledConfig: effective.config, graph: definition.graph },
+        input: dto.input,
+      });
+    }
+    const releaseAudioAndRethrow = async (error: unknown): Promise<never> => {
+      await audio?.release();
+      throw error;
+    };
     const configRef = await mintCompiledConfigClaimCheckRef(effective.config, bucket, (b, key, data, contentType) =>
       this.s3Service!.putFile(b, key, data, contentType),
-    );
+    ).catch(releaseAudioAndRethrow);
 
     const sessionId = interpreterSessionId(runId);
 
@@ -460,15 +482,17 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       // TASK-1038 OD-35 — and the principal that started it (`startedBy`), which every
       // business-plane read of the run is bound to.
       metaData:
-        actingUserId || subject?.consultationId || requestBodyHash || startedBy
+        actingUserId || subject?.consultationId || requestBodyHash || startedBy || audio
           ? {
               ...(actingUserId ? { actingUserId } : {}),
               ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
               ...(requestBodyHash ? { requestBodyHash } : {}),
               ...(startedBy ? { startedBy } : {}),
+              // TASK-1042 (C8) — the live STT session this run reads.
+              ...(audio ? { sttSessionId: audio.liveAudio.sttSessionId } : {}),
             }
           : undefined,
-    });
+    }).catch(releaseAudioAndRethrow);
 
     const started = await this.harnessGateway.startWorkflowRun({
       runId,
@@ -492,7 +516,9 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
       payload: dto.input,
       // The server-resolved clinical subject — the ONLY channel run identity travels on.
       subject,
-    });
+      // TASK-1042 (C7) — the bound live session, server-resolved like `subject`.
+      ...(audio ? { liveAudio: audio.liveAudio } : {}),
+    }).catch(releaseAudioAndRethrow);
 
     const serviceAccount = this.requestServiceAccount;
     this.broadcastSysEvent(SysEventType.ResourceCreated, {

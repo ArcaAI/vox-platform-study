@@ -1,4 +1,4 @@
-import { ConflictException, HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, HttpException, Inject, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AgentTask } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
@@ -18,7 +18,12 @@ import type {
 } from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../stt-provider-overrides';
 import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
-import { GoverningWorkflowAsrReader, workflowAsrAgentUnavailable, type ConsultationAsrContext } from './governing-workflow-asr';
+import {
+  GoverningWorkflowAsrReader,
+  workflowAsrAgentUnavailable,
+  type ConsultationAsrContext,
+  type GoverningWorkflowAsrAgent,
+} from './governing-workflow-asr';
 
 export interface ResolveAsrSpecInput {
   tenantId: string;
@@ -40,6 +45,13 @@ export interface ResolveAsrSpecInput {
    * It never influences which agent resolves.
    */
   inheritConsultationLanguage?: boolean;
+  /**
+   * TASK-1042 (C1) — the STANDALONE workflow run this session will feed (mutually exclusive with
+   * `consultationId`, enforced by the route). When given (and no `agentSlug` is), the agent comes
+   * from that slug's ACTIVE published version — its single SPEECH_TO_TEXT `core.agent` node —
+   * exactly as tier 2 reads a consultation's governing workflow; an unknown slug is a 404.
+   */
+  workflowSlug?: string | null;
 }
 
 /** What one STT session / batch job needs from the gateway: the spec, plus the credentials that ride beside it. */
@@ -218,6 +230,52 @@ export class AsrAgentResolverService {
     return { agentSlug: agent.slug, formats };
   }
 
+  /**
+   * The agent a workflow's single SPEECH_TO_TEXT node NAMES (tier 2 and the TASK-1042 `workflowSlug`
+   * arm), resolved fail-closed: a binding that can no longer serve is the named 409, never a quiet
+   * chain mark (owner OD-1).
+   */
+  private async resolveWorkflowNamedAgent(
+    tenantId: string,
+    named: GoverningWorkflowAsrAgent,
+    context: { consultationId?: string | null; workflowSlug?: string | null },
+  ): Promise<{ agent: ResolvedAgent; workflowDefinitionSlug: string }> {
+    let resolved: ResolvedAgent;
+    try {
+      resolved = await this.agents.resolve({
+        tenantId,
+        task: AgentTask.SPEECH_TO_TEXT,
+        agentSlug: named.agentSlug,
+        departmentId: null,
+        // Owner OD-1 — the workflow NAMED this agent, so a binding that can no longer serve
+        // (e.g. a connection disabled after publish) is the named 409 below, not a quiet
+        // chain mark.
+        primaryBinding: 'fail-closed',
+      });
+    } catch (error) {
+      // Only the resolver's own refusals (404 / 400 / 409 / 503) are "unavailable"; a backend
+      // fault propagates and is never disguised as a configuration answer.
+      if (!(error instanceof HttpException)) throw error;
+      throw workflowAsrAgentUnavailable({
+        reason: 'unavailable',
+        workflowDefinitionSlug: named.workflowDefinitionSlug,
+        agentSlug: named.agentSlug,
+        cause: error.message,
+      });
+    }
+    this.logger.log({
+      message: context.workflowSlug
+        ? 'ASR agent chosen by the standalone workflow the session feeds, ahead of the assignment cascade'
+        : 'ASR agent chosen by the consultation’s governing workflow, ahead of the assignment cascade',
+      tenantId,
+      ...(context.consultationId ? { consultationId: context.consultationId } : {}),
+      workflowDefinitionSlug: named.workflowDefinitionSlug,
+      nodeId: named.nodeId,
+      agentSlug: resolved.slug,
+    });
+    return { agent: { ...resolved, source: 'workflow' }, workflowDefinitionSlug: named.workflowDefinitionSlug };
+  }
+
   /** TASK-1002 — tiers 1 → 3 for the PRIMARY agent. See {@link resolve}. */
   private async resolvePrimary(
     input: ResolveAsrSpecInput,
@@ -235,6 +293,19 @@ export class AsrAgentResolverService {
         // fallback out with it.
         primaryBinding: 'mark',
       });
+
+    // TASK-1042 (C1) — a session opened for a STANDALONE workflow run: that workflow's single
+    // SPEECH_TO_TEXT node, the same "workflow wins" rule as tier 2, else the assignment cascade.
+    if (!input.agentSlug && input.workflowSlug) {
+      if (!this.governingWorkflows) {
+        throw new ServiceUnavailableException('Workflow-governed ASR resolution is not configured on this gateway');
+      }
+      const workflow = await this.governingWorkflows.readPublishedWorkflow(tenantId, input.workflowSlug);
+      if (!workflow) throw new NotFoundException(`Workflow '${input.workflowSlug}' not found.`);
+      const named = await this.governingWorkflows.findAsrAgent(tenantId, workflow);
+      if (named) return this.resolveWorkflowNamedAgent(tenantId, named, { workflowSlug: input.workflowSlug });
+      return { agent: await cascade(input.departmentId ?? null) };
+    }
 
     // Tier 1, and every caller without a consultation: byte-identical to the pre-1002 call.
     if (input.agentSlug || !input.consultationId) {
@@ -256,38 +327,7 @@ export class AsrAgentResolverService {
     const workflow = await this.governingWorkflows.readGoverningWorkflow(tenantId, consultation.metadata);
     const named = workflow ? await this.governingWorkflows.findAsrAgent(tenantId, workflow) : null;
     if (named) {
-      let resolved: ResolvedAgent;
-      try {
-        resolved = await this.agents.resolve({
-          tenantId,
-          task: AgentTask.SPEECH_TO_TEXT,
-          agentSlug: named.agentSlug,
-          departmentId: null,
-          // Owner OD-1 — the workflow NAMED this agent, so a binding that can no longer serve
-          // (e.g. a connection disabled after publish) is the named 409 below, not a quiet
-          // chain mark.
-          primaryBinding: 'fail-closed',
-        });
-      } catch (error) {
-        // Only the resolver's own refusals (404 / 400 / 409 / 503) are "unavailable"; a backend
-        // fault propagates and is never disguised as a configuration answer.
-        if (!(error instanceof HttpException)) throw error;
-        throw workflowAsrAgentUnavailable({
-          reason: 'unavailable',
-          workflowDefinitionSlug: named.workflowDefinitionSlug,
-          agentSlug: named.agentSlug,
-          cause: error.message,
-        });
-      }
-      this.logger.log({
-        message: 'ASR agent chosen by the consultation’s governing workflow, ahead of the assignment cascade',
-        tenantId,
-        consultationId: input.consultationId,
-        workflowDefinitionSlug: named.workflowDefinitionSlug,
-        nodeId: named.nodeId,
-        agentSlug: resolved.slug,
-      });
-      return { agent: { ...resolved, source: 'workflow' }, workflowDefinitionSlug: named.workflowDefinitionSlug, consultation };
+      return { ...(await this.resolveWorkflowNamedAgent(tenantId, named, { consultationId: input.consultationId })), consultation };
     }
 
     // Tier 3 (→ 4) — the assignment cascade, under the CONSULTATION's department.

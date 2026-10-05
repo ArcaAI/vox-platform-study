@@ -121,7 +121,12 @@ export class ConsultationWorkflowRunsController {
   @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Retry-safe key. The same value joins the existing run.' })
   @ApiResponse({ status: 202, type: WorkflowInvokeResponse, description: '`mode=async` — the run handle.' })
   @ApiResponse({ status: 200, type: WorkflowRunStatusResponse, description: '`mode=blocking` — the terminal run status.' })
-  @ApiResponse({ status: 400, description: 'A reserved run-identity field was supplied in `input`.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'A reserved run-identity field was supplied in `input`. `LIVE_AUDIO_UNSUPPORTED` (TASK-1042) — `input` names an ' +
+      '`sttSessionId`: a consultation run takes its audio from the consultation.',
+  })
   @ApiResponse({ status: 404, description: 'Unknown/cross-tenant consultation or slug, or a definition not runnable on this plane.' })
   @ApiResponse({ status: 403, description: 'Scope or ability violation.' })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
