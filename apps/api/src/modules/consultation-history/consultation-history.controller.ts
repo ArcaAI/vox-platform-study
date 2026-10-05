@@ -1,17 +1,14 @@
-import { Controller, ForbiddenException, Get, Inject, NotFoundException, Param, ParseIntPipe, BadRequestException, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ClsService } from 'nestjs-cls';
 import {
   ConsultationActivityPageResponse,
   ConsultationActivityQuery,
   EncounterRecapResponse,
   IConsultationHistoryServiceToken,
-  IConsultationService,
-  PolicyEngine,
-  type AppAbility,
   type IConsultationHistoryService,
 } from '@arcaai/applications';
 import { Authorize, RequiredScopes, RequiredSvcScopes } from '../../decorators';
+import { ConsultationAccessHelper } from '../consultation/consultation-access.helper';
 
 const BUSINESS = { admin: false } as const;
 
@@ -19,9 +16,10 @@ const BUSINESS = { admin: false } as const;
  * The business read plane over a consultation's history: the oldest-first activity feed without
  * runs or aggregates, and the live recap of one encounter (display-only).
  *
- * Access follows the consultation read posture: a consultation outside the caller's tenant is 404;
- * inside it the owning doctor, a service account, or a caller whose CASL ability grants
- * `read:Consultation` on the consultation passes, anyone else is 403.
+ * Access is the shared consultation read check (`ConsultationAccessHelper.assertRead`), exactly as
+ * broad as `GET consultations/:id`: a consultation outside the caller's tenant is 404; inside it a
+ * service account, the owning doctor, a caller whose CASL ability grants `read:Consultation`, or a
+ * doctor sharing a patient while tenant sharing is on passes, anyone else is 403.
  */
 @ApiBearerAuth()
 @ApiTags('consultations')
@@ -30,33 +28,8 @@ const BUSINESS = { admin: false } as const;
 export class ConsultationHistoryController {
   constructor(
     @Inject(IConsultationHistoryServiceToken) private readonly history: IConsultationHistoryService,
-    @Inject(IConsultationService) private readonly consultations: IConsultationService,
-    private readonly cls: ClsService,
-    private readonly policyEngine: PolicyEngine,
+    private readonly access: ConsultationAccessHelper,
   ) {}
-
-  private async verifyAccess(consultationId: string): Promise<void> {
-    const consultation = await this.consultations.getById(consultationId);
-    if (!consultation) throw new NotFoundException(`Consultation ${consultationId} not found`);
-
-    const principal = this.cls.get('serviceAccount') as { id?: string } | undefined;
-    if (typeof principal?.id === 'string') return;
-
-    const user = this.cls.get('user') as { id?: string } | undefined;
-    if (user?.id && consultation.doctorId === user.id) return;
-
-    const ability = this.cls.get('userAbility') as AppAbility | undefined;
-    if (
-      ability &&
-      this.policyEngine.can(ability, 'read', 'Consultation', { tenantId: this.cls.get('tenantId'), doctorId: consultation.doctorId } as Record<
-        string,
-        unknown
-      >)
-    ) {
-      return;
-    }
-    throw new ForbiddenException('You do not have access to this consultation');
-  }
 
   @Get(':id/history')
   @RequiredScopes('consultation:session:read')
@@ -72,7 +45,7 @@ export class ConsultationHistoryController {
   @ApiResponse({ status: 403, description: 'The caller may not read this consultation.' })
   @ApiResponse({ status: 404, description: 'Unknown or cross-tenant consultation id.' })
   async getHistory(@Param('id') id: string, @Query() query: ConsultationActivityQuery): Promise<ConsultationActivityPageResponse> {
-    await this.verifyAccess(id);
+    await this.access.assertRead(id);
     return (await this.history.getActivity(id, query, BUSINESS)) as ConsultationActivityPageResponse;
   }
 
@@ -91,7 +64,7 @@ export class ConsultationHistoryController {
   @ApiResponse({ status: 404, description: 'Unknown or cross-tenant consultation, or no recap for that encounter.' })
   async getRecap(@Param('id') id: string, @Param('seq', ParseIntPipe) seq: number): Promise<EncounterRecapResponse> {
     if (!Number.isInteger(seq) || seq < 1) throw new BadRequestException('seq must be a positive integer');
-    await this.verifyAccess(id);
+    await this.access.assertRead(id);
     return (await this.history.getRecap(id, seq, BUSINESS)) as EncounterRecapResponse;
   }
 }
