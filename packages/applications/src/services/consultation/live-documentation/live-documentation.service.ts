@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import {
   ConflictException,
+  forwardRef,
+  HttpException,
   Inject,
   Injectable,
   Logger,
@@ -21,6 +23,7 @@ import {
   AgentStepType,
   AiDeploymentKind,
   type ConsultationEntity,
+  ConsultationProcessing,
   ConsultationRepository,
   DepartmentRepository,
   ContextItemEntity,
@@ -251,6 +254,9 @@ import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../settings-registry/descri
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { LIVE_DOC_GROUNDEDNESS_ENABLED_KEY } from '../../settings-registry/descriptors/feature-availability.descriptors';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
+import { HarnessInternalService } from '../harness/harness-internal.service';
+import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
+import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanRef } from '../note-composition/note-plan.types';
 
 // F-28: defensive caps on the append-only `LiveSession.transcriptParts` buffer.
 // A pathological/runaway session (mic left open past `stop()`) would otherwise
@@ -1070,6 +1076,29 @@ interface LiveSession {
 const LIVE_CAPTURE_STATUSES: ReadonlySet<string> = new Set(['OPEN', 'RECORDING', 'PAUSED']);
 
 /**
+ * The note-plan refusals that end the note path for this consultation: the inputs cannot fit the
+ * model's declared window, or the model declares none. Anything else the composer refuses is
+ * treated as "not ready yet" (the durable lane reads the handoff again).
+ */
+const NOTE_PLAN_FAIL_CLOSED_CODES: ReadonlySet<string> = new Set([NOTE_INPUT_EXCEEDS_CONTEXT, 'NOTE_MODEL_CONTEXT_UNDECLARED']);
+
+/** The handoff record plus what {@link LiveDocumentationService.readLiveHandoff} learned composing it. */
+type LiveHandoffRecordWithPlan = LiveHandoffRecord & { notePlanRef?: NotePlanRef; notePlanError?: string };
+
+/** A live NOTE output — the summary node's `{ text, sections, … }`; the only kind a plan replaces. */
+function isNoteOutput(output: unknown): output is Record<string, unknown> {
+  return typeof output === 'object' && output !== null && (output as Record<string, unknown>).sections != null;
+}
+
+/** The named code an HTTP refusal carries in its body (`{ code }`), or `null`. */
+function refusalCode(error: unknown): string | null {
+  if (!(error instanceof HttpException)) return null;
+  const body = error.getResponse();
+  const code = typeof body === 'object' && body !== null ? (body as Record<string, unknown>).code : undefined;
+  return typeof code === 'string' ? code : null;
+}
+
+/**
  * TASK-1022 — the section titles of the template a live session FROZE, in checklist order,
  * trimmed, blank titles dropped. `[]` when the session froze none.
  */
@@ -1337,6 +1366,12 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly HANDOFF_PREFIX = 'live-doc:handoff:';
   /** Matches the interpreter's own `_LIVE_HANDOFF_MAX_WAIT`: past it, nothing is still asking. */
   private readonly HANDOFF_TTL = 7200; // 2h
+  /**
+   * One note-plan composition in flight per consultation on this instance: the durable lane's
+   * read times out before a composition that waits for fact ledgers, and its next read must join
+   * that composition rather than start another.
+   */
+  private readonly notePlanCompositions = new Map<string, Promise<LiveHandoffRecordWithPlan>>();
   /**
    * `+ consultationId`: the handoff is still being produced by a stop that is draining
    * in the background, so a DRAINING consultation without a record is "not yet", not "nothing".
@@ -1636,6 +1671,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (`STT_SESSION_SUPERSEDED_EVENT`). Optional + trailing like every dependency above it; absent
     // ⇒ the re-bind still happens and the superseded session ends by its own idle reaper, as before.
     @Optional() private readonly eventEmitter?: EventEmitter2,
+    // TASK-1045 — composes the consultation's note plan at the handoff, so the durable finalizer
+    // executes it rather than writing the note from the live lane's running text. Optional +
+    // trailing like every dependency above it; ABSENT ⇒ the handoff carries the live text, as
+    // before. `forwardRef`: the harness-internal service file reaches this one through barrels.
+    @Optional()
+    @Inject(forwardRef(() => HarnessInternalService))
+    private readonly notePlanComposer?: Pick<HarnessInternalService, 'composeNotePlan'>,
+    // TASK-1045 — a plan that cannot be composed fails the consultation's processing by name.
+    @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -7625,7 +7669,8 @@ return 0`;
     if (stillLive || (await this.isHandoffPending(consultationId))) return { ended: false, outputs: {}, context: {} };
 
     const requested = new Set(nodeIds);
-    const outputs = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
+    const filtered = Object.fromEntries(Object.entries(record?.outputs ?? {}).filter(([nodeId]) => requested.size === 0 || requested.has(nodeId)));
+    const outputs = record ? await this.withNotePlan(consultationId, consultation, record, filtered) : filtered;
     return {
       ended: true,
       ...(record ? { endedAt: record.endedAt } : {}),
@@ -7634,6 +7679,98 @@ return 0`;
       // whenever the live session froze a template, even if the row itself cannot be read.
       context: { ...(await this.resolveHandoffContext(consultation)), ...documentHeadingsContext(record?.documentHeadings) },
     };
+  }
+
+  /**
+   * TASK-1045 — the handoff's note outputs, pointed at the consultation's composed note plan.
+   *
+   * Every summary-node output (one carrying `sections`) becomes `{ …, text: '', note_plan_ref }`:
+   * the durable finalizer executes the plan — every encounter, the results, the earlier note,
+   * budgeted against the model's window — and the live lane's running text is no longer the note's
+   * input. Other outputs pass through. The plan is composed ONCE per handoff record and remembered
+   * on it, so a second read (a retry, a slow first read) reuses it.
+   *
+   * A plan that cannot be composed — `NOTE_INPUT_EXCEEDS_CONTEXT`, `NOTE_MODEL_CONTEXT_UNDECLARED`
+   * — fails the consultation's processing with that reason, and the note outputs are handed over
+   * EMPTY (no text, no sections, `note_plan_error`): the finalizer then has nothing to write from
+   * rather than a truncated fallback. Any other failure propagates, which the durable lane reads
+   * as "not ready yet". Without a composer wired the outputs are returned unchanged.
+   */
+  private async withNotePlan(
+    consultationId: string,
+    consultation: ConsultationEntity | null,
+    record: LiveHandoffRecordWithPlan,
+    outputs: Record<string, Record<string, unknown>>,
+  ): Promise<Record<string, Record<string, unknown>>> {
+    if (!this.notePlanComposer || !Object.values(outputs).some(isNoteOutput)) return outputs;
+    const planned = record.notePlanRef || record.notePlanError ? record : await this.composeHandoffNotePlan(consultationId, consultation, record);
+    return Object.fromEntries(
+      Object.entries(outputs).map(([nodeId, output]) => {
+        if (!isNoteOutput(output)) return [nodeId, output];
+        if (planned.notePlanRef) return [nodeId, { ...output, text: '', note_plan_ref: planned.notePlanRef }];
+        const { sections: _dropped, ...rest } = output;
+        return [nodeId, { ...rest, text: '', note_plan_error: planned.notePlanError }];
+      }),
+    );
+  }
+
+  /** Compose (single-flight per consultation) and remember the outcome on the handoff record. */
+  private composeHandoffNotePlan(
+    consultationId: string,
+    consultation: ConsultationEntity | null,
+    record: LiveHandoffRecordWithPlan,
+  ): Promise<LiveHandoffRecordWithPlan> {
+    const inFlight = this.notePlanCompositions.get(consultationId);
+    if (inFlight) return inFlight;
+    const tenantId = record.tenantId || consultation?.tenantId || '';
+    const composition = (async (): Promise<LiveHandoffRecordWithPlan> => {
+      let planned: LiveHandoffRecordWithPlan;
+      try {
+        const summary = await this.notePlanComposer!.composeNotePlan(consultationId, { tenantId, mode: 'final' });
+        planned = { ...record, notePlanRef: summary.notePlanRef };
+        this.logger.log({
+          message: 'Note plan composed for the live handoff',
+          consultationId,
+          planId: summary.notePlanRef.planId,
+          strategy: summary.strategy,
+          callCount: summary.callCount,
+        });
+      } catch (error) {
+        const code = refusalCode(error);
+        if (!code || !NOTE_PLAN_FAIL_CLOSED_CODES.has(code)) throw error;
+        planned = { ...record, notePlanError: code };
+        await this.failNotePath(consultationId, consultation, code);
+      }
+      try {
+        await this.cacheService.setex(this.handoffKey(consultationId), this.HANDOFF_TTL, JSON.stringify(planned));
+      } catch (error) {
+        // The next read composes again; the outcome is the same, only the work is repeated.
+        this.logger.warn({
+          message: 'Live handoff note-plan outcome could not be remembered on the record',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return planned;
+    })();
+    this.notePlanCompositions.set(consultationId, composition);
+    return composition.finally(() => this.notePlanCompositions.delete(consultationId));
+  }
+
+  /** Processing FAILED with the composer's reason — only for a stopped consultation the note path owns. */
+  private async failNotePath(consultationId: string, consultation: ConsultationEntity | null, code: string): Promise<void> {
+    this.logger.warn({ message: 'Note plan could not be composed — the note path fails closed', consultationId, code });
+    if (!this.lifecycleGate || String(consultation?.status ?? '') !== 'STOPPED') return;
+    try {
+      await this.lifecycleGate.setProcessing(consultationId, ConsultationProcessing.FAILED, code);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Consultation processing could not be set FAILED after a note-plan refusal',
+        consultationId,
+        code,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** The stored record, or `null` (absent, evicted, or unparseable — all "no handoff yet"). */

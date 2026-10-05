@@ -607,6 +607,9 @@ class AssembleInput(BaseModel):
     conversation_language: str | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
+    # The plan a run was started with (``note_plan_ref.plan_id``): ``assemble`` reuses its blocks
+    # instead of composing a second plan. ADDITIVE-OPTIONAL: None on every run without a plan.
+    note_plan_id: str | None = None
 
 
 class RegenFinding(BaseModel):
@@ -1582,6 +1585,10 @@ class LoopFinalizeRequest(BaseModel):
     text_model: str | None = Field(
         default=None, validation_alias=AliasChoices("text_model", "smr_model")
     )
+    # The NotePlan apps/api composed for this finalize, forwarded onto the child's
+    # ``HarnessDocWorkflowInput.note_plan_ref``. ADDITIVE-OPTIONAL: None on every signal recorded
+    # before it existed, so those histories decode and replay unchanged.
+    note_plan_ref: NotePlanRef | None = None
 
 
 class ConsultationEndingSignal(BaseModel):

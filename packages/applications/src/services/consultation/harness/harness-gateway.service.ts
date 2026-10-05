@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import type { AcceptedCorrectionProposal } from '../endpoint/dto/endpoint.request';
 import { requestIdHeader } from '../../../common/internal-service-headers';
+import type { NotePlanRef } from '../note-composition/note-plan.types';
 
 /**
  * Context for starting a durable harness document workflow. `tenantId` is
@@ -48,6 +49,12 @@ export interface HarnessStartContext {
    * byte-identical to before.
    */
   supersede?: boolean;
+  /**
+   * The note plan the starter composed (`HarnessInternalService.composeNotePlan`): the run executes
+   * it instead of one assembled prompt. Omitted (never `null`) when there is none, so the body of a
+   * start without a plan is byte-identical to before.
+   */
+  notePlanRef?: NotePlanRef;
 }
 
 /**
@@ -153,6 +160,8 @@ export interface HarnessConsultationEndingSignal {
   template?: string;
   textProvider?: string;
   textModel?: string;
+  /** The note plan the loop's finalize child executes (forwarded onto its `note_plan_ref`). */
+  notePlanRef?: NotePlanRef;
 }
 
 /**
@@ -445,6 +454,7 @@ export class HarnessGatewayService {
       ...(ctx.redactionRules && ctx.redactionRules.length > 0 ? { redactionRules: ctx.redactionRules } : {}),
       ...(ctx.externalPatientId ? { externalPatientId: ctx.externalPatientId } : {}),
       ...(ctx.supersede ? { supersede: true } : {}),
+      ...(ctx.notePlanRef ? { notePlanRef: ctx.notePlanRef } : {}),
     };
 
     const response = await this.httpService.axiosRef.post(url, body, {
