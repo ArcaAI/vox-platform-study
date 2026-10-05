@@ -1,45 +1,15 @@
 import { Controller, Get, Inject, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiPropertyOptional, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayUnique, IsArray, IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import {
+  FEEDBACK_ROLLUP_DIMENSIONS,
+  FeedbackRollupDimension,
+  FeedbackRollupResponse,
+  IFeedbackRollupReader,
+  IFeedbackRollupReaderToken,
+} from '@arcaai/applications';
 import { CanRead, ForbidApiKey, RequiredSvcScopes } from '../../decorators';
-
-export const FEEDBACK_ROLLUP_DIMENSIONS = ['day', 'agentVersion', 'model', 'promptVersion', 'section', 'entityLabel', 'reason', 'targetKind'] as const;
-export type FeedbackRollupDimension = (typeof FEEDBACK_ROLLUP_DIMENSIONS)[number];
-
-export interface FeedbackRollupFilters {
-  from?: string;
-  to?: string;
-  groupBy: FeedbackRollupDimension[];
-  agentSlug?: string;
-  modelName?: string;
-}
-
-export class FeedbackRollupRow {
-  @ApiProperty({ description: 'One entry per requested dimension.', type: 'object', additionalProperties: { type: 'string', nullable: true } })
-  dimensions!: Record<string, string | null>;
-  @ApiProperty() up!: number;
-  @ApiProperty() down!: number;
-  @ApiProperty() cleared!: number;
-  @ApiProperty() comments!: number;
-  @ApiProperty() corrections!: number;
-  @ApiProperty() reasoned!: number;
-}
-
-export class FeedbackRollupResponse {
-  @ApiProperty({ type: [FeedbackRollupRow] }) rows!: FeedbackRollupRow[];
-  @ApiProperty() truncated!: boolean;
-}
-
-/**
- * Read side of the daily feedback rollup (dimensions and counts only, PHI-free). The rollup
- * service computes; this reader answers the admin query for the caller's tenant. Bound by the
- * module to the service that owns the rollup table.
- */
-export abstract class IFeedbackRollupReader {
-  abstract query(filters: FeedbackRollupFilters): Promise<FeedbackRollupResponse>;
-}
-export const IFeedbackRollupReaderToken = Symbol('IFeedbackRollupReader');
 
 export class FeedbackRollupQuery {
   @ApiPropertyOptional({ description: 'Inclusive start day (ISO 8601 date).' })

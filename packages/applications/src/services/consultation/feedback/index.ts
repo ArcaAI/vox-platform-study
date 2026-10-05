@@ -5,3 +5,6 @@ export * from './IConsultationFeedbackService';
 export * from './consultation-feedback.service';
 export * from './consultation-feedback.service.module';
 export * from './feedback-rollup.module';
+export * from './IFeedbackRollupReader';
+export * from './feedback-rollup.reader';
+export * from './feedback-rollup.service';
