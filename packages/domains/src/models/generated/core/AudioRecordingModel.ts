@@ -20,6 +20,10 @@ export class AudioRecording extends BaseTenantDataModel {
   public language: string | null;
   public sequenceNumber: number;
   public recordedAt: Date | null;
+  public encounterSeq: number | null;
+  public recordingStartMs: number | null;
+  public sttSessionId: string | null;
+  public codec: string | null;
   @VirtualDbProperty()
   public ContextItem: Models.ContextItem | undefined;
 
@@ -37,6 +41,10 @@ export class AudioRecording extends BaseTenantDataModel {
     this.language = data.language;
     this.sequenceNumber = data.sequenceNumber ?? 1;
     this.recordedAt = data.recordedAt;
+    this.encounterSeq = data.encounterSeq;
+    this.recordingStartMs = data.recordingStartMs;
+    this.sttSessionId = data.sttSessionId;
+    this.codec = data.codec;
     this.ContextItem = data.ContextItem;
   }
 }
