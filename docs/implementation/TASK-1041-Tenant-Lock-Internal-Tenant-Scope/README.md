@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Pending — plan awaiting owner decision |
+| Status | Review — fix committed in the worktree, awaiting merge into `dev-2.2` by the orchestrator |
 | Type | bugfix |
 | Branch | `agent/interesting-turing-c56b77` (worktree) → merge target to be confirmed (`dev-2.2` assumed) |
 | Found by | TASK-1036 e2e triage; reproduced live on the test API |
@@ -92,6 +92,9 @@ is unchanged. Errors still propagate → `assertTenantNotLocked` still answers 5
 
 ## Owner decisions
 
+Owner said "go" on 2026-10-05, accepting the recommendations: OD-1 TASK-1041, OD-2 **A**, OD-3 yes,
+OD-4 separate ticket, OD-5 `dev-2.2`.
+
 | # | Decision | Recommendation |
 |---|---|---|
 | OD-1 | Ticket number TASK-1041 | Accept |
@@ -102,10 +105,55 @@ is unchanged. Errors still propagate → `assertTenantNotLocked` still answers 5
 
 ## Implementation Summary
 
-_Pending go._
+Option A. `TenantLockService` takes an `@Optional()` `ClsService`; its read (`findActive`) runs
+`findActiveByTenant` inside `cls.run(() => { cls.set('tenantId', tenantId); … })` whenever a CLS
+context is active. `cls.run` (nestjs-cls 6.3, default `ifNested: 'inherit'`) runs in a shallow
+copy of the request store, so the tenant never reaches the request. Outside CLS (workers), or with
+no `ClsService`, the read is unchanged. Errors still propagate, so `assertTenantNotLocked` still
+answers 503 `TENANT_LOCK_UNAVAILABLE`. Neither guard needed a code change: `ClsModule` is
+`global: true`, so DI hands the service the request `ClsService`.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `packages/applications/src/services/tenant-checkpoint/lock/tenant-lock.service.ts` | optional `ClsService`; tenant-scoped `findActive` |
+| `packages/applications/src/services/tenant-checkpoint/lock/__tests__/tenant-lock.service.test.ts` | +2 tests (scoped read without a leak; no-CLS path) |
+| `apps/api/src/guards/__tests__/tenant-lock.guard.task1041.test.ts` | new, 6 tests across both guards (real service + real CLS + a repository that throws the extension's error) |
+| `apps/api/src/guards/tenant-lock.guard.ts` | doc comment only |
+
+No migration, no API surface change, no artifact regeneration.
+
+### Evidence
+
+- **RED** (before the fix): `tenant-lock.guard.task1041.test.ts` failed 4 tests, each with
+  `ServiceUnavailableException … TENANT_LOCK_UNAVAILABLE`; the 2 fail-closed tests passed.
+- **GREEN**: the new file plus the existing `tenant-lock.guard`, `internal-tenant-lock.guard`,
+  `internal-tenant-lock.coverage` and `tenant-lock.service` suites → `Test Files 5 passed, Tests 48 passed`;
+  `tenant-checkpoint/lock` folder → `3 passed, 33 passed`.
+- `packages/applications`: `tsc --noEmit` exit 0, `pnpm build` exit 0; `apps/api`: `pnpm build` exit 0;
+  eslint on the changed sources: 0 problems.
+- **Live, against the isolated test infra (no reset), on a freshly started API (cold cache)**:
+  `GET /api/v1/internal/agents/resolve?service=harness&task=TEXT_GENERATION`, harness token +
+  `X-Tenant-Id: 50000000-…`:
+  - unfixed build (primary `dist`, port 8979) → `HTTP 503 {"code":"TENANT_LOCK_UNAVAILABLE"}`, log:
+    `TenantScope: tenant context required for model TenantCheckpointRestore operation findFirst`;
+  - fixed build (worktree, port 8978) → `HTTP 200` (`general-medicine-summarization` v1), 0
+    lock-unavailable log lines.
+- **e2e**: `RESET_DB=false API_URL=http://localhost:8978/api/v1 npx dotenv -e .env.test -- npx playwright test task-890-agent-resolve-fail-closed`
+  → `2 passed, 1 skipped`. The skip is the spec's own seed-state guard ("this database predates seed
+  phase 26-tenant-reference-set — re-seed"). It needs `pnpm test:db:reset`, which was not run because
+  the test infra is shared with the e2e-repair session. That case doesn't go through the guard.
+
+### Not verified / follow-ups
+
+- Repo-wide gates were not run (owner rule: the orchestrator gates once after the merge).
+- The WS gateway path benefits from the same change but wasn't exercised live.
+- OD-4 (unauthenticated callers can probe a tenant's lock state on `/internal/*`, because the global guard runs before the service-token guard) is still open as a separate ticket.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket created; plan + owner decisions drafted |
+| 2026-10-05 | Owner go (option A). TDD RED → GREEN, fix in `TenantLockService`, live before/after + e2e on the test infra; status Review |
