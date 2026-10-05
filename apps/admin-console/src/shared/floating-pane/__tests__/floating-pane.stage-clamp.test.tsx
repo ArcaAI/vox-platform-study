@@ -135,9 +135,17 @@ describe('FloatingPane — reports its footprint (R-C #1)', () => {
     expect(seen.at(-1)).toEqual({ left: 0, right: 0 });
   });
 
-  it('a free pane claims the side its centre is on', () => {
+  // TASK-1036 live check: a free pane reserves a side only while it sits against it; one dragged
+  // into the middle floats above the graph and reserves nothing (the fit pushed half of it off-screen).
+  it('a free pane against a side claims that side', () => {
     const seen: FloatingPaneFootprint[] = [];
-    renderOnStage(1000, 700, { defaultDock: null, defaultPosition: { x: 650, y: 20 }, defaultWidth: 300, onFootprintChange: (footprint) => seen.push(footprint) });
-    expect(seen.at(-1)).toEqual({ left: 0, right: 350 });
+    renderOnStage(1000, 700, { defaultDock: null, defaultPosition: { x: 690, y: 20 }, defaultWidth: 300, onFootprintChange: (footprint) => seen.push(footprint) });
+    expect(seen.at(-1)).toEqual({ left: 0, right: 310 });
+  });
+
+  it('a free pane in the middle claims nothing', () => {
+    const seen: FloatingPaneFootprint[] = [];
+    renderOnStage(1000, 700, { defaultDock: null, defaultPosition: { x: 350, y: 20 }, defaultWidth: 300, onFootprintChange: (footprint) => seen.push(footprint) });
+    expect(seen.at(-1)).toEqual({ left: 0, right: 0 });
   });
 });

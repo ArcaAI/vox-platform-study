@@ -49,8 +49,8 @@ function LifecycleBanner({ definition }: { definition: WorkflowDefinition }) {
         <IconInfoCircle aria-hidden />
         <AlertTitle>Publish this version to get a live endpoint</AlertTitle>
         <AlertDescription>
-          <code className="font-mono">{definition.slug}</code> is not callable until a version is published and active. The snippets below are what you will
-          write against it; the calls will not work yet.
+          <code className="font-mono">{definition.slug}</code> is not callable until a version is published and active. The snippets below are what
+          you will write against it; the calls will not work yet.
         </AlertDescription>
       </Alert>
     );
@@ -61,7 +61,8 @@ function LifecycleBanner({ definition }: { definition: WorkflowDefinition }) {
         <IconAlertTriangle aria-hidden />
         <AlertTitle>This version is deprecated</AlertTitle>
         <AlertDescription>
-          A deprecated version does not serve new runs. The endpoint resolves the active version of <code className="font-mono">{definition.slug}</code>, if there is one.
+          A deprecated version does not serve new runs. The endpoint resolves the active version of{' '}
+          <code className="font-mono">{definition.slug}</code>, if there is one.
         </AlertDescription>
       </Alert>
     );
@@ -72,8 +73,8 @@ function LifecycleBanner({ definition }: { definition: WorkflowDefinition }) {
         <IconInfoCircle aria-hidden />
         <AlertTitle>Published, not active</AlertTitle>
         <AlertDescription>
-          This version is frozen, but the endpoint keeps resolving the ACTIVE version of <code className="font-mono">{definition.slug}</code>. Activate it from the
-          version history when it should serve.
+          This version is frozen, but the endpoint keeps resolving the ACTIVE version of <code className="font-mono">{definition.slug}</code>.
+          Activate it from the version history when it should serve.
         </AlertDescription>
       </Alert>
     );
@@ -115,6 +116,7 @@ export function IntegrationTab({ definitionId, unsavedChanges = false }: Integra
             connections,
             exampleInput: shapes.exampleInput,
             streamAudioIn: shapes.streamAudioIn,
+            ...(shapes.streamAudioField ? { audioField: shapes.streamAudioField } : {}),
             attachmentsIn: shapes.attachmentsIn,
             streamAudioOut: shapes.streamAudioOut,
             baseUrl: publicEnv.apiHost,
@@ -129,7 +131,9 @@ export function IntegrationTab({ definitionId, unsavedChanges = false }: Integra
       <Alert variant="destructive">
         <IconAlertTriangle aria-hidden />
         <AlertTitle>Couldn&apos;t read this workflow</AlertTitle>
-        <AlertDescription>The integration guide is built from the saved definition, which could not be loaded. Reload the studio to retry.</AlertDescription>
+        <AlertDescription>
+          The integration guide is built from the saved definition, which could not be loaded. Reload the studio to retry.
+        </AlertDescription>
       </Alert>
     );
   }
@@ -137,7 +141,12 @@ export function IntegrationTab({ definitionId, unsavedChanges = false }: Integra
   const runPath = `POST /workflows/${definition.slug}/runs`;
 
   return (
-    <section data-slot="workflow-integration-tab" data-definition-id={definitionId} aria-labelledby={`integration-${definitionId}`} className="@container flex flex-col gap-4 p-1">
+    <section
+      data-slot="workflow-integration-tab"
+      data-definition-id={definitionId}
+      aria-labelledby={`integration-${definitionId}`}
+      className="@container flex flex-col gap-4 p-1"
+    >
       <header className="flex flex-col gap-2">
         <h2 id={`integration-${definitionId}`} className="text-lg font-semibold">
           Integration

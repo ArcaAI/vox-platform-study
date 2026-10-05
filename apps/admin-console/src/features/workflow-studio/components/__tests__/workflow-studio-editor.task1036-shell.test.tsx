@@ -12,6 +12,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
+import { useBreadcrumbStore } from '@/shared/navigation/breadcrumb-store';
 import { WorkflowStudioEditor } from '../workflow-studio-editor';
 import type { WorkflowDefinition, WorkflowNodeDescriptor, WorkflowValidationReport } from '../../api/types';
 
@@ -148,6 +149,12 @@ describe('studio shell — header (§3.6)', () => {
     expect(screen.getByText('discharge_summary')).toBeTruthy();
     expect(screen.getByText('Draft')).toBeTruthy();
     expect(screen.getAllByText('v3').length).toBeGreaterThan(0);
+  });
+
+  // Owner, 2026-10-05: no raw ids as names. The topbar breadcrumb shows the workflow's name.
+  it('puts the workflow name, not its id, in the topbar breadcrumb', () => {
+    renderEditor();
+    expect(useBreadcrumbStore.getState().trailing).toBe('Discharge Summary');
   });
 
   it('renames inline and stages the rename for the one explicit Save', async () => {

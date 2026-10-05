@@ -56,7 +56,12 @@ async function status(promise: Promise<unknown>): Promise<number> {
 
 describe('RunAudioTranscriptService.read — 404 (C5)', () => {
   it('unknown session, another tenant`s, unbound, or bound to another run: 404 and no Redis read', async () => {
-    for (const jobs of [[], [boundJob({ tenantId: 't-2' })], [boundJob({ metaData: { owner: { type: 'apiKey', id: 'k' } } })], [boundJob({ metaData: { boundRun: { runId: 'run-2' } } })]]) {
+    for (const jobs of [
+      [],
+      [boundJob({ tenantId: 't-2' })],
+      [boundJob({ metaData: { owner: { type: 'apiKey', id: 'k' } } })],
+      [boundJob({ metaData: { boundRun: { runId: 'run-2' } } })],
+    ]) {
       const s = setup({ jobs });
       expect(await status(read(s))).toBe(404);
       expect(s.redis.eval).not.toHaveBeenCalled();
@@ -87,13 +92,19 @@ describe('RunAudioTranscriptService.read — finals and state', () => {
   });
 
   it('a second final for the same utterance (or its punctuated republish) replaces the first, in place', async () => {
-    const entries = [final('1-0', 0, 'first take'), final('2-0', 1, 'second'), seg('3-0', { type: 'punctuated', text: 'First take.', utterance_index: '0' })];
+    const entries = [
+      final('1-0', 0, 'first take'),
+      final('2-0', 1, 'second'),
+      seg('3-0', { type: 'punctuated', text: 'First take.', utterance_index: '0' }),
+    ];
     const result = await read(setup({ snapshot: [1, 3, 3, entries] }));
     expect(result.finals.map((f) => f.text)).toEqual(['First take.', 'second']);
   });
 
   it('ended: the job row is no longer live', async () => {
-    const result = await read(setup({ jobs: [boundJob({ status: 'COMPLETED', completedAt: new Date() })], snapshot: [1, 1, 1, [final('1-0', 0, 'done')]] }));
+    const result = await read(
+      setup({ jobs: [boundJob({ status: 'COMPLETED', completedAt: new Date() })], snapshot: [1, 1, 1, [final('1-0', 0, 'done')]] }),
+    );
     expect(result).toMatchObject({ state: 'ended', transcript: 'done' });
   });
 

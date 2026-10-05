@@ -15,7 +15,9 @@ const SCHEMA = {
   triggerKinds: ['api'],
   protocols: ['http-sse'],
   modes: ['async'],
-  components: { Workflow_live_note_Input: { type: 'object', properties: { audio: { type: 'object', properties: { sttSessionId: { type: 'string' } } } } } },
+  components: {
+    Workflow_live_note_Input: { type: 'object', properties: { audio: { type: 'object', properties: { sttSessionId: { type: 'string' } } } } },
+  },
   asyncapi: {},
   contextSchema: null,
   reviewNodes: [],

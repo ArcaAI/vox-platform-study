@@ -106,12 +106,12 @@ async function openEditor() {
 }
 
 describe('AgentWizard edit mode', () => {
-  it('shows only Model / Instruction / Settings / Review', async () => {
+  it('shows only Model & prompt / Settings / Review', async () => {
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const steps = await screen.findByRole('list', { name: 'Steps' });
     expect(within(steps).getByText(/Model/)).toBeTruthy();
     expect(within(steps).getByText(/Settings/)).toBeTruthy();
-    expect(within(steps).queryByText(/Task/)).toBeNull();
+    expect(within(steps).queryByText(/Basics/)).toBeNull();
     expect(within(steps).queryByText(/Input \/ Output/)).toBeNull();
   });
 
@@ -119,8 +119,7 @@ describe('AgentWizard edit mode', () => {
     const onCreated = vi.fn();
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={onCreated} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const wizard = await openEditor();
-    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // -> Instruction
-    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // -> Settings
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // -> Settings
     fireEvent.change(await screen.findByLabelText('Temperature'), { target: { value: '0.5' } });
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // -> Review
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Publish new version' }));
@@ -142,7 +141,7 @@ describe('AgentWizard edit mode', () => {
     const onCreated = vi.fn();
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={onCreated} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const wizard = await openEditor();
-    for (let index = 0; index < 3; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
+    for (let index = 0; index < 2; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Publish new version' }));
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
     expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
@@ -157,7 +156,7 @@ describe('AgentWizard edit mode', () => {
     const onCreated = vi.fn();
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={onCreated} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const wizard = await openEditor();
-    for (let index = 0; index < 3; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
+    for (let index = 0; index < 2; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Publish new version' }));
 
     const alert = await within(wizard).findByRole('alert');
@@ -172,17 +171,16 @@ describe('AgentWizard edit mode', () => {
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const wizard = await openEditor();
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' }));
-    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
     await screen.findByLabelText('Temperature');
     expect(await axe(wizard)).toHaveNoViolations();
   });
 });
 
 describe('AgentWizard create mode', () => {
-  it('still opens on Task with the six named steps, "Settings" replacing "Parameters"', async () => {
+  it('opens on Basics with the four named steps (TASK-1036 W2), "Settings" replacing "Parameters"', async () => {
     renderWithProviders(<AgentWizard open onOpenChange={() => undefined} onCreated={() => undefined} />);
     const steps = await screen.findByRole('list', { name: 'Steps' });
-    expect(steps.textContent).toMatch(/1\. Task.*4\. Settings.*6\. Review/);
+    expect(steps.textContent).toMatch(/1\. Basics.*3\. Settings.*4\. Review/);
     expect(await screen.findByRole('dialog', { name: 'New agent' })).toBeTruthy();
   });
 });
@@ -200,7 +198,7 @@ describe('AgentWizard — E4b close, discard and announcements', () => {
     const onOpenChange = vi.fn();
     renderWithProviders(<AgentWizard open onOpenChange={onOpenChange} onCreated={() => undefined} edit={{ slug: 'clinic-summary', versionNumber: 2 }} />);
     const wizard = await openEditor();
-    for (let index = 0; index < 3; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
+    for (let index = 0; index < 2; index += 1) fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' }));
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Publish new version' }));
 
     await screen.findByText(/Close — unavailable: .*publish/i);
@@ -256,7 +254,7 @@ describe('AgentWizard — E4b close, discard and announcements', () => {
     const wizard = await screen.findByRole('dialog', { name: 'New agent' });
     fireEvent.change((wizard.querySelector('#agent-name') as HTMLInputElement), { target: { value: 'Triage helper' } });
     fireEvent.click(within(wizard).getByRole('button', { name: 'Next' }));
-    const live = within(wizard).getAllByRole('status').find((element) => /Step 2 of 6: Model/.test(element.textContent ?? ''));
+    const live = within(wizard).getAllByRole('status').find((element) => /Step 2 of 4: Model & prompt/.test(element.textContent ?? ''));
     expect(live).toBeTruthy();
     expect(live!.getAttribute('aria-live')).toBe('polite');
   });

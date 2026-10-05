@@ -23,7 +23,11 @@ const TRANSCRIPT = {
 function makeController() {
   const service = { read: vi.fn().mockResolvedValue(TRANSCRIPT) };
   const store = new Map<string, unknown>();
-  const cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn((k: string, v: unknown) => store.set(k, v)), get: vi.fn((k: string) => store.get(k)) };
+  const cls = {
+    run: vi.fn((fn: () => unknown) => fn()),
+    set: vi.fn((k: string, v: unknown) => store.set(k, v)),
+    get: vi.fn((k: string) => store.get(k)),
+  };
   return { controller: new SttSessionTranscriptInternalController(service as never, cls as never), service, cls };
 }
 

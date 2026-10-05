@@ -68,7 +68,7 @@ describe('InstructionBindingForm simple', () => {
   it('stamps the approved version when a library prompt is chosen and shows it as a badge', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Host onChange={onChange} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ promptTemplateId: 'tpl-1', promptVersionNumber: 3 })));
     expect(await screen.findByText(/Pinned to v3/)).toBeTruthy();
@@ -89,7 +89,7 @@ describe('InstructionBindingForm simple', () => {
 
   it('hides composable fragments unless the agent already uses them', async () => {
     const { unmount } = renderWithProviders(<Host />);
-    await screen.findByLabelText('Hope Prompt');
+    await screen.findByLabelText('Prompt');
     expect(screen.queryByLabelText(/Composable fragments/)).toBeNull();
     unmount();
     renderWithProviders(<Host initial={{ ...INITIAL, mode: 'fragments' }} />);

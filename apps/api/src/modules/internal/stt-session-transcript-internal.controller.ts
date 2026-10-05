@@ -1,6 +1,7 @@
 import { RunAudioTranscriptService } from '@arcaai/applications';
 import type { IActiveUserContext, RunAudioTranscript } from '@arcaai/applications';
 import { BadRequestException, Controller, Get, Headers, Param, Query, UseGuards } from '@nestjs/common';
+import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 import { ApiExcludeController, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Public } from '../../decorators';
@@ -14,7 +15,8 @@ import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.
  * `HarnessServiceTokenGuard` authenticates `X-Service-Token` (the shared `INTERNAL_ACCESS_TOKEN`
  * or the harness's own). Deliberately NOT `InternalServiceTokenGuard`: that one requires a
  * `?service=` selector the harness does not send. `X-Tenant-Id` is MANDATORY (owner directive
- * 2026-08-16) and the read runs in a CLS context bound to it. A READ, so no `InternalTenantLockGuard`.
+ * 2026-08-16) and the read runs in a CLS context bound to it. Like every `@Public()` internal controller (TASK-1043), the restore lock is checked by
+ * `InternalTenantLockGuard` AFTER the service-token guard.
  *
  * No query DTO on purpose: `runId` is read as a plain query value, so an extra query parameter is
  * ignored rather than refused by the strict global pipe.
@@ -28,7 +30,7 @@ import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.
  */
 @ApiExcludeController()
 @Public()
-@UseGuards(HarnessServiceTokenGuard)
+@UseGuards(HarnessServiceTokenGuard, InternalTenantLockGuard)
 @Controller('internal/stt/sessions')
 export class SttSessionTranscriptInternalController {
   constructor(

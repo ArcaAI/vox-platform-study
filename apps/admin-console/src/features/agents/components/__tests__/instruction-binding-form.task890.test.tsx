@@ -76,7 +76,7 @@ afterEach(() => {
 describe('InstructionBindingForm', () => {
   it('picking a template reveals the version pin and its declared variables', async () => {
     renderWithProviders(<Host onChange={() => undefined} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     expect(await screen.findByText('Follow approved (v3)')).toBeTruthy();
     expect(screen.getByLabelText('patientAge *')).toBeTruthy();
@@ -86,7 +86,7 @@ describe('InstructionBindingForm', () => {
   it('pinning a version writes promptVersionNumber, and it round-trips back to "Follow approved"', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Host onChange={onChange} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     fireEvent.click(await screen.findByLabelText('Pin a version'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ promptVersionNumber: 3 }));
@@ -99,7 +99,7 @@ describe('InstructionBindingForm', () => {
   it('a variable set to Context path writes { path } and round-trips', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Host onChange={onChange} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     fireEvent.click(await screen.findByLabelText('patientAge *'));
     // The kind selector sits beside the field.
@@ -113,7 +113,7 @@ describe('InstructionBindingForm', () => {
   it('a variable left on Static value writes { value }', async () => {
     const onChange = vi.fn();
     renderWithProviders(<Host onChange={onChange} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     fireEvent.change(screen.getByLabelText('tone'), { target: { value: 'formal' } });
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ variables: { tone: { value: 'formal' } } }));
@@ -131,7 +131,7 @@ describe('InstructionBindingForm', () => {
 
   it('has no axe violations with a template selected (WCAG 2.2 AA gate)', async () => {
     const { container } = renderWithProviders(<Host onChange={() => undefined} />);
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP note/ }));
     await screen.findByText('Follow approved (v3)');
     expect(await axe(container)).toHaveNoViolations();

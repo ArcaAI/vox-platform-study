@@ -28,7 +28,10 @@ function stepsOf(input: Partial<RunGuideInput> = {}) {
 }
 
 function code(step: ReturnType<typeof stepsOf>[number], lane: (typeof RUN_GUIDE_LANES)[number]): string {
-  return step.snippets.filter((snippet) => snippet.lane === lane).map((snippet) => snippet.code).join('\n');
+  return step.snippets
+    .filter((snippet) => snippet.lane === lane)
+    .map((snippet) => snippet.code)
+    .join('\n');
 }
 
 describe('buildRunGuide — structure', () => {

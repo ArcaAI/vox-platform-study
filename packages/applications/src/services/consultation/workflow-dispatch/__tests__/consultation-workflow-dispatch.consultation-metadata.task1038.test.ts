@@ -71,7 +71,7 @@ describe('consultation dispatch stamps the consultation on the run row', () => {
       userId: 'u-1',
       externalPatientId: 'p-1',
     });
-    expect(deps.workflowRunService.recordRunStarted).toHaveBeenCalledWith(expect.objectContaining({ metaData: { consultationId: CONSULTATION } }));
+    expect(deps.workflowRunService.recordRunStarted).toHaveBeenCalledWith(expect.objectContaining({ metaData: expect.objectContaining({ consultationId: CONSULTATION }) }));
   });
 
   it('supersede (L-RESUME): recordRunStarted carries metaData.consultationId', async () => {
@@ -93,6 +93,6 @@ describe('consultation dispatch stamps the consultation on the run row', () => {
     });
     const result = await svc.supersedeGoverningRun({ consultationId: CONSULTATION, tenantId: TENANT, triggerId: 'trig-1' });
     expect(result.superseded).toBe(true);
-    expect(deps.workflowRunService.recordRunStarted).toHaveBeenCalledWith(expect.objectContaining({ metaData: { consultationId: CONSULTATION } }));
+    expect(deps.workflowRunService.recordRunStarted).toHaveBeenCalledWith(expect.objectContaining({ metaData: expect.objectContaining({ consultationId: CONSULTATION }) }));
   });
 });

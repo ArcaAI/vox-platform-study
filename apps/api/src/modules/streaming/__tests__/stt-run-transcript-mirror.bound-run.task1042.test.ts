@@ -18,7 +18,10 @@ function build(opts: { job?: Record<string, unknown> | null; runRunning?: boolea
     append: vi.fn().mockResolvedValue({ seq: 2, streamId: '2-0', duplicate: false }),
     lastSeq: vi.fn().mockResolvedValue(1),
   };
-  const job = opts.job === undefined ? { tenantId: TENANT, consultationId: null, metaData: { owner: { type: 'apiKey', id: 'k' }, boundRun: { runId: 'run-b' } } } : opts.job;
+  const job =
+    opts.job === undefined
+      ? { tenantId: TENANT, consultationId: null, metaData: { owner: { type: 'apiKey', id: 'k' }, boundRun: { runId: 'run-b' } } }
+      : opts.job;
   const jobs = { findAll: vi.fn().mockResolvedValue(job ? [job] : []) };
   const consultations = { findByIdOrNull: vi.fn() };
   const runs = { findAll: vi.fn(async () => (opts.runRunning === false ? [] : [{ runId: 'run-b' }])) };

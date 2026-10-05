@@ -297,6 +297,16 @@ describe('AgentsScreen', () => {
     expect(list?.url).not.toContain('includeTemplates');
   });
 
+  it('names its columns and explains itself in plain words (TASK-1036 W2)', async () => {
+    stubAgents();
+    renderWithProviders(<AgentsScreen />);
+    await screen.findByText('Clinic summarizer');
+    const grid = screen.getByRole('grid', { name: 'Agents' });
+    expect(within(grid).getByRole('columnheader', { name: /Used by/ })).toBeTruthy();
+    expect(within(grid).queryByRole('columnheader', { name: /Serves/ })).toBeNull();
+    expect(screen.queryByText(/one row per agent/)).toBeNull();
+  });
+
   it('opens the lineage slide-over for the clicked row with the six tabs and the publish action for its open draft', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);
@@ -411,15 +421,12 @@ describe('AgentsScreen', () => {
     // The context schema is chosen once, on the first step.
     fireEvent.click(await screen.findByLabelText('Context schema'));
     fireEvent.click(await screen.findByRole('option', { name: /Legacy consultation prompt context/ }));
-    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Model
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Model & prompt
     fireEvent.click(await screen.findByLabelText('Model'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 4 E2B/ }));
-    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Instruction
-
-    fireEvent.click(await screen.findByLabelText('Hope Prompt'));
+    fireEvent.click(await screen.findByLabelText('Prompt'));
     fireEvent.click(await screen.findByRole('option', { name: /SOAP/ }));
-    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Parameters
-    fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Input / Output contract
+    fireEvent.click(within(wizard).getByRole('button', { name: 'Next' })); // → Settings
     fireEvent.click(await within(wizard).findByRole('button', { name: 'Next' })); // → Review
 
     const schemaRow = (await within(wizard).findByText('Context schema')).nextElementSibling;
