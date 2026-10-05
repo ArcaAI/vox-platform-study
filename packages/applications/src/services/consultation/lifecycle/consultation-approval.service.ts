@@ -126,6 +126,11 @@ export class ConsultationApprovalService extends BaseService {
     if (!consultation || consultation.tenantId !== tenantId) {
       throw new NotFoundException('Consultation not found');
     }
+    // Existence before legality: the per-summary route names a note, and an unknown, foreign or
+    // other-consultation note is 404 whatever state the consultation is in.
+    if (options.legacyContextItemId !== undefined) {
+      await this.assertLegacyNoteInScope(consultationId, tenantId, options.legacyContextItemId);
+    }
 
     if (consultation.status === ConsultationStatus.APPROVED || consultation.status === ConsultationStatus.CLOSED_COMPLETE) {
       return this.respond(consultation);
@@ -239,6 +244,13 @@ export class ConsultationApprovalService extends BaseService {
     await this.noteSigner.afterSessionSigned({ tenantId, consultation: updated, note, approvedBy, actor });
 
     return this.respond(updated);
+  }
+
+  private async assertLegacyNoteInScope(consultationId: string, tenantId: string, contextItemId: string): Promise<void> {
+    const item = await this.contextItemRepository.findByIdOrNull(contextItemId);
+    if (!item || item.tenantId !== tenantId || item.consultationId !== consultationId) {
+      throw new NotFoundException('Summary not found');
+    }
   }
 
   private async respond(entity: ConsultationEntity): Promise<ConsultationResponse> {

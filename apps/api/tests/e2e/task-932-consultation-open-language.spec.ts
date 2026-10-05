@@ -119,16 +119,31 @@ test.describe('TASK-932 — visit type is derived from the parent, and is observ
     const patientId = uniquePatientId('revisit');
     const first = await openOk(request, token, { patientId, language: 'en' });
 
+    // TASK-1045 D-3 — a consultation is an EPISODE: while the first is still open, an `open` for
+    // the same key (tenant, doctor, patient, department) returns it, parent or not. There is never
+    // a second open consultation for one key.
+    const whileOpen = await openOk(request, token, { patientId, parentConsultationId: first.id, language: 'en' });
+    expect(whileOpen.id, 'an open consultation of the key is returned, not shadowed by a second one').toBe(first.id);
+
+    // A revisit is a new consultation once the first has CLOSED (D-7: never an implicit reopen).
+    const read = await request.get(`/api/v1/consultations/${first.id}`, { headers: bearer(token) });
+    expect(read.status(), await read.text()).toBe(200);
+    const closed = await request.post(`/api/v1/consultations/${first.id}/close`, {
+      headers: { ...bearer(token), 'If-Match': read.headers()['etag'] },
+      data: {},
+    });
+    expect(closed.status(), await closed.text()).toBe(200);
+
     // The follow-up is for the SAME patient: a parent of a different patient is refused (400
     // `PARENT_PATIENT_MISMATCH` — "a follow-up must belong to the same patient as the visit it
-    // follows"). Naming the parent is what opens a new, chained visit rather than returning the
-    // first row.
+    // follows"). Naming the parent is what chains the new visit to it.
     const followUp = await openOk(request, token, {
       patientId,
       parentConsultationId: first.id,
       language: 'ml',
     });
 
+    expect(followUp.id, 'a closed first visit is followed by a NEW consultation').not.toBe(first.id);
     expect(followUp.parentConsultationId, 'the parent is what makes this a revisit').toBe(first.id);
     // A revisit declares its OWN (source) language rather than inheriting one from a visit that
     // may be weeks old.

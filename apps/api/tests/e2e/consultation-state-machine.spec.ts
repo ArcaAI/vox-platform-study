@@ -193,7 +193,10 @@ test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)',
 
   // ── Case 9: OCC gate on the three new/changed transition routes ──
   test.describe('case 9: If-Match / ExpectedVersion OCC gate', () => {
-    test('prime without If-Match -> 428; with a stale version -> 412; with the correct version -> 200', async ({ request }) => {
+    // TASK-1045 — `prime` is a deprecated one-release alias with no state behind it (there is no
+    // PRIMED status): it still demands If-Match (428) and still runs the consent checkpoint, but it
+    // WRITES nothing, so there is no version to compare and a stale validator cannot drift.
+    test('prime without If-Match -> 428; with any If-Match -> 200, a no-op that leaves the consultation OPEN', async ({ request }) => {
       const patientId = uniquePatientId('case9-prime');
       const { id, version } = await openConsultation(request, doctorToken, patientId);
       // prime is consent-gated ahead of the OCC guard — see
@@ -206,16 +209,15 @@ test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)',
       const stale = await request.post(`/api/v1/consultations/${id}/prime`, {
         headers: { ...bearer(doctorToken), 'If-Match': '"999"' },
       });
-      expect(stale.status(), 'prime with a stale If-Match must 412').toBe(412);
+      expect(stale.status(), 'prime is a no-op: nothing is written, so a stale If-Match cannot conflict').toBe(200);
 
       const ok = await request.post(`/api/v1/consultations/${id}/prime`, {
         headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
       });
-      // Nest default POST status (201), not an override — see openConsultation() comment.
-      expect([200, 201], 'prime with the correct If-Match must succeed').toContain(ok.status());
+      expect(ok.status(), 'prime with the correct If-Match must succeed').toBe(200);
       const body = await ok.json();
-      expect(body.status).toBe('PRIMED');
-      expect(body.version, 'a real (non-idempotent) transition must bump the version').toBe(version + 1);
+      expect(body.status, 'there is no PRIMED state — an open consultation is ready to record').toBe('OPEN');
+      expect(body.version, 'a no-op must NOT bump the version').toBe(version);
     });
 
     test('close without If-Match -> 428', async ({ request }) => {
@@ -231,29 +233,26 @@ test.describe('session state machine (RUNNABLE-HERE, apps/api + Postgres only)',
     });
   });
 
-  // Extra: idempotency — priming an already-PRIMED consultation is a no-op
-  // (per transitionTo's self-transition rule), so the version must NOT bump.
-  test('extra: priming an already-PRIMED consultation is idempotent (no version bump)', async ({ request }) => {
+  // Extra: idempotency — `prime` is a no-op alias (TASK-1045), so priming twice changes nothing.
+  test('extra: priming twice is idempotent (status OPEN, no version bump)', async ({ request }) => {
     const patientId = uniquePatientId('case-idem');
     const { id, version } = await openConsultation(request, doctorToken, patientId);
     await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
     const first = await request.post(`/api/v1/consultations/${id}/prime`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
     });
-    expect([200, 201], 'prime with the correct If-Match must succeed').toContain(first.status());
+    expect(first.status(), 'prime with the correct If-Match must succeed').toBe(200);
     const firstBody = await first.json();
-    expect(firstBody.version).toBe(version + 1);
+    expect(firstBody.status).toBe('OPEN');
+    expect(firstBody.version).toBe(version);
 
-    // Second prime, using the NOW-current version — should no-op (still PRIMED, same version).
     const second = await request.post(`/api/v1/consultations/${id}/prime`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${firstBody.version}"` },
     });
-    // Same POST route, same Nest-default status regardless of whether the
-    // transition was a real change or a self-transition no-op.
-    expect([200, 201], 'idempotent no-op still returns success, not a conflict').toContain(second.status());
+    expect(second.status(), 'idempotent no-op still returns success, not a conflict').toBe(200);
     const secondBody = await second.json();
-    expect(secondBody.status).toBe('PRIMED');
-    expect(secondBody.version, 'a self-transition no-op must NOT bump the version').toBe(firstBody.version);
+    expect(secondBody.status).toBe('OPEN');
+    expect(secondBody.version, 'a no-op must NOT bump the version').toBe(firstBody.version);
   });
 });
 

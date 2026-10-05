@@ -53,6 +53,7 @@ interface ConsultationBody {
   id: string;
   version: number;
   status?: string;
+  processing?: string;
   tenantId?: string;
 }
 
@@ -63,7 +64,9 @@ function tenantIdFromToken(token: string): string {
 }
 
 async function getConsultation(request: APIRequestContext, token: string, id: string): Promise<ConsultationBody> {
-  const res = await request.get(`/api/v1/consultations/${id}`, { headers: bearer(token) });
+  // The seven-status vocabulary (TASK-1045): without this header STOPPED reads as DRAINING /
+  // PENDING_REVIEW for older clients.
+  const res = await request.get(`/api/v1/consultations/${id}`, { headers: { ...bearer(token), 'X-Hope-Lifecycle': '2' } });
   expect(res.status(), `GET /consultations/${id}`).toBe(200);
   return (await res.json()) as ConsultationBody;
 }
@@ -372,11 +375,17 @@ test.describe('OCC on POST :id/summary/:contextItemId/approve', () => {
 
   test('the staged consultation is in a state where approve is legal', async ({ request }) => {
     test.skip(!summaryId, skipReason);
-    const status = (await getConsultation(request, token, consultationId)).status;
+    // TASK-1045 — approve is legal from STOPPED (or CLOSED_INCOMPLETE, a late sign-off) unless
+    // processing is FINALIZING_TRANSCRIPT or SUMMARIZING, which answers 409
+    // `CONSULTATION_PROCESSING_IN_FLIGHT` before any OCC check.
+    const { status, processing } = await getConsultation(request, token, consultationId);
     expect(
-      ['PENDING_REVIEW', 'DRAFT_PENDING_SENSORS', 'TIMED_OUT'],
-      'approve OCC is only observable from a legal predecessor of SIGNED — otherwise the 409 legality check fires first',
+      ['STOPPED', 'CLOSED_INCOMPLETE'],
+      'approve OCC is only observable from a legal predecessor of APPROVED — otherwise the 409 legality check fires first',
     ).toContain(status);
+    expect(['FINALIZING_TRANSCRIPT', 'SUMMARIZING'], 'approve is refused while the transcript or the note is in flight').not.toContain(
+      processing,
+    );
   });
 
   test('POST :id/summary/:contextItemId/approve without If-Match returns 428', async ({ request }) => {
