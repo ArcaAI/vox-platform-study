@@ -229,6 +229,14 @@ describe('modelHasSoftDelete', () => {
       'HarnessPolicyChange',
       // TASK-863 — the agent-assignment WORM log, identity-only like its siblings.
       'AgentAssignmentChange',
+      // TASK-1045 — the consultation episode's encounters and its approval snapshot, the
+      // append-only feedback rows and their daily rollup, and the AI activity run record. None
+      // carries `resourceStatus` (a closed consultation keeps them; nothing is soft-deleted).
+      'ConsultationEncounter',
+      'ConsultationApproval',
+      'ConsultationFeedback',
+      'ConsultationFeedbackDailyRollup',
+      'AiActivityRun',
     ];
 
     expected.forEach((model) => {
