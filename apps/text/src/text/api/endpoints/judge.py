@@ -57,6 +57,7 @@ from pydantic import BaseModel, Field
 # a second copy of `_credential_attribution` is exactly how a call site starts
 # stamping its own attribution.
 from text.api.endpoints.generate import _coerce_stats, _credential_attribution, _extract_usage
+from text.models.requests import MAX_PROMPT_CHARS
 from text.core.defaults import PENALTY_NEUTRAL
 from text.core.dependencies import (
     get_app_state,
@@ -121,8 +122,8 @@ class JudgeRequest(BaseModel):
     from ``AiRoutingPolicy``, tenant row first.
     """
 
-    prompt: str = Field(..., min_length=1, max_length=200_000)
-    system_prompt: str | None = Field(default=None, max_length=50_000)
+    prompt: str = Field(..., min_length=1, max_length=MAX_PROMPT_CHARS)
+    system_prompt: str | None = Field(default=None, max_length=MAX_PROMPT_CHARS)
     provider: str = Field(..., min_length=1)
     model: str = Field(..., min_length=1)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
