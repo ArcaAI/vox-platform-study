@@ -9,10 +9,13 @@
  *
  *   1. Zero writes to the legacy `metadata.status` tracker (deleted — Task 10).
  *   2. Zero direct `consultation.status = <value>` assignments bypassing the
- *      legality matrix, except the ONE documented, kill-switch-gated
- * exception in `ConsultationService.startRecording` ( Task 9
- *      step 4 — the `requirePrimedBeforeRecording` flag's OFF branch, which
- *      deliberately reproduces pre-711 behaviour for legacy callers).
+ *      legality matrix, except the ONE documented exception in
+ *      `ConsultationApprovalService.approve` (TASK-1045 D-26): a late sign-off
+ *      on CLOSED_INCOMPLETE walks the two legal edges around the one the matrix
+ *      lacks (reopen, then APPROVED → CLOSED_COMPLETE) and sets APPROVED in
+ *      between directly; only the final state is persisted. (The former
+ *      exception, the `requirePrimedBeforeRecording` kill-switch bypass in
+ *      `ConsultationService.startRecording`, left with the PRIMED state.)
  *
  * DO NOT delete this test as redundant with the domains-layer
  * `consultationStatus.wired.test.ts` — that one proves the matrix is
@@ -28,11 +31,11 @@ import { describe, expect, it } from 'vitest';
 
 const APPLICATIONS_SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 
-/** The one documented, kill-switch-gated exception ( Task 9 step 4). */
+/** The one documented exception: the late sign-off's in-between APPROVED (TASK-1045 D-26). */
 const ALLOWED_DIRECT_ASSIGNMENT = {
-  relativePath: 'services/consultation/consultation/consultation.service.ts',
-  line: 'consultation.status = ConsultationStatus.RECORDING;',
-  markerComment: ' grep-gate NOTE',
+  relativePath: 'services/consultation/lifecycle/consultation-approval.service.ts',
+  line: 'consultation.status = ConsultationStatus.APPROVED;',
+  markerComment: 'The matrix has no CLOSED_INCOMPLETE → APPROVED edge',
 };
 
 const METADATA_STATUS_RE = /\bmetadata(?:\?\.|\.)status\b/;
@@ -109,7 +112,7 @@ describe('Consultation.status single-source-of-truth gate ', () => {
     expect(
       violations,
       `Every consultation status write must route through ConsultationEntity.transitionTo. ` +
-        `The only allowed direct assignment is the documented kill-switch bypass in ` +
+        `The only allowed direct assignment is the documented late sign-off step in ` +
         `${ALLOWED_DIRECT_ASSIGNMENT.relativePath}. Violations:\n${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);
   });

@@ -20,6 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException, ValidationPipe } from '@nestjs/common';
 import { ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 
 // ─── DTO ────────────────────────────────────────────────────────────────────
@@ -93,9 +94,10 @@ describe('ConsultationService.getOrCreate — the named clinician must be able t
         }),
         set: vi.fn(),
       } as any,
-      // entitlements, harnessAudit, tenantSettings, workflowDispatch, consentGrant,
+      encounterServiceDouble(consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
+      // entitlements, tenantSettings, workflowDispatch, consentGrant,
       // workflowDefinitionRepository — then the policy engine this block is about.
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -107,7 +109,7 @@ describe('ConsultationService.getOrCreate — the named clinician must be able t
   beforeEach(() => {
     vi.clearAllMocks();
     consultationRepository = {
-      findByUniqueKey: vi.fn().mockResolvedValue(null),
+      findOpenByKey: vi.fn().mockResolvedValue(null),
       findWithRelations: vi.fn().mockResolvedValue(null),
       create: vi.fn(async (entity: unknown) => entity),
     };
@@ -187,7 +189,8 @@ describe('ConsultationService.getOrCreate — the named clinician must be able t
       userRepository,
       { emit: vi.fn() } as any,
       { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : null)), set: vi.fn() } as any,
-      undefined,
+      encounterServiceDouble(consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
       undefined,
       undefined,
       dispatch as any,

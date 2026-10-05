@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ConsultationEntity } from '@arcaai/domains';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
 
+// A REAL entity: the mapper reads derived lifecycle facts (`isRecordable`, `reopenAllowed()`) and
+// the defaulted lifecycle columns (`processing`, `lastActivityAt`) that only the entity supplies.
 function createMockConsultationEntity(overrides: Record<string, unknown> = {}) {
-  return {
+  return new ConsultationEntity({
     id: 'cons-001',
     patientId: 'PAT_001',
     doctorId: 'doc-001',
@@ -17,7 +20,8 @@ function createMockConsultationEntity(overrides: Record<string, unknown> = {}) {
     Department: null,
     ContextItems: [],
     ...overrides,
-  };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
 }
 
 describe('ConsultationDtoMapper with relations', () => {

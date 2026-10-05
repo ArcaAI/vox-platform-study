@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ConsultationEntity, ConsultationStatus, ResourceStatusType } from '@arcaai/domains';
 import { ConsultationService } from '../consultation.service';
+import { encounterServiceDouble, lifecycleDouble } from './consultation-service.fixture';
 import { OpenConsultationRequest } from '../dto/open-consultation.request';
 import { readExternalRef } from '../open-markers';
 import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../../consultation-gates.constants';
@@ -92,8 +93,9 @@ describe('ConsultationService — TASK-1020 open encounter key and recordability
         }),
         set: vi.fn(),
       } as any,
+      encounterServiceDouble(consultationRepository), // encounters
+      lifecycleDouble(), // lifecycle
       undefined, // entitlements
-      undefined, // harnessAuditService
       tenantSettings,
       undefined, // workflowDispatchService
       consentGrantService,
