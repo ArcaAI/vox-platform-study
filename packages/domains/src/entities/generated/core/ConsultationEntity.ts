@@ -51,10 +51,14 @@ const APPROVAL_BLOCKING_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = 
   Enums.ConsultationProcessing.SUMMARIZING,
 ]);
 
-/** Processing values whose `processingReason` is kept (every other value clears it). */
+/**
+ * Processing values whose `processingReason` is kept (every other value clears it). IDLE keeps one
+ * only when given — a written note marks itself `NOTE_READY`; every other IDLE writer passes none.
+ */
 const REASON_BEARING_PROCESSING: ReadonlySet<Enums.ConsultationProcessing> = new Set([
   Enums.ConsultationProcessing.FAILED,
   Enums.ConsultationProcessing.AWAITING_REVIEW,
+  Enums.ConsultationProcessing.IDLE,
 ]);
 
 const CLOSED_STATUSES: ReadonlySet<Enums.ConsultationStatus> = new Set([

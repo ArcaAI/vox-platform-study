@@ -223,7 +223,9 @@ describe('ConsultationEntity lifecycle — processing axis', () => {
   });
 
   it('processingReasonFor is the shared clearing rule', () => {
-    expect(ConsultationEntity.processingReasonFor(P.IDLE, 'x')).toBeNull();
+    // IDLE keeps a reason only when one is given (a written note: NOTE_READY); every other IDLE writer passes none.
+    expect(ConsultationEntity.processingReasonFor(P.IDLE, 'x')).toBe('x');
+    expect(ConsultationEntity.processingReasonFor(P.IDLE)).toBeNull();
     expect(ConsultationEntity.processingReasonFor(P.FAILED, 'x')).toBe('x');
     expect(ConsultationEntity.processingReasonFor(P.AWAITING_REVIEW)).toBeNull();
   });
