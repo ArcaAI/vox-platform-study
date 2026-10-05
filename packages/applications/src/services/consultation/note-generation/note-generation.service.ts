@@ -1,20 +1,49 @@
 import { randomUUID } from 'node:crypto';
-import { HttpException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ConsultationProcessing, ConsultationRepository, ResourceType } from '@arcaai/domains';
+import { ConsultationProcessing, ConsultationRepository, ConsultationStatus, ResourceType } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { IRedisCacheService } from '../../baseServices/redis';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessInternalService } from '../harness/harness-internal.service';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanRef } from '../note-composition/note-plan.types';
-import { ConsultationPipelineConfig, DEFAULT_PIPELINE_CONFIG } from '../events/consultation.events';
+import {
+  ConsultationPipelineConfig,
+  ConsultationPipelineEvent,
+  DEFAULT_PIPELINE_CONFIG,
+  type LifecycleChangedPayload,
+} from '../events/consultation.events';
+import { IConsultationJobService } from '../jobs/consultation-job.service';
+import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
+import { NOTE_REFINALIZE_CLAIM_TTL_SECONDS } from '../workflow-dispatch/encounter-refinalize';
+import { EncounterRefinalizeService } from '../workflow-dispatch/encounter-refinalize.service';
 import { INoteGenerationService } from './INoteGenerationService';
-import { GenerateParams, GenerationDecision, GenerationTrigger, HARNESS_SUPPORTED_TRIGGERS } from './types';
+import { GenerateParams, GenerationDecision, GenerationDecisionHarness, GenerationTrigger, HARNESS_SUPPORTED_TRIGGERS } from './types';
 import { tenantWorkflowGoverns } from '../governing-engine';
+
+/** The note jobs no run carries (see `watchNoteJob`), per consultation. */
+export function noteJobWatchKey(consultationId: string): string {
+  return `consultation:note-job-watch:${consultationId}`;
+}
+
+const WATCH_ADD_SCRIPT = "redis.call('SADD', KEYS[1], ARGV[1]); return redis.call('EXPIRE', KEYS[1], ARGV[2])";
+const WATCH_TAKE_SCRIPT = "local m = redis.call('SMEMBERS', KEYS[1]); redis.call('DEL', KEYS[1]); return m";
+
+/**
+ * What a lifecycle change means for a waiting note job: the note is written (STOPPED and IDLE +
+ * NOTE_READY, or AWAITING_REVIEW), the note path failed (FAILED), or nothing yet.
+ */
+export function noteJobOutcomeOf(event: { status: string; processing: string; processingReason?: string | null }): 'completed' | 'failed' | null {
+  if (event.processing === ConsultationProcessing.FAILED) return 'failed';
+  if (event.status !== ConsultationStatus.STOPPED) return null;
+  if (event.processing === ConsultationProcessing.AWAITING_REVIEW) return 'completed';
+  return event.processing === ConsultationProcessing.IDLE && event.processingReason === NOTE_READY_REASON ? 'completed' : null;
+}
 
 /**
  * Generator Entry-Point Seam.
@@ -54,6 +83,8 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     // a module cycle. Optional + trailing so positional fixtures keep compiling.
     @Optional() private readonly moduleRef?: ModuleRef,
     @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
+    // Holds the note jobs no run carries (`watchNoteJob`). Unwired ⇒ such a job is not watched.
+    @Optional() @Inject(IRedisCacheService) private readonly redis?: Pick<IRedisCacheService, 'eval'>,
   ) {
     // NoteGenerationService wraps existing generation calls and never
     // broadcasts its own sys-events (the wrapped services already do — see
@@ -74,6 +105,11 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     }
 
     const harnessJobId = `harness-doc-${randomUUID()}`;
+
+    if (trigger === GenerationTrigger.SUMMARY_REGENERATE) {
+      const refinalized = await this.refinalizeOnRequest(params, harnessJobId);
+      if (refinalized) return refinalized;
+    }
 
     // (consent-abac Phase 4): thread the consultation's external
     // patient id so the harness's call_mcp_tool/retrieve_context activities
@@ -120,6 +156,97 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
     });
 
     return { generator: 'harness', harnessJobId };
+  }
+
+  /**
+   * An explicit note request (`summary/async`) on a consultation whose note covers an earlier
+   * transcript state: `EncounterRefinalizeService` re-finalises it once per transcript state
+   * (governed supersede or harness-doc), joining a generation the stop already claimed. `null` ⇒
+   * not a re-finalisation; the usual harness-doc start applies. Resolved at call time: the
+   * coordinator's module imports this one.
+   *
+   * The job id handed back must reach a terminal state. A harness-doc run carries its job id and
+   * completes it itself (`persistDraft` / the failed progress stage), so that id is returned. A
+   * governing run carries none (its finalize is jobId-less), so the caller's own job id is returned
+   * and watched: the lifecycle change that writes the note completes it, a FAILED one fails it.
+   */
+  private async refinalizeOnRequest(params: GenerateParams, harnessJobId: string): Promise<GenerationDecisionHarness | null> {
+    let coordinator: Pick<EncounterRefinalizeService, 'onExplicitRequest'> | undefined;
+    try {
+      coordinator = this.moduleRef?.get(EncounterRefinalizeService, { strict: false });
+    } catch {
+      coordinator = undefined; // swallow-ok: not wired in this composition — the usual start applies
+    }
+    if (!coordinator) return null;
+
+    const outcome = await coordinator.onExplicitRequest({
+      consultationId: params.consultationId,
+      tenantId: params.tenantId,
+      userId: params.userId,
+      jobId: harnessJobId,
+    });
+    if (outcome.kind === 'not-refinalize') return null;
+    if (outcome.kind === 'failed') {
+      throw new ServiceUnavailableException({ code: outcome.reason, message: 'The note could not be re-generated.' });
+    }
+    if (outcome.lane === 'harness-doc' && outcome.jobId) {
+      return { generator: 'harness', harnessJobId: outcome.jobId };
+    }
+    await this.watchNoteJob(params.consultationId, harnessJobId);
+    return { generator: 'harness', harnessJobId };
+  }
+
+  /** Remember a note job no run carries, until the consultation's note lands or fails. Best-effort. */
+  private async watchNoteJob(consultationId: string, jobId: string): Promise<void> {
+    if (!this.redis) return;
+    try {
+      await this.redis.eval(WATCH_ADD_SCRIPT, 1, noteJobWatchKey(consultationId), jobId, NOTE_REFINALIZE_CLAIM_TTL_SECONDS);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Note job could not be watched — it completes only through the job TTL',
+        consultationId,
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Settle the watched note jobs of a consultation when its note is written (COMPLETED) or its
+   * note path fails (FAILED). Each watched job settles once: the watch is taken atomically.
+   * Best-effort — the lifecycle change has already happened.
+   */
+  @OnEvent(ConsultationPipelineEvent.LifecycleChanged, { async: true })
+  async onLifecycleChanged(payload: LifecycleChangedPayload): Promise<void> {
+    const event = payload?.event;
+    if (!event || !this.redis) return;
+    const outcome = noteJobOutcomeOf(event);
+    if (!outcome) return;
+    try {
+      const taken = await this.redis.eval(WATCH_TAKE_SCRIPT, 1, noteJobWatchKey(payload.consultationId));
+      const jobIds = Array.isArray(taken) ? taken.map(String) : [];
+      if (jobIds.length === 0) return;
+      const jobs = this.moduleRef?.get<IConsultationJobService>(IConsultationJobService, { strict: false });
+      if (!jobs) return;
+      for (const jobId of jobIds) {
+        if (outcome === 'completed') {
+          await jobs.notifyComplete(jobId, {
+            consultationId: payload.consultationId,
+            processing: event.processing,
+            processingReason: event.processingReason ?? null,
+          });
+        } else {
+          await jobs.notifyFailed(jobId, event.processingReason || 'NOTE_GENERATION_FAILED');
+        }
+      }
+    } catch (error) {
+      this.logger.warn({
+        message: 'Watched note jobs could not be settled (best-effort)',
+        consultationId: payload.consultationId,
+        outcome,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
