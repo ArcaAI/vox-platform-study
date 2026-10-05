@@ -43,8 +43,11 @@ function importerAwareAtAlias(): Plugin {
     enforce: 'pre',
     resolveId(source, importer) {
       if (!source.startsWith('@/')) return undefined;
-      const base = (importer ? uiSrcRootOf(importer) : undefined) ?? APP_SRC;
-      const stem = join(base, source.slice(2));
+      const uiRoot = importer ? uiSrcRootOf(importer) : undefined;
+      const base = uiRoot ?? APP_SRC;
+      // The UI package's own config maps `@/components/ui` onto its shadcn folder.
+      const rel = uiRoot && source.startsWith('@/components/ui') ? `components/shadcn${source.slice('@/components/ui'.length)}` : source.slice(2);
+      const stem = join(base, rel);
       if (existsSync(stem) && statSync(stem).isFile()) return stem;
       for (const ext of extensions) {
         const candidate = `${stem}${ext}`;

@@ -102,3 +102,6 @@
 | H-97 | U3 | ALaaS `check_session_event` / `lastSavedAudio` | follow-up (U8) | encounter 2 on the same session/event is blocked by the legacy single-recording guard; Start disabled after a saved recording — must allow a second encounter | pending (U8 brief) |
 | H-98 | U3 | ALaaS linked upload | follow-up (U8) | loading toast has no timeout if `note.final` never arrives | pending (U8 brief) |
 | H-99 | AB-8c | `transcript-record/version-metadata.ts` | AB-8a / follow-up | simplify `setVersionMetaData` to the new typed accessor; confirm repository `update` persists `changes.metaData` | follow-up |
+| H-100 | D4b | `apps/admin-console/vitest.config.ts` | orchestrator | UI-package importers map `@/components/ui` → `components/shadcn` (as the UI config does) | applied |
+| H-101 | D4b | `packages/ui` timeline band | follow-up (UI lane, wave 5) | `TimelineBand` (`role=separator`) directly inside `role=feed` violates axe `aria-required-children`; D4b's axe check disables that rule — fix the band wrapper and drop the disable | pending (wave 5) |
+| H-102 | D4b | console `consultations-screen.test.tsx` | AB-8b | 3 cases pin `SIGNED` / old status filter — legacy vocabulary from the 12→7 swap | pending (AB-8b) |
