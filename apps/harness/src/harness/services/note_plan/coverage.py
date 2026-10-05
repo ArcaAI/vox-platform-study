@@ -2,11 +2,21 @@
 
 Three checks, no model call:
 
-* every active critical fact of the ledger is present in the note (all its anchors, and each
+* every active critical fact of the ledger is present in the note (one of its anchors, and each
   value with its unit);
 * every number+unit a checked section states matches a source that section cites;
 * every citation label in ``sources[].refs`` resolves through ``coverage.sourceIds`` (or names a
   fact line of a ledger block the plan rendered).
+
+A citation is matched by its LABEL whatever its spelling: ``S8``, ``[S8]``, and the rendered
+``[S8 E2]`` / ``[S8 E2 Doctor 00:00]`` all name ``S8``.
+
+An anchor is the fact's key term or one of its aliases — alternatives, so one present is enough.
+When none of a fact's anchors occurs in the source lines the fact cites (the ledger described the
+fact instead of quoting it: "metformin dosage change"), the check reads the SOURCE instead: the
+anchor words the source does contain, every number the source states, and — when no anchor word
+is in the source at all — a citation of that source in the note. A fact the note omits still
+fails, because the source's own words and numbers are then missing.
 
 No ledger (``coverage.criticalFacts`` absent) means the note was not checked: ``unchecked``.
 The repair ONE call is the executor's; this module only says which sections need it.
@@ -49,8 +59,15 @@ _NUMBER_UNIT = re.compile(
 )
 
 _LEAD_LABEL = re.compile(r"^\s*\[(?P<label>[SAR]\d+)(?:\s[^\]]*)?\]")
-_BRACKETED_LABEL = re.compile(r"\[(?P<label>[SAR]\d+)\]")
+#: A bracketed citation anywhere in a line: ``[S4]``, or the rendered ``[S4 E1]`` / ``[S4 E1 …]``.
+_BRACKETED_LABEL = re.compile(r"\[(?P<label>[SAR]\d+)(?:\s[^\]]*)?\]")
 _LEDGER_FACT_LINE = re.compile(r"^\s*(?P<fact>E\d+-F\d+)\b")
+#: The label a ``sources[].refs`` entry names, in any of its spellings.
+_REF_LABEL = re.compile(r"^\[?\s*(?P<label>[SAR]\d+|E\d+-F\d+)(?![\w-])")
+#: A value as the source states it (after normalisation): "1000", "0.5", "150/95".
+_SOURCE_VALUE = re.compile(r"(?<![\w.,/])\d+(?:\.\d+)?(?:/\d+)?(?![\w.,/])")
+#: An anchor word worth grounding: letters only, three or more of them.
+_ANCHOR_WORD = re.compile(r"[a-z][a-z]{2,}")
 
 NumberKey = tuple[str, str]
 
@@ -88,8 +105,72 @@ def _inline_labels(text: str) -> list[str]:
     return [m.group("label") for m in _BRACKETED_LABEL.finditer(text)]
 
 
-def _fact_present(fact: CriticalFact, note: str, note_numbers: set[NumberKey]) -> bool:
-    if not all(contains(note, anchor) for anchor in fact.anchors if anchor.strip()):
+def citation_label(ref: str) -> str:
+    """The source label a citation names (``[S8 E2]`` → ``S8``); an unknown shape is kept as is."""
+    match = _REF_LABEL.match(ref.strip())
+    return match.group("label") if match else ref.strip()
+
+
+def _strip_lead_label(line: str) -> str:
+    """A source line without its citation labels (the lead one carries a timestamp)."""
+    lead = _LEAD_LABEL.match(line)
+    return _BRACKETED_LABEL.sub(" ", line[lead.end() :] if lead else line)
+
+
+def _numbers_present(
+    numbers: Iterable[tuple[str, str | None]], note: str, note_numbers: set[NumberKey]
+) -> bool:
+    for value, unit in numbers:
+        if unit:
+            if (canonical_number(value), canonical_unit(unit)) not in note_numbers:
+                return False
+        elif not contains_value(note, value):
+            return False
+    return True
+
+
+def _source_numbers(source: str) -> list[tuple[str, str | None]]:
+    """Every value the source states — with its unit when it has one, bare otherwise."""
+    with_unit = extract_numbers(source)
+    bare = [(m.group(0), None) for m in _SOURCE_VALUE.finditer(normalise_text(source))]
+    return [*with_unit, *bare]
+
+
+def _anchor_present(
+    fact: CriticalFact, note: str, note_numbers: set[NumberKey], source: str, cited: bool
+) -> bool:
+    """One of the fact's anchors is in the note — literally when an anchor is in its cited source,
+    otherwise read off the source (its words in the anchor, its numbers, its citation)."""
+    anchors = [anchor for anchor in fact.anchors if anchor.strip()]
+    if not anchors:
+        return True
+    source_text = normalise_text(source)
+    if not source_text or any(contains(source_text, anchor) for anchor in anchors):
+        return any(contains(note, anchor) for anchor in anchors)
+    grounded = [
+        [
+            word
+            for word in _ANCHOR_WORD.findall(normalise_text(anchor))
+            if contains(source_text, word)
+        ]
+        for anchor in anchors
+    ]
+    if any(grounded):
+        if not any(words and all(contains(note, w) for w in words) for words in grounded):
+            return False
+    elif not cited:
+        return False
+    return _numbers_present(_source_numbers(source), note, note_numbers)
+
+
+def _fact_present(
+    fact: CriticalFact,
+    note: str,
+    note_numbers: set[NumberKey],
+    source: str = "",
+    cited: bool = False,
+) -> bool:
+    if not _anchor_present(fact, note, note_numbers, source, cited):
         return False
     for number in fact.numbers:
         if number.unit:
@@ -157,17 +238,28 @@ def check_coverage(
     gaps: list[CoverageGap] = []
 
     cited_by: dict[str, set[str]] = {
-        key: set(sources.get(key, ())) | set(_inline_labels(sections.get(key, "")))
+        key: {citation_label(ref) for ref in sources.get(key, ())}
+        | set(_inline_labels(sections.get(key, "")))
         for key in checked
+    }
+    # Every label the note cites anywhere — preserved sections included, like the facts.
+    note_cites = {citation_label(ref) for refs in sources.values() for ref in refs} | {
+        label for h in plan.headings for label in _inline_labels(sections.get(h.key, ""))
     }
 
     # Critical facts — present anywhere in the note.
-    note = normalise_text("\n\n".join(sections.get(h.key, "") for h in plan.headings))
+    # Citation labels are not note text: "[S4 E1]" must not read as the value 4.
+    note = normalise_text(
+        _BRACKETED_LABEL.sub(" ", "\n\n".join(sections.get(h.key, "") for h in plan.headings))
+    )
     note_numbers = set(extract_numbers(note))
     facts = plan.coverage.critical_facts
     missing: list[str] = []
     for fact in facts:
-        if _fact_present(fact, note, note_numbers):
+        source = "\n".join(
+            _strip_lead_label(line) for label in fact.citations for line in texts.get(label, ())
+        )
+        if _fact_present(fact, note, note_numbers, source, bool(note_cites & set(fact.citations))):
             continue
         missing.append(fact.fact_id)
         segment_ids = [
@@ -221,7 +313,7 @@ def check_coverage(
     for key in checked:
         for label in dict.fromkeys(sources.get(key, ())):
             citation_total += 1
-            if label in known_labels:
+            if citation_label(label) in known_labels:
                 citation_resolved += 1
                 continue
             if label not in unresolved:

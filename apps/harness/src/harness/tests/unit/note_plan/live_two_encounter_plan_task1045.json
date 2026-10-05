@@ -1,0 +1,236 @@
+{
+ "schema": "hope.note_plan.v1",
+ "planId": "01a10c39-9bdf-721c-9eb4-05b43441e701",
+ "consultationId": "01a10c38-f366-7313-beb1-3ce94aadf996",
+ "tenantId": "50000000-0000-0000-0000-000000000000",
+ "inputDigest": "sha256:4481fef52ea88f6bd5b7aa31b617a89988098c82f9ee420266e31a5cc185e0ef",
+ "mode": "final",
+ "model": {
+  "slug": "lms-gemma-4-e2b-it-qat",
+  "wireModelId": "gemma-4-e2b-it-qat",
+  "provider": "lm-studio",
+  "contextWindow": 32768
+ },
+ "budget": {
+  "contextWindow": 32768,
+  "singlePassRatio": 0.6,
+  "safetyTokens": 512,
+  "inputTokens": 3018,
+  "tokenizer": {
+   "mode": "estimate",
+   "id": "estimate:utf8-bytes/2"
+  },
+  "strategy": "single_pass",
+  "reductions": []
+ },
+ "sources": {
+  "encounters": [
+   {
+    "seq": 1,
+    "visitType": "new-visit",
+    "segmentCount": 7,
+    "rendered": "verbatim"
+   },
+   {
+    "seq": 2,
+    "visitType": "revisit",
+    "segmentCount": 4,
+    "rendered": "verbatim"
+   }
+  ],
+  "results": [],
+  "attachmentTranscripts": [],
+  "draft": null,
+  "preSummary": null
+ },
+ "system": "Write the clinical note.",
+ "blocks": [
+  {
+   "key": "encounter_1",
+   "role": "encounter_transcript",
+   "label": "Encounter 1 transcript (new-visit)",
+   "content": "[S1 E1 Doctor 00:00] Good morning. What brings you in today?\n[S2 E1 Patient 00:03] I have had chest tightness for two days, mostly when I climb stairs.\n[S3 E1 Doctor 00:08] Any allergies to medicines?\n[S4 E1 Patient 00:10] Yes, I am allergic to penicillin. It gives me a rash.\n[S5 E1 Doctor 00:14] And your regular medicines?\n[S6 E1 Patient 00:16] Metformin 500 mg twice daily for my diabetes.\n[S7 E1 Doctor 00:20] Your blood pressure today is 150 over 95. I am sending you for an ECG and a troponin test, then come back to me.",
+   "tokens": 319
+  },
+  {
+   "key": "encounter_2",
+   "role": "encounter_transcript",
+   "label": "Encounter 2 transcript (revisit)",
+   "content": "[S8 E2 Doctor 00:00] Welcome back. Your ECG is normal and the troponin is 12, which is normal.\n[S9 E2 Patient 00:06] That is a relief. The tightness is a bit better.\n[S10 E2 Doctor 00:09] Your sugars are high, so I am increasing metformin to 1000 mg twice daily.\n[S11 E2 Doctor 00:15] I am also starting amlodipine 5 mg once daily for the blood pressure. Review in four weeks.",
+   "tokens": 243
+  }
+ ],
+ "headings": [
+  {
+   "key": "subjective",
+   "title": "Subjective"
+  },
+  {
+   "key": "objective",
+   "title": "Objective"
+  },
+  {
+   "key": "assessment",
+   "title": "Assessment"
+  },
+  {
+   "key": "plan",
+   "title": "Plan"
+  }
+ ],
+ "calls": [
+  {
+   "callId": "c1",
+   "sectionKeys": [
+    "subjective",
+    "objective",
+    "assessment",
+    "plan"
+   ],
+   "directive": "Write all sections: Subjective, Objective, Assessment, Plan.",
+   "maxTokens": 1792,
+   "promptTokens": 3080
+  }
+ ],
+ "coverage": {
+  "criticalFacts": [
+   {
+    "factId": "E1-F2",
+    "encounterSeq": 1,
+    "key": "allergy:penicillin",
+    "kind": "allergy",
+    "anchors": [
+     "penicillin"
+    ],
+    "numbers": [],
+    "citations": [
+     "S4"
+    ]
+   },
+   {
+    "factId": "E1-F3",
+    "encounterSeq": 1,
+    "key": "medication:metformin",
+    "kind": "medication",
+    "anchors": [
+     "metformin"
+    ],
+    "numbers": [],
+    "citations": [
+     "S6"
+    ]
+   },
+   {
+    "factId": "E1-F5",
+    "encounterSeq": 1,
+    "key": "order:ecg",
+    "kind": "order",
+    "anchors": [
+     "ecg"
+    ],
+    "numbers": [],
+    "citations": [
+     "S7"
+    ]
+   },
+   {
+    "factId": "E2-F4",
+    "encounterSeq": 2,
+    "key": "metformin_dosage_change",
+    "kind": "medication",
+    "anchors": [
+     "metformin dosage change"
+    ],
+    "numbers": [],
+    "citations": [
+     "S10"
+    ]
+   },
+   {
+    "factId": "E2-F5",
+    "encounterSeq": 2,
+    "key": "amlodipine_initiation",
+    "kind": "medication",
+    "anchors": [
+     "amlodipine initiation"
+    ],
+    "numbers": [],
+    "citations": [
+     "S11"
+    ]
+   },
+   {
+    "factId": "E2-F6",
+    "encounterSeq": 2,
+    "key": "follow_up",
+    "kind": "plan",
+    "anchors": [
+     "follow up"
+    ],
+    "numbers": [],
+    "citations": [
+     "S11"
+    ]
+   }
+  ],
+  "sourceIds": {
+   "S1": {
+    "id": "01a10c38-f621-7ca1-bd8f-30290d229506",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S2": {
+    "id": "01a10c38-f621-7ca1-bd8f-302a0946bf90",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S3": {
+    "id": "01a10c38-f621-7ca1-bd8f-302b8d7f1d8c",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S4": {
+    "id": "01a10c38-f621-7ca1-bd8f-302c5ea7f77b",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S5": {
+    "id": "01a10c38-f621-7ca1-bd8f-302d8b743b74",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S6": {
+    "id": "01a10c38-f621-7ca1-bd8f-302e91d3ba11",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S7": {
+    "id": "01a10c38-f621-7ca1-bd8f-302f610af7e9",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S8": {
+    "id": "01a10c38-fe72-7176-af78-e7567898dde2",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S9": {
+    "id": "01a10c38-fe72-7176-af78-e75768ff89cc",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S10": {
+    "id": "01a10c38-fe72-7176-af78-e7582d2548a7",
+    "v": 1,
+    "kind": "segment"
+   },
+   "S11": {
+    "id": "01a10c38-fe72-7176-af78-e759571db609",
+    "v": 1,
+    "kind": "segment"
+   }
+  },
+  "repairPasses": 1
+ },
+ "preserve": null
+}
