@@ -777,6 +777,16 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     category: 'Workflow',
     implies: [{ action: 'read', subject: 'WorkflowRun' }],
   },
+  // TASK-1038 OD-35 — run reads are bound to the credential that STARTED the run; this scope lets
+  // a credential read EVERY workflow run of its tenant (status, result, stream, cancel). It is
+  // checked as an EXACT grant by `RunPrincipalAccessService`: a parent (`workflow`,
+  // `workflow:run`), a category (`workflow:*`) or `*` never implies it. It adds no route of its
+  // own — the run routes still demand `workflow:run:read` / `workflow:run:write`.
+  'workflow:run:read-all': {
+    description: 'Read every workflow run in the tenant, not only the runs this credential started',
+    category: 'Workflow',
+    implies: [{ action: 'read', subject: 'WorkflowRun' }],
+  },
 
   // TASK-863 — the Agent business plane (`/agents/**`): list/describe published agents and
   // invoke them (text generation, speech, batch transcription). Prefix semantics as above:
@@ -788,6 +798,14 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   },
   'agent:invocation:write': {
     description: 'Invoke published agents (text generation, speech synthesis, batch transcription)',
+    category: 'Agent',
+    implies: [{ action: 'read', subject: 'Agent' }],
+  },
+  // TASK-1038 OD-35 — the agent-run twin of `workflow:run:read-all`: read every agent run of the
+  // tenant (`/agents/:slug/runs/:runId/**`). EXACT grant (see above); the run routes still demand
+  // `agent:invocation:write`.
+  'agent:run:read-all': {
+    description: 'Read every agent run in the tenant, not only the runs this credential started',
     category: 'Agent',
     implies: [{ action: 'read', subject: 'Agent' }],
   },

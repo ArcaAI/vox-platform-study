@@ -8,6 +8,7 @@ import { WorkflowRunService } from './workflow-run.service';
 import { WorkflowRunResultRetentionService } from './workflow-run-result-retention.service';
 import { IWorkflowRunService } from './IWorkflowRunService';
 import { WorkflowRunTraceAccessService } from './run-trace-access';
+import { RunPrincipalAccessService } from './run-principal-access';
 
 /**
  * WorkflowRunService DI module.
@@ -36,6 +37,8 @@ import { WorkflowRunTraceAccessService } from './run-trace-access';
     WorkflowRunResultRetentionService,
     // TASK-1038 B3a — the admin trace's audience check.
     WorkflowRunTraceAccessService,
+    // TASK-1038 OD-35 — business-plane run reads bound to the starting principal (workflow + agent runs).
+    RunPrincipalAccessService,
     {
       provide: IWorkflowRunService,
       // useExisting, not useClass — useClass would construct a second
@@ -43,6 +46,6 @@ import { WorkflowRunTraceAccessService } from './run-trace-access';
       useExisting: WorkflowRunService,
     },
   ],
-  exports: [IWorkflowRunService, WorkflowRunService, WorkflowRunTraceAccessService],
+  exports: [IWorkflowRunService, WorkflowRunService, WorkflowRunTraceAccessService, RunPrincipalAccessService],
 })
 export class WorkflowRunServiceModule {}
