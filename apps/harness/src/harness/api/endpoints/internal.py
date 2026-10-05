@@ -33,6 +33,7 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from harness.core.config import Settings
 from harness.core.logging import get_logger
+from harness.services.note_plan.models import NotePlanRef
 
 logger = get_logger(__name__)
 
@@ -130,6 +131,9 @@ class StartDocumentRequest(BaseModel):
     # transcript lands on an unsigned draft: that run is parked at the clinician gate and would
     # otherwise hold the note to the first recording forever. Default False ⇒ unchanged behaviour.
     supersede: bool = Field(default=False)
+    # The NotePlan apps/api composed before this start (``{consultationId, mode, planId}``): the
+    # run executes that plan instead of one assembled prompt. Omitted ⇒ None ⇒ the legacy run.
+    note_plan_ref: NotePlanRef | None = Field(default=None, alias="notePlanRef")
 
 
 class ApprovalRequest(BaseModel):
@@ -232,6 +236,8 @@ class LoopEndingRequest(BaseModel):
     accepted_proposals: list[dict[str, Any]] = Field(
         default_factory=list, alias="acceptedProposals"
     )
+    # The NotePlan the loop's finalize child executes. Omitted ⇒ None ⇒ the legacy finalize.
+    note_plan_ref: NotePlanRef | None = Field(default=None, alias="notePlanRef")
 
 
 class LoopCancelRequest(BaseModel):
@@ -279,6 +285,7 @@ async def start_document(
         # Parse each rule dict into a RedactionRule (validates the JSON shape at the
         # boundary; a malformed rule 422s here rather than failing closed mid-workflow).
         redaction_rules=[RedactionRule.model_validate(r) for r in body.redaction_rules],
+        note_plan_ref=body.note_plan_ref,
         gate=HarnessGateConfig(
             max_regen=settings.max_regen,
             gate_sla_seconds=settings.gate_sla_seconds,
@@ -567,6 +574,7 @@ async def signal_consultation_ending(
                 template=body.template,
                 text_provider=body.text_provider,
                 text_model=body.text_model,
+                note_plan_ref=body.note_plan_ref,
             ),
         ),
     )

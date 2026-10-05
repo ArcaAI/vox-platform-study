@@ -876,6 +876,9 @@ class HarnessDocWorkflow:
                         dna_style_id=inp.dna_style_id,
                         conversation_language=inp.conversation_language,
                         trajectory=self._traj(inp),
+                        # Data only (no new command): a run started with a plan reuses it in
+                        # ``assemble`` rather than composing a second one; None otherwise.
+                        note_plan_id=inp.note_plan_ref.plan_id if inp.note_plan_ref else None,
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -1267,6 +1270,9 @@ class HarnessDocWorkflow:
                         dna_style_id=inp.dna_style_id,
                         conversation_language=inp.conversation_language,
                         trajectory=self._traj(inp),
+                        # Data only (no new command): a run started with a plan reuses it in
+                        # ``assemble`` rather than composing a second one; None otherwise.
+                        note_plan_id=inp.note_plan_ref.plan_id if inp.note_plan_ref else None,
                     ),
                     start_to_close_timeout=_ACTIVITY_TIMEOUT,
                     retry_policy=_API_RETRY,
@@ -2757,6 +2763,9 @@ class ConsultationLoopWorkflow:
             template=request.template,
             text_provider=request.text_provider,
             text_model=request.text_model,
+            # Pass-through only: the child's own ``task-1045-note-plan`` gate decides. None on
+            # every signal recorded before the field existed ⇒ the same child input as before.
+            note_plan_ref=request.note_plan_ref,
         )
 
         try:
