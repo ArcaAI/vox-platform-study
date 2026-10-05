@@ -19,7 +19,7 @@
 #   DRY_RUN=1 pnpm stack:dev           # print the plan, start nothing
 #
 # BEHAVIOUR:
-#   - Loads the LM Studio text model with a 16k context when the `lms` CLI is
+#   - Loads the LM Studio text model with a 32k context when the `lms` CLI is
 #     present (LM_STUDIO_MODEL / LM_STUDIO_CONTEXT_LENGTH / LM_STUDIO_PARALLEL /
 #     LM_STUDIO_TTL_S; same contract as the cluster's LMS_* env). Skipped when
 #     LM Studio is not installed or not running.
@@ -135,7 +135,7 @@ fi
 if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "stack:dev plan (DRY_RUN=1 — nothing started):"
     echo "  infra: ./scripts/dev-infra.sh up ${INFRA_FLAGS[*]+${INFRA_FLAGS[*]}}"
-    echo "  lmstudio: load ${LM_STUDIO_MODEL:-gemma-4-e2b-it-qat} --context-length ${LM_STUDIO_CONTEXT_LENGTH:-16384} --parallel ${LM_STUDIO_PARALLEL:-4} --ttl ${LM_STUDIO_TTL_S:-3600} (if lms is available)"
+    echo "  lmstudio: load ${LM_STUDIO_MODEL:-gemma-4-e2b-it-qat} --context-length ${LM_STUDIO_CONTEXT_LENGTH:-32768} --parallel ${LM_STUDIO_PARALLEL:-10} --ttl ${LM_STUDIO_TTL_S:-3600} (if lms is available)"
     for svc in "${SERVICES[@]}"; do
         port="$(port_for "$svc")"
         set_command_for "$svc"
@@ -155,7 +155,7 @@ echo -e "${CYAN}Ensuring Docker infra...${NC}"
 # ----------------------------------------------------------------------------
 # LM Studio: make sure the text model is LOADED with the context the ArcaAI
 # prompts need. Mirrors the cluster contract in hope-v2-deployment
-# base/lmstudio.yaml (LMS_LOAD / LMS_CONTEXT=16384 / LMS_PARALLEL=4 /
+# base/lmstudio.yaml (LMS_LOAD / LMS_CONTEXT=32768 / LMS_PARALLEL=10 /
 # LMS_IDENTIFIER = the model key the catalogue sends on the wire). A JIT load
 # uses LM Studio's per-model default (8192 here), and the ArcaAI live-summary
 # prompt alone is ~8.7k tokens, so every flush then fails with
@@ -163,7 +163,7 @@ echo -e "${CYAN}Ensuring Docker infra...${NC}"
 # Skipped quietly when the `lms` CLI or the LM Studio server is not around.
 # ----------------------------------------------------------------------------
 : "${LM_STUDIO_MODEL:=gemma-4-e2b-it-qat}"
-: "${LM_STUDIO_CONTEXT_LENGTH:=16384}"
+: "${LM_STUDIO_CONTEXT_LENGTH:=32768}"
 : "${LM_STUDIO_PARALLEL:=10}"
 : "${LM_STUDIO_TTL_S:=3600}"
 ensure_lmstudio_model() {
