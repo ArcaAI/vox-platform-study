@@ -1,3 +1,5 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { SKIP_AUTH_KEY } from '@arcaai/applications';
@@ -23,29 +25,50 @@ describe('internal controllers that write tenant data carry the restore lock', (
  * holding no token learns a tenant is being restored (503 + restoreId) instead of getting 401.
  * Discovered from the controller files, so a new internal controller cannot be added without it.
  */
-const modules = import.meta.glob('../../modules/**/*.controller.ts', { eager: true }) as Record<string, Record<string, unknown>>;
+// Discovered from the files on disk, resolved from `cwd` rather than `import.meta` (`apps/api`
+// typechecks as CommonJS, which rejects `import.meta` — TS1343); the suite runs from the repo root
+// or from `apps/api`, so both roots are tried, and a miss FAILS rather than passing vacuously.
+const MODULES_DIR = ['apps/api/src/modules', 'src/modules'].map((candidate) => resolve(process.cwd(), candidate)).find(existsSync);
 
-const publicInternalControllers = Object.entries(modules).flatMap(([file, exports]) =>
-  Object.entries(exports)
-    .filter(([, value]) => typeof value === 'function')
-    .filter(([, value]) => {
-      const path = Reflect.getMetadata(PATH_METADATA, value as object) as string | string[] | undefined;
+function controllerFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : controllerFiles(full);
+    return entry.name.endsWith('.controller.ts') ? [full] : [];
+  });
+}
+
+async function publicInternalControllers(): Promise<Array<readonly [string, object]>> {
+  const found: Array<readonly [string, object]> = [];
+  for (const file of controllerFiles(MODULES_DIR!)) {
+    const exports = (await import(file)) as Record<string, unknown>;
+    for (const [name, value] of Object.entries(exports)) {
+      if (typeof value !== 'function') continue;
+      const path = Reflect.getMetadata(PATH_METADATA, value) as string | string[] | undefined;
       const paths = Array.isArray(path) ? path : path === undefined ? [] : [path];
-      return paths.some((p) => p.replace(/^\//, '').startsWith('internal')) && Reflect.getMetadata(SKIP_AUTH_KEY, value as object) === true;
-    })
-    .map(([name, value]) => [`${name} (${file.replace('../../modules/', '')})`, value as object] as const),
-);
+      if (paths.some((p) => p.replace(/^\//, '').startsWith('internal')) && Reflect.getMetadata(SKIP_AUTH_KEY, value) === true) {
+        found.push([`${name} (${relative(MODULES_DIR!, file)})`, value] as const);
+      }
+    }
+  }
+  return found;
+}
 
 describe('every @Public() internal controller checks the restore lock after authenticating (TASK-1043)', () => {
-  it('discovers the public internal controllers', () => {
-    expect(publicInternalControllers.length).toBeGreaterThanOrEqual(10);
+  it('located the controller sources', () => {
+    expect(MODULES_DIR, `could not locate apps/api/src/modules from cwd ${process.cwd()}`).toBeDefined();
   });
 
-  it.each(publicInternalControllers)('%s', (_name, controller) => {
-    const guards = guardsOf(controller);
-    const lockAt = guards.indexOf(InternalTenantLockGuard);
-    expect(lockAt, 'carries InternalTenantLockGuard').toBeGreaterThan(-1);
-    expect(lockAt, 'InternalTenantLockGuard runs after the controller’s authentication guard').toBeGreaterThan(0);
-    expect(guards.slice(0, lockAt).length, 'an authentication guard precedes the lock').toBeGreaterThan(0);
-  });
+  it('every one carries InternalTenantLockGuard after an authentication guard', async () => {
+    const controllers = await publicInternalControllers();
+    expect(controllers.length, 'discovers the public internal controllers').toBeGreaterThanOrEqual(10);
+    const offenders = controllers.flatMap(([name, controller]) => {
+      const guards = guardsOf(controller);
+      const lockAt = guards.indexOf(InternalTenantLockGuard);
+      if (lockAt === -1) return [`${name}: no InternalTenantLockGuard`];
+      if (lockAt === 0) return [`${name}: InternalTenantLockGuard runs before the controller's authentication guard`];
+      return [];
+    });
+    expect(offenders).toEqual([]);
+  }, 60_000);
 });

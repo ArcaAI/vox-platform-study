@@ -954,13 +954,15 @@ It also verified R-A's blocker: `issueRunStreamTicket` calls `assertEntryAllowed
 | E4a STUDIO-UX | opus | 14 Studio and canvas UX/a11y fixes (R-C 1–3, 6, 8, 10–15, 17, 18 partial, 20) |
 | E4b CONSOLE-UX | sonnet | Management, Test tab, wizard, tags, settings and prompt-form UX/a11y fixes (R-C 4, 5, 7, 9, 15, 16, 18, 19) |
 
-**Owner decisions requested (OD-35 to OD-37):**
+**Owner decisions (OD-35 to OD-37), answered 2026-10-05:**
 
 | Id | Question | Recommendation |
 |---|---|---|
 | OD-35 | Business-plane run reads (status, result, events) are tenant-wide today, so any credential in the tenant with the read scope can read another credential's results. Bind them to the starting principal? | Yes for machine credentials (an API key or service account reads only runs it started, unless it holds a new `…:run:read-all` scope). Human admin JWTs stay tenant-wide. |
 | OD-36 | E1 restores screening and redaction of the system prompt, which is narrower than R7's wording "check only the context or the message response". | Keep it. Redaction must cover everything sent to a provider. Only the medical-relevance judge stays context-only. |
 | OD-37 | Add a business-plane route that binds a live recording to a standalone API workflow run? | Not now. Consultation-bound runs and the admin sandbox already take audio. |
+
+**Answers (owner, 2026-10-05):** OD-35 **yes, starting credential only** (merged `ee31a7e67`), plus a follow-up decision: a consultation's clinician (`Consultation.doctorId`) also reads that consultation's governed runs when a machine opened it for them (`_metadata.onBehalfOf`, `6630082d4`). OD-36 **keep** — everything sent to a provider is redacted, system prompt included; the medical judge stays context-only. OD-37 **follow-up** — now **TASK-1042** (business-plane live-audio workflow runs, separate session); §8.7 "Audio in" for standalone runs moves there.
 
 ### 6.14 Wave E: merged (2026-10-05)
 
@@ -1052,7 +1054,47 @@ The orchestrator confirmed:
 
 **The pre-existing code defect matters to this programme.** `TenantLockGuard` returns 503 `TENANT_LOCK_UNAVAILABLE` on internal routes that carry `X-Tenant-Id` while the lock cache is cold. Its tenant-scoped read runs without a CLS tenant. That path also serves the harness's new internal calls (`internal/consultations/:id/read`, `internal/agents/:slug/versions/:n/resolved`), so it is raised as a separate task before the cluster rollout. The e2e spec hygiene (S1–S8) is a separate task too.
 
-**Live proof** (200-stream load test, browser walkthrough in both themes with axe) needs the dev stack, which is not running. It waits for the owner's go-ahead.
+**Live proof** ran on 2026-10-05 after the owner's go-ahead — see §6.16.
+
+### 6.16 Live proof, owner UX fix-up and peer merges (2026-10-05)
+
+**Peer sessions merged into dev-2.2 by the orchestrator** (each reviewed first; lanes ran only their own tests):
+
+| Ticket | What | Merge |
+|---|---|---|
+| TASK-1041 | `TenantLockService` reads the restore lock under the tenant it checks (internal routes no longer 503 with a cold cache) | `608d5480d` |
+| TASK-1043 | Internal restore-lock check runs AFTER service-token auth (no unauthenticated lock oracle); coverage test pins guard order on every `@Public()` internal controller | `ff4fbf897` |
+| TASK-1044 | E2E spec hygiene S1–S8 (no security assertion loosened; the live P2002→409 probe is now a 400 precheck test — the Prisma mapping is unit-covered only) | `5e8801cb0`, `781ef9999` |
+| TASK-1042 | OD-37 live-audio route — in progress in its own session, sequenced after OD-35; not merged here | — |
+
+**OD-35 merged** (`ee31a7e67`, artifacts `71c3ebeda`) + clinician follow-up (`6630082d4`).
+
+**Live OD-35 proof on the dev stack** (harness + worker running; echo workflow `live-proof-echo-2`, three scoped API keys; script `scratchpad/live/od35.mjs`): **15/15 pass** — key A starts and reads status and result (`{"text":"hello from A"}`); key B (same tenant, same scopes) gets the unknown-run 404 body on status, result, stream and cancel; a `workflow:run:read-all` key and the tenant admin read it; the same `Idempotency-Key` from key B starts a different run, and key A's replay joins its own.
+
+**Defects found live and fixed (TDD, RED then GREEN):**
+
+| # | Defect | Fix |
+|---|---|---|
+| L-1 | A COMPLETED run's `GET …/result` answered 204: the completion watcher was attached with `req.user?.tenantId ?? …`, an API key's bound user carried `tenantId: ''`, and the watcher's write failed `TenantScope: tenant context required` — the delivered result was never persisted (D-I regression path for every API-key run) | watcher attaches under the request's CLS tenant, empty strings skipped (`e26fb9c2c`) |
+| L-2 | Prompt and workflow tag suggestions answered 400 `PERSISTENCE.QUERY_INVALID`: `QueryBuilder` always sent `include: {}` beside `select` (unit tests mocked the repository) | `QueryBuilder.Build()` never sends include with select (`b2ae1884d`) |
+| L-3 | Clickable data-grid rows (prompts, agents, …) were mouse-only (tabIndex -1) — WCAG 2.1.1, invisible to axe | `VirtualizedDataGrid` rows with `onRowClick` are focusable; Enter/Space open them (`a859e6d06`) |
+| L-4 | Canvas "error" chip on the seeded realtime ASR step while the publish gate reported 0 errors | client missing-input rule follows `REQUIRED_INPUT_UNBOUND` (authored inputs only) (`771b74e94`, `9f781efd8`) |
+| L-5 | axe: palette/settings scroll bodies not keyboard-scrollable; React Flow attribution 52×12 px and 2.72:1 in light | focusable labelled bodies; attribution 24 px, `--muted-foreground` (`771b74e94`, `a859e6d06`) |
+| L-6 | Prompt tags wrapped past the 48 px virtual row and were clipped | one line, two tags + "+N", full list on hover (`a859e6d06`) |
+
+**Owner UX fix-up (owner message 2026-10-05: "Hope Prompts must be changed to Prompts"; agent studio too complicated; zoom controls move with the palette; panes shrink when moved; nodes named `Core.trigger · n_trigger`):**
+
+| Item | Done | Where |
+|---|---|---|
+| Rename "Hope Prompts" → "Prompts" everywhere in the console (nav, screen, picker, dashboards, plan limits, RBAC label, agents, Studio) and the tag-route API docs | yes; regenerated openapi/portal/vox-node admin | `bbaef5add`, `162058c3e`, agents lane |
+| Agent screens in plain words: Overview = About / Model (names, fallbacks) / Prompt / Settings (on-off facts, temperature + max tokens only when set and supported) / Inputs and outputs table; raw parameters, compiled config, checksum only in a super-admin "Technical details" disclosure; draft editor and the create wizard have no tenant-facing JSON; wizard 6 → 4 steps | yes (lane `opus`, `task-1036/ux-agents`) | merge `a3e45408b` |
+| Zoom controls + minimap fixed at the canvas bottom centre; never move with a pane | yes (lane `opus`, `task-1036/ux-canvas`) | merge `9e62987fa` |
+| Panes keep their size when dragged (lane: snapped pane lost its full height; drag-down squashed it). Orchestrator, live: a pane COLLAPSED when another pane's drag handle took focus over it (the WCAG 2.4.11 yield) — yield now applies only to keyboard focus outside every floating pane; a pane floated mid-canvas no longer squeezes fit-to-view | yes | `9e62987fa`, `3c8e3ca4b` |
+| Friendly step names: authored label → agent display name → action title → per-type title (Start, Output, Map fields, …), " 2"/" 3" for duplicates; id only as a copyable detail in the inspector; card subtitles in words ("Speech to text · live") | yes | `9e62987fa` |
+
+Live browser re-check (1440×900, super admin acting on Global): Studio shows "Start", "Realtime transcription (whisper.cpp ML/EN)", "Map fields", …; dragging the palette and then the inspector across it leaves both at 260×406 / 360×406 with the controls unmoved; agent Overview shows no `beamSize`/`compiledConfig`/`sha256`; axe 0 violations on the workflow list, Studio Composer/Test/Integration (dark + light), Settings dialog, Pins, Prompts (3 tabs) and the prompt + agent drawers.
+
+Known small gaps (not fixed here): the step-ID copy button is disabled on a published version because the read-only inspector is a disabled `<fieldset>`. The Studio breadcrumb showed the definition id; it now shows the workflow name.
 
 ## 8. Discussion round 2 (2026-10-04)
 
@@ -1439,3 +1481,4 @@ The data each event needs:
 | 2026-10-04 | §10 UX specification (composer suggestions, test-time visibility, the debug event list) plus a clickable prototype artifact with Composer and Test screens. |
 | 2026-10-04 | **Owner approved** the plan, every recommendation, W1–W6, the ticket split and the prototype. §4 rewritten as the final decision register. §5 rewritten as the cross-ticket programme (TASK-1036/1038/1039, with 1040 separate): agent tier map, lane rules, waves A–D with file ownership, a 16.8M-token budget, and the verification list. OD-15 moved into scope (C3), because the approved prototype makes microphone input and attachments first-class. TASK-1037 was already taken by a parallel Prisma-8 session, so the split tickets are 1038–1040. Status → In Progress. |
 | 2026-10-04 | **Owner correction:** lanes must not run any gating test. Briefs for A1 and B1 (replay-compat), B5 ("all seed tests green") and the B4 follow-up (full `apps/text` suite) violated this. All running lanes were told to stop broad runs and keep to their own test files. §5.3 rules 3–4 were rewritten. The orchestrator's gate pass runs once, after the complete merge. Earlier lane-reported suite counts stay recorded as lane data, not as gate evidence. |
+| 2026-10-05 | OD-35/36/37 answered (OD-35 + clinician follow-up merged; OD-37 → TASK-1042). Peer tickets 1041/1043/1044 reviewed and merged. Live proof on the dev stack: OD-35 15/15; six live defects fixed (L-1 result loss for API-key runs, L-2 tag suggestions 400, L-3 keyboard rows, L-4..L-6 canvas/axe/tags). Owner UX fix-up: Prompts rename, plain-words agent screens and wizard, fixed canvas controls, panes keep size (incl. the focus-yield collapse), friendly step names. §6.16. |
