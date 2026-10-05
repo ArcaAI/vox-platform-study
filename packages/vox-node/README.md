@@ -224,6 +224,37 @@ in 5.x) and marked `@deprecated` where `RunHandle` supersedes them; `start()` is
 `hope.workflows.run<Workflow_NoteWriter_Input, Workflow_NoteWriter_Output>(…)`. Runnable:
 `examples/09-completion-signals.ts`.
 
+### Live audio into a run — `hope.workflows.runWithAudio` (TASK-1042)
+
+A standalone workflow run (no consultation) can be fed by live audio when its Input shape declares
+a stream-delivery audio kind and its settings enable the `socket` connection. `runWithAudio` does
+the three steps in the one order that works: open an STT session **bound to the workflow**
+(`createStreamSession({ workflowSlug })`), connect its socket, then start the run with
+`input[audioField] = { sttSessionId }`.
+
+```ts
+const { run, audio } = await hope.workflows.runWithAudio('live-note', { visitType: 'follow-up' }, { language: 'en', idempotencyKey: `note-${visitId}` });
+for await (const frame of pcm16Frames) audio.sendPcm16(frame); // PCM16 little-endian, mono
+await audio.finalize(); // flushes the tail, closes the session
+const delivered = await run.result(); // the run carried on while the audio ended
+```
+
+- `audioField` defaults to the single key of the published Input shape whose schema is the
+  stream-audio payload (an object whose only property is `sttSessionId`). Zero or several keys throw
+  `RunAudioFieldError` before any session exists; pass `audioField` to choose.
+- `agentSlug` overrides the ASR agent; by default the workflow's own `SPEECH_TO_TEXT` node decides.
+- If anything after the session exists fails (socket, run start), the socket and the session are
+  closed and the original error is rethrown.
+- **Ending the audio never cancels the run.** `audio.finalize()` and `audio.close()` stop the audio
+  only; `run.cancel()` is the one way to stop a run.
+- A refused start keeps the gateway's `code`: 400 `RUN_AUDIO_INPUT_UNDECLARED`,
+  `RUN_AUDIO_MULTIPLE`, `LIVE_AUDIO_UNSUPPORTED`; 409 `RUN_AUDIO_SESSION_NOT_LIVE`,
+  `RUN_AUDIO_SESSION_BOUND_ELSEWHERE`, `RUN_AUDIO_AGENT_MISMATCH`; 404 when the session is unknown,
+  another tenant's or another principal's.
+- Zero runtime dependencies stay: the socket is `globalThis.WebSocket` (Node 22+), else
+  `SocketUnavailableError`. `CreateStreamSessionRequest.workflowSlug` is mutually exclusive with
+  `consultationId` (400 `STREAM_SESSION_TARGET_CONFLICT`) if you drive `hope.stt.*` by hand.
+
 ### DNA writing style — `hope.dnaWritingStyle.*`
 
 `ingest({ clinicianUserId?, items })` submits 1-200 time-ordered writing samples so the platform's
