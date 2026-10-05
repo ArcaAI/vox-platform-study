@@ -38,6 +38,7 @@ import {
   withUsageAttributes,
   withUsageTrigger,
   requestIdHeader,
+  RunPrincipalAccessService,
 } from '@arcaai/applications';
 import type {
   AgentNerEntity,
@@ -67,6 +68,7 @@ import {
   HttpStatus,
   Inject,
   Logger,
+  NotFoundException,
   Optional,
   Param,
   Post,
@@ -102,7 +104,7 @@ import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/do
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import { classifyTtsProvider, isAttributableTtsProvider } from '../speech/tts-provider-classification';
 import { RunEventStreamHub } from '../workflows/run-event-stream-hub';
-import { AgentRunService, agentRunLinks, type AgentRunOutcome, type AgentRunTask } from './agent-run.service';
+import { AgentRunService, agentRunLinks, type AgentRunOutcome, type AgentRunState, type AgentRunTask } from './agent-run.service';
 import { persistSpeechBlob, type SpeechBlobFormat } from './tts-blob-delivery';
 import { AgentTranscriptionRequest } from './dto/agent-transcription.request';
 
@@ -330,6 +332,11 @@ export class AgentController {
     // optional (and trailing) only so the positional unit fixtures keep constructing. Absent, the
     // ticket route answers a named 503 rather than minting something unattributable.
     @Optional() private readonly streamTicketService?: StreamTicketService,
+    // TASK-1038 OD-35 — binds every read of an agent run (status, result, events, stream-ticket,
+    // cancel) to the principal that started it, and supplies that principal at start. Provided by
+    // `AgentModule`; optional (trailing) only so the positional unit fixtures keep constructing —
+    // absent, run reads are tenant-scoped as before.
+    @Optional() private readonly runAccess?: RunPrincipalAccessService,
   ) {}
 
   @Get()
@@ -706,8 +713,10 @@ export class AgentController {
     // TASK-1038 E2 (fix 10) — a key that already started a run JOINS it first (or is 409 for a
     // different body), BEFORE validation and the quota / spend prechecks: a retry of an accepted
     // request must reach its run, never be refused by a meter it already passed.
+    // OD-35 — the principal starting the run: recorded on it, and it scopes the idempotency key.
+    const principal = this.runAccess?.currentPrincipal() ?? null;
     if (key !== undefined) {
-      const joined = await runs.joinExisting({ tenantId, slug: resolved.slug, idempotencyKey: key, body: body ?? {} });
+      const joined = await runs.joinExisting({ tenantId, slug: resolved.slug, idempotencyKey: key, body: body ?? {}, principal });
       if (joined) return { runId: joined.runId, status: joined.status, links: agentRunLinks(joined.slug, joined.runId) };
     }
     // TASK-1038 E2 (fix 4, R2) — `signal` aborts the model call on cancel or at the run ceiling.
@@ -738,6 +747,7 @@ export class AgentController {
       task: resolved.task as AgentRunTask,
       body: body ?? {},
       idempotencyKey: key,
+      principal,
       execute,
     });
     return { runId: state.runId, status: state.status, links: agentRunLinks(state.slug, state.runId) };
@@ -753,7 +763,7 @@ export class AgentController {
   @ApiResponse({ status: 200, description: 'The run: status, timings, the public error of a failed run, and its links.' })
   @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent — one answer.' })
   async getRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<AgentRunStatusResponse> {
-    const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
+    const state = await this.readableRun(slug, runId);
     return {
       runId: state.runId,
       agentSlug: state.slug,
@@ -787,7 +797,7 @@ export class AgentController {
   @ApiResponse({ status: 409, description: '`RUN_NOT_TERMINAL` — the run has not finished; the body carries its status.' })
   @ApiResponse({ status: 410, description: '`RESULT_EXPIRED` — the result existed and has passed its retention window.' })
   async getRunResult(@Param('slug') slug: string, @Param('runId') runId: string, @Res({ passthrough: true }) res: Response): Promise<unknown> {
-    const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
+    const state = await this.readableRun(slug, runId);
     if (state.status === 'RUNNING') {
       throw new ConflictException({ code: 'RUN_NOT_TERMINAL', message: `Run '${runId}' has not finished.`, status: state.status });
     }
@@ -823,6 +833,9 @@ export class AgentController {
   @ApiResponse({ status: 200, description: '`{ runId, status }` after the cancel.' })
   @ApiResponse({ status: 404, description: 'Another tenant’s run, or a runId that does not belong to this agent.' })
   async cancelRun(@Param('slug') slug: string, @Param('runId') runId: string): Promise<{ runId: string; status: string }> {
+    // OD-35 — the binding FIRST: a run another principal started is the unknown-run 404 and is
+    // never cancelled.
+    await this.readableRun(slug, runId);
     const state = await this.requireRuns().cancel(this.requireTenant(), slug, runId);
     return { runId: state.runId, status: state.status };
   }
@@ -861,8 +874,9 @@ export class AgentController {
     if (!this.streamTicketService) {
       throw new ServiceUnavailableException('Stream tickets are not available on this instance.');
     }
-    // FIRST: 404-over-403 ownership — tenant AND agent lineage — before anything is minted.
-    await this.requireRuns().get(this.requireTenant(), slug, runId);
+    // FIRST: 404-over-403 ownership — tenant, agent lineage AND (OD-35) the starting principal —
+    // before anything is minted.
+    await this.readableRun(slug, runId);
 
     const user = this.cls.get('user');
     if (!user?.id) throw new UnauthorizedException('User context not available');
@@ -874,6 +888,8 @@ export class AgentController {
       tenantId,
       scope: `${AGENT_RUN_TICKET_NAMESPACE}:${runId}`,
       impersonatedBy: user.impersonatedBy ?? null,
+      // OD-35 — the reader the check above proved; restored on CLS `runReader` at redemption.
+      ...(this.runAccess ? { runReader: await this.runAccess.resolveReader('agent') } : {}),
     });
     const query = new URLSearchParams({ protocol: '2', ticket: issued.ticket });
     return {
@@ -920,8 +936,9 @@ export class AgentController {
     if ('problems' in protocol) throw new BadRequestException({ code: 'RUN_PROTOCOL_UNSUPPORTED', message: protocol.problems.join('; ') });
     const cursor = parseResumeCursor({ lastEventId: header('last-event-id'), after: query('after') });
     if ('problems' in cursor) throw new BadRequestException({ code: 'RUN_CURSOR_INVALID', message: cursor.problems.join('; ') });
-    // Existence first (404-over-403), before a single header is written.
-    let state = await runs.get(tenantId, slug, runId);
+    // Existence first (404-over-403, and OD-35's starting-principal binding), before a single
+    // header is written.
+    let state = await this.readableRun(slug, runId);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -1014,6 +1031,16 @@ export class AgentController {
       }
     }
     res.end();
+  }
+
+  /**
+   * TASK-1038 OD-35 — the run, within the caller's tenant and this slug's lineage, AND readable by
+   * the caller: a run another principal started answers exactly what an unknown run answers.
+   */
+  private async readableRun(slug: string, runId: string): Promise<AgentRunState> {
+    const state = await this.requireRuns().get(this.requireTenant(), slug, runId);
+    if (this.runAccess && !(await this.runAccess.canRead('agent', state.startedBy))) throw new NotFoundException('Agent run not found');
+    return state;
   }
 
   private requireRuns(): AgentRunService {
