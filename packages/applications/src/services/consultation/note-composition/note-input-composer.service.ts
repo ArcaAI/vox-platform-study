@@ -936,20 +936,21 @@ export class NoteInputComposerService {
 
   /**
    * Whether the previous AI draft is an input: the effective `HarnessPolicy.warmStartEnabled` for
-   * the tenant. Only an explicit `false` withholds it; no opinion, an unwired policy service or a
-   * failed lookup keep the default (carried) — a governance read never fails a composition.
+   * the tenant. Only an explicit `true` carries it — no opinion means OFF, as everywhere else on the
+   * platform. An unwired policy service or a failed lookup withholds it too; a governance read never
+   * fails a composition. Clinician-edited sections are carried regardless.
    */
   private async resolveCarryAiDraft(tenantId: string): Promise<boolean> {
-    if (!this.harnessPolicyService) return true;
+    if (!this.harnessPolicyService) return false;
     try {
       const effective = await this.harnessPolicyService.getEffectivePolicy(tenantId);
-      return effective.warmStartEnabled !== false;
+      return effective.warmStartEnabled === true;
     } catch (error) {
       this.logger.warn({
-        message: 'Harness policy unresolved — the previous AI draft stays an input',
+        message: 'Harness policy unresolved — the previous AI draft is withheld',
         error: error instanceof Error ? error.message : String(error),
       });
-      return true;
+      return false;
     }
   }
 

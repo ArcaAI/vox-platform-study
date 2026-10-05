@@ -758,18 +758,22 @@ describe('NoteInputComposerService', () => {
       expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
     });
 
-    it('policy null (no opinion) and an unwired policy keep the AI draft', async () => {
+    // `warmStartEnabled` null (no opinion) means OFF everywhere on the platform (`harness-internal`
+    // reads it the same way), so only an explicit `true` carries the previous AI draft.
+    it('policy null (no opinion) and an unwired policy withhold the AI draft; the clinician sections stay', async () => {
       for (const p of [policy(null), undefined]) {
         const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: p });
         const { plan } = await svc.compose(request);
-        expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
+        expect(keys(plan)).not.toContain('draft_ai');
+        expect(keys(plan)).toContain('draft_clinician');
       }
     });
 
-    it('a failed policy lookup falls back to the default (AI draft kept) and never fails the composition', async () => {
+    it('a failed policy lookup falls back to the default (AI draft withheld) and never fails the composition', async () => {
       const { svc } = service({ items: withDraft(), aiDraft: AI_DRAFT, policy: policy('throws') });
       const { plan } = await svc.compose(request);
-      expect(keys(plan).slice(-2)).toEqual(['draft_clinician', 'draft_ai']);
+      expect(keys(plan)).not.toContain('draft_ai');
+      expect(keys(plan)).toContain('draft_clinician');
     });
   });
 
