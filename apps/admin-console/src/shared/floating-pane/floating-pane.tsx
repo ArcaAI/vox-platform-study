@@ -495,7 +495,16 @@ export function FloatingPane({
         ) : null}
       </header>
       {collapsed && !keepMounted ? null : (
-        <div hidden={collapsed} className={cn('min-h-0 flex-1 p-2', bodyScroll ? 'overflow-y-auto' : 'overflow-hidden')}>
+        <div
+          hidden={collapsed}
+          // A scrolling body is keyboard-scrollable even when everything in it is disabled (a locked palette) — WCAG 2.1.1.
+          tabIndex={bodyScroll ? 0 : undefined}
+          aria-label={bodyScroll ? `${title} content` : undefined}
+          className={cn(
+            'min-h-0 flex-1 p-2',
+            bodyScroll ? 'focus-visible:ring-ring overflow-y-auto rounded-b-md outline-none focus-visible:ring-2' : 'overflow-hidden',
+          )}
+        >
           {children}
         </div>
       )}
