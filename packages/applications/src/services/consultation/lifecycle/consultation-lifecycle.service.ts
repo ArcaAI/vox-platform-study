@@ -273,8 +273,15 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   /**
    * CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only under the tenant's
    * `consultation.reopen.allowClosedComplete`. Clears `approvedAt`; `reopenCount` increments.
+   *
+   * Attributed to a clinician, never to a machine: a named clinician follows the close rule (400 /
+   * 404 before anything is written); a service account that names nobody reopens for the
+   * clinician the row names; a human that names nobody reopens as themselves.
    */
-  async reopen(consultationId: string, options: { expectedVersion: number; reason?: string }): Promise<ConsultationResponse> {
+  async reopen(
+    consultationId: string,
+    options: { expectedVersion: number; reason?: string; clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse> {
     const consultation = await this.load(consultationId);
     if (!consultation.isClosed) {
       throw lifecycleConflict(
@@ -289,7 +296,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     const allowClosedCompleteReopen =
       consultation.status === ConsultationStatus.CLOSED_COMPLETE ? await this.allowClosedCompleteReopen(consultation) : false;
 
-    const actor = this.actor();
+    const actor = await this.resolveReopenActor(consultation, options);
     applyLifecycleTransition(consultation, ConsultationStatus.OPEN, actor, 'reopen', { allowClosedCompleteReopen });
     consultation.approvedAt = null;
     consultation.updatedBy = actor;
@@ -300,6 +307,21 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────────────────────
+
+  /** WHOSE reopen this is (see `reopen`). */
+  private async resolveReopenActor(
+    consultation: ConsultationEntity,
+    options: { clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<string> {
+    if (options.clinicianUserId !== undefined) {
+      return (await this.resolveCloseAttribution(consultation, options)).clinicianId;
+    }
+    const serviceAccount = this.clsService.get('serviceAccount') as { id?: string } | undefined;
+    if (serviceAccount?.id || options.caller?.serviceAccountId) {
+      return consultation.doctorId;
+    }
+    return this.actor();
+  }
 
   /** WHOSE close this is (the clinician) and WHICH credential submitted it. */
   private async resolveCloseAttribution(

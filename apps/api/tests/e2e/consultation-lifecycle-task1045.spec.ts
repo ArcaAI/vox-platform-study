@@ -19,9 +19,20 @@
  *   6. Deprecated aliases answer `Deprecation: true` + `Sunset`.
  *   7. Cross-tenant: every command and read from tenant ARCAAI → 404, never 403; the event stream
  *      → 404 before it opens.
+ *   8. A SERVICE ACCOUNT reaches the two handle verbs it used to be refused (deny-by-default 403):
+ *      `reopen` of a CLOSED_INCOMPLETE consultation (the late Copy-to-EMR path), attributed to the
+ *      row's clinician, and `summary/async` (no 401/403; when apps/harness is up, the job is
+ *      readable by the service account). A named clinician outside its tenant is 404 on reopen.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+import {
+  DEFAULT_TENANT_KEY,
+  SEEDED_ARCAAI_DOCTOR_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_ID,
+  SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET,
+  SEEDED_USERS,
+  loginUser,
+} from '../../../../tests/helpers';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const lifecycleV2 = { 'X-Hope-Lifecycle': '2' };
@@ -214,5 +225,81 @@ test.describe('consultation lifecycle (apps/api + Postgres + Redis)', () => {
     }
     const events = await request.get(`/api/v1/consultations/${id}/events`, { headers: h, timeout: 5_000 });
     expect(events.status(), 'foreign event stream is refused before it opens').toBe(404);
+  });
+});
+
+test.describe('consultation lifecycle — the service-account handle verbs (apps/api + Postgres + Redis)', () => {
+  // The seeded service account is bound to tenant ARCAAI at exchange; `X-Tenant-Id` is never sent.
+  const svc = (token: string) => ({ 'X-Service-Account-Token': token, ...lifecycleV2 });
+  let svcToken: string;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post('/api/v1/auth/service-token', {
+      data: { clientId: SEEDED_SERVICE_ACCOUNT_CLIENT_ID, clientSecret: SEEDED_SERVICE_ACCOUNT_CLIENT_SECRET },
+    });
+    expect(res.status(), 'service-token exchange').toBe(200);
+    svcToken = (await res.json()).accessToken as string;
+  });
+
+  async function openForClinician(request: APIRequestContext): Promise<{ id: string; version: number }> {
+    const res = await request.post('/api/v1/consultations/open', {
+      headers: svc(svcToken),
+      data: { patientId: uniquePatientId('svc'), clinicianUserId: SEEDED_ARCAAI_DOCTOR_ID },
+    });
+    expect([200, 201], `POST /consultations/open (service account): ${await res.text()}`).toContain(res.status());
+    const body = await res.json();
+    return { id: body.id as string, version: body.version as number };
+  }
+
+  test('case 8a: a service account reopens a CLOSED_INCOMPLETE consultation for the row`s clinician', async ({ request }) => {
+    const { id, version } = await openForClinician(request);
+    const closed = await request.post(`/api/v1/consultations/${id}/close`, {
+      headers: { ...svc(svcToken), 'If-Match': `"${version}"` },
+      data: { clinicianUserId: SEEDED_ARCAAI_DOCTOR_ID },
+    });
+    expect(closed.status(), await closed.text()).toBe(200);
+    const closedBody = await closed.json();
+    expect(closedBody.lifecycle.status).toBe('CLOSED_INCOMPLETE');
+
+    const reopened = await request.post(`/api/v1/consultations/${id}/reopen`, {
+      headers: { ...svc(svcToken), 'If-Match': `"${closedBody.version}"` },
+      data: { reason: 'late copy to EMR' },
+    });
+    expect(reopened.status(), `reopen is no longer a deny-by-default 403: ${await reopened.text()}`).toBe(200);
+    const reopenedBody = await reopened.json();
+    expect(reopenedBody.lifecycle.status).toBe('OPEN');
+    // The clinician is still the person the row names — a machine never becomes the doctor.
+    expect(reopenedBody.doctorId).toBe(SEEDED_ARCAAI_DOCTOR_ID);
+    if (reopenedBody.updatedBy !== undefined) expect(reopenedBody.updatedBy).toBe(SEEDED_ARCAAI_DOCTOR_ID);
+  });
+
+  test('case 8b: a named clinician outside the service account`s tenant is 404 on reopen', async ({ request }) => {
+    const { id, version } = await openForClinician(request);
+    const closedBody = await (
+      await request.post(`/api/v1/consultations/${id}/close`, {
+        headers: { ...svc(svcToken), 'If-Match': `"${version}"` },
+        data: { clinicianUserId: SEEDED_ARCAAI_DOCTOR_ID },
+      })
+    ).json();
+
+    const foreign = await request.post(`/api/v1/consultations/${id}/reopen`, {
+      headers: { ...svc(svcToken), 'If-Match': `"${closedBody.version}"` },
+      data: { clinicianUserId: SEEDED_USERS.doctor.id },
+    });
+    expect(foreign.status()).toBe(404);
+  });
+
+  test('case 8c: a service account starts the note job on summary/async', async ({ request }) => {
+    const { id } = await openForClinician(request);
+    const res = await request.post(`/api/v1/consultations/${id}/summary/async`, { headers: svc(svcToken), data: {} });
+    // The defect: deny-by-default 403 (no svc scope) and a 401 from the human-only owner read.
+    expect(res.status(), await res.text()).not.toBe(403);
+    expect(res.status()).not.toBe(401);
+    // With apps/harness down the dispatch itself fails (an environment fact — see task-704's probe).
+    test.skip(res.status() < 200 || res.status() >= 300, `summary/async returned ${res.status()} — is apps/harness running?`);
+    const { jobId } = await res.json();
+    expect(jobId).toBeTruthy();
+    const job = await request.get(`/api/v1/consultations/jobs/${jobId}`, { headers: svc(svcToken) });
+    expect(job.status()).toBe(200);
   });
 });

@@ -158,9 +158,14 @@ export abstract class IConsultationService {
 
   /**
    * Reopen a consultation — delegates to `IConsultationLifecycleService.reopen`. Without
-   * `expectedVersion` the CAS runs on the version just read.
+   * `expectedVersion` the CAS runs on the version just read. `clinicianUserId` + `caller` follow
+   * the attribution rule of `closeConsultation`.
    */
-  abstract reopenConsultation(id: string, expectedVersion?: number, options?: { reason?: string }): Promise<ConsultationResponse>;
+  abstract reopenConsultation(
+    id: string,
+    expectedVersion?: number,
+    options?: { reason?: string; clinicianUserId?: string; caller?: ClinicalCaller },
+  ): Promise<ConsultationResponse>;
 
   /**
    * Update safely-mutable fields of an existing consultation

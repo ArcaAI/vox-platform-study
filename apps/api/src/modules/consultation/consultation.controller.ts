@@ -1287,9 +1287,16 @@ export class ConsultationController {
   @ApiOperation({
     summary: 'Reopen a closed consultation',
     description:
-      'CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.',
+      'CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.\n\n' +
+      '`clinicianUserId` (optional) names the clinician the reopen is attributed to, under the rule of `close`. A service account that omits it ' +
+      'reopens for the clinician the consultation names — a machine is never recorded as the clinician.',
   })
-  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to.',
+  })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
   @ApiResponse({
     status: 409,
     description:
@@ -1297,14 +1304,24 @@ export class ConsultationController {
   })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  // AUTH-NOTE: the reopen half of the finish plane (a late Copy to EMR reopens a CLOSED_INCOMPLETE
+  // consultation), on the scope its `approve` / `close` siblings carry. WHO the reopen is attributed
+  // to is imperative in `ConsultationLifecycleService.reopen`, as for `close`.
+  @RequiredSvcScopes('svc:consultation:session:write')
   async reopen(
     @Param('id') id: string,
     @ExpectedVersion() expectedVersion: number | undefined,
     @Body() body?: ReopenConsultationRequest,
+    @Req() req?: RequestWithAuth,
   ): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return body?.reason !== undefined
-      ? this.consultationService.reopenConsultation(id, expectedVersion, { reason: body.reason })
+    const options = {
+      ...(body?.reason !== undefined ? { reason: body.reason } : {}),
+      // The credential matters only for a NAMED clinician; unnamed, the lifecycle reads the request.
+      ...(body?.clinicianUserId !== undefined ? { clinicianUserId: body.clinicianUserId, caller: this.callerOf(req) } : {}),
+    };
+    return Object.keys(options).length > 0
+      ? this.consultationService.reopenConsultation(id, expectedVersion, options)
       : this.consultationService.reopenConsultation(id, expectedVersion);
   }
 
@@ -2296,20 +2313,25 @@ export class ConsultationController {
     description: 'Retry-safe key (TASK-1038): the same key with the same body returns the same job; a different body under the same key is a 409.',
   })
   @RequiredScopes('consultation:report:write')
+  @RequiredSvcScopes('svc:consultation:report:write')
   async generateSummaryAsync(
     @Param('id') consultationId: string,
     @Body() request: GenerateSummaryRequest,
     @Headers('Idempotency-Key') idempotencyKey?: string,
   ): Promise<AsyncJobResponseDto> {
-    await this.verifyConsultationOwnership(consultationId);
+    const owned = await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
-    const userId = this.getDoctorId();
+    // A machine-initiated note is still the CLINICIAN's job (as on pre-summary/async): the row
+    // names them, and a service-account id never becomes the job's `userId`.
+    const userId = this.getServiceAccountId() ? owned.doctorId : this.getDoctorId();
+    const initiatorId = this.getJobInitiatorId();
 
-    // TASK-1038 B3a — `Idempotency-Key`: the start below runs at most once per (key, body).
+    // TASK-1038 B3a — `Idempotency-Key`: the start below runs at most once per (key, body), in the
+    // CALLER's key space.
     const { value: started } = await this.consultationJobService.runIdempotent(
-      { operation: 'summary', tenantId, principalId: userId, key: idempotencyKey },
+      { operation: 'summary', tenantId, principalId: initiatorId ?? userId, key: idempotencyKey },
       { consultationId, request },
-      () => this.startHarnessSummaryJob(consultationId, request, tenantId, userId, this.getJobInitiatorId()),
+      () => this.startHarnessSummaryJob(consultationId, request, tenantId, userId, initiatorId),
     );
     return new AsyncJobResponseDto({ jobId: started.jobId, status: 'pending', consultationId, createdAt: started.createdAt });
   }
