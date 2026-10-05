@@ -365,10 +365,22 @@ export class HarnessDraftRequest {
   @IsString()
   @IsIn([HARNESS_DRAFT_PHASE.EARLY, HARNESS_DRAFT_PHASE.FINALIZE])
   phase?: HarnessDraftPhase;
+
+  @ApiPropertyOptional({
+    description:
+      'The note-plan coverage result (CoverageResultV1, `hope.note_coverage.v1`) of a plan-driven note. Its status and gap count are stored plain; the report itself (gap details carry clinical wording) is encrypted at rest. `gaps` sends the consultation to review.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  coverage?: Record<string, unknown>;
 }
 
 export interface HarnessDraftResponse {
   contextItemId: string;
+  /** The note's current version number after this delivery (`ai_draft_v1` is 1). */
+  versionNumber?: number;
 }
 
 // ---------------------------------------------------------------------------

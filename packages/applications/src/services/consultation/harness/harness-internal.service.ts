@@ -82,7 +82,14 @@ import {
   type NoteSourceSnapshot,
 } from '../note-composition/note-input-composer.service';
 import { NoteTokenizerUnavailableError } from '../note-composition/text-token-count.client';
-import { NOTE_INPUT_EXCEEDS_CONTEXT, type NotePlanEnvelope, type NotePlanMode, type NotePlanV1 } from '../note-composition/note-plan.types';
+import {
+  NOTE_INPUT_EXCEEDS_CONTEXT,
+  coverageResultV1Schema,
+  type CoverageResultV1,
+  type NotePlanEnvelope,
+  type NotePlanMode,
+  type NotePlanV1,
+} from '../note-composition/note-plan.types';
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import type { JobStatusType, SummaryJobResult } from '../jobs/dto';
@@ -210,6 +217,23 @@ const HARNESS_WRITABLE_PROCESSING: ReadonlySet<ConsultationProcessing> = new Set
   ConsultationProcessing.AWAITING_REVIEW,
   ConsultationProcessing.FAILED,
 ]);
+
+/** The reason a harness-doc run that ended `failed` (the note was never persisted) leaves on processing. */
+const NOTE_GENERATION_FAILED = 'NOTE_GENERATION_FAILED';
+
+/**
+ * The SummaryMeta coverage columns of a delivery: the status and gap count stay plain (queryable,
+ * PHI-free), the whole report rides the transient `coverageReport`, which the repository encrypts
+ * into `encryptedCoverageReport`. All null for a note that did not come from a plan.
+ */
+function noteCoverageColumns(coverage: CoverageResultV1 | null): {
+  coverageStatus: string | null;
+  coverageGapCount: number | null;
+  coverageReport: CoverageResultV1 | null;
+} {
+  if (!coverage) return { coverageStatus: null, coverageGapCount: null, coverageReport: null };
+  return { coverageStatus: coverage.status, coverageGapCount: coverage.gaps.length, coverageReport: coverage };
+}
 
 /** The consultation states in which the note is signed and therefore immutable. */
 const APPROVED_STATUSES: ReadonlySet<ConsultationStatus> = new Set([ConsultationStatus.APPROVED, ConsultationStatus.CLOSED_COMPLETE]);
@@ -859,6 +883,23 @@ export class HarnessInternalService extends BaseService {
   }
 
   /**
+   * The coverage a draft delivery carries, or `null`. A report that does not match
+   * `hope.note_coverage.v1` is logged (shape only — the gap details are clinical) and dropped:
+   * a contract slip in the coverage must never cost the clinician the note it describes.
+   */
+  private readDraftCoverage(consultationId: string, raw: Record<string, unknown> | undefined): CoverageResultV1 | null {
+    if (raw === undefined || raw === null) return null;
+    const parsed = coverageResultV1Schema.safeParse(raw);
+    if (parsed.success) return parsed.data;
+    this.logger.warn({
+      message: 'Draft coverage did not match hope.note_coverage.v1 — the note is persisted without coverage',
+      consultationId,
+      issues: parsed.error.issues.map((issue) => `${issue.path.join('.')}:${issue.code}`).slice(0, 10),
+    });
+    return null;
+  }
+
+  /**
    * TASK-1014 — the harness progress callback. The live feed is `HarnessProgressService`'s
    * (unchanged); this adds the ONE thing it cannot do: when the doc workflow reports its
    * `failed` terminal stage with the summary job's id, the ConsultationJob becomes FAILED, so
@@ -872,7 +913,36 @@ export class HarnessInternalService extends BaseService {
     if (dto.stage === HARNESS_PROGRESS_FAILED_STAGE && dto.jobId) {
       await this.failHarnessJob(dto.jobId, dto.label ?? 'Documentation generation failed');
     }
+    if (dto.stage === HARNESS_PROGRESS_FAILED_STAGE) {
+      await this.failUnwrittenNote(consultationId, dto.tenantId);
+    }
     return ack;
+  }
+
+  /**
+   * A `HarnessDocWorkflow` that ended `failed` (its note-plan executor or generation raised, so
+   * `persistDraft` never ran) moves a STOPPED consultation with no written note to processing
+   * FAILED — the same rule `failGovernedRun` applies to a governed run. A consultation whose note
+   * is already written, or that has moved on, is left alone. Best-effort: the progress feed this
+   * rides must never fail.
+   */
+  private async failUnwrittenNote(consultationId: string, tenantId: string | undefined): Promise<void> {
+    if (!tenantId || !this.lifecycleGate) return;
+    try {
+      await this.cls.run({ ifNested: 'inherit' }, async () => {
+        this.cls.set('tenantId', tenantId);
+        const consultation = await this.consultationRepository.findById(consultationId);
+        if (!consultation || consultation.tenantId !== tenantId || consultation.status !== ConsultationStatus.STOPPED) return;
+        if (await this.hasWrittenHarnessNote(consultation)) return;
+        await this.setHarnessProcessing(consultation, ConsultationProcessing.FAILED, 'reportProgress (failed)', NOTE_GENERATION_FAILED);
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness failure could not be reflected on the consultation processing (best-effort)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private static readonly TERMINAL_JOB_STATUSES: readonly JobStatusType[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
@@ -1870,6 +1940,7 @@ export class HarnessInternalService extends BaseService {
         // consultation's own persisted transcript segments, so a hallucinated id is
         // stripped from the note but never recorded as evidence.
         const { content: strippedContent, citedSegmentIds } = await this.stripSegmentCitationMarkers(consultationId, tenantId, dto.content);
+        const coverage = this.readDraftCoverage(consultationId, dto.coverage);
 
         // 1. RAW_SUMMARY context item for the generated note.
         //
@@ -1896,6 +1967,9 @@ export class HarnessInternalService extends BaseService {
         // TASK-1022 — why this delivery's content was NOT applied, if it was not. The closing log line
         // reads it: a skipped adoption used to be followed by "Harness draft persisted", which is false.
         let adoptionSkipped: 'approved' | 'empty' | 'occ-drift' | undefined;
+        // The note's version once this delivery is done: the AI draft is v1, a replacing re-draft
+        // the next number, anything not applied the version already on the row.
+        let versionNumber: number | undefined = (existingDraft?.currentVersionNumber as number | null | undefined) ?? undefined;
         if (existingDraft && adoptionRefused) {
           contextItemId = existingDraft.id;
           adoptionSkipped = 'approved';
@@ -1966,6 +2040,7 @@ export class HarnessInternalService extends BaseService {
                 contextItemId,
                 redraftVersionNumber,
               });
+              if (redraftVersionNumber !== null) versionNumber = redraftVersionNumber;
               // After the CAS, never before: a drifted write (below) must leave no orphan version row.
               if (redraftVersionNumber !== null) await this.captureAiDraftSnapshot(existingDraft, redraftVersionNumber);
             } catch (error) {
@@ -2004,6 +2079,7 @@ export class HarnessInternalService extends BaseService {
           );
           const savedContext = await this.contextItemRepository.create(contextItem);
           contextItemId = savedContext?.id ?? contextItem.id;
+          versionNumber = 1;
 
           // Capture the immutable AI-draft `v1` snapshot at
           // this (harness/optimistic) generation boundary too, so the DNA
@@ -2074,6 +2150,8 @@ export class HarnessInternalService extends BaseService {
           sessionAgentId: liveLineage?.agentId ?? null,
           sessionAgentPromptVersion: formatSessionAgentPromptVersion(liveLineage),
           generatedAt: new Date(),
+          // Plain status + count; the report (gap wording is clinical) is encrypted on write below.
+          ...noteCoverageColumns(coverage),
         });
         // SummaryMeta is 1:1 with the ContextItem, so when the draft above
         // was ADOPTED rather than created we must re-stamp the existing meta row, not
@@ -2108,6 +2186,14 @@ export class HarnessInternalService extends BaseService {
           existingMeta.sessionAgentId = summaryMeta.sessionAgentId;
           existingMeta.sessionAgentPromptVersion = summaryMeta.sessionAgentPromptVersion;
           existingMeta.generatedAt = summaryMeta.generatedAt;
+          // Coverage describes the content just delivered, so it moves only when that content was
+          // applied; a delivery without a plan clears the previous run's report.
+          if (!adoptionSkipped) {
+            existingMeta.coverageStatus = summaryMeta.coverageStatus;
+            existingMeta.coverageGapCount = summaryMeta.coverageGapCount;
+            existingMeta.coverageReport = summaryMeta.coverageReport;
+            if (!coverage) existingMeta.encryptedCoverageReport = null;
+          }
           await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(existingMeta, this.secretsService!));
           await this.summaryMetaRepository.updateWithVersion(existingMeta.id, existingMeta, existingMeta.version ?? 1);
         } else {
@@ -2131,7 +2217,18 @@ export class HarnessInternalService extends BaseService {
         // around `persistDraft` — steps 1 and 2 have already committed the note, so a lifecycle
         // disagreement is logged and skipped, never thrown over (J5-F7: a throw here kept the
         // draft and failed the workflow). `status` stays the lifecycle commands' alone.
-        if (consultation) {
+        //
+        // A note whose coverage check left gaps waits for the clinician (AWAITING_REVIEW, the gap
+        // count as the reason) in both phases — an EARLY one is still unapprovable until its
+        // assurance completes, and `finalizeAssurance` only ever moves SUMMARIZING.
+        if (consultation && coverage?.status === 'gaps' && !adoptionSkipped) {
+          await this.setHarnessProcessing(
+            consultation,
+            ConsultationProcessing.AWAITING_REVIEW,
+            'persistDraft (coverage gaps)',
+            `NOTE_COVERAGE_GAPS:${coverage.gaps.length}`,
+          );
+        } else if (consultation) {
           await this.setHarnessProcessing(
             consultation,
             isEarly ? ConsultationProcessing.SUMMARIZING : ConsultationProcessing.IDLE,
@@ -2244,8 +2341,9 @@ export class HarnessInternalService extends BaseService {
           contextItemId,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           ...(adoptionSkipped ? { adoptionSkipped } : {}),
+          ...(coverage ? { coverageStatus: coverage.status, coverageGapCount: coverage.gaps.length } : {}),
         });
-        return { contextItemId };
+        return { contextItemId, ...(versionNumber !== undefined ? { versionNumber } : {}) };
       }),
     );
   }
