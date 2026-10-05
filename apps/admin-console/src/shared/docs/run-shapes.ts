@@ -44,6 +44,11 @@ export interface RunShapes {
   output: ShapeField[];
   /** An input kind that is live audio on a socket — the JSON body cannot carry it. */
   streamAudioIn: boolean;
+  /**
+   * TASK-1042 — the ONE Input key whose kind is live audio, where a run takes `{ sttSessionId }`;
+   * `null` when there is none or more than one (the caller then names it).
+   */
+  streamAudioField: string | null;
   /** An input kind that is an uploaded object (a DOCUMENT / IMAGE attachment, or blob audio). */
   attachmentsIn: boolean;
   /** An output kind that is live audio on a socket. */
@@ -56,6 +61,7 @@ const EMPTY: RunShapes = Object.freeze({
   input: [],
   output: [],
   streamAudioIn: false,
+  streamAudioField: null,
   attachmentsIn: false,
   streamAudioOut: false,
   exampleInput: null,
@@ -164,10 +170,12 @@ export function deriveRunShapes(schema: unknown): RunShapes {
 
   const exampleInput = kinds.length > 0 ? exampleOfKinds(kinds) : exampleBodyFromJsonSchema(schema);
 
+  const streamAudioKeys = kinds.filter((kind) => audioDelivery(kind, 'input') === 'stream').map((kind) => String(kind.key));
   return {
     input,
     output,
-    streamAudioIn: kinds.some((kind) => audioDelivery(kind, 'input') === 'stream'),
+    streamAudioIn: streamAudioKeys.length > 0,
+    streamAudioField: streamAudioKeys.length === 1 ? streamAudioKeys[0] : null,
     attachmentsIn: kinds.some((kind) => ATTACHMENT_PRIMITIVES.includes(String(kind.primitive)) || audioDelivery(kind, 'input') === 'blob'),
     streamAudioOut: output.some((row) => row.delivery === 'stream'),
     exampleInput,

@@ -27,6 +27,8 @@ export interface CreateTranscriptionJobProps extends BaseEntityFactoryCreateProp
   createdAt?: ITranscriptionJobEntity['createdAt'];
   updatedAt?: ITranscriptionJobEntity['updatedAt'];
   createdBy?: ITranscriptionJobEntity['createdBy'];
+  /** TASK-1042 (C8) — e.g. a streaming row's `owner`. Omitted stays omitted (never coerced to `null`). */
+  metaData?: ITranscriptionJobEntity['metaData'];
 }
 
 export interface CreateBatchJobProps extends Omit<CreateTranscriptionJobProps, 'jobType'> {
@@ -48,6 +50,7 @@ export class TranscriptionJobFactory {
 
     return new TranscriptionJobEntity({
       id,
+      metaData: props.metaData,
 
       createdAt: props.createdAt || now,
       updatedAt: props.updatedAt || now,

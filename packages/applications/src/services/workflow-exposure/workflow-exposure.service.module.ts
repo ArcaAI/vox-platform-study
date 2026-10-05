@@ -10,6 +10,7 @@ import { EffectiveSettingsModule } from '../settings-registry/effective-settings
 import { ContextUserIdentityServiceModule } from '../user/identity';
 import { WorkflowRunServiceModule } from '../workflow-run';
 import { EffectiveTriggerSchemaModule } from './effective-trigger-schema.module';
+import { RunAudioServiceModule } from './run-audio.service.module';
 import { IWorkflowExposureService } from './IWorkflowExposureService';
 import { WorkflowExposureService } from './workflow-exposure.service';
 import { WorkflowEntryGateService } from './workflow-entry-gate.service';
@@ -67,6 +68,10 @@ import { WorkflowEntryGateService } from './workflow-entry-gate.service';
     // silently runs against its published bytes — the exact failure mode the resolver exists to
     // close. No cycle: it imports CoreDatabaseModule and nothing else.
     EffectiveTriggerSchemaModule,
+    // TASK-1042 — `RunAudioBindingService`: a live STT session named in a standalone run's input.
+    // No cycle: it imports CoreDatabaseModule, RedisCacheModule, EffectiveSettingsModule and
+    // WorkflowRunServiceModule, all already imported here.
+    RunAudioServiceModule,
   ],
   providers: [
     WorkflowExposureService,

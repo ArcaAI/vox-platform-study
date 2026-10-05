@@ -7,6 +7,7 @@ import {
   EffectiveConfigServiceModule,
   EntitlementsServiceModule,
   ModelServingSpecServiceModule,
+  RunAudioServiceModule,
   SttInternalServiceModule,
   StreamingSessionServiceModule,
 } from '@arcaai/applications';
@@ -21,6 +22,8 @@ import { InternalServiceTokenGuard } from './internal-service-token.guard';
 import { ModelRegistryInternalController } from './model-registry-internal.controller';
 import { ModelServingInternalController } from './model-serving-internal.controller';
 import { SttInternalController } from './stt-internal.controller';
+import { SttSessionTranscriptInternalController } from './stt-session-transcript-internal.controller';
+import { HarnessServiceTokenGuard } from '../consultation/harness-service-token.guard';
 
 @Module({
   // EffectiveConfigServiceModule backs the per-service config pull.
@@ -50,6 +53,8 @@ import { SttInternalController } from './stt-internal.controller';
     ComposedPromptServiceModule,
     // TASK-1038 — `AgentRepository` for the pinned-version lookup.
     CoreDatabaseModule,
+    // TASK-1042 (C5) — `RunAudioTranscriptService` for `GET internal/stt/sessions/:sessionId/transcript`.
+    RunAudioServiceModule,
   ],
   controllers: [
     SttInternalController,
@@ -60,9 +65,11 @@ import { SttInternalController } from './stt-internal.controller';
     AgentVersionInternalController,
     ModelServingInternalController,
     ComposedPromptInternalController,
+    // TASK-1042 (C5) — the harness's read of a standalone run's bound live STT session.
+    SttSessionTranscriptInternalController,
   ],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can
   // inject SecretsService into it.
-  providers: [InternalServiceTokenGuard, AgentVersionResolverService],
+  providers: [InternalServiceTokenGuard, HarnessServiceTokenGuard, AgentVersionResolverService],
 })
 export class InternalModule {}

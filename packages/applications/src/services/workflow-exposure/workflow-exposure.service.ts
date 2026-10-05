@@ -46,6 +46,7 @@ import {
 import { RunPrincipalAccessService } from '../workflow-run/run-principal-access';
 import { effectiveExposureSettings, isWorkflowEntryAllowed, type WorkflowEntry } from '../workflow-definition/exposure-settings';
 import { CLAIM_CHECK_BUCKET, mintCompiledConfigClaimCheckRef } from './claim-check';
+import { assertNoLiveAudio, liveAudioRequestsIn, RunAudioBindingService, type RunAudioBinding } from './run-audio-binding.service';
 import { EffectiveTriggerSchemaService } from './effective-trigger-schema.service';
 import { deterministicRunId } from './deterministic-run-id';
 import { exposureBoundaryViolation, reservedIdentityKeysIn } from './exposure-palette-policy';
@@ -208,6 +209,9 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // `WorkflowRunServiceModule` (imported by this service's module); `@Optional()` only so the
     // positional unit fixtures keep constructing — absent, reads are tenant-scoped as before.
     @Optional() private readonly runAccess?: RunPrincipalAccessService,
+    // TASK-1042 — binds a live STT session named in a standalone run's `input` (C3/C8). Optional for
+    // the positional fixtures; absent, a start that names a session is refused (503), never unchecked.
+    @Optional() private readonly runAudio?: RunAudioBindingService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -367,6 +371,8 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
           'Consultation identity comes from the request path and is resolved server-side.',
       );
     }
+    // TASK-1042 — a consultation run gets its audio through the consultation: `sttSessionId` is 400.
+    if (consultationBound) assertNoLiveAudio(dto.input);
 
     // The binding itself: RE-RESOLVED against the caller's tenant, never taken on trust. A
     // foreign or unknown id reads as absent (the Prisma tenant-scope extension filters it) and
@@ -420,9 +426,30 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     const effective = this.effectiveTriggerSchema
       ? await this.effectiveTriggerSchema.resolve(tenantId, definition.compiledConfig, definition.contextSchemaFollowsLatest)
       : { config: definition.compiledConfig };
+    // TASK-1042 (C3/C8) — a live STT session named in a STANDALONE run's input is checked and bound
+    // here, before the claim-check, the run row and the harness start; a start that then fails releases it.
+    let audio: RunAudioBinding | null = null;
+    if (!consultationBound && liveAudioRequestsIn(dto.input).length > 0) {
+      if (!this.runAudio) throw new ServiceUnavailableException('Live audio is unavailable: the run-audio binding is not configured.');
+      audio = await this.runAudio.bind({
+        tenantId,
+        runId,
+        workflow: {
+          slug: definition.slug,
+          versionNumber: definition.versionNumber ?? null,
+          compiledConfig: effective.config,
+          graph: definition.graph,
+        },
+        input: dto.input,
+      });
+    }
+    const releaseAudioAndRethrow = async (error: unknown): Promise<never> => {
+      await audio?.release();
+      throw error;
+    };
     const configRef = await mintCompiledConfigClaimCheckRef(effective.config, bucket, (b, key, data, contentType) =>
       this.s3Service!.putFile(b, key, data, contentType),
-    );
+    ).catch(releaseAudioAndRethrow);
 
     const sessionId = interpreterSessionId(runId);
 
@@ -430,69 +457,77 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
     // run the dispatcher then fails to start is a recoverable "stuck" row; the reverse order (a
     // run started but never durably attributable to a tenant) is the worse failure mode — nothing
     // could ever prove who may read/cancel it.
-    await this.workflowRunService.recordRunStarted({
-      tenantId,
-      workflowVersionId: definition.id,
-      workflowSlug: definition.slug,
-      workflowVersionNumber: definition.versionNumber,
-      definitionName: definition.name,
-      sessionId,
-      runId,
-      trigger: opts.trigger ?? 'api invoke',
-      isSandbox: false,
-      // TASK-950 (decision 2, fast win) — the DURABLE half of standalone-run attribution. The
-      // `ResourceCreated` event below already carries `actingUserId`, but an audit row is not
-      // queryable beside the run it describes; `_metadata->>'actingUserId'` on this row is.
-      //
-      // OMITTED rather than `{ actingUserId: null }`, because `actingUserId` is null for three
-      // different reasons (human caller · consultation-bound run · schema declares no identity
-      // field) and none of them is a fact about this run worth storing. An absent key is the one
-      // honest spelling of all three.
-      //
-      // TASK-1038 B3a — a CONSULTATION-BOUND run also stamps the server-resolved consultation id
-      // (`subject.consultationId`, from the request PATH — never `input`): the internal
-      // consultation-read route admits an exposure-plane run only when its row names the
-      // consultation it was bound to.
-      //
-      // TASK-1038 E2 (fix 11) — an `Idempotency-Key` start also stamps its body fingerprint, the
-      // DURABLE half of "a different body under the same key is a 409".
-      //
-      // TASK-1038 OD-35 — and the principal that started it (`startedBy`), which every
-      // business-plane read of the run is bound to.
-      metaData:
-        actingUserId || subject?.consultationId || requestBodyHash || startedBy
-          ? {
-              ...(actingUserId ? { actingUserId } : {}),
-              ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
-              ...(requestBodyHash ? { requestBodyHash } : {}),
-              ...(startedBy ? { startedBy } : {}),
-            }
-          : undefined,
-    });
+    await this.workflowRunService
+      .recordRunStarted({
+        tenantId,
+        workflowVersionId: definition.id,
+        workflowSlug: definition.slug,
+        workflowVersionNumber: definition.versionNumber,
+        definitionName: definition.name,
+        sessionId,
+        runId,
+        trigger: opts.trigger ?? 'api invoke',
+        isSandbox: false,
+        // TASK-950 (decision 2, fast win) — the DURABLE half of standalone-run attribution. The
+        // `ResourceCreated` event below already carries `actingUserId`, but an audit row is not
+        // queryable beside the run it describes; `_metadata->>'actingUserId'` on this row is.
+        //
+        // OMITTED rather than `{ actingUserId: null }`, because `actingUserId` is null for three
+        // different reasons (human caller · consultation-bound run · schema declares no identity
+        // field) and none of them is a fact about this run worth storing. An absent key is the one
+        // honest spelling of all three.
+        //
+        // TASK-1038 B3a — a CONSULTATION-BOUND run also stamps the server-resolved consultation id
+        // (`subject.consultationId`, from the request PATH — never `input`): the internal
+        // consultation-read route admits an exposure-plane run only when its row names the
+        // consultation it was bound to.
+        //
+        // TASK-1038 E2 (fix 11) — an `Idempotency-Key` start also stamps its body fingerprint, the
+        // DURABLE half of "a different body under the same key is a 409".
+        //
+        // TASK-1038 OD-35 — and the principal that started it (`startedBy`), which every
+        // business-plane read of the run is bound to.
+        metaData:
+          actingUserId || subject?.consultationId || requestBodyHash || startedBy || audio
+            ? {
+                ...(actingUserId ? { actingUserId } : {}),
+                ...(subject?.consultationId ? { consultationId: subject.consultationId } : {}),
+                ...(requestBodyHash ? { requestBodyHash } : {}),
+                ...(startedBy ? { startedBy } : {}),
+                // TASK-1042 (C8) — the live STT session this run reads.
+                ...(audio ? { sttSessionId: audio.liveAudio.sttSessionId } : {}),
+              }
+            : undefined,
+      })
+      .catch(releaseAudioAndRethrow);
 
-    const started = await this.harnessGateway.startWorkflowRun({
-      runId,
-      sessionId,
-      workflowVersionId: definition.id,
-      tenantId,
-      configRef,
-      sandbox: false,
-      // The caller's invocation input, forwarded verbatim into `InterpreterInput.payload` —
-      // which is what `input.context_binding`'s `bindings[].from` paths resolve against
-      // (`'payload.text'` addresses `{"payload": run_payload}`). This was missing: `dto.input`
-      // was accepted and validated at the route, then never sent, so every invoked run executed
-      // against an EMPTY payload and any graph with a required input binding failed with
-      // "required kind '<k>' (from 'payload.<k>') missing from run payload". The field already
-      // existed on `StartWorkflowRunInput` for Workbench path; only this call site
-      // omitted it.
-      //
-      // "Verbatim" no longer means "including identity": `dto.input` has been proven free of
-      // every `RESERVED_RUN_IDENTITY_KEYS` entry above, and the dispatcher strips them again on
-      // its side regardless of what any caller sends.
-      payload: dto.input,
-      // The server-resolved clinical subject — the ONLY channel run identity travels on.
-      subject,
-    });
+    const started = await this.harnessGateway
+      .startWorkflowRun({
+        runId,
+        sessionId,
+        workflowVersionId: definition.id,
+        tenantId,
+        configRef,
+        sandbox: false,
+        // The caller's invocation input, forwarded verbatim into `InterpreterInput.payload` —
+        // which is what `input.context_binding`'s `bindings[].from` paths resolve against
+        // (`'payload.text'` addresses `{"payload": run_payload}`). This was missing: `dto.input`
+        // was accepted and validated at the route, then never sent, so every invoked run executed
+        // against an EMPTY payload and any graph with a required input binding failed with
+        // "required kind '<k>' (from 'payload.<k>') missing from run payload". The field already
+        // existed on `StartWorkflowRunInput` for Workbench path; only this call site
+        // omitted it.
+        //
+        // "Verbatim" no longer means "including identity": `dto.input` has been proven free of
+        // every `RESERVED_RUN_IDENTITY_KEYS` entry above, and the dispatcher strips them again on
+        // its side regardless of what any caller sends.
+        payload: dto.input,
+        // The server-resolved clinical subject — the ONLY channel run identity travels on.
+        subject,
+        // TASK-1042 (C7) — the bound live session, server-resolved like `subject`.
+        ...(audio ? { liveAudio: audio.liveAudio } : {}),
+      })
+      .catch(releaseAudioAndRethrow);
 
     const serviceAccount = this.requestServiceAccount;
     this.broadcastSysEvent(SysEventType.ResourceCreated, {

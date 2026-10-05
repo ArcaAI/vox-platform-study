@@ -1,5 +1,5 @@
 {
-  "_comment": "TASK-1036 §3.5 — the CROSS-LANGUAGE fixture for workflow settings (@arcaai/workflow-contract `workflow-settings.ts`; Python mirror: lane B1): the shape validator (problem pointers), effectiveSettings (settings first, legacy kinds/protocols fallback) and the WF-SET-001..004 implications. Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts.",
+  "_comment": "TASK-1036 §3.5 — the CROSS-LANGUAGE fixture for workflow settings (@arcaai/workflow-contract `workflow-settings.ts`; Python mirror: lane B1): the shape validator (problem pointers), effectiveSettings (settings first, legacy kinds/protocols fallback), the WF-SET-001..004 implications and (TASK-1042) WF-SET-005 `liveAudio`: a stream-delivery Input kind no speech-to-text step's `audio` input reads. Asserted from packages/workflow-contract/src/__tests__/data-contract-fixtures.task1036.test.ts.",
   "connections": ["api", "webhook", "sse", "socket"],
   "sources": ["consultation", "schedule"],
   "shape": [
@@ -688,6 +688,711 @@
             "task": "TEXT_TO_SPEECH"
           }
         }
+      },
+      "expected": []
+    }
+  ],
+  "liveAudio": [
+    {
+      "name": "bound-to-the-asr-audio-input",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              },
+              "inputs": {
+                "audio": {
+                  "from": "context.audio_stream"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "bound-through-a-sub-path",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              },
+              "inputs": {
+                "audio": {
+                  "from": "context.audio_stream.sttSessionId"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "bound-through-firstOf",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              },
+              "inputs": {
+                "audio": {
+                  "firstOf": ["context.other", "context.audio_stream"]
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "legacy-edge-from-the-trigger-into-audio",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "from": "n_trigger",
+            "fromPort": "out",
+            "to": "n_asr",
+            "toPort": "audio"
+          }
+        ]
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "unread-no-asr-step",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-005",
+          "nodeId": null,
+          "kindKey": "audio_stream"
+        }
+      ]
+    },
+    {
+      "name": "unread-asr-step-reads-nothing",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-005",
+          "nodeId": null,
+          "kindKey": "audio_stream"
+        }
+      ]
+    },
+    {
+      "name": "unread-asr-step-reads-another-field",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              },
+              "inputs": {
+                "audio": {
+                  "from": "context.recording"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-005",
+          "nodeId": null,
+          "kindKey": "audio_stream"
+        }
+      ]
+    },
+    {
+      "name": "unread-only-a-non-asr-step-reads-it",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_tts",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "tts"
+              },
+              "inputs": {
+                "text": {
+                  "from": "context.audio_stream"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-005",
+          "nodeId": null,
+          "kindKey": "audio_stream"
+        }
+      ]
+    },
+    {
+      "name": "unknown-agent-task-implies-nothing",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "unresolved"
+              },
+              "inputs": {
+                "audio": {
+                  "from": "context.audio_stream"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "consultation-source-exempt",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": ["consultation"]
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "blob-delivery-not-checked",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO",
+              "delivery": "blob"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "one-finding-per-unread-stream-kind",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          },
+          {
+            "id": "n_asr",
+            "type": "core.agent",
+            "config": {
+              "agentRef": {
+                "slug": "asr"
+              },
+              "inputs": {
+                "audio": {
+                  "from": "context.audio_stream"
+                }
+              }
+            }
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": {
+          "schemaVersion": "1.0",
+          "kinds": [
+            {
+              "key": "audio_stream",
+              "primitive": "STREAM_AUDIO"
+            },
+            {
+              "key": "second_stream",
+              "primitive": "AUDIO",
+              "delivery": "stream"
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "ruleId": "WF-SET-005",
+          "nodeId": null,
+          "kindKey": "second_stream"
+        }
+      ]
+    },
+    {
+      "name": "no-input-shape-resolved",
+      "graph": {
+        "version": 1,
+        "nodes": [
+          {
+            "id": "n_trigger",
+            "type": "core.trigger",
+            "config": {}
+          }
+        ],
+        "edges": []
+      },
+      "settings": {
+        "connections": ["api", "socket"],
+        "sources": []
+      },
+      "context": {
+        "agents": {
+          "asr": {
+            "task": "SPEECH_TO_TEXT"
+          },
+          "tts": {
+            "task": "TEXT_TO_SPEECH"
+          },
+          "gen": {
+            "task": "TEXT_GENERATION"
+          }
+        },
+        "contextSchemaDefinition": null
       },
       "expected": []
     }

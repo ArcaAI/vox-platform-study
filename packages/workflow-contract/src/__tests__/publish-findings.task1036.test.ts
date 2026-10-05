@@ -174,6 +174,8 @@ describe('DATA_CONTRACT_RULES — the catalogue', () => {
         'REQUIRED_INPUT_UNBOUND',
         'SETTINGS_INVALID',
         'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
+        // TASK-1042 OD-7 — WF-SET-005.
+        'SETTINGS_LIVE_AUDIO_UNREAD',
         'SETTINGS_SOCKET_REQUIRES_API',
         'SETTINGS_SSE_REQUIRES_API',
         'SETTINGS_UPLOAD_REQUIRES_API',
@@ -187,7 +189,7 @@ describe('DATA_CONTRACT_RULES — the catalogue', () => {
       DATA_CONTRACT_RULES.filter((rule) => rule.ruleId.startsWith('WF-SET-'))
         .map((rule) => rule.ruleId)
         .sort(),
-    ).toEqual(['WF-SET-001', 'WF-SET-002', 'WF-SET-003', 'WF-SET-004']);
+    ).toEqual(['WF-SET-001', 'WF-SET-002', 'WF-SET-003', 'WF-SET-004', 'WF-SET-005']);
   });
 
   it('every code a publish finding can carry is in the publish code vocabulary (INFO excepted)', () => {

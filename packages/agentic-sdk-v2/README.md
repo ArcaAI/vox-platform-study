@@ -83,6 +83,32 @@ Removed alongside them: `usePipelines`, `useArcaPipelines`, `useSttProviderToggl
 compat `sttPipelineId` (use `sttAgentSlug`). Full history:
 `docs/operations/deprecation-register.md` SDK section.
 
+### Live audio into a run — `useRunAudio` (TASK-1042)
+
+`useRunAudio({ workflow, audioField? })` (from `@arcaai/vox/plugins`) pairs the microphone with a
+workflow run. It has two modes, chosen by whether a consultation is open:
+
+- **No consultation open (standalone).** The STT session is created with `workflowSlug`, then the
+  run starts with `input[audioField] = { sttSessionId }`. `audioField` defaults to the single
+  stream-audio key of `GET workflows/:slug/schema`; zero or several throw `RunAudioFieldError`
+  before the microphone is requested.
+- **A consultation is open.** Unchanged: the STT session writes into that consultation and the run
+  is consultation-bound.
+
+```tsx
+const { start, stop, run, audio, isRecording } = useRunAudio({ workflow: 'live-note' });
+await start({ visitType: 'follow-up' }, { audio: { language: 'en' } });
+// run.text follows the run; audio.currentTranscript is what the session hears
+await stop(); // ends the audio; the run is NOT cancelled
+```
+
+`stop()` finalizes and closes the STT session and **never cancels the run** (`run.cancel()` does).
+If the run start is refused the microphone is closed again, and the gateway's coded refusal reaches
+the caller: 400 `RUN_AUDIO_INPUT_UNDECLARED` / `RUN_AUDIO_MULTIPLE` / `LIVE_AUDIO_UNSUPPORTED`,
+409 `RUN_AUDIO_SESSION_NOT_LIVE` / `RUN_AUDIO_SESSION_BOUND_ELSEWHERE` / `RUN_AUDIO_AGENT_MISMATCH`.
+`audio.start({ workflowSlug })` is the lower-level switch behind it: it binds the session to a
+workflow instead of the open consultation (the two are mutually exclusive).
+
 ### Provider and store
 
 Each `AgenticProvider` mount creates its own Zustand store via `createAgenticStore()` and

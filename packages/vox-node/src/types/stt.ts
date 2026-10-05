@@ -26,7 +26,9 @@ import type { LanguageModeId, LanguageResolution } from './language';
  * Every field is optional. Sending `{}` is the intended default: the gateway
  * resolves the ASR agent in order — (1) {@link agentSlug}, when named; (2) if
  * {@link consultationId} is present, the speech-to-text agent named in that
- * consultation's governing workflow; (3) the tenant admin's assignment
+ * consultation's governing workflow — or, if {@link workflowSlug} is present
+ * instead (TASK-1042), the single speech-to-text node of that published
+ * workflow; (3) the tenant admin's assignment
  * (department first, then tenant default). Which rule won is echoed on
  * {@link StreamSessionResponse.agentSource}.
  */
@@ -47,6 +49,15 @@ export interface CreateStreamSessionRequest {
    * resolution order on {@link CreateStreamSessionRequest} above.
    */
   consultationId?: string;
+  /**
+   * Bind the session to a published WORKFLOW instead of a consultation (TASK-1042), so the session
+   * can feed a standalone run (`hope.workflows.runWithAudio`). Mutually exclusive with
+   * {@link consultationId} — both present is a 400 `STREAM_SESSION_TARGET_CONFLICT`. With no
+   * {@link agentSlug}, the ASR agent is the workflow's single `SPEECH_TO_TEXT` node
+   * (`agentSource: 'workflow'`); an unknown slug is a 404 and several STT nodes a 409
+   * `WORKFLOW_ASR_AGENT_UNAVAILABLE`.
+   */
+  workflowSlug?: string;
   /** Hz. Default 16000 server-side; the negotiated value is what the gateway forwards to STT. */
   sampleRate?: number;
   /** ISO 639-1 override (`en`, `ml`). {@link languageMode} takes precedence. */

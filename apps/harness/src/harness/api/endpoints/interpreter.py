@@ -25,7 +25,12 @@ from harness.api.endpoints.internal import require_service_token
 from harness.core.config import Settings
 from harness.core.logging import get_logger
 from harness.temporal.claim_check import ClaimCheckRef
-from harness.temporal.interpreter.models import RunLimits, RunSubject, sanitize_run_payload
+from harness.temporal.interpreter.models import (
+    LiveAudioBinding,
+    RunLimits,
+    RunSubject,
+    sanitize_run_payload,
+)
 
 logger = get_logger(__name__)
 
@@ -123,10 +128,18 @@ class StartWorkflowRunRequest(BaseModel):
     # that has not shipped the injection yet still starts runs (see `_run_limits`).
     retention_seconds: int | None = Field(default=None, alias="retentionSeconds", gt=0)
     limits: StartRunLimits | None = Field(default=None)
+    # TASK-1042 C7. The live STT session the gateway bound to this run, AFTER its C3 checks. A
+    # server-resolved channel like `subject`: a caller's `payload` can never create it.
+    live_audio: LiveAudioBinding | None = Field(default=None, alias="liveAudio")
 
 
 async def _execution_timeout(
-    settings: Settings, config_ref: ClaimCheckRef, *, consultation_bound: bool, run_id: str
+    settings: Settings,
+    config_ref: ClaimCheckRef,
+    *,
+    consultation_bound: bool,
+    run_id: str,
+    live_audio_seconds: int | None = None,
 ) -> timedelta | None:
     """TASK-1038 D-B — the run's ``execution_timeout`` backstop, from its compiled ``caps``.
 
@@ -147,7 +160,9 @@ async def _execution_timeout(
             "harness.interpreter.run.execution_timeout_unavailable", run_id=run_id, error=str(exc)
         )
         return None
-    seconds = caps.execution_timeout_seconds(config, consultation_bound=consultation_bound)
+    seconds = caps.execution_timeout_seconds(
+        config, consultation_bound=consultation_bound, live_audio_seconds=live_audio_seconds
+    )
     return timedelta(seconds=seconds) if seconds is not None else None
 
 
@@ -157,6 +172,7 @@ async def _execution_timeout(
 )
 async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) -> dict[str, Any]:
     """Start (idempotently, by workflow-id collision) a WorkflowInterpreter run."""
+    from harness.temporal.interpreter import caps
     from harness.temporal.interpreter.models import InterpreterInput
     from harness.temporal.interpreter.workflow import WorkflowInterpreter, interpreter_workflow_id
 
@@ -164,6 +180,16 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
     client = await _temporal_client_or_503(request)
     workflow_id = interpreter_workflow_id(body.run_id)
     payload = sanitize_run_payload(body.payload, body.subject)
+    # TASK-1042 C7 — the wait ceiling, clamped tighten-only HERE so the workflow input and the
+    # backstop below state the same number (the workflow re-clamps it anyway).
+    live_audio = (
+        LiveAudioBinding(
+            sttSessionId=body.live_audio.stt_session_id,
+            maxWaitSeconds=caps.live_audio_wait_seconds(body.live_audio.max_wait_seconds),
+        )
+        if body.live_audio is not None
+        else None
+    )
 
     wf_input = InterpreterInput(
         session_id=body.session_id,
@@ -182,6 +208,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         # the deterministic workflow body cannot read settings.
         limits=_run_limits(settings, body.limits),
         retention_seconds=body.retention_seconds,
+        live_audio=live_audio,
     )
     # TASK-1038 D-B — the Temporal backstop. `None` (no timeout) when it cannot be computed
     # honestly; the in-workflow deadline still bounds the walk either way.
@@ -190,6 +217,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         body.config_ref,
         consultation_bound=body.subject is not None or bool(payload.get("consultationId")),
         run_id=body.run_id,
+        live_audio_seconds=live_audio.max_wait_seconds if live_audio is not None else None,
     )
     start_options: dict[str, Any] = {}
     if execution_timeout is not None:

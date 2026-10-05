@@ -94,7 +94,10 @@ narrows it further. Synthetic types are never stored.
   may use `agent` as an ordinary node id, so the rule applies to agent runs only.
 - **Transcripts** (`transcript.partial|final`) are `optional`. When a graph ASR node produces them,
   it names itself. When the consultation session produces them (the gateway STT bridge feeding a
-  consultation-bound run), they have no `nodeId`.
+  consultation-bound run), they have no `nodeId`. The same holds for a **standalone run bound to a
+  live STT session** (TASK-1042, `input.<audioKind>.sttSessionId`): the gateway mirror appends the
+  session's transcripts without a `nodeId`, still admin audience only. The graph's ASR node reads
+  the session's finals itself once the audio ends; it does not consume these events.
 
 ## 5. Visibility, the admin trace and per-node outputs
 

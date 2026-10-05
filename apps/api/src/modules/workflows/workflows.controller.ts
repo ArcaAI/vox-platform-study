@@ -157,14 +157,17 @@ export class WorkflowsController {
       'Reserved run-identity field supplied in `input` (e.g. `consultationId`) — it is never accepted here. Also, for a ' +
       'service-account caller on a workflow whose trigger schema declares a user-identity field: the supplied staff ' +
       'identifier is unusable (`USER_IDENTITY_INVALID`), or no department could be resolved to provision the clinician ' +
-      'in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`).',
+      'in (`USER_IDENTITY_DEPARTMENT_UNRESOLVED`). TASK-1042 live audio (`input.<audioField>.sttSessionId`): ' +
+      '`RUN_AUDIO_INPUT_UNDECLARED` (the key is not the workflow`s stream-audio input), `RUN_AUDIO_MULTIPLE` (more than one ' +
+      'key names a session), `LIVE_AUDIO_UNSUPPORTED` (the workflow settings do not admit the `socket` connection).',
   })
   @ApiResponse({
     status: 404,
     description:
       'Unknown, unpublished, cross-tenant, or non-exposable slug. Also the answer when a service-account caller supplies ' +
       'a staff identifier this tenant does not have (`USER_IDENTITY_UNKNOWN`) or whose user cannot act ' +
-      '(`USER_IDENTITY_NOT_USABLE`).',
+      '(`USER_IDENTITY_NOT_USABLE`). Also the answer for an `sttSessionId` that is unknown, another tenant`s, or opened by ' +
+      'another credential (TASK-1042).',
   })
   @ApiResponse({ status: 403, description: 'Scope violation.' })
   @ApiResponse({
@@ -173,7 +176,10 @@ export class WorkflowsController {
       'The supplied staff identifier is ambiguous (`USER_IDENTITY_AMBIGUOUS` — more than one user in this tenant carries ' +
       'it), or provisioning a new clinician would exceed the tenant’s `maxUsers` allowance. Service-account callers on a ' +
       'STANDALONE run only — a consultation-bound run takes its clinician from the consultation row. ' +
-      '`IDEMPOTENCY_KEY_REUSED` — the `Idempotency-Key` already started a run with a different body.',
+      '`IDEMPOTENCY_KEY_REUSED` — the `Idempotency-Key` already started a run with a different body. TASK-1042 live audio: ' +
+      '`RUN_AUDIO_SESSION_NOT_LIVE` (the STT session ended), `RUN_AUDIO_SESSION_BOUND_ELSEWHERE` (it feeds a consultation or ' +
+      'another run), `RUN_AUDIO_AGENT_MISMATCH` (its ASR agent is not the workflow`s speech-to-text agent — open the session ' +
+      'with `workflowSlug`).',
   })
   @ApiResponse({ status: 429, description: 'monthlyWorkflowInvocations quota exhausted.' })
   @ApiResponse({

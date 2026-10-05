@@ -2,6 +2,7 @@ import {
   TenantSettingsService,
   WORKFLOW_RUNS_DEFAULTS,
   WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY,
+  readBoundRun,
   readGoverningEngineMarker,
 } from '@arcaai/applications';
 import type { RunAppendInput } from '@arcaai/async-contract';
@@ -40,6 +41,9 @@ interface TrackedSession {
 /**
  * `SttRunTranscriptMirror` — TASK-1036 (lane B6b, §10.3): the gateway STT bridge's half of the run
  * event stream.
+ *
+ * TASK-1042 — or when the session is bound directly to a STANDALONE run (`job.metaData.boundRun`,
+ * written by the run-audio binding at run start), that run is fed the same way.
  *
  * When a streaming STT session is bound to a consultation that is the subject of a RUNNING workflow
  * run — a sandbox run recording from the console Test tab (`WorkflowRun.isSandbox`, its
@@ -155,14 +159,26 @@ export class SttRunTranscriptMirror {
     try {
       const [job] = (await this.jobs!.findAll({
         filters: { tenantId, streamSessionId: sttSessionId, jobType: TranscriptionJobType.STREAMING },
-      } as never)) as Array<{ tenantId?: string; consultationId?: string | null }>;
-      const consultationId = job && job.tenantId === tenantId ? job.consultationId : null;
+      } as never)) as Array<{ tenantId?: string; consultationId?: string | null; metaData?: unknown }>;
+      if (!job || job.tenantId !== tenantId) return [];
+      // TASK-1038 E2 (fix 14) — RUNNING on the read model, and younger than the open-stream ceiling.
+      const startedAfter = new Date(Date.now() - this.maxOpenHours() * 3_600_000);
+
+      // TASK-1042 — a session bound to a STANDALONE run (`metaData.boundRun`, written at run start)
+      // feeds that run, under the same RUNNING + ceiling rule. Admin audience, no `nodeId` (OD-8).
+      const boundRun = readBoundRun(job.metaData);
+      if (!job.consultationId && boundRun) {
+        const live = (await this.runs!.findAll({
+          where: { tenantId, runId: boundRun.runId, status: 'RUNNING', startedAt: { gte: startedAfter } },
+          limit: 1,
+        } as never)) as Array<{ runId: string }>;
+        return live.length > 0 ? [boundRun.runId] : [];
+      }
+
+      const consultationId = job.consultationId;
       if (!consultationId) return [];
       const consultation = (await this.consultations!.findByIdOrNull(consultationId)) as { tenantId?: string; metadata?: unknown } | null;
       if (!consultation || consultation.tenantId !== tenantId) return [];
-
-      // TASK-1038 E2 (fix 14) — RUNNING on the read model, and younger than the open-stream ceiling.
-      const startedAfter = new Date(Date.now() - this.maxOpenHours() * 3_600_000);
       const sandbox = (await this.runs!.findAll({
         where: {
           tenantId,

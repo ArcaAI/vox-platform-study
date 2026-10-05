@@ -274,3 +274,16 @@ describe('PluginManager — agentSlug selects the ASR Agent (TASK-865/TASK-1006)
     expect(manager.getTranscriptionPipelineConfig().stt.streamingTransport).toBeUndefined();
   });
 });
+
+describe('PluginManager.buildStreamingTransport — workflowSlug (TASK-1042)', () => {
+  it('forwards workflowSlug from runtime options, and counts as "named" even on the auto provider', () => {
+    const manager = new PluginManager({ stt: { enabled: true, provider: 'auto' } }, createMockLogger(), makeApiClient(), false);
+    manager.setRuntimeOptions({ workflowSlug: 'live-note' });
+
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'auto' }) as { workflowSlug?: string; consultationId?: string };
+
+    expect(transport).toBeTruthy();
+    expect(transport.workflowSlug).toBe('live-note');
+    expect(transport.consultationId).toBeUndefined();
+  });
+});

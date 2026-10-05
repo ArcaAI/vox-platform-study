@@ -21,6 +21,8 @@ export const WORKFLOW_RUNS_AGENT_RUN_MAX_SECONDS_KEY = 'workflowRuns.agentRunMax
 // TASK-1038 E2 (fix 14) — how long a RUNNING run's event stream may stay open before the gateway
 // stops mirroring live transcripts into it and the orphan sweep closes it.
 export const WORKFLOW_RUNS_RUN_STREAM_MAX_OPEN_HOURS_KEY = 'workflowRuns.runStreamMaxOpenHours';
+// TASK-1042 (OD-4a) — how long a standalone run waits for its bound live STT session to end.
+export const WORKFLOW_RUNS_LIVE_AUDIO_MAX_SECONDS_KEY = 'workflowRuns.liveAudioMaxSeconds';
 
 export const WORKFLOW_RUNS_DEFAULTS = {
   /** OD-25: run events expire 24 h after the run is terminal. */
@@ -43,6 +45,8 @@ export const WORKFLOW_RUNS_DEFAULTS = {
   agentRunMaxSeconds: 900,
   /** A run RUNNING longer than this gets no more live transcripts, and its open stream is closed by the orphan sweep. */
   runStreamMaxOpenHours: 72,
+  /** TASK-1042 — a run bound to a live STT session waits at most this long for the audio to end. */
+  liveAudioMaxSeconds: 3600,
 } as const;
 
 function wholeNumberBetween(min: number, max: number): (value: unknown) => string | undefined {
@@ -172,5 +176,17 @@ export const WORKFLOW_RUNS_SETTINGS: SettingDescriptor[] = [
       "How long a RUNNING workflow run's event stream may stay open. Past it the gateway stops mirroring live STT transcripts into the run, and the orphan sweep closes the stream (it then expires after the event retention). A stream whose run is finished or gone is closed by the same sweep.",
     default: WORKFLOW_RUNS_DEFAULTS.runStreamMaxOpenHours,
     validate: wholeNumberBetween(1, 24 * 30),
+  },
+  {
+    ...COMMON,
+    key: WORKFLOW_RUNS_LIVE_AUDIO_MAX_SECONDS_KEY,
+    // A tenant may TIGHTEN its own wait; the harness clamps every value to 3600 s regardless.
+    maxScope: 'tenant',
+    globalOnly: false,
+    label: 'Live audio wait ceiling (seconds)',
+    description:
+      'How long a standalone workflow run bound to a live STT session (input.<audio>.sttSessionId) waits for that session to end before its speech-to-text step fails with live_audio_timeout. Never above 3600, the harness ceiling.',
+    default: WORKFLOW_RUNS_DEFAULTS.liveAudioMaxSeconds,
+    validate: wholeNumberBetween(60, 3600),
   },
 ];

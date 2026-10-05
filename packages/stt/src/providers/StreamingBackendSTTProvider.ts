@@ -44,6 +44,8 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
   agentSlug?: string;
   /** Optional consultation id to link the streaming session to. */
   consultationId?: string;
+  /** Bind the session to a published workflow instead of a consultation (TASK-1042); exclusive with `consultationId`. */
+  workflowSlug?: string;
   /** Optional initial prompt for biasing the transcription. */
   prompt?: string;
   /** Optional microphone identifier surfaced in transcripts. */
@@ -215,6 +217,8 @@ export interface StreamingSessionLike {
     /** ASR Agent slug (TASK-865). */
     agentSlug?: string;
     consultationId?: string;
+    /** Workflow the session is bound to (TASK-1042); exclusive with `consultationId`. */
+    workflowSlug?: string;
     sampleRate?: number;
     language?: string;
     languageMode?: string;
@@ -395,6 +399,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // KEY when nothing was named. `pipelineId` is never sent (TASK-1012).
       ...(streamingConfig.agentSlug ? { agentSlug: streamingConfig.agentSlug } : {}),
       consultationId: streamingConfig.consultationId,
+      ...(streamingConfig.workflowSlug ? { workflowSlug: streamingConfig.workflowSlug } : {}),
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
       // End-user language mode ; the backend resolves it per engine.

@@ -59,6 +59,8 @@ export interface STTStreamingTransport {
   agentSlug?: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
+  /** Bind the session to a published workflow instead of a consultation (TASK-1042); exclusive with `consultationId`. */
+  workflowSlug?: string;
   /**
    * Optional ceiling (ms) on the stop-drain `StreamingBackendSTTProvider.destroy()`
    * performs. Threaded from the SDK's
@@ -571,6 +573,7 @@ export class STTProcessor extends BaseProcessor {
       pipelineId: transport.pipelineId,
       agentSlug: transport.agentSlug,
       consultationId: transport.consultationId,
+      workflowSlug: transport.workflowSlug,
       drainTimeoutMs: transport.drainTimeoutMs,
       // Per-session stop-drain ceiling. The provider
       // applies its own `> 0` guard, so an out-of-range value degrades to the

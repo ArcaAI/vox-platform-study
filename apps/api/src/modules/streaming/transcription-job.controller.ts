@@ -224,6 +224,8 @@ export class TranscriptionJobController {
     agentSlug?: string | null,
     consultationId?: string | null,
     requestedMode?: string | null,
+    // TASK-1042 (C1) — a session for a STANDALONE workflow run (never with a consultation).
+    workflowSlug?: string | null,
   ): Promise<ResolvedAsrSession> {
     if (!this.asrResolver) {
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
@@ -239,6 +241,7 @@ export class TranscriptionJobController {
       departmentId: null,
       consultationId: consultationId ?? null,
       ...(inheritConsultationLanguage ? { inheritConsultationLanguage } : {}),
+      ...(workflowSlug ? { workflowSlug } : {}),
     });
   }
 
@@ -907,16 +910,38 @@ export class TranscriptionJobController {
       'The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node ' +
       "of the consultation's governing workflow, else the department then tenant assignment. A governing workflow that " +
       'names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 ' +
-      'WORKFLOW_ASR_AGENT_UNAVAILABLE.',
+      'WORKFLOW_ASR_AGENT_UNAVAILABLE. TASK-1042: `workflowSlug` opens a session for a STANDALONE workflow run ' +
+      "(bind it with input.<audio>.sttSessionId on POST /workflows/{slug}/runs); the agent then comes from that workflow's " +
+      'speech-to-text step.',
   })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
   // TASK-951 R2 — the two refusals `context` introduces. Documented here because a client that
   // cannot tell "too big" from "wrong shape" cannot fix either one.
-  @ApiResponse({ status: 400, description: '`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the schema the resolved ASR agent binds' })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`CONTEXT_SCHEMA_VIOLATION` — `context` does not satisfy the schema the resolved ASR agent binds. ' +
+      '`STREAM_SESSION_TARGET_CONFLICT` (TASK-1042) — both `workflowSlug` and `consultationId` were sent.',
+  })
   @ApiResponse({ status: 413, description: '`CONTEXT_TOO_LARGE` — `context` exceeds 4096 bytes of canonical JSON' })
+  // TASK-1042 (C1) — an unknown workflow, and the existing workflow-ASR refusal.
+  @ApiResponse({ status: 404, description: '`workflowSlug` names no published workflow of this tenant' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`WORKFLOW_ASR_AGENT_UNAVAILABLE` — the governing or named workflow has more than one speech-to-text agent, or one that cannot serve',
+  })
   async createStreamSession(@Body() body: CreateStreamSessionRequest): Promise<StreamSessionResponse> {
     const sessionId = uuidv7();
     const tenantId = this.getTenantId();
+    // TASK-1042 (C1) — a session feeds a consultation OR a standalone workflow run, never both.
+    // Refused before any quota, resolution or STT I/O.
+    if (body.workflowSlug && body.consultationId) {
+      throw new BadRequestException({
+        code: 'STREAM_SESSION_TARGET_CONFLICT',
+        message: 'A streaming session targets a consultation or a standalone workflow run: send consultationId or workflowSlug, not both.',
+      });
+    }
     // TASK-1004 — the caller's explicit mode (`languageMode` > `language`), normalized; a value
     // that names no mode is 400 LANGUAGE_MODE_UNKNOWN here, before any quota, resolution or STT I/O.
     const requestedMode = requestedLanguageMode(body);
@@ -962,7 +987,7 @@ export class TranscriptionJobController {
     // independent reads; a rejected resolution (a foreign slug is a 404) still
     // rejects the whole step before anything is forwarded to STT.
     const [resolved, { audioBucketName, storage }] = await Promise.all([
-      this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId, requestedMode),
+      this.resolveAsrAgent(tenantId, body.agentSlug, body.consultationId, requestedMode, body.workflowSlug),
       resolveAudioBucket(),
     ]);
 

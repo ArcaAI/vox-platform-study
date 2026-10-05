@@ -270,6 +270,18 @@ export interface StartWorkflowRunInput {
   payload?: Record<string, unknown>;
   /** See {@link StartWorkflowRunSubject}. Omitted ⇒ the run has no clinical subject. */
   subject?: StartWorkflowRunSubject;
+  /**
+   * TASK-1042 (C7) — the live STT session bound to this run, and the gateway-resolved wait ceiling
+   * (`workflowRuns.liveAudioMaxSeconds`). Server-resolved like `subject`: set only by the run-audio
+   * binding after its checks pass, never from a caller's `payload`. Omitted ⇒ no live audio.
+   */
+  liveAudio?: StartWorkflowRunLiveAudio;
+}
+
+/** TASK-1042 (C7) — mirrors the harness `LiveAudioBinding`, which forbids any other key. */
+export interface StartWorkflowRunLiveAudio {
+  sttSessionId: string;
+  maxWaitSeconds?: number;
 }
 
 /** Response of `POST /workflow-runs:start()`. */
@@ -592,6 +604,15 @@ export class HarnessGatewayService {
       // `null` on the wire and a missing key mean the same thing there, but sending the key only
       // when there IS a subject keeps a Temporal history honest about which runs were bound.
       ...(input.subject ? { subject: input.subject } : {}),
+      // TASK-1042 (C7) — exactly the two keys the harness model admits (it 422s on any other).
+      ...(input.liveAudio
+        ? {
+            liveAudio: {
+              sttSessionId: input.liveAudio.sttSessionId,
+              ...(input.liveAudio.maxWaitSeconds !== undefined ? { maxWaitSeconds: input.liveAudio.maxWaitSeconds } : {}),
+            },
+          }
+        : {}),
       // TASK-1038 B3a — every start carries the event-stream retention (the TTL of the terminal
       // append) and the payload limits, resolved here from the platform settings so no harness
       // knob is a literal or an env var. One resolution site covers every caller (exposure plane,

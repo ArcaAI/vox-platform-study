@@ -51,7 +51,14 @@ import type { WorkflowFinding, WorkflowFindingSeverity, WorkflowRuleClass } from
 import { templateReferenceProblems, templateSyntaxProblems } from './template';
 import type { DeclaredNamespaces } from './template';
 import type { AgentIOResolver } from './node-io';
-import { effectiveSettings, graphSettingsOf, settingsImplications, workflowSettingsProblems, type WorkflowSettingsRuleId } from './workflow-settings';
+import {
+  effectiveSettings,
+  graphSettingsOf,
+  liveAudioUnread,
+  settingsImplications,
+  workflowSettingsProblems,
+  type WorkflowSettingsRuleId,
+} from './workflow-settings';
 
 // =============================================================================================
 // The code vocabulary (§3.5) — shared with `AgentFindingCode` in the applications layer
@@ -90,6 +97,8 @@ export const WORKFLOW_PUBLISH_FINDING_CODES = Object.freeze([
   'SETTINGS_SOCKET_REQUIRES_API',
   'SETTINGS_LIVE_AUDIO_REQUIRES_SOCKET',
   'SETTINGS_UPLOAD_REQUIRES_API',
+  // TASK-1042 OD-7 — WF-SET-005: a streamed audio input no speech-to-text step reads.
+  'SETTINGS_LIVE_AUDIO_UNREAD',
 ] as const);
 export type WorkflowPublishFindingCode = (typeof WORKFLOW_PUBLISH_FINDING_CODES)[number];
 
@@ -299,6 +308,13 @@ function dataContractFindings(graph: WorkflowGraph, ctx: PublishContext): Workfl
       findings.push({
         ...finding(SETTINGS_RULE_CODES[implication.ruleId], 'structural', severity, implication.nodeId, implication.message, '/settings/connections'),
         ruleId: implication.ruleId,
+      });
+    }
+    // TASK-1042 OD-7 — WF-SET-005. Not an implication (it names no connection), same severity rule.
+    for (const unread of liveAudioUnread(graph, settings, { agents, contextSchemaDefinition: ctx.contextSchemaDefinition })) {
+      findings.push({
+        ...finding('SETTINGS_LIVE_AUDIO_UNREAD', 'structural', severity, unread.nodeId, unread.message, '/settings/contextSchema'),
+        ruleId: unread.ruleId,
       });
     }
   }

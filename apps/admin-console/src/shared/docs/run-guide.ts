@@ -82,6 +82,12 @@ export interface RunGuideInput {
   /** The smallest accepted input (`run-shapes`), or `null` when the schema declares none. */
   exampleInput: Record<string, unknown> | null;
   streamAudioIn: boolean;
+  /**
+   * The Input key that takes the live audio (`{ sttSessionId }`). Optional: when absent the SDK
+   * snippets omit it (both SDKs resolve the single live-audio key from the published Input shape)
+   * and the raw snippet shows a placeholder.
+   */
+  audioField?: string;
   attachmentsIn: boolean;
   streamAudioOut: boolean;
   /** The console's configured gateway ORIGIN (no `/api/v1`). Omitted → a documentation placeholder. */
@@ -180,7 +186,9 @@ function authenticate(ctx: Ctx): RunGuideStep {
       'A service account is exchanged at POST /api/v1/auth/service-token for an opaque token that lives about 15 minutes (expiresIn 900); the SDK exchanges, refreshes early and re-exchanges for you.',
       'The tenant binds to the credential: never send X-Tenant-Id with an API key or a service-account token. A service account’s working tenant binds at the exchange.',
       ...(ctx.kind === 'workflow'
-        ? ['Over a user JWT, starting a run additionally needs the create:WorkflowRun ability (read:WorkflowRun for the reads). An API key or service account carrying the scopes above does not.']
+        ? [
+            'Over a user JWT, starting a run additionally needs the create:WorkflowRun ability (read:WorkflowRun for the reads). An API key or service account carrying the scopes above does not.',
+          ]
         : []),
       ...serviceAccountNotes(keys),
     ],
@@ -253,7 +261,12 @@ function connectSnippets(ctx: Ctx): RunGuideSnippet[] {
       {
         lane: 'vox-node',
         label: label.node('Connect', 'API'),
-        code: [start, ``, `// No stream held open: poll the run until it ends.`, `const outcome = await run.wait({ poll: true, intervalMs: 2_000 });`].join('\n'),
+        code: [
+          start,
+          ``,
+          `// No stream held open: poll the run until it ends.`,
+          `const outcome = await run.wait({ poll: true, intervalMs: 2_000 });`,
+        ].join('\n'),
       },
       {
         lane: 'vox',
@@ -268,7 +281,12 @@ function connectSnippets(ctx: Ctx): RunGuideSnippet[] {
       {
         lane: 'raw',
         label: label.raw('Connect', 'API'),
-        code: [...headerEnv, `# Read where the run got to — poll this until status is terminal.`, `curl -sS "${ctx.shellBase}/runs/$RUN_ID" \\`, `  -H "X-API-Key: $HOPE_API_KEY"`].join('\n'),
+        code: [
+          ...headerEnv,
+          `# Read where the run got to — poll this until status is terminal.`,
+          `curl -sS "${ctx.shellBase}/runs/$RUN_ID" \\`,
+          `  -H "X-API-Key: $HOPE_API_KEY"`,
+        ].join('\n'),
       },
     );
   }
@@ -391,7 +409,8 @@ function connect(ctx: Ctx): RunGuideStep {
     notes.push('No connection is enabled in this workflow’s Settings, so a caller cannot reach it. Enable API (and SSE or socket to stream) first.');
   }
   if (workflow && enabled.has('sse') && enabled.has('socket')) notes.push(SOCKET_LANE_RATIONALE);
-  else if (workflow && enabled.has('sse')) notes.push('SSE is the only lane that resumes: a dropped connection reconnects with Last-Event-ID and loses no events.');
+  else if (workflow && enabled.has('sse'))
+    notes.push('SSE is the only lane that resumes: a dropped connection reconnects with Last-Event-ID and loses no events.');
   if (workflow && enabled.has('socket')) notes.push(SOCKET_RUNTIME_FLOOR);
   if (!workflow) notes.push('An agent run always has two ways in: start it and poll, or follow its resumable SSE events.');
 
@@ -403,7 +422,9 @@ function connect(ctx: Ctx): RunGuideStep {
       : 'Choose how you follow the run: poll its status, or follow its events.',
     notes,
     snippets: connectSnippets(ctx),
-    ...(workflow ? { lanes: ALL_CONNECTIONS.map((connection) => ({ connection, enabled: enabled.has(connection), summary: CONNECTION_SUMMARY[connection] })) } : {}),
+    ...(workflow
+      ? { lanes: ALL_CONNECTIONS.map((connection) => ({ connection, enabled: enabled.has(connection), summary: CONNECTION_SUMMARY[connection] })) }
+      : {}),
   };
 }
 
@@ -420,13 +441,21 @@ function send(ctx: Ctx): RunGuideStep {
       ? 'SDKs take the input itself. Raw HTTP takes the envelope { "input": … } — the agent plane takes its input flat, and mixing the two is a 400 on every call.'
       : 'The agent plane takes its input FLAT. Wrapping it in the workflow plane’s { "input": … } envelope is a 400.',
   );
-  notes.push('Every start carries an Idempotency-Key: a retry with the same key and body joins the run already in flight instead of starting — and billing — a second one.');
+  notes.push(
+    'Every start carries an Idempotency-Key: a retry with the same key and body joins the run already in flight instead of starting — and billing — a second one.',
+  );
   if (ctx.kind === 'workflow') {
     notes.push('input may not carry consultationId, externalPatientId, userId, jobId or sessionId — the server stamps those itself.');
   }
   if (ctx.streamAudioIn) {
     notes.push(
       'Stream audio is not part of the JSON body. It goes up a realtime STT session as binary PCM16 little-endian mono frames, with typed transcript and status events coming back; the run’s own events come back on the run stream.',
+    );
+    notes.push(
+      'The session is bound to the run, not to a consultation: create it with workflowSlug, connect its socket, then start the run with input.<audioField>.sttSessionId (the audioField is the Input key whose kind is live audio). The workflow’s Settings must enable the socket connection. Ending the audio — finalize, then close the session — never cancels the run: it carries on to its result.',
+    );
+    notes.push(
+      'A refused start answers with a code: 400 RUN_AUDIO_INPUT_UNDECLARED, RUN_AUDIO_MULTIPLE or LIVE_AUDIO_UNSUPPORTED; 409 RUN_AUDIO_SESSION_NOT_LIVE, RUN_AUDIO_SESSION_BOUND_ELSEWHERE or RUN_AUDIO_AGENT_MISMATCH; 404 for a session that is unknown, another tenant’s or another principal’s.',
     );
   }
   if (ctx.attachmentsIn) {
@@ -478,7 +507,66 @@ function send(ctx: Ctx): RunGuideStep {
     },
   ];
 
-  if (ctx.streamAudioIn) {
+  if (ctx.streamAudioIn && ctx.kind === 'workflow') {
+    // Live audio is bound to the run (TASK-1042): the session is created with `workflowSlug`
+    // and the run names it in the live-audio Input — so each lane replaces its plain start.
+    const field = ctx.audioField;
+    snippets[0].code = [
+      ...HEADER,
+      CLIENT,
+      ``,
+      `const input = ${inputLiteral(ctx)};`,
+      ``,
+      `// Live audio, bound to the run (no consultation). runWithAudio opens an STT session for`,
+      `// this workflow, connects its socket, then starts the run with`,
+      `// ${field ? `input.${field}` : 'the live-audio Input'} = { sttSessionId }.`,
+      `const { run, audio } = await hope.workflows.runWithAudio('${ctx.slug}', input, {`,
+      `  ${field ? `audioField: '${field}', ` : ''}language: 'en',`,
+      `  idempotencyKey: \`${ctx.slug}-\${visitId}\`,`,
+      `});`,
+      ``,
+      `audio.sendPcm16(pcm16LeMonoChunk); // binary PCM16 little-endian mono, as often as you have audio`,
+      `await audio.finalize(); // flushes the tail and closes the session; the run carries on, it is never cancelled`,
+    ].join('\n');
+    snippets[1].code = [
+      `import { useRunAudio } from '@arcaai/vox/plugins'; // @arcaai/vox 5.0`,
+      ``,
+      `// …in any component under <AgenticProvider>, with NO consultation open:`,
+      `const { start, stop, run, audio, isRecording } = useRunAudio({ workflow: '${ctx.slug}'${field ? `, audioField: '${field}'` : ''} });`,
+      ``,
+      `// Opens the microphone and an STT session bound to the workflow, then starts the run with`,
+      `// ${field ? `input.${field}` : 'the live-audio Input'} = { sttSessionId }. No model runs in the browser.`,
+      `await start(${inputLiteral(ctx)}, { audio: { language: 'en' } });`,
+      ``,
+      `// run.text and run.events follow the run; audio.currentTranscript is what the session hears.`,
+      `await stop(); // ends the audio; the run is NOT cancelled (run.cancel() does that)`,
+    ].join('\n');
+    const sessionBody = jsonBlock({ workflowSlug: ctx.slug }, 4);
+    const audioInput = { ...(ctx.exampleInput ?? {}), [field ?? '<audioField>']: { sttSessionId: '__STT_SESSION_ID__' } };
+    const runBody = jsonBlock({ input: audioInput }, 6).replace('"__STT_SESSION_ID__"', `"'"$STT_SESSION_ID"'"`);
+    snippets[2].code = [
+      ...curlEnvLines(ctx.origin),
+      `# 1. Open an STT session BOUND to this workflow (workflowSlug, not a consultation).`,
+      `SESSION=$(curl -sS -X POST "$HOPE_API_URL/api/v1/audio/transcription-jobs/stream/session" \\`,
+      `  -H "X-API-Key: $HOPE_API_KEY" -H "Content-Type: application/json" \\`,
+      `  -d '${sessionBody}')`,
+      `STT_SESSION_ID=$(printf '%s' "$SESSION" | jq -r .sessionId)`,
+      `# 2. Connect /ws/stt/stream?sessionId=$STT_SESSION_ID&ticket=… (websocat -b); send binary PCM16 LE mono frames.`,
+      ``,
+      `# 3. Start the run, naming the session in the live-audio Input (${field ? `"${field}"` : '<audioField> — the Input key whose kind is live audio, see GET …/schema'}).`,
+      `RUN=$(curl -sS -X POST "${ctx.shellBase}/runs" \\`,
+      `  -H "X-API-Key: $HOPE_API_KEY" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -H "Idempotency-Key: $(uuidgen)" \\`,
+      `  -d '${runBody}')`,
+      `RUN_ID=$(printf '%s' "$RUN" | jq -r .runId)`,
+      ``,
+      `# 4. When the speech is over: send {"type":"stop"} on the socket, then close the session.`,
+      `#    The run carries on to its result — ending the audio never cancels it.`,
+      `curl -sS -X DELETE "$HOPE_API_URL/api/v1/audio/transcription-jobs/stream/session/$STT_SESSION_ID" \\`,
+      `  -H "X-API-Key: $HOPE_API_KEY"`,
+    ].join('\n');
+  } else if (ctx.streamAudioIn) {
     snippets[0].code += [
       ``,
       ``,
