@@ -184,3 +184,4 @@ export * from './inference-engine';
 export * from './model-residency';
 // Tenant checkpoints — sealed per-tenant backups, offline download/upload, and the locked restore.
 export * from './tenant-checkpoint';
+export * from './ai-activity-run';
