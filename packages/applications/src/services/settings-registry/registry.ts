@@ -16,6 +16,7 @@ import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors'
 import { CONSULTATION_APPOINTMENT_DAY_SETTINGS } from './descriptors/consultation-appointment-day.descriptors';
 import { CONSULTATION_COMPLETION_TIMEOUT_SETTINGS } from './descriptors/consultation-completion.descriptors';
 import { CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS } from './descriptors/consultation-attachments-feedback.descriptors';
+import { CONSULTATION_NOTE_COMPOSITION_SETTINGS } from './descriptors/consultation-note-composition.descriptors';
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { CONSULTATION_LIFECYCLE_SETTINGS } from './descriptors/consultation-lifecycle.descriptors';
 import { CONSULTATION_OUTPUT_LANGUAGE_SETTINGS } from './descriptors/consultation-output-language.descriptors';
@@ -235,6 +236,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
   ...CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS,
+  ...CONSULTATION_NOTE_COMPOSITION_SETTINGS,
   // TASK-891 B1 — the realtime scribe's own runtime budget. `LIVE_DOC_TEXT_TIMEOUT_MS`
   // was a raw env read whose hard-coded 20 s default sat below the measured p50 of the
   // generation it bounded, so every realtime flush timed out.

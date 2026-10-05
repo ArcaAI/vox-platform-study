@@ -57,7 +57,7 @@ import { ConsultationController } from './consultation.controller';
 import { AdminConsultationController } from './admin-consultation.controller';
 import { ConsultationTelemetryController } from './consultation-telemetry.controller';
 import { ConsultationJobController } from './consultation-job.controller';
-import { HarnessInternalController } from './harness-internal.controller';
+import { HarnessInternalController, HarnessNotePlanController } from './harness-internal.controller';
 import { ConsentInternalController } from './consent-internal.controller';
 import { ConsultationReadInternalController } from './consultation-read-internal.controller';
 import { AdminFeedbackRollupController } from './admin-feedback-rollup.controller';
@@ -146,6 +146,8 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     ConsultationTelemetryController,
     ConsultationJobController,
     HarnessInternalController,
+    // `internal/consultations/:id/note-plans/:planId` — the harness fetches the composed note plan.
+    HarnessNotePlanController,
     ConsentInternalController,
     ConsultationReadInternalController,
     // `feedback/reason-codes` is a two-segment literal path, so it never binds as `:id`.

@@ -22,6 +22,7 @@ import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-time
 import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
 import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
 import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
+import { NoteCompositionServiceModule } from '../note-composition/note-composition.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -30,6 +31,8 @@ import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
  */
 @Module({
   imports: [
+    // Composes the note plan (inputs + budget) the harness executes.
+    NoteCompositionServiceModule,
     // The processing axis (summarizing / awaiting review) and the content lock.
     ConsultationLifecycleGateModule,
     TenantLockModule,

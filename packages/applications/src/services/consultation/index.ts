@@ -55,3 +55,4 @@ export * from './history';
 export * from './encounter';
 export * from './lifecycle';
 export * from './transcript-record';
+export * from './note-composition';

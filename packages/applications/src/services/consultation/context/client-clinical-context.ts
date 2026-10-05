@@ -37,8 +37,6 @@
  */
 import type { ContextItemEntity, ContextItemRepository } from '@arcaai/domains';
 
-import { truncatePriorVisitSummary } from '../harness/prior-visit-summary';
-
 /** The kind keys every prompt surface reads. Both are declared by the tenant's scribe schema. */
 export const CLIENT_VITALS_KIND_KEY = 'vitals';
 export const CLIENT_PREVIOUS_CASE_NOTES_KIND_KEY = 'previous_case_notes';
@@ -203,10 +201,8 @@ export function formatClientVitalsForPrompt(vitals: ClientVitalsPayload | undefi
  *
  * ## Bounding
  *
- * Through the SAME {@link truncatePriorVisitSummary} the carried prior-visit summary uses, marker
- * and all — a truncated history must not read as a complete one. Whole notes are not dropped to
- * fit: cutting mid-note leaves the marker visible, whereas silently omitting a visit would make the
- * history look shorter than it is.
+ * None here: the note composer budgets every input against the model's declared context window
+ * and reduces or fails closed instead of truncating, so no visit is silently shortened.
  */
 export function formatPreviousVisitsForPrompt(notes: readonly ClientPreviousCaseNote[] | undefined): string {
   if (!notes || notes.length === 0) return '';
@@ -231,7 +227,7 @@ export function formatPreviousVisitsForPrompt(notes: readonly ClientPreviousCase
     })
     .filter((entry) => entry.length > 0);
 
-  return rendered.length > 0 ? truncatePriorVisitSummary(rendered.join('\n\n')) : '';
+  return rendered.join('\n\n');
 }
 
 /**
