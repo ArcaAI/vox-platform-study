@@ -3,9 +3,10 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { DocumentSectionService } from './document-section.service';
 import { IDocumentSectionService } from './IDocumentSectionService';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  imports: [ConsultationLifecycleGateModule, CommonServiceModule, CoreDatabaseModule],
   providers: [
     DocumentSectionService,
     {

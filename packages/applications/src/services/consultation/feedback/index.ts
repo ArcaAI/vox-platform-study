@@ -4,3 +4,4 @@ export * from './feedback-provenance';
 export * from './IConsultationFeedbackService';
 export * from './consultation-feedback.service';
 export * from './consultation-feedback.service.module';
+export * from './feedback-rollup.module';

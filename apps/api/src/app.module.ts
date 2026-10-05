@@ -17,6 +17,10 @@ import {
   // a feature module.
   ConsentServiceModule,
   ConsultationTimeoutSweepServiceModule,
+  ConsultationLifecycleModule,
+  ConsultationAttachmentServiceModule,
+  FactLedgerServiceModule,
+  FeedbackRollupServiceModule,
   SttJobReaperServiceModule,
   // scheduled hard-delete of soft-deleted DNA
   // writing-style profiles past their retention window ("purge later").
@@ -379,10 +383,17 @@ const common = [
   TenantStoragePurgeServiceModule, // TASK-1025 G2 — purge deleted tenants' buckets after the retention window
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
   //  — scheduled session-timeout sweep:
-  // transitions stale PRIMED/DRAINING/DRAFT_PENDING_SENSORS/TIMED_OUT/REOPENED
-  // consultations to CLOSED_INCOMPLETE. On by default (no `enabled` gate —
-  // see the service's own doc comment for why).
+  // auto-closes idle (or past the daily close time) consultations through the lifecycle
+  // `close` command. On by default (no `enabled` gate — see the service's own doc comment).
   ConsultationTimeoutSweepServiceModule,
+  // The consultation lifecycle commands + the event publisher behind the lifecycle SSE.
+  ConsultationLifecycleModule,
+  // Attachment intents, processors, the batch-transcript sink and the scheduled intent reaper.
+  ConsultationAttachmentServiceModule,
+  // Fact ledger + encounter recap extraction (EncounterStopped / FullTranscriptRebuilt listener).
+  FactLedgerServiceModule,
+  // Scheduled daily consultation-feedback rollup.
+  FeedbackRollupServiceModule,
   // TASK-992 — scheduled stranded-STT-batch-job reaper: fails a PROCESSING
   // transcription job whose worker died and whose Dramatiq message was never
   // redelivered, so it can never be reclaimed. On by default (no `enabled`

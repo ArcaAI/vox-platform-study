@@ -21,6 +21,7 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
 import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
 import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
 import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -29,6 +30,8 @@ import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.modul
  */
 @Module({
   imports: [
+    // The processing axis (summarizing / awaiting review) and the content lock.
+    ConsultationLifecycleGateModule,
     TenantLockModule,
     VisitTypeServiceModule,
     CoreDatabaseModule,

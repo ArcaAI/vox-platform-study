@@ -1,8 +1,4 @@
-import type {
-  CaptureState,
-  ConsultationProcessing,
-  StopResult,
-} from '@arcaai/types';
+import type { CaptureState, ConsultationProcessing, StopResult } from '@arcaai/types';
 import type { ConsultationResponse } from '../consultation/dto/consultation.response';
 
 /** Who is acting, as resolved by the controller (human JWT, API key, or service account). */
@@ -30,7 +26,13 @@ export abstract class IConsultationLifecycleService {
    */
   abstract approve(
     consultationId: string,
-    options: { expectedVersion: number; clinicianUserId?: string; overrideSafetyFlag?: boolean; caller: ClinicalCaller; legacyContextItemId?: string },
+    options: {
+      expectedVersion: number;
+      clinicianUserId?: string;
+      overrideSafetyFlag?: boolean;
+      caller: ClinicalCaller;
+      legacyContextItemId?: string;
+    },
   ): Promise<ConsultationResponse>;
   /** CLOSED_COMPLETE when APPROVED, else CLOSED_INCOMPLETE. Idempotent on a closed row. */
   abstract close(

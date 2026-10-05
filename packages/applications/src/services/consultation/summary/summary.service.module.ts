@@ -23,6 +23,8 @@ import { DocumentTemplateServiceModule } from '../../document-template/document-
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { WorkflowExposureServiceModule } from '../../workflow-exposure/workflow-exposure.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
+import { AiActivityRunServiceModule } from '../../ai-activity-run/ai-activity-run.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -37,6 +39,9 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
   // transaction as its SummaryMeta, and WS-E uses it for the ner.extract
   // usage row extractEntities emits.
   imports: [
+    // The content lock on note edits; text run records.
+    ConsultationLifecycleGateModule,
+    AiActivityRunServiceModule,
     VisitTypeServiceModule,
     CommonServiceModule,
     CoreDatabaseModule,

@@ -22,9 +22,12 @@ import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module'
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 
 @Module({
   imports: [
+    // The processing axis for the auto-pipeline handler.
+    ConsultationLifecycleGateModule,
     TenantLockModule,
     VisitTypeServiceModule,
     ConfigModule,

@@ -4,7 +4,6 @@ import { IConsultationService } from './IConsultationService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
-import { HarnessAuditServiceModule } from '../../harness-audit';
 import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsentServiceModule } from '../../consent/consent-grant.service.module';
@@ -13,22 +12,21 @@ import { ConsultationContextSchemaServiceModule } from '../../consultation-conte
 import { ContextUserIdentityServiceModule } from '../../user/identity';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
 import { ContextServiceModule } from '../context/context.service.module';
-import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
-import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
+import { ConsultationEncounterServiceModule } from '../encounter/consultation-encounter.service.module';
+import { ConsultationLifecycleModule } from '../lifecycle/lifecycle.module';
 
 @Module({
-  // HarnessAuditServiceModule resolves the @Optional
-  // HarnessAuditService WORM append; EffectiveSettingsModule resolves the
+  // EffectiveSettingsModule resolves the
   // @Optional TenantSettingsService kill-switch read.
   // ConsultationWorkflowDispatchServiceModule supplies the optional
   // IConsultationWorkflowDispatchService that `getOrCreate` calls on create.
   imports: [
+    // The episode encounters and the lifecycle commands the deprecated methods delegate to.
+    ConsultationEncounterServiceModule,
+    ConsultationLifecycleModule,
     CommonServiceModule,
     CoreDatabaseModule,
-    // TASK-1001 wave 6 — `startRecording` cancels the pending completion timeout.
-    ConsultationCompletionTimeoutSchedulerModule,
     EntitlementsServiceModule,
-    HarnessAuditServiceModule,
     EffectiveSettingsModule,
     ConsultationWorkflowDispatchServiceModule,
     // supplies IConsentGrantService so `getOrCreate` can record the
@@ -63,12 +61,6 @@ import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-time
     // imports `CommonServiceModule`, `CoreDatabaseModule` and the context-schema module only,
     // none of which lead back here.
     ContextServiceModule,
-    // TASK-1001 — `StreamingSessionService`, so `startRecording` can ask apps/stt whether the STT
-    // session a request names is still live and refuse a stale, superseded start (409
-    // `STT_SESSION_NOT_ACTIVE`). Absent ⇒ the optional dependency is undefined and no check runs.
-    // No cycle: that module's import closure never reaches this one (it is already imported by
-    // `LiveDocumentationServiceModule` in the same application).
-    StreamingSessionServiceModule,
   ],
   providers: [
     ConsultationService,

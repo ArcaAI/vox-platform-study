@@ -8,6 +8,8 @@ import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.modul
 import { FactLedgerService } from './fact-ledger.service';
 import { FactLedgerProcessor, FactLedgerQueue } from './fact-ledger.processor';
 import { FactLedgerListener } from './fact-ledger.listener';
+import { TranscriptRecordServiceModule } from '../transcript-record/transcript-record.service.module';
+import { AiActivityRunServiceModule } from '../../ai-activity-run/ai-activity-run.service.module';
 
 /**
  * The per-encounter fact ledger + encounter recap producer.
@@ -17,6 +19,9 @@ import { FactLedgerListener } from './fact-ledger.listener';
  */
 @Module({
   imports: [
+    // Segment reads (required) and extractor run records (optional).
+    TranscriptRecordServiceModule,
+    AiActivityRunServiceModule,
     CommonServiceModule,
     CoreDatabaseModule,
     // `AgentResolverService` + `AgentInvocationService`: the extractor is invoked by slug.

@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { ConsultationHistoryService } from './consultation-history.service';
-import { IConsultationHistoryServiceToken } from './IConsultationHistoryService';
+import { ConsultationActivityFeedbackSourceToken, IConsultationHistoryServiceToken } from './IConsultationHistoryService';
+import { IConsultationFeedbackServiceToken } from '../feedback/IConsultationFeedbackService';
+import { ConsultationFeedbackServiceModule } from '../feedback/consultation-feedback.service.module';
+import { AiActivityRunServiceModule } from '../../ai-activity-run/ai-activity-run.service.module';
 
 /**
  * `ConsultationHistoryService` DI module — a read-only projection over the consultation's items,
@@ -13,8 +16,12 @@ import { IConsultationHistoryServiceToken } from './IConsultationHistoryService'
  * bound where the feedback and run-record modules are assembled.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
-  providers: [ConsultationHistoryService, { provide: IConsultationHistoryServiceToken, useExisting: ConsultationHistoryService }],
+  imports: [ConsultationFeedbackServiceModule, AiActivityRunServiceModule, CommonServiceModule, CoreDatabaseModule],
+  providers: [
+    ConsultationHistoryService,
+    { provide: ConsultationActivityFeedbackSourceToken, useExisting: IConsultationFeedbackServiceToken },
+    { provide: IConsultationHistoryServiceToken, useExisting: ConsultationHistoryService },
+  ],
   exports: [IConsultationHistoryServiceToken, ConsultationHistoryService],
 })
 export class ConsultationHistoryServiceModule {}

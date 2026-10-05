@@ -8,6 +8,8 @@ import { JobIdempotencyModule } from '../jobs/job-idempotency.module';
 import { ConsultationFeedbackService } from './consultation-feedback.service';
 import { FeedbackProvenanceResolver } from './feedback-provenance';
 import { IConsultationFeedbackServiceToken } from './IConsultationFeedbackService';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
+import { AiActivityRunServiceModule } from '../../ai-activity-run/ai-activity-run.service.module';
 
 /**
  * `IConsultationFeedbackService`. `TenantSettingsService` is provided LOCALLY over
@@ -18,7 +20,15 @@ import { IConsultationFeedbackServiceToken } from './IConsultationFeedbackServic
  * falls back to `SummaryMeta`).
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, ContextServiceModule, JobIdempotencyModule, GateEditMiningServiceModule],
+  imports: [
+    ConsultationLifecycleGateModule,
+    AiActivityRunServiceModule,
+    CommonServiceModule,
+    CoreDatabaseModule,
+    ContextServiceModule,
+    JobIdempotencyModule,
+    GateEditMiningServiceModule,
+  ],
   providers: [
     TenantSettingsService,
     FeedbackProvenanceResolver,

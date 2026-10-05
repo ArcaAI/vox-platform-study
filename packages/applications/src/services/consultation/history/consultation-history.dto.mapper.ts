@@ -12,6 +12,7 @@ import type {
 import type { ActivityRunProducer } from '../../ai-activity-run/IAiActivityRunService';
 import type { FeedbackResponse } from '../feedback/dto/feedback.response';
 import type { HistoryVersionMetaRow } from './IConsultationHistoryService';
+import type { RecapCitation, RecapLine } from '../fact-ledger/encounter-recap.renderer';
 
 /**
  * The item types each activity kind lists. FEEDBACK and LIFECYCLE are not items. A TRANSCRIPT item
@@ -59,21 +60,8 @@ export interface KeyedLifecycleEntry {
 
 export const ENCOUNTER_RECAP_V2_SCHEMA = 'hope.encounter_recap.v2';
 
-export interface RecapCitation {
-  itemId: string;
-  versionNumber: number;
-  label: string;
-  kind: 'segment' | 'attachment';
-  t0Ms?: number;
-}
-
-export interface RecapLine {
-  text: string;
-  citations: RecapCitation[];
-}
-
 /** A recap section: `text` is its lines joined, `lines` keeps the citations. */
-export interface RecapSection {
+export interface RecapViewSection {
   key: string;
   label?: string;
   text: string;
@@ -208,7 +196,7 @@ export class ConsultationHistoryDtoMapper {
    * A structured (v2) recap body: its sections, and a plain rendering as `## Label` blocks. Null for
    * anything else (a v1 plain-text recap), which the caller returns as text.
    */
-  static parseRecap(content: string | null | undefined): { text: string; sections: RecapSection[] } | null {
+  static parseRecap(content: string | null | undefined): { text: string; sections: RecapViewSection[] } | null {
     if (!content) return null;
     let parsed: unknown;
     try {
@@ -219,7 +207,7 @@ export class ConsultationHistoryDtoMapper {
     const body = parsed as { schema?: unknown; sections?: unknown };
     if (!body || typeof body !== 'object' || body.schema !== ENCOUNTER_RECAP_V2_SCHEMA || !Array.isArray(body.sections)) return null;
 
-    const sections: RecapSection[] = body.sections
+    const sections: RecapViewSection[] = body.sections
       .filter((section): section is Record<string, unknown> => !!section && typeof section === 'object' && typeof (section as { key?: unknown }).key === 'string')
       .map((section) => {
         const lines: RecapLine[] = (Array.isArray(section.lines) ? section.lines : [])

@@ -20,6 +20,7 @@ import { AudioAttachmentProcessor } from './processors/audio.processor';
 import { CaseNoteAttachmentProcessor } from './processors/case-note.processor';
 import { DocumentAttachmentProcessor } from './processors/document.processor';
 import { ImageAttachmentProcessor } from './processors/image.processor';
+import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 
 /**
  * Consultation attachments: the intent/complete service, its per-kind processors, the batch
@@ -35,6 +36,8 @@ import { ImageAttachmentProcessor } from './processors/image.processor';
  */
 @Module({
   imports: [
+    // The content lock and the processing axis.
+    ConsultationLifecycleGateModule,
     CommonServiceModule,
     CoreDatabaseModule,
     ContextServiceModule,

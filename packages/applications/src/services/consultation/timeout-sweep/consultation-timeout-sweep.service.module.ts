@@ -3,6 +3,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { ConsultationTimeoutSweepService } from './consultation-timeout-sweep.service';
+import { ConsultationLifecycleModule } from '../lifecycle/lifecycle.module';
 
 /**
  * Registers the self-scheduling {@link ConsultationTimeoutSweepService}.
@@ -18,7 +19,7 @@ import { ConsultationTimeoutSweepService } from './consultation-timeout-sweep.se
  * free of an import cycle with the lifecycle service.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
+  imports: [ConsultationLifecycleModule, CommonServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
   providers: [ConsultationTimeoutSweepService],
   exports: [ConsultationTimeoutSweepService],
 })

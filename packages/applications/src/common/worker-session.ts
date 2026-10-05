@@ -10,6 +10,11 @@ import { UserSession } from '../services';
 export type WorkerSessionKind =
   | 'audit'
   | 'fact-ledger'
+  // Consultation attachments: batch-transcript sink and intent reaper.
+  | 'attachment-transcript'
+  | 'attachment-reaper'
+  // Daily consultation-feedback rollup.
+  | 'feedback-rollup'
   | 'summary'
   | 'pre-summary'
   | 'ner'
