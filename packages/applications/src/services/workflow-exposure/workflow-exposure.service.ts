@@ -1031,13 +1031,13 @@ export class WorkflowExposureService extends BaseService implements IWorkflowExp
    */
   private async resolveReadableRun(tenantId: string, slug: string, runId: string): Promise<WorkflowRunResponse> {
     if (!this.runAccess) return this.resolveOwnedRun(tenantId, slug, runId);
-    const { run, startedBy } = await this.workflowRunService.getRunForReader(tenantId, runId);
+    const { run, startedBy, onBehalfOf } = await this.workflowRunService.getRunForReader(tenantId, runId);
     // The lineage check keeps its own (pre-existing) answer; the principal check answers exactly
     // what an unknown id answers.
     if (run.workflowSlug !== slug) {
       throw new NotFoundException(`Run '${runId}' not found for workflow '${slug}'.`);
     }
-    if (!(await this.runAccess.canRead('workflow', startedBy))) throw workflowRunNotFound(runId);
+    if (!(await this.runAccess.canRead('workflow', startedBy, onBehalfOf))) throw workflowRunNotFound(runId);
     return run;
   }
 

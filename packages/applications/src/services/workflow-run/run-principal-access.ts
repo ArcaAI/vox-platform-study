@@ -83,6 +83,20 @@ function asPrincipal(value: unknown): RunPrincipal | null {
   return { type: type as RunPrincipalType, id };
 }
 
+/**
+ * OD-35 follow-up (owner decision 2026-10-05) — the `_metadata` key a consultation-governed run
+ * records its CLINICIAN under. A machine that opens a consultation on a doctor's behalf is the
+ * run's starter; the doctor still reads the run. Always a `user` principal.
+ */
+export const RUN_ON_BEHALF_OF_KEY = 'onBehalfOf';
+
+/** The clinician recorded on a run row's `_metadata`, or `null` (none, malformed, or not a user). */
+export function readRunOnBehalfOf(metaData: unknown): RunPrincipal | null {
+  if (metaData === null || typeof metaData !== 'object' || Array.isArray(metaData)) return null;
+  const principal = asPrincipal((metaData as Record<string, unknown>)[RUN_ON_BEHALF_OF_KEY]);
+  return principal?.type === 'user' ? principal : null;
+}
+
 /** The starter recorded on a run row's `_metadata`, or `null` (none, or malformed). */
 export function readRunStartedBy(metaData: unknown): RunPrincipal | null {
   if (metaData === null || typeof metaData !== 'object' || Array.isArray(metaData)) return null;
@@ -153,14 +167,19 @@ export class RunPrincipalAccessService {
     return { principal: null, tenantWide: false };
   }
 
-  /** May the current request read a run of `kind` that `startedBy` started? */
-  async canRead(kind: RunKind, startedBy: RunPrincipal | null): Promise<boolean> {
-    // The common case first, with no role read: the caller started this run. (A status poll or a
-    // stream's periodic re-check would otherwise read the role list every time.)
-    if (sameRunPrincipal(this.currentPrincipal(), startedBy)) return true;
+  /**
+   * May the current request read a run of `kind` that `startedBy` started — on behalf of the
+   * clinician `onBehalfOf`, for a consultation-governed run?
+   */
+  async canRead(kind: RunKind, startedBy: RunPrincipal | null, onBehalfOf: RunPrincipal | null = null): Promise<boolean> {
+    // The common cases first, with no role read: the caller started this run, or it is the
+    // consultation's clinician. (A status poll or a stream's periodic re-check would otherwise
+    // read the role list every time.)
+    const current = this.currentPrincipal();
+    if (sameRunPrincipal(current, startedBy) || sameRunPrincipal(current, onBehalfOf)) return true;
     const reader = await this.resolveReader(kind);
     if (reader.tenantWide) return true;
-    return sameRunPrincipal(reader.principal, startedBy);
+    return sameRunPrincipal(reader.principal, startedBy) || sameRunPrincipal(reader.principal, onBehalfOf);
   }
 
   private async isTenantAdmin(user: { id: string; roles?: string[] | null }): Promise<boolean> {

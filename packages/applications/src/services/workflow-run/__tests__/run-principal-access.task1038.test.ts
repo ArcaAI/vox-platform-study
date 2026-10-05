@@ -11,10 +11,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
+  RUN_ON_BEHALF_OF_KEY,
   RUN_READ_ALL_SCOPES,
   RUN_STARTED_BY_KEY,
   RunPrincipalAccessService,
   principalScopedIdempotencyKey,
+  readRunOnBehalfOf,
   readRunStartedBy,
   type RunPrincipal,
 } from '../run-principal-access';
@@ -203,6 +205,42 @@ describe('OD-35 — cost', () => {
       { tenantId: TENANT, Roles: [{ name: 'TENANT_ADMIN' }] },
     ]);
     await expect(svc.canRead('workflow', doctor)).resolves.toBe(true);
+    expect(roleAssignments.findAll).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * OD-35 follow-up (owner decision 2026-10-05): a consultation-governed run also belongs to the
+ * consultation's CLINICIAN. When a machine (e.g. an ALaaS service account) opens a consultation on
+ * a doctor's behalf, the run's starter is the machine, and the doctor must still read it. The
+ * dispatcher stamps the clinician as `_metadata.onBehalfOf`; nobody else gains anything from it.
+ */
+describe('OD-35 follow-up — the clinician a run was started on behalf of', () => {
+  const onBehalfOfDoctor: RunPrincipal = { type: 'user', id: 'doctor-1' };
+
+  it('reads the stamp from run metadata (a user principal only)', () => {
+    expect(readRunOnBehalfOf({ [RUN_ON_BEHALF_OF_KEY]: onBehalfOfDoctor })).toEqual(onBehalfOfDoctor);
+    expect(readRunOnBehalfOf({ [RUN_ON_BEHALF_OF_KEY]: { type: 'apiKey', id: 'key-A' } })).toBeNull();
+    expect(readRunOnBehalfOf({})).toBeNull();
+    expect(readRunOnBehalfOf(null)).toBeNull();
+  });
+
+  it('the clinician reads a run a service account started on their behalf', async () => {
+    const { svc } = access({ tenantId: TENANT, user: { id: 'doctor-1', roles: ['DOCTOR'] } }, [{ tenantId: TENANT, Roles: [{ name: 'DOCTOR' }] }]);
+    await expect(svc.canRead('workflow', saOne, onBehalfOfDoctor)).resolves.toBe(true);
+  });
+
+  it('another doctor, and another machine credential, still do not', async () => {
+    const other = access({ tenantId: TENANT, user: { id: 'doctor-2', roles: ['DOCTOR'] } }, [{ tenantId: TENANT, Roles: [{ name: 'DOCTOR' }] }]);
+    await expect(other.svc.canRead('workflow', saOne, onBehalfOfDoctor)).resolves.toBe(false);
+    const key = access({ tenantId: TENANT, user: { id: 'doctor-1' }, apiKey: { id: 'key-B', scopes: [] } });
+    // An API key bound to the clinician is still a different principal from the clinician.
+    await expect(key.svc.canRead('workflow', saOne, onBehalfOfDoctor)).resolves.toBe(false);
+  });
+
+  it('the clinician read never reads the role list', async () => {
+    const { svc, roleAssignments } = access({ tenantId: TENANT, user: { id: 'doctor-1' } });
+    await expect(svc.canRead('workflow', saOne, onBehalfOfDoctor)).resolves.toBe(true);
     expect(roleAssignments.findAll).not.toHaveBeenCalled();
   });
 });
