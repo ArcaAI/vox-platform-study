@@ -1,10 +1,14 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
 import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
 import { readSpokenLanguageMode } from './summary-language';
-import { isRecordableConsultationStatus, readExternalRef, resolveVisitTypeKey } from './open-markers';
+import { resolveVisitTypeKey } from './open-markers';
 import { DEFAULT_VISIT_TYPE_SERVICE } from '../visit-type/visit-type.service';
 import { governingRunOf } from '../governing-engine';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
+import { EncounterDtoMapper, type EncounterLike } from '../encounter/encounter.dto.mapper';
+import type { ConsultationLifecycleView } from '../encounter/lifecycle-view';
+
+const VISIT_TYPE_KEYS: ReadonlySet<string> = new Set(['new-visit', 'revisit']);
 
 /**
  * Consultation DTO Mapper
@@ -13,14 +17,25 @@ import { ContextDtoMapper } from '../context/context.dto.mapper';
  */
 export class ConsultationDtoMapper {
   /**
-   * Convert entity to response
+   * Convert entity to response.
+   *
+   * `view` carries the episode facts that live outside the row (encounters, approval, auto-close
+   * deadline, reopen policy) and is loaded for single-consultation answers. Without it — list
+   * answers — the encounters come from an included `Encounters` relation when there is one (else
+   * `[]`), `approval` and `autoCloseAt` are `null`, and a CLOSED_COMPLETE row reads as not
+   * reopenable.
    */
-  static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
-    // `Consultation.status` is now the SOLE lifecycle tracker.
-    // The legacy `metadata.status` JSON key is deleted ; the
-    // precedence dance this mapper used to do between the typed column and
-    // that key is gone with it — the column is simply canonical.
-    return {
+  static toResponse(
+    entity: ConsultationEntity,
+    isNew = false,
+    view?: ConsultationLifecycleView,
+    extras?: { encounterAppended?: boolean },
+  ): ConsultationResponse {
+    // `Consultation.status` is the SOLE lifecycle tracker; `processing` is its background axis.
+    const included = entity.Encounters as EncounterLike[] | null | undefined;
+    const encounters = view?.encounters ?? (included ? EncounterDtoMapper.toResponses(included) : []);
+    const current = encounters.find((encounter) => encounter.seq === entity.currentEncounterSeq);
+    const response: ConsultationResponse = {
       id: entity.id,
       patientId: entity.patientId,
       doctorId: entity.doctorId,
@@ -30,19 +45,35 @@ export class ConsultationDtoMapper {
       appointmentDate: entity.appointmentDate.toISOString().split('T')[0],
       parentConsultationId: entity.parentConsultationId ?? undefined,
       status: entity.status,
-      // TASK-1020 D-7 — derived, never stored: can this row still be recorded, which visit type it
-      // resolves to (the same resolution every prompt/workflow reader uses), and the encounter id
-      // it is keyed on (the column; the TASK-951 marker for a row written before the column).
-      recordable: isRecordableConsultationStatus(entity.status),
-      visitType: resolveVisitTypeKey(DEFAULT_VISIT_TYPE_SERVICE, entity.tenantId, entity.metadata, entity.parentConsultationId),
-      externalRef: entity.externalRef ?? readExternalRef(entity.metadata),
+      // Derived, never stored: audio can be captured into OPEN / RECORDING / PAUSED / STOPPED.
+      recordable: entity.isRecordable,
+      // The current encounter's visit type when it is in the vocabulary; otherwise the same
+      // resolution every prompt/workflow reader uses.
+      visitType:
+        current && VISIT_TYPE_KEYS.has(current.visitType)
+          ? (current.visitType as ConsultationResponse['visitType'])
+          : resolveVisitTypeKey(DEFAULT_VISIT_TYPE_SERVICE, entity.tenantId, entity.metadata, entity.parentConsultationId),
+      // The current encounter's id when the encounters are known; otherwise the row's own column.
+      externalRef: current ? current.externalRef : (entity.externalRef ?? null),
+      processing: entity.processing,
+      processingReason: entity.processingReason ?? null,
+      lastActivityAt: entity.lastActivityAt.toISOString(),
+      autoCloseAt: view?.autoCloseAt ? view.autoCloseAt.toISOString() : null,
+      reopenCount: entity.reopenCount,
+      closedReason: entity.closedReason ?? null,
+      closedAt: entity.closedAt ? entity.closedAt.toISOString() : null,
+      reopenAllowed: entity.reopenAllowed(view?.allowClosedCompleteReopen ?? false),
+      currentEncounterSeq: entity.currentEncounterSeq,
+      encounters,
+      approval: view?.approval ?? null,
+      lifecycle: { status: entity.status, processing: entity.processing },
       // TASK-932 §3.7 / TASK-1004 D-3 — read through the ONE reader: the typed
       // `spokenLanguageMode` column first, the legacy `metadata.summaryLanguage` marker for one
       // release after it, so every surface reports the same declaration.
       language: readSpokenLanguageMode(entity) ?? undefined,
       metadata: entity.metadata as Record<string, unknown> | undefined,
       // the OCC row version, so a client can build the `If-Match`
-      // header the state-machine transition routes require. Also feeds
+      // header the lifecycle routes require. Also feeds
       // `ETagInterceptor` (reads `body.version`), which mirrors it onto the
       // `ETag` response header.
       version: entity.version,
@@ -54,13 +85,17 @@ export class ConsultationDtoMapper {
       // reads as "the default loop governs" here exactly as it does at the substrate gate.
       governingRun: governingRunOf(entity.metadata),
     };
+    if (extras?.encounterAppended !== undefined) {
+      response.encounterAppended = extras.encounterAppended;
+    }
+    return response;
   }
 
   /**
    * Convert entity to response with context items
    */
-  static toResponseWithContext(entity: ConsultationEntity, isNew = false): ConsultationResponse {
-    const response = this.toResponse(entity, isNew);
+  static toResponseWithContext(entity: ConsultationEntity, isNew = false, view?: ConsultationLifecycleView): ConsultationResponse {
+    const response = this.toResponse(entity, isNew, view);
 
     if (entity.ContextItems && entity.ContextItems.length > 0) {
       response.contextItems = entity.ContextItems.map((item: ContextItemEntity) => ContextDtoMapper.toResponse(item));

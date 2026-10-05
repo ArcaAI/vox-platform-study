@@ -23,12 +23,10 @@
  * follow-up it has linked for its own reasons. Absent, every reader behaves exactly as it did
  * before this ticket: the parent link decides.
  *
- * `externalRef` WAS a label under TASK-951. TASK-1020 D-2 makes it the ENCOUNTER KEY: it is
- * promoted to the `Consultation.externalRef` column (DB-enforced by a partial unique index), and
- * `open` matches on `(tenantId, patientId, doctorId, externalRef)` when a caller sends one — the
- * same ref is the same encounter, a new ref is a new one (the same-day return visit). The marker
- * is still written, for every reader that predates the column; callers that send no ref keep the
- * legacy `(tenantId, patientId, appointmentDate, doctorId)` key unchanged.
+ * `externalRef` WAS a label under TASK-951. It now selects the ENCOUNTER of a consultation episode
+ * (TASK-1045 D-3): `open` matches it on `ConsultationEncounter.externalRef` for the same patient and
+ * clinician — the same ref is the same encounter, a new ref appends an encounter to the open
+ * consultation of the key. The marker is still written, alongside the encounter row.
  *
  * ## Forgery, and why nothing is stripped
  *
@@ -45,7 +43,6 @@
  * `metadata.visitType` was neither.
  */
 
-import { ConsultationStatus } from '@arcaai/domains';
 import type { VisitTypeService } from '../visit-type/visit-type.service';
 
 /** The namespaced key the stated visit type lives under inside `Consultation.metadata`. */
@@ -129,23 +126,4 @@ export function resolveVisitTypeKey(
   const entry = visitTypes.forConsultation(tenantId, { recorded: readRecordedVisitType(metadata), isFollowUp: Boolean(parentConsultationId) });
   // `forConsultation` returns a catalogue ENTRY, so its key is one of the vocabulary's own.
   return entry.key as ConsultationVisitTypeKey;
-}
-
-/**
- * TASK-1020 D-4/D-7 — the statuses a consultation can NOT be recorded in: signed or closed
- * documentation (BP-2), a timed-out gate, and a re-opened (addendum) row. Every other status is
- * `recordable` — including `CLOSED_INCOMPLETE` and `PENDING_REVIEW`, whose `→ RECORDING` edges are
- * the sanctioned resume of the SAME visit (TASK-1001 wave 6).
- */
-export const NON_RECORDABLE_CONSULTATION_STATUSES: ReadonlySet<ConsultationStatus> = new Set([
-  ConsultationStatus.SIGNED,
-  ConsultationStatus.CLOSED_COMPLETE,
-  ConsultationStatus.TIMED_OUT,
-  ConsultationStatus.REOPENED,
-  ConsultationStatus.CLOSED,
-]);
-
-/** `true` unless `status` is one of {@link NON_RECORDABLE_CONSULTATION_STATUSES}. */
-export function isRecordableConsultationStatus(status: ConsultationStatus | null | undefined): boolean {
-  return !NON_RECORDABLE_CONSULTATION_STATUSES.has(status as ConsultationStatus);
 }

@@ -11,21 +11,13 @@ import {
 } from './dto';
 import { SelectableConsultationWorkflowListResponse } from '../workflow-dispatch/dto';
 
-/** TASK-1001 — what `startRecording` is told about the capture it is starting. */
+/** What `startRecording` is told about the capture it is starting; passed to `IConsultationLifecycleService.start`. */
 export interface StartRecordingOptions {
-  /**
-   * The STT streaming session the recording binds to (`StartRecordingRequest.sessionId`). When
-   * present it must still be LIVE on apps/stt, or the start is refused 409
-   * `STT_SESSION_NOT_ACTIVE` (a stale, superseded `recording/start`). Absent ⇒ nothing to check.
-   */
+  /** The STT streaming session the recording binds to (`StartRecordingRequest.sessionId`). */
   sttSessionId?: string;
   /**
    * Supersede, by the DURABLE binding, any older STT session of this consultation that is still
-   * live (exactly one live STT session per consultation; the listener of
-   * `STT_SESSION_SUPERSEDED_EVENT` finalizes it through the normal teardown). Set by a caller that
-   * holds no in-process binding to replace — live documentation re-binds, and announces the
-   * superseded session, itself when it holds one, and asking both would announce it twice.
-   * Absent ⇒ nothing is superseded here.
+   * live. Set by a caller that holds no in-process binding to replace.
    */
   supersedeByDurableBinding?: boolean;
 }
@@ -33,14 +25,18 @@ export interface StartRecordingOptions {
 /**
  * Consultation Service Interface
  *
- * Simplified workflow using natural key (patientId, doctorId, appointmentDate)
+ * A consultation is an episode of one patient with one clinician (and department), made of
+ * encounters (visits).
  */
 export abstract class IConsultationService {
   /**
-   * Get or create the consultation for one ENCOUNTER (TASK-1020): keyed on
-   * `(patientId, doctorId, externalRef)` when the caller sends an encounter id, else on the legacy
-   * `(patientId, appointmentDate, doctorId)`. The only entry — a follow-up is an `open` that names
-   * a new `externalRef` or a `parentConsultationId`.
+   * Get or create the consultation for one ENCOUNTER — the only entry. An `externalRef` selects
+   * the encounter carrying it (closed or not; another patient's ref is 409
+   * `EXTERNAL_REF_CONFLICT`); otherwise the non-closed consultation of (doctor, patient,
+   * department) is returned, with an encounter appended for a new ref or an ended-encounter
+   * revisit (409 `ENCOUNTER_CAPTURE_ACTIVE` / `CONSULTATION_APPROVED` when it cannot take one);
+   * otherwise a new consultation is created, chained to the latest closed one of the key. The
+   * response says whether an encounter was appended (`encounterAppended`).
    */
   abstract getOrCreate(request: OpenConsultationRequest, doctorId: string): Promise<ConsultationResponse>;
 
@@ -143,59 +139,43 @@ export abstract class IConsultationService {
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
 
   /**
-   * `OPEN → PRIMED`, the session state machine's first
-   * checkpoint (the state consent enforcement hangs on).
-   * Idempotent: a no-op when already `PRIMED`. `expectedVersion` is the
-   * `@RequiresIfMatch()`/`@ExpectedVersion()` OCC CAS predicate; absent ⇒
-   * falls back to the freshly-read row version.
+   * Deprecated: there is no PRIMED state any more. A no-op that answers the consultation as it is.
    */
   abstract primeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
-   * Close a consultation. The terminal is derived from the current status
-   * (`SIGNED → CLOSED_COMPLETE`, `TIMED_OUT → CLOSED_INCOMPLETE` —
-   * any other predecessor is illegal (409).
-   * Idempotent: a no-op when already terminal. `expectedVersion` — see
-   * `primeConsultation`.
+   * Close a consultation — delegates to `IConsultationLifecycleService.close` (CLOSED_COMPLETE
+   * when APPROVED, else CLOSED_INCOMPLETE; idempotent on a closed row). `clinicianUserId` / `caller`
+   * attribute the close the same way the sign-off is attributed.
    */
   abstract closeConsultation(
     id: string,
     expectedVersion?: number,
-    // TASK-972 Lane 1 — the same named-clinician rule the sign-off carries; see
-    // `consultation/summary/clinician-attribution.ts`.
     options?: { clinicianUserId?: string; caller?: ClinicalCaller },
   ): Promise<ConsultationResponse>;
 
   /**
-   * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
-   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE`. Idempotent: a no-op when
-   * already `REOPENED`. `expectedVersion` — see `primeConsultation`.
+   * Reopen a consultation — delegates to `IConsultationLifecycleService.reopen`. Without
+   * `expectedVersion` the CAS runs on the version just read.
    */
-  abstract reopenConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
+  abstract reopenConsultation(id: string, expectedVersion?: number, options?: { reason?: string }): Promise<ConsultationResponse>;
 
   /**
    * Update safely-mutable fields of an existing consultation
    * (appointmentDate / departmentId / metadata-merge). The typed `status`
-   * COLUMN is NOT settable here — see `primeConsultation`/
-   * `closeConsultation`/`reopenConsultation`/`startRecording`/`stopRecording`.
+   * COLUMN is NOT settable here — the lifecycle commands own it.
    */
   abstract updateConsultation(id: string, request: UpdateConsultationRequest, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — `PRIMED → RECORDING` (;
-   * the one flagged precondition in the whole matrix — see
-   * `consultation.state.requirePrimedBeforeRecording`). The harness later
-   * promotes a drained consult to PENDING_REVIEW once a draft note is
-   * generated. The LiveDocumentationService session is started by the
-   * controller around this. TASK-1001: a named STT session that is not live ⇒ 409
-   * `STT_SESSION_NOT_ACTIVE`, nothing written.
+   * Deprecated alias of `POST :id/start` — delegates to `IConsultationLifecycleService.start`
+   * and answers with the consultation.
    */
   abstract startRecording(id: string, options?: StartRecordingOptions): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — `RECORDING → DRAINING`
-   * when recording stops (the harness later promotes it to
-   * DRAFT_PENDING_SENSORS/PENDING_REVIEW via `persistDraft`).
+   * Deprecated alias of `POST :id/stop` — delegates to `IConsultationLifecycleService.stop`
+   * without waiting for the final transcript, and answers with the consultation.
    */
   abstract stopRecording(id: string): Promise<ConsultationResponse>;
 }

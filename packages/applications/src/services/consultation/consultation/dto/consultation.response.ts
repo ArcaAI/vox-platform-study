@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ConsultationStatus } from '@arcaai/domains';
+import { ConsultationClosedReason, ConsultationProcessing, ConsultationStatus } from '@arcaai/domains';
 import { ContextItemResponse } from '../../context/dto';
 import type { GoverningRunSummary } from '../../governing-engine';
+import { EncounterResponse } from './encounter.response';
 
 /**
  * Doctor Info (embedded in consultation response)
@@ -35,6 +36,36 @@ export class DepartmentInfo {
 }
 
 /**
+ * The approval a consultation carries while it is approved: who approved it, when, and the hash of
+ * the snapshot of every item version it pinned.
+ */
+export class ConsultationApprovalResponse {
+  @ApiProperty({ description: 'Approval ID' })
+  id: string;
+
+  @ApiProperty({ description: 'When the consultation was approved (ISO-8601).' })
+  approvedAt: string;
+
+  @ApiProperty({ description: 'The clinician the approval is attributed to.' })
+  approvedBy: string;
+
+  @ApiProperty({ description: 'Hash of the approved snapshot (every context item and the version it was approved at).' })
+  snapshotHash: string;
+
+  @ApiProperty({ description: 'How many context items the approval pinned.', example: 4 })
+  itemCount: number;
+}
+
+/** The lifecycle pair: where the consultation is, and what the platform is doing for it. */
+export class ConsultationLifecycleState {
+  @ApiProperty({ enum: ConsultationStatus, example: ConsultationStatus.OPEN })
+  status: ConsultationStatus;
+
+  @ApiProperty({ enum: ConsultationProcessing, example: ConsultationProcessing.IDLE })
+  processing: ConsultationProcessing;
+}
+
+/**
  * Consultation Response
  *
  * Simplified response without status management complexity.
@@ -65,46 +96,118 @@ export class ConsultationResponse {
   parentConsultationId?: string;
 
   @ApiPropertyOptional({
-    description: 'Clinical lifecycle status — the single-sourced ConsultationStatus column (session state machine).',
+    description:
+      'Lifecycle status (OPEN, RECORDING, PAUSED, STOPPED, APPROVED, CLOSED_COMPLETE, CLOSED_INCOMPLETE). An older client is answered in the previous vocabulary; `lifecycle.status` always carries the current value.',
     enum: ConsultationStatus,
     example: ConsultationStatus.OPEN,
   })
   status?: ConsultationStatus;
 
   /**
-   * TASK-1020 D-7 — whether `recording/start` can still record this consultation. `false` for
-   * SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED: signed documentation is never
-   * recorded over (409 `CONSULTATION_NOT_RECORDABLE`). An `open` that lands on such a row RETURNS
-   * it with `recordable: false`; a client starting a new visit opens with a new `externalRef` (or a
-   * `parentConsultationId` naming this row) instead.
+   * Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED
+   * and STOPPED; false once it is APPROVED or closed. An `open` that lands on a closed
+   * consultation RETURNS it with `recordable: false`.
    */
   @ApiProperty({
     description:
-      'Whether this consultation can still be recorded. false for SIGNED, CLOSED_COMPLETE, TIMED_OUT, REOPENED and CLOSED — `recording/start` answers 409 `CONSULTATION_NOT_RECORDABLE` for them. To start a new visit, open with a new `externalRef` or with `parentConsultationId` naming this consultation.',
+      'Whether audio can still be captured into this consultation: true for OPEN, RECORDING, PAUSED and STOPPED, false for APPROVED, CLOSED_COMPLETE and CLOSED_INCOMPLETE. Starting capture on a non-recordable consultation answers 409 `CONSULTATION_NOT_RECORDABLE`; reopen it, or open without the old visit id to start a new consultation.',
     example: true,
   })
   recordable: boolean;
 
+  @ApiProperty({
+    description: 'What the platform is doing in the background for this consultation.',
+    enum: ConsultationProcessing,
+    example: ConsultationProcessing.IDLE,
+  })
+  processing: ConsultationProcessing;
+
+  @ApiProperty({
+    description: 'Why processing is FAILED or AWAITING_REVIEW, or null.',
+    type: String,
+    nullable: true,
+  })
+  processingReason: string | null;
+
+  @ApiProperty({ description: 'When the consultation last saw activity (ISO-8601) — the auto-close clock reads this.' })
+  lastActivityAt: string;
+
+  @ApiProperty({
+    description:
+      "When the tenant's auto-close policy will close this consultation if nothing else happens (ISO-8601), or null when it is closed or no policy resolves.",
+    type: String,
+    nullable: true,
+  })
+  autoCloseAt: string | null;
+
+  @ApiProperty({ description: 'How many times this consultation was reopened.', example: 0 })
+  reopenCount: number;
+
+  @ApiProperty({
+    description: 'Why the consultation was closed (AUTO, MANUAL, APPROVED), or null while it is not closed.',
+    enum: ConsultationClosedReason,
+    nullable: true,
+  })
+  closedReason: ConsultationClosedReason | null;
+
+  @ApiProperty({ description: 'When the consultation was closed (ISO-8601), or null.', type: String, nullable: true })
+  closedAt: string | null;
+
+  @ApiProperty({
+    description:
+      "Whether `reopen` is offered: always for CLOSED_INCOMPLETE, for CLOSED_COMPLETE only when the tenant's policy allows it, never otherwise.",
+    example: false,
+  })
+  reopenAllowed: boolean;
+
+  @ApiProperty({ description: 'The open encounter of this consultation (starts at 1).', example: 1 })
+  currentEncounterSeq: number;
+
+  @ApiProperty({ description: 'Every encounter (visit) of this consultation, in order.', type: [EncounterResponse] })
+  encounters: EncounterResponse[];
+
+  @ApiProperty({
+    description: 'The latest approval of this consultation while it is approved, or null.',
+    type: () => ConsultationApprovalResponse,
+    nullable: true,
+  })
+  approval: ConsultationApprovalResponse | null;
+
   /**
-   * TASK-1020 D-7 — the CANONICAL visit type key: the recorded (schema-stated) visit type when it
-   * matches the vocabulary, else `revisit` when a parent is linked, else `new-visit`. The same
-   * resolution every prompt/workflow reader uses.
+   * The real lifecycle pair, whatever vocabulary `status` is projected to for an older client.
+   */
+  @ApiProperty({
+    description: 'The lifecycle status and processing value. Always the current vocabulary, even when `status` is projected for an older client.',
+    type: () => ConsultationLifecycleState,
+  })
+  lifecycle: ConsultationLifecycleState;
+
+  @ApiPropertyOptional({
+    description: 'On `open`: whether this call appended a new encounter to an existing consultation.',
+    example: false,
+  })
+  encounterAppended?: boolean;
+
+  /**
+   * The visit type of the CURRENT encounter when it is in the vocabulary; otherwise the
+   * consultation's canonical key (the recorded visit type, else `revisit` when a parent is linked,
+   * else `new-visit`) — the same resolution every prompt/workflow reader uses.
    */
   @ApiProperty({
     description:
-      "The consultation's visit type: the recorded (schema-stated) value when it matches the platform vocabulary, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
+      "The visit type of the current encounter. Falls back to the consultation's recorded visit type, otherwise `revisit` when a parent consultation is linked, otherwise `new-visit`.",
     enum: ['new-visit', 'revisit'],
     example: 'new-visit',
   })
   visitType: 'new-visit' | 'revisit';
 
   /**
-   * TASK-1020 D-2 — the caller's own encounter id (EMR event id) this consultation is keyed on, or
-   * `null`. Same ref on a later `open` returns this consultation; a new ref opens a new one.
+   * The caller's own id (EMR event id) of the CURRENT encounter, or `null`. The same id on a later
+   * `open` returns this consultation; a new id appends an encounter to the open consultation.
    */
   @ApiProperty({
     description:
-      "The caller's own encounter id this consultation is keyed on, or null. A later `open` with the same ref (same patient and clinician) returns this consultation; a new ref opens a new one.",
+      "The caller's own id of the current encounter, or null. A later `open` with the same id (same patient and clinician) returns this consultation; a new id appends a new encounter to the open consultation of the same patient, clinician and department.",
     type: String,
     nullable: true,
     example: 'EVT-88213',
@@ -133,7 +236,7 @@ export class ConsultationResponse {
   @ApiPropertyOptional({
     description:
       'Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header ' +
-      '(`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ' +
+      '(`"<version>"`) required by the lifecycle routes (POST :id/approve|close|reopen — ' +
       '). `ETagInterceptor` also mirrors this value onto the response `ETag` header.',
   })
   version?: number;

@@ -348,6 +348,7 @@ Artifacts: session scratchpad `replay1020/run2/` (prompt captures `p29` live, `p
 
 | Date | Change |
 |---|---|
+| 2026-10-05 | **OD-1 reversed by TASK-1045 D-3** (`docs/implementation/TASK-1045-Consultation-Lifecycle-Simplification/`): a consultation is now an EPISODE with encounters (`ConsultationEncounter`). `externalRef` selects the encounter, not the consultation; `open` returns the non-closed consultation of (tenant, doctor, patient, department) and appends an encounter for a new ref or an ended-encounter revisit; with none open it creates a new consultation chained to the latest closed one. The appointment date left the key, and the 12-state machine became 7 states + `processing`. |
 | 2026-09-30 | Owner: do rollout steps 1–3, pushes later. Done:
 - SDK 4.1.0 published; ALaaS on 4.1.0.
 - `rollout.mjs` applied locally.
