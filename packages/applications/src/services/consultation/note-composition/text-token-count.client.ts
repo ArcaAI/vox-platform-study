@@ -15,17 +15,10 @@ import { NOTE_TOKEN_ESTIMATE_ID, type NoteTokenizerMode } from './note-plan.type
  * chat-template allowance itself.
  */
 
-export interface TokenizerSpec {
-  hubRepo: string;
-  file: string;
-  sha256: string;
-}
-
 export interface TokenCountTarget {
   tenantId: string;
   provider: string;
   model: string;
-  tokenizer?: TokenizerSpec | null;
   providerOverrides?: Record<string, unknown> | null;
   allowEstimate: boolean;
 }
@@ -87,7 +80,6 @@ export class TextTokenCountClient implements NoteTokenCounter {
           provider: target.provider,
           model: target.model,
           texts,
-          ...(target.tokenizer ? { tokenizer: target.tokenizer } : {}),
           ...(target.providerOverrides ? { provider_overrides: target.providerOverrides } : {}),
         },
         {
