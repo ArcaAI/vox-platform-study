@@ -62,3 +62,7 @@
 | H-58 | G-SVC | module composition | orchestrator (integration) | `ConsultationFeedbackServiceModule` needs `IConsultationLifecycleGateToken` (required — import AB-4a's lifecycle module) and `IActivityRunRecordReaderToken` (optional — import `AiActivityRunServiceModule`) | pending (integration) |
 | H-59 | G-SVC | AB-5 `appendVersion` | AB-5 | write through the ambient `CoreUnitOfWorkService.runInTransaction` tx, no nested `$transaction` | sent to AB-5 |
 | H-60 | G-SVC | G-API | G-API | `create(consultationId, body, idempotencyKey, caller: ClinicalCaller) → FeedbackResponse`; `list → FeedbackPageResponse`; `reasonCodes(tenantId?) → {items, source}`; token `IConsultationFeedbackServiceToken` | pending (G-API brief) |
+| H-61 | E4 | `worker-session.ts`, `queue-concurrency.ts`, consultation barrel | orchestrator | `'fact-ledger'` worker kind; `ExtractFactLedger: 2`; `export * from './fact-ledger'` | applied |
+| H-62 | E4 | module composition | orchestrator (integration) | `FactLedgerServiceModule` needs `ITranscriptRecordServiceToken` (required, AB-5 module) + `IAiActivityRunServiceToken` (optional, E2 module); register the module in the host | pending (integration) |
+| H-63 | E4 | settings | E3 | optional descriptor `consultation.note.ledger.chunkInputTokens` (global-kv, system, open-to-default, int>0, default 12000) in E3's composition descriptors | pending (E3 brief) |
+| H-64 | E4 | C-SVC | C-SVC | set `encounterSeq` on attachment-audio TRANSCRIPT (and CASE_NOTE/ATTACHMENT) items | sent to C-SVC |
