@@ -64,7 +64,7 @@ function buildService(wiring: Wiring = {}) {
           patientId: PATIENT,
           appointmentDate: wiring.parentDay ?? DAY,
           parentConsultationId: null,
-          status: 'SIGNED',
+          status: 'APPROVED',
           createdAt: new Date('2026-09-29T04:15:00.000Z'),
         };
       }
@@ -103,7 +103,7 @@ describe('TASK-1020 — generatePreSummary hands the same-day prequel and test r
 
     await service.generatePreSummary(CID, {} as never);
 
-    expect(paramsOf(assemble).sameDayPrequelSummary).toBe('### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-SIGNED plan: CBC, LFT');
+    expect(paramsOf(assemble).sameDayPrequelSummary).toBe('### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-SIGNED plan: CBC, LFT');
   });
 
   it('omits it for a parent from another day', async () => {

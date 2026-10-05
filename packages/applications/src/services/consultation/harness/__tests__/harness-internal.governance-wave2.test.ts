@@ -18,7 +18,6 @@ import { NotFoundException } from '@nestjs/common';
 import { ConsultationStatus, ResourceStatusType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessInternalService } from '../harness-internal.service';
-import { PRIOR_VISIT_SUMMARY_MAX_CHARS, PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER } from '../prior-visit-summary';
 
 const TENANT = 'tenant-1';
 const CONSULTATION = 'consultation-1';
@@ -212,18 +211,21 @@ describe('HarnessInternalService — re-visit carry-forward (F-18)', () => {
     expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ priorVisitSummary: 'NEW-MARKER' }));
   });
 
-  it('truncates an oversized prior-visit note at the cap with a marker', async () => {
+  // The note composer budgets the prior visit against the model window (note-composition/__tests__/
+  // note-budget-planner.task1045.test.ts); assembly itself never cuts it.
+  it('carries an oversized prior-visit note whole, with no truncation marker', async () => {
+    const oversized = 'y'.repeat(50_000);
     const { service, promptAssemblyService } = build({
       carryForward: true,
       parentConsultationId: PARENT,
-      parentItems: { SIGNED_NOTE: [contextItem('c-signed', 'SIGNED_NOTE', 'y'.repeat(PRIOR_VISIT_SUMMARY_MAX_CHARS + 1_000))] },
+      parentItems: { SIGNED_NOTE: [contextItem('c-signed', 'SIGNED_NOTE', oversized)] },
     });
 
     await service.assemble(CONSULTATION, assembleDto);
 
     const carried = promptAssemblyService.assemble.mock.calls[0][0].priorVisitSummary as string;
-    expect(carried.endsWith(PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER)).toBe(true);
-    expect(carried.length).toBe(PRIOR_VISIT_SUMMARY_MAX_CHARS + PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER.length);
+    expect(carried).toBe(oversized);
+    expect(carried).not.toMatch(/truncated/i);
   });
 
   it('throws 404 (never 403) when the parent consultation belongs to another tenant', async () => {

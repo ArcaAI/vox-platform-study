@@ -170,6 +170,9 @@ function buildController(
     return false;
   });
   const tenantSettings = createMockTenantSettings(sharingEnabled);
+  const lifecycleService = {
+    approve: vi.fn().mockResolvedValue({ approval: { approvedBy: DOCTOR_A, approvedAt: '2026-06-14T00:00:00.000Z' } }),
+  };
 
   const controller = new ConsultationController(
     consultationService as any,
@@ -194,10 +197,12 @@ function buildController(
     {} as any, // redisSubscriber
     {} as any, // loopContextSignalService
     {} as any, // documentSectionService
+    lifecycleService as any,
   );
 
   return {
     controller,
+    lifecycleService,
     consultationService,
     contextService,
     summaryService,
@@ -843,40 +848,43 @@ describe('ConsultationController', () => {
   // Safety-flag override plumbing
   // ═══════════════════════════════════════════════════════════════════════
 
-  describe('approveSummary — overrideSafetyFlag plumbing', () => {
-    const approval = { contextItemId: 'ctx-1', approvalStatus: 'SIGNED', approvedBy: DOCTOR_A, approvedAt: '2026-06-14T00:00:00.000Z' };
-
-    it('forwards overrideSafetyFlag from the request body to the summary service', async () => {
-      const { controller, consultationService, summaryService } = buildController();
+  describe('approveSummary — deprecated alias of the session approve', () => {
+    it('forwards overrideSafetyFlag to the session approve, naming the summary as the legacy note', async () => {
+      const { controller, consultationService, lifecycleService } = buildController();
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
-      summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true } as any, undefined, NO_PRINCIPAL_REQ);
+      const res = await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true } as any, 4, NO_PRINCIPAL_REQ);
 
-      // TASK-972 Lane 4 — the sign-off now carries WHO it is attested by and WHICH credential
-      // submitted it. These fixtures call the handler with no `req`, which is the in-process
-      // path: `callerOf` falls back to CLS, and CLS says this is a human JWT.
-      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', {
+      // The sign-off carries the If-Match version and WHICH credential submitted it. These fixtures
+      // call the handler with no `req`, the in-process path: `callerOf` falls back to CLS (a human JWT).
+      expect(lifecycleService.approve).toHaveBeenCalledWith(CONSULTATION_OWN, {
+        expectedVersion: 4,
         overrideSafetyFlag: true,
-        expectedVersion: undefined,
-        clinicianUserId: undefined,
-        caller: { credentialClass: 'jwt', principalId: DOCTOR_A },
+        caller: { isMachine: false, userId: DOCTOR_A },
+        legacyContextItemId: 'ctx-1',
+      });
+      expect(res).toMatchObject({ contextItemId: 'ctx-1', approvalStatus: 'APPROVED', approvedBy: DOCTOR_A });
+    });
+
+    it('omits overrideSafetyFlag when no body flag is supplied (default sign)', async () => {
+      const { controller, consultationService, lifecycleService } = buildController();
+      consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+
+      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, 4, NO_PRINCIPAL_REQ);
+
+      expect(lifecycleService.approve).toHaveBeenCalledWith(CONSULTATION_OWN, {
+        expectedVersion: 4,
+        caller: { isMachine: false, userId: DOCTOR_A },
+        legacyContextItemId: 'ctx-1',
       });
     });
 
-    it('passes overrideSafetyFlag undefined when no body is supplied (default sign)', async () => {
-      const { controller, consultationService, summaryService } = buildController();
+    it('answers 428 when neither the If-Match header nor the body carries a version', async () => {
+      const { controller, consultationService, lifecycleService } = buildController();
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
-      summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined, NO_PRINCIPAL_REQ);
-
-      expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', {
-        overrideSafetyFlag: undefined,
-        expectedVersion: undefined,
-        clinicianUserId: undefined,
-        caller: { credentialClass: 'jwt', principalId: DOCTOR_A },
-      });
+      await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined, NO_PRINCIPAL_REQ)).rejects.toMatchObject({ status: 428 });
+      expect(lifecycleService.approve).not.toHaveBeenCalled();
     });
   });
 
