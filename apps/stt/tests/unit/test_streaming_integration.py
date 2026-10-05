@@ -351,14 +351,12 @@ class TestControlHandlerIntegration:
         mock_pp.flush.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_pause_is_rejected_loudly_not_silently_swallowed(self):
-        """PAUSE must fail LOUDLY, not be a silent no-op log.
+    async def test_pause_pauses_capture_and_publishes_paused_status(self):
+        """PAUSE is a supported control: capture stops, the session stays open.
 
-        No backend PAUSE semantics exist yet (the SDK halts audio at the source;
-        only finalize/cancel reach the backend). A PAUSE frame that DOES reach the
-        backend must surface an explicit, client-visible error on the result stream
-        rather than being silently swallowed as if it had taken effect. It must NOT
-        be mistaken for finalize/cancel (the session is not torn down).
+        The open utterance is flushed, ``status: paused`` is published with the
+        session's audio clock, and nothing is torn down (no finalize/cancel, no
+        error on the result stream).
         """
         mgr, redis = self._make_manager()
         session = self._make_session(redis)
@@ -370,6 +368,7 @@ class TestControlHandlerIntegration:
         mgr._publishers["test-sess"] = publisher
 
         mock_pp = AsyncMock(spec=StreamingPreprocessor)
+        mgr._flush_final_utterance = AsyncMock()
         mgr._cancel_session = AsyncMock()
         mgr._finalize_session = AsyncMock()
 
@@ -377,40 +376,61 @@ class TestControlHandlerIntegration:
 
         await control_handler(SessionControl(action=ControlAction.PAUSE))
 
-        # Rejected loudly: a client-visible error is published to the result stream.
-        publisher.publish_error.assert_awaited_once()
-        (msg,), _ = publisher.publish_error.await_args
-        assert "pause" in msg.lower()
-        # NOT swallowed AND not mistaken for finalize/cancel: no teardown side effects.
-        mock_pp.flush.assert_not_awaited()
+        assert session.capture_paused is True
+        assert session.status == SessionStatus.ACTIVE
+        mgr._flush_final_utterance.assert_awaited_once_with(session=session, preprocessor=mock_pp)
+        publisher.publish_status.assert_awaited_once_with("paused", audio_offset_ms=0)
+        publisher.publish_error.assert_not_awaited()
         mgr._cancel_session.assert_not_awaited()
         mgr._finalize_session.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resume_is_rejected_loudly_not_silently_swallowed(self):
-        """RESUME, like PAUSE, is unimplemented on the backend and
-        must be rejected loudly (client-visible error) rather than silently logged."""
+    async def test_resume_restarts_capture_and_publishes_capturing_status(self):
+        """RESUME after a PAUSE accepts audio again and publishes ``capturing``."""
         mgr, redis = self._make_manager()
         session = self._make_session(redis)
 
         mgr._sessions["test-sess"] = session
         publisher = AsyncMock()
         publisher.publish_error = AsyncMock()
+        publisher.publish_status = AsyncMock()
         mgr._publishers["test-sess"] = publisher
+        mgr._flush_final_utterance = AsyncMock()
 
         control_handler = mgr._make_control_handler(session)
 
+        await control_handler(SessionControl(action=ControlAction.PAUSE))
+        assert session.capture_paused is True
+
         await control_handler(SessionControl(action=ControlAction.RESUME))
 
-        publisher.publish_error.assert_awaited_once()
-        (msg,), _ = publisher.publish_error.await_args
-        assert "resume" in msg.lower()
+        assert session.capture_paused is False
+        assert session.capture_paused_at is None
+        assert session.status == SessionStatus.ACTIVE
+        assert publisher.publish_status.await_args_list[-1].args == ("capturing",)
+        assert publisher.publish_status.await_args_list[-1].kwargs == {"audio_offset_ms": 0}
+        publisher.publish_error.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_control_action_is_rejected_loudly(self):
+        """An action the backend does not know is refused at decode, never
+        mapped onto pause/resume/finalize: the control callback is not invoked."""
+        from stt.streaming.redis_streams import ControlListener
+
+        _, redis = self._make_manager()
+        on_control = AsyncMock()
+        listener = ControlListener(redis=redis, session_id="test-sess", on_control=on_control)
+
+        with pytest.raises(ValueError):
+            await listener._handle_entry(b"1-0", {b"action": b"rewind"})
+
+        on_control.assert_not_awaited()
 
     def test_make_control_handler_declares_typed_return_not_any(self) -> None:
         """The control-error channel must be TYPED, not ``Any``.
 
         ``_make_control_handler`` builds the callback that decodes each control
-        frame and publishes the PAUSE/RESUME rejection error. Declaring its
+        frame and dispatches it (finalize, pause, resume, ...). Declaring its
         return as ``Any`` erases the type on the control/error path, so a
         mis-shaped callback would only fail at runtime. It must declare the
         concrete callback type the ``ControlListener`` consumes
