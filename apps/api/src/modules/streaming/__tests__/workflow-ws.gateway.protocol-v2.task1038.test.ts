@@ -66,7 +66,10 @@ describe('WS run protocol v2', () => {
 
     await gateway.handleConnection(socket as never, url('&protocol=2') as never);
 
-    const sent = socket.send.mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>);
+    const frames = socket.send.mock.calls.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>);
+    // A live connection opens with `ping` at its position (TASK-1038 load test); events follow.
+    expect(frames[0]).toMatchObject({ type: 'ping', seq: 0 });
+    const sent = frames.filter((frame) => frame.type !== 'ping');
     expect(sent.map((frame) => `${frame.seq}:${frame.type}`)).toEqual(['1:node.started', '3:output.text.delta', '4:run.completed']);
     for (const frame of sent) expect(runEventProblems(frame, { plane: 'public' })).toEqual([]);
     expect(Object.keys(sent[0])).toEqual(['seq', 'runId', 'type', 'ts', 'nodeId', 'data']);
@@ -82,8 +85,9 @@ describe('WS run protocol v2', () => {
 
     await gateway.handleConnection(socket as never, url('&protocol=2&after=1') as never);
 
-    const sent = socket.send.mock.calls.map((call) => JSON.parse(String(call[0])) as { seq: number });
-    expect(sent.map((frame) => frame.seq)).toEqual([3, 4]);
+    const frames = socket.send.mock.calls.map((call) => JSON.parse(String(call[0])) as { seq: number; type: string });
+    expect(frames[0]).toMatchObject({ type: 'ping', seq: 1 }); // the connect ping carries the resume position
+    expect(frames.filter((frame) => frame.type !== 'ping').map((frame) => frame.seq)).toEqual([3, 4]);
     await hub.onModuleDestroy();
   });
 
