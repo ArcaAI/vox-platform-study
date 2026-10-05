@@ -155,3 +155,4 @@
 | H-147 | U9 | ALaaS merged transcript bubbles | follow-up | clinical-view bubbles that merge several segments get no Edit (workspace view edits per segment); optional: per-part editors via `parts[]` in `reducer/transcript.js` | follow-up |
 | H-148 | U9 | ALaaS segment thumbs after an edit | follow-up | thumbs keep rating the pre-edit segment version (the note moves its rating to the new version) | follow-up |
 | H-149 | U9 | ALaaS `CorrectControl` | note | replaced on both transcript surfaces by the per-segment editor (it wrote a merged bubble's text into one segment); component still exported | info |
+| H-150 | gate | ALaaS `consultationStartContext` + `priorCaseNotes` tests | pre-existing | 12 failures identical at the pre-ticket base `5339f61` (`departmentId is required`, fixture date ordering) — not caused by TASK-1045; out of scope, reported to owner | info |
