@@ -18,11 +18,12 @@ import { GateEditMiningServiceModule } from '../../gate-edit-mining/gate-edit-mi
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
 import { AiRoutingPolicyServiceModule } from '../../ai-routing-policy/ai-routing-policy.service.module';
 import { VisitTypeServiceModule } from '../visit-type/visit-type.service.module';
-import { ConsultationCompletionTimeoutSchedulerModule } from '../completion-timeout/consultation-completion-timeout.scheduler.module';
-import { ConsultationCompletionTimeoutProcessor } from '../completion-timeout/consultation-completion-timeout.processor';
 import { TenantLockModule } from '../../tenant-checkpoint/lock/tenant-lock.module';
 import { ConsultationLifecycleGateModule } from '../lifecycle/lifecycle.module';
 import { NoteCompositionServiceModule } from '../note-composition/note-composition.service.module';
+import { ConsultationWorkflowDispatchServiceModule } from '../workflow-dispatch/consultation-workflow-dispatch.service.module';
+import { EncounterRefinalizeService } from '../workflow-dispatch/encounter-refinalize.service';
+import { HarnessGatewayServiceModule } from './harness-gateway.service.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -38,8 +39,11 @@ import { NoteCompositionServiceModule } from '../note-composition/note-compositi
     TenantLockModule,
     VisitTypeServiceModule,
     CoreDatabaseModule,
-    // TASK-1001 wave 6 — `persistDraft` starts the completion timeout; the processor below ends it.
-    ConsultationCompletionTimeoutSchedulerModule,
+    // `EncounterRefinalizeService` (provided below): the governed lane supersedes the governing run
+    // through the dispatcher; the default lane starts `harness-doc` through the gateway. No cycle:
+    // neither module imports this one (both are already reached through ConsultationJobServiceModule).
+    ConsultationWorkflowDispatchServiceModule,
+    HarnessGatewayServiceModule,
     // ConfigService for the providers below that still read bootstrap env. The warm-start
     // switch is NOT one of them any more: `HarnessPolicy.warmStartEnabled` (via
     // HarnessPolicyServiceModule below) is its only source since TASK-882.
@@ -96,7 +100,9 @@ import { NoteCompositionServiceModule } from '../note-composition/note-compositi
     // branch is addressed by a ConsultationJob id the interpreter never has).
     HarnessProgressServiceModule,
   ],
-  providers: [HarnessInternalService, PromptAssemblyService, ConsultationCompletionTimeoutProcessor],
-  exports: [HarnessInternalService],
+  // EncounterRefinalizeService re-finalises the note after every later stop; it lives here
+  // because it composes the note plan through HarnessInternalService.
+  providers: [HarnessInternalService, PromptAssemblyService, EncounterRefinalizeService],
+  exports: [HarnessInternalService, EncounterRefinalizeService],
 })
 export class HarnessInternalServiceModule {}

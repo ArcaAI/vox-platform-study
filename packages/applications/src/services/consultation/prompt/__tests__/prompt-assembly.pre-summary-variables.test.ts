@@ -39,7 +39,6 @@ async function getService(cls?: { get: (key: string) => unknown }) {
     mockPromptResolutionService as any,
     mockPromptTemplateRepository as any,
     mockDnaWritingStyleRepository as any,
-    undefined, // harnessPolicyService
     cls as any,
     undefined, // exemplarRetriever
     undefined, // secretsService

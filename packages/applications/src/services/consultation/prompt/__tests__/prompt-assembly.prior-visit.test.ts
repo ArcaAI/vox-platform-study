@@ -40,7 +40,6 @@ async function buildService() {
     mockPromptResolutionService as never,
     mockPromptTemplateRepository as never,
     mockDnaWritingStyleRepository as never,
-    { getEffectivePolicy: vi.fn().mockResolvedValue({ warmStartEnabled: false }) } as never,
     { get: vi.fn() } as never,
   );
 }

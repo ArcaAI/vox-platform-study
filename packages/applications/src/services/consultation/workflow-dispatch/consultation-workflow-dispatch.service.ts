@@ -278,7 +278,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       // was always safe (its `consultationId` comes from a consultation the gateway just opened,
       // not from a request body); it moves because the dispatcher now STRIPS those keys out of
       // `payload` unconditionally, and a conditional strip is one somebody reasons around.
-      await this.harnessGateway.startWorkflowRun({
+      await this.startOrFailRow(tenantId, sessionId, runId, {
         runId,
         sessionId,
         workflowVersionId: definition.id,
@@ -455,7 +455,7 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
           // starter, else the principal triggering the resume.
           metaData: withStartedBy({ consultationId }, governingStartedBy ?? this.runAccess?.currentPrincipal() ?? null, consultation.doctorId ?? input.userId),
         });
-        await this.harnessGateway.startWorkflowRun({
+        await this.startOrFailRow(tenantId, sessionId, runId, {
           runId,
           sessionId,
           workflowVersionId: definition.id,
@@ -500,6 +500,29 @@ export class ConsultationWorkflowDispatchService implements IConsultationWorkflo
       return { superseded: true, runId, supersededRunId };
     } catch (error) {
       return failed(error instanceof Error ? error.message : String(error), null);
+    }
+  }
+
+  /**
+   * Start the run whose `WorkflowRun` row was just anchored. A start that throws must not leave that
+   * row RUNNING forever: it is closed FAILED with a code only (the error's message is never
+   * persisted) — best-effort — and the start error is rethrown to the caller's existing handling.
+   */
+  private async startOrFailRow(
+    tenantId: string,
+    sessionId: string,
+    runId: string,
+    input: Parameters<HarnessGatewayService['startWorkflowRun']>[0],
+  ): Promise<void> {
+    try {
+      await this.harnessGateway.startWorkflowRun(input);
+    } catch (error) {
+      try {
+        await this.workflowRunService.recordRunFinished({ tenantId, sessionId, runId, status: 'FAILED', firstErrorCode: 'RUN_START_FAILED' });
+      } catch {
+        // swallow-ok: the start error below is the one the caller must see.
+      }
+      throw error;
     }
   }
 

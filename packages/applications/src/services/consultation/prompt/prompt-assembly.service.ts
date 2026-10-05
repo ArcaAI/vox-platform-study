@@ -42,7 +42,6 @@ import {
 // cloned into every tenant by the reference set. The slug is imported, never re-typed.
 import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
 import { parsePromptVariableDeclarations } from '../../prompt-management/dto/prompt-variable-declaration.dto';
-import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { parseLanguageTag, summaryLanguageName } from '../consultation/summary-language';
@@ -523,12 +522,9 @@ export class PromptAssemblyService {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly dnaWritingStyleRepository: DnaWritingStyleReportRepository,
-    // No longer read: warm start is decided by the note plan (`NoteInputComposerService`). Kept so
-    // the positional test fixtures and DI keep their arity.
-    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
     @Optional() @Inject(ClsService) private readonly cls?: ClsService<IActiveUserContext>,
     // The gate-edit learning loop's READ half. Optional and
-    // trailing for the same reason as the two above: absent ⇒ zero-shot, which
+    // trailing for the same reason as the one above: absent ⇒ zero-shot, which
     // is exactly the pre-B6 prompt.
     @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
     // DNA writing-style decryption. The styleText column is
@@ -540,7 +536,7 @@ export class PromptAssemblyService {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // v1 `{current_department}` resolution: a pre-summary body
     // renders the department NAME, but callers only carry `departmentId`.
-    // @Optional + trailing for the same reason as the four above (positional
+    // @Optional + trailing for the same reason as the three above (positional
     // test fixtures); absent ⇒ v1's `'General'` default, never a literal brace.
     @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
     // TASK-890 §3.4 — the TENANT's clone of the `consultation_legacy_v1` bridge schema, which

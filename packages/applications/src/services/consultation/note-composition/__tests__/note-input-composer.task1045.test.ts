@@ -808,7 +808,6 @@ describe('PromptAssemblyService — a composed note plan IS the user message', (
       { findById: vi.fn() } as never,
       {} as never,
       undefined,
-      undefined,
       exemplars as never,
     );
 
