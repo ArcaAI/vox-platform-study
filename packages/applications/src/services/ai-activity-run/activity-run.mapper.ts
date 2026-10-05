@@ -174,7 +174,9 @@ export class ActivityRunMapper {
       status,
       workflowSlug: asIdentifier(stats.workflow_slug),
       workflowVersion: asCount(stats.workflow_version),
-      workflowRunId: step.runId ? step.runId : null,
+      // A WorkflowInterpreter step carries the TEMPORAL run id; the harness
+      // stamps the HOPE workflow run it belongs to, which is what a run links to.
+      workflowRunId: asIdentifier(stats.workflow_run_id) ?? (step.runId ? step.runId : null),
       nodeId: asIdentifier(attribution.nodeId),
       agentId: asIdentifier(stats.agent_id),
       agentSlug: asIdentifier(stats.agent_slug),
