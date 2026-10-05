@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Review — committed on the worktree branch, awaiting merge into `dev-2.2` by the orchestrator session |
 | Type | bugfix (security) |
 | Branch | `task-1043/internal-lock-after-auth` (worktree `../hope-v2-task-1043`) → `dev-2.2` |
 | Origin | TASK-1041 OD-4 (owner: "create the OD-4 ticket then work on it completely", 2026-10-05) |
@@ -83,10 +83,72 @@ Targeted unit tests; `apps/api` build + eslint on touched files. Live on the iso
 
 ## Implementation Summary
 
-_In progress._
+D-1 to D-4 as planned.
+
+- `TenantLockGuard`: the `X-Tenant-Id` fallback now applies only to internal routes that are NOT
+  `@Public()` (either marker the auth guard honours: `SKIP_AUTH_KEY` or `isPublic`). For a public
+  route the guard resolves no tenant and returns before reading anything.
+- `InternalTenantLockGuard`: a tenant named in `X-Tenant-Id` is checked for every method (it took
+  over the global guard's rule); a tenant named only in `x-internal-tenant-id` / query / body is
+  still checked for mutating methods only.
+- `@UseGuards(<token guard>, InternalTenantLockGuard)` on the 10 public internal controllers that
+  lacked it: agent-internal, agent-version-internal, composed-prompt-internal, effective-config,
+  model-registry-internal, model-serving-internal, consent-internal, consultation-read-internal,
+  harness-tts-internal, service-release-internal. `SpeechModule` and `ServiceReleaseModule` now
+  import `TenantLockModule` so the guard can be injected; the other modules already did.
+- Coverage test: discovers every `*.controller.ts` (`import.meta.glob`), selects the controllers whose
+  path starts with `internal` and carry `@Public()`, and requires `InternalTenantLockGuard` with at
+  least one guard before it. It found 11; all pass.
+
+No route, DTO, scope or response-shape change. `route-manifest.json` regenerated from the new
+build: no diff (it doesn't record controller guards). openapi untouched for the same reason.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `apps/api/src/guards/tenant-lock.guard.ts` | skip header fallback on `@Public()` routes; `isPublic()` helper; doc comment |
+| `apps/api/src/guards/internal-tenant-lock.guard.ts` | `X-Tenant-Id` checked on every method; doc comment |
+| `apps/api/src/guards/__tests__/tenant-lock.guard.task1043.test.ts` | new, 9 tests |
+| `apps/api/src/guards/__tests__/internal-tenant-lock.coverage.test.ts` | + discovery-based order/coverage suite |
+| 10 internal controllers (listed above) | `InternalTenantLockGuard` after the token guard (1 import + 1 decorator line each) |
+| `apps/api/src/modules/speech/speech.module.ts`, `service-release/service-release.module.ts` | import `TenantLockModule` |
+
+### Evidence
+
+- **RED**: 14 failures before the fix: 10 controllers missing the guard; the global guard read
+  the lock on `SKIP_AUTH_KEY` / `isPublic` routes (503 instead of resolving); GET/HEAD with
+  `X-Tenant-Id` passed `InternalTenantLockGuard`.
+- **GREEN**: `apps/api/src/guards/__tests__` → `Test Files 10 passed, Tests 121 passed`. Every
+  test that imports a touched controller/module plus `apps/api/src/bootstrap/__tests__` (boot audits)
+  → `Test Files 16 passed, Tests 367 passed`.
+- `apps/api` `pnpm build` exit 0; eslint on every changed file exit 0 with no output.
+- **Live, isolated test infra, no reset.** Throwaway tenant `01a109b5-00d3-7d3b-a113-24447ea61cd8`
+  (created via `POST admin/tenants`), with a CLINICAL `TenantCheckpointRestore` in `LOCKING`
+  inserted for it (`t1043-probe-restore`, released to `FAILED` afterwards; nothing deleted).
+  Unfixed = current `dev-2.2` build on :8979, fixed = this branch on :8978:
+
+  | Request (`X-Tenant-Id` = probe tenant) | dev-2.2 | fixed |
+  |---|---|---|
+  | `GET internal/agents/resolve`, no token | **503** `TENANT_RESTORE_IN_PROGRESS` | **401** |
+  | same, wrong token | **503** | **401** |
+  | `POST internal/consultations/x/read`, no token | **503** | **401** |
+  | `GET internal/effective-config`, no token | **503** | **401** |
+  | `GET internal/agents/resolve`, valid token | 503 | 503 + `Retry-After: 30` + `restoreId` |
+  | same, valid token, unlocked tenant (Global) | 200 | 200 |
+
+- Regression: `task-890-agent-resolve-fail-closed` against the fixed build (`RESET_DB=false`) →
+  `2 passed, 1 skipped` (same seed-state skip as TASK-1041).
+
+### Not verified / notes
+
+- Repo-wide gates not run (owner rule: the orchestrator gates once after the merge).
+- The probe tenant and its FAILED checkpoint/restore rows remain in the test DB; a
+  `test:db:reset` clears them.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-05 | Ticket created from TASK-1041 OD-4; plan + decisions recorded |
+| 2026-10-05 | TDD RED → GREEN; fix committed; live before/after on the test infra; status Review |
