@@ -1,60 +1,117 @@
-import type { FactKind, FactLedgerV1 } from './fact-ledger.schema';
+import type { FactKind, FactLedgerV1, LedgerFact } from './fact-ledger.schema';
 
 /** Recorded on every ENCOUNTER_RECAP version (`metaData.renderer`). */
-export const ENCOUNTER_RECAP_RENDERER = 'recap.v1';
+export const ENCOUNTER_RECAP_RENDERER = 'recap.v2';
 
-export type RecapSectionKey = 'complaint' | 'key_findings' | 'medications' | 'plan_orders' | 'pending';
+/** The `schema` of the stored recap body (and `metaData.schema`). */
+export const ENCOUNTER_RECAP_SCHEMA = 'hope.encounter_recap.v2';
 
-export interface EncounterRecapRendering {
-  text: string;
-  sections: Array<{ key: RecapSectionKey; label: string; text: string }>;
+export type RecapSectionKey = 'reason' | 'findings' | 'medicines' | 'sent_for' | 'since_then' | 'still_open';
+
+export interface RecapCitation {
+  itemId: string;
+  versionNumber: number;
+  /** What the extractor saw: `S<segmentSeq>` or `A<n>`. */
+  label: string;
+  kind: 'segment' | 'attachment';
+  /** Recording-timeline start of a cited segment. */
+  t0Ms?: number;
 }
 
+export interface RecapLine {
+  /** One active fact statement, verbatim. */
+  text: string;
+  citations: RecapCitation[];
+}
+
+export interface RecapSection {
+  key: RecapSectionKey;
+  label: string;
+  lines: RecapLine[];
+}
+
+/** The stored ENCOUNTER_RECAP body. Consumers map sections by `key`, never by position. */
+export interface EncounterRecapV2 {
+  schema: typeof ENCOUNTER_RECAP_SCHEMA;
+  sections: RecapSection[];
+}
+
+/**
+ * The six fixed sections, in order. `since_then` takes no kinds: it holds any fact cited only by
+ * uploaded transcripts that arrived after the encounter ended, whatever its kind. Kinds listed
+ * nowhere (diagnosis, negation, other) are not part of the recap.
+ */
 const SECTIONS: ReadonlyArray<{ key: RecapSectionKey; label: string; kinds: ReadonlyArray<FactKind> }> = [
-  { key: 'complaint', label: 'Complaint', kinds: ['complaint'] },
-  {
-    key: 'key_findings',
-    label: 'Key findings',
-    kinds: ['history', 'allergy', 'vital', 'exam', 'result', 'diagnosis', 'red_flag', 'negation', 'other'],
-  },
-  { key: 'medications', label: 'Medications', kinds: ['medication', 'dose_change'] },
-  { key: 'plan_orders', label: 'Plan/Orders', kinds: ['plan', 'order'] },
-  { key: 'pending', label: 'Pending', kinds: ['follow_up'] },
+  { key: 'reason', label: 'Reason', kinds: ['complaint', 'history'] },
+  { key: 'findings', label: 'Findings', kinds: ['vital', 'exam', 'result'] },
+  { key: 'medicines', label: 'Medicines', kinds: ['medication', 'dose_change', 'allergy'] },
+  { key: 'sent_for', label: 'Sent for', kinds: ['order'] },
+  { key: 'since_then', label: 'Since then', kinds: [] },
+  { key: 'still_open', label: 'Still open', kinds: ['plan', 'follow_up', 'red_flag'] },
 ];
 
 /**
- * Render an encounter recap from its ledger: the ACTIVE facts, verbatim, each followed by the
- * labels of the lines it cites, under fixed headings. Empty headings are omitted.
+ * Render an encounter recap from its ledger: each ACTIVE fact, verbatim, with the items it cites,
+ * under the six fixed sections (empty ones kept with `lines: []`).
  *
  * A pure template — no model call, no I/O, no clock. Display-only: a recap is never a note input.
  */
-export function renderEncounterRecap(ledger: FactLedgerV1): EncounterRecapRendering {
-  const labels = new Map<string, string>();
-  for (const source of ledger.sources) labels.set(source.segmentId, source.label);
-  for (const source of ledger.attachmentSources) labels.set(source.itemId, source.label);
-
-  const active = ledger.facts.filter((fact) => !fact.supersededBy);
-  const sections: EncounterRecapRendering['sections'] = [];
-  for (const section of SECTIONS) {
-    const lines = active
-      .filter((fact) => section.kinds.includes(fact.kind))
-      .map((fact) => `- ${fact.statement}${citationSuffix(fact.citations, labels)}`);
-    if (lines.length > 0) sections.push({ key: section.key, label: section.label, text: lines.join('\n') });
+export function renderEncounterRecap(ledger: FactLedgerV1): EncounterRecapV2 {
+  const citationsById = new Map<string, RecapCitation>();
+  const late = new Set<string>();
+  for (const source of ledger.sources) {
+    citationsById.set(source.segmentId, {
+      itemId: source.segmentId,
+      versionNumber: source.versionNumber,
+      label: source.label,
+      kind: 'segment',
+      ...(typeof source.t0Ms === 'number' ? { t0Ms: source.t0Ms } : {}),
+    });
+  }
+  for (const source of ledger.attachmentSources) {
+    citationsById.set(source.itemId, { itemId: source.itemId, versionNumber: source.versionNumber, label: source.label, kind: 'attachment' });
+    if (source.arrivedAfterEncounterEnd) late.add(source.itemId);
   }
 
-  return {
-    text: sections.map((section) => `## ${section.label}\n${section.text}`).join('\n\n'),
-    sections,
-  };
+  const sections: RecapSection[] = SECTIONS.map((section) => ({ key: section.key, label: section.label, lines: [] }));
+  const byKey = new Map(sections.map((section) => [section.key, section]));
+
+  for (const fact of ledger.facts) {
+    if (fact.supersededBy) continue;
+    const key = sectionFor(fact, late);
+    if (!key) continue;
+    const citations = fact.citations
+      .map((id) => citationsById.get(id))
+      .filter((citation): citation is RecapCitation => Boolean(citation))
+      .sort(compareCitations);
+    byKey.get(key)!.lines.push({ text: fact.statement, citations });
+  }
+
+  return { schema: ENCOUNTER_RECAP_SCHEMA, sections };
 }
 
-function citationSuffix(citations: ReadonlyArray<string>, labels: ReadonlyMap<string, string>): string {
-  const rendered = [...new Set(citations.map((id) => labels.get(id)).filter((label): label is string => Boolean(label)))].sort(compareLabels);
-  return rendered.length > 0 ? ` [${rendered.join(', ')}]` : '';
+/** The derived plain text for the console: one `## Label` block per section, in order. */
+export function renderRecapText(recap: EncounterRecapV2): string {
+  return recap.sections
+    .map((section) => {
+      const lines = section.lines.length > 0 ? section.lines.map(lineText) : ['- None'];
+      return [`## ${section.label}`, ...lines].join('\n');
+    })
+    .join('\n\n');
 }
 
-/** `S` before `A`, then numerically. */
-function compareLabels(a: string, b: string): number {
-  if (a[0] !== b[0]) return a[0] === 'S' ? -1 : 1;
-  return Number(a.slice(1)) - Number(b.slice(1));
+function lineText(line: RecapLine): string {
+  const labels = [...new Set(line.citations.map((citation) => citation.label))];
+  return `- ${line.text}${labels.length > 0 ? ` [${labels.join(', ')}]` : ''}`;
+}
+
+function sectionFor(fact: LedgerFact, late: ReadonlySet<string>): RecapSectionKey | null {
+  if (fact.citations.length > 0 && fact.citations.every((id) => late.has(id))) return 'since_then';
+  return SECTIONS.find((section) => section.kinds.includes(fact.kind))?.key ?? null;
+}
+
+/** Segments before attachments, then numerically by label. */
+function compareCitations(a: RecapCitation, b: RecapCitation): number {
+  if (a.kind !== b.kind) return a.kind === 'segment' ? -1 : 1;
+  return Number(a.label.slice(1)) - Number(b.label.slice(1));
 }

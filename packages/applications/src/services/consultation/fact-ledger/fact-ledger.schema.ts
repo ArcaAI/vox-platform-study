@@ -97,9 +97,25 @@ export const factLedgerV1Schema = z.object({
   encounterSeq: z.number().int(),
   inputDigest: z.string(),
   /** The segment versions the ledger was built from; `label` is what the model saw (`S<segmentSeq>`). */
-  sources: z.array(z.object({ segmentId: z.string(), versionNumber: z.number().int(), label: z.string() })),
+  sources: z.array(
+    z.object({
+      segmentId: z.string(),
+      versionNumber: z.number().int(),
+      label: z.string(),
+      /** Recording-timeline start of the segment, for the recap's line links. */
+      t0Ms: z.number().optional(),
+    }),
+  ),
   /** Uploaded-audio transcripts of the encounter (`A<n>`). */
-  attachmentSources: z.array(z.object({ itemId: z.string(), versionNumber: z.number().int(), label: z.string() })),
+  attachmentSources: z.array(
+    z.object({
+      itemId: z.string(),
+      versionNumber: z.number().int(),
+      label: z.string(),
+      /** The transcript was created after the encounter ended (the recap's "Since then"). */
+      arrivedAfterEncounterEnd: z.boolean().optional(),
+    }),
+  ),
   agent: z.object({ slug: z.string(), version: z.number().int() }),
   model: z.string().nullable(),
   createdAt: z.string(),

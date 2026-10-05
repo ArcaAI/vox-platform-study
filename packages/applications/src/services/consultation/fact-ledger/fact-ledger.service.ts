@@ -1,5 +1,13 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { AgentTask, AiActivityKind, AiActivityRunStatus, ContextItemRepository, ContextItemType, type ContextItemEntity } from '@arcaai/domains';
+import {
+  AgentTask,
+  AiActivityKind,
+  AiActivityRunStatus,
+  ConsultationEncounterRepository,
+  ContextItemRepository,
+  ContextItemType,
+  type ContextItemEntity,
+} from '@arcaai/domains';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { AgentResolverService } from '../../agent/agent-resolver.service';
 import { AgentInvocationService, type AgentTextInvocationResult } from '../../agent/agent-invocation.service';
@@ -20,7 +28,7 @@ import {
   type ModelFact,
 } from './fact-ledger.schema';
 import { applySupersession } from './fact-ledger-supersession';
-import { ENCOUNTER_RECAP_RENDERER, renderEncounterRecap } from './encounter-recap.renderer';
+import { ENCOUNTER_RECAP_RENDERER, ENCOUNTER_RECAP_SCHEMA, renderEncounterRecap } from './encounter-recap.renderer';
 
 /** Per-call input budget (estimated tokens) for one extractor call; absent ⇒ one call per encounter. */
 export const FACT_LEDGER_CHUNK_INPUT_TOKENS_KEY = 'consultation.note.ledger.chunkInputTokens';
@@ -95,6 +103,9 @@ export class FactLedgerService {
     @Optional() private readonly secretsService?: SecretsService,
     @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRuns?: IAiActivityRunService,
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // When the encounter ended — an uploaded-audio transcript created after it is the recap's
+    // "Since then". Absent ⇒ no transcript is treated as late.
+    @Optional() @Inject(ConsultationEncounterRepository) private readonly encounterRepository?: ConsultationEncounterRepository,
   ) {}
 
   /** The digest the encounter's ledger would be built from now; `null` when there is nothing to ledger. */
@@ -178,13 +189,24 @@ export class FactLedgerService {
     const finalFacts = applySupersession(facts, earlier);
     const criticalCount = finalFacts.filter((fact) => fact.critical).length;
 
+    const encounterEndedAt = await this.encounterEndedAt(consultationId, encounterSeq);
     const ledger: FactLedgerV1 = {
       schema: FACT_LEDGER_SCHEMA,
       consultationId,
       encounterSeq,
       inputDigest,
-      sources: encounter.segments.map((s) => ({ segmentId: s.id, versionNumber: s.currentVersionNumber, label: segmentLabel(s) })),
-      attachmentSources: encounter.attachments.map((a, index) => ({ itemId: a.id, versionNumber: a.currentVersionNumber, label: `A${index + 1}` })),
+      sources: encounter.segments.map((s) => ({
+        segmentId: s.id,
+        versionNumber: s.currentVersionNumber,
+        label: segmentLabel(s),
+        ...(typeof s.t0Ms === 'number' ? { t0Ms: s.t0Ms } : {}),
+      })),
+      attachmentSources: encounter.attachments.map((a, index) => ({
+        itemId: a.id,
+        versionNumber: a.currentVersionNumber,
+        label: `A${index + 1}`,
+        arrivedAfterEncounterEnd: encounterEndedAt !== null && new Date(a.createdAt).getTime() > encounterEndedAt.getTime(),
+      })),
       agent: { slug: agent.slug, version: agent.versionNumber },
       model: outcomes.find((o) => o.result.model)?.result.model ?? null,
       createdAt: new Date().toISOString(),
@@ -224,10 +246,15 @@ export class FactLedgerService {
       consultationId,
       encounterSeq,
       type: 'ENCOUNTER_RECAP',
-      content: renderEncounterRecap(ledger).text,
+      content: JSON.stringify(renderEncounterRecap(ledger)),
       source: 'SYSTEM',
       changedBy: LEDGER_ACTOR,
-      metaData: { ledgerItemId: stored.contextItemId, ledgerVersion: stored.versionNumber, renderer: ENCOUNTER_RECAP_RENDERER },
+      metaData: {
+        schema: ENCOUNTER_RECAP_SCHEMA,
+        ledgerItemId: stored.contextItemId,
+        ledgerVersion: stored.versionNumber,
+        renderer: ENCOUNTER_RECAP_RENDERER,
+      },
     });
 
     for (const [callIndex, outcome] of outcomes.entries()) {
@@ -265,6 +292,22 @@ export class FactLedgerService {
     );
     const attachments = (await this.attachmentTranscripts(consultationId)).filter((item) => item.encounterSeq === encounterSeq);
     return { segments, attachments, inputDigest: digestOf(segments, attachments) };
+  }
+
+  private async encounterEndedAt(consultationId: string, encounterSeq: number): Promise<Date | null> {
+    if (!this.encounterRepository) return null;
+    try {
+      const endedAt = (await this.encounterRepository.findBySeq(consultationId, encounterSeq))?.endedAt;
+      return endedAt ? new Date(endedAt) : null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Encounter end unreadable — no uploaded transcript is treated as arriving after it',
+        consultationId,
+        encounterSeq,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
   }
 
   /** Uploaded-audio TRANSCRIPT items, oldest first (their `A<n>` labels follow this order). */

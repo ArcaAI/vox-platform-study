@@ -11,9 +11,23 @@ import {
   FACT_LEDGER_OUTPUT_SCHEMA,
 } from '../../../../../../database/src/prisma/db_main/seed/25-agents';
 import { FactLedgerService } from '../fact-ledger.service';
-import { FACT_KINDS, FACT_LEDGER_AGENT_SLUG, FACT_LEDGER_SCHEMA, factLedgerV1Schema, isCriticalFact, type FactLedgerV1 } from '../fact-ledger.schema';
+import {
+  FACT_KINDS,
+  FACT_LEDGER_AGENT_SLUG,
+  FACT_LEDGER_SCHEMA,
+  factLedgerV1Schema,
+  isCriticalFact,
+  type FactLedgerV1,
+  type LedgerFact,
+} from '../fact-ledger.schema';
 import { applySupersession } from '../fact-ledger-supersession';
-import { ENCOUNTER_RECAP_RENDERER, renderEncounterRecap } from '../encounter-recap.renderer';
+import {
+  ENCOUNTER_RECAP_RENDERER,
+  ENCOUNTER_RECAP_SCHEMA,
+  renderEncounterRecap,
+  renderRecapText,
+  type EncounterRecapV2,
+} from '../encounter-recap.renderer';
 import { FactLedgerListener } from '../fact-ledger.listener';
 import { FactLedgerQueue } from '../fact-ledger.processor';
 import { ConsultationPipelineEvent } from '../../events';
@@ -69,6 +83,7 @@ function harness(opts: {
   transcripts?: unknown[];
   artifacts?: Record<string, unknown>;
   modelFacts?: unknown[] | ((message: string) => unknown[]);
+  encounterEndedAt?: string;
 }): Harness {
   const repo = {
     findSegments: vi.fn(async (_cid: string, filters: { encounterSeq?: number } = {}) =>
@@ -106,6 +121,8 @@ function harness(opts: {
     { upsertEncounterArtifact: upsert } as never,
     undefined,
     { record } as never,
+    undefined,
+    opts.encounterEndedAt ? ({ findBySeq: vi.fn(async () => ({ seq: 1, endedAt: new Date(opts.encounterEndedAt!) })) } as never) : undefined,
   );
   return { service, repo, invokeText, resolve, upsert, record };
 }
@@ -173,10 +190,10 @@ describe('fact ledger — citation mapping and drop', () => {
     expect(ledger.encounterSeq).toBe(1);
     expect(ledger.inputDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(ledger.sources).toEqual([
-      { segmentId: 'seg-1', versionNumber: 3, label: 'S12' },
-      { segmentId: 'seg-2', versionNumber: 1, label: 'S13' },
+      { segmentId: 'seg-1', versionNumber: 3, label: 'S12', t0Ms: 221_000 },
+      { segmentId: 'seg-2', versionNumber: 1, label: 'S13', t0Ms: 230_500 },
     ]);
-    expect(ledger.attachmentSources).toEqual([{ itemId: 'att-tx-1', versionNumber: 1, label: 'A1' }]);
+    expect(ledger.attachmentSources).toEqual([{ itemId: 'att-tx-1', versionNumber: 1, label: 'A1', arrivedAfterEncounterEnd: false }]);
     expect(ledger.facts.map((f) => [f.key, f.citations])).toEqual([
       ['med:metformin', ['seg-1']],
       ['allergy:penicillin', ['seg-2']],
@@ -209,10 +226,27 @@ describe('fact ledger — citation mapping and drop', () => {
         consultationId: CID,
         encounterSeq: 1,
         source: 'SYSTEM',
-        metaData: { ledgerItemId: 'ledger-item', ledgerVersion: 2, renderer: ENCOUNTER_RECAP_RENDERER },
+        metaData: { schema: ENCOUNTER_RECAP_SCHEMA, ledgerItemId: 'ledger-item', ledgerVersion: 2, renderer: 'recap.v2' },
       }),
     );
-    expect((recapCall![0] as { content: string }).content).toContain('Metformin 500 mg twice daily. [S12]');
+    expect(ENCOUNTER_RECAP_RENDERER).toBe('recap.v2');
+    const recapBody = JSON.parse((recapCall![0] as { content: string }).content) as EncounterRecapV2;
+    expect(recapBody.schema).toBe('hope.encounter_recap.v2');
+    expect(recapBody.sections.find((s) => s.key === 'medicines')!.lines).toEqual([
+      {
+        text: 'Metformin 500 mg twice daily.',
+        citations: [{ itemId: 'seg-1', versionNumber: 3, label: 'S12', kind: 'segment', t0Ms: 221_000 }],
+      },
+      {
+        text: 'Allergic to penicillin.',
+        citations: [{ itemId: 'seg-2', versionNumber: 1, label: 'S13', kind: 'segment', t0Ms: 230_500 }],
+      },
+    ]);
+    // Uploaded during the encounter (no end recorded) ⇒ an ordinary finding, not "Since then".
+    expect(recapBody.sections.find((s) => s.key === 'findings')!.lines).toEqual([
+      { text: 'HbA1c 9.1%, elevated.', citations: [{ itemId: 'att-tx-1', versionNumber: 1, label: 'A1', kind: 'attachment' }] },
+    ]);
+    expect(recapBody.sections.find((s) => s.key === 'since_then')!.lines).toEqual([]);
 
     // One FACT_LEDGER run record, ids and numbers only.
     expect(h.record).toHaveBeenCalledTimes(1);
@@ -432,120 +466,142 @@ describe('fact ledger — input digest cache', () => {
   });
 });
 
-describe('encounter recap — pure template', () => {
+describe('encounter recap — structured v2, pure template', () => {
+  const fact = (factId: string, kind: LedgerFact['kind'], statement: string, citations: string[], extra: Partial<LedgerFact> = {}): LedgerFact => ({
+    factId,
+    key: `${kind}:${factId}`,
+    kind,
+    statement,
+    critical: false,
+    numbers: [],
+    aliases: [],
+    citations,
+    ...extra,
+  });
+
   const ledger: FactLedgerV1 = {
     schema: FACT_LEDGER_SCHEMA,
     consultationId: CID,
     encounterSeq: 2,
     inputDigest: 'sha256:' + 'b'.repeat(64),
     sources: [
-      { segmentId: 'seg-20', versionNumber: 1, label: 'S20' },
-      { segmentId: 'seg-21', versionNumber: 2, label: 'S21' },
+      { segmentId: 'seg-20', versionNumber: 1, label: 'S20', t0Ms: 10_000 },
+      { segmentId: 'seg-21', versionNumber: 2, label: 'S21', t0Ms: 20_000 },
     ],
-    attachmentSources: [{ itemId: 'att-tx-1', versionNumber: 1, label: 'A1' }],
+    attachmentSources: [
+      { itemId: 'att-late', versionNumber: 1, label: 'A1', arrivedAfterEncounterEnd: true },
+      { itemId: 'att-during', versionNumber: 3, label: 'A2', arrivedAfterEncounterEnd: false },
+    ],
     agent: { slug: FACT_LEDGER_AGENT_SLUG, version: 3 },
     model: 'm',
     createdAt: '2026-10-05T09:00:00.000Z',
     facts: [
-      {
-        factId: 'E2-F1',
-        key: 'complaint:chest_pain',
-        kind: 'complaint',
-        statement: 'Chest pain for two days.',
-        critical: false,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-20'],
-      },
-      {
-        factId: 'E2-F2',
-        key: 'vital:bp',
-        kind: 'vital',
-        statement: 'BP 130/85.',
-        critical: false,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-20'],
-        supersededBy: 'E2-F3',
-      },
-      {
-        factId: 'E2-F3',
-        key: 'vital:bp',
-        kind: 'vital',
-        statement: 'BP 128/80.',
-        critical: false,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-21', 'seg-20'],
-        supersedes: ['E2-F2'],
-      },
-      {
-        factId: 'E2-F4',
-        key: 'result:troponin',
-        kind: 'result',
-        statement: 'Troponin elevated.',
-        critical: true,
-        numbers: [],
-        aliases: [],
-        citations: ['att-tx-1'],
-      },
-      {
-        factId: 'E2-F5',
-        key: 'med:aspirin',
-        kind: 'medication',
-        statement: 'Aspirin 75 mg daily.',
-        critical: true,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-21'],
-      },
-      {
-        factId: 'E2-F6',
-        key: 'order:ecg',
-        kind: 'order',
-        statement: 'ECG ordered.',
-        critical: true,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-21'],
-      },
-      {
-        factId: 'E2-F7',
-        key: 'followup:cardio',
-        kind: 'follow_up',
-        statement: 'Cardiology review next week.',
-        critical: true,
-        numbers: [],
-        aliases: [],
-        citations: ['seg-21'],
-      },
+      fact('E2-F1', 'complaint', 'Chest pain for two days.', ['seg-20']),
+      fact('E2-F2', 'vital', 'BP 130/85.', ['seg-20'], { key: 'vital:bp', supersededBy: 'E2-F3' }),
+      fact('E2-F3', 'vital', 'BP 128/80.', ['seg-21', 'seg-20'], { key: 'vital:bp', supersedes: ['E2-F2'] }),
+      fact('E2-F4', 'history', 'Known hypertensive.', ['seg-20']),
+      fact('E2-F5', 'result', 'Potassium 4.2.', ['att-during', 'seg-21']),
+      fact('E2-F6', 'medication', 'Aspirin 75 mg daily.', ['seg-21']),
+      fact('E2-F7', 'allergy', 'Allergic to penicillin.', ['seg-20']),
+      fact('E2-F8', 'order', 'ECG ordered.', ['seg-21']),
+      fact('E2-F9', 'result', 'Troponin elevated.', ['att-late']),
+      fact('E2-F10', 'follow_up', 'Cardiology review next week.', ['seg-21']),
+      fact('E2-F11', 'red_flag', 'Return if pain at rest.', ['seg-21']),
+      fact('E2-F12', 'diagnosis', 'Stable angina.', ['seg-21']),
     ],
-    stats: { segmentCount: 2, attachmentCount: 1, factCount: 7, criticalCount: 4, droppedUncited: 0, droppedInvalid: 0, callCount: 1 },
+    stats: { segmentCount: 2, attachmentCount: 2, factCount: 12, criticalCount: 6, droppedUncited: 0, droppedInvalid: 0, callCount: 1 },
   };
 
-  it('renders the active facts verbatim, cited, under the fixed headings', () => {
-    const recap = renderEncounterRecap(ledger);
-    expect(recap.text).toBe(
+  const s20 = { itemId: 'seg-20', versionNumber: 1, label: 'S20', kind: 'segment', t0Ms: 10_000 };
+  const s21 = { itemId: 'seg-21', versionNumber: 2, label: 'S21', kind: 'segment', t0Ms: 20_000 };
+
+  it('renders the six fixed sections in order, active facts verbatim with machine-mappable citations', () => {
+    expect(renderEncounterRecap(ledger)).toEqual({
+      schema: 'hope.encounter_recap.v2',
+      sections: [
+        {
+          key: 'reason',
+          label: 'Reason',
+          lines: [
+            { text: 'Chest pain for two days.', citations: [s20] },
+            { text: 'Known hypertensive.', citations: [s20] },
+          ],
+        },
+        {
+          key: 'findings',
+          label: 'Findings',
+          lines: [
+            { text: 'BP 128/80.', citations: [s20, s21] },
+            { text: 'Potassium 4.2.', citations: [s21, { itemId: 'att-during', versionNumber: 3, label: 'A2', kind: 'attachment' }] },
+          ],
+        },
+        {
+          key: 'medicines',
+          label: 'Medicines',
+          lines: [
+            { text: 'Aspirin 75 mg daily.', citations: [s21] },
+            { text: 'Allergic to penicillin.', citations: [s20] },
+          ],
+        },
+        { key: 'sent_for', label: 'Sent for', lines: [{ text: 'ECG ordered.', citations: [s21] }] },
+        {
+          key: 'since_then',
+          label: 'Since then',
+          lines: [{ text: 'Troponin elevated.', citations: [{ itemId: 'att-late', versionNumber: 1, label: 'A1', kind: 'attachment' }] }],
+        },
+        {
+          key: 'still_open',
+          label: 'Still open',
+          lines: [
+            { text: 'Cardiology review next week.', citations: [s21] },
+            { text: 'Return if pain at rest.', citations: [s21] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('derives the console text from the structured recap', () => {
+    expect(renderRecapText(renderEncounterRecap(ledger))).toBe(
       [
-        '## Complaint',
+        '## Reason',
         '- Chest pain for two days. [S20]',
+        '- Known hypertensive. [S20]',
         '',
-        '## Key findings',
+        '## Findings',
         '- BP 128/80. [S20, S21]',
-        '- Troponin elevated. [A1]',
+        '- Potassium 4.2. [S21, A2]',
         '',
-        '## Medications',
+        '## Medicines',
         '- Aspirin 75 mg daily. [S21]',
+        '- Allergic to penicillin. [S20]',
         '',
-        '## Plan/Orders',
+        '## Sent for',
         '- ECG ordered. [S21]',
         '',
-        '## Pending',
+        '## Since then',
+        '- Troponin elevated. [A1]',
+        '',
+        '## Still open',
         '- Cardiology review next week. [S21]',
+        '- Return if pain at rest. [S21]',
       ].join('\n'),
     );
-    expect(recap.sections.map((s) => s.key)).toEqual(['complaint', 'key_findings', 'medications', 'plan_orders', 'pending']);
-    expect(recap.text).not.toContain('130/85');
+  });
+
+  it('keeps empty sections with no lines', () => {
+    const recap = renderEncounterRecap({ ...ledger, facts: [ledger.facts[0]] });
+    expect(recap.sections.map((section) => [section.key, section.lines.length])).toEqual([
+      ['reason', 1],
+      ['findings', 0],
+      ['medicines', 0],
+      ['sent_for', 0],
+      ['since_then', 0],
+      ['still_open', 0],
+    ]);
+    expect(renderRecapText(recap)).toBe(
+      '## Reason\n- Chest pain for two days. [S20]\n\n## Findings\n- None\n\n## Medicines\n- None\n\n## Sent for\n- None\n\n## Since then\n- None\n\n## Still open\n- None',
+    );
   });
 
   it('is deterministic and never mutates the ledger', () => {
@@ -553,12 +609,28 @@ describe('encounter recap — pure template', () => {
     const a = renderEncounterRecap(frozen);
     const b = renderEncounterRecap(frozen);
     expect(a).toEqual(b);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     expect(frozen).toEqual(ledger);
   });
 
-  it('omits empty headings', () => {
-    const recap = renderEncounterRecap({ ...ledger, facts: [ledger.facts[0]] });
-    expect(recap.text).toBe('## Complaint\n- Chest pain for two days. [S20]');
+  it('puts a fact cited only by a transcript uploaded after the encounter ended under "Since then"', async () => {
+    const h = harness({
+      segments: E1_SEGMENTS,
+      transcripts: [attachmentTranscript('att-tx-1', 1, 'Lab report: HbA1c 9.1 percent.', '2026-10-05T10:00:00Z')],
+      encounterEndedAt: '2026-10-05T09:30:00Z',
+      modelFacts: [
+        { key: 'result:hba1c', kind: 'result', statement: 'HbA1c 9.1%, elevated.', citations: ['A1'] },
+        { key: 'result:hba1c_prior', kind: 'result', statement: 'Prior HbA1c 8.', citations: ['A1', 'S12'] },
+      ],
+    });
+    await h.service.buildForEncounter({ tenantId: TENANT, consultationId: CID, encounterSeq: 1 });
+    expect(storedLedger(h.upsert).content.attachmentSources).toEqual([
+      { itemId: 'att-tx-1', versionNumber: 1, label: 'A1', arrivedAfterEncounterEnd: true },
+    ]);
+    const recapCall = h.upsert.mock.calls.find((c) => (c[0] as { type: string }).type === 'ENCOUNTER_RECAP');
+    const recap = JSON.parse((recapCall![0] as { content: string }).content) as EncounterRecapV2;
+    expect(recap.sections.find((s) => s.key === 'since_then')!.lines.map((l) => l.text)).toEqual(['HbA1c 9.1%, elevated.']);
+    expect(recap.sections.find((s) => s.key === 'findings')!.lines.map((l) => l.text)).toEqual(['Prior HbA1c 8.']);
   });
 });
 
