@@ -56,7 +56,17 @@ import {
   // descriptor default) the sharing gate resolves through.
   CONSULTATION_SHARING_ENABLED_KEY,
   TenantSettingsService,
+  // The consultation lifecycle (start / pause / stop / approve / close / reopen) and the episode reads.
+  IConsultationLifecycleService,
+  IConsultationLifecycleServiceToken,
+  IConsultationEncounterService,
+  IConsultationEncounterServiceToken,
+  EncounterResponse,
+  IMediaService,
+  IBlobStorageService,
+  parseStorageUri,
 } from '@arcaai/applications';
+import type { ClinicalCaller as LifecycleCaller } from '@arcaai/applications';
 import {
   Controller,
   Body,
@@ -73,17 +83,40 @@ import {
   Get,
   Sse,
   HttpCode,
+  HttpException,
   HttpStatus,
   // TASK-972 Lane 4 — the finish half of this plane has to know WHICH credential is
   // calling, and only the request object carries all three principals (see `callerOf`).
   Req,
+  Post,
+  UseInterceptors,
   type MessageEvent,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOkResponse,
+  ApiParam,
+  ApiProperty,
+  ApiPropertyOptional,
+  ApiQuery,
+  ApiResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced note-content
 // PATCH/POST routes on this controller.
-import { ApiEndpoint, Authorize, RequiredScopes, RequiredSvcScopes, RequiresIfMatch, ExpectedVersion, RequiresConsent } from '../../decorators';
+import {
+  ApiDeprecated,
+  ApiEndpoint,
+  Authorize,
+  RequiredScopes,
+  RequiredSvcScopes,
+  RequiresIfMatch,
+  ExpectedVersion,
+  RequiresConsent,
+} from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
@@ -93,7 +126,17 @@ import { IConsultationJobService } from '@arcaai/applications';
 import { INoteGenerationService, GenerationTrigger } from '@arcaai/applications';
 import { ConsentPurpose, ResourceType } from '@arcaai/domains';
 import type { RequestWithAuth } from '../../types/request-with-auth';
-import { CloseConsultationRequest } from './dto';
+import {
+  ApproveConsultationRequest,
+  CaptureStateResponse,
+  CloseConsultationRequest,
+  ConsultationRecordingResponse,
+  ReopenConsultationRequest,
+  StartConsultationRequest,
+  StopConsultationRequest,
+  StopResultResponse,
+} from './dto';
+import { ConsultationLifecycleVocabularyInterceptor } from './consultation-lifecycle-vocabulary.interceptor';
 
 /**
  * TASK-972 Lane 4 — `ClinicalCaller` as the applications layer declares it
@@ -109,6 +152,77 @@ type ClinicalCaller = NonNullable<NonNullable<Parameters<ISummaryService['update
 
 /** `summary/latest` 404 for a consultation whose summary is not written yet (vs a missing consultation). */
 const SUMMARY_NOT_READY_CODE = 'SUMMARY_NOT_READY';
+
+/** `GET :id/recording` 404 for a consultation with no recorded audio yet (vs a missing consultation). */
+const RECORDING_NOT_READY_CODE = 'RECORDING_NOT_READY';
+
+/**
+ * Lifetime of the presigned recording-part URLs. Mirrors the other presigned media reads
+ * (`StorageController`, the context timeline): long enough to play a consultation through.
+ */
+const RECORDING_URL_TTL_SECONDS = 3600;
+
+/**
+ * The one-release window of the pre-lifecycle routes (recording start/stop, prime, per-summary
+ * approve). `removeIn` is the deprecation-register placeholder; `sunsetAt` is the RFC 8594 date
+ * clients see until the owner names the release.
+ */
+const LIFECYCLE_ALIAS_DEPRECATION = { ticket: 'TASK-1045', removeIn: 'R5', sunsetAt: 'Sun, 31 Jan 2027 00:00:00 GMT' } as const;
+
+/** The recording manifest the transcript-record service keeps on the AUDIO_RECORDING item (`metaData.manifest`). */
+interface RecordingManifestPart {
+  audioRecordingId: string;
+  mediaId: string;
+  encounterSeq: number;
+  startMs: number;
+  durationMs: number;
+}
+interface RecordingManifest {
+  codec: string | null;
+  totalMs: number;
+  parts: RecordingManifestPart[];
+}
+
+function recordingManifestOf(metadata: Record<string, unknown> | undefined): RecordingManifest | null {
+  const manifest = metadata?.manifest as Partial<RecordingManifest> | undefined;
+  if (!manifest || !Array.isArray(manifest.parts)) return null;
+  return {
+    codec: typeof manifest.codec === 'string' ? manifest.codec : null,
+    totalMs: typeof manifest.totalMs === 'number' ? manifest.totalMs : 0,
+    parts: manifest.parts,
+  };
+}
+
+/** The controller's credential view, in the shape the lifecycle service reads. */
+function toLifecycleCaller(caller: ClinicalCaller): LifecycleCaller {
+  switch (caller.credentialClass) {
+    case 'service-account':
+      return { isMachine: true, serviceAccountId: caller.principalId };
+    case 'api-key':
+      return { isMachine: true, apiKeyId: caller.principalId, ...(caller.boundUserId ? { userId: caller.boundUserId } : {}) };
+    default:
+      return { isMachine: false, userId: caller.principalId };
+  }
+}
+
+/**
+ * The If-Match version of an approve. `@RequiresIfMatch()` answers 428 before the handler runs; this
+ * keeps the same answer for an in-process caller that reached the handler without one.
+ */
+function requireExpectedVersion(expectedVersion: number | undefined): number {
+  if (expectedVersion === undefined) {
+    throw new HttpException(
+      { code: 'PRECONDITION_REQUIRED', message: 'If-Match header is required for this operation.' },
+      HttpStatus.PRECONDITION_REQUIRED,
+    );
+  }
+  return expectedVersion;
+}
+
+/** The real lifecycle status of a consultation response, whatever its `status` was projected to. */
+function lifecycleStatusOf(consultation: ConsultationResponse): string | undefined {
+  return consultation.lifecycle?.status ?? consultation.status;
+}
 
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
@@ -192,6 +306,8 @@ class OkResponseDto {
 // UNAFFECTED — Reflector.getAllAndOverride takes the method's value first, so
 // this only fills the gaps.
 @RequiredScopes('consultation:session:write')
+// Older clients read the previous status vocabulary unless they send `X-Hope-Lifecycle: 2`.
+@UseInterceptors(ConsultationLifecycleVocabularyInterceptor)
 export class ConsultationController {
   private readonly logger = new Logger(ConsultationController.name);
 
@@ -244,7 +360,27 @@ export class ConsultationController {
     // "the count is the contract").
     @Inject(IDocumentSectionService)
     private readonly documentSectionService: IDocumentSectionService,
+    // The lifecycle commands and the episode reads. Appended after the existing parameters, and
+    // optional to the compiler only, so the positional fixtures keep their arity — Nest still
+    // resolves all four (none carries `@Optional()`), so a missing provider fails the boot.
+    @Inject(IConsultationLifecycleServiceToken)
+    private readonly lifecycleService?: IConsultationLifecycleService,
+    @Inject(IConsultationEncounterServiceToken)
+    private readonly encounterService?: IConsultationEncounterService,
+    // `GET :id/recording` presigns each recording part's stored object.
+    @Inject(IMediaService)
+    private readonly mediaService?: IMediaService,
+    @Inject(IBlobStorageService)
+    private readonly blobStorage?: IBlobStorageService,
   ) {}
+
+  /** A provider DI always supplies (see the constructor); absent only in a fixture that does not exercise it. */
+  private wired<T>(dependency: T | undefined, name: string): T {
+    if (dependency === undefined) {
+      throw new ServiceUnavailableException(`${name} is not wired on this gateway`);
+    }
+    return dependency;
+  }
 
   /** heartbeat cadence keeping idle trajectory streams alive through proxies. */
   private static readonly TRAJECTORY_HEARTBEAT_MS = 15000;
@@ -429,7 +565,7 @@ export class ConsultationController {
    *   (TASK-932 S2-4: resolved through the settings cascade). This is a
    *   runtime lookup that cannot be expressed as a static CASL condition.
    */
-  private async verifyConsultationAccess(consultationId: string): Promise<{ doctorId: string; patientId: string }> {
+  private async verifyConsultationAccess(consultationId: string): Promise<ConsultationResponse> {
     const consultation = await this.consultationService.getById(consultationId);
     if (!consultation) {
       throw new NotFoundException(`Consultation ${consultationId} not found`);
@@ -500,7 +636,7 @@ export class ConsultationController {
    *
    * Shared-patient doctors NEVER get write access.
    */
-  private async verifyConsultationOwnership(consultationId: string): Promise<{ doctorId: string; patientId: string }> {
+  private async verifyConsultationOwnership(consultationId: string): Promise<ConsultationResponse> {
     const consultation = await this.consultationService.getById(consultationId);
     if (!consultation) {
       throw new NotFoundException(`Consultation ${consultationId} not found`);
@@ -809,20 +945,228 @@ export class ConsultationController {
     return this.consultationService.updateConsultation(id, request, expectedFromHeader);
   }
 
-  // session state machine. `prime`/`close`/`reopen` are the API
-  // surface of the legality matrix (; each carries
-  // `@RequiresIfMatch()` + `@ExpectedVersion()` (/05-nestjs-api.md
-  // Concurrency) so a stale client CAS-fails (412) rather than
-  // silently clobbering a concurrent transition, and an illegal transition
-  // surfaces as 409 (`ConsultationService.applyTransition` maps the domain
-  // `BusinessException` — verified by the parity unit test alongside this
-  // controller: `@ApiEndpoint()` composes cleanly with both decorators, the
-  // same way `startRecording` already composes it with `@RequiresConsent`).
+  // ─── Consultation lifecycle ─────────────────────────────────────────
+  //
+  // The seven-state lifecycle (`IConsultationLifecycleService`): start / pause / stop move the
+  // capture; approve / close / reopen move the record and carry `@RequiresIfMatch()` +
+  // `@ExpectedVersion()` against the consultation `_version`. An illegal transition, a content
+  // lock or a refusal of the service is a coded 409 (`lifecycle-errors.ts`), passed through
+  // untouched. `prime`, `recording/start|stop` and the per-summary approve stay one release as
+  // deprecated aliases.
+
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/start')
+  @ApiOperation({
+    summary: 'Start (or resume) capturing audio into a consultation',
+    description:
+      'OPEN / PAUSED / STOPPED → RECORDING. From STOPPED the current encounter continues; to document a new visit, `open` again instead. ' +
+      'Naming `sessionId` binds that STT streaming session (one live session per consultation: a different session supersedes the previous one). ' +
+      'Starts the live-documentation session. Idempotent while RECORDING.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: CaptureStateResponse })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant).' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`CONSULTATION_NOT_RECORDABLE` — APPROVED or closed (reopen it, or open a new consultation); `STT_SESSION_NOT_ACTIVE` — the named STT session is no longer live; `CONSULTATION_TRANSITION_ILLEGAL`.',
+  })
+  // AUTH-NOTE: the same gate as `recording/start` — the AI_DOCUMENTATION consent checkpoint and
+  // the session write scope; ownership (owner doctor, `manage:Consultation`, or a tenant-bound
+  // service account) is imperative in `verifyConsultationOwnership`.
+  @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
+  @RequiredSvcScopes('svc:consultation:session:write')
+  async start(@Param('id') id: string, @Body() request: StartConsultationRequest | undefined): Promise<CaptureStateResponse> {
+    return this.beginLiveCapture(id, request?.sessionId, (supersedeByDurableBinding) =>
+      this.wired(this.lifecycleService, 'IConsultationLifecycleService').start(id, { sttSessionId: request?.sessionId, supersedeByDurableBinding }),
+    );
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/pause')
+  @ApiOperation({
+    summary: 'Pause capture',
+    description:
+      'RECORDING → PAUSED. The bound STT session flushes its last final first and then drops audio without advancing its clock; `start` resumes. Idempotent while PAUSED.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: CaptureStateResponse })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant).' })
+  @ApiResponse({ status: 409, description: '`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is not recording.' })
+  @RequiredSvcScopes('svc:consultation:session:write')
+  async pause(@Param('id') id: string): Promise<CaptureStateResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.wired(this.lifecycleService, 'IConsultationLifecycleService').pause(id, { reason: 'user' });
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/stop')
+  @ApiOperation({
+    summary: 'Stop capture and finalize the transcript',
+    description:
+      'RECORDING / PAUSED → STOPPED (processing FINALIZING_TRANSCRIPT). Every live STT session bound to the consultation is finalized; with `waitForFinal` (default true) ' +
+      'the response waits, up to the tenant`s final-transcript timeout, for the rebuilt full transcript. `finalTranscript.state` is `complete` or `pending`. ' +
+      'On a consultation that is already STOPPED this is an idempotent no-op answering the current `finalTranscript` state, so a client polls by re-POSTing stop. ' +
+      'The live note drains and the consultation loop is told the recording ended after the response.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: StopResultResponse })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant).' })
+  @ApiResponse({ status: 409, description: '`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is neither recording, paused nor stopped.' })
+  @RequiredSvcScopes('svc:consultation:session:write')
+  async stop(@Param('id') id: string, @Body() request: StopConsultationRequest | undefined): Promise<StopResultResponse> {
+    const consultation = await this.verifyConsultationOwnership(id);
+    const waitForFinal = request?.waitForFinal ?? true;
+    // A repeat stop is a poll for the final transcript: nothing to drain, nothing to signal again.
+    if (lifecycleStatusOf(consultation) === 'STOPPED') {
+      return this.wired(this.lifecycleService, 'IConsultationLifecycleService').stop(id, { waitForFinal });
+    }
+    await this.liveDocumentationService.markHandoffPending(id);
+    let result: StopResultResponse;
+    try {
+      result = await this.wired(this.lifecycleService, 'IConsultationLifecycleService').stop(id, { waitForFinal });
+    } catch (error) {
+      this.finishRecordingStop(id, request ?? {}, { signalEnding: false });
+      throw error;
+    }
+    this.finishRecordingStop(id, request ?? {}, { signalEnding: true });
+    return result;
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/approve')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Approve the consultation',
+    description:
+      'STOPPED → APPROVED: one approval of the whole record — every item`s current version is pinned in an immutable snapshot, the final note (when there is one) is signed in the same act, and content locks. ' +
+      'On CLOSED_INCOMPLETE it is a late sign-off: reopened, approved and closed in one write (CLOSED_COMPLETE). On APPROVED or CLOSED_COMPLETE it is an idempotent no-op, so a retried Copy to EMR never fails. ' +
+      'The `If-Match` header carries the consultation version. `clinicianUserId` follows the attribution rule of `close`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the consultation version the client read (e.g. `"7"`).',
+    required: true,
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: ConsultationResponse })
+  @ApiResponse({
+    status: 400,
+    description:
+      '`CLINICIAN_REQUIRED` — a machine credential named no clinician; `CLINICIAN_NOT_ALLOWED` — a human named another clinician without SUPER_ADMIN/TENANT_ADMIN, or an API key named someone other than the human it is bound to.',
+  })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set.',
+  })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  // AUTH-NOTE: the same gate as the per-summary approve it replaces — the session write scope; the
+  // attested clinician is NAMED on the body and validated imperatively by the signing core.
+  @RequiredSvcScopes('svc:consultation:session:write')
+  async approve(
+    @Param('id') id: string,
+    @Body() body: ApproveConsultationRequest | undefined,
+    @ExpectedVersion() expectedVersion: number | undefined,
+    @Req() req: RequestWithAuth,
+  ): Promise<ConsultationResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.wired(this.lifecycleService, 'IConsultationLifecycleService').approve(id, {
+      expectedVersion: requireExpectedVersion(expectedVersion),
+      ...(body?.clinicianUserId !== undefined ? { clinicianUserId: body.clinicianUserId } : {}),
+      ...(body?.overrideSafetyFlag !== undefined ? { overrideSafetyFlag: body.overrideSafetyFlag } : {}),
+      caller: toLifecycleCaller(this.callerOf(req)),
+    });
+  }
+
+  @Get(':id/encounters')
+  @ApiOperation({
+    summary: 'The encounters (visits) of a consultation',
+    description: 'Every encounter of the consultation, in order. `currentEncounterSeq` on the consultation names the open one.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: [EncounterResponse] })
+  @ApiResponse({ status: 403, description: 'The caller may not read this consultation.' })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant).' })
+  @RequiredScopes('consultation:session:read')
+  @RequiredSvcScopes('svc:consultation:session:read')
+  async listEncounters(@Param('id') id: string): Promise<EncounterResponse[]> {
+    await this.verifyConsultationAccess(id);
+    return this.wired(this.encounterService, 'IConsultationEncounterService').listForConsultation(id);
+  }
+
+  @Get(':id/recording')
+  @ApiOperation({
+    summary: 'The consultation recording, part by part',
+    description:
+      'The one recording of the consultation: each stop appends a part on a consultation-wide timeline (`startMs`), tagged with its encounter. ' +
+      'Each part carries a presigned download URL valid until `expiresAt`; a part whose stored object cannot be signed carries `url: null`.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiOkResponse({ type: ConsultationRecordingResponse })
+  @ApiResponse({ status: 403, description: 'The caller may not read this consultation.' })
+  @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant); `RECORDING_NOT_READY` — no audio has been recorded yet.' })
+  @RequiredScopes('consultation:session:read')
+  @RequiredSvcScopes('svc:consultation:session:read')
+  async getRecording(@Param('id') id: string): Promise<ConsultationRecordingResponse> {
+    await this.verifyConsultationAccess(id);
+    const items = await this.contextService.getContextItems(id, { type: 'AUDIO_RECORDING' });
+    const recording = items
+      .map((item) => ({ item, manifest: recordingManifestOf(item.metadata) }))
+      .find((candidate): candidate is { item: ContextItemResponse; manifest: RecordingManifest } => candidate.manifest !== null);
+    if (!recording) {
+      throw new NotFoundException({ code: RECORDING_NOT_READY_CODE, message: `Consultation ${id} has no recorded audio yet.` });
+    }
+
+    const parts = await Promise.all(
+      recording.manifest.parts.map(async (part) => ({
+        audioRecordingId: part.audioRecordingId,
+        encounterSeq: part.encounterSeq,
+        startMs: part.startMs,
+        durationMs: part.durationMs,
+        ...(await this.presignRecordingPart(id, part.mediaId)),
+      })),
+    );
+    return {
+      contextItemId: recording.item.id,
+      versionNumber: recording.item.currentVersionNumber ?? 1,
+      codec: recording.manifest.codec,
+      totalMs: recording.manifest.totalMs,
+      parts,
+    };
+  }
+
+  /** A presigned GET for one recording part's stored object; a part that cannot be signed answers nulls. */
+  private async presignRecordingPart(consultationId: string, mediaId: string): Promise<{ url: string | null; expiresAt: string | null }> {
+    try {
+      const media = await this.wired(this.mediaService, 'IMediaService').fetchById(mediaId);
+      const location = parseStorageUri(media?.uri);
+      if (!location) return { url: null, expiresAt: null };
+      const expiresAt = new Date(Date.now() + RECORDING_URL_TTL_SECONDS * 1000).toISOString();
+      const url = await this.wired(this.blobStorage, 'IBlobStorageService').presignGet({
+        bucket: location.bucket,
+        key: location.key,
+        expiresInSeconds: RECORDING_URL_TTL_SECONDS,
+      });
+      return { url, expiresAt };
+    } catch (error) {
+      this.logger.warn({
+        message: 'recording part could not be presigned',
+        consultationId,
+        mediaId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { url: null, expiresAt: null };
+    }
+  }
 
   // TASK-869 — the published contract says 200 and Nest's POST default is 201.
   // Without this the runtime and `openapi.json` disagreed, and every spec that
   // touched these routes had quietly widened to `[200, 201]` to cope. A
   // generated client (vox-node is generated FROM that document) expects 200.
+  @ApiDeprecated({ ...LIFECYCLE_ALIAS_DEPRECATION, replacement: '/api/v1/consultations/{id}/start' })
   @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
@@ -842,11 +1186,8 @@ export class ConsultationController {
   @ApiResponse({ status: 409, description: "Illegal state transition for the consultation's current status." })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  // Consent & ABAC. `prime` is the session state machine's first
-  // checkpoint — the same AI_DOCUMENTATION purpose `recording/start` already
-  // gates (that decorator is left in place; a follow-up ticket removes it
-  // once `prime` is the sole consent checkpoint, per the kill-switch's own
-  // rollout note below).
+  // Deprecated: there is no PRIMED state any more — an open consultation is ready to record, so
+  // this answers the consultation as it is. The AI_DOCUMENTATION consent checkpoint still runs.
   @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
   async prime(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
@@ -875,9 +1216,8 @@ export class ConsultationController {
   @ApiOperation({
     summary: 'Close a consultation',
     description:
-      'Terminal transition of the consultation row, and the last call of the `update -> approve -> close` sequence a machine ' +
-      'integration makes when a clinician submits their note. `PENDING_REVIEW -> CLOSED_*` is NOT a legal edge, so the sign-off ' +
-      'must precede this call.\n\n' +
+      'APPROVED → CLOSED_COMPLETE (`closedReason: APPROVED`); OPEN / RECORDING / PAUSED / STOPPED → CLOSED_INCOMPLETE (`closedReason: MANUAL`; a capturing consultation ' +
+      'is flushed first). Idempotent on a closed consultation, so a retried close never fails. A machine integration approves before it closes.\n\n' +
       '`clinicianUserId` names the clinician this close is attributed to. A SERVICE ACCOUNT or API KEY MUST supply it — a machine ' +
       'is never the clinician — and an API key may name only the human it is bound to unless that human holds `SUPER_ADMIN` or ' +
       '`TENANT_ADMIN`. A human caller omits it to act as themselves and may name another clinician only while holding one of ' +
@@ -890,7 +1230,7 @@ export class ConsultationController {
       'another clinician without an administrative role, or an API key named someone other than the human it is bound to.',
   })
   @ApiResponse({ status: 404, description: 'Consultation not found (or cross-tenant), or the named clinician is not a user of this tenant.' })
-  @ApiResponse({ status: 409, description: 'Illegal state transition — the consultation is not SIGNED or TIMED_OUT.' })
+  @ApiResponse({ status: 409, description: '`CONSULTATION_TRANSITION_ILLEGAL` — the transition is not legal from the current status.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   // AUTH-NOTE: TASK-972 Lane 4 — the FINISH half of the realtime consultation plane, opened to
@@ -932,30 +1272,72 @@ export class ConsultationController {
     required: true,
     example: '"1"',
   })
+  @ApiOperation({
+    summary: 'Reopen a closed consultation',
+    description:
+      'CLOSED_INCOMPLETE → OPEN always; CLOSED_COMPLETE → OPEN only when the tenant allows it (`reopenAllowed` on the consultation says which). Clears the approval.',
+  })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
-  @ApiResponse({ status: 409, description: "Illegal state transition for the consultation's current status." })
+  @ApiResponse({
+    status: 409,
+    description:
+      '`CONSULTATION_REOPEN_NOT_ALLOWED` — the tenant does not allow reopening an approved consultation; `CONSULTATION_TRANSITION_ILLEGAL` — not closed.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async reopen(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
+  async reopen(
+    @Param('id') id: string,
+    @ExpectedVersion() expectedVersion: number | undefined,
+    @Body() body?: ReopenConsultationRequest,
+  ): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.consultationService.reopenConsultation(id, expectedVersion);
+    return body?.reason !== undefined
+      ? this.consultationService.reopenConsultation(id, expectedVersion, { reason: body.reason })
+      : this.consultationService.reopenConsultation(id, expectedVersion);
   }
 
   // ─── Recording lifecycle + live summary (Clinical Workflow Playground) ───
   //
-  // WS2 — recording/start flips Consultation.status → RECORDING and starts the
-  // per-consultation LiveDocumentationService session; recording/stop tears the
-  // session down (optionally persisting a PRE_SUMMARY snapshot) and reverts the
-  // status to OPEN (the harness later promotes it to PENDING_REVIEW).
-  // WS1 — live-summary/stream relays the Redis pub/sub channel
-  // `consultation:live-summary:{id}` to the client over SSE, mirroring the
-  // consultation job-updates stream (auth via @TenantOwnedResource pre-stream
-  // guard + @StreamScope ticket).
+  // `recording/start|stop` are the deprecated aliases of `:id/start|stop` (one release): start
+  // binds the STT session and starts the per-consultation LiveDocumentationService session; stop
+  // never waits for the final transcript and drains the live note in the background.
+  // live-summary/stream relays the Redis pub/sub channel `consultation:live-summary:{id}` to the
+  // client over SSE (auth via @TenantOwnedResource pre-stream guard + @StreamScope ticket).
+
+  /**
+   * The shared half of `:id/start` and `recording/start`: ownership, wait for a still-draining
+   * stop (that drain ends by tearing the live session down and publishing `closed`), the capture
+   * command, then the live session. The live session belongs to the CLINICIAN the row records —
+   * for a machine caller there is no caller-as-person at all.
+   *
+   * One live STT session per consultation: a start naming a different session supersedes the
+   * previous one. When this process holds the live session, its re-bind announces the superseded
+   * session; otherwise the lifecycle supersedes by the durable binding. Never both.
+   */
+  private async beginLiveCapture<T>(
+    id: string,
+    sessionId: string | undefined,
+    capture: (supersedeByDurableBinding: boolean) => Promise<T>,
+  ): Promise<T> {
+    const owned = await this.verifyConsultationOwnership(id);
+    await this.liveDocumentationService.whenStopped(id);
+    // The lifecycle refuses (409 STT_SESSION_NOT_ACTIVE) a session that is no longer live, BEFORE
+    // the live session below is started or re-bound to it.
+    const result = await capture(!this.liveDocumentationService.isActive(id));
+    this.liveDocumentationService.start({
+      consultationId: id,
+      tenantId: this.cls.get('tenantId') ?? '',
+      userId: owned.doctorId,
+      sessionId,
+    });
+    return result;
+  }
 
   // TASK-869 — the published contract says 200 and Nest's POST default is 201.
   // Without this the runtime and `openapi.json` disagreed, and every spec that
   // touched these routes had quietly widened to `[200, 201]` to cope. A
   // generated client (vox-node is generated FROM that document) expects 200.
+  @ApiDeprecated({ ...LIFECYCLE_ALIAS_DEPRECATION, replacement: '/api/v1/consultations/{id}/start' })
   @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: RecordingStateResponse,
@@ -968,37 +1350,16 @@ export class ConsultationController {
   @ApiResponse({
     status: 409,
     description:
-      '`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also returned for an illegal state transition from the consultation`s current status.',
+      '`code: STT_SESSION_NOT_ACTIVE` — the `sessionId` names an STT streaming session that is no longer live (`sttSessionStatus`: `closed`, `finalizing`, `rejected`, or `unknown` when the STT service does not know it). Typically a stale, superseded start that landed after a newer one; nothing was written, and the recording was not bound to it. Create a new STT streaming session and start with that. Also `CONSULTATION_NOT_RECORDABLE` and an illegal state transition from the consultation`s current status.',
   })
   // Consent & ABAC. Capture start is one of the four gated
   // stages named in flow.
   @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
   @RequiredSvcScopes('svc:consultation:session:write')
   async startRecording(@Param('id') id: string, @Body() request: StartRecordingRequest): Promise<RecordingStateResponse> {
-    // TASK-933 — the live session belongs to the CLINICIAN, which the row records. For a human
-    // caller that is the caller; for a machine there is no caller-as-person at all, and writing
-    // the service-account id here would put a machine into the clinician's live-documentation
-    // session (and, through it, into the DNA-style and prompt resolution that reads it).
-    const owned = await this.verifyConsultationOwnership(id);
-    // A resume that lands while the previous stop still drains in the background waits for it:
-    // that drain ends by tearing the live session down and publishing `closed`.
-    await this.liveDocumentationService.whenStopped(id);
-    // TASK-1001 — the service refuses (409 STT_SESSION_NOT_ACTIVE) a session that is no longer
-    // live, BEFORE the live session below is started or re-bound to it.
-    //
-    // One live STT session per consultation: a start naming a different session supersedes the
-    // previous one. When this process holds the live session, its re-bind below announces the
-    // superseded session; otherwise the service supersedes by the durable binding. Never both.
-    const consultation = await this.consultationService.startRecording(id, {
-      sttSessionId: request?.sessionId,
-      supersedeByDurableBinding: !this.liveDocumentationService.isActive(id),
-    });
-    this.liveDocumentationService.start({
-      consultationId: id,
-      tenantId: this.cls.get('tenantId') ?? '',
-      userId: owned.doctorId,
-      sessionId: request?.sessionId,
-    });
+    const consultation = await this.beginLiveCapture(id, request?.sessionId, (supersedeByDurableBinding) =>
+      this.consultationService.startRecording(id, { sttSessionId: request?.sessionId, supersedeByDurableBinding }),
+    );
     return {
       consultationId: id,
       status: consultation.status ?? 'RECORDING',
@@ -1006,6 +1367,8 @@ export class ConsultationController {
       sessionId: request?.sessionId,
       sseUrl: `/consultations/${id}/live-summary/stream`,
       updatedAt: new Date().toISOString(),
+      // The real lifecycle pair, so the old-vocabulary projection can keep it beside `status`.
+      ...(consultation.lifecycle ? { lifecycle: consultation.lifecycle } : {}),
     };
   }
 
@@ -1013,6 +1376,7 @@ export class ConsultationController {
   // Without this the runtime and `openapi.json` disagreed, and every spec that
   // touched these routes had quietly widened to `[200, 201]` to cope. A
   // generated client (vox-node is generated FROM that document) expects 200.
+  @ApiDeprecated({ ...LIFECYCLE_ALIAS_DEPRECATION, replacement: '/api/v1/consultations/{id}/stop' })
   @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: RecordingStateResponse,
@@ -1022,13 +1386,14 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @ApiResponse({ status: 409, description: '`CONSULTATION_TRANSITION_ILLEGAL` — the consultation is neither recording nor paused.' })
   @RequiredSvcScopes('svc:consultation:session:write')
   async stopRecording(@Param('id') id: string, @Body() request: StopRecordingRequest): Promise<RecordingStateResponse> {
     await this.verifyConsultationOwnership(id);
-    // The answer needs only the DRAINING write. The live-note drain and the loop signal finish in
-    // the background; completion is pushed (the live-summary stream's `closed: true` frame, the
-    // harness progress stream). The handoff is marked pending FIRST, so the durable run keeps
-    // waiting for that drain rather than reading DRAINING as "ended with nothing".
+    // The answer needs only the STOPPED write (the alias never waits for the final transcript).
+    // The live-note drain and the loop signal finish in the background; completion is pushed (the
+    // live-summary stream's `closed: true` frame, the harness progress stream). The handoff is
+    // marked pending FIRST, so the durable run keeps waiting for that drain.
     await this.liveDocumentationService.markHandoffPending(id);
     let consultation: ConsultationResponse;
     try {
@@ -1045,6 +1410,7 @@ export class ConsultationController {
       recording: false,
       sseUrl: `/consultations/${id}/live-summary/stream`,
       updatedAt: new Date().toISOString(),
+      ...(consultation.lifecycle ? { lifecycle: consultation.lifecycle } : {}),
     };
   }
 
@@ -2076,6 +2442,7 @@ export class ConsultationController {
 
   // TASK-869 — same 201-vs-200 drift as the state-transition routes: the
   // published contract documents 200 and Nest's POST default is 201.
+  @ApiDeprecated({ ...LIFECYCLE_ALIAS_DEPRECATION, replacement: '/api/v1/consultations/{id}/approve' })
   @HttpCode(HttpStatus.OK)
   @ApiEndpoint({
     returnedModel: SummaryApprovalResponseDto,
@@ -2085,12 +2452,12 @@ export class ConsultationController {
   })
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Approve and lock a summary under optimistic concurrency',
+    summary: 'Approve a summary (deprecated: approves the whole consultation)',
     description:
-      'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a ' +
-      "Compare-And-Set against the summary row's `_version`. When the header is present, its value overrides the " +
-      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is ' +
-      '`428 Precondition Required`.',
+      'Approves the CONSULTATION, exactly as `POST :id/approve` does, signing this summary as its note. The `If-Match` header ' +
+      "(RFC 7232) is REQUIRED and carries the SUMMARY row's `_version`; when present it overrides the body-field `expectedVersion`. " +
+      'On version drift the response is `412 Precondition Failed`; missing header is `428 Precondition Required`. Idempotent on an ' +
+      'approved or closed-complete consultation.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -2111,12 +2478,15 @@ export class ConsultationController {
     status: 404,
     description: 'Consultation or summary not found (or cross-tenant), or the named clinician is not a user of this tenant.',
   })
+  @ApiResponse({
+    status: 409,
+    description: '`CONSULTATION_PROCESSING_IN_FLIGHT`, `CONSULTATION_TRANSITION_ILLEGAL`, or the safety-flag stop — as `POST :id/approve`.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   // AUTH-NOTE: TASK-972 Lane 4 — the clinical SIGN-OFF, opened to the machine class on the
-  // SESSION-tier write scope (it drives the consultation to `SIGNED`, as `recording/stop` drives
-  // it to `DRAINING`). The attested clinician is NAMED on the body and validated imperatively in
-  // `SummaryService.approveSummary`; see the `close` AUTH-NOTE above.
+  // SESSION-tier write scope (it drives the consultation to APPROVED). The attested clinician is
+  // NAMED on the body and validated imperatively by the signing core; see the `close` AUTH-NOTE.
   @RequiredSvcScopes('svc:consultation:session:write')
   async approveSummary(
     @Param('id') id: string,
@@ -2130,15 +2500,22 @@ export class ConsultationController {
   ): Promise<SummaryApprovalResponseDto> {
     await this.verifyConsultationOwnership(id);
     // Header takes precedence over body when both are present (house
-    // precedence, `department.controller.ts#update`).
+    // precedence, `department.controller.ts#update`). It is the SUMMARY's version: the session
+    // approve compares it against the note and compare-and-sets the consultation on its own read.
     const expectedVersion = expectedFromHeader !== undefined ? expectedFromHeader : body?.expectedVersion;
-    const result = await this.summaryService.approveSummary(contextItemId, {
-      overrideSafetyFlag: body?.overrideSafetyFlag,
-      expectedVersion,
-      clinicianUserId: body?.clinicianUserId,
-      caller: this.callerOf(req),
+    const approved = await this.wired(this.lifecycleService, 'IConsultationLifecycleService').approve(id, {
+      expectedVersion: requireExpectedVersion(expectedVersion),
+      ...(body?.clinicianUserId !== undefined ? { clinicianUserId: body.clinicianUserId } : {}),
+      ...(body?.overrideSafetyFlag !== undefined ? { overrideSafetyFlag: body.overrideSafetyFlag } : {}),
+      caller: toLifecycleCaller(this.callerOf(req)),
+      legacyContextItemId: contextItemId,
     });
-    return new SummaryApprovalResponseDto(result);
+    return new SummaryApprovalResponseDto({
+      contextItemId,
+      approvalStatus: 'APPROVED',
+      approvedBy: approved.approval?.approvedBy ?? '',
+      approvedAt: approved.approval?.approvedAt ?? '',
+    });
   }
 
   // ─── Named Entities ──────────────────────────────────────────────
