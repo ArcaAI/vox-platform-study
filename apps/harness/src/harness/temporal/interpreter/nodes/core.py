@@ -31,7 +31,7 @@ import json
 import re
 from collections.abc import Callable
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jsonschema
 import structlog
@@ -118,6 +118,9 @@ from harness.temporal.interpreter.prompt_composition import (
     resolved_prompt_variable_declarations,
 )
 from harness.temporal.interpreter.templating import PromptVariableUnresolved, render_template
+
+if TYPE_CHECKING:
+    from harness.temporal.models import TrajectoryContext
 
 _LOGGER = structlog.get_logger(__name__)
 
@@ -1607,6 +1610,54 @@ async def _degrade_note_plan(
     return NodeActivityResult(status="DEGRADED", reason=f"core.agent: {code}: {detail}")
 
 
+def _consultation_trajectory(
+    payload: NodeActivityInput, consultation_id: str | None
+) -> TrajectoryContext | None:
+    """The node's trajectory context, naming the consultation its note belongs to.
+
+    The interpreter keys a run by run id, so its context carries no consultation; the note's
+    steps would then reach the run record unattributed to the consultation it was written for.
+    """
+    ctx = payload.trajectory
+    if ctx is None or ctx.consultation_id or not consultation_id:
+        return ctx
+    return ctx.model_copy(update={"consultation_id": consultation_id})
+
+
+def _workflow_run_stats(payload: NodeActivityInput) -> dict[str, Any]:
+    """The workflow run a note step belongs to (ids and numbers only).
+
+    The step's own run id is the Temporal run; ``workflow_run_id`` is the HOPE run the console
+    links to. Slug and version are known only on run protocol v2 (``run.*``).
+    """
+    fields = payload.run_fields if isinstance(payload.run_fields, dict) else {}
+    stats: dict[str, Any] = {}
+    run_id = fields.get("id") or payload.run_id
+    if isinstance(run_id, str) and run_id:
+        stats["workflow_run_id"] = run_id
+    slug = fields.get("workflowSlug")
+    if isinstance(slug, str) and slug:
+        stats["workflow_slug"] = slug
+    version = fields.get("workflowVersion")
+    if isinstance(version, int) and not isinstance(version, bool) and version > 0:
+        stats["workflow_version"] = version
+    return stats
+
+
+def _summed_call_tokens(records: Any) -> dict[str, int]:
+    """Prompt / generated tokens summed over the plan calls that answered (the note record)."""
+    totals: dict[str, int] = {}
+    for record in records:
+        stats = record.result.stats if record.result is not None else None
+        if not isinstance(stats, dict):
+            continue
+        for key in ("prompt_tokens", "predicted_tokens"):
+            value = stats.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                totals[key] = totals.get(key, 0) + value
+    return totals
+
+
 async def _run_note_plan_finalizer(
     payload: NodeActivityInput,
     resolved: ResolvedAgent,
@@ -1747,10 +1798,13 @@ async def _run_note_plan_finalizer(
             usage=result.usage,
         )
 
-    agent_stats: dict[str, Any] = {"agent_slug": candidate.slug}
+    agent_stats: dict[str, Any] = {
+        "agent_slug": candidate.slug,
+        **_workflow_run_stats(payload),
+    }
     if candidate.version_number is not None:
         agent_stats["agent_version"] = candidate.version_number
-    batch = TrajectoryBatch(settings, payload.trajectory)
+    batch = TrajectoryBatch(settings, _consultation_trajectory(payload, consultation_id))
     try:
         execution = await execute_plan(
             plan,
@@ -1815,7 +1869,13 @@ async def _run_note_plan_finalizer(
         persisted=persisted,
     )
 
-    node_stats: dict[str, Any] = {**note_run_stats(plan, execution), **agent_stats}
+    node_stats: dict[str, Any] = {
+        **note_run_stats(plan, execution),
+        **agent_stats,
+        "provider": served.provider,
+        "model": served.model,
+        **_summed_call_tokens(execution.records),
+    }
     if persisted.get("context_item_id"):
         node_stats["context_item_id"] = persisted["context_item_id"]
     if persisted.get("version_number") is not None:
