@@ -213,7 +213,11 @@ export interface ConsultationHandle extends Readonly<Omit<ConsultationOpenResult
 export class ConsultationHandle {
   /** The consultation's lifecycle status; follows commands and lifecycle events. */
   readonly status!: ConsultationLifecycleStatus;
-  /** The orthogonal processing marker (`IDLE`, `SUMMARIZING`, `AWAITING_REVIEW`, …). */
+  /**
+   * The orthogonal processing marker. A written note reads `IDLE` with `processingReason`
+   * `NOTE_READY`; `AWAITING_REVIEW` is a written note that needs a human (coverage gaps or an
+   * escalation); `FINALIZING_TRANSCRIPT`, `SUMMARIZING` and `PROCESSING_ATTACHMENT` are work in flight.
+   */
   readonly processing!: ConsultationProcessing;
   /** The row version the next `If-Match` is built from. */
   readonly version!: number | undefined;
@@ -450,6 +454,27 @@ export class ConsultationHandle {
 
   #lastCapture: CaptureState | undefined;
 
+  /**
+   * Bind an STT session the caller already runs — for callers that do their own speech-to-text and
+   * hold their own socket. It sends `POST :id/start { sessionId }` and nothing else: no SDK STT
+   * session is created and no socket is opened. From `PAUSED` the same call resumes capture on that
+   * session (a fresh one after a pause that ran out). A session different from one the handle opened
+   * through {@link start} supersedes it, so the handle closes its own socket.
+   *
+   * @throws TypeError — locally, for an empty session id.
+   * @throws ConflictError — 409 `CONSULTATION_NOT_RECORDABLE`, `STT_SESSION_NOT_ACTIVE` or
+   * `CONSULTATION_TRANSITION_ILLEGAL`.
+   */
+  async startCapture(sttSessionId: string, options: ConsultationHandleCallOptions = {}): Promise<CaptureState> {
+    if (typeof sttSessionId !== 'string' || sttSessionId.trim() === '') {
+      throw new TypeError('startCapture: pass the id of the STT streaming session to bind.');
+    }
+    const state = await this.#startCommand(sttSessionId, options.signal);
+    const own = this.#socket;
+    if (own && own.sessionId !== sttSessionId) this.#detachSocket(true);
+    return state;
+  }
+
   #syntheticState(socket: RealtimeSttSocket): CaptureState {
     return {
       consultationId: this.id,
@@ -534,9 +559,24 @@ export class ConsultationHandle {
 
   // ── review commands (If-Match) ────────────────────────────────────────────────────────────
 
-  async #refreshVersion(signal?: AbortSignal): Promise<number | undefined> {
-    const current = await this.#transport.request<ConsultationOpenResult>({ path: this.#path(), signal });
+  /**
+   * Re-read the consultation. The handle's `status`, `processing` and `version` follow the answer;
+   * the returned state carries the rest of the lifecycle fields (`processingReason`,
+   * `closedReason`, `reopenAllowed`, `currentEncounterSeq`, …) as the gateway now holds them.
+   *
+   * @throws NotFoundError — 404, the consultation is not the caller's.
+   */
+  async refresh(options: ConsultationHandleCallOptions = {}): Promise<ConsultationState> {
+    const current = await this.#transport.request<ConsultationOpenResult & Partial<ConsultationState>>({
+      path: this.#path(),
+      signal: options.signal,
+    });
     this.#apply(current as Partial<ConsultationState>);
+    return { ...(current as unknown as ConsultationState), status: this.status, processing: this.processing, version: this.version as number };
+  }
+
+  async #refreshVersion(signal?: AbortSignal): Promise<number | undefined> {
+    await this.refresh({ signal });
     return this.version;
   }
 
