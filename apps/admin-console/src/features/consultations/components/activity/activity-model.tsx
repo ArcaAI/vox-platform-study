@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ActivityEntry, ActivityItemEntry, ConsultationActivityPage, EncounterBlock } from '@arcaai/types';
-import type { TimelineBadge, TimelineItemModel, TimelineRow } from '@arcaai/ui/components/timeline/types';
+import type { TimelineBadge, TimelineItemModel, TimelineRow } from '@arcaai/ui';
 import { ItemBody } from './activity-item-row';
 import { formatGap, humanizeEventType, kindLabel } from './activity-format';
 

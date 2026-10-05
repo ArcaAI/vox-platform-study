@@ -49,7 +49,7 @@ describe('consultations client', () => {
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'GET /api/hope/admin/consultations',
       'GET /api/hope/admin/consultations?page=1&limit=25',
-      'GET /api/hope/admin/consultations?page=2&limit=50&patientId=pt_44s1x9&doctorId=usr-vasquez&departmentId=dep-card&status=SIGNED',
+      'GET /api/hope/admin/consultations?page=2&limit=50&patientId=pt_44s1x9&doctorId=usr-vasquez&departmentId=dep-card&status=APPROVED',
     ]);
   });
 

@@ -7,7 +7,7 @@ import { ACTIVITY_KINDS, type ActivityKind, type ActivitySegmentRunEntry, type A
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { HistoryTimelineList } from '@arcaai/ui/components/timeline/history-timeline-list';
+import { HistoryTimelineList } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
 import { formatNumber } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
