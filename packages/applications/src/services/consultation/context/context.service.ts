@@ -40,7 +40,6 @@ import { AppendContextVersionInput, IContextService } from './IContextService';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { ITranscriptRecordService, ITranscriptRecordServiceToken } from '../transcript-record/ITranscriptRecordService';
 import { AMBIENT_TRANSACTION_CLS_KEY } from '../transcript-record/transcript-record.keys';
-import { setVersionMetaData } from '../transcript-record/version-metadata';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
 import {
@@ -623,7 +622,7 @@ export class ContextService extends BaseService implements IContextService {
       changedBy: input.changedBy,
       changeSource: input.changeSource,
     });
-    if (input.metaData) setVersionMetaData(version, input.metaData);
+    if (input.metaData) version.metaData = input.metaData;
     await this.encryptBestEffort('ContextItemVersion', () =>
       this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
     );

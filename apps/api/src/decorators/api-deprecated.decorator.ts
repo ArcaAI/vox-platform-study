@@ -1,4 +1,5 @@
-import { Header, applyDecorators } from '@nestjs/common';
+import { Header, UseInterceptors, applyDecorators } from '@nestjs/common';
+import { deprecatedRouteCounter } from '../observability/deprecated-route-metrics';
 /** Mirrors `DECORATORS.API_OPERATION` from `@nestjs/swagger/dist/constants` — that path is not an exported subpath, so the key is restated here. */
 const API_OPERATION_METADATA = 'swagger/apiOperation';
 
@@ -21,7 +22,8 @@ export interface ApiDeprecatedOptions {
  * (`docs/implementation/TASK-859-…` §6): `Deprecation: true` (RFC 9745) plus
  * an operator-readable `X-Deprecation-Notice`, `Link: …; rel="successor-version"`
  * when a replacement exists, `Sunset` when a date is known, and
- * `deprecated: true` on the route's OpenAPI operation.
+ * `deprecated: true` on the route's OpenAPI operation, and a request counter
+ * (`deprecated_requests_total{route, removeIn}`) that gates the route's removal.
  *
  * Place it ABOVE `@ApiOperation(...)` (decorators apply bottom-up, so this one
  * runs last and MERGES `deprecated: true` into the operation metadata the
@@ -47,5 +49,5 @@ export function ApiDeprecated(options: ApiDeprecatedOptions): MethodDecorator {
     return descriptor;
   };
 
-  return applyDecorators(...headers, markOperation);
+  return applyDecorators(...headers, UseInterceptors(deprecatedRouteCounter(options.removeIn)), markOperation);
 }

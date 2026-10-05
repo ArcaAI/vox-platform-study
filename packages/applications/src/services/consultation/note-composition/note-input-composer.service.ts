@@ -64,7 +64,7 @@ import {
   type NotePreservedSection,
   type NoteSourceId,
 } from './note-plan.types';
-import { NoteTokenCounterToken, estimateTokens, type NoteTokenCounter, type TokenCountResult, type TokenizerSpec } from './text-token-count.client';
+import { NoteTokenCounterToken, estimateTokens, type NoteTokenCounter, type TokenCountResult } from './text-token-count.client';
 
 /**
  * The note input composer: decides what the summarizer sees across a whole multi-encounter
@@ -774,16 +774,6 @@ function byCreated(a: ContextItemEntity, b: ContextItemEntity): number {
   return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id);
 }
 
-function tokenizerSpecOf(row: AiModelEntity): TokenizerSpec | null {
-  const raw = (row.metaData as Record<string, unknown> | null | undefined)?.tokenizer as Record<string, unknown> | undefined;
-  if (!raw || typeof raw !== 'object') return null;
-  const { hubRepo, file, sha256: digest } = raw;
-  if (typeof hubRepo === 'string' && hubRepo && typeof file === 'string' && file && typeof digest === 'string' && /^[0-9a-f]{64}$/i.test(digest)) {
-    return { hubRepo, file, sha256: digest };
-  }
-  return null;
-}
-
 @Injectable()
 export class NoteInputComposerService {
   private readonly logger = new Logger(NoteInputComposerService.name);
@@ -806,7 +796,7 @@ export class NoteInputComposerService {
   /** Compose (and, unless a preview, cache) the plan plus the preserved section text a regenerate needs. */
   async compose(request: NoteComposeRequest): Promise<NotePlanEnvelope> {
     const settings = await this.resolveSettings(request.tenantId);
-    const { model, tokenizer } = await this.resolveModel(request.tenantId, request.model ?? null);
+    const model = await this.resolveModel(request.tenantId, request.model ?? null);
     const snapshot = await this.gather(request, model, settings.ledgerWaitSeconds);
     const carryAiDraft = await this.resolveCarryAiDraft(request.tenantId);
     const system = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
@@ -822,7 +812,6 @@ export class NoteInputComposerService {
           tenantId: request.tenantId,
           provider: model.provider,
           model: model.wireModelId,
-          tokenizer,
           providerOverrides: null,
           allowEstimate: settings.allowEstimate,
         }),
@@ -959,7 +948,7 @@ export class NoteInputComposerService {
    * absence; a reference may be the slug or the wire id. The context window is the row's declared
    * one — undeclared fails closed, nothing is substituted.
    */
-  private async resolveModel(tenantId: string, reference: string | null): Promise<{ model: NotePlanModel; tokenizer: TokenizerSpec | null }> {
+  private async resolveModel(tenantId: string, reference: string | null): Promise<NotePlanModel> {
     const row = reference ? await this.modelByReference(tenantId, reference) : await this.platformDefaultTextModel();
     if (!row) {
       throw new NoteModelUnavailableError(
@@ -978,7 +967,7 @@ export class NoteInputComposerService {
     if (!row.wireModelId || !provider) {
       throw new NoteModelUnavailableError('NOTE_MODEL_UNRESOLVED', `Model '${row.slug}' has no routable provider or wire id.`);
     }
-    return { model: { slug: row.slug, wireModelId: row.wireModelId, provider, contextWindow }, tokenizer: tokenizerSpecOf(row) };
+    return { slug: row.slug, wireModelId: row.wireModelId, provider, contextWindow };
   }
 
   private async modelByReference(tenantId: string, reference: string): Promise<AiModelEntity | null> {

@@ -65,7 +65,7 @@ function buildService(wiring: Wiring = {}) {
           patientId: PATIENT,
           appointmentDate: DAY,
           parentConsultationId: null,
-          status: 'SIGNED',
+          status: 'APPROVED',
           createdAt: new Date('2026-09-29T04:15:00.000Z'),
           ...wiring.parent,
         };
@@ -147,7 +147,7 @@ async function startedContext(service: LiveDocumentationService) {
 }
 
 const MORNING = { [ContextItemType.SIGNED_NOTE]: [{ content: 'MORNING-SIGNED plan: CBC, LFT', createdAt: new Date() }] };
-const PREQUEL = '### Earlier visit today (04:15 UTC, status SIGNED)\nMORNING-SIGNED plan: CBC, LFT';
+const PREQUEL = '### Earlier visit today (04:15 UTC, status APPROVED)\nMORNING-SIGNED plan: CBC, LFT';
 
 describe('TASK-1020 — realtimeRunContext exposes the prequel to agents and fragment conditions', () => {
   it('publishes trigger.context.same_day_prequel = true with the rendered summary when a same-day ancestor exists', async () => {
@@ -164,7 +164,7 @@ describe('TASK-1020 — realtimeRunContext exposes the prequel to agents and fra
 
     const context = await startedContext(service);
 
-    expect(context.same_day_prequel_summary).toBe('### Earlier visit today (09:45 IST, status SIGNED)\nMORNING-SIGNED plan: CBC, LFT');
+    expect(context.same_day_prequel_summary).toBe('### Earlier visit today (09:45 IST, status APPROVED)\nMORNING-SIGNED plan: CBC, LFT');
   });
 
   it('publishes same_day_prequel = false (a boolean, never absent) for a first visit', async () => {

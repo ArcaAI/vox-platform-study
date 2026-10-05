@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { API_KEY_FORBIDDEN, ConsultationActivityQuery, ItemRunsQuery, ItemVersionDiffQuery } from '@arcaai/applications';
 import { createGlobalValidationPipe } from '../../../filters/validation-violations';
 import { AdminConsultationHistoryController } from '../admin-consultation-history.controller';
+import { ConsultationAccessHelper } from '../../consultation/consultation-access.helper';
 import { ConsultationHistoryController } from '../consultation-history.controller';
 
 async function validate<T>(metatype: new () => T, value: unknown): Promise<T> {
@@ -125,13 +126,18 @@ describe('admin delegation', () => {
 });
 
 describe('business plane', () => {
-  function build(options: { consultation?: unknown; user?: unknown; serviceAccount?: unknown; canRead?: boolean }) {
+  function build(options: { consultation?: unknown; user?: unknown; serviceAccount?: unknown; canRead?: boolean; sharing?: boolean; shares?: boolean }) {
     const service = history();
-    const consultations = { getById: vi.fn().mockResolvedValue(options.consultation === undefined ? { doctorId: 'doc-1' } : options.consultation) };
+    const consultations = {
+      getById: vi.fn().mockResolvedValue(options.consultation === undefined ? { doctorId: 'doc-1', patientId: 'p1' } : options.consultation),
+      doctorHasPatientRelationship: vi.fn().mockResolvedValue(options.shares ?? false),
+    };
     const store: Record<string, unknown> = { user: options.user, serviceAccount: options.serviceAccount, userAbility: {}, tenantId: 't1' };
     const cls = { get: (key: string) => store[key] };
     const policy = { can: vi.fn().mockReturnValue(options.canRead ?? false) };
-    const controller = new ConsultationHistoryController(service as never, consultations as never, cls as never, policy as never);
+    const settings = { resolve: vi.fn().mockReturnValue({ value: options.sharing ?? false }) };
+    const access = new ConsultationAccessHelper(consultations as never, cls as never, policy as never, settings as never);
+    const controller = new ConsultationHistoryController(service as never, access);
     return { controller, service, consultations, policy };
   }
 
@@ -163,6 +169,17 @@ describe('business plane', () => {
     const { controller, service } = build({ user: { id: 'other' }, canRead: false });
     await expect(controller.getHistory('c1', {} as never)).rejects.toBeInstanceOf(ForbiddenException);
     expect(service.getActivity).not.toHaveBeenCalled();
+  });
+
+  it('lets a shared-patient doctor read while tenant sharing is on, like GET consultations/:id', async () => {
+    const { controller, service } = build({ user: { id: 'other' }, sharing: true, shares: true });
+    await controller.getHistory('c1', {} as never);
+    expect(service.getActivity).toHaveBeenCalled();
+  });
+
+  it('refuses a shared-patient doctor when tenant sharing is off', async () => {
+    const { controller } = build({ user: { id: 'other' }, sharing: false, shares: true });
+    await expect(controller.getHistory('c1', {} as never)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('answers 404 when the consultation is not in the tenant', async () => {

@@ -6,7 +6,12 @@
 import { Logger } from '@nestjs/common';
 import { ResourceStatusType } from '@arcaai/domains';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FeedbackRollupService } from '../feedback-rollup.service';
+import {
+  FEEDBACK_ROLLUP_CRON_KEY as DESCRIPTOR_CRON_KEY,
+  FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY as DESCRIPTOR_LOOKBACK_KEY,
+  CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS,
+} from '../../../settings-registry/descriptors/consultation-attachments-feedback.descriptors';
+import { FEEDBACK_ROLLUP_CRON_KEY, FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY, FeedbackRollupService } from '../feedback-rollup.service';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date('2026-10-05T01:30:00Z');
@@ -160,5 +165,15 @@ describe('FeedbackRollupService', () => {
     settings['consultation.feedback.rollupCron'] = '0 3 * * *';
     service.syncSchedulerFromConfig();
     expect(scheduler.addCronJob).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rollup setting keys', () => {
+  it('the service reads the very keys the descriptors declare', () => {
+    expect(FEEDBACK_ROLLUP_CRON_KEY).toBe(DESCRIPTOR_CRON_KEY);
+    expect(FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY).toBe(DESCRIPTOR_LOOKBACK_KEY);
+    const keys = CONSULTATION_ATTACHMENTS_FEEDBACK_SETTINGS.map((d) => d.key);
+    expect(keys).toContain(DESCRIPTOR_CRON_KEY);
+    expect(keys).toContain(DESCRIPTOR_LOOKBACK_KEY);
   });
 });

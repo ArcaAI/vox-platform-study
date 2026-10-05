@@ -18,9 +18,9 @@ import { createWorkerSession } from '../../../common/worker-session';
 import { IActiveUserContext } from '../../../interfaces';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { IRedisCacheService } from '../../baseServices/redis/redis-cache.service';
+import { FEEDBACK_ROLLUP_CRON_KEY, FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY } from '../../settings-registry/descriptors/consultation-attachments-feedback.descriptors';
 
-export const FEEDBACK_ROLLUP_CRON_KEY = 'consultation.feedback.rollupCron';
-export const FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY = 'consultation.feedback.rollupLookbackDays';
+export { FEEDBACK_ROLLUP_CRON_KEY, FEEDBACK_ROLLUP_LOOKBACK_DAYS_KEY };
 const DEFAULT_CRON = '30 1 * * *';
 const DEFAULT_LOOKBACK_DAYS = 2;
 const MAX_LOOKBACK_DAYS = 30;

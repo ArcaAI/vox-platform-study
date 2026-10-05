@@ -1871,7 +1871,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     doctorId?: string;
     departmentId?: string;
     status?: ConsultationStatus;
-    /** Optional processing-axis filter (e.g. AWAITING_REVIEW, FAILED). */
+    /** Optional processing-axis filter (e.g. AWAITING_REVIEW = needs a human because of gaps or an escalation, FAILED). A written note is IDLE + processingReason NOTE_READY. */
     processing?: ConsultationProcessing;
     /** Pre-validated by the controller (`parseConsultationSort`); absent → `DEFAULT_CONSULTATION_SORT`. */
     sort?: ConsultationSort;
