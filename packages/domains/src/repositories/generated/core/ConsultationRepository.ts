@@ -465,18 +465,38 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
    * Cross-tenant unless `tenantId` is given: the sweep runs with no CLS tenant
    * context (a platform-wide maintenance tick).
    */
-  async findAutoCloseEligible(cutoff: Date, options: { tenantId?: string; limit?: number } = {}): Promise<ConsultationEntity[]> {
+  async findAutoCloseEligible(
+    cutoff: Date,
+    options: { tenantId?: string; limit?: number; after?: { lastActivityAt: Date; id: string } } = {},
+  ): Promise<ConsultationEntity[]> {
+    const { after } = options;
     return this.findAll({
       filters: {
         ...(options.tenantId ? { tenantId: options.tenantId } : {}),
         status: { notIn: CLOSED_STATUSES },
         lastActivityAt: { lt: cutoff },
         resourceStatus: ResourceStatusType.ENABLED,
+        // Keyset: strictly after the previous page's last row, so a row the caller skipped
+        // (a failed close) is never returned again within the same pass.
+        ...(after ? { OR: [{ lastActivityAt: { gt: after.lastActivityAt } }, { lastActivityAt: after.lastActivityAt, id: { gt: after.id } }] } : {}),
       },
-      sort: [{ lastActivityAt: 'asc' }],
+      sort: after ? [{ lastActivityAt: 'asc' }, { id: 'asc' }] : [{ lastActivityAt: 'asc' }],
       page: 1,
       limit: options.limit ?? AUTO_CLOSE_BATCH_LIMIT,
     });
+  }
+
+  /**
+   * The distinct tenants holding at least one non-closed consultation idle past `floorCutoff`,
+   * sorted. Lets the auto-close sweep serve each tenant with its own window and budget instead of
+   * one global oldest-first page that a long-window tenant's rows can fill.
+   */
+  async findAutoCloseTenantIds(floorCutoff: Date): Promise<string[]> {
+    const rows: Array<{ tenantId: string }> = await this.delegate().groupBy({
+      by: ['tenantId'],
+      where: { status: { notIn: CLOSED_STATUSES }, lastActivityAt: { lt: floorCutoff }, resourceStatus: ResourceStatusType.ENABLED },
+    });
+    return rows.map((r) => r.tenantId).sort();
   }
 
   /**

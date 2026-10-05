@@ -45,7 +45,15 @@ const row = (id: string, tenantId: string, minutesAgo: number, status = 'RECORDI
 
 function build(opts: { policies?: Record<string, unknown>; zones?: Record<string, string>; eligible?: Row[]; stale?: Row[] } = {}) {
   const repo = {
-    findAutoCloseEligible: vi.fn().mockResolvedValue(opts.eligible ?? []),
+    // Simulates the database: tenant filter, strict cutoff, keyset cursor, oldest-first, page size.
+    findAutoCloseEligible: vi.fn(async (cutoff: Date, o: { tenantId?: string; limit?: number; after?: { lastActivityAt: Date; id: string } } = {}) =>
+      (opts.eligible ?? [])
+        .filter((r) => (!o.tenantId || r.tenantId === o.tenantId) && r.lastActivityAt < cutoff)
+        .sort((a, b) => a.lastActivityAt.getTime() - b.lastActivityAt.getTime() || a.id.localeCompare(b.id))
+        .filter((r) => !o.after || r.lastActivityAt > o.after.lastActivityAt || (r.lastActivityAt.getTime() === o.after.lastActivityAt.getTime() && r.id > o.after.id))
+        .slice(0, o.limit ?? 200),
+    ),
+    findAutoCloseTenantIds: vi.fn(async (floor: Date) => [...new Set((opts.eligible ?? []).filter((r) => r.lastActivityAt < floor).map((r) => r.tenantId))].sort()),
     findStaleRecording: vi.fn().mockResolvedValue(opts.stale ?? []),
   };
   const bound: string[] = [];
@@ -91,10 +99,39 @@ describe('ConsultationTimeoutSweepService auto close', () => {
     expect(result).toMatchObject({ eligible: 2, closed: 2, failed: 0 });
   });
 
-  it('asks the repository for non-closed rows idle past the loosest window, capped at 200', async () => {
-    const { svc, repo } = build();
+  it('discovers tenants at the loosest window, then reads each tenant with its own cutoff', async () => {
+    const { svc, repo } = build({
+      policies: { t1: { mode: 'idle', idleMinutes: 60, dailyAt: null } },
+      eligible: [row('a', 't1', 90)],
+    });
     await svc.sweepAutoClose();
-    expect(repo.findAutoCloseEligible).toHaveBeenCalledWith(new Date(NOW.getTime() - 15 * 60_000), { limit: 200 });
+    expect(repo.findAutoCloseTenantIds).toHaveBeenCalledWith(new Date(NOW.getTime() - 15 * 60_000));
+    expect(repo.findAutoCloseEligible).toHaveBeenCalledWith(new Date(NOW.getTime() - 60 * 60_000), { tenantId: 't1', limit: 200, after: undefined });
+  });
+
+  it('a long-window tenant is not starved by another tenant\'s backlog of older rows', async () => {
+    // t1: 300 rows that are old but NOT yet due (a 24h window); t2: one row due under the default window.
+    const t1 = Array.from({ length: 300 }, (_, i) => row(`t1-${String(i).padStart(3, '0')}`, 't1', 900 + i));
+    const { svc, lifecycle } = build({
+      policies: { t1: { mode: 'idle', idleMinutes: 5000, dailyAt: null } },
+      eligible: [...t1, row('t2-due', 't2', 100000)],
+    });
+    const result = await svc.sweepAutoClose();
+    expect(lifecycle.close.mock.calls).toEqual([['t2-due', { auto: true }]]);
+    expect(result).toMatchObject({ closed: 1, failed: 0 });
+  });
+
+  it('pages past rows that fail to close and caps closes per tenant at the batch limit', async () => {
+    const rows = Array.from({ length: 450 }, (_, i) => row(`r${String(i).padStart(3, '0')}`, 't1', 100000 - i));
+    const { svc, lifecycle } = build({ eligible: rows });
+    lifecycle.close.mockImplementation(async (id: string) => {
+      if (id === 'r000') throw new Error('illegal transition');
+      return {};
+    });
+    const result = await svc.sweepAutoClose();
+    expect(result).toMatchObject({ closed: 200, failed: 1 });
+    // the failed head row was attempted once and the pass moved on to later rows
+    expect(lifecycle.close.mock.calls.filter(([id]) => id === 'r000')).toHaveLength(1);
   });
 
   it('daily mode closes rows last touched before today\'s dailyAt in the tenant time zone, once it has passed', async () => {
@@ -130,15 +167,15 @@ describe('ConsultationTimeoutSweepService auto close', () => {
     expect(lifecycle.close).toHaveBeenCalledWith('approved', { auto: true });
   });
 
-  it('closes at most 200 rows per run and keeps going when one close fails', async () => {
+  it('closes at most 200 rows per tenant per run and keeps going when one close fails', async () => {
     const eligible = Array.from({ length: 250 }, (_, i) => row(`r${i}`, 't1', 900));
     const { svc, lifecycle } = build({ eligible });
     lifecycle.close.mockRejectedValueOnce(new Error('race'));
 
     const result = await svc.sweepAutoClose();
 
-    expect(lifecycle.close).toHaveBeenCalledTimes(200);
-    expect(result).toMatchObject({ closed: 199, failed: 1 });
+    expect(lifecycle.close).toHaveBeenCalledTimes(201);
+    expect(result).toMatchObject({ closed: 200, failed: 1 });
   });
 
   it('an unusable stored policy serves the platform default', async () => {

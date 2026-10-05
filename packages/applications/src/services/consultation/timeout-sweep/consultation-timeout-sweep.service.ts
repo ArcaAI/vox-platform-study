@@ -28,8 +28,10 @@ import {
 
 const JOB_NAME = 'consultation-timeout-sweep';
 const MS_PER_MINUTE = 60_000;
-/** Rows one run closes (or pauses) at most; the rest wait for the next tick. */
+/** Rows one run closes (or pauses) at most - per tenant for the auto-close leg; the rest wait for the next tick. */
 export const CONSULTATION_SWEEP_BATCH_LIMIT = 200;
+/** Keyset pages one tenant may read per run: bounds the work a tenant full of failing rows can cost. */
+export const CONSULTATION_SWEEP_MAX_PAGES_PER_TENANT = 5;
 
 /**
  * The live-summary lock key format `LiveDocumentationService` writes. Kept for the one-off dev
@@ -209,11 +211,13 @@ export class ConsultationTimeoutSweepService implements OnModuleInit, OnModuleDe
   }
 
   /**
-   * Closes every non-closed consultation that is past its tenant's auto-close policy, at most
-   * {@link CONSULTATION_SWEEP_BATCH_LIMIT} per run (oldest first).
+   * Closes every non-closed consultation that is past its tenant's auto-close policy.
    *
-   * The repository is asked for rows idle past the loosest window any policy can have; each
-   * tenant's own policy then decides in memory. `overrides.idleMinutes` replaces every tenant's
+   * Tenants are served one at a time, each against its OWN cutoff and its own budget: at most
+   * {@link CONSULTATION_SWEEP_BATCH_LIMIT} closes per tenant per run, read in keyset pages
+   * (oldest first, bounded by {@link CONSULTATION_SWEEP_MAX_PAGES_PER_TENANT}) so a row that
+   * fails to close is passed over rather than re-read, and a tenant with a long window is never
+   * crowded out by another tenant's backlog. `overrides.idleMinutes` replaces every tenant's
    * policy with an idle window for this call only (the dev cleanup script uses it).
    */
   async sweepAutoClose(overrides?: { idleMinutes?: number }): Promise<ConsultationAutoCloseResult> {
@@ -224,36 +228,37 @@ export class ConsultationTimeoutSweepService implements OnModuleInit, OnModuleDe
 
     const now = new Date();
     const floorMinutes = Math.min(overrides?.idleMinutes ?? CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES, CONSULTATION_AUTO_CLOSE_MIN_IDLE_MINUTES);
-    const candidates = await this.consultationRepository.findAutoCloseEligible(new Date(now.getTime() - floorMinutes * MS_PER_MINUTE), {
-      limit: CONSULTATION_SWEEP_BATCH_LIMIT,
-    });
+    const tenantIds = await this.consultationRepository.findAutoCloseTenantIds(new Date(now.getTime() - floorMinutes * MS_PER_MINUTE));
 
-    const cutoffByTenant = new Map<string, Date | null>();
-    const eligible = [];
-    for (const consultation of candidates.slice(0, CONSULTATION_SWEEP_BATCH_LIMIT)) {
-      let cutoff = cutoffByTenant.get(consultation.tenantId);
-      if (cutoff === undefined) {
-        cutoff =
-          overrides?.idleMinutes !== undefined
-            ? new Date(now.getTime() - overrides.idleMinutes * MS_PER_MINUTE)
-            : await this.resolveCutoff(consultation.tenantId, now);
-        cutoffByTenant.set(consultation.tenantId, cutoff);
-      }
-      if (cutoff !== null && consultation.lastActivityAt < cutoff) eligible.push(consultation);
-    }
+    const result: ConsultationAutoCloseResult = { eligible: 0, closed: 0, failed: 0 };
+    for (const tenantId of tenantIds) {
+      const cutoff =
+        overrides?.idleMinutes !== undefined ? new Date(now.getTime() - overrides.idleMinutes * MS_PER_MINUTE) : await this.resolveCutoff(tenantId, now);
+      if (cutoff === null) continue;
 
-    let closed = 0;
-    let failed = 0;
-    for (const consultation of eligible) {
-      try {
-        await this.inTenant(consultation.tenantId, () => this.lifecycle.close(consultation.id, { auto: true }));
-        closed++;
-      } catch (error) {
-        failed++;
-        this.logSkipped('auto-close', consultation.id, consultation.tenantId, error);
+      let after: { lastActivityAt: Date; id: string } | undefined;
+      let tenantClosed = 0;
+      for (let page = 0; page < CONSULTATION_SWEEP_MAX_PAGES_PER_TENANT && tenantClosed < CONSULTATION_SWEEP_BATCH_LIMIT; page++) {
+        const rows = await this.consultationRepository.findAutoCloseEligible(cutoff, { tenantId, limit: CONSULTATION_SWEEP_BATCH_LIMIT, after });
+        if (rows.length === 0) break;
+        for (const consultation of rows) {
+          if (tenantClosed >= CONSULTATION_SWEEP_BATCH_LIMIT) break;
+          result.eligible++;
+          try {
+            await this.inTenant(consultation.tenantId, () => this.lifecycle.close(consultation.id, { auto: true }));
+            result.closed++;
+            tenantClosed++;
+          } catch (error) {
+            result.failed++;
+            this.logSkipped('auto-close', consultation.id, consultation.tenantId, error);
+          }
+        }
+        if (rows.length < CONSULTATION_SWEEP_BATCH_LIMIT) break;
+        const last = rows[rows.length - 1]!;
+        after = { lastActivityAt: last.lastActivityAt, id: last.id };
       }
     }
-    return { eligible: eligible.length, closed, failed };
+    return result;
   }
 
   /**
