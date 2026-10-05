@@ -125,6 +125,48 @@ integrator                      gateway (apps/api)                         harne
   - `CreateStreamSessionRequest` gains `workflowSlug`. Zero runtime dependencies stay; Node ≥ 22 (`globalThis.WebSocket`).
 - **Console docs** (`run-guide.ts`): rewrite the three stream-audio snippets (vox, vox-node, raw HTTP+WS) to bind the session to the run; fix the `useRunAudio` signature; update the test.
 
+### 3.5 Frozen contract (2026-10-05; changing it means changing every lane that codes against it)
+
+**C1. STT session create** (`POST /api/v1/audio/transcription-jobs/stream/session`).
+- Gains an optional `workflowSlug: string`, mutually exclusive with `consultationId`. Both present → 400 `STREAM_SESSION_TARGET_CONFLICT`.
+- With `workflowSlug` and no explicit `agentSlug`, the ASR agent resolves from the slug's active published version: its single `SPEECH_TO_TEXT` `core.agent` node. The response then echoes `agentSource: 'workflow'`.
+- An unknown or invisible slug → 404. More than one STT node → 409 `WORKFLOW_ASR_AGENT_UNAVAILABLE` (existing code). No STT node → the normal department/tenant resolution.
+- The SDK request types gain `workflowSlug?: string`. Nothing else on the request or response changes.
+
+**C2. Run start input** (`POST /api/v1/workflows/:slug/runs`, unchanged route, body and scopes):
+- `input[<audioField>] = { sttSessionId: string }`, where `<audioField>` is the one Input key whose schema in `GET workflows/:slug/schema` is the stream-audio payload schema (an object whose only declared property is `sttSessionId`, a string).
+
+**C3. Errors on run start** (body `{ code, message }`, same shape as other coded errors):
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `RUN_AUDIO_INPUT_UNDECLARED` | `sttSessionId` on a key that is not a stream-audio Input kind |
+| 400 | `RUN_AUDIO_MULTIPLE` | `sttSessionId` on more than one key |
+| 400 | `LIVE_AUDIO_UNSUPPORTED` | settings lack `socket`, or a legacy definition without settings |
+| 404 | (house 404) | session unknown, other tenant, or started by another principal |
+| 409 | `RUN_AUDIO_SESSION_NOT_LIVE` | session ended |
+| 409 | `RUN_AUDIO_SESSION_BOUND_ELSEWHERE` | bound to a consultation or to another run |
+| 409 | `RUN_AUDIO_AGENT_MISMATCH` | the session's ASR agent ≠ the graph's STT node agent |
+
+**C4. Ending the audio.** The client ends the audio with the socket's `finalize`, then `DELETE`/close of the session (the existing `closeStreamSession`). That completes the job row. The run continues to its result. A client disconnect never cancels the run.
+
+**C5. Internal transcript route** (gateway ↔ harness; owned by L1, consumed by L2):
+- `GET /api/v1/internal/stt/sessions/:sessionId/transcript?runId=<runId>`
+- Headers: `X-Service-Token`, `X-Tenant-Id` (both mandatory).
+- 404 unless the session's job is in that tenant and bound to `runId`.
+- 200 body:
+  ```json
+  { "state": "live" | "ended" | "truncated" | "timeout",
+    "language": "en" | null,
+    "transcript": "finals joined with single spaces",
+    "finals": [ { "text": "…", "utteranceIndex": 0, "start": 0.0, "end": 1.2, "speaker": null, "language": null } ] }
+  ```
+- `start`, `end`, `speaker`, `language` and `utteranceIndex` on a final are optional.
+- `timeout` means the session has been bound longer than `workflowRuns.liveAudioMaxSeconds` without ending.
+- `truncated` means the retained result stream no longer starts at the first final.
+
+**C6. ASR node output** (unchanged contract, `data_contract.py:94`): `{ transcript, segments, language }`, where `segments` = `finals` mapped to `{ text, start, end, speaker }`.
+
 ## 4. Decisions (FINAL: owner approved 2026-10-05)
 
 The owner answered "approved, go after OD-35 merges". Every recommendation below is therefore final, as written.
