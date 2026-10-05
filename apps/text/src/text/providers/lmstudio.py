@@ -231,7 +231,7 @@ class LMStudioProvider(OpenAICompatProvider):
 
         connection = resolve_connection(request)
         base_url = (connection.base_url or "").strip() if connection else ""
-        if not base_url:
+        if connection is None or not base_url:
             return None
         native = await self._native_models(base_url)
         if (native.get(model) or {}).get("state") != "loaded":
@@ -240,6 +240,8 @@ class LMStudioProvider(OpenAICompatProvider):
 
         async def _prompt_tokens(prompt: str) -> int:
             resp = await client.completions.create(model=model, prompt=prompt, max_tokens=1)
+            if resp.usage is None:
+                raise ValueError("the engine returned no usage for the token count")
             return int(resp.usage.prompt_tokens)
 
         try:
