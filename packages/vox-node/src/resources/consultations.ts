@@ -34,6 +34,7 @@ import type {
 } from '../types/consultation-realtime';
 import { ConsultationHandle, withLifecycleHeader } from './consultation-handle';
 import type { ConsultationOpenResult } from './consultation-handle';
+import type { FeedbackReasonCodesResponse } from '../types/consultation-lifecycle';
 import { ConsultationRecordingResource } from './consultation-recording';
 import { ConsultationStreamsResource } from './consultation-streams';
 import { ConsultationSummariesResource } from './consultation-summaries';
@@ -302,6 +303,15 @@ export class ConsultationsResource {
       signal: options.signal,
     });
     return this.handleFor(response);
+  }
+
+  /**
+   * The reason codes a `down` rating may carry for this tenant (its own list, else the platform's).
+   * The same list as {@link ConsultationHandle.feedbackReasonCodes}, readable before any consultation
+   * is open — e.g. to render the feedback controls up front.
+   */
+  async feedbackReasonCodes(options: ConsultationRequestOptions = {}): Promise<FeedbackReasonCodesResponse> {
+    return this.transport.request<FeedbackReasonCodesResponse>({ path: 'consultations/feedback/reason-codes', signal: options.signal });
   }
 
   private handleFor(response: ConsultationOpenResult): ConsultationHandle {
