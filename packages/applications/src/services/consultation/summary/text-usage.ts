@@ -1,5 +1,6 @@
-import { AiCapability, AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
+import { AiActivityKind, AiActivityRunStatus, AiCapability, AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
 
+import type { AiActivityRunInput } from '../../ai-activity-run/IAiActivityRunService';
 import { UsageIdempotencyKey } from '../../usageLedger/idempotency-keys';
 import { appendComputeAndByteUnits, type ComputeAugmentedBatch } from '../../usageLedger/compute-units';
 import type { UsageEventBatchInput } from '../../usageLedger/dto';
@@ -410,6 +411,74 @@ export function buildLlmUsageBatchesFromTokenCounts(params: BuildLlmUsageFromTok
   };
 
   return appendComputeAndByteUnits(batch, { device: params.device, totalMs: params.totalMs, engineMs: params.engineMs });
+}
+
+interface BuildTextActivityRunParams {
+  usage: TextUsageDetail;
+  tenantId: string;
+  activityKind: AiActivityKind;
+  consultationId?: string | null;
+  encounterSeq?: number | null;
+  agentSlug?: string | null;
+  agentVersion?: number | null;
+  promptTemplateId?: string | null;
+  promptVersion?: number | null;
+  contextWindow?: number | null;
+  outputCap?: number | null;
+  /** The item version this call produced, when it produced one. */
+  contextItemId?: string | null;
+  outputVersionNumber?: number | null;
+}
+
+/**
+ * The run record of ONE synchronous TEXT call, from the same usage block its
+ * ledger rows come from — so the run and the bill agree on provider, model,
+ * deployment and cost basis.
+ *
+ * Keyed by the TEXT task id (`text:<consultationId|tenantId>:<taskId>:0`), the
+ * same id the ledger key derives from, so a retried persist converges on one
+ * record. `null` when the block names no task or request id: a record keyed on
+ * nothing could not be deduplicated.
+ */
+export function buildTextActivityRun(params: BuildTextActivityRunParams): AiActivityRunInput | null {
+  const { usage } = params;
+  const requestId = usage.taskId || usage.requestId;
+  if (!requestId) return null;
+
+  const provider = toLedgerProvider(usage.textProvider);
+  const endedAt = usage.occurredAt;
+  const durationMs = usage.totalMs === null ? null : Math.round(usage.totalMs);
+  const promptTokens = usage.promptTokens > 0 ? usage.promptTokens : null;
+  const completionTokens = usage.completionTokens > 0 ? usage.completionTokens : null;
+
+  return {
+    tenantId: params.tenantId,
+    runKey: `text:${params.consultationId || params.tenantId}:${requestId}:0`,
+    consultationId: params.consultationId ?? null,
+    encounterSeq: params.encounterSeq ?? null,
+    activityKind: params.activityKind,
+    status: usage.interrupted ? AiActivityRunStatus.DEGRADED : AiActivityRunStatus.OK,
+    agentSlug: params.agentSlug ?? null,
+    agentVersion: params.agentVersion ?? null,
+    promptTemplateId: params.promptTemplateId ?? null,
+    promptVersion: params.promptVersion ?? null,
+    model: usage.model || null,
+    provider: provider || null,
+    deployment: resolveDeployment(provider, usage.byok),
+    costBasis: usage.byok ? AiCostBasis.BYOK_NOTIONAL : AiCostBasis.INTERNAL,
+    // TEXT stamps `occurred_at` when the call finished; its wall clock dates the start.
+    startedAt: durationMs === null ? endedAt : new Date(endedAt.getTime() - durationMs),
+    endedAt,
+    durationMs,
+    tokensIn: promptTokens,
+    tokensOut: completionTokens,
+    contextUsed: promptTokens === null ? null : promptTokens + (completionTokens ?? 0),
+    contextWindow: params.contextWindow ?? null,
+    outputCap: params.outputCap ?? null,
+    usageRequestId: UsageIdempotencyKey.llmRequest(requestId),
+    contextItemId: params.contextItemId ?? null,
+    outputVersionNumber: params.outputVersionNumber ?? null,
+  };
 }
 
 // ── internals ───────────────────────────────────────────────────────────────

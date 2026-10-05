@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
+import { AiActivityRunServiceModule } from '../ai-activity-run/ai-activity-run.service.module';
 import { CommonServiceModule } from '../baseServices';
 import { MetricsServiceModule } from '../baseServices/metrics/metrics.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger';
@@ -19,6 +20,9 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  *   for the device a self-hosted engine occupied (both injected @Optional so
  *   unit fixtures can still construct the service without them).
  *
+ * - AiActivityRunServiceModule → the run-record producer `recordSteps`
+ *   co-writes beside the usage rows (injected @Optional by its token).
+ *
  * - MetricsServiceModule → `IMetricsService` for the
  *   `hope_usage_emission_failed_total` counter (TASK-957 F-5). Imported
  *   explicitly — it is not a @Global module — and injected @Optional, because
@@ -28,7 +32,7 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  * concrete class so emitter modules (live-doc, summary) can wire it directly.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, UsageLedgerServiceModule, MetricsServiceModule],
+  imports: [CommonServiceModule, CoreDatabaseModule, UsageLedgerServiceModule, MetricsServiceModule, AiActivityRunServiceModule],
   providers: [
     AgentTrajectoryService,
     {
