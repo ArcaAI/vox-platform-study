@@ -52,6 +52,7 @@ import { COMPILED_AT, CORE_PALETTE_KEY, WORKFLOW_LIBRARY_TARGETS, type WorkflowS
 import {
   ARCAAI_AGENT_SPECS,
   ARCAAI_FINALIZATION_AGENT_SPEC,
+  ARCAAI_TRANSCRIPTION_AGENT_SPEC,
   ARCAAI_WORKFLOW_TARGETS,
 } from '../src/prisma/db_main/seed/29-arcaai-agents-and-workflows';
 
@@ -98,7 +99,7 @@ function seededAgentFor(tenantId: string, slug: string): { spec: SeedAgentSpec; 
     return spec ? { spec, cloned: false } : null;
   }
   if (tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI) {
-    const own = live([...ARCAAI_AGENT_SPECS, ARCAAI_FINALIZATION_AGENT_SPEC]);
+    const own = live([...ARCAAI_AGENT_SPECS, ARCAAI_FINALIZATION_AGENT_SPEC, ARCAAI_TRANSCRIPTION_AGENT_SPEC]);
     if (own) return { spec: own, cloned: false };
     const clone = live(PLATFORM_AGENT_SPECS);
     return clone ? { spec: clone, cloned: true } : null;

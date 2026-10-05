@@ -448,6 +448,18 @@ export interface SeedAgentSpec {
   tags: string[];
   /** `null` on an authored row; set on a promoted / cloned copy. */
   provenance: SeedAgentProvenance | null;
+  /**
+   * A tenant agent bound to one of its OWN context schemas: the pin columns plus the snapshot a
+   * publish freezes into `compiledConfig.contextSchema` (the runtime reads only the snapshot).
+   * Absent on every platform row — a schema is content, and a pin cannot travel by id.
+   */
+  contextSchema?: SeedAgentContextSchemaBinding;
+}
+
+export interface SeedAgentContextSchemaBinding {
+  schemaId: string;
+  versionNumber: number;
+  frozen: Record<string, unknown>;
 }
 
 /**
@@ -1399,9 +1411,10 @@ export function buildCompiledConfig(
     tools: [],
     // TASK-983 OD-6 — `protocols` (per-task, never enforced) is REMOVED; NER's one-shot posture
     // (`?mode=stream` → 400 `MODE_UNSUPPORTED`) is enforced in `AgentController.invokeNer`.
-    // `contextSchema: null` — no seeded agent pins a context schema: a schema is CONTENT, cloned
-    // per tenant; the trigger of the workflow binds it and `{{trigger.context.*}}` reads it.
-    contextSchema: null,
+    // `contextSchema: null` unless the spec binds the tenant's OWN schema: a schema is CONTENT,
+    // cloned per tenant, so no platform row pins one; the trigger of the workflow binds it and
+    // `{{trigger.context.*}}` reads it.
+    contextSchema: spec.contextSchema?.frozen ?? null,
   };
 }
 
@@ -1429,8 +1442,8 @@ export function buildAgentRow(spec: SeedAgentSpec, model: SeedModelRef, fallback
     status: spec.status,
     isActive: spec.isActive,
     modelId: model.id,
-    contextSchemaId: null,
-    contextSchemaVersionNumber: null,
+    contextSchemaId: spec.contextSchema?.schemaId ?? null,
+    contextSchemaVersionNumber: spec.contextSchema?.versionNumber ?? null,
     instruction: spec.instruction,
     parameters: spec.parameters,
     inputSchema: null,
