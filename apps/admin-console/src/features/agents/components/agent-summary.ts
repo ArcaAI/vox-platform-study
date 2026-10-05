@@ -165,7 +165,8 @@ function typeInWords(name: string, schema: Json): string {
   const type = Array.isArray(schema.type) ? schema.type.find((candidate) => candidate !== 'null') : schema.type;
   if (type === 'array') {
     const items = isRecord(schema.items) ? schema.items : {};
-    const itemType = typeof items.type === 'string' ? TYPE_WORDS[items.type] : undefined;
+    // "List of records", not "List of group of fields".
+    const itemType = items.type === 'object' ? 'Records' : typeof items.type === 'string' ? TYPE_WORDS[items.type] : undefined;
     return itemType ? `List of ${itemType.toLowerCase()}` : 'List';
   }
   return typeof type === 'string' ? (TYPE_WORDS[type] ?? type) : 'Any';
