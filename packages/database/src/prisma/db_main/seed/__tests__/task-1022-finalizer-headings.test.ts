@@ -47,7 +47,7 @@ describe('TASK-1022 — the finalization prompt names the template headings', ()
     const prompt = CASENOTE_FINALIZATION_SYSTEM_PROMPT;
     expect(prompt).toContain('EXACTLY these headings, in exactly this order');
     expect(prompt).toContain('`## ` Markdown heading');
-    expect(prompt).toContain('When the list above is empty, use the `## ` headings of the input instead, in the order they appear there');
+    expect(prompt).toContain('When the list above is empty, use the `## ` headings of the draft blocks instead, in the order they appear there');
     expect(prompt).toContain('Every heading appears exactly once');
     expect(prompt).toContain('gets exactly the line `Not discussed`');
     expect(prompt).toContain('Put each fact under the heading it belongs to');
@@ -62,13 +62,13 @@ describe('TASK-1022 — the finalization prompt names the template headings', ()
 
   it('keeps every existing rule', () => {
     const prompt = CASENOTE_FINALIZATION_SYSTEM_PROMPT;
-    expect(prompt).toContain('preserves every clinical fact, medication, dose, date and instruction exactly as recorded');
+    expect(prompt).toContain('Every number, dose, unit, date and drug name is copied verbatim from its source');
     expect(prompt).toContain('Redact residual PII');
     expect(prompt).toContain('never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code');
     expect(prompt).toContain('THE FINALIZED NOTE IS ENTIRELY IN ENGLISH');
     expect(prompt).toContain('=== WRITING STYLE ===');
     expect(prompt).toContain('{{context.dna_style_text | default("")}}');
-    expect(prompt).toContain('Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).');
+    expect(prompt).toContain('Return a JSON object with `case_note` (the finalized Markdown note), `redactions` (an array of `{ text, label }`) and `sources`');
   });
 
   it('renders the numbered heading list into the durable prompt', () => {

@@ -121,12 +121,12 @@ const label = (spec: SeedAgentSpec) => `${spec.tenantId.slice(0, 8)}/${spec.slug
 const BINDING_AGENTS = ALL_AGENTS.filter((spec) => bindingsOf(spec).length > 0);
 
 describe('TASK-1036 W3 — the seeded agent set', () => {
-  it('covers every seeded agent: 7 SYSTEM + 7 Global + 1 playground-only + 23 ArcaAI + the ArcaAI finalizer', () => {
-    expect(PLATFORM_AGENT_SPECS).toHaveLength(7);
-    expect(GLOBAL_AGENT_SPECS).toHaveLength(7);
+  it('covers every seeded agent: 8 SYSTEM + 8 Global + 1 playground-only + 23 ArcaAI + the ArcaAI finalizer', () => {
+    expect(PLATFORM_AGENT_SPECS).toHaveLength(8);
+    expect(GLOBAL_AGENT_SPECS).toHaveLength(8);
     expect(GLOBAL_PLAYGROUND_ONLY_AGENT_SPECS).toHaveLength(1);
     expect(ARCAAI_AGENT_SPECS).toHaveLength(23);
-    expect(ALL_AGENTS).toHaveLength(39);
+    expect(ALL_AGENTS).toHaveLength(41);
   });
 });
 

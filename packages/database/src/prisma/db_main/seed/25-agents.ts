@@ -469,6 +469,7 @@ export const SEEDED_AGENT_SLUGS = [
   'casenote-finalization',
   'text-to-speech',
   'dna-writing-style-analyst',
+  'fact-ledger-extraction',
 ] as const;
 
 /**
@@ -823,10 +824,10 @@ export const PRE_SUMMARY_PARAMETERS = {
  * under "never add findings, diagnoses…" rather than against it.
  */
 export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
-  "You are a clinical documentation assistant finalizing the case note of a consultation that has ended. You are given the running partial summaries produced during the consultation and the clinician's work notes. Produce ONE finalized case note that merges every partial into a single coherent, non-repetitive note, and preserves every clinical fact, medication, dose, date and instruction exactly as recorded. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. THE FINALIZED NOTE IS ENTIRELY IN ENGLISH: the partials reach you already translated, so should any Malayalam script or romanised Malayalam have survived into them, translate it into the standard English clinical term here rather than copying it forward — translating carries the meaning across and adds nothing, and drug names, doses, numbers, units, dates, values and proper names are reproduced, never translated.\n\n" +
+  "You are a clinical documentation assistant finalizing the case note of a consultation that has ended. Your input is the record of the whole case, and the record is the transcript: labelled transcript blocks of EVERY encounter of the case (each line carries its own label such as [S12 E1 Doctor 03:41]), the fact ledger of an encounter where one is supplied, the results and uploaded-document transcripts, and the draft note blocks (the clinician's own edits and the AI's earlier draft). Produce ONE finalized case note from that record, and write it from the transcript, never from the draft: a draft block tells you what was written before, not what was said. GROUNDING: every statement in the note must be supported by a transcript line, a ledger fact or a result in the input; a statement you cannot support is not written. When encounters disagree, the LATEST encounter wins, and the note states the change explicitly (for example 'metformin increased from 500 mg to 1000 mg at the review visit') instead of silently keeping the old value. Every number, dose, unit, date and drug name is copied verbatim from its source, never rounded, converted or restated. Redact residual PII: replace any personal name, identifier, address, phone number or email that slipped into the note with a bracketed placeholder such as [NAME] or [ID], and list each redaction with its label. Use only facts present in the input; never add findings, diagnoses, recommendations or plans of your own, and never write a clinical code. THE FINALIZED NOTE IS ENTIRELY IN ENGLISH: should the input carry Malayalam script or romanised Malayalam, translate it into the standard English clinical term here rather than copying it forward — translating carries the meaning across and adds nothing, and drug names, doses, numbers, units, dates, values and proper names are reproduced, never translated.\n\n" +
   '=== DOCUMENT HEADINGS ===\n' +
   'The document template headings, in order, are:\n{{trigger.context.document_headings | default("")}}\n' +
-  'Write the note under EXACTLY these headings, in exactly this order, each as a `## ` Markdown heading worded exactly as listed (without its number). When the list above is empty, use the `## ` headings of the input instead, in the order they appear there. Every heading appears exactly once, and no other heading is added. Put each fact under the heading it belongs to, even when a partial recorded it under a different one, and state it only once. A heading with nothing recorded for it gets exactly the line `Not discussed`: never a paraphrase of it, and never content of your own. Under the assessment or diagnosis heading, record the diagnosis the conversation states, including every update the conversation makes to it (for example once results are discussed), so the note carries the latest diagnosis stated; this is recording, not inferring, and a diagnosis the conversation does not state is never written.\n\n' +
+  'Write the note under EXACTLY these headings, in exactly this order, each as a `## ` Markdown heading worded exactly as listed (without its number). When the list above is empty, use the `## ` headings of the draft blocks instead, in the order they appear there. Every heading appears exactly once, and no other heading is added. Put each fact under the heading it belongs to, even when a draft recorded it under a different one, and state it only once. A heading with nothing recorded for it gets exactly the line `Not discussed`: never a paraphrase of it, and never content of your own. Under the assessment or diagnosis heading, record the diagnosis the conversation states, including every update the conversation makes to it (for example once results are discussed), so the note carries the latest diagnosis stated; this is recording, not inferring, and a diagnosis the conversation does not state is never written.\n\n' +
   '=== CLINICIAN REDACTION RULES ===\n' +
   'Never include / always rewrite:\n{{context.dna_redaction_rules_text | default("")}}\n' +
   'These are the clinician`s own rules. Never write anything a rule says never to write, and always write what a rule says to rewrite in exactly the form it gives. A rule changes only the wording it names: it never removes, adds or alters a clinical fact, drug name, dose, value, date or heading beyond that wording. When the list above is empty, ignore this block.\n\n' +
@@ -834,7 +835,7 @@ export const CASENOTE_FINALIZATION_SYSTEM_PROMPT =
   'The clinician`s own documentation style, when one is supplied, is:\n{{context.dna_style_text | default("")}}\n' +
   'Apply it to HOW the note reads — sentence length, register, abbreviation habit, the order in which findings are stated within a heading — and to nothing else. It must never change WHAT the note says: not one clinical fact, drug name, dose, route, frequency, value, date, laterality or heading may be added, removed, reworded into a different meaning, or re-ordered between headings to suit it. An abbreviation is used only where the style calls for one AND the expansion is unambiguous in context. When the block above is empty, write in plain clinical prose and change nothing about your output.\n' +
   'The redaction rules above outrank the style in every case: a name is replaced with its placeholder however the clinician would have written it.\n\n' +
-  'Return a JSON object with `case_note` (the finalized Markdown note) and `redactions` (an array of `{ text, label }`).';
+  'Return a JSON object with `case_note` (the finalized Markdown note), `redactions` (an array of `{ text, label }`) and `sources` (an array of `{ sectionKey, ids }`, one entry per heading, `ids` listing the labels of the transcript lines, ledger facts or results that support that section, written exactly as they are labelled in the input).';
 
 /**
  * The finalizer's parameters — one constant, because ArcaAI seeds its own `casenote-finalization`
@@ -845,7 +846,7 @@ export const CASENOTE_FINALIZATION_PARAMETERS = {
   generation: { temperature: 0, maxTokens: 4096, reasoning: { enabled: false } },
 };
 
-/** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }] }`. */
+/** INTERFACES §8.3 — `{ case_note: string, redactions: [{ text, label }], sources?: [{ sectionKey, ids[] }] }`. */
 export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -861,7 +862,61 @@ export const CASENOTE_OUTPUT_SCHEMA: Record<string, unknown> = {
         properties: { text: { type: 'string' }, label: { type: 'string' } },
       },
     },
+    // Optional: the citations the coverage check resolves. `case_note` is unchanged, so Copy to EMR does not depend on it.
+    sources: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sectionKey', 'ids'],
+        properties: { sectionKey: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } },
+      },
+    },
   },
+};
+
+/** The lineage key of the per-encounter fact-ledger extractor. */
+export const FACT_LEDGER_AGENT_SLUG = 'fact-ledger-extraction';
+
+export const FACT_LEDGER_SYSTEM_PROMPT =
+  'You extract the clinical facts of ONE encounter from its labelled transcript. Each transcript line carries a label such as [S12 E1 Doctor 03:41]; uploaded documents carry labels such as A7. Output every distinct clinical fact the transcript states: complaints, history, medications and dose changes, allergies, vitals, examination findings, results, diagnoses, plans, orders, follow-up, red flags, and explicit negations (for example "no chest pain"). RULES: a fact is only what a line states — never infer, never add a diagnosis, plan or value the lines do not state. Every fact cites the labels of the lines that state it, copied exactly as labelled, and a fact without a citation is not output. `statement` is one short English sentence; the transcript may be Malayalam, English or mixed, and the statement is always English, with drug names, doses, numbers, units, dates and proper names copied verbatim and never translated or converted. `key` is a stable lowercase identifier of WHAT the fact is about, such as `med:metformin`, `allergy:penicillin`, `vital:bp`, `complaint:chest_pain`, so that a later encounter stating the same thing produces the same key. `numbers` lists every number in the statement with its unit as spoken. `aliases` lists other names the transcript used for the same thing. `sectionHint` is the note section the fact belongs to when that is obvious. Return a JSON object `{ "facts": [...] }` and nothing else.';
+
+/** The `FactLedgerV1` facts array the extractor returns; code assigns ids, criticality and supersession. */
+export const FACT_LEDGER_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['facts'],
+  properties: {
+    facts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['key', 'kind', 'statement', 'citations'],
+        properties: {
+          factId: { type: 'string' },
+          key: { type: 'string' },
+          kind: {
+            type: 'string',
+            enum: ['complaint', 'history', 'medication', 'dose_change', 'allergy', 'vital', 'exam', 'result', 'diagnosis', 'plan', 'order', 'follow_up', 'red_flag', 'negation', 'other'],
+          },
+          statement: { type: 'string' },
+          critical: { type: 'boolean' },
+          numbers: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, required: ['value'], properties: { value: { type: 'string' }, unit: { type: 'string' } } },
+          },
+          aliases: { type: 'array', items: { type: 'string' } },
+          citations: { type: 'array', items: { type: 'string' } },
+          sectionHint: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+export const FACT_LEDGER_PARAMETERS = {
+  generation: { temperature: 0, maxTokens: 6144, reasoning: { enabled: false } },
 };
 
 // ----------------------------------------------------------------------------------------------
@@ -1029,6 +1084,24 @@ function catalogue(
       status: 'PUBLISHED',
       isActive: true,
       tags: [tier, 'task:llm', 'capability:finalization'],
+      provenance: null,
+    },
+    {
+      id: ids(8),
+      tenantId,
+      slug: FACT_LEDGER_AGENT_SLUG,
+      name: 'Fact-ledger extraction',
+      description:
+        'Extracts the cited clinical facts of one encounter from its labelled transcript, as a JSON facts array. Used under context pressure and for coverage checking of the finalized note; temperature 0.',
+      task: 'TEXT_GENERATION',
+      modelSlug: 'lms-gemma-4-e2b-it-qat',
+      fallbackModelSlugs: [],
+      instruction: { systemPrompt: FACT_LEDGER_SYSTEM_PROMPT },
+      parameters: FACT_LEDGER_PARAMETERS,
+      outputSchema: FACT_LEDGER_OUTPUT_SCHEMA,
+      status: 'PUBLISHED',
+      isActive: true,
+      tags: [tier, 'task:llm', 'capability:fact-ledger'],
       provenance: null,
     },
     {

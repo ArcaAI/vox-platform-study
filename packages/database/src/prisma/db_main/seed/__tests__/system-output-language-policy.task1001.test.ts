@@ -403,7 +403,7 @@ describe('seedAgentSpecs compiles the composite exactly as AgentService.resolveC
     const { client, agents } = seedClient({ policyStatus: 'DRAFT' });
     const result = await seedAgents(client);
     // 2 note-writing agents × 2 tenants skipped; the other ten are unaffected.
-    expect(result).toMatchObject({ created: 10, skippedUnresolvable: 4 });
+    expect(result).toMatchObject({ created: 12, skippedUnresolvable: 4 });
     for (const slug of OUTPUT_LANGUAGE_POLICY_AGENT_SLUGS) {
       expect(agents.has(specOf(PLATFORM_AGENT_SPECS, slug).id), slug).toBe(false);
       expect(agents.has(specOf(GLOBAL_AGENT_SPECS, slug).id), slug).toBe(false);
@@ -414,8 +414,8 @@ describe('seedAgentSpecs compiles the composite exactly as AgentService.resolveC
 describe('the seed only ever CREATES a published agent (agent_immutability_guard, task_863)', () => {
   it('a fresh database: every agent goes through `create`, nothing through update/upsert', async () => {
     const { client, agent } = seedClient();
-    expect(await seedAgents(client)).toMatchObject({ created: 14, skippedExisting: 0, skippedUnresolvable: 0 });
-    expect(agent.create).toHaveBeenCalledTimes(14);
+    expect(await seedAgents(client)).toMatchObject({ created: 16, skippedExisting: 0, skippedUnresolvable: 0 });
+    expect(agent.create).toHaveBeenCalledTimes(16);
     expect(agent.update).not.toHaveBeenCalled();
     expect(agent.upsert).not.toHaveBeenCalled();
     expect(agent.updateMany).not.toHaveBeenCalled();
@@ -436,7 +436,7 @@ describe('the seed only ever CREATES a published agent (agent_immutability_guard
     const before = structuredClone(Object.fromEntries(existing));
 
     const { client, agent } = seedClient({ existing });
-    expect(await seedAgents(client)).toMatchObject({ created: 0, skippedExisting: 14 });
+    expect(await seedAgents(client)).toMatchObject({ created: 0, skippedExisting: 16 });
     expect(agent.create).not.toHaveBeenCalled();
     expect(agent.update).not.toHaveBeenCalled();
     expect(agent.upsert).not.toHaveBeenCalled();

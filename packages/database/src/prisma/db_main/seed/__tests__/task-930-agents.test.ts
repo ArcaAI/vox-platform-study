@@ -57,7 +57,7 @@ const ALL_SPECS: SeedAgentSpec[] = [...PLATFORM_AGENT_SPECS, ...GLOBAL_AGENT_SPE
 const contractKnows = (task: string) => (AGENT_TASKS as readonly string[]).includes(task);
 
 describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', () => {
-  it('seven slugs, one per tenant, all PUBLISHED + ACTIVE; ids unique', () => {
+  it('eight slugs, one per tenant, all PUBLISHED + ACTIVE; ids unique', () => {
     // TASK-932 D-9 added the sixth: `case-notes-pre-summary`, the realtime WARM START.
     // TASK-974 D-1 added the seventh: `dna-writing-style-analyst`, the PLATFORM HIDDEN agent —
     // seeded into both tenants exactly like the others (the difference is that no tenant is ever
@@ -66,6 +66,7 @@ describe('TASK-930 §8.3 — Global and SYSTEM carry the identical agent set', (
       'case-notes-pre-summary',
       'casenote-finalization',
       'dna-writing-style-analyst',
+      'fact-ledger-extraction',
       'general-medicine-summarization',
       'medical-ner',
       'realtime-transcription',
@@ -298,12 +299,13 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     return { client, agents, fallbacks, assignments };
   }
 
-  it('seeds fourteen agents (7 SYSTEM + 7 Global), their fallback chains and ten assignments; a second run is a no-op', async () => {
+  it('seeds sixteen agents (8 SYSTEM + 8 Global), their fallback chains and ten assignments; a second run is a no-op', async () => {
     const { client, agents, fallbacks, assignments } = fakeClient();
     const first = await seedAgents(client);
-    // Ten assignments, not fourteen: the DNA analyst is deliberately unassigned (TASK-974 D-1),
+    // Ten assignments, not sixteen: the DNA analyst is deliberately unassigned (TASK-974 D-1) and so is
+    // the fact-ledger extractor (TASK-1045: named by slug by its producer),
     // and NER/TTS/STT/TEXT_GENERATION plus the one qualified pre-summary row make five per tenant.
-    expect(first).toEqual({ created: 14, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 10 });
+    expect(first).toEqual({ created: 16, skippedExisting: 0, skippedUnresolvable: 0, assignmentsCreated: 10 });
     const system = agents.get(PLATFORM_AGENT_SPECS.find((s) => s.slug === 'general-medicine-summarization')!.id);
     // TASK-1001 (OD-8) — a COMPOSITE: the General Medicine body, then SYSTEM's own output-language policy.
     expect(system.compiledConfig.resolvedPrompt).toMatchObject({
@@ -325,7 +327,7 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     expect([...assignments.values()].filter((a) => a.selectorKey === 'phase:pre-summary')).toHaveLength(2);
 
     const second = await seedAgents(client);
-    expect(second).toEqual({ created: 0, skippedExisting: 14, skippedUnresolvable: 0, assignmentsCreated: 0 });
+    expect(second).toEqual({ created: 0, skippedExisting: 16, skippedUnresolvable: 0, assignmentsCreated: 0 });
   });
 
   it('fails closed: a missing model or an unapproved template skips the agent and its assignment', async () => {
@@ -343,6 +345,6 @@ describe('TASK-930 — seedAgents against an in-memory client', () => {
     // (D-2), precisely so a tenant is not handed a cloned template it could mistake for the
     // platform's own.
     expect(result2.skippedUnresolvable).toBe(6);
-    expect(result2.created).toBe(8);
+    expect(result2.created).toBe(10);
   });
 });
