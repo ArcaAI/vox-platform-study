@@ -72,6 +72,35 @@ def _native_probe_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=_NATIVE_PROBE_TIMEOUT_S)
 
 
+_ENVELOPE_KEYS = frozenset({"name", "schema", "strict", "description"})
+
+
+def _unwrapped_envelope(request: GenerateRequest) -> dict[str, Any] | None:
+    """The LM Studio wire for a ``json_schema`` that is the OpenAI ``{name, schema, strict}``
+    envelope; ``None`` when it is a bare schema (or not a ``json_schema`` at all).
+
+    A bare JSON schema never qualifies: ``schema`` is not a schema keyword (``$schema`` is), so a
+    root made only of envelope keys with an object ``schema`` is unambiguous.
+    """
+    rf = request.response_format
+    if rf is None or rf.type != "json_schema" or not rf.json_schema:
+        return None
+    envelope = rf.json_schema
+    schema = envelope.get("schema")
+    if not isinstance(schema, dict) or not set(envelope) <= _ENVELOPE_KEYS:
+        return None
+    name = envelope.get("name")
+    strict = envelope.get("strict")
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name if isinstance(name, str) and name else "output",
+            "schema": schema,
+            "strict": strict if isinstance(strict, bool) else rf.strict,
+        },
+    }
+
+
 class LMStudioProvider(OpenAICompatProvider):
     """LM Studio self-hosted provider (OpenAI-wire, engine-native identity)."""
 
@@ -114,13 +143,21 @@ class LMStudioProvider(OpenAICompatProvider):
         stays False for exactly that reason (a strict schema demands a closed property set
         nobody named).
 
-        A caller-declared ``json_schema`` is forwarded by the base adapter untouched.
+        A caller-declared ``json_schema`` is forwarded by the base adapter untouched — except when
+        it arrives as the OpenAI envelope ``{name, schema, strict}`` (what an agent's declared
+        ``outputSchema`` becomes on every lane). The base adapter reads ``json_schema`` as the
+        schema itself, so LM Studio was handed a root of ``{name, schema, strict}`` and its grammar
+        constrained nothing; the envelope is unwrapped here into the schema it carries.
         """
         if request.response_format is not None and request.response_format.type == "json":
             kwargs["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "output", "schema": {"type": "object"}, "strict": False},
             }
+            return
+        unwrapped = _unwrapped_envelope(request)
+        if unwrapped is not None:
+            kwargs["response_format"] = unwrapped
             return
         super()._apply_response_format(kwargs, request)
 
