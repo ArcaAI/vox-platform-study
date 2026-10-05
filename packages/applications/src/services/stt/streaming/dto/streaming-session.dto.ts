@@ -487,6 +487,11 @@ export interface StreamingStatusMessage {
    * camelCase. Absent when STT sent none, or a malformed one (dropped, never relayed raw).
    */
   languageResolution?: LanguageResolution;
+  /**
+   * Session-relative audio offset (ms) carried by the capture-control statuses
+   * (`paused`, `capturing`), so a client can line the pause up with the recording timeline.
+   */
+  audioOffsetMs?: number;
 }
 
 export interface StreamingErrorMessage {

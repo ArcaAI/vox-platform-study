@@ -734,6 +734,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       // TASK-1004 — the re-resolved language receipt a `provider_switched` entry carries as a JSON
       // string. Parsed + camelCased through the ONE projector; a malformed one is dropped.
       ...(receipt ? { languageResolution: receipt } : {}),
+      ...(data.audioOffsetMs != null && data.audioOffsetMs !== '' && Number.isFinite(Number(data.audioOffsetMs))
+        ? { audioOffsetMs: Number(data.audioOffsetMs) }
+        : {}),
     };
   }
 
@@ -794,6 +797,13 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
         subject.next(this.buildStatusMessage(data));
       }
       return terminal;
+    }
+
+    // An error entry (e.g. an STT build that rejects a capture-control command) is relayed as an
+    // error frame instead of falling through to the transcript projection below.
+    if (data.type === 'error') {
+      subject.next({ type: 'error', code: data.code || 'STT_ERROR', message: data.message ?? '' });
+      return false;
     }
 
     // Emit transcript segment
