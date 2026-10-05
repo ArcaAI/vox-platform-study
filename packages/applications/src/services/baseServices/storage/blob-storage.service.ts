@@ -7,6 +7,7 @@ import { IBlobStorageService } from './IBlobStorageService';
 import { BlobStorageProviderFactory } from './providers/blob-storage.provider.factory';
 import { TenantBucketStorageGate } from './tenant-bucket-storage.gate';
 import {
+  BlobObjectHead,
   DeleteObjectParams,
   GetObjectParams,
   IBlobStorageProvider,
@@ -15,6 +16,8 @@ import {
   ListObjectsResult,
   PresignGetParams,
   PresignPutParams,
+  PresignedPutIntent,
+  PresignPutIntentParams,
   PutObjectParams,
   StorageDescriptor,
 } from './providers/IBlobStorageProvider';
@@ -88,6 +91,30 @@ export class BlobStorageService implements IBlobStorageService {
     // The upload size is unknown when the URL is issued: refuse once the tenant is AT its quota.
     await this.gate?.assertCanWrite(params.bucket, 1);
     return (await this.provider(params.bucket)).presignPut(params);
+  }
+
+  async presignPutIntent(params: PresignPutIntentParams): Promise<PresignedPutIntent> {
+    await this.gate?.assertCanWrite(params.bucket, params.contentLength);
+    return (await this.provider(params.bucket)).presignPutIntent(params);
+  }
+
+  async headObject(bucket: string, key: string): Promise<BlobObjectHead | null> {
+    await this.gate?.assertAccessible(bucket);
+    return (await this.provider(bucket)).headObject({ bucket, key });
+  }
+
+  async getObjectRange(bucket: string, key: string, start: number, end: number): Promise<Buffer> {
+    await this.gate?.assertAccessible(bucket);
+    return (await this.provider(bucket)).getObjectRange({ bucket, key, start, end });
+  }
+
+  async assertCanStore(bucket: string, bytes: number): Promise<void> {
+    await this.gate?.assertCanWrite(bucket, bytes);
+  }
+
+  async recordExternalWrite(bucket: string, bytes: number): Promise<void> {
+    const row = await this.gate?.assertAccessible(bucket);
+    await this.gate?.recordWrite(row ?? null, bytes);
   }
 
   async createBucket(bucket: string): Promise<void> {

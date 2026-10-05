@@ -103,6 +103,38 @@ export interface PresignPutParams extends BlobObjectLocation {
   contentType?: string;
 }
 
+/** What the store reports about an object, without downloading it. */
+export interface BlobObjectHead {
+  sizeBytes: number;
+  contentType: string;
+  /** Provider ETag with surrounding quotes stripped. */
+  etag: string;
+  /** Base64 SHA-256 the store recorded, when the upload carried one (S3/MinIO only). */
+  checksumSha256?: string;
+}
+
+export interface GetObjectRangeParams extends BlobObjectLocation {
+  /** First byte, inclusive. */
+  start: number;
+  /** Last byte, inclusive. */
+  end: number;
+}
+
+export interface PresignPutIntentParams extends BlobObjectLocation {
+  contentType: string;
+  /** Exact byte length; signed, so the store rejects a body of any other length. */
+  contentLength: number;
+  /** Base64 SHA-256 of the body. Enforced by S3/MinIO; Azure has no such header, so the server re-hash is authoritative there. */
+  checksumSha256?: string;
+  expiresSeconds: number;
+}
+
+/** A presigned PUT plus the exact headers the client must send with it. */
+export interface PresignedPutIntent {
+  url: string;
+  headers: Record<string, string>;
+}
+
 /**
  * A single object-expiration lifecycle rule. Intentionally minimal — only the
  * subset of S3 lifecycle / Azure ILM that maps cleanly across providers.
@@ -184,6 +216,15 @@ export interface IBlobStorageProvider {
 
   /** Generate a time-limited URL granting upload (write) access to an object. */
   presignPut(params: PresignPutParams): Promise<string>;
+
+  /** Generate a presigned PUT whose content type and length (and, on S3, checksum) are part of the signature. */
+  presignPutIntent(params: PresignPutIntentParams): Promise<PresignedPutIntent>;
+
+  /** Object metadata without a download; `null` when the key does not exist. */
+  headObject(params: BlobObjectLocation): Promise<BlobObjectHead | null>;
+
+  /** Read an inclusive byte range (e.g. the leading bytes for content sniffing). */
+  getObjectRange(params: GetObjectRangeParams): Promise<Buffer>;
 
   /** Create a bucket/container (idempotent — no error if it already exists). */
   createBucket(bucket: string): Promise<void>;
