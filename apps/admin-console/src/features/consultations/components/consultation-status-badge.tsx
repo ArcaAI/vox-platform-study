@@ -3,7 +3,7 @@
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 
-import { CONSULTATION_PROCESSING, type ConsultationProcessing, type ConsultationStatus } from '@arcaai/types';
+import { CONSULTATION_PROCESSING, NOTE_READY_REASON, type ConsultationProcessing, type ConsultationStatus } from '@arcaai/types';
 import { normalizeConsultationStatus } from '../api/types';
 
 /**
@@ -29,16 +29,29 @@ export const PROCESSING_META: Record<Exclude<ConsultationProcessing, 'IDLE'>, { 
   FAILED: { label: 'Processing failed', role: 'destructive' },
 };
 
-export function consultationStatusMeta(status: string | undefined, processing?: string) {
+/** STOPPED + IDLE + NOTE_READY: the note is finished and waiting to be read. */
+export const NOTE_READY_META: { label: string; role: StatusColorRole } = { label: 'Note ready', role: 'success' };
+
+export function consultationStatusMeta(status: string | undefined, processing?: string, processingReason?: string | null) {
   const explicit = (CONSULTATION_PROCESSING as readonly string[]).includes(processing ?? '') ? (processing as ConsultationProcessing) : undefined;
   const normalized = normalizeConsultationStatus(status, explicit);
   if (!normalized) return { status: { label: status || 'Unknown', role: 'neutral' as StatusColorRole }, processing: null };
-  const chip = normalized.processing === 'IDLE' ? null : PROCESSING_META[normalized.processing];
+  const reason = processingReason ?? normalized.processingReason;
+  const noteReady = normalized.status === 'STOPPED' && normalized.processing === 'IDLE' && reason === NOTE_READY_REASON;
+  const chip = noteReady ? NOTE_READY_META : normalized.processing === 'IDLE' ? null : PROCESSING_META[normalized.processing];
   return { status: STATUS_META[normalized.status], processing: chip };
 }
 
-export function ConsultationStatusBadge({ status, processing }: { status: string | undefined; processing?: string }) {
-  const meta = consultationStatusMeta(status, processing);
+export function ConsultationStatusBadge({
+  status,
+  processing,
+  processingReason,
+}: {
+  status: string | undefined;
+  processing?: string;
+  processingReason?: string | null;
+}) {
+  const meta = consultationStatusMeta(status, processing, processingReason);
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <StatusBadge label={meta.status.label} colorRole={meta.status.role} icon={<StatusDot colorRole={meta.status.role} size="sm" />} />
