@@ -293,6 +293,17 @@ Twelve statuses became seven plus an orthogonal `processing` marker. Every item 
 | `@arcaai/vox-node` `consultations.recording.{start,stop}`, `consultations.waitForFinalNote`, and the `(id, request, { ifMatch })` signature of `consultations.close` | `packages/vox-node/src/resources/consultations.ts` | `ConsultationHandle` from `open()` / `attach()` | release after 5.0 | marked `@deprecated` |
 | `@arcaai/vox` twelve-value `ConsultationStatus`; `audio.start` / `audio.stop`; the per-summary approve in `useArcaSummary` | `types/consultation.ts`, `hooks/useArca.ts`, `hooks/useArcaSummary.ts` | `ConsultationLifecycleStatus` + `toLifecycleState`; `useConsultation().start/stop/approve` | release after 5.0 | marked `@deprecated` |
 
+### TASK-1047 — raw caller `system_prompt`, deprecated (2026-10-06)
+
+Governed prompts (TASK-1047 OD-3): a caller-supplied system prompt carries no governance, so apps/text screens it as untrusted. Same Sunset / removal policy as the TASK-1045 D-37 block above.
+
+| Item | Where | Replacement | Remove in | Status |
+|---|---|---|---|---|
+| Field `system_prompt` on `POST text-generations/generate` (still forwarded; answers `Deprecation: true`, `Sunset: Sun, 31 Jan 2027 00:00:00 GMT`, `X-Deprecation-Notice`) | `text-proxy.controller.ts` + `system-prompt-deprecation.ts`; SDK `TEXT_ENDPOINTS.GENERATE` JSDoc | `POST text-generations/generate/assembled` with `prompt_template_id`, or invoke an agent by `agentSlug` | R5 + 30 days zero traffic | marked — counted on `hope_api_deprecated_requests_total{route="/api/v1/text-generations/generate#system_prompt", removeIn="R5"}` |
+| Caller-supplied `system_governance` (any spelling) on the same route | same | none — governance is attached only by the gateway composer | stripped immediately (never forwarded) | stripped |
+
+Removal gate: `sum(increase(hope_api_deprecated_requests_total{route="/api/v1/text-generations/generate#system_prompt"}[30d]))` must be 0.
+
 ## Admin console routes and features
 
 | Item | Ticket | Marked in | Remove in | Replacement | Status |
