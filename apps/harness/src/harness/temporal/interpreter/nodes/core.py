@@ -38,10 +38,11 @@ import structlog
 from pydantic import ValidationError
 from temporalio import activity
 
-from harness.core.config import get_settings
+from harness.core.config import Settings, get_settings
 from harness.core.llm_egress import egress_counts, known_phi_from, provider_locality
 from harness.services import composed_prompt_recorder
 from harness.services.api_client import ApiClientError, ApiServiceError
+from harness.services.guardrail_client import GuardrailClient
 from harness.services.nlp_client import NlpServiceError
 from harness.services.note_plan.executor import (
     NoteCallRequest,
@@ -55,6 +56,7 @@ from harness.services.note_plan.executor import (
 )
 from harness.services.note_plan.fallback import PlanAttempt, plan_attempts, walk_attempts
 from harness.services.note_plan.models import NotePlanRef
+from harness.services.system_governance import PolicyVersionProbe, build_system_governance
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
     STEP_NODE,
@@ -974,6 +976,31 @@ def _compose_agent_messages(
     if policy_selected or output_language is None:
         return composed, policy_selected
     return compose_messages(**kwargs, output_language={"name": output_language.name}), False
+
+
+def _guardrail_client(settings: Settings) -> GuardrailClient:
+    return GuardrailClient(
+        settings.guardrail_base_url,
+        service_token=settings.peer_service_token(),
+        timeout=settings.guardrail_timeout_s,
+    )
+
+
+async def _system_governance(
+    composed: ComposedMessages,
+    agent: ResolvedAgent,
+    probe: PolicyVersionProbe,
+) -> dict[str, Any] | None:
+    """TASK-1047 FC-6 — the ``system_governance`` this call may send, or ``None``.
+
+    The guardrail version is fetched (once per walk, via ``probe``) only when the composer
+    reported governance AND the agent carries a stamp — nothing is fetched otherwise.
+    """
+    composed_governance = getattr(composed, "governance", None)
+    stamp = (agent.compiled_config or {}).get("governance")
+    if not composed_governance or not isinstance(stamp, dict):
+        return None
+    return build_system_governance(composed_governance, stamp, await probe.get())
 
 
 def _compose_system_prompt(
@@ -2039,6 +2066,7 @@ async def _run_text_generation(
     # the activity: it is I/O, and workflow code never sees it — the replayer feeds this
     # activity's recorded RESULT back, so no command changes and no `workflow.patched` is needed.
     platform_default = resolve_platform_output_language(await _output_language_snapshot())
+    policy_version_probe = PolicyVersionProbe(_guardrail_client(settings), payload.tenant_id)
     last_error: TextServiceError | None = None
     # §6.2 Gap A — one stats block per candidate that was TRIED and lost. The walk used to do
     # `last_error = exc; continue` with no timer at all, so a failed BYOK attempt cost the
@@ -2125,6 +2153,10 @@ async def _run_text_generation(
         if trace is not None:
             await trace.model_request(provider, model, index, streaming, generation)
         call_kwargs: dict[str, Any] = {}
+        # TASK-1047 FC-6 — per candidate: its own composed digests against ITS own stamp.
+        governance = await _system_governance(composed, candidate, policy_version_probe)
+        if governance is not None:
+            call_kwargs["system_governance"] = governance
         if streaming and trace is not None:
             call_kwargs["on_delta"] = trace.delta_sink(index)
         generate = (
