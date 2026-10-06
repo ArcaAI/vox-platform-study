@@ -14,6 +14,7 @@ import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.mo
 import { ContextUserIdentityServiceModule } from '../user/identity';
 import { DocumentTemplateServiceModule } from '../document-template/document-template.service.module';
 import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
+import { EffectiveSettingsModule } from '../settings-registry/effective-settings.module';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
@@ -66,6 +67,9 @@ import { IAgentService } from './IAgentService';
     // TASK-1047 D2 — `IGovernedPromptRegistry`: publish screens every instruction piece by guardrail
     // and refuses on any finding (OD-4). Named for the same reason as the modules above.
     GovernedPromptServiceModule,
+    // TASK-1048 — `TenantSettingsService`: the platform default speaker-embedding model the advisory
+    // ASR prerequisite findings read. @Optional() in the service, named here so it is never silently absent.
+    EffectiveSettingsModule,
   ],
   providers: [
     AgentService,

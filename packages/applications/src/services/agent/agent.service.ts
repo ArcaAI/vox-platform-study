@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { createHash } from 'node:crypto';
@@ -31,7 +31,8 @@ import {
 import type { JsonValue } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
-import type { AgentCompiledConfig, AgentCompiledPromptFragment } from '@arcaai/types';
+import { STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY, type AgentCompiledConfig, type AgentCompiledPromptFragment } from '@arcaai/types';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import {
   buildPromptScope,
   AGENT_INSTRUCTION_SCHEMAS,
@@ -276,6 +277,8 @@ function hasKeyMaterial(ciphertext: Uint8Array | null | undefined): boolean {
  */
 @Injectable()
 export class AgentService extends BaseService implements IAgentService {
+  private readonly logger = new Logger(AgentService.name);
+
   constructor(
     private readonly agentRepository: AgentRepository,
     private readonly fallbackRepository: AgentModelFallbackRepository,
@@ -318,6 +321,10 @@ export class AgentService extends BaseService implements IAgentService {
     // override, guardrail down blocks too). TRAILING and @Optional() for the same reason as every
     // dependency above; `AgentServiceModule` always wires it, and only a hand-built fixture omits it.
     @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistryPort,
+    // TASK-1048 — the platform default speaker-embedding model (tenant -> SYSTEM `GlobalSetting`),
+    // read only by the advisory ASR prerequisite findings. TRAILING and @Optional(); absent (or a
+    // read that throws) skips that one check with a warn — validate/publish never breaks on it.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -2062,6 +2069,9 @@ export class AgentService extends BaseService implements IAgentService {
       findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, pathSchema, outcome.templateVariables));
     }
 
+    // TASK-1048 — advisory speech-to-text prerequisites (WARNING only, OD-3).
+    if (entity.task === AgentTask.SPEECH_TO_TEXT) findings.push(...(await this.asrPrerequisiteFindings(entity)));
+
     // TASK-1047 D2 — screened once here, at validate/publish (never on the draft bench, which
     // compiles a draft as it stands and runs on the full-screening path).
     const screening = phase === 'publish' ? await this.screeningFindings(entity, resolvedPrompt) : { findings: [], governance: null };
@@ -2069,6 +2079,85 @@ export class AgentService extends BaseService implements IAgentService {
 
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
     return { report, model, fallbackModels, resolvedPrompt, contextSchema: context.resolved, governance: screening.governance };
+  }
+
+  /**
+   * TASK-1048 (OD-3) — ADVISORY. An optional speech-to-text stage whose prerequisite is missing is
+   * switched off at session time (the core path still transcribes); say so here, at authoring time.
+   * Never an ERROR, and a lookup failure skips that one check rather than failing validate/publish.
+   */
+  private async asrPrerequisiteFindings(entity: AgentEntity): Promise<AgentFinding[]> {
+    const findings: AgentFinding[] = [];
+    const frontEnd = asRecord(asRecord(entity.parameters)?.audioFrontEnd);
+    const diarization = asRecord(frontEnd?.diarization);
+    const vad = asRecord(frontEnd?.vad);
+    const slugOf = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
+    const usable = async (slug: string, taskType: ModelTaskType): Promise<boolean> => {
+      for (const tenantId of [entity.tenantId, SYSTEM_TENANT_ID]) {
+        const row = await this.aiModelRepository.findBySlug(tenantId, slug).catch(() => null);
+        if (row && row.taskType === taskType && row.resourceStatus === ResourceStatusType.ENABLED) return true;
+      }
+      return false;
+    };
+
+    if (diarization?.enabled === true) {
+      const backend = diarization.backend;
+      if (backend !== undefined && backend !== null && backend !== 'embedding') {
+        findings.push({
+          severity: 'WARNING',
+          code: 'ASR_DIARIZATION_BACKEND_UNSUPPORTED',
+          path: 'parameters.audioFrontEnd.diarization.backend',
+          message:
+            `Diarization backend ${JSON.stringify(backend)} is not supported (only \`embedding\` is); diarization will be SKIPPED at session time ` +
+            'and transcription still runs. Set the backend to `embedding`, or switch diarization off.',
+        });
+      }
+      try {
+        let slug = slugOf(diarization.embeddingModelSlug);
+        let source = 'agent';
+        if (!slug && this.tenantSettings) {
+          const resolved = this.tenantSettings.resolve(STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY, entity.tenantId);
+          slug = slugOf(resolved.value);
+          source = 'platform default';
+        }
+        if (slug || this.tenantSettings) {
+          if (!slug || !(await usable(slug, ModelTaskType.SPEAKER_EMBEDDING))) {
+            findings.push({
+              severity: 'WARNING',
+              code: 'ASR_DIARIZATION_MODEL_MISSING',
+              path: 'parameters.audioFrontEnd.diarization.embeddingModelSlug',
+              message:
+                (slug
+                  ? `The ${source} speaker-embedding model '${slug}' is not an enabled SPEAKER_EMBEDDING model visible to this tenant`
+                  : 'Diarization is on but no speaker-embedding model is configured for this agent or as the platform default') +
+                '; diarization will be SKIPPED at session time (transcription still runs). ' +
+                "A platform administrator sets the agent's `audioFrontEnd.diarization.embeddingModelSlug` or the platform default speaker-embedding model.",
+            });
+          }
+        }
+      } catch (error) {
+        this.logger.warn({ message: 'ASR diarization prerequisite check skipped', agentId: entity.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    if (vad?.enabled === true) {
+      try {
+        const slug = slugOf(vad.modelSlug);
+        if (!slug || !(await usable(slug, ModelTaskType.VOICE_ACTIVITY_DETECTION))) {
+          findings.push({
+            severity: 'WARNING',
+            code: 'ASR_VAD_MODEL_MISSING',
+            path: 'parameters.audioFrontEnd.vad.modelSlug',
+            message:
+              'Voice-activity detection is on but no enabled VOICE_ACTIVITY_DETECTION model resolves; the runtime will segment on energy instead. ' +
+              'Set `audioFrontEnd.vad.modelSlug`, or switch VAD off.',
+          });
+        }
+      } catch (error) {
+        this.logger.warn({ message: 'ASR VAD prerequisite check skipped', agentId: entity.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return findings;
   }
 
   /**
