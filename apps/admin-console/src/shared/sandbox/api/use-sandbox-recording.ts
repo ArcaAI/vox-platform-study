@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createAudioCapture, createStreamingResampler, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
 import { SttWebSocketClient } from '@arcaai/vox/core';
 import { publicEnv } from '@/config/public-env';
+import { useAsrDegradations, type AsrDegradation, type AsrStatusFrame } from './asr-degradation';
 import { buildSttWsUrl, closeSttStreamSession, createSttStreamSession, refreshSttStreamTicket } from './client';
 
 export type SandboxRecordingStatus = 'idle' | 'starting' | 'recording' | 'stopping' | 'error';
@@ -41,6 +42,8 @@ export interface SandboxRecording {
   sessionId: string | null;
   /** Recent input levels (0–100), newest last — the live waveform. */
   levels: number[];
+  /** TASK-1048 — optional stages off for this recording (creation warnings + runtime `degraded` frames), deduped. */
+  degradations: AsrDegradation[];
   /** Resolves to the STT session id once audio is flowing, or `null` on failure. */
   start: (options: StartSandboxRecordingOptions) => Promise<string | null>;
   stop: () => Promise<void>;
@@ -58,6 +61,7 @@ interface SttStreamClient {
   sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean;
   stopAndDrain?(drainTimeoutMs?: number, quietWindowMs?: number): Promise<void>;
   onReconnectFailed(cb: () => void): void;
+  onStatus?(cb: (frame: AsrStatusFrame) => void): void;
 }
 
 type StreamingResampler = ReturnType<typeof createStreamingResampler>;
@@ -67,6 +71,7 @@ export function useSandboxRecording(): SandboxRecording {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [levels, setLevels] = useState<number[]>([]);
+  const { items: degradations, addWarnings, addStatusFrame, reset: resetDegradations } = useAsrDegradations();
 
   const clientRef = useRef<SttStreamClient | null>(null);
   const captureRef = useRef<AudioCaptureHandle | null>(null);
@@ -125,6 +130,7 @@ export function useSandboxRecording(): SandboxRecording {
       try {
         setError(null);
         setLevels([]);
+        resetDegradations();
         setStatus('starting');
 
         let stream: MediaStream;
@@ -161,6 +167,7 @@ export function useSandboxRecording(): SandboxRecording {
         }
         sessionRef.current = created.sessionId;
         setSessionId(created.sessionId);
+        addWarnings(created.warnings);
 
         const client = new SttWebSocketClient(
           undefined,
@@ -175,6 +182,7 @@ export function useSandboxRecording(): SandboxRecording {
         ) as unknown as SttStreamClient;
         clientRef.current = client;
         client.onReconnectFailed(() => fail('The recording connection was lost.'));
+        client.onStatus?.(addStatusFrame);
 
         try {
           await client.connect(
@@ -211,7 +219,7 @@ export function useSandboxRecording(): SandboxRecording {
         busyRef.current = false;
       }
     },
-    [fail],
+    [fail, addWarnings, addStatusFrame, resetDegradations],
   );
 
   const stop = useCallback(async () => {
@@ -245,5 +253,5 @@ export function useSandboxRecording(): SandboxRecording {
     setStatus('idle');
   }, [releaseAudio]);
 
-  return { status, error, sessionId, levels, start, stop };
+  return { status, error, sessionId, levels, degradations, start, stop };
 }

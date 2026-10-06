@@ -527,3 +527,45 @@ describe('useLiveSttSession', () => {
     expect(hook.result.current.audioLostThisSession).toBe(false);
   });
 });
+
+describe('useLiveSttSession — ASR degradations (TASK-1048)', () => {
+  const WARNING = { code: 'DIARIZATION_MODEL_MISSING', stage: 'diarization', severity: 'WARNING', message: 'Speaker diarization is off for this session.', agentSlug: 'asr-1' };
+
+  it('collects session-creation warnings and runtime degraded / denoise_degraded frames, deduped', async () => {
+    stubFetch((call) => {
+      const path = new URL(call.url, 'http://test.local').pathname;
+      if (call.method === 'POST' && path.endsWith('/stream/session')) return Response.json({ ...SESSION_RESPONSE, warnings: [WARNING] }, { status: 201 });
+      return sessionHandler(call);
+    });
+    const hook = renderHook(() => useLiveSttSession());
+    await act(async () => {
+      await hook.result.current.start({ agentSlug: 'asr-1', tenantId: 'tnt-1' });
+    });
+    const ws = FakeSttWsClient.instances[0];
+    expect(hook.result.current.degradations.map((d) => d.key)).toEqual(['DIARIZATION_MODEL_MISSING']);
+
+    act(() => ws.handlers.status?.({ type: 'status', status: 'degraded', reason: 'vad_unavailable' }));
+    act(() => ws.handlers.status?.({ type: 'status', status: 'degraded', reason: 'vad_unavailable' }));
+    act(() => ws.handlers.status?.({ type: 'status', status: 'denoise_degraded', engine: 'x', reason: 'load_failed', detail: 'boom' }));
+    act(() => ws.handlers.status?.({ type: 'status', status: 'capturing' }));
+    expect(hook.result.current.degradations.map((d) => d.key)).toEqual(['DIARIZATION_MODEL_MISSING', 'vad_unavailable', 'denoise_degraded']);
+    hook.unmount();
+  });
+
+  it('a 4xx on session create surfaces the server message, not a generic failure', async () => {
+    stubFetch((call) => {
+      const path = new URL(call.url, 'http://test.local').pathname;
+      if (call.method === 'POST' && path.endsWith('/stream/session')) {
+        return Response.json({ statusCode: 404, message: 'No speech-to-text agent is assigned for this tenant', error: 'Not Found' }, { status: 404 });
+      }
+      return undefined;
+    });
+    const hook = renderHook(() => useLiveSttSession());
+    await act(async () => {
+      await hook.result.current.start({ tenantId: 'tnt-1' });
+    });
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('No speech-to-text agent is assigned for this tenant');
+    expect(hook.result.current.degradations).toEqual([]);
+  });
+});

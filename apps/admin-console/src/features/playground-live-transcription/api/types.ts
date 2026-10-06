@@ -5,6 +5,8 @@
  * owner-scoped jobs, streaming session envelope and the WS wire protocol.
  */
 
+import type { AsrSessionWarningWire } from '@/shared/sandbox/api/asr-degradation';
+
 export type PlaygroundJobStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'DEAD';
 
 /** Job states after which the row can no longer change (stop polling). */
@@ -72,6 +74,8 @@ export interface StreamSessionResponse {
   ticketExpiresAt: number;
   /** bridge to row 36 — caller's enrolled voice profile seeded diarization. */
   voiceProfileSeeded?: boolean;
+  /** TASK-1048 — optional stages switched off for this session (never an error). */
+  warnings?: AsrSessionWarningWire[];
 }
 
 /** POST …/stream/session/:sessionId/refresh-ticket. */
@@ -86,6 +90,8 @@ export interface BatchTranscribeResponse {
   status: PlaygroundJobStatus;
   sseUrl: string;
   audioUri: string;
+  /** TASK-1048 — optional stages switched off for this job. */
+  warnings?: AsrSessionWarningWire[];
 }
 
 /** GET /agents?task=SPEECH_TO_TEXT rows (TASK-863) — the transcription-agent picker subset. */

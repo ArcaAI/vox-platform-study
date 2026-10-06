@@ -44,6 +44,22 @@ describe('TranscriptPane speaker rendering', () => {
   });
 });
 
+describe('TranscriptPane ASR degradation banner (TASK-1048)', () => {
+  it('shows a persistent status banner above the transcript listing what is off, and none otherwise', () => {
+    const { rerender } = render(<TranscriptPane live={makeLive([finalRow(1, 'hello')])} />);
+    expect(screen.queryByTestId('asr-degradation-banner')).toBeNull();
+
+    const live = { ...makeLive([finalRow(1, 'hello')]), degradations: [{ key: 'DIARIZATION_MODEL_MISSING', label: 'Speaker labels are off — no speaker model is configured' }] } as UseLiveSttSessionResult;
+    rerender(<TranscriptPane live={live} />);
+    const banner = screen.getByTestId('asr-degradation-banner');
+    expect(banner.getAttribute('role')).toBe('status');
+    expect(banner.textContent).toMatch(/Speaker labels are off/);
+    // Above the transcript log in document order.
+    const log = screen.getByRole('log');
+    expect(banner.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe('DegradedBanner (C6-01)', () => {
   it('announces the permanent loss via a polite status region, in text and an icon (not color alone)', () => {
     render(<DegradedBanner droppedFrameCount={3} />);

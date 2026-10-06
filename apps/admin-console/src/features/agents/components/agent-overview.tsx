@@ -146,7 +146,10 @@ export function FindingsList({ agent }: { agent: Agent }) {
               <Badge variant={finding.severity === 'ERROR' ? 'destructive' : 'secondary'} title={finding.code}>
                 {finding.severity === 'ERROR' ? 'Must fix' : 'Warning'}
               </Badge>
-              <span>{finding.message}</span>
+              <span>
+                {finding.message}
+                {finding.path ? <span className="text-muted-foreground block font-mono text-xs">{finding.path}</span> : null}
+              </span>
             </li>
           ))}
         </ul>
