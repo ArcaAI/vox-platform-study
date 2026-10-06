@@ -173,8 +173,9 @@ class NoteCallResult:
 def stop_reason_of(result: Any) -> str:
     """The normalised stop reason of a Text result: ``stats.stop_reason``, else ``finish_reason``."""
     stats = getattr(result, "stats", None)
-    if isinstance(stats, dict) and isinstance(stats.get("stop_reason"), str):
-        return stats["stop_reason"]
+    stop = stats.get("stop_reason") if isinstance(stats, dict) else None
+    if isinstance(stop, str):
+        return stop
     finish = getattr(result, "finish_reason", "")
     return finish if isinstance(finish, str) else ""
 

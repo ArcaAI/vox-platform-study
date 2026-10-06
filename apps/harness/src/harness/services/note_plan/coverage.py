@@ -74,10 +74,16 @@ _SOURCE_VALUE = re.compile(r"(?<![\w.,/])\d+(?:\.\d+)?(?:/\d+)?(?![\w.,/])")
 #: An anchor word worth grounding: letters only, three or more of them.
 _ANCHOR_WORD = re.compile(r"[a-z][a-z]{2,}")
 #: Words of a multi-word term too generic to stand for it alone: "blood" is not "troponin blood
-#: test". A lexicon of the checker, not a setting.
+#: test", and "daily" is not "twice daily" — frequency / duration words name the unit, the
+#: qualifier ("twice", "three") carries the meaning, so "TDS" (three times daily) never covers a
+#: twice-daily fact. A lexicon of the checker, not a setting.
 _GENERIC_TERM_WORDS = frozenset(
-    {"blood", "test", "tests", "level", "levels", "value", "values", "check", "scan"}
-)
+    {
+        "blood", "test", "tests", "level", "levels", "value", "values", "check", "scan",
+        "daily", "times", "time", "per", "day", "days", "week", "weeks", "weekly",
+        "hour", "hours", "hourly", "month", "months", "monthly", "dose", "doses",
+    }
+)  # fmt: skip
 #: The words a note names a fact of this kind by, whatever the ledger's term: alternatives.
 _KIND_ALTERNATIVES: dict[str, tuple[str, ...]] = {
     "follow_up": ("follow", "review", "revisit", "return", "come back")
