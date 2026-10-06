@@ -504,7 +504,7 @@ export interface AiModelSeed {
     voices?: TtsVoiceBinding[];
     azureDeployment?: string;
     ttsProvider?: string;
-    policy?: Record<string, string | number>;
+    policy?: Record<string, string | number | readonly string[]>;
     languages?: string[];
     /**
      * Two shapes share this key, by row: the NLP verb array (`extract_entities` / `classify_text`,
