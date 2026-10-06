@@ -358,3 +358,48 @@ def test_smoke_real_weights(name: str) -> None:
     if name != "gliguard-300m":
         assert attack.score > 0.5
     assert benign.score < 0.5
+
+
+# ── Laya (convaiinnovations) — owner-approved 2026-10-07 ──────────────────────
+
+
+class FakeLayaAgent:
+    def __init__(self, answers: list[dict[str, float]]) -> None:
+        self.answers = answers
+        self.calls: list[dict] = []
+        self.revision = "f" * 40
+
+    def predict_batch(self, states, questions, batch_size=None, **kw):
+        self.calls.append({"states": states, "questions": questions, "batch_size": batch_size})
+        return [
+            {"answers": {k: {"type": "noul", "noul": v} for k, v in a.items()}}
+            for a in self.answers[: len(states)]
+        ]
+
+
+def test_laya_score_is_the_max_yes_probability_of_the_asked_questions() -> None:
+    from injection_eval.models import LayaScorer
+
+    agent = FakeLayaAgent(
+        [
+            {"jailbreak": 0.82, "prompt_injection": 0.85},
+            {"jailbreak": 0.06, "prompt_injection": 0.20},
+        ]
+    )
+    scorer = LayaScorer(name="laya-x", hf_id="c/laya-x", agent=agent, task="injection")
+    out = scorer.score(["attack", "benign"], batch_size=4)
+    assert [round(o.score, 2) for o in out] == [0.85, 0.20]
+    call = agent.calls[0]
+    assert call["states"] == [{"prompt": "attack"}, {"prompt": "benign"}]
+    assert set(call["questions"]) == {"jailbreak", "prompt_injection"}
+    assert call["batch_size"] == 4
+    assert scorer.revision == "f" * 40 and scorer.default_threshold == 0.5
+
+
+def test_laya_missing_answer_raises_rather_than_reads_benign() -> None:
+    from injection_eval.models import LayaScorer
+
+    agent = FakeLayaAgent([{"jailbreak": 0.1}])  # prompt_injection missing
+    scorer = LayaScorer(name="laya-x", hf_id="c/laya-x", agent=agent, task="injection")
+    with pytest.raises(KeyError):
+        scorer.score(["x"])

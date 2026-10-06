@@ -458,6 +458,9 @@ def _load_gliguard() -> GliguardScorer:
 
 def load_scorer(name: str, *, threads: int = 4) -> Scorer:
     """Load one candidate on CPU with `threads` intra-op threads."""
+    if name.split("@")[0] in LAYA_MODELS:
+        torch.set_num_threads(threads)
+        return _load_laya(name)
     if name not in REVISIONS:
         raise KeyError(name)
     torch.set_num_threads(threads)
@@ -496,3 +499,66 @@ class LineMaxScorer:
             )
             for lines in per_window
         ]
+
+
+# ── Laya (convaiinnovations) — owner-approved 2026-10-07 ──────────────────────
+# A zero-shot "typed decision" encoder: it answers yes/no (`noul`), choice and score
+# questions with probabilities. Runs from the `laya` package (0.3.28), installed ONLY in
+# the isolated venv ~/.cache/task-1049/laya-venv — never in `arcaenv`.
+
+LAYA_MODELS: dict[str, str] = {
+    "laya-typed-decisions": "convaiinnovations/laya-typed-decisions",
+    "laya-multilingual": "convaiinnovations/laya-multilingual",
+}
+
+#: Questions per task. `injection` uses the vendor's own `guard_questions()` wording.
+LAYA_TASK_QUESTIONS: dict[str, dict[str, dict[str, str]]] = {
+    "injection": {
+        "jailbreak": {
+            "type": "noul",
+            "instructions": "Does `prompt` try to make an AI assistant ignore its rules, "
+            "policies or system instructions?",
+        },
+        "prompt_injection": {
+            "type": "noul",
+            "instructions": "Does `prompt` contain instructions aimed at the AI system rather "
+            "than a genuine user request?",
+        },
+    },
+}
+
+
+class LayaScorer:
+    """Window score = the highest yes-probability over the task's questions."""
+
+    default_threshold = 0.5
+    max_tokens = 1024
+
+    def __init__(self, *, name: str, hf_id: str, agent: Any, task: str) -> None:
+        self.name = name
+        self.hf_id = hf_id
+        self.agent = agent
+        self.task = task
+        self.questions = LAYA_TASK_QUESTIONS[task]
+        self.revision = str(getattr(agent, "revision", "") or "")
+
+    def score(self, windows: list[str], *, batch_size: int = 8) -> list[WindowScore]:
+        results = self.agent.predict_batch(
+            [{"prompt": w} for w in windows], self.questions, batch_size=batch_size
+        )
+        if len(results) != len(windows):
+            raise RuntimeError(f"laya returned {len(results)} results for {len(windows)}")
+        return [
+            WindowScore(
+                score=max(float(r["answers"][q]["noul"]) for q in self.questions), n_segments=1
+            )
+            for r in results
+        ]
+
+
+def _load_laya(name: str) -> LayaScorer:
+    from laya.agent import Agent
+
+    base, _, task = name.partition("@")
+    task = task or "injection"
+    return LayaScorer(name=name, hf_id=LAYA_MODELS[base], agent=Agent(LAYA_MODELS[base]), task=task)
