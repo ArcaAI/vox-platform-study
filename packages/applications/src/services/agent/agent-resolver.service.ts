@@ -407,8 +407,13 @@ export class AgentResolverService {
         const slug = dig(compiled.parameters, aux.path);
         if (typeof slug !== 'string' || slug.length === 0) continue;
         const model = await this.modelBySlug(slug, tenantId);
-        if (!model)
-          throw new ConflictException(`Agent '${entity.slug}' references ${aux.role} model '${slug}', which is not visible to this tenant.`);
+        // TASK-1048 — an auxiliary model is an OPTIONAL stage. An invisible one is not
+        // materialised; `buildResolvedAsrSpec` switches the stage off and reports it, so the
+        // core ASR path still runs. Only the primary model is a refusal.
+        if (!model) {
+          this.logger.warn({ message: 'ASR auxiliary model not visible; stage will degrade', agentSlug: entity.slug, role: aux.role, slug });
+          continue;
+        }
         out.push(toResolvedModel(model, aux.role));
       }
     }

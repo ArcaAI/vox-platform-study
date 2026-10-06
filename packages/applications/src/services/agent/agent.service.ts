@@ -2116,8 +2116,13 @@ export class AgentService extends BaseService implements IAgentService {
         let slug = slugOf(diarization.embeddingModelSlug);
         let source = 'agent';
         if (!slug && this.tenantSettings) {
-          const resolved = this.tenantSettings.resolve(STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY, entity.tenantId);
-          slug = slugOf(resolved.value);
+          // The descriptor is `failMode: 'closed'` with no code default, so an UNSET platform
+          // default raises — that is "no default configured", which is exactly this finding.
+          try {
+            slug = slugOf(this.tenantSettings.resolve(STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY, entity.tenantId).value);
+          } catch {
+            slug = null;
+          }
           source = 'platform default';
         }
         if (slug || this.tenantSettings) {

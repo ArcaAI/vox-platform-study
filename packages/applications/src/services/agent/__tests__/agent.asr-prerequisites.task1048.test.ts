@@ -148,12 +148,12 @@ describe('ASR prerequisite findings (TASK-1048 OD-3: WARNING, never blocking)', 
     expect(found.map((f) => f.code)).toEqual(['ASR_DIARIZATION_MODEL_MISSING']);
   });
 
-  it('a settings read that throws does not break validate and skips the check', async () => {
+  it('an unset (fail-closed, raising) platform default is reported as missing, never breaks validate', async () => {
     mockTenantSettings.resolve.mockImplementation(() => {
-      throw new Error('unknown setting');
+      throw new Error("Setting 'stt.diarization.defaultEmbeddingModelSlug' is not set");
     });
-    const found = await findingsFor({ audioFrontEnd: { diarization: { enabled: true } } });
-    expect(asr(found)).toEqual([]);
+    const found = asr(await findingsFor({ audioFrontEnd: { diarization: { enabled: true } } }));
+    expect(found.map((f) => f.code)).toEqual(['ASR_DIARIZATION_MODEL_MISSING']);
   });
 
   it('diarization disabled -> no diarization finding', async () => {
