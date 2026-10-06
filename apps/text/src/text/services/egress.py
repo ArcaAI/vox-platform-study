@@ -170,6 +170,14 @@ def verify_system_governance(request: Any) -> bool:
         fields["pieces"] = len(governance.pieces)
         fields["policy_version"] = governance.policy_version
     if outcome == "mismatch":
+        # Which side differs, without the text: the received system prompt's length and digest
+        # prefix next to the claimed one (TASK-1047 V7 diagnosis).
+        system = str(getattr(request, "system_prompt", "") or "")
+        fields["system_chars"] = len(system)
+        fields["system_digest"] = hashlib.sha256(system.encode("utf-8")).hexdigest()[:12]
+        fields["claimed_digest"] = (
+            str(governance.composed_digest)[:12] if governance is not None else ""
+        )
         logger.warning("text.egress.system_prompt_governance", **fields)
     else:
         logger.info("text.egress.system_prompt_governance", **fields)

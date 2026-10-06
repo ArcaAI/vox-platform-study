@@ -217,6 +217,11 @@ def test_governed_and_ungoverned_calls_are_counted_and_logged_without_text() -> 
     ]
     assert logs[0]["pieces"] == 1 and logs[0]["policy_version"] == "pv-1"
     assert "clinical scribe" not in repr(logs)
+    # A mismatch says which side differs — lengths and digest prefixes only, never text (TASK-1047 V7).
+    mismatch = logs[2]
+    assert mismatch["system_chars"] == len("x" + _GOVERNED_SYSTEM)
+    assert len(mismatch["system_digest"]) == 12 and len(mismatch["claimed_digest"]) == 12
+    assert mismatch["system_digest"] != mismatch["claimed_digest"]
 
 
 # ── FC-5: data blocks are regions keyed by block name ────────────────────────
