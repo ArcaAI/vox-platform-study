@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
 from nlp.core.batching import InferenceQueueFull, InferenceQueueTimeout
+from nlp.core.bounds import enforce_input_cap
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
 from nlp.core.metrics import observe_queue_wait, publish_queue_depths, record_rejection
@@ -284,6 +285,7 @@ async def guard_pii(
         "PII",
         http_request.headers.get(TENANT_HEADER),
     )
+    enforce_input_cap("guard_pii", request.text)
     if not request.labels:
         raise HTTPException(
             status_code=503,
@@ -352,6 +354,7 @@ async def guard_classify(
         "safety",
         http_request.headers.get(TENANT_HEADER),
     )
+    enforce_input_cap("guard_classify", request.text)
     if not request.tasks:
         raise HTTPException(
             status_code=503,
@@ -439,6 +442,8 @@ async def guard_entailment(
             scores=[], model_version=model_name, inference_ms=0, device="cpu"
         )
 
+    for pair in request.pairs:
+        enforce_input_cap("guard_entailment", pair.document, pair.claim)
     pairs = [(pair.document, pair.claim) for pair in request.pairs]
     device: DeviceLabel = "cpu"
     try:
