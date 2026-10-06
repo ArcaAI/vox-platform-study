@@ -538,7 +538,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   private codesFor(outcome: PromptScreenOutcome, regionKey: string): PieceCode[] {
     const codes: PieceCode[] = [];
     if (outcome.decision === 'block') {
-      if (outcome.reasons.includes(INJECTION_CHECK)) codes.push({ code: 'PROMPT_SCREENING_INJECTION', checks: [INJECTION_CHECK] });
+      // Owner decision 2026-10-06: the injection classifier false-flags authored instruction text, so an injection
+      // flag is ADVISORY until `governedPrompt.injectionBlocking` is turned on for a better-calibrated model.
+      if (outcome.reasons.includes(INJECTION_CHECK)) {
+        codes.push({ code: this.injectionBlocks() ? 'PROMPT_SCREENING_INJECTION' : 'PROMPT_INJECTION_ADVISORY', checks: [INJECTION_CHECK] });
+      }
       const unsafe = outcome.reasons.filter((reason) => reason !== INJECTION_CHECK);
       // A block that names no check is still a block — reported as unsafe (blocking), never dropped.
       if (outcome.reasons.length === 0) codes.push({ code: 'PROMPT_SCREENING_UNSAFE', checks: [] });
@@ -548,6 +552,11 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     if (outcome.piiRegions.has(regionKey)) codes.push({ code: 'PROMPT_CONTAINS_PII', checks: [] });
     else if (outcome.quasiRegions?.has(regionKey)) codes.push({ code: 'PROMPT_QUASI_IDENTIFIER_ADVISORY', checks: [] });
     return codes;
+  }
+
+  /** `governedPrompt.injectionBlocking` (default false): whether an injection flag refuses authored text. */
+  private injectionBlocks(): boolean {
+    return this.appSettings?.getValueWithDefault<boolean>('governedPrompt.injectionBlocking', false) === true;
   }
 
   private finding(one: DistinctPiece, entry: PieceCode): GovernedPieceFinding {
@@ -560,7 +569,9 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
             ? 'personal data detected in the prompt text'
             : entry.code === 'PROMPT_SCREENING_INJECTION'
               ? `injection/jailbreak detected (${INJECTION_CHECK})`
-              : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
+              : entry.code === 'PROMPT_INJECTION_ADVISORY'
+                ? `injection classifier flagged the text (${INJECTION_CHECK}) — advisory: authored instructions often trip it`
+                : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
     return { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
   }
 

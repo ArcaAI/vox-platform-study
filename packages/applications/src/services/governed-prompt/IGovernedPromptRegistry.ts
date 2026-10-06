@@ -31,6 +31,7 @@ export interface GovernedPieceFinding {
     | 'PROMPT_CONTAINS_PII'
     | 'PROMPT_SCREENING_UNAVAILABLE'
     | 'PROMPT_SAFETY_ADVISORY'
+    | 'PROMPT_INJECTION_ADVISORY'
     | 'PROMPT_QUASI_IDENTIFIER_ADVISORY';
   readonly pieceKind: GovernedPieceKind;
   readonly pieceKey: string | null;
@@ -81,6 +82,7 @@ export interface IGovernedPromptRegistry {
  */
 export const ADVISORY_PROMPT_FINDINGS: ReadonlySet<GovernedPieceFinding['code']> = new Set([
   'PROMPT_SAFETY_ADVISORY',
+  'PROMPT_INJECTION_ADVISORY',
   'PROMPT_QUASI_IDENTIFIER_ADVISORY',
 ]);
 

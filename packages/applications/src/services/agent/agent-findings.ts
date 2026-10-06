@@ -66,6 +66,7 @@ export type AgentFindingCode =
   | 'PROMPT_SCREENING_UNSAFE'
   | 'PROMPT_CONTAINS_PII'
   | 'PROMPT_SAFETY_ADVISORY'
+  | 'PROMPT_INJECTION_ADVISORY'
   | 'PROMPT_QUASI_IDENTIFIER_ADVISORY'
   | 'PROMPT_SCREENING_UNAVAILABLE'
   // TASK-1048 (OD-3) — speech-to-text prerequisites, all WARNING (advisory, never blocking): the

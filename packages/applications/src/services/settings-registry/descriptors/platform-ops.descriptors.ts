@@ -41,6 +41,21 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     default: 120000,
   },
   {
+    key: 'governedPrompt.injectionBlocking',
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Governed prompts: injection flag blocks authoring',
+    description:
+      'Whether an injection/jailbreak flag from guardrail refuses an authored prompt (publish/approve) or is recorded as an advisory. Off by default (owner decision 2026-10-06): the current classifier false-flags clinical instruction text. Turn on once a better-calibrated injection model is approved.',
+    default: false,
+  },
+  {
     key: 'governedPrompt.backfillInitialDelayMs',
     tier: 'global-kv',
     dataType: 'number',
