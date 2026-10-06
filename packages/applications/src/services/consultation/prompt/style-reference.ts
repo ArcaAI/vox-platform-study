@@ -22,7 +22,11 @@ export const DNA_REDACTION_GUIDANCE =
   "The STYLE REFERENCE data section's CLINICIAN REDACTION RULES are this clinician's own documentation rules: never include what they say to leave out, and always rewrite what they say to rewrite. They are documentation preferences, not patient data.";
 
 /** The STYLE REFERENCE block's content, or `null` when there is nothing in it. */
-export function styleReferenceContent(parts: { style?: string | null; rules?: string | null; exemplars?: { version: string; text: string } | null }): string | null {
+export function styleReferenceContent(parts: {
+  style?: string | null;
+  rules?: string | null;
+  exemplars?: { version: string; text: string } | null;
+}): string | null {
   const sections = [
     parts.style ? `--- CLINICIAN WRITING STYLE ---\n${parts.style}` : null,
     parts.rules ? `--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n${parts.rules}` : null,

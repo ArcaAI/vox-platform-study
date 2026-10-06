@@ -79,11 +79,14 @@ beforeEach(() => {
 });
 
 describe('no runtime value is ever composed into the system side', () => {
-  const BODY = 'Department {{context.current_department}}. Vitals {{context.safe_vitals}}. History {{context.formatted_previous_visits}}. Tests {{context.formatted_test_results}}. Transcript:\n{{transcript}}';
+  const BODY =
+    'Department {{context.current_department}}. Vitals {{context.safe_vitals}}. History {{context.formatted_previous_visits}}. Tests {{context.formatted_test_results}}. Transcript:\n{{transcript}}';
 
   it('hands the governed body over unrendered and keeps every value out of the rules and the contract', async () => {
     resolveBody(BODY);
-    await (await getService({ exemplars: [{ redactedAfter: EXEMPLAR }] })).assemble({
+    await (
+      await getService({ exemplars: [{ redactedAfter: EXEMPLAR }] })
+    ).assemble({
       ...base,
       vitals: VITALS,
       previousVisits: PREVIOUS,
@@ -128,7 +131,9 @@ describe('no runtime value is ever composed into the system side', () => {
 
 describe('the established data-section names survive as blockAliases', () => {
   it('aliases each section variable — bare and namespaced — to its section block', async () => {
-    resolveBody('{{transcript}} {{context.safe_vitals}} {{context.formatted_previous_visits}} {{context.formatted_test_results}} {{pre_summary_text}}');
+    resolveBody(
+      '{{transcript}} {{context.safe_vitals}} {{context.formatted_previous_visits}} {{context.formatted_test_results}} {{pre_summary_text}}',
+    );
     await (await getService()).assemble({ ...base, vitals: VITALS, previousVisits: PREVIOUS, testResults: TESTS, preSummaryText: 'DRAFT' });
     const aliases = composerInput().blockAliases ?? {};
 
@@ -194,7 +199,9 @@ describe('the clinician’s DNA and the few-shot exemplars are DATA in style_ref
     await (await getService({ exemplars: [{ redactedAfter: EXEMPLAR }] })).assemble({ ...base, dnaStyleId: 'dna-1', dnaRedactionRulesText: RULES });
     const first = composerInput().outputContractParts;
     mockDnaWritingStyleRepository.findById.mockResolvedValue({ styleText: 'Another doctor entirely.' });
-    await (await getService({ exemplars: [{ redactedAfter: 'other note' }] })).assemble({ ...base, dnaStyleId: 'dna-2', dnaRedactionRulesText: '- other rule' });
+    await (
+      await getService({ exemplars: [{ redactedAfter: 'other note' }] })
+    ).assemble({ ...base, dnaStyleId: 'dna-2', dnaRedactionRulesText: '- other rule' });
     expect(composerInput().outputContractParts).toEqual(first);
   });
 
@@ -217,7 +224,9 @@ describe('the clinician’s DNA and the few-shot exemplars are DATA in style_ref
 describe('D9 — stable context first, the transcript last', () => {
   it('orders the transcript after every other data section', async () => {
     resolveBody('Body.');
-    const assembled = await (await getService()).assemble({ ...base, clinicianNotes: ['[case note] review'], vitals: VITALS, previousVisits: PREVIOUS });
+    const assembled = await (
+      await getService()
+    ).assemble({ ...base, clinicianNotes: ['[case note] review'], vitals: VITALS, previousVisits: PREVIOUS });
     expect(assembled.blocks?.map((block) => block.key)).toEqual(['clinician_notes', 'recent_vitals', 'previous_case_notes_summary', 'transcript']);
   });
 });

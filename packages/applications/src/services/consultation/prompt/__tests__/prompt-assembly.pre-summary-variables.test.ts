@@ -42,14 +42,14 @@ async function getService(cls?: { get: (key: string) => unknown }) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
   return resolvingPointers(
     new PromptAssemblyService(
-    mockPromptResolutionService as any,
-    mockPromptTemplateRepository as any,
-    mockDnaWritingStyleRepository as any,
-    cls as any,
-    undefined, // exemplarRetriever
-    undefined, // secretsService
-    mockDepartmentRepository as any,
-  ),
+      mockPromptResolutionService as any,
+      mockPromptTemplateRepository as any,
+      mockDnaWritingStyleRepository as any,
+      cls as any,
+      undefined, // exemplarRetriever
+      undefined, // secretsService
+      mockDepartmentRepository as any,
+    ),
   );
 }
 

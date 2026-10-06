@@ -57,10 +57,9 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 describe('system_governance is attached only when the registry vouches for the composed system', () => {
   it('sends composed_digest, the pieces and the current policy version', async () => {
     const reg = registry();
-    const body = await service(reg).applyTenantProviderOverrides(
-      { provider: 'lm-studio', system_prompt: SYSTEM } as { provider: string },
-      { systemGovernance: { governance: governanceFor(SYSTEM) } },
-    );
+    const body = await service(reg).applyTenantProviderOverrides({ provider: 'lm-studio', system_prompt: SYSTEM } as { provider: string }, {
+      systemGovernance: { governance: governanceFor(SYSTEM) },
+    });
     expect((body as Record<string, unknown>).system_governance).toEqual({
       composed_digest: sha256(SYSTEM),
       pieces: governanceFor(SYSTEM).pieces.map(({ kind, key, digest }) => ({ kind, key, digest })),
@@ -106,10 +105,9 @@ describe('system_governance is attached only when the registry vouches for the c
 
   it('omits it when the system prompt on the body no longer hashes to the composed digest', async () => {
     const reg = registry();
-    const body = await service(reg).applyTenantProviderOverrides(
-      { provider: 'lm-studio', system_prompt: `${SYSTEM} ` } as { provider: string },
-      { systemGovernance: { governance: governanceFor(SYSTEM) } },
-    );
+    const body = await service(reg).applyTenantProviderOverrides({ provider: 'lm-studio', system_prompt: `${SYSTEM} ` } as { provider: string }, {
+      systemGovernance: { governance: governanceFor(SYSTEM) },
+    });
     expect(body).not.toHaveProperty('system_governance');
     expect(reg.areGoverned).not.toHaveBeenCalled();
   });
@@ -159,7 +157,11 @@ describe('a caller can never state system_governance', () => {
 });
 
 describe('platform pieces are offered to the registry in the background', () => {
-  const pieces = platformPiecesOf({ platformRules: 'PLATFORM RULES', outputLanguageName: 'English', contractParts: [{ key: 'note-inputs', text: 'Static guidance.' }] });
+  const pieces = platformPiecesOf({
+    platformRules: 'PLATFORM RULES',
+    outputLanguageName: 'English',
+    contractParts: [{ key: 'note-inputs', text: 'Static guidance.' }],
+  });
 
   it('registers the PLATFORM, LANGUAGE and CONTRACT pieces the composer emitted', async () => {
     const reg = registry();

@@ -123,7 +123,9 @@ export const noteHeadingSchema = z.object({ key: z.string(), title: z.string() }
 export const noteSystemGovernanceSchema = z
   .object({
     composed_digest: z.string(),
-    pieces: z.array(z.object({ kind: z.enum(['PLATFORM', 'TEMPLATE_BODY', 'FRAGMENT', 'LANGUAGE', 'CONTRACT']), key: z.string(), digest: z.string() }).strict()),
+    pieces: z.array(
+      z.object({ kind: z.enum(['PLATFORM', 'TEMPLATE_BODY', 'FRAGMENT', 'LANGUAGE', 'CONTRACT']), key: z.string(), digest: z.string() }).strict(),
+    ),
     policy_version: z.string(),
   })
   .strict();

@@ -60,7 +60,12 @@ describe('a COMPOSITE agent instruction composes on finalize (no primary-templat
     join: '\n\n',
     fragments: [
       { key: 'base', source: 'inline' as const, content: 'BASE body.' },
-      { key: 'revisit', source: 'inline' as const, content: 'REVISIT branch for {{trigger.context.current_department}}.', when: "trigger.context.visit_type == 'revisit'" },
+      {
+        key: 'revisit',
+        source: 'inline' as const,
+        content: 'REVISIT branch for {{trigger.context.current_department}}.',
+        when: "trigger.context.visit_type == 'revisit'",
+      },
       { key: 'new', source: 'inline' as const, content: 'NEW-VISIT branch.', when: "trigger.context.visit_type == 'new-visit'" },
     ],
   };

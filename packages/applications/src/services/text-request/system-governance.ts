@@ -31,9 +31,9 @@ export interface SystemGovernanceHint {
 
 /** The FC-4 body field on `/api/v1/generate`. */
 export interface SystemGovernanceWire {
-  readonly composed_digest: string;
-  readonly pieces: ReadonlyArray<{ readonly kind: GovernedPieceKind; readonly key: string; readonly digest: string }>;
-  readonly policy_version: string;
+  composed_digest: string;
+  pieces: Array<{ kind: GovernedPieceKind; key: string; digest: string }>;
+  policy_version: string;
 }
 
 /**
@@ -50,10 +50,19 @@ export function platformPiecesOf(input: {
   contractParts?: readonly OutputContractPart[];
 }): GovernedPieceInput[] {
   const pieces: GovernedPieceInput[] = [];
-  const piece = (kind: GovernedPieceKind, sourceKey: string, text: string): GovernedPieceInput => ({ kind, sourceType: 'PLATFORM', sourceId: null, sourceKey, text });
-  if (input.platformRules) pieces.push(piece('PLATFORM', `platform-rules@${input.platformRulesVersion ?? PLATFORM_RULES_VERSION}`, input.platformRules));
+  const piece = (kind: GovernedPieceKind, sourceKey: string, text: string): GovernedPieceInput => ({
+    kind,
+    sourceType: 'PLATFORM',
+    sourceId: null,
+    sourceKey,
+    text,
+  });
+  if (input.platformRules)
+    pieces.push(piece('PLATFORM', `platform-rules@${input.platformRulesVersion ?? PLATFORM_RULES_VERSION}`, input.platformRules));
   if (input.outputLanguageName) {
-    pieces.push(piece('LANGUAGE', `language:${input.outputLanguageName}`, input.outputLanguageSentence ?? outputLanguageStep(input.outputLanguageName)));
+    pieces.push(
+      piece('LANGUAGE', `language:${input.outputLanguageName}`, input.outputLanguageSentence ?? outputLanguageStep(input.outputLanguageName)),
+    );
   }
   for (const part of input.contractParts ?? []) {
     if (part.text.length > 0) pieces.push(piece('CONTRACT', part.key, part.text));
@@ -80,7 +89,13 @@ export async function governedSystemWire(
   const { system, governance, tenantId } = input;
   if (!governance || system.length === 0) return null;
   if (createHash('sha256').update(system, 'utf8').digest('hex') !== governance.composedDigest) return null;
-  if (!(await registry.areGoverned(tenantId, governance.pieces.map((piece) => piece.digest)))) return null;
+  if (
+    !(await registry.areGoverned(
+      tenantId,
+      governance.pieces.map((piece) => piece.digest),
+    ))
+  )
+    return null;
   const policyVersion = await registry.currentPolicyVersion(tenantId);
   if (!policyVersion) return null;
   return {

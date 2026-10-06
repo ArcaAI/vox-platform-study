@@ -225,7 +225,10 @@ beforeEach(() => {
 describe('BYTE IDENTITY — an agent that is not composite renders exactly as it did before TASK-947', () => {
   it('an `inline` artifact produces the same bytes (composePrompt`s single-body branch IS renderTemplate)', async () => {
     const { service, post } = buildService(
-      withArtifact({ source: 'inline', content: 'Patient {{patient.name}}, ward {{patient.ward}}.' }, { variables: { patient: { name: 'Ada', ward: '3' } } }),
+      withArtifact(
+        { source: 'inline', content: 'Patient {{patient.name}}, ward {{patient.ward}}.' },
+        { variables: { patient: { name: 'Ada', ward: '3' } } },
+      ),
     );
 
     const { calls } = await runOneFlush(service, post);

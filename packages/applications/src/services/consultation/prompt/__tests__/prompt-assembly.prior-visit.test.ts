@@ -52,7 +52,10 @@ async function buildService() {
   );
 }
 
-const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string; systemPrompt: string }> }, extra: Record<string, unknown> = {}) =>
+const assemble = (
+  service: { assemble: (p: unknown) => Promise<{ userPrompt: string; systemPrompt: string }> },
+  extra: Record<string, unknown> = {},
+) =>
   service.assemble({
     tenantId: TENANT,
     departmentId: 'dept-1',

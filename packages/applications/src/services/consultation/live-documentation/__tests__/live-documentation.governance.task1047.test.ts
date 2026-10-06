@@ -75,7 +75,18 @@ function liveService(enrichment: { applyTextRuntimeProfile: unknown; applyTenant
 
 describe('D1 / FC-2 — the turn instructions are static, keyed contract parts', () => {
   it('keys each instruction part and keeps `instructions` as their join', () => {
-    const parts = promptBuilder()('## S (s)\nprior', 'delta', 'notes', true, 'STABLE PREFIX', 'SOAP Note', '\n\nFRAME', '\n\nCONTRACT', 'BP', 'history');
+    const parts = promptBuilder()(
+      '## S (s)\nprior',
+      'delta',
+      'notes',
+      true,
+      'STABLE PREFIX',
+      'SOAP Note',
+      '\n\nFRAME',
+      '\n\nCONTRACT',
+      'BP',
+      'history',
+    );
     expect(parts.instructionParts.map((part) => part.key)).toEqual([
       'live-stable-prefix',
       'live-turn-directive',
@@ -88,15 +99,42 @@ describe('D1 / FC-2 — the turn instructions are static, keyed contract parts',
   });
 
   it('no part carries a runtime value — the same parts for two different encounters', () => {
-    const a = promptBuilder()('## S (s)\nNOTE-A', 'TRANSCRIPT-A', 'NOTES-A', false, 'STABLE', 'SOAP Note', 'FRAME', 'CONTRACT', 'VITALS-A', 'HISTORY-A', { testResults: 'LAB-A', sameDayPrequel: 'PREQUEL-A' });
-    const b = promptBuilder()('## S (s)\nNOTE-B', 'TRANSCRIPT-B', 'NOTES-B', false, 'STABLE', 'SOAP Note', 'FRAME', 'CONTRACT', 'VITALS-B', 'HISTORY-B', { testResults: 'LAB-B', sameDayPrequel: 'PREQUEL-B' });
+    const a = promptBuilder()(
+      '## S (s)\nNOTE-A',
+      'TRANSCRIPT-A',
+      'NOTES-A',
+      false,
+      'STABLE',
+      'SOAP Note',
+      'FRAME',
+      'CONTRACT',
+      'VITALS-A',
+      'HISTORY-A',
+      { testResults: 'LAB-A', sameDayPrequel: 'PREQUEL-A' },
+    );
+    const b = promptBuilder()(
+      '## S (s)\nNOTE-B',
+      'TRANSCRIPT-B',
+      'NOTES-B',
+      false,
+      'STABLE',
+      'SOAP Note',
+      'FRAME',
+      'CONTRACT',
+      'VITALS-B',
+      'HISTORY-B',
+      { testResults: 'LAB-B', sameDayPrequel: 'PREQUEL-B' },
+    );
     expect(a.instructionParts).toEqual(b.instructionParts);
   });
 });
 
 describe('D9 — stable context first, the growing material last', () => {
   it('orders vitals, previous visits, test results, same-day visits, clinician notes, the note so far, the transcript', () => {
-    const parts = promptBuilder()('## S (s)\nprior', 'delta', 'notes', false, 'STABLE', 'SOAP Note', '', '', 'BP', 'history', { testResults: 'labs', sameDayPrequel: 'earlier' });
+    const parts = promptBuilder()('## S (s)\nprior', 'delta', 'notes', false, 'STABLE', 'SOAP Note', '', '', 'BP', 'history', {
+      testResults: 'labs',
+      sameDayPrequel: 'earlier',
+    });
     expect(parts.blocks.map((block) => block.key)).toEqual([
       'recent_vitals',
       'previous_case_notes_summary',
@@ -112,14 +150,18 @@ describe('D9 — stable context first, the growing material last', () => {
 describe('FC-4 — the live call hands its composed governance to the egress', () => {
   it('passes the governance of exactly the system it sent, the platform + contract pieces and the session tenant', async () => {
     const sent: Array<Record<string, unknown>> = [];
-    const enrichment = { applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined), applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined) };
+    const enrichment = {
+      applyTextRuntimeProfile: vi.fn().mockResolvedValue(undefined),
+      applyTenantProviderOverrides: vi.fn().mockResolvedValue(undefined),
+    };
     const service = liveService(enrichment, sent);
     service.start({ consultationId: CID, tenantId: TENANT });
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
     await service.flush(CID);
 
     expect(sent).toHaveLength(1);
-    const hint = (enrichment.applyTenantProviderOverrides.mock.calls.at(-1)?.[1] as { systemGovernance: Record<string, unknown> }).systemGovernance as {
+    const hint = (enrichment.applyTenantProviderOverrides.mock.calls.at(-1)?.[1] as { systemGovernance: Record<string, unknown> })
+      .systemGovernance as {
       governance: { composedDigest: string };
       platformPieces: { kind: string; sourceKey: string; text: string }[];
       tenantId: string;

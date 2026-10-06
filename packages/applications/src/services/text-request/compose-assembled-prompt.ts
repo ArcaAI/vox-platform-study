@@ -110,7 +110,11 @@ export function composeAssembledPrompt(input: ComposeAssembledPromptInput): Comp
       });
     }
     if (error instanceof PromptTemplateSyntaxError) {
-      throw new BadRequestException({ message: 'The prompt template is not a valid template.', code: 'PROMPT_TEMPLATE_SYNTAX', detail: error.message });
+      throw new BadRequestException({
+        message: 'The prompt template is not a valid template.',
+        code: 'PROMPT_TEMPLATE_SYNTAX',
+        detail: error.message,
+      });
     }
     throw error;
   }

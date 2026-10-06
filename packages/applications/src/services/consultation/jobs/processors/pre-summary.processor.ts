@@ -10,7 +10,7 @@ import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFac
 import { IConsultationJobService } from '../consultation-job.service';
 import { GeneratePreSummaryJobPayload, PreSummaryJobResult } from '../dto';
 import { PromptResolutionService, type PromptResolutionTier } from '../../prompt/prompt-resolution.service';
-import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { PromptAssemblyService, type AssembledPrompt } from '../../prompt/prompt-assembly.service';
 import { clientCaseNoteRenderings, clientClinicalContextReaderFor } from '../../context/client-clinical-context';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
@@ -326,6 +326,9 @@ export class PreSummaryProcessor extends WorkerHost {
         strict: boolean;
       } | null;
       resolvedFrom: PromptResolutionTier;
+      /** TASK-1047 FC-2 / FC-3 — the assembly's governance of `systemPrompt` and the platform pieces it emitted. */
+      governance?: AssembledPrompt['governance'];
+      platformPieces?: AssembledPrompt['platformPieces'];
     },
     request: GeneratePreSummaryJobPayload['request'],
     // The tenant id `process` already fail-closed
@@ -380,6 +383,8 @@ export class PreSummaryProcessor extends WorkerHost {
         deploymentKind: deploymentKind ?? null,
         consultationId: consultationId ?? null,
         phase: 'pre-summary',
+        // TASK-1047 FC-4 — the assembly's governance of the system message this body carries.
+        systemGovernance: { governance: assembledPrompt.governance ?? null, platformPieces: assembledPrompt.platformPieces, tenantId },
       });
       // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
       // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY — `tenantId` is the

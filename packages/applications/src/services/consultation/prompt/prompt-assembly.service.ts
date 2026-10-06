@@ -152,7 +152,6 @@ export const PROMPT_ASSEMBLY_BLOCK_ALIASES: Readonly<Record<string, string>> = O
   ),
 );
 
-
 /**
  * How many approved notes are shown as style examples.
  *
@@ -181,7 +180,6 @@ const PRIOR_VISIT_SUMMARY_GUIDANCE = [
   'leave it out rather than carrying it forward. Never populate examination findings, vitals, results, or medication',
   'statements from this section without current-visit evidence.',
 ].join('\n');
-
 
 /**
  * The platform guidance that accompanies a composed note plan's blocks (system message).
@@ -686,7 +684,6 @@ export class PromptAssemblyService {
     // itself; a body that names a slot carries the value in that slot's own block (no duplicate).
     const dnaPlacedByBody = referenced.has('dna_style_text') || this.getDnaVariableKeys().some((key) => referenced.has(key));
     const rulesPlacedByBody = referenced.has('dna_redaction_rules_text');
-
 
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.

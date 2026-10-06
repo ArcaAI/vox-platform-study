@@ -100,16 +100,16 @@ async function getService(withClone = true) {
   }
   return resolvingPointers(
     new PromptAssemblyService(
-    mockPromptResolutionService as never,
-    mockPromptTemplateRepository as never,
-    mockDnaWritingStyleRepository as never,
-    undefined,
-    undefined,
-    undefined,
-    mockDepartmentRepository as never,
-    mockSchemaRepository as never,
-    mockSchemaVersionRepository as never,
-  ),
+      mockPromptResolutionService as never,
+      mockPromptTemplateRepository as never,
+      mockDnaWritingStyleRepository as never,
+      undefined,
+      undefined,
+      undefined,
+      mockDepartmentRepository as never,
+      mockSchemaRepository as never,
+      mockSchemaVersionRepository as never,
+    ),
   );
 }
 

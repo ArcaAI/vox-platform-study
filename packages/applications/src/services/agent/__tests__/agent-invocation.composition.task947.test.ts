@@ -23,7 +23,6 @@ import { asInputBlock, withPlatformRules, readByModel } from './compose-expectat
 // TASK-1047 FC-1 — placeholders are POINTERS in the system message and their values data blocks; the
 // rendering assertions below read the system as the model does (`readByModel`).
 
-
 const TENANT = '50000000-0000-0000-0000-000000000001';
 
 const post = vi.fn();

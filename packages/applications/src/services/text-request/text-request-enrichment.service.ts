@@ -258,7 +258,10 @@ export class TextRequestEnrichmentService {
    * still refuses non-cloud rows, and cloud SYSTEM rows stay entitlement-gated
    * while self-host SYSTEM rows do not.
    */
-  async applyTenantProviderOverrides<T extends { provider?: string; provider_overrides?: unknown }>(target: T, egress: TextEgressHints = {}): Promise<T> {
+  async applyTenantProviderOverrides<T extends { provider?: string; provider_overrides?: unknown }>(
+    target: T,
+    egress: TextEgressHints = {},
+  ): Promise<T> {
     // The egress statements first, and unconditionally: every early return below must still carry them.
     await this.applyEgressSafety(target, egress);
     const provider = target.provider;

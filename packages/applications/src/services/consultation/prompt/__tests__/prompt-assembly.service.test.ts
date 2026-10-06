@@ -110,11 +110,7 @@ describe('PromptAssemblyService', () => {
   // Warm start is no longer an assembly decision (the note plan decides it); the flag is ignored.
   async function getService(warmStartEnabled = false) {
     const { PromptAssemblyService } = await import('../prompt-assembly.service');
-    return new PromptAssemblyService(
-      mockPromptResolutionService as any,
-      mockPromptTemplateRepository as any,
-      mockDnaWritingStyleRepository as any,
-    );
+    return new PromptAssemblyService(mockPromptResolutionService as any, mockPromptTemplateRepository as any, mockDnaWritingStyleRepository as any);
   }
 
   // Same as getService but with a SecretsService wired (production DI path):
@@ -169,7 +165,9 @@ describe('PromptAssemblyService', () => {
       // TASK-1047 FC-1 — a pointer in the system message, the value a data block.
       expect(result.systemPrompt).toContain('[see the context_conversation_language data section below]');
       expect(result.systemPrompt).not.toContain('French');
-      expect(result.userPrompt).toContain('<<<EXTERNAL_DATA section="context_conversation_language">>>\n--- context_conversation_language ---\nFrench');
+      expect(result.userPrompt).toContain(
+        '<<<EXTERNAL_DATA section="context_conversation_language">>>\n--- context_conversation_language ---\nFrench',
+      );
     });
 
     it('should substitute {style_DNA_*} when dnaStyleId is provided', async () => {
@@ -943,7 +941,12 @@ describe('PromptAssemblyService', () => {
       // Per-encounter DATA never enters the system message, so two consultations of one template
       // share it byte for byte.
       const a = await service.assemble({ departmentId: 'd', promptType: 'new-patient', transcript: 'one', conversationLanguage: 'English' });
-      const b = await service.assemble({ departmentId: 'd', promptType: 'new-patient', transcript: 'two different', conversationLanguage: 'English' });
+      const b = await service.assemble({
+        departmentId: 'd',
+        promptType: 'new-patient',
+        transcript: 'two different',
+        conversationLanguage: 'English',
+      });
 
       expect(a.systemPrompt).toBe(b.systemPrompt);
       // No embedded ISO timestamp / date.

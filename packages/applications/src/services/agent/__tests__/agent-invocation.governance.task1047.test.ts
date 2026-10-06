@@ -57,14 +57,21 @@ beforeEach(() => {
 
 describe('caller values never become system text', () => {
   it('renders a caller variable and a context value as pointers, their values as data blocks', async () => {
-    await service().invokeText(agent('Complaint: {{complaint}}. Vitals: {{context.formatted_vitals}}.'), TENANT, {
-      message: 'hello',
-      variables: { complaint: 'CHEST-PAIN-MARKER' },
-      context: { formatted_vitals: 'BP 155/95 VITALS-MARKER' },
-    }, 'blocking');
+    await service().invokeText(
+      agent('Complaint: {{complaint}}. Vitals: {{context.formatted_vitals}}.'),
+      TENANT,
+      {
+        message: 'hello',
+        variables: { complaint: 'CHEST-PAIN-MARKER' },
+        context: { formatted_vitals: 'BP 155/95 VITALS-MARKER' },
+      },
+      'blocking',
+    );
 
     const body = sent();
-    expect(body.system_prompt).toBe(`${platformRules()}\n\nComplaint: [see the complaint data section below]. Vitals: [see the context_formatted_vitals data section below].`);
+    expect(body.system_prompt).toBe(
+      `${platformRules()}\n\nComplaint: [see the complaint data section below]. Vitals: [see the context_formatted_vitals data section below].`,
+    );
     expect(body.prompt).toContain('CHEST-PAIN-MARKER');
     expect(body.prompt).toContain('VITALS-MARKER');
   });
@@ -82,7 +89,9 @@ describe('FC-4 — the composed governance rides the egress hint', () => {
     };
     expect(hint.governance.composedDigest).toBe(createHash('sha256').update(String(body.system_prompt), 'utf8').digest('hex'));
     expect(hint.governance.pieces.map((piece) => piece.kind)).toEqual(['PLATFORM', 'TEMPLATE_BODY']);
-    expect(hint.platformPieces).toEqual([{ kind: 'PLATFORM', sourceType: 'PLATFORM', sourceId: null, sourceKey: expect.stringMatching(/^platform-rules@/), text: platformRules() }]);
+    expect(hint.platformPieces).toEqual([
+      { kind: 'PLATFORM', sourceType: 'PLATFORM', sourceId: null, sourceKey: expect.stringMatching(/^platform-rules@/), text: platformRules() },
+    ]);
     expect(hint.tenantId).toBe(TENANT);
   });
 });

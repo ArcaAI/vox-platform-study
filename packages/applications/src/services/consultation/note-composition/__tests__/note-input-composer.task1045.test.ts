@@ -807,13 +807,7 @@ describe('PromptAssemblyService — a composed note plan IS the user message', (
       })),
     };
     const exemplars = { retrieveExemplars: vi.fn(async () => [{ redactedAfter: 'STYLE EXAMPLE' }]) };
-    const assembly = new PromptAssemblyService(
-      resolution as never,
-      { findById: vi.fn() } as never,
-      {} as never,
-      undefined,
-      exemplars as never,
-    );
+    const assembly = new PromptAssemblyService(resolution as never, { findById: vi.fn() } as never, {} as never, undefined, exemplars as never);
 
     const assembled = await assembly.assemble({
       tenantId: 't1',
