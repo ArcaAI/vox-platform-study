@@ -107,19 +107,34 @@ def assert_free_memory(*, min_free_pct: int, reader=_system_free_pct) -> None:
 
 
 class RssGuard:
-    """Samples this process's RSS; calls `on_exceed` ONCE when it passes the ceiling."""
+    """Samples this process's RSS (and, optionally, system free memory); calls
+    `on_exceed` ONCE when RSS passes the ceiling or system free memory drops below
+    `min_sys_free_pct` (whoever is using it: the stop protects the host)."""
 
-    def __init__(self, *, ceiling_mib: float, reader, on_exceed) -> None:
+    def __init__(
+        self,
+        *,
+        ceiling_mib: float,
+        reader,
+        on_exceed,
+        sys_free_reader=None,
+        min_sys_free_pct: float = 0.0,
+    ) -> None:
         self.ceiling_mib = ceiling_mib
         self.reader = reader
         self.on_exceed = on_exceed
+        self.sys_free_reader = sys_free_reader
+        self.min_sys_free_pct = min_sys_free_pct
         self.peak_mib = 0.0
         self._fired = False
 
     def check(self) -> None:
         rss = self.reader()
         self.peak_mib = max(self.peak_mib, rss)
-        if rss > self.ceiling_mib and not self._fired:
+        low_system = (
+            self.sys_free_reader is not None and self.sys_free_reader() < self.min_sys_free_pct
+        )
+        if (rss > self.ceiling_mib or low_system) and not self._fired:
             self._fired = True
             self.on_exceed(rss)
 
@@ -132,6 +147,23 @@ class RssGuard:
         thread = threading.Thread(target=loop, daemon=True, name="rss-guard")
         thread.start()
         return thread
+
+
+def _sys_available_pct() -> float:
+    import psutil
+
+    vm = psutil.virtual_memory()
+    return 100.0 * vm.available / vm.total
+
+
+def _guard(a: argparse.Namespace) -> RssGuard:
+    return RssGuard(
+        ceiling_mib=a.max_rss_mib,
+        reader=_current_rss_mib,
+        on_exceed=_hard_stop,
+        sys_free_reader=_sys_available_pct,
+        min_sys_free_pct=a.min_sys_free_pct,
+    )
 
 
 def _hard_stop(rss_mib: float) -> None:
@@ -173,7 +205,7 @@ def cmd_score(a: argparse.Namespace) -> int:
     out_dir = Path(a.scores)
     out_dir.mkdir(parents=True, exist_ok=True)
     names = a.models.split(",") if a.models else list(CANDIDATES)
-    guard = RssGuard(ceiling_mib=a.max_rss_mib, reader=_current_rss_mib, on_exceed=_hard_stop)
+    guard = _guard(a)
     guard.start()
     for name in names:
         target = out_dir / f"{name}.jsonl"
@@ -248,7 +280,7 @@ def cmd_latency(a: argparse.Namespace) -> int:
     ]
     full = [w for w in benign if len(w) == WINDOW][: a.n]
     assert_free_memory(min_free_pct=a.min_free_pct)
-    RssGuard(ceiling_mib=a.max_rss_mib, reader=_current_rss_mib, on_exceed=_hard_stop).start()
+    _guard(a).start()
     base_rss = _current_rss_mib()
     t0 = time.perf_counter()
     scorer = load_scorer(a.model, threads=a.threads)
@@ -468,8 +500,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--threads", type=int, default=4)
     s.add_argument("--batch-size", type=int, default=8)
     s.add_argument("--chunk-windows", type=int, default=128)
-    s.add_argument("--max-rss-mib", type=float, default=3072)
+    s.add_argument("--max-rss-mib", type=float, default=4608)
     s.add_argument("--min-free-pct", type=int, default=35)
+    s.add_argument("--min-sys-free-pct", type=float, default=15.0)
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_score)
     lt = sub.add_parser("latency")
@@ -478,8 +511,9 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--threads", type=int, default=4)
     lt.add_argument("--n", type=int, default=200)
     lt.add_argument("--out", required=True)
-    lt.add_argument("--max-rss-mib", type=float, default=3072)
+    lt.add_argument("--max-rss-mib", type=float, default=4608)
     lt.add_argument("--min-free-pct", type=int, default=35)
+    lt.add_argument("--min-sys-free-pct", type=float, default=15.0)
     lt.set_defaults(fn=cmd_latency)
     la = sub.add_parser("latency-all")
     la.add_argument("--sets", required=True)

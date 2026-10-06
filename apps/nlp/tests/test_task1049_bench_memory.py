@@ -129,3 +129,18 @@ def test_score_is_chunked_and_resumable(tmp_path: Path, monkeypatch: pytest.Monk
     resumed = [json.loads(line) for line in (scores / "fake.jsonl").read_text().splitlines()]
     assert [r["id"] for r in resumed] == [f"b1:{i}" for i in range(6)]
     assert sum(calls) == sum(len(r["scores"]) for r in rows[2:])
+
+
+def test_guard_also_stops_when_the_system_runs_low() -> None:
+    fired: list[float] = []
+    sys_free = iter([40.0, 20.0, 12.0, 10.0])
+    guard = bench.RssGuard(
+        ceiling_mib=100_000,
+        reader=lambda: 500.0,
+        on_exceed=fired.append,
+        sys_free_reader=lambda: next(sys_free),
+        min_sys_free_pct=15,
+    )
+    for _ in range(4):
+        guard.check()
+    assert fired == [500.0]  # fired once, on the first reading below 15 %
