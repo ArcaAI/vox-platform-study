@@ -1002,9 +1002,14 @@ async def _system_governance(
     reported governance AND the agent carries a stamp — nothing is fetched otherwise.
     """
     composed_governance = getattr(composed, "governance", None)
-    stamp = (agent.compiled_config or {}).get("governance")
-    if not composed_governance or not isinstance(stamp, dict):
+    if not composed_governance:
         return None
+    stamp = (agent.compiled_config or {}).get("governance")
+    if not isinstance(stamp, dict):
+        # TASK-1047 V7 — seeded / pre-TASK-1047 agents carry no publish stamp. The registry, asked
+        # through the gateway, already vouches for EVERY piece under its current policy version
+        # (exactly what the gateway's own composers rely on), so it decides alone.
+        return await _registry_governance(composed_governance, verifier)
     version = await probe.get()
     governance = build_system_governance(composed_governance, stamp, version)
     if governance is None:
@@ -1015,6 +1020,24 @@ async def _system_governance(
     if not governed or verified_version != governance["policy_version"]:
         return None
     return governance
+
+
+async def _registry_governance(
+    composed_governance: Any, verifier: GovernanceVerifier
+) -> dict[str, Any] | None:
+    """The FC-4 body when the gateway's registry vouches for every piece, else ``None``."""
+    pieces = composed_governance.get("pieces")
+    composed_digest = composed_governance.get("composed_digest")
+    if not isinstance(pieces, list) or not pieces or not composed_digest:
+        return None
+    governed, verified_version = await verifier.verify(composed_governance)
+    if not governed or not verified_version:
+        return None
+    return {
+        "composed_digest": composed_digest,
+        "pieces": [dict(p) for p in pieces],
+        "policy_version": verified_version,
+    }
 
 
 def _compose_system_prompt(

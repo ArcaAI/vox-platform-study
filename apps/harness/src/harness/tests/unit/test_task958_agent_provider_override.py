@@ -229,6 +229,10 @@ def _wire(provider_override: dict[str, Any] | None) -> dict[str, Any]:
 
 
 class _StubApi:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     def __init__(self, answer: dict[str, Any]) -> None:
         self.answer = answer
 

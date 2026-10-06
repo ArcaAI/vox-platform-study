@@ -46,6 +46,10 @@ class _GovApi(_Api):
         self.progress.append({"consultation_id": consultation_id, **kwargs})
         return None
 
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": True, "policyVersion": "pv1"}
+
 
 def _input(*, bound: dict[str, Any], nodes: dict[str, Any]):
     from harness.temporal.interpreter.models import NodeActivityInput

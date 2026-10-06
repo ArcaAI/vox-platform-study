@@ -123,6 +123,10 @@ class _Result:
 
 
 class _StubText:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     def __init__(self, failing: set[str], egress: dict[str, Any] | None = None) -> None:
         self.failing = failing
         self.egress = egress
@@ -136,6 +140,10 @@ class _StubText:
 
 
 class _StubApi:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     def __init__(self, answer: dict[str, Any]) -> None:
         self.answer = answer
         self.policy_calls = 0

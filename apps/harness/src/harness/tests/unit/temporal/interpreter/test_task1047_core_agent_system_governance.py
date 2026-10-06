@@ -272,8 +272,23 @@ class TestSystemGovernance:
         assert calls[0].get("system_governance") is None
 
     @pytest.mark.asyncio
-    async def test_omitted_without_a_stamp(self, go) -> None:
-        calls, _ = await go(composed_gov=_GOV, stamp=None)
+    async def test_without_a_stamp_the_gateway_registry_decides(self, go) -> None:
+        # TASK-1047 V7: seeded / pre-TASK-1047 agents carry no stamp; the registry (asked through the
+        # gateway) is authoritative for every piece, exactly as for the gateway's own composers.
+        calls, guardrail = await go(composed_gov=_GOV, stamp=None)
+        assert calls[0]["system_governance"] == {
+            "composed_digest": "dc",
+            "pieces": _PIECES,
+            "policy_version": "pv1",
+        }
+        assert len(verify_calls) == 1
+        assert guardrail.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_without_a_stamp_omitted_when_the_gateway_says_not_governed(self, go) -> None:
+        calls, _ = await go(
+            composed_gov=_GOV, stamp=None, verify={"governed": False, "policyVersion": "pv1"}
+        )
         assert calls[0].get("system_governance") is None
 
     @pytest.mark.asyncio
@@ -322,8 +337,3 @@ class TestSystemGovernance:
         )
         assert calls[0]["system_governance"]["composed_digest"] == "dc"
         assert len(verify_calls) == 1
-
-    @pytest.mark.asyncio
-    async def test_no_verification_call_without_a_stamp(self, go) -> None:
-        await go(composed_gov=_GOV, stamp=None)
-        assert verify_calls == []

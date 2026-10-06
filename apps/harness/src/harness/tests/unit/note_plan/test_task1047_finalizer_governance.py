@@ -72,6 +72,8 @@ async def test_every_claim_the_finalizer_sends_describes_the_system_it_sends(mon
 
     assert result.status == "SUCCEEDED", result.reason
     assert len(text.calls) == 2
+    # The registry vouches (stub), so the agent's own claim IS sent — and must describe its text.
+    assert all(call.get("system_governance") for call in text.calls)
     for call in text.calls:
         claim = call.get("system_governance")
         if claim is None:

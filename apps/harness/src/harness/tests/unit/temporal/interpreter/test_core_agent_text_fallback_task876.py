@@ -155,6 +155,10 @@ def _payload(**config: Any) -> NodeActivityInput:
 
 
 class _StubApi:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     def __init__(self, answer: dict[str, Any]) -> None:
         self.answer = answer
 
@@ -177,6 +181,10 @@ class _Result:
 
 
 class _StubText:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     """Fails the providers in ``failing`` with a TextServiceError; records every call."""
 
     def __init__(self, failing: set[str]) -> None:

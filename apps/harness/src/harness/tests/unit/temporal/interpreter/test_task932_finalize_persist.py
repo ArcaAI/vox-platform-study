@@ -112,6 +112,10 @@ def _wire() -> dict[str, Any]:
 
 
 class _StubApi:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
         return _wire()
 
@@ -128,6 +132,10 @@ class _Result:
 
 
 class _StubText:
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+        return {"governed": False, "policyVersion": None}
+
     async def generate(self, **_kwargs: Any) -> _Result:
         return _Result()
 

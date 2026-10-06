@@ -336,6 +336,11 @@ class _Api:
         self.plan = plan
         self.calls: list[tuple[str, str, str]] = []
 
+    async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+        # TASK-1047 V7: an unstamped agent is verified through the gateway registry; the stub
+        # registry vouches for nothing unless a test says otherwise.
+        return {"governed": False, "policyVersion": None}
+
     async def get_note_plan(self, consultation_id: str, plan_id: str, *, tenant_id: str):
         from harness.services.api_client import NotePlanEnvelope
 

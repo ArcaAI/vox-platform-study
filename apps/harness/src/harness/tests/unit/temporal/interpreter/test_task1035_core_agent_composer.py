@@ -171,6 +171,10 @@ def run(monkeypatch: pytest.MonkeyPatch):
         text = _Text(failing or set(), egress if egress is not None else {"locality": "cloud"})
 
         class _Api:
+            async def verify_governed_prompts(self, **_kwargs: Any) -> dict[str, Any]:
+                # TASK-1047 V7: an unstamped agent is verified through the gateway registry.
+                return {"governed": False, "policyVersion": None}
+
             async def resolve_agent(self, **_kwargs: Any) -> dict[str, Any]:
                 return answer
 
