@@ -246,6 +246,17 @@ describe('areGoverned / currentPolicyVersion', () => {
     expect(await service.areGoverned('7a000000-0000-0000-0000-000000000002', ['d1'])).toBe(false);
   });
 
+  it('a miss is never cached: a piece registered moments later is governed on the very next call', async () => {
+    // TASK-1047 V7: the first call on a fresh tenant misses while the platform pieces register in the
+    // background; a cached `false` kept the whole consultation ungoverned for the verdict TTL (5 min).
+    const { service, repository } = makeHarness();
+    repository.findPassing.mockResolvedValueOnce([]);
+    expect(await service.areGoverned(TENANT, ['p1'])).toBe(false);
+    repository.findPassing.mockResolvedValueOnce([{ digest: 'p1' }]);
+    expect(await service.areGoverned(TENANT, ['p1'])).toBe(true);
+    expect(repository.findPassing).toHaveBeenCalledTimes(2);
+  });
+
   it('a policy-version change ⇒ false until the pieces are re-screened under the new version', async () => {
     vi.useFakeTimers();
     try {

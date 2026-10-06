@@ -258,16 +258,14 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     const policyVersion = await this.currentPolicyVersion(tenantId);
     if (policyVersion === null) return false;
 
-    const misses: string[] = [];
-    for (const digest of unique) {
-      const cached = this.verdicts.get(this.verdictKey(tenantId, digest, policyVersion));
-      if (cached === false) return false;
-      if (cached === undefined) misses.push(digest);
-    }
+    // Only PASS is cached. A miss is re-read every time: the platform pieces of a fresh tenant register in
+    // the background after its first call, and a cached `false` kept a whole consultation ungoverned for
+    // the verdict TTL (TASK-1047 V7). A miss costs one indexed lookup.
+    const misses = unique.filter((digest) => this.verdicts.get(this.verdictKey(tenantId, digest, policyVersion)) !== true);
     if (misses.length === 0) return true;
 
     const passing = new Set((await this.repository.findPassing(tenantId, misses, policyVersion)).map((row) => row.digest));
-    for (const digest of misses) this.verdicts.set(this.verdictKey(tenantId, digest, policyVersion), passing.has(digest));
+    for (const digest of misses) if (passing.has(digest)) this.verdicts.set(this.verdictKey(tenantId, digest, policyVersion), true);
     return misses.every((digest) => passing.has(digest));
   }
 
