@@ -117,7 +117,15 @@ export {
   composeMessages,
   outputLanguageStep,
 } from './compose-messages';
-export type { ComposeDataBlock, ComposeMessagesInput, ComposedDataBlock, ComposedMessages } from './compose-messages';
+export type {
+  ComposeDataBlock,
+  ComposeMessagesInput,
+  ComposedDataBlock,
+  ComposedMessages,
+  GovernedPieceKind,
+  GovernedPieceRef,
+  SystemGovernance,
+} from './compose-messages';
 
 // The prompt paths a context schema offers — shared by the publish gate and the console's
 // completion list. Mirrored by the harness's `schema_variable_paths.py`, held to
@@ -367,11 +375,7 @@ export {
 } from './agent-schemas';
 export type { ModelCapabilities } from './agent-schemas';
 export { deriveVariableDeclarations, PROMPT_VARIABLE_NAMESPACE_ROOTS } from './derive-variable-declarations';
-export type {
-  PromptVariableDeclaration,
-  PromptVariableType,
-  DerivedVariableDeclarations,
-} from './derive-variable-declarations';
+export type { PromptVariableDeclaration, PromptVariableType, DerivedVariableDeclarations } from './derive-variable-declarations';
 export type { PromptScopeVariableDeclaration } from './prompt-scope';
 
 // ── TASK-1036 C0a: NodeIO, bindings, workflow settings, consultation read schema, picker sources ──
@@ -455,19 +459,9 @@ export {
   declaredConsultationReads,
   PLATFORM_CONTEXT_ALIASES,
 } from './consultation-read-schema';
-export type {
-  ConsultationPathInfo,
-  ConsultationRead,
-  ConsultationReadAt,
-  PlatformContextAlias,
-} from './consultation-read-schema';
+export type { ConsultationPathInfo, ConsultationRead, ConsultationReadAt, PlatformContextAlias } from './consultation-read-schema';
 export { bindingSourcePaths } from './binding-source-paths';
-export type {
-  BindingSourceGroup,
-  BindingSourceGroupKey,
-  BindingSourceItem,
-  BindingSourceOptions,
-} from './binding-source-paths';
+export type { BindingSourceGroup, BindingSourceGroupKey, BindingSourceItem, BindingSourceOptions } from './binding-source-paths';
 export { NODE_LABEL_MAX_LENGTH, BINDING_JSON_SCHEMA, BINDING_FIRST_OF_MAX_PATHS } from './node-config-schemas';
 export { DATA_CONTRACT_RULES } from './rule-catalogue';
 export type { DataContractRule } from './rule-catalogue';

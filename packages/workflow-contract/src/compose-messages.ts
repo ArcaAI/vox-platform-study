@@ -118,6 +118,28 @@ export interface ComposedMessages {
   readonly excluded: readonly FragmentExclusion[];
   /** One entry per EMITTED data block, in order. Skipped blocks are absent. */
   readonly blocks: readonly ComposedDataBlock[];
+  /**
+   * TASK-1047 FC-2 — the system message as governed pieces (static text only after FC-1) and the
+   * digest of the whole system message. Optional until Lane L1 populates it on every compose.
+   */
+  readonly governance?: SystemGovernance;
+}
+
+/** TASK-1047 FC-2 — what one static piece of a system message is. */
+export type GovernedPieceKind = 'PLATFORM' | 'TEMPLATE_BODY' | 'FRAGMENT' | 'LANGUAGE' | 'CONTRACT';
+
+/** TASK-1047 FC-2 — one piece: `digest = sha256(utf8(text))`, lower-case hex. */
+export interface GovernedPieceRef {
+  readonly kind: GovernedPieceKind;
+  /** Fragment key, platform constant name, or `body` for a template body. */
+  readonly key: string;
+  readonly digest: string;
+}
+
+/** TASK-1047 FC-2 — `composedDigest = sha256(utf8(system))`; pieces in system order. */
+export interface SystemGovernance {
+  readonly pieces: readonly GovernedPieceRef[];
+  readonly composedDigest: string;
 }
 
 /** The output-language step: one fixed sentence naming the language. */
