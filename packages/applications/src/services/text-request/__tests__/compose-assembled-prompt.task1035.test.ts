@@ -48,7 +48,8 @@ describe('composeAssembledPrompt', () => {
     expect(systemSide).not.toContain('STYLE-TEXT');
     expect(input.outputContract).toBeUndefined();
     expect((input.outputContractParts ?? []).map((part) => part.key)).toEqual(['dna-style', 'assembled-task']);
-    expect(input.blockAliases).toMatchObject({ visit_type: 'visit_type', 'variables.visit_type': 'visit_type' });
+    // `{{visit_type}}` derives the block name `visit_type` (FC-1) — the caller's block of that key carries it.
+    expect(input.blockAliases).toBeUndefined();
   });
 
   it('returns the composed governance and the platform pieces it emitted (FC-4)', () => {

@@ -16,6 +16,7 @@
  *   - the composed `governance` and the platform pieces travel on the result for the egress (FC-4).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROMPT_ASSEMBLY_BLOCK_ALIASES } from '../prompt-assembly.service';
 import { composeMessages, outputLanguageStep, platformRules, type ComposeMessagesInput, type SystemGovernance } from '@arcaai/workflow-contract';
 
 vi.mock('@arcaai/workflow-contract', async (importOriginal) => {
@@ -126,7 +127,7 @@ describe('no runtime value is ever composed into the system side', () => {
 });
 
 describe('the established data-section names survive as blockAliases', () => {
-  it('aliases each populated section variable — bare and namespaced — to its section block', async () => {
+  it('aliases each section variable — bare and namespaced — to its section block', async () => {
     resolveBody('{{transcript}} {{context.safe_vitals}} {{context.formatted_previous_visits}} {{context.formatted_test_results}} {{pre_summary_text}}');
     await (await getService()).assemble({ ...base, vitals: VITALS, previousVisits: PREVIOUS, testResults: TESTS, preSummaryText: 'DRAFT' });
     const aliases = composerInput().blockAliases ?? {};
@@ -139,7 +140,6 @@ describe('the established data-section names survive as blockAliases', () => {
       recent_vitals: 'recent_vitals',
       safe_vitals: 'recent_vitals',
       'context.safe_vitals': 'recent_vitals',
-      formatted_vitals: 'recent_vitals',
       formatted_previous_visits: 'previous_case_notes_summary',
       'context.formatted_previous_visits': 'previous_case_notes_summary',
       formatted_test_results: 'test_results',
@@ -148,22 +148,24 @@ describe('the established data-section names survive as blockAliases', () => {
     });
   });
 
-  it('does not alias a section that is empty for this encounter — its own absence value is the data', async () => {
+  it('is STATIC — the same map for an encounter with and without the section, so the system depends on the template alone', async () => {
     resolveBody('Vitals {{context.safe_vitals}}.');
     await (await getService()).assemble({ ...base });
-    const input = composerInput();
-    expect(input.blockAliases ?? {}).not.toHaveProperty('context.safe_vitals');
-    expect((input.scope as { context: Record<string, string> }).context.safe_vitals).toBe('Not available');
+    const empty = composerInput();
+    expect(empty.blockAliases).toBe(PROMPT_ASSEMBLY_BLOCK_ALIASES);
+    // The skipped section's slot carries its own absence value.
+    expect((empty.scope as { context: Record<string, string> }).context.safe_vitals).toBe('Not available');
+    await (await getService()).assemble({ ...base, vitals: VITALS });
+    expect(composerInput().blockAliases).toBe(PROMPT_ASSEMBLY_BLOCK_ALIASES);
   });
 
-  it('points every DNA style slot at the style_reference block', async () => {
-    resolveBody('Style: {{style_DNA_doctor_department_medicine}} / {{context.dna_style_text}}');
+  it('adds no alias for a DNA slot — a body that places the style carries it in that slot’s own block', async () => {
+    resolveBody('Style: {{style_DNA_doctor_department_medicine}}');
     await (await getService()).assemble({ ...base, dnaStyleId: 'dna-1' });
-    expect(composerInput().blockAliases).toMatchObject({
-      style_DNA_doctor_department_medicine: 'style_reference',
-      'context.dna_style_text': 'style_reference',
-      dna_style_text: 'style_reference',
-    });
+    const input = composerInput();
+    expect(input.blockAliases).not.toHaveProperty('style_DNA_doctor_department_medicine');
+    expect((input.scope as Record<string, unknown>).style_DNA_doctor_department_medicine).toBe(STYLE);
+    expect((input.dataBlocks ?? []).map((block) => block.key)).not.toContain('style_reference');
   });
 });
 
@@ -201,7 +203,7 @@ describe('the clinician’s DNA and the few-shot exemplars are DATA in style_ref
     await (await getService()).assemble({ ...base, dnaStyleId: 'dna-1', dnaRedactionRulesText: RULES });
     const input = composerInput();
     expect((input.outputContractParts ?? []).map((part) => part.key)).toEqual([]);
-    expect(input.blockAliases).toMatchObject({ 'context.dna_redaction_rules_text': 'style_reference' });
+    expect((input.dataBlocks ?? []).map((block) => block.key)).not.toContain('style_reference');
   });
 
   it('exposes the style_reference content for a note plan the assembly does not own', async () => {
@@ -223,7 +225,7 @@ describe('D9 — stable context first, the transcript last', () => {
 describe('a composed note plan', () => {
   const NOTE_BLOCKS = [{ key: 'encounter_1', label: 'Encounter 1 transcript (New visit)', content: TRANSCRIPT }];
 
-  it('binds the data variables EMPTY and points them at the note inputs — the plan’s blocks are the whole user message', async () => {
+  it('binds the data variables EMPTY — the plan’s blocks are the whole user message, the system unchanged', async () => {
     resolveBody('Transcript:\n{{transcript}}\nVitals {{context.safe_vitals}}');
     await (await getService()).assemble({ ...base, vitals: VITALS, noteInputBlocks: NOTE_BLOCKS });
     const input = composerInput();
@@ -232,7 +234,7 @@ describe('a composed note plan', () => {
     expect(input.dataBlocks).toEqual(NOTE_BLOCKS);
     expect(scope.transcript).toBe('');
     expect(scope.context.safe_vitals).toBe('');
-    expect(input.blockAliases).toMatchObject({ transcript: 'note_inputs', 'context.safe_vitals': 'note_inputs' });
+    expect(input.blockAliases).toBe(PROMPT_ASSEMBLY_BLOCK_ALIASES);
     expect((input.outputContractParts ?? []).map((part) => part.key)).toContain('note-inputs');
     expect(systemSideText(input)).not.toContain(VITALS);
   });

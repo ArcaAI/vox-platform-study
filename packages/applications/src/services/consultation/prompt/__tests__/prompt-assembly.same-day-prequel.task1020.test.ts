@@ -13,7 +13,7 @@
  * block; and an absent value leaves the prompt byte-identical.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { lastBlockAliases, lastScopeContext, lastSystemSide } from './compose-spy';
+import { dataBlocksOf, lastBlockAliases, lastScopeContext, lastSystemSide } from './compose-spy';
 
 // TASK-1047 — the composer renders the pointers (FC-1); this suite reads which block a slot points
 // at, and what the scope binds, at the composer's input.
@@ -91,8 +91,7 @@ describe('TASK-1020 — same_day_prequel_summary', () => {
     const { userPrompt } = await service.assemble({ ...base });
 
     expect(lastScopeContext().same_day_prequel_summary).toBe('');
-    expect(lastBlockAliases()).not.toHaveProperty('context.same_day_prequel_summary');
-    expect(userPrompt).not.toContain('section="same_day_prequel_summary"');
+    expect(dataBlocksOf(userPrompt).get('same_day_prequel_summary') ?? '').toBe('');
   });
 
   it('leaves the prompt byte-identical when no prequel is supplied', async () => {
@@ -124,7 +123,6 @@ describe('TASK-1020 — formatted_test_results', () => {
     await service.assemble({ ...base, promptType: 'pre-summary' });
 
     expect(lastScopeContext().formatted_test_results).toBe('');
-    expect(lastBlockAliases()).not.toHaveProperty('context.formatted_test_results');
   });
 
   it('appends a TEST RESULTS data block on a body that inlines nothing', async () => {

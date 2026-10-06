@@ -101,7 +101,8 @@ describe('TASK-1022 — reference blocks are framed as reference', () => {
       'SYSTEM PREFIX\n\nThis is the first turn of this Consultation Note: report what the transcript in the data sections establishes.\n\nFRAME\n\nCONTRACT',
     );
     expect(liveUserOf(parts)).toBe(
-      `${dataBlock('transcript', 'Transcript so far', TURN_1)}\n\n${dataBlock('recent_vitals', 'Recent Vitals', 'BP 128/82 mmHg')}`,
+      // TASK-1047 D9 — the stable context first, the transcript last.
+      `${dataBlock('recent_vitals', 'Recent Vitals', 'BP 128/82 mmHg')}\n\n${dataBlock('transcript', 'Transcript so far', TURN_1)}`,
     );
   });
 });

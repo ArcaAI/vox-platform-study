@@ -45,12 +45,12 @@ export interface IGovernedPromptRegistry {
   /** Call time: true iff EVERY digest is registered PASS under the current policy version ([tenant, SYSTEM]). */
   areGoverned(tenantId: string, digests: readonly string[]): Promise<boolean>;
   /** The guardrail policy version verdicts are currently valid under (cached). `null` when unknown. */
-  currentPolicyVersion(): Promise<string | null>;
+  currentPolicyVersion(tenantId?: string): Promise<string | null>;
   /**
    * Platform pieces (platform rules, platform CONTRACT constants, LANGUAGE sentences) seen by a
    * composer: register any not yet registered under SYSTEM, screening them in the background.
    * Idempotent and non-blocking for the caller; until a piece is registered its calls take the
    * full-screening path.
    */
-  registerPlatformPieces(pieces: readonly GovernedPieceInput[]): Promise<void>;
+  registerPlatformPieces(pieces: readonly GovernedPieceInput[], tenantId?: string): Promise<void>;
 }

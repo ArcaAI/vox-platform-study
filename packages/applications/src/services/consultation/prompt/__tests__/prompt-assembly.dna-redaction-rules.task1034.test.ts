@@ -115,11 +115,13 @@ describe('TASK-1034 R3 — `dna_redaction_rules_text` in the gateway-assembled p
     expect((lastComposeInput().outputContractParts ?? []).map((part) => part.key)).toEqual(['dna-redaction-rules']);
   });
 
-  it('a template that binds `{{context.dna_redaction_rules_text}}` points at STYLE REFERENCE — the rules appear ONCE', async () => {
+  it('a template that binds `{{context.dna_redaction_rules_text}}` carries them in that slot — ONCE, no STYLE REFERENCE copy', async () => {
     resolvesTo('Rules:\n{{context.dna_redaction_rules_text}}');
     const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
-    expect(lastBlockAliases()['context.dna_redaction_rules_text']).toBe('style_reference');
-    expect(userPrompt.split(RULES_TEXT).length - 1).toBe(1);
+    expect(lastScopeContext().dna_redaction_rules_text).toBe(RULES_TEXT);
+    expect(lastBlockAliases()).not.toHaveProperty('context.dna_redaction_rules_text');
+    expect(userPrompt).not.toContain('section="style_reference"');
+    expect(lastSystemSide()).not.toContain(RULES_TEXT);
     expect(lastComposeInput().outputContractParts ?? []).toEqual([]);
   });
 

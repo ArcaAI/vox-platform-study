@@ -182,8 +182,8 @@ describe('PromptAssemblyService', () => {
         dnaStyleId: 'dna-001',
       });
 
-      // TASK-1047 D1 — the style is DATA in STYLE REFERENCE; the slot points at it.
-      expect(result.systemPrompt).toContain('[see the style_reference data section below]');
+      // TASK-1047 D1 — the style is DATA; the body's slot points at its own block.
+      expect(result.systemPrompt).toContain('[see the context_style_dna_doctor_department_surgery data section below]');
       expect(result.systemPrompt).not.toContain('Use bullet points. Be concise.');
       expect(result.userPrompt).toContain('Use bullet points. Be concise.');
     });
@@ -206,7 +206,7 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(mockDnaWritingStyleRepository.findByIdWithDecryptedFields).toHaveBeenCalledWith('dna-001', mockSecretsService);
-      expect(result.systemPrompt).toContain('[see the style_reference data section below]');
+      expect(result.systemPrompt).toContain('[see the context_style_dna_doctor_department_surgery data section below]');
       expect(result.systemPrompt).not.toContain('Formal prose, no abbreviations.');
       expect(result.userPrompt).toContain('Formal prose, no abbreviations.');
     });

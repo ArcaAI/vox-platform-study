@@ -67,6 +67,8 @@ describe('system_governance is attached only when the registry vouches for the c
       policy_version: 'policy-7',
     });
     expect(reg.areGoverned).toHaveBeenCalledWith('tenant-a', [sha256('PLATFORM RULES'), sha256('Governed body.')]);
+    // The policy version is per tenant — asked for the REQUEST tenant.
+    expect(reg.currentPolicyVersion).toHaveBeenCalledWith('tenant-a');
   });
 
   it('asks the registry for the tenant the caller names over the CLS one', async () => {
@@ -75,6 +77,7 @@ describe('system_governance is attached only when the registry vouches for the c
       systemGovernance: { governance: governanceFor(SYSTEM), tenantId: 'tenant-b' },
     });
     expect(reg.areGoverned).toHaveBeenCalledWith('tenant-b', expect.any(Array));
+    expect(reg.currentPolicyVersion).toHaveBeenCalledWith('tenant-b');
   });
 
   it('omits it when no registry is wired', async () => {
@@ -163,7 +166,7 @@ describe('platform pieces are offered to the registry in the background', () => 
     await service(reg).applyTenantProviderOverrides({ provider: 'lm-studio', system_prompt: SYSTEM } as { provider: string }, {
       systemGovernance: { governance: governanceFor(SYSTEM), platformPieces: pieces },
     });
-    expect(reg.registerPlatformPieces).toHaveBeenCalledWith(pieces);
+    expect(reg.registerPlatformPieces).toHaveBeenCalledWith(pieces, 'tenant-a');
   });
 
   it('never fails the call when registration rejects or throws', async () => {

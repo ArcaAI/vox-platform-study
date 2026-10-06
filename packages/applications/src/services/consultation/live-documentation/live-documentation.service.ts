@@ -131,6 +131,7 @@ import {
   RUNNING_SUMMARY_TITLE,
 } from './document-shape-parser';
 import { repairOutputBudget, resolveOutputBudget } from './output-budget';
+import { platformPiecesOf, type OutputContractPart, type SystemGovernanceHint } from '../../text-request/system-governance';
 // TASK-943 — the SAME builder the summary path uses, so the two surfaces cannot drift on what an
 // absent clinical variable means.
 import { buildPreSummaryVariables } from '../prompt/pre-summary-variables';
@@ -503,8 +504,32 @@ function liveCandidatePromptSource(resolvedPrompt: ComposableResolvedPrompt, ins
  * prefix-cache ordering — and the instructions keep theirs.
  */
 export interface LivePromptParts {
+  /** The instruction parts joined — the same text `instructionParts` composes into the system message. */
   readonly instructions: string;
+  /**
+   * TASK-1047 FC-2 — the instructions as STATIC, KEYED parts, each one CONTRACT piece of the system
+   * message. Template-, language- and platform-derived text only; never a runtime value.
+   */
+  readonly instructionParts: readonly OutputContractPart[];
   readonly blocks: readonly ComposeDataBlock[];
+}
+
+/** TASK-1047 — the contract parts one live call composes: the turn's parts, then the corrective. */
+function liveContractParts(parts: LivePromptParts, corrective?: string): OutputContractPart[] {
+  const trimmed = corrective?.trim();
+  return [...(parts.instructionParts ?? []), ...(trimmed ? [{ key: 'live-corrective', text: trimmed }] : [])];
+}
+
+/**
+ * TASK-1047 FC-4 — the egress hint for one live call: the composer's governance of the system it
+ * composed, the PLATFORM / CONTRACT pieces it emitted (registered in the background), and the tenant.
+ */
+function liveSystemGovernance(composed: ComposedMessages, parts: LivePromptParts, corrective: string | undefined, tenantId: string): SystemGovernanceHint {
+  return {
+    governance: composed.governance ?? null,
+    platformPieces: platformPiecesOf({ platformRules: platformRules(), contractParts: liveContractParts(parts, corrective) }),
+    tenantId,
+  };
 }
 
 /**
@@ -523,7 +548,9 @@ function composeLivePromptParts(
     platformRules: platformRules(),
     resolvedPrompt,
     scope,
-    outputContract: [parts.instructions, corrective?.trim()].filter((part): part is string => !!part).join('\n\n'),
+    // TASK-1047 FC-2 — static keyed parts; the corrective last, so the stable layers stay
+    // byte-identical between an original call and its repair.
+    outputContractParts: liveContractParts(parts, corrective),
     dataBlocks: parts.blocks,
     templateRef,
     // TASK-1036 OD-10 — a whitespace-only block is dropped, not sent as an empty section.
@@ -6283,19 +6310,33 @@ return 0`;
         ? "REFERENCE ONLY — the PREVIOUS CASE NOTES SUMMARY, TEST RESULTS and SAME-DAY EARLIER VISIT(S) data sections are reference, not dictation: record from them only what the clinician refers to in the current transcript (or what a section's own SOURCE rule takes from the prior record); do not copy them into today's sections on their own."
         : '';
 
+    // TASK-1047 FC-2 — each instruction a STATIC keyed part: template-, language- and
+    // platform-derived text only (the title and section keys come from the governed template).
+    const instructionParts: OutputContractPart[] = [
+      { key: 'live-stable-prefix', text: stablePrefix },
+      { key: 'live-turn-directive', text: deltaInstruction },
+      { key: 'live-elision-note', text: elisionNote },
+      { key: 'live-reference-rule', text: referenceRule },
+      { key: 'live-operating-frame', text: operatingFrame },
+      { key: 'live-turn-contract', text: turnContract },
+    ]
+      .map((part) => ({ key: part.key, text: part.text.trim() }))
+      .filter((part) => part.text.length > 0);
+
     return {
-      instructions: [stablePrefix, deltaInstruction, elisionNote, referenceRule, operatingFrame, turnContract]
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0)
-        .join('\n\n'),
+      instructions: instructionParts.map((part) => part.text).join('\n\n'),
+      instructionParts,
+      // TASK-1047 D9 — the per-consultation context first (it is identical on every flush, so an
+      // engine's prefix cache reuses it), then what grows: the clinician's notes, the note so far,
+      // and the transcript LAST.
       blocks: [
-        { key: 'transcript', label: hasPriorNote ? 'New transcript since last update' : 'Transcript so far', content: delta },
-        { key: 'current_note', label: `Current ${documentTitle} so far`, content: hasPriorNote ? priorNote : null },
-        { key: 'clinician_notes', label: 'Clinician notes / labs', content: notes || null },
         { key: 'recent_vitals', label: 'Recent Vitals', content: clientVitals?.trim() || null },
         { key: 'previous_case_notes_summary', label: 'PREVIOUS CASE NOTES SUMMARY', content: previousVisits || null },
         { key: 'test_results', label: 'TEST RESULTS', content: testResults || null },
         { key: 'same_day_prequel_summary', label: 'SAME-DAY EARLIER VISIT(S)', content: sameDayPrequel || null },
+        { key: 'clinician_notes', label: 'Clinician notes / labs', content: notes || null },
+        { key: 'current_note', label: `Current ${documentTitle} so far`, content: hasPriorNote ? priorNote : null },
+        { key: 'transcript', label: hasPriorNote ? 'New transcript since last update' : 'Transcript so far', content: delta },
       ],
     };
   }
@@ -6826,7 +6867,14 @@ return 0`;
       // of being forbidden to emit anything but a string.
       response_format: includeResponseFormat ? compiled.responseFormat : undefined,
     };
-    const stats = await this.postTextGenerate(payload, tenantId, signal, consultationId, { deploymentKind: deploymentKind ?? null }, generation);
+    const stats = await this.postTextGenerate(
+      payload,
+      tenantId,
+      signal,
+      consultationId,
+      { deploymentKind: deploymentKind ?? null, systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId) },
+      generation,
+    );
     // Stamp WHICH routing task served this flush (`text.live`, never `text.finalize` — this
     // method is the live tier exclusively). TEXT itself has no notion of this key; it only
     // echoes back the provider/model it actually ran, so the tier provenance is stamped here.
@@ -6936,7 +6984,12 @@ return 0`;
       tenantId,
       signal,
       consultationId,
-      { deploymentKind: candidate.deploymentKind ?? null, context: triggerContext, agentNode: true },
+      {
+        deploymentKind: candidate.deploymentKind ?? null,
+        context: triggerContext,
+        agentNode: true,
+        systemGovernance: liveSystemGovernance(composed, promptParts, corrective, tenantId),
+      },
       generation,
     );
     return {
@@ -7061,7 +7114,8 @@ return 0`;
     consultationId?: string | null,
     // The egress hints for this hop: the serving row's `deploymentKind`, the run's open context
     // (for `known_phi`), and whether a `core.agent` node made it (stamps the usage disposition).
-    egress?: { deploymentKind?: string | null; context?: Record<string, unknown> | null; agentNode?: boolean },
+    // TASK-1047 FC-4 — `systemGovernance`: the composer's governance of `payload.system_prompt`.
+    egress?: { deploymentKind?: string | null; context?: Record<string, unknown> | null; agentNode?: boolean; systemGovernance?: SystemGovernanceHint },
     // TASK-891 C2 — the RESOLVED agent's `parameters.generation`, when this hop is made on
     // behalf of one. Its `reasoning` block becomes the `extra` ride-along. Absent on the
     // non-agent paths, where there is no agent to have an opinion.
@@ -7085,6 +7139,7 @@ return 0`;
       consultationId: consultationId ?? null,
       context: egress?.context ?? null,
       phase: 'live',
+      systemGovernance: egress?.systemGovernance ?? null,
     });
     // The gateway→TEXT hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever TEXT actually enforces a token — i.e.

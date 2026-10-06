@@ -164,7 +164,9 @@ export class TextRequestEnrichmentService {
   private async attachSystemGovernance(body: Record<string, unknown>, hint: SystemGovernanceHint | null): Promise<void> {
     const registry = this.governedPrompts;
     if (!hint || !registry) return;
-    if (hint.platformPieces && hint.platformPieces.length > 0) this.registerPlatformPieces(registry, hint.platformPieces);
+    // The REQUEST tenant: guardrail's policy version — and so every verdict — is per tenant.
+    const tenantId = hint.tenantId ?? this.clsService.get('tenantId') ?? undefined;
+    if (hint.platformPieces && hint.platformPieces.length > 0) this.registerPlatformPieces(registry, hint.platformPieces, tenantId);
 
     const governance = hint.governance;
     const system = body.system_prompt;
@@ -174,7 +176,6 @@ export class TextRequestEnrichmentService {
       this.logger.warn({ message: 'system_prompt differs from its composed digest; screening it as untrusted', composedDigest: governance.composedDigest });
       return;
     }
-    const tenantId = hint.tenantId ?? this.clsService.get('tenantId');
     if (!tenantId) return;
     try {
       const governed = await registry.areGoverned(
@@ -182,7 +183,7 @@ export class TextRequestEnrichmentService {
         governance.pieces.map((piece) => piece.digest),
       );
       if (!governed) return;
-      const policyVersion = await registry.currentPolicyVersion();
+      const policyVersion = await registry.currentPolicyVersion(tenantId);
       if (!policyVersion) return;
       const wire: SystemGovernanceWire = {
         composed_digest: governance.composedDigest,
@@ -201,7 +202,7 @@ export class TextRequestEnrichmentService {
   }
 
   /** Fire-and-forget platform-piece registration: neither a rejection nor a throw reaches the call. */
-  private registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[]): void {
+  private registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[], tenantId: string | undefined): void {
     const report = (error: unknown) =>
       this.logger.warn({
         message: 'Platform prompt-piece registration failed; those pieces stay ungoverned until a later call registers them',
@@ -209,7 +210,7 @@ export class TextRequestEnrichmentService {
         error: error instanceof Error ? error.name : 'unknown',
       });
     try {
-      void Promise.resolve(registry.registerPlatformPieces(pieces)).catch(report);
+      void Promise.resolve(registry.registerPlatformPieces(pieces, tenantId)).catch(report);
     } catch (error) {
       report(error);
     }

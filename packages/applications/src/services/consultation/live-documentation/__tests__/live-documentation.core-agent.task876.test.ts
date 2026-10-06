@@ -217,7 +217,7 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(body.provider).toBe('vllm');
     expect(body.model).toBe('medgemma-27b');
     // The agent's resolved instruction, interpolated: the agent's own variable + the node's override (node wins).
-    expect(headOf(body.system_prompt, 'Write the note for Ward 3 in a terse tone.')).toBe(agentSystemHead('Write the note for Ward 3 in a terse tone.'));
+    expect(headOf(body, 'Write the note for Ward 3 in a terse tone.')).toBe(agentSystemHead('Write the note for Ward 3 in a terse tone.'));
     // Hyper-parameters: the agent's, with the node's `overrides.generation` layered on top.
     expect(body.temperature).toBe(0.4);
     // TASK-1000 — the agent declares 900, and the runtime CLAMPS it up to the template floor.
@@ -247,7 +247,7 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'medgemma-27b' });
     expect(calls[1]).toMatchObject({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
-    expect(headOf(calls[1]?.system_prompt, 'PLATFORM PROMPT.')).toBe(agentSystemHead('PLATFORM PROMPT.'));
+    expect(headOf(calls[1], 'PLATFORM PROMPT.')).toBe(agentSystemHead('PLATFORM PROMPT.'));
     expect(payload?.textFailed).toBeFalsy();
     expect(payload?.metadata?.stats).toMatchObject({
       selection_source: 'agent-fallback',
@@ -349,7 +349,7 @@ describe('core.agent on the realtime lane resolves its agentRef and generates th
     expect(textAgents.resolve).not.toHaveBeenCalled();
     expect(harnessPolicyService.resolveTextSelection).toHaveBeenCalledWith(TENANT, 'live');
     expect(calls[0]).toMatchObject({ provider: 'vllm', model: 'tenant-default' });
-    expect(headOf(calls[0]?.system_prompt, 'SESSION SYSTEM PROMPT.')).toBe(agentSystemHead('SESSION SYSTEM PROMPT.'));
+    expect(headOf(calls[0], 'SESSION SYSTEM PROMPT.')).toBe(agentSystemHead('SESSION SYSTEM PROMPT.'));
   });
 });
 

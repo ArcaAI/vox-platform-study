@@ -138,9 +138,19 @@ function bareName(path: string): string {
  */
 const PLACEHOLDER_PREFIXES: readonly string[] = ['', 'context.', 'trigger.context.', 'variables.'];
 
-function aliasEvery(names: readonly string[], block: string, into: Record<string, string>): void {
-  for (const name of names) for (const prefix of PLACEHOLDER_PREFIXES) into[`${prefix}${name}`] = block;
-}
+/**
+ * TASK-1047 FC-1 — placeholder path → block name for this assembly's data sections (and v1's two
+ * names for the same values), in every spelling a scope admits. STATIC: it depends on nothing but
+ * this table, so a governed body renders the same system message for every encounter, and the
+ * authoring-time digest (FC-3) can be computed with the very same map.
+ */
+export const PROMPT_ASSEMBLY_BLOCK_ALIASES: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(
+    [...DATA_SECTIONS.map((section) => [section.variable, section.key] as const), ...Object.entries(DATA_SECTION_ALIASES)].flatMap(([name, block]) =>
+      PLACEHOLDER_PREFIXES.map((prefix) => [`${prefix}${name}`, block] as const),
+    ),
+  ),
+);
 
 
 /**
@@ -172,12 +182,6 @@ const PRIOR_VISIT_SUMMARY_GUIDANCE = [
   'statements from this section without current-visit evidence.',
 ].join('\n');
 
-/**
- * Where every data variable points when the user message is a composed note plan: the plan's
- * blocks carry the whole record, so a body's `{{transcript}}` points at the note inputs, and the
- * variable itself is bound EMPTY (the plan's blocks are the user message, byte for byte).
- */
-const NOTE_INPUTS_BLOCK = 'note_inputs';
 
 /**
  * The platform guidance that accompanies a composed note plan's blocks (system message).
@@ -678,6 +682,11 @@ export class PromptAssemblyService {
 
     const referenced = referencedNames([...instructionContents(instruction), ...bindingPaths(agentVariables)]);
     const values = await this.buildVariables(params, referenced);
+    // The doctor's style and rules travel in STYLE REFERENCE only where the body does not place them
+    // itself; a body that names a slot carries the value in that slot's own block (no duplicate).
+    const dnaPlacedByBody = referenced.has('dna_style_text') || this.getDnaVariableKeys().some((key) => referenced.has(key));
+    const rulesPlacedByBody = referenced.has('dna_redaction_rules_text');
+
 
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.
@@ -686,7 +695,11 @@ export class PromptAssemblyService {
     const fewShot = noteInputs ? null : await this.buildFewShotExemplars(params);
     const styleReference = noteInputs
       ? null
-      : styleReferenceContent({ style: values.dna_style_text, rules: values.dna_redaction_rules_text, exemplars: fewShot });
+      : styleReferenceContent({
+          style: dnaPlacedByBody ? null : values.dna_style_text,
+          rules: rulesPlacedByBody ? null : values.dna_redaction_rules_text,
+          exemplars: fewShot,
+        });
     const dataBlocks: ComposeDataBlock[] = noteInputs
       ? noteInputs.map((block) => ({ key: block.key, label: block.label, content: block.content }))
       : [
@@ -696,39 +709,20 @@ export class PromptAssemblyService {
         ];
 
     // TASK-1047 FC-1 — the instruction renders a POINTER for every placeholder (the composer's job);
-    // `blockAliases` keeps each data section's established block name, so a body naming
-    // `{{transcript}}` points at the TRANSCRIPT section rather than at a second copy of it. A section
-    // that is empty for this encounter is not aliased: its absence value is then its own block.
+    // the STATIC `PROMPT_ASSEMBLY_BLOCK_ALIASES` keep each data section's established block name, so
+    // a body naming `{{transcript}}` points at the TRANSCRIPT section rather than at a second copy of
+    // it — and the system message depends on the template alone, never on which sections this
+    // encounter happens to fill (a skipped section's slot carries its own absence value instead).
+    // A composed note plan IS the user message, so its data variables are bound EMPTY: the plan's
+    // blocks carry the record, and the system message is byte-identical to the non-plan one.
     const rendered: Record<string, string> = { ...values };
-    const blockAliases: Record<string, string> = {};
-    for (const section of DATA_SECTIONS) {
-      if (noteInputs) {
-        if (section.variable in values) {
-          rendered[section.variable] = '';
-          aliasEvery([section.variable], NOTE_INPUTS_BLOCK, blockAliases);
-        }
-      } else if (values[section.variable]) {
-        aliasEvery([section.variable], section.key, blockAliases);
-      }
+    if (noteInputs) {
+      for (const section of DATA_SECTIONS) if (section.variable in values) rendered[section.variable] = '';
+      for (const alias of Object.keys(DATA_SECTION_ALIASES)) if (alias in rendered) rendered[alias] = '';
     }
-    for (const [alias, sectionKey] of Object.entries({ ...DATA_SECTION_ALIASES, formatted_vitals: 'recent_vitals' })) {
-      const section = DATA_SECTIONS.find((candidate) => candidate.key === sectionKey);
-      if (!section) continue;
-      if (noteInputs) {
-        rendered[alias] = '';
-        aliasEvery([alias], NOTE_INPUTS_BLOCK, blockAliases);
-      } else if (values[section.variable] && (alias in rendered || alias === 'formatted_vitals')) {
-        aliasEvery([alias], section.key, blockAliases);
-      }
-    }
-    // The doctor's style and redaction rules, wherever a body names them, point at STYLE REFERENCE.
-    if (values.dna_style_text) aliasEvery(['dna_style_text', ...this.getDnaVariableKeys().filter((key) => key in values)], STYLE_REFERENCE_BLOCK.key, blockAliases);
-    if (values.dna_redaction_rules_text) aliasEvery(['dna_redaction_rules_text'], STYLE_REFERENCE_BLOCK.key, blockAliases);
-
     // GUIDANCE → the tail of the SYSTEM message: STATIC, keyed, platform-authored instructions about
     // the data sections (TASK-1047 D1 — never a runtime value; the doctor's style and rules are in
     // the STYLE REFERENCE section, and only what to do with them is said here).
-    const dnaPlacedByBody = referenced.has('dna_style_text') || this.getDnaVariableKeys().some((key) => referenced.has(key));
     const contractParts: OutputContractPart[] = [
       fewShot ? { key: 'style-reference-exemplars', text: STYLE_REFERENCE_EXEMPLARS_GUIDANCE } : null,
       noteInputs ? { key: 'note-inputs', text: NOTE_INPUTS_GUIDANCE } : null,
@@ -736,7 +730,7 @@ export class PromptAssemblyService {
         ? { key: 'prior-visit-summary', text: PRIOR_VISIT_SUMMARY_GUIDANCE }
         : null,
       values.dna_style_text && !dnaPlacedByBody ? { key: 'dna-style', text: DNA_STYLE_GUIDANCE } : null,
-      values.dna_redaction_rules_text && !referenced.has('dna_redaction_rules_text') ? { key: 'dna-redaction-rules', text: DNA_REDACTION_GUIDANCE } : null,
+      values.dna_redaction_rules_text && !rulesPlacedByBody ? { key: 'dna-redaction-rules', text: DNA_REDACTION_GUIDANCE } : null,
     ].filter((part): part is OutputContractPart => part !== null);
 
     // The note's OUTPUT language — the platform default every caller passes — stated once, as the
@@ -748,7 +742,7 @@ export class PromptAssemblyService {
       agentVariables,
       variableDeclarations,
       outputContractParts: contractParts,
-      blockAliases,
+      blockAliases: PROMPT_ASSEMBLY_BLOCK_ALIASES,
       outputLanguage: languageName ? { name: languageName } : null,
       dataBlocks,
     });

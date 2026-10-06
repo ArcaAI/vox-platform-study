@@ -101,9 +101,8 @@ describe('the client-supplied vitals reach the prompt', () => {
       conversationLanguage: 'en',
     });
 
-    // The slot is bound to v1's own default and not aliased to an (absent) RECENT VITALS section.
+    // The slot is bound to v1's own default — which then fills the (otherwise skipped) section.
     expect(lastScopeContext().safe_vitals).toBe('Not available');
-    expect(lastBlockAliases()).not.toHaveProperty('context.safe_vitals');
   });
 
   it('appends the readings as a RECENT VITALS data block on a body that inlines nothing', async () => {

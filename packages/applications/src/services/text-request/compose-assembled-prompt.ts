@@ -85,7 +85,6 @@ export function composeAssembledPrompt(input: ComposeAssembledPromptInput): Comp
       resolvedPrompt: { source: 'inline', content: input.templateContent ?? DEFAULT_INSTRUCTIONS[input.type] },
       // The only value this route holds that a template may name — rendered as a pointer to its block.
       scope: buildPromptScope({ variables: input.visitLabel ? { visit_type: input.visitLabel } : {}, templateRef }),
-      blockAliases: { visit_type: VISIT_TYPE_BLOCK.key, 'variables.visit_type': VISIT_TYPE_BLOCK.key },
       outputContractParts: contractParts,
       // Stable first (D9): the doctor's style, the visit label, then the caller's items in order.
       dataBlocks: [

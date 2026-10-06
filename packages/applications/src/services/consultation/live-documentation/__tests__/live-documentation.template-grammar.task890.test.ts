@@ -201,21 +201,21 @@ describe('the realtime core.agent lane renders the agent instruction through the
     const { service, post } = buildService(withPrompt('Patient {{patient.name}}, ward {{patient.ward}}.', { patient: { name: 'Ada', ward: '3' } }));
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
+    expect(headOf(calls[0], 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
   });
 
   it('exposes the bound map under `variables.*`, as the durable scope does', async () => {
     const { service, post } = buildService(withPrompt('Tone: {{variables.tone}}', { tone: 'formal' }));
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Tone: formal')).toBe(agentSystemHead('Tone: formal'));
+    expect(headOf(calls[0], 'Tone: formal')).toBe(agentSystemHead('Tone: formal'));
   });
 
   it('lets the node’s `overrides.promptVariables` win over the agent’s own', async () => {
     const { service, post } = buildService(withPrompt('Ward {{ward}}', { ward: '3' }), { overrides: { promptVariables: { ward: '7' } } });
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Ward 7')).toBe(agentSystemHead('Ward 7'));
+    expect(headOf(calls[0], 'Ward 7')).toBe(agentSystemHead('Ward 7'));
   });
 
   it('TASK-1036 B6b — RENDERS an override string containing `{{` against the run scope (it used to bind literally)', async () => {
@@ -224,7 +224,7 @@ describe('the realtime core.agent lane renders the agent instruction through the
     });
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Lang English')).toBe(agentSystemHead('Lang English'));
+    expect(headOf(calls[0], 'Lang English')).toBe(agentSystemHead('Lang English'));
   });
 
   it('TASK-1036 B6b — an override naming an unresolved path degrades the node without calling TEXT', async () => {
@@ -254,21 +254,21 @@ describe('the realtime core.agent lane renders the agent instruction through the
     const { service, post } = buildService(spec);
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Tone: .')).toBe(agentSystemHead('Tone: .'));
+    expect(headOf(calls[0], 'Tone: .')).toBe(agentSystemHead('Tone: .'));
   });
 
   it('honours `default("…")`', async () => {
     const { service, post } = buildService(withPrompt('{{absent | default("n/a")}}'));
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'n/a')).toBe(agentSystemHead('n/a'));
+    expect(headOf(calls[0], 'n/a')).toBe(agentSystemHead('n/a'));
   });
 
   it('leaves a single brace VERBATIM — no fallback pass over the deleted grammar', async () => {
     const { service, post } = buildService(withPrompt('Language: {language_name}'));
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Language: {language_name}')).toBe(agentSystemHead('Language: {language_name}'));
+    expect(headOf(calls[0], 'Language: {language_name}')).toBe(agentSystemHead('Language: {language_name}'));
   });
 
   it('degrades the node on an unresolved variable WITHOUT calling TEXT or walking the fallback chain', async () => {
