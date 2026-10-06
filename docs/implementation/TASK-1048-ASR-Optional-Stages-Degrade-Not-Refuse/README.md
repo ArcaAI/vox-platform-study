@@ -1,6 +1,6 @@
 # TASK-1048 — ASR optional stages degrade instead of refusing the session
 
-**Status:** In Progress · **Type:** bugfix + behaviour change · **Branch:** `dev-2.2`
+**Status:** Review · **Type:** bugfix + behaviour change · **Branch:** `dev-2.2`
 
 ## Requirement Analysis
 
@@ -75,8 +75,70 @@ the orchestrator runs the gates once after all lanes are merged into `dev-2.2`.
 
 ## Implementation Summary
 
-_Pending._
+**Gateway (`@arcaai/applications`, `apps/api`)**
+- `buildResolvedAsrSpec` no longer throws for optional stages: diarization with no resolvable embedding
+  model or a retired backend, VAD with no VAD model, and an unrunnable fallback are switched off and
+  reported via `onWarning` (`AsrSessionWarning`). CORE refusals (no primary model, wrong primary task,
+  credential/veto, not assigned) are unchanged. The `ResolvedAsrSpec` wire shape to `apps/stt` is unchanged.
+- OD-2: `stt.diarization.defaultEmbeddingModelSlug` descriptor (`global-kv`, `failMode: closed`, no code
+  default) + SYSTEM seed row `wespeaker-voxceleb-resnet34` (`seed/11d-stt-diarization-default-setting.ts`,
+  create-only). Used only when the agent names no slug; an agent-named slug that does not resolve never
+  borrows it (different vector space).
+- `AgentResolverService.materialiseModels`: an invisible OPTIONAL aux model (vad/denoise/embedding/
+  punctuation/endpointing) is skipped with a warn log instead of 409; the primary stays a refusal.
+- `POST audio/transcription-jobs/stream/session` (incl. `workflowSlug` sessions), `POST transcribe` and
+  the JSON batch routes return `warnings?: AsrSessionWarningResponse[]`. The governing-workflow path no
+  longer refuses for an optional-stage problem.
+- Voice-profile enrollment still requires a diarizing agent with an embedding model, with an
+  actionable message; the sibling search is kept.
+- Agent validate/publish: WARNING findings `ASR_DIARIZATION_MODEL_MISSING`,
+  `ASR_DIARIZATION_BACKEND_UNSUPPORTED`, `ASR_VAD_MODEL_MISSING` (advisory). The platform default is
+  consulted; an unset default is reported as missing.
+
+**STT runtime (`apps/stt`)** — `publish_degraded_once` + a never-raising `_report_degraded` guard;
+`status: degraded` frames for `diarization_unavailable`, `voice_profiles_unavailable`, `vad_unavailable`,
+`segmentation_unavailable`, `lexicon_unavailable`, `gloss_unavailable`. Voice-profile seeding and lexicon
+correction are wrapped; batch results carry `metadata.degradations`.
+
+**SDKs** — `@arcaai/vox`: `useArcaAudio()` → `warnings`, `degradations` (store state, reset per session,
+cleared on tenant switch; `onSttSessionWarnings` / `onSttDegraded` plugin callbacks). `@arcaai/vox-node`:
+`warnings?` on stream-session and batch responses, `ASR_RUNTIME_DEGRADED_REASONS`, `isSttDegradedStatus`.
+No version bump (release is the owner's).
+
+**Admin console** — notice under the diarization/VAD switches in the simple agent editor; findings list
+shows `path`; persistent `AsrDegradationBanner` + one `toast.warning` in the live-transcription
+playground, the shared sandbox recorder and the Studio Test tab.
+
+### Evidence (2026-10-06, after all lanes merged into `dev-2.2`)
+- Builds: `@arcaai/types`, `@arcaai/applications`, `api:build` PASS. Typecheck: database, applications,
+  api, vox, vox-node, admin-console PASS. Lint: applications, api, vox, vox-node, admin-console, stt (ruff) PASS.
+- Tests: applications 17805 passed / 4 failed — the 4 (audit-correlation ×2, queue-admin INFO timeout,
+  consultation status gate) pass in isolation (19/19) and are unrelated load flakes; api 5237 passed;
+  vox 3422 passed; vox-node PASS; admin-console 4515 passed (4 files failed to LOAD mid-run on a
+  concurrent `@arcaai/stt` dist rebuild — 35/35 in isolation); types, database PASS; stt unit 4023 passed.
+- Artifacts regenerated (openapi, route-manifest, portal, gen:admin); `api:openapi:check`,
+  `api:portal:check`, `gen:admin:check` no drift.
+- Live (local API + console): an agent with `diarization: {enabled: true}` and no slug validates with
+  `WARNING ASR_DIARIZATION_MODEL_MISSING`; after `PUT admin/settings/registry/stt.diarization.defaultEmbeddingModelSlug`
+  = `wespeaker-voxceleb-resnet34` the warning is gone. The editor notice renders under the switch.
+- NOT verified live: a stream session returning `warnings` end to end — no ASR model is publishable on
+  this machine (no staged weights, no Sarvam connection) and STT is not in the launch configs. Covered by
+  unit tests; verify on the cluster after rollout with `sarvam-diarization` as stored.
+
+### Rollout notes
+- The cluster has no `stt.diarization.defaultEmbeddingModelSlug` row until seeded: `hope-db-seed` no-ops on
+  a seeded DB, so set it once via `PUT /api/v1/admin/settings/registry/stt.diarization.defaultEmbeddingModelSlug`
+  (super admin). Without it `sarvam-diarization` transcribes with diarization OFF plus a warning.
+
+### Follow-ups
+- Stale comments still describing the old 409s: `packages/types/src/asr-spec.ts` (~187, ~220),
+  `packages/workflow-contract/src/agent-schemas.ts` (~395–456), `services/agent/platform-managed-parameters.ts:52`,
+  `seed/25-agents.ts:580`, `apps/api/src/modules/voice-profile/voice-profile.controller.ts:37`.
+- Batch uploads in the console do not yet display `warnings`.
+- `apps/stt`: after a fallback re-assembly in `create_session` a new `ResultPublisher` may re-publish a reason once.
+- `seed-global-settings.test.ts` cross-seed uniqueness list does not include the new row.
 
 ## Change History
 
 - 2026-10-06 — ticket opened; investigation + OD round; contract frozen.
+- 2026-10-06 — lanes A–E merged; integration fixes (aux-model skip, finding codes, guarded degradation reports, editor notice placement); gates + live check; status Review.
