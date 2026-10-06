@@ -2086,6 +2086,8 @@ class TestBatchServiceDiarization:
 
             assert result.text == "Hello"
             assert "diarization" not in result.metadata
+            # TASK-1048 — the degradation is reported, not just logged.
+            assert result.metadata["degradations"] == ["diarization_unavailable"]
 
 
 # =============================================================================
