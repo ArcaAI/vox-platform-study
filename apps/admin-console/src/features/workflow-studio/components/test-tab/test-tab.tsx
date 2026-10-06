@@ -28,6 +28,7 @@ import { SandboxBanner } from '@/shared/page/sandbox-banner';
 import { useLatestSandboxRun } from '@/shared/sandbox/api/latest-run';
 import type { StartSandboxRunBody } from '@/shared/sandbox/api/types';
 import { useSandboxRecording } from '@/shared/sandbox/api/use-sandbox-recording';
+import { AsrDegradationBanner } from '@/shared/sandbox/components/asr-degradation-banner';
 import { nodeDisplayNames } from '../../lib/node-identity';
 import { useNodeNamingContext } from '../node-naming-context';
 import { selectHidePhi, selectSelectedNodeId, useGraphStore, useGraphStoreApi, useOptionalGraphStoreApi } from '../../store';
@@ -328,6 +329,7 @@ function TestSurface({ definitionId }: TestTabProps) {
             onReset={reset}
             onSpeedChange={controller.setSpeed}
           />
+          <AsrDegradationBanner items={recorder.degradations} />
           <ExecutionContext
             view={view}
             labelOf={labelOf}
