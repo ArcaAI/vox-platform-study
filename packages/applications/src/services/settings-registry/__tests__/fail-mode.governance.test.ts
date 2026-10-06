@@ -175,6 +175,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // descriptor seeded a Vault path nothing reads. Its `tts` sibling left in
     // TASK-879/880 and `text.serviceToken` in TASK-888, each once its last
     // reader was retired.
+    'guardrail.windowCacheKey': 'GUARDRAIL_WINDOW_CACHE_KEY',
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
     // TASK-1005: the optional Bearer token the gateway presents to LM Studio's REST API.

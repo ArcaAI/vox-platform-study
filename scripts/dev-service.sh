@@ -300,6 +300,16 @@ case "$SERVICE" in
         : "${NLP_PORT:=8864}"
         ENV_REPORT+=("HOST=$HOST" "NLP_PORT=$NLP_PORT")
         CMD=(uvicorn --factory nlp.app:get_app --host "$HOST" --port "$NLP_PORT" --app-dir apps/nlp/src)
+        # Worker recycling (TASK-1047 D6/D8): uvicorn exits after N requests so allocator
+        # retention cannot ratchet RSS; the stack supervisor (scripts/lib/stack-supervisor.sh)
+        # restarts it. Same default as the registry key nlp.worker.recycleAfterRequests;
+        # 0 disables. Launcher-level on purpose: uvicorn reads the flag before any app code
+        # (and the control plane) is reachable.
+        : "${NLP_WORKER_RECYCLE_AFTER_REQUESTS:=2000}"
+        ENV_REPORT+=("NLP_WORKER_RECYCLE_AFTER_REQUESTS=$NLP_WORKER_RECYCLE_AFTER_REQUESTS")
+        if [ "$NLP_WORKER_RECYCLE_AFTER_REQUESTS" != "0" ]; then
+            CMD+=(--limit-max-requests "$NLP_WORKER_RECYCLE_AFTER_REQUESTS")
+        fi
         RELOAD_DIR="apps/nlp/src"
         ;;
     guardrail)

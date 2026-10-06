@@ -13,15 +13,15 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 144 |
-| … of which required (`failMode: closed`) | 27 |
-| … of which secret | 26 |
+| Declared keys (distinct) | 145 |
+| … of which required (`failMode: closed`) | 28 |
+| … of which secret | 27 |
 | … tier `env` | 113 |
 | … tier `global-kv` | 9 |
-| … tier `vault-kv` | 22 |
+| … tier `vault-kv` | 23 |
 | Python declared fields | 312 |
 | … distinct Python names (incl. aliases + `os.environ` reads) | 364 |
-| `turbo.json#globalEnv` entries | 520 |
+| `turbo.json#globalEnv` entries | 521 |
 
 ## Variables — the TypeScript platform surface
 
@@ -49,6 +49,7 @@ disagree with those declarations.
 | `GUARDRAIL_PORT` | `env` | no | `8863` | `apps/guardrail` | Port apps/guardrail binds (test: 8963). |
 | `GUARDRAIL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔guardrail hop (`X-Service-Token`). |
 | `GUARDRAIL_URL` | `env` | no | `http://localhost:8863` | `apps/api` | Safety-engine base URL (apps/guardrail, port 8863). |
+| `GUARDRAIL_WINDOW_CACHE_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/guardrail` | Root secret of the guardrail window-verdict cache (TASK-1047 FC-7): the per-tenant key is HMAC-SHA256(this, tenantId), and cache keys are HMACs of (policyVersion, modelId, task, windowText) under it, so no clinical text is recoverable from Redis and no tenant can hit another’s entry. ABSENT ⇒ the cache is disabled and every window is computed — never skipped. Rotation is safe: it only makes the cache cold. |
 | `HARNESS_CLAIM_CHECK_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO access key for the harness claim-check blob store. The offloaded payloads are clinical content, so the store is SELF-HOSTED by contract — this credential must never address a cloud bucket. |
 | `HARNESS_CLAIM_CHECK_ENABLED` | `env` | no | `true` | `apps/harness` | Moves large clinical blobs OUT of Temporal workflow history into a self-hosted content-addressed store, protecting the ~50 MB history budget. DEFAULTS ON, and is therefore NOT marked `killSwitch` — it is a PROTECTION, so turning it off REMOVES a safeguard (unbounded history growth) rather than disabling an enforcement path. Turning it off is a deliberate acceptance of unbounded Temporal history, exactly as the harness startup validator states. |
 | `HARNESS_CLAIM_CHECK_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/harness` | S3/MinIO secret key for the harness claim-check blob store (self-hosted only; PHI must not egress). |
