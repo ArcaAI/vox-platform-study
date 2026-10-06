@@ -204,7 +204,9 @@ class TestScreenOutputClient:
         client = _client(http)
 
         verdict = await client.screen_output(
-            "the model said this", source_context="the prompt", tenant_id="tenant-7"
+            "the model said this",
+            source_regions=[{"key": "user", "text": "the prompt"}],
+            tenant_id="tenant-7",
         )
 
         assert verdict["allowed"] is True
@@ -212,7 +214,8 @@ class TestScreenOutputClient:
         call = http.calls[0]
         assert call["url"] == f"{_BASE_URL}/api/v1/guardrail/screen/outbound"
         assert call["json"]["response"] == "the model said this"
-        assert call["json"]["source_context"] == "the prompt"
+        assert call["json"]["source_regions"] == [{"key": "user", "text": "the prompt"}]
+        assert "source_context" not in call["json"]
         assert call["headers"]["X-Tenant-Id"] == "tenant-7"
         assert call["headers"]["X-Service-Token"] == "svc-token"
 
@@ -282,7 +285,7 @@ class TestGateHelper:
             await gate_completion(
                 _guardrail(screen=_block()),
                 completion="x",
-                source_context="p",
+                source_regions=[{"key": "user", "text": "p"}],
                 tenant_id="t",
                 tenant_policy=None,
                 app_state=None,
@@ -297,7 +300,7 @@ class TestGateHelper:
             await gate_completion(
                 _guardrail(screen=_unavailable()),
                 completion="x",
-                source_context="p",
+                source_regions=[{"key": "user", "text": "p"}],
                 tenant_id="t",
                 tenant_policy=None,
                 app_state=None,
@@ -315,7 +318,7 @@ class TestGateHelper:
             await gate_completion(
                 _guardrail(screen={"reason": "malformed"}),
                 completion="x",
-                source_context=None,
+                source_regions=None,
                 tenant_id="t",
                 tenant_policy=None,
                 app_state=None,
@@ -332,7 +335,7 @@ class TestGateHelper:
             await gate_completion(
                 None,
                 completion="x",
-                source_context=None,
+                source_regions=None,
                 tenant_id="t",
                 tenant_policy=None,
                 app_state=SimpleNamespace(guardrail_posture=None),
@@ -349,7 +352,7 @@ class TestGateHelper:
         await gate_completion(
             guardrail,
             completion="   ",
-            source_context="p",
+            source_regions=[{"key": "user", "text": "p"}],
             tenant_id="t",
             tenant_policy=None,
             app_state=None,
@@ -367,7 +370,7 @@ class TestGateHelper:
             await gate_completion(
                 guardrail,
                 completion="x",
-                source_context="p",
+                source_regions=[{"key": "user", "text": "p"}],
                 tenant_id="t",
                 tenant_policy=None,
                 app_state=None,
@@ -493,9 +496,12 @@ class TestNonStreamingPath:
         guardrail.screen_output.assert_awaited_once()
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "ok"
-        assert "patient note" in kwargs["source_context"]
-        # TASK-1036 E1: the source is everything the provider was sent.
-        assert "be brief" in kwargs["source_context"]
+        # TASK-1036 E1 / TASK-1047 FC-5: the source is every untrusted region sent —
+        # an ungoverned system prompt included.
+        assert kwargs["source_regions"] == [
+            {"key": "system", "text": "be brief"},
+            {"key": "user", "text": "patient note"},
+        ]
         assert kwargs["tenant_id"] == "tenant-42"
 
     @pytest.mark.asyncio
@@ -631,7 +637,10 @@ class TestStreamingProducer:
         # The gate saw everything the consumer saw: reasoning AND content, assembled.
         kwargs = guardrail.screen_output.await_args.kwargs
         assert kwargs["response"] == "think\n\nhello world"
-        assert kwargs["source_context"] == "s\n\np"
+        assert kwargs["source_regions"] == [
+            {"key": "system", "text": "s"},
+            {"key": "user", "text": "p"},
+        ]
         assert kwargs["tenant_id"] == "tenant-rej"
 
         chunks = _appended_chunks(mock_task_manager)

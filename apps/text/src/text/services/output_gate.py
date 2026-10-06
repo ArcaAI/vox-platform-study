@@ -48,7 +48,11 @@ from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError,
 from text.core.locality import CLOUD, LOCAL
 from text.core.logging import get_logger
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
-from text.services.egress import request_segments, sent_text
+from text.services.egress import (
+    request_segments,
+    system_prompt_is_governed,
+)
+from text.services.egress import source_regions as _regions_of_segments
 from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
     ExternalGuardrailClient,
@@ -64,7 +68,7 @@ __all__ = [
     "OutputRejectedError",
     "assemble_completion",
     "gate_completion",
-    "source_context_of",
+    "source_regions_of",
 ]
 
 #: ``code`` on the terminal ``error`` frame and the audit trail: guardrail
@@ -188,22 +192,27 @@ def assemble_completion(content: str | None, reasoning: str | None) -> str:
     return body
 
 
-def source_context_of(request_body: Any) -> str:
-    """The source the response was generated FROM, for guardrail's PII-leak check.
+def source_regions_of(request_body: Any) -> list[dict[str, str]]:
+    """The regions the response was generated FROM, for guardrail's PII-leak check.
 
-    Everything the input gate screened — system prompt, user message and text
-    parts, minus the composer's ``EXTERNAL_DATA`` markers — so a response that
-    repeats the consultation's own identifiers is not a leak, and one that
-    introduces identifiers absent from it is (TASK-1036 E1).
+    The untrusted regions the input gate screened (TASK-1047 FC-5) — block bodies
+    by name, caller text outside blocks as ``user``, an untrusted system prompt as
+    ``system`` — so a response that repeats the consultation's own identifiers is
+    not a leak, and one that introduces identifiers absent from them is. A system
+    prompt whose governance digest verifies carries no runtime value and is not a
+    source.
     """
-    return sent_text(request_segments(request_body))
+    governed = system_prompt_is_governed(request_body)
+    return _regions_of_segments(
+        request_segments(request_body), system="governed" if governed else "untrusted"
+    )
 
 
 async def gate_completion(
     guardrail_client: ExternalGuardrailClient | None,
     *,
     completion: str,
-    source_context: str | None,
+    source_regions: list[dict[str, str]] | None,
     tenant_id: str | None,
     tenant_policy: Any,
     app_state: Any,
@@ -229,7 +238,7 @@ async def gate_completion(
             return None
         verdict = await guardrail_client.screen_output(
             response=completion,
-            source_context=source_context,
+            source_regions=source_regions,
             tenant_id=tenant_id,
             tenant_policy=tenant_policy,
         )

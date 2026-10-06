@@ -89,7 +89,12 @@ from text.models.usage import (
 )
 from text.providers.base import ProviderNotFoundError, ProviderRegistry
 from text.services.circuit_breaker import CircuitBreaker
-from text.services.egress import prepare_egress, request_segments, run_inbound_gate
+from text.services.egress import (
+    prepare_egress,
+    request_segments,
+    run_inbound_gate,
+    verify_system_governance,
+)
 from text.services.external_guardrail import ExternalGuardrailClient
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
 from text.services.output_gate import (
@@ -391,12 +396,15 @@ async def generate(
     # TASK-1035 egress pipeline (`services/egress.py`). The inbound screen (with
     # PII spans) and the medical judge run CONCURRENTLY and both block. Guardrail's
     # own LLM spend rides back on THIS response — the verdict is the only path its
-    # tokens have to the billing plane.
+    # tokens have to the billing plane. TASK-1047 FC-4: a system prompt whose
+    # governance digest verifies is static registry-screened text — not screened,
+    # not judged, not a pii_leak source; anything else is screened as `system`.
+    system_governed = verify_system_governance(request_body)
     inbound = await run_inbound_gate(
         guardrail_client,
         segments=request_segments(request_body),
         prompt=request_body.prompt,
-        system_prompt=request_body.system_prompt,
+        system="governed" if system_governed else "untrusted",
         tenant_id=x_tenant_id,
         tenant_policy=request_body.guardrail_policy,
         provider_overrides=request_body.provider_overrides,
@@ -405,7 +413,11 @@ async def generate(
     guardrail_usage: UsageDetail | None = inbound.guardrail_usage
     # Locality is resolved on the provider ACTUALLY called (after degrade-routing
     # rewrote `request_body.provider`). On cloud the provider receives tokens.
-    egress = prepare_egress(request_body, spans_by_segment=inbound.spans_by_segment)
+    egress = prepare_egress(
+        request_body,
+        spans_by_segment=inbound.spans_by_segment,
+        system_governed=system_governed,
+    )
     provider_request = egress.provider_request
 
     ctx = structlog.contextvars.get_contextvars()
@@ -727,7 +739,7 @@ async def generate(
         await gate_completion(
             guardrail_client,
             completion=assemble_completion(content, reasoning),
-            source_context=egress.source_context,
+            source_regions=egress.source_regions,
             tenant_id=x_tenant_id,
             tenant_policy=request_body.guardrail_policy,
             app_state=app_state,

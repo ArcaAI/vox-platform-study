@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 from text.core.defaults import PENALTY_MAX, PENALTY_MIN
 
@@ -254,6 +261,39 @@ class ReasoningPosture(BaseModel):
     effort: ReasoningEffort | None = None
 
 
+class GovernedPieceRef(BaseModel):
+    """One governed piece of a composed system prompt (TASK-1047 FC-2/FC-4).
+
+    Informational: apps/text verifies the COMPOSED digest only. ``kind`` stays an
+    open string so a new piece kind never turns a call into a 422.
+    """
+
+    kind: str = Field(default="", max_length=64)
+    key: str = Field(default="", max_length=512)
+    digest: str = Field(default="", max_length=128)
+
+
+class SystemGovernance(BaseModel):
+    """The composer's claim that ``system_prompt`` is governed text (TASK-1047 FC-4).
+
+    Sent only by the gateway composer / harness after the registry vouched for
+    every piece. apps/text trusts it iff ``sha256(system_prompt)`` (lower-case hex)
+    equals ``composed_digest``; anything else — a mismatch, a malformed digest, a
+    malformed object — makes the system prompt UNTRUSTED (screened as region
+    ``system``), never a 4xx: ``GenerateRequest`` turns an object that fails these
+    bounds into :meth:`unverifiable`.
+    """
+
+    composed_digest: str = Field(default="", max_length=128)
+    pieces: list[GovernedPieceRef] = Field(default_factory=list, max_length=1024)
+    policy_version: str = Field(default="", max_length=256)
+
+    @classmethod
+    def unverifiable(cls) -> SystemGovernance:
+        """A claim that can never match: an empty digest is no sha256."""
+        return cls(composed_digest="")
+
+
 #: The request-size envelope for ONE half of a prompt, system or user. It guards payload
 #: size only: whether the prompt fits is the model's context window, which the engine
 #: enforces and this service surfaces as ``CONTEXT_WINDOW_EXCEEDED`` (never a truncation).
@@ -331,6 +371,22 @@ class GenerateRequest(BaseModel):
     provider_locality: dict[str, ProviderLocalityStamp] | None = None
     known_phi: list[KnownPhi] | None = Field(default=None, max_length=200)
     medical_exempt: Literal["internal"] | None = None
+    # TASK-1047 FC-4 — present only when the composer verified every piece of
+    # `system_prompt` against the governed-prompt registry. Verified by digest in
+    # `services/egress.verify_system_governance`; never trusted on presence alone.
+    system_governance: SystemGovernance | None = None
+
+    @field_validator("system_governance", mode="wrap")
+    @classmethod
+    def _governance_never_refuses(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> SystemGovernance | None:
+        """A malformed claim is UNVERIFIABLE, never a 422 (TASK-1047 FC-4)."""
+        try:
+            parsed: SystemGovernance | None = handler(value)
+        except ValidationError:
+            return SystemGovernance.unverifiable()
+        return parsed
 
     @field_validator("prompt")
     @classmethod

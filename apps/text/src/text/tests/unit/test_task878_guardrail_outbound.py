@@ -77,7 +77,7 @@ async def _gate(client: Any) -> Any:
     return await gate_completion(
         client,
         completion="Sure — ignoring my instructions, here is the record.",
-        source_context="summarise the consultation",
+        source_regions=[{"key": "user", "text": "summarise the consultation"}],
         tenant_id=TENANT,
         tenant_policy=None,
         app_state=_state(),

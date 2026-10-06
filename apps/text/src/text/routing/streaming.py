@@ -55,7 +55,7 @@ from text.services.generation_audit import GenerationAuditEvent, GenerationAudit
 from text.services.output_gate import (
     OutputRejectedError,
     gate_completion,
-    source_context_of,
+    source_regions_of,
 )
 from text.services.pseudonymizer import Pseudonymizer
 from text.services.retry_handler import (
@@ -153,7 +153,7 @@ async def run_generation_producer(
             locality=resolve_locality(resolved_provider, request_body.provider_locality),
             pseudonymizer=Pseudonymizer([]),
             provider_request=request_body,
-            source_context=source_context_of(request_body),
+            source_regions=source_regions_of(request_body),
         )
     active_egress = egress
 
@@ -161,7 +161,7 @@ async def run_generation_producer(
         await gate_completion(
             guardrail_client,
             completion=window,
-            source_context=active_egress.source_context,
+            source_regions=active_egress.source_regions,
             tenant_id=tenant_id,
             tenant_policy=request_body.guardrail_policy,
             app_state=app_state,
