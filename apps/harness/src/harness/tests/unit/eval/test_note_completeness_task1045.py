@@ -695,3 +695,14 @@ class TestEvalEndpoint:
             },
         )
         assert resp.status_code == 422
+
+
+def test_golden_cases_name_the_lm_studio_engine_text_serves() -> None:
+    """TASK-1047 V6: apps/text registers LM Studio as ``lm-studio``; the fixture said ``lmstudio`` and
+    every live golden-set call that reached generation answered 404 PROVIDER_NOT_FOUND."""
+    from harness.eval.note_completeness.runner import GOLDEN_FIXTURE
+
+    cases = json.loads(GOLDEN_FIXTURE.read_text())["cases"]
+    assert {case["transcript"]["conditions"]["model"]["provider"] for case in cases} == {
+        "lm-studio"
+    }

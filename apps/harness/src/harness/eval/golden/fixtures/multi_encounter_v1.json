@@ -13,7 +13,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -204,7 +204,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -375,7 +375,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -557,7 +557,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -744,7 +744,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -916,7 +916,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -1091,7 +1091,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -1234,7 +1234,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -1427,7 +1427,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -2157,7 +2157,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -2889,7 +2889,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -3119,7 +3119,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -3847,7 +3847,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
@@ -4021,7 +4021,7 @@
     "caseShape": "multi_encounter_v1",
     "synthetic": true,
     "conditions": {
-     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lmstudio", "contextWindow": 32768},
+     "model": {"slug": "gemma-4-e2b", "wireModelId": "gemma-4-e2b-it-qat", "provider": "lm-studio", "contextWindow": 32768},
      "temperature": 0,
      "system": "You write the clinical case note for this consultation in English from the sources below. The consultation has more than one encounter: state every clinical fact from every encounter, and when a later encounter changes a medication or plan, the later encounter wins. Cite every statement with its source label."
     },
