@@ -361,12 +361,12 @@ describe('GuardrailPromptScreenClient', () => {
         decision: 'block',
         reasons: ['jailbreak_detection'],
         checks: [{ name: 'jailbreak_detection', outcome: 'flag' }],
-        pii_spans: [{ label: 'person', start: 0, end: 4, region: 'r2' }],
+        pii_spans: [{ label: 'person', start: 0, end: 10, region: 'r2' }],
       },
     }));
     const outcome = await client(post).screenRegions(TENANT, [
       { key: 'r1', text: 'a' },
-      { key: 'r2', text: 'b' },
+      { key: 'r2', text: 'Anil Kumar' },
     ]);
     expect(post).toHaveBeenCalledWith(
       'http://guardrail:8863/api/v1/guardrail/screen/inbound',
@@ -374,7 +374,7 @@ describe('GuardrailPromptScreenClient', () => {
         text: '',
         regions: [
           { key: 'r1', text: 'a' },
-          { key: 'r2', text: 'b' },
+          { key: 'r2', text: 'Anil Kumar' },
         ],
         kind: 'prompt',
         wrap: false,

@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
+import { isPiiValue } from './pii-value';
 
 /**
  * Fallback before the settings cache is warm. Authoring time is off the latency path and a long
@@ -87,7 +88,7 @@ export class GuardrailPromptScreenClient {
       this.logger.warn({ message: 'governed-prompt.screen.unavailable', error: error instanceof Error ? error.name : 'unknown' });
       throw new PromptScreeningUnavailableError('Guardrail prompt screening is unavailable.');
     }
-    return this.readOutcome(body);
+    return this.readOutcome(body, regions);
   }
 
   /**
@@ -113,7 +114,7 @@ export class GuardrailPromptScreenClient {
     }
   }
 
-  private readOutcome(body: Record<string, unknown> | undefined): PromptScreenOutcome {
+  private readOutcome(body: Record<string, unknown> | undefined, regions: readonly PromptScreenRegion[] = []): PromptScreenOutcome {
     const decision = body?.decision;
     if (decision !== 'allow' && decision !== 'block') {
       throw new PromptScreeningUnavailableError('Guardrail prompt screening answered without a decision.');
@@ -129,8 +130,25 @@ export class GuardrailPromptScreenClient {
         // FC-5 answers this way. Fail closed rather than register anything PASS.
         throw new PromptScreeningUnavailableError('Guardrail prompt screening returned a PII span without a region.');
       }
-      piiRegions.add(region);
+      // Owner decision 2026-10-06 ("Validate span values"): instruction text NAMES PII categories
+      // ("… phone number or email"), which the detector labels; only a span that carries an actual
+      // value (an address with @, digits in a phone / ID / date, a proper name) is a finding.
+      if (isPiiValue(spanLabel(raw), spanText(raw, regions.find((candidate) => candidate.key === region)?.text))) piiRegions.add(region);
     }
     return { decision, reasons, undetermined, piiRegions };
   }
+}
+
+function spanLabel(raw: unknown): string {
+  const label = (raw as { label?: unknown } | null)?.label;
+  return typeof label === 'string' ? label : '';
+}
+
+/** The span's text: sliced from its region by offsets when both are present, else its own `text`. */
+function spanText(raw: unknown, regionText: string | undefined): string {
+  const span = (raw ?? {}) as { start?: unknown; end?: unknown; text?: unknown };
+  if (regionText !== undefined && typeof span.start === 'number' && typeof span.end === 'number' && span.end > span.start) {
+    return regionText.slice(span.start, span.end);
+  }
+  return typeof span.text === 'string' ? span.text : '';
 }

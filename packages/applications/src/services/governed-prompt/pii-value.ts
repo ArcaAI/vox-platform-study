@@ -1,0 +1,46 @@
+/**
+ * TASK-1047 (owner decision 2026-10-06, "Validate span values") — does a PII span found in a prompt
+ * PIECE carry an actual value?
+ *
+ * Authoring-time screening runs GLiNER2 PII detection over instruction text, and instruction text
+ * legitimately NAMES PII categories ("replace any personal name, identifier, address, phone number or
+ * email with a placeholder"). The detector labels those words — `email` at 0.968 on the seeded
+ * note-finalisation instruction — which blocked the core note agent from ever being governed. A
+ * template that carries real patient data shows a VALUE: an address with `@`, digits in a phone /
+ * ID / date, a capitalised proper name. Only those count; a category word never does.
+ */
+
+/** Generic words a name-labelled span may be that are never a person's name. */
+const NOT_A_NAME = new Set([
+  'name', 'names', 'full', 'first', 'last', 'middle', 'surname', 'patient', 'patients', 'doctor', 'doctors',
+  'dr', 'clinician', 'clinicians', 'person', 'persons', 'people', 'user', 'users', 'the', 'a', 'an', 'mr', 'mrs',
+  'ms', 'miss', 'sir', 'madam', 'nurse', 'physician', 'consultant', 'family', 'relative', 'caregiver',
+  'speaker', 'name_placeholder',
+]); // prettier-ignore
+
+const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const BRACKET_PLACEHOLDER = /^\s*\[[A-Z_ ]+\]\s*$/;
+
+function digitCount(text: string): number {
+  return (text.match(/\d/g) ?? []).length;
+}
+
+function hasProperName(text: string): boolean {
+  return text
+    .split(/[\s,]+/)
+    .map((token) => token.replace(/[.'’]+$/g, ''))
+    .some((token) => /^[A-Z][a-z'’-]{1,}$/.test(token) && !NOT_A_NAME.has(token.toLowerCase()));
+}
+
+/** `true` when `text`, labelled `label` by the PII detector, looks like real personal data. */
+export function isPiiValue(label: string, text: string): boolean {
+  if (!text || BRACKET_PLACEHOLDER.test(text)) return false;
+  const kind = label.toLowerCase();
+  if (kind.includes('email')) return EMAIL.test(text);
+  if (/(phone|mobile|fax|telephone)/.test(kind)) return digitCount(text) >= 7;
+  if (/(date|birth|dob)/.test(kind)) return digitCount(text) >= 1;
+  if (/(address|street|postal|zip)/.test(kind)) return digitCount(text) >= 1;
+  if (/(name|person)/.test(kind)) return hasProperName(text);
+  if (/(id|number|account|card|iban|passport|licen|ssn|tax|mrn|record|routing)/.test(kind)) return digitCount(text) >= 4;
+  return digitCount(text) >= 1 || text.includes('@');
+}
