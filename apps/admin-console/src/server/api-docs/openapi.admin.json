@@ -2664,6 +2664,56 @@
         },
         "type": "object"
       },
+      "AsrSessionWarningResponse": {
+        "properties": {
+          "agentSlug": {
+            "description": "The agent whose configuration caused it — the primary, or the fallback that was skipped.",
+            "type": "string"
+          },
+          "agentVersionNumber": {
+            "description": "Version number of that agent, when known.",
+            "type": "number"
+          },
+          "code": {
+            "description": "What was switched off: DIARIZATION_MODEL_MISSING (diarization enabled, no speaker-embedding model resolves), DIARIZATION_BACKEND_UNSUPPORTED (a retired diarization backend), VAD_MODEL_MISSING (VAD enabled with no VAD model — audio is segmented on energy), FALLBACK_UNRUNNABLE (a configured fallback could not be built and was skipped).",
+            "enum": [
+              "DIARIZATION_MODEL_MISSING",
+              "DIARIZATION_BACKEND_UNSUPPORTED",
+              "VAD_MODEL_MISSING",
+              "FALLBACK_UNRUNNABLE"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "description": "A fixed, PHI-free sentence a UI may show verbatim.",
+            "type": "string"
+          },
+          "severity": {
+            "description": "Always 'WARNING' — a refusal is an HTTP error, never an entry here.",
+            "enum": [
+              "WARNING"
+            ],
+            "type": "string"
+          },
+          "stage": {
+            "description": "The optional stage the warning concerns.",
+            "enum": [
+              "diarization",
+              "vad",
+              "fallback"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "stage",
+          "severity",
+          "message",
+          "agentSlug"
+        ],
+        "type": "object"
+      },
       "AssignDepartmentPromptRequest": {
         "properties": {
           "departmentId": {
@@ -3128,6 +3178,13 @@
           "status": {
             "description": "Current job status",
             "type": "string"
+          },
+          "warnings": {
+            "description": "Optional speech-to-text stages switched OFF for this job instead of refusing it. Absent when there are none.",
+            "items": {
+              "$ref": "#/components/schemas/AsrSessionWarningResponse"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -25654,6 +25711,13 @@
           "voiceProfileSeeded": {
             "description": "Whether the speaker voice profile was preseeded",
             "type": "boolean"
+          },
+          "warnings": {
+            "description": "Optional speech-to-text stages switched OFF for this session instead of refusing it (the core transcription still runs). Absent when there are none.",
+            "items": {
+              "$ref": "#/components/schemas/AsrSessionWarningResponse"
+            },
+            "type": "array"
           },
           "wsUrl": {
             "description": "WebSocket URL for streaming",
@@ -70044,7 +70108,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TranscriptionJobResponse"
+                  "type": "object"
                 }
               }
             },
@@ -70103,7 +70167,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TranscriptionJobResponse"
+                  "type": "object"
                 }
               }
             },
@@ -70428,7 +70492,7 @@
     },
     "/api/v1/audio/transcription-jobs/stream/session": {
       "post": {
-        "description": "The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node of the consultation's governing workflow, else the department then tenant assignment. A governing workflow that names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 WORKFLOW_ASR_AGENT_UNAVAILABLE. TASK-1042: `workflowSlug` opens a session for a STANDALONE workflow run (bind it with input.<audio>.sttSessionId on POST /workflows/{slug}/runs); the agent then comes from that workflow's speech-to-text step.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
+        "description": "The speech-to-text agent is resolved in order: an explicit agentSlug on the request, else the speech-to-text node of the consultation's governing workflow, else the department then tenant assignment. A governing workflow that names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 WORKFLOW_ASR_AGENT_UNAVAILABLE. TASK-1042: `workflowSlug` opens a session for a STANDALONE workflow run (bind it with input.<audio>.sttSessionId on POST /workflows/{slug}/runs); the agent then comes from that workflow's speech-to-text step. TASK-1048: an OPTIONAL stage of the agent that cannot run (speaker diarization with no speaker-embedding model, voice-activity detection with no VAD model, a fallback that cannot be built) is switched off for the session and reported in `warnings` — it never refuses the session.\n\n**Credentials** — user JWT accepted; API key **accepted**; service-account token accepted (scopes: `svc:stt:transcription:write`).\n\n**API key scopes** — `stt:transcription:write`.\n\nScopes bind the credential, abilities bind the user it acts for; they compose as AND.",
         "operationId": "TranscriptionJobController_createStreamSession",
         "parameters": [],
         "requestBody": {
@@ -70731,7 +70795,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TranscriptionJobResponse"
+                  "type": "object"
                 }
               }
             },
@@ -83518,6 +83582,10 @@
     {
       "description": "Service-to-service record of the composed messages a harness text call was sent. Excluded from the public reference; reachable only with an internal service token.",
       "name": "internal-composed-prompts"
+    },
+    {
+      "description": "Service-to-service verification of governed prompt pieces for a harness text call. Excluded from the public reference; reachable only with an internal service token.",
+      "name": "internal-governed-prompts"
     },
     {
       "description": "Liveness, readiness, and dependency health probes.",
