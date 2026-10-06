@@ -86,6 +86,9 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.inference.threadsPerInference': 0,
   'nlp.worker.recycleAfterRequests': 2000,
   'nlp.worker.recycleRssMib': 6144,
+  // TASK-1047 F1 — per-batch character budget: a micro-batch closes before its summed text length
+  // would exceed it, so transient memory is bounded by the budget, not by the batch COUNT.
+  'nlp.inference.maxBatchChars': 8192,
 
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
@@ -319,6 +322,13 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       'Hard input bound on every guard route and `/classify/tokens`: text longer than this is refused with ' +
       '413 `INPUT_EXCEEDS_WINDOW` (callers window the text; nothing is silently truncated). Guardrail’s ' +
       '`screenWindowChars + screenWindowOverlapChars` must stay at or below it. Bounds peak memory per request.',
+  },
+  'nlp.inference.maxBatchChars': {
+    label: 'NLP micro-batch character budget',
+    description:
+      'A micro-batch of guard inferences closes before the summed length of its texts would exceed this budget (an ' +
+      'item longer than the budget runs alone). Transient memory then scales with the budget, not with the batch ' +
+      'count — 8 padded 4,000-char windows in one pass drove NLP to 7 GiB in the TASK-1047 validation.',
   },
   'nlp.inference.maxInputWords': {
     label: 'NLP max input length (words, gliner2 max_len)',

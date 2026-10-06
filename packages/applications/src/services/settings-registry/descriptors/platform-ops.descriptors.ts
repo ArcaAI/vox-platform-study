@@ -24,6 +24,52 @@
 import { SettingDescriptor } from '../registry.types';
 
 export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
+  // ── TASK-1047 governed-prompt registry ───────────────────────────────────
+  {
+    key: 'governedPrompt.screenTimeoutMs',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Governed-prompt screening timeout (ms)',
+    description:
+      'Upper bound on one authoring-time guardrail screen of a prompt piece (approve, publish, promote-to-system, backfill). A timeout is UNAVAILABLE: the piece is not registered (fail closed) and its calls keep the full per-call screening path.',
+    default: 120000,
+  },
+  {
+    key: 'governedPrompt.backfillRetryMinMs',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Governed-prompt backfill retry, first delay (ms)',
+    description:
+      'After a registry backfill pass leaves sources UNAVAILABLE (guardrail or NLP briefly down), the next pass for just those sources runs after this delay, doubling per retry up to governedPrompt.backfillRetryMaxMs. A FAIL verdict is never retried automatically.',
+    default: 30000,
+  },
+  {
+    key: 'governedPrompt.backfillRetryMaxMs',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Governed-prompt backfill retry, maximum delay (ms)',
+    description: 'Cap of the exponential backoff between registry backfill retry passes (clamped up to the first delay).',
+    default: 900000,
+  },
+
   // ── Rate limiting ────────────────────────────────────────────────────────
   {
     key: 'rate-limit.enabled',
