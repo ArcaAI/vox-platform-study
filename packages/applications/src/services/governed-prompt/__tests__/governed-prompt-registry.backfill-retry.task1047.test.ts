@@ -26,7 +26,8 @@ function makeHarness(settings: Record<string, number> = {}) {
     fetchPolicyVersion: vi.fn(async () => 'pv-1' as string | null),
   };
   const cls = { get: vi.fn(), run: vi.fn(async (work: () => unknown) => work()) };
-  const appSettings = { getValueWithDefault: vi.fn((key: string, fallback: number) => settings[key] ?? fallback) };
+  const effective: Record<string, number> = { 'governedPrompt.backfillInitialDelayMs': 0, ...settings };
+  const appSettings = { getValueWithDefault: vi.fn((key: string, fallback: number) => effective[key] ?? fallback) };
   const service = new GovernedPromptRegistryService(
     repository as never,
     client as never,
@@ -47,6 +48,26 @@ describe('backfill retry (FC-3)', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('the boot pass waits governedPrompt.backfillInitialDelayMs (NLP warm-up) before screening anything', async () => {
+    const { service, client, repository } = makeHarness({ 'governedPrompt.backfillInitialDelayMs': 5000 });
+    service.onApplicationBootstrap();
+    await service.drainBackground();
+    expect(repository.findApprovedVersionSources).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(client.screenRegions).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await service.drainBackground();
+    expect(client.screenRegions).toHaveBeenCalledTimes(1);
+  });
+
+  it('a module destroyed during the initial delay never starts the pass', async () => {
+    const { service, repository } = makeHarness({ 'governedPrompt.backfillInitialDelayMs': 5000 });
+    service.onApplicationBootstrap();
+    service.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(repository.findApprovedVersionSources).not.toHaveBeenCalled();
   });
 
   it('retries UNAVAILABLE sources with doubling backoff capped at the max, then stops once clean', async () => {

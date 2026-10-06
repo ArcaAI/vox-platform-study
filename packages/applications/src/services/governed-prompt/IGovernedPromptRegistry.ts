@@ -25,7 +25,13 @@ export interface GovernedPieceInput {
 
 /** One authoring-time finding (codes only — never the screened text). */
 export interface GovernedPieceFinding {
-  readonly code: 'PROMPT_SCREENING_UNSAFE' | 'PROMPT_SCREENING_INJECTION' | 'PROMPT_CONTAINS_PII' | 'PROMPT_SCREENING_UNAVAILABLE';
+  readonly code:
+    | 'PROMPT_SCREENING_UNSAFE'
+    | 'PROMPT_SCREENING_INJECTION'
+    | 'PROMPT_CONTAINS_PII'
+    | 'PROMPT_SCREENING_UNAVAILABLE'
+    | 'PROMPT_SAFETY_ADVISORY'
+    | 'PROMPT_QUASI_IDENTIFIER_ADVISORY';
   readonly pieceKind: GovernedPieceKind;
   readonly pieceKey: string | null;
   readonly digest: string;
@@ -63,4 +69,21 @@ export interface IGovernedPromptRegistry {
    * registered under it too. (`tenantId` added additively by L3 after L5.)
    */
   registerPlatformPieces(pieces: readonly GovernedPieceInput[], tenantId?: string): Promise<void>;
+}
+
+/**
+ * TASK-1047 (owner decision 2026-10-06, "Scope it"): an authoring-time finding BLOCKS only for
+ * injection/jailbreak, direct-identifier PII values and an unavailable screen. Safety/toxicity
+ * categories and quasi-identifiers (dates, ages, places) with no direct identifier are ADVISORY:
+ * reported to the author, the piece still registered — clinical instruction language trips the
+ * toxicity/safety models (e.g. a same-day-return fragment flagged `prompt_toxicity`) and a format
+ * example such as "12-Mar-2026" is not personal data on its own.
+ */
+export const ADVISORY_PROMPT_FINDINGS: ReadonlySet<GovernedPieceFinding['code']> = new Set([
+  'PROMPT_SAFETY_ADVISORY',
+  'PROMPT_QUASI_IDENTIFIER_ADVISORY',
+]);
+
+export function isBlockingPromptFinding(finding: Pick<GovernedPieceFinding, 'code'>): boolean {
+  return !ADVISORY_PROMPT_FINDINGS.has(finding.code);
 }

@@ -65,6 +65,8 @@ export type AgentFindingCode =
   | 'PROMPT_SCREENING_INJECTION'
   | 'PROMPT_SCREENING_UNSAFE'
   | 'PROMPT_CONTAINS_PII'
+  | 'PROMPT_SAFETY_ADVISORY'
+  | 'PROMPT_QUASI_IDENTIFIER_ADVISORY'
   | 'PROMPT_SCREENING_UNAVAILABLE'
   // TASK-1048 (OD-3) — speech-to-text prerequisites, all WARNING (advisory, never blocking): the
   // stage is switched off at session time and transcription still runs.

@@ -41,6 +41,21 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     default: 120000,
   },
   {
+    key: 'governedPrompt.backfillInitialDelayMs',
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Governed-prompt backfill, boot delay (ms)',
+    description:
+      'How long the gateway waits after boot before screening un-governed published prompts, so NLP finishes loading its models first. 0 starts at once. A source left UNAVAILABLE is retried per governedPrompt.backfillRetryMinMs.',
+    default: 60000,
+  },
+  {
     key: 'governedPrompt.backfillRetryMinMs',
     tier: 'global-kv',
     dataType: 'number',

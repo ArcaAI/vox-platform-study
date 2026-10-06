@@ -35,6 +35,7 @@ import type {
   GovernedScreeningResult,
   IGovernedPromptRegistry,
 } from './IGovernedPromptRegistry';
+import { isBlockingPromptFinding } from './IGovernedPromptRegistry';
 
 /** FC-3 — how long the guardrail policy version is trusted before it is re-read. */
 const POLICY_VERSION_TTL_MS = 60_000;
@@ -46,10 +47,13 @@ const VERDICT_CACHE_MAX = 10_000;
 /** Region keys are a digest prefix: unique per distinct text in practice, and never text. */
 const REGION_KEY_CHARS = 16;
 /** The boot backfill's bounded concurrency (sources in flight at once). */
-const BACKFILL_CONCURRENCY = 2;
+/** One source at a time: a boot backfill must not saturate NLP (TASK-1047 validation: 2 parallel sources tripped guardrail's breaker). */
+const BACKFILL_CONCURRENCY = 1;
 /** Backfill retry backoff (code defaults; `governedPrompt.backfillRetry{Min,Max}Ms` override them). */
 const DEFAULT_BACKFILL_RETRY_MIN_MS = 30_000;
 const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
+/** The boot pass waits this long (`governedPrompt.backfillInitialDelayMs`) so NLP loads its models first. */
+const DEFAULT_BACKFILL_INITIAL_DELAY_MS = 60_000;
 /** The check guardrail names an injection/jailbreak verdict by (`INBOUND_TASKS`). */
 const INJECTION_CHECK = 'jailbreak_detection';
 
@@ -209,7 +213,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
       findings.push(...pieceFindings);
       await this.register(tenantId, one, policyVersion, pieceFindings);
     }
-    return { passed: findings.length === 0, policyVersion, digests, findings };
+    return { passed: !findings.some(isBlockingPromptFinding), policyVersion, digests, findings };
   }
 
   async registerPlatformPieces(pieces: readonly GovernedPieceInput[], tenantId: string = SYSTEM_TENANT_ID): Promise<void> {
@@ -296,9 +300,25 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   // Boot backfill (§5.5)
   // ============================================================
 
-  /** Never blocks boot: the backfill runs in the background and logs its outcome. */
+  /**
+   * Never blocks boot: the backfill runs in the background and logs its outcome. It starts after
+   * `governedPrompt.backfillInitialDelayMs` (0 = at once) so a cold NLP model load does not trip
+   * guardrail's breaker and leave every source UNAVAILABLE (TASK-1047 validation).
+   */
   onApplicationBootstrap(): void {
-    this.startPass();
+    const configured =
+      this.appSettings?.getValueWithDefault<number>('governedPrompt.backfillInitialDelayMs', DEFAULT_BACKFILL_INITIAL_DELAY_MS) ??
+      DEFAULT_BACKFILL_INITIAL_DELAY_MS;
+    const delayMs = Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_BACKFILL_INITIAL_DELAY_MS;
+    if (delayMs === 0) {
+      this.startPass();
+      return;
+    }
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.startPass();
+    }, delayMs);
+    this.retryTimer.unref?.();
   }
 
   onModuleDestroy(): void {
@@ -520,20 +540,27 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     if (outcome.decision === 'block') {
       if (outcome.reasons.includes(INJECTION_CHECK)) codes.push({ code: 'PROMPT_SCREENING_INJECTION', checks: [INJECTION_CHECK] });
       const unsafe = outcome.reasons.filter((reason) => reason !== INJECTION_CHECK);
-      // A block that names no check is still a block — reported as unsafe, never dropped.
-      if (unsafe.length > 0 || outcome.reasons.length === 0) codes.push({ code: 'PROMPT_SCREENING_UNSAFE', checks: unsafe });
+      // A block that names no check is still a block — reported as unsafe (blocking), never dropped.
+      if (outcome.reasons.length === 0) codes.push({ code: 'PROMPT_SCREENING_UNSAFE', checks: [] });
+      // Safety / toxicity categories are ADVISORY on authored text (owner decision 2026-10-06).
+      else if (unsafe.length > 0) codes.push({ code: 'PROMPT_SAFETY_ADVISORY', checks: unsafe });
     }
     if (outcome.piiRegions.has(regionKey)) codes.push({ code: 'PROMPT_CONTAINS_PII', checks: [] });
+    else if (outcome.quasiRegions?.has(regionKey)) codes.push({ code: 'PROMPT_QUASI_IDENTIFIER_ADVISORY', checks: [] });
     return codes;
   }
 
   private finding(one: DistinctPiece, entry: PieceCode): GovernedPieceFinding {
     const reason =
-      entry.code === 'PROMPT_CONTAINS_PII'
-        ? 'personal data detected in the prompt text'
-        : entry.code === 'PROMPT_SCREENING_INJECTION'
-          ? `injection/jailbreak detected (${INJECTION_CHECK})`
-          : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
+      entry.code === 'PROMPT_QUASI_IDENTIFIER_ADVISORY'
+        ? 'a date, age or place appears in the prompt text (advisory: not identifying on its own)'
+        : entry.code === 'PROMPT_SAFETY_ADVISORY'
+          ? `safety classifier flagged the text (${entry.checks.join(', ')}) — advisory: clinical language often trips it`
+          : entry.code === 'PROMPT_CONTAINS_PII'
+            ? 'personal data detected in the prompt text'
+            : entry.code === 'PROMPT_SCREENING_INJECTION'
+              ? `injection/jailbreak detected (${INJECTION_CHECK})`
+              : `unsafe content detected (${entry.checks.join(', ') || 'blocked'})`;
     return { code: entry.code, pieceKind: one.piece.kind, pieceKey: one.piece.sourceKey, digest: one.digest, reason };
   }
 
@@ -542,7 +569,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   }
 
   private async register(tenantId: string, one: DistinctPiece, policyVersion: string, findings: readonly GovernedPieceFinding[]): Promise<void> {
-    const verdict = findings.length === 0 ? GovernedPromptVerdict.PASS : GovernedPromptVerdict.FAIL;
+    const verdict = findings.some(isBlockingPromptFinding) ? GovernedPromptVerdict.FAIL : GovernedPromptVerdict.PASS;
     const saved = await this.repository.upsertVerdict({
       tenantId,
       digest: one.digest,

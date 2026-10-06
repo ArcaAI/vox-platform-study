@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
-import { isPiiValue } from './pii-value';
+import { isPiiValue, piiIdentifierClass } from './pii-value';
 
 /**
  * Fallback before the settings cache is warm. Authoring time is off the latency path and a long
@@ -35,6 +35,8 @@ export interface PromptScreenOutcome {
   readonly undetermined: boolean;
   /** The region keys guardrail found a PII span in. */
   readonly piiRegions: ReadonlySet<string>;
+  /** Regions with only QUASI-identifier PII values (advisory unless a direct identifier is also present). */
+  readonly quasiRegions: ReadonlySet<string>;
 }
 
 export class PromptScreeningUnavailableError extends Error {
@@ -123,6 +125,7 @@ export class GuardrailPromptScreenClient {
     const checks = Array.isArray(body?.checks) ? body.checks : [];
     const undetermined = checks.some((check) => (check as { outcome?: unknown } | null)?.outcome === 'undetermined');
     const piiRegions = new Set<string>();
+    const quasiRegions = new Set<string>();
     for (const raw of Array.isArray(body?.pii_spans) ? body.pii_spans : []) {
       const region = (raw as { region?: unknown } | null)?.region;
       if (typeof region !== 'string') {
@@ -133,9 +136,13 @@ export class GuardrailPromptScreenClient {
       // Owner decision 2026-10-06 ("Validate span values"): instruction text NAMES PII categories
       // ("… phone number or email"), which the detector labels; only a span that carries an actual
       // value (an address with @, digits in a phone / ID / date, a proper name) is a finding.
-      if (isPiiValue(spanLabel(raw), spanText(raw, regions.find((candidate) => candidate.key === region)?.text))) piiRegions.add(region);
+      const label = spanLabel(raw);
+      if (!isPiiValue(label, spanText(raw, regions.find((candidate) => candidate.key === region)?.text))) continue;
+      if (piiIdentifierClass(label) === 'direct') piiRegions.add(region);
+      else quasiRegions.add(region);
     }
-    return { decision, reasons, undetermined, piiRegions };
+    for (const region of piiRegions) quasiRegions.delete(region);
+    return { decision, reasons, undetermined, piiRegions, quasiRegions };
   }
 }
 

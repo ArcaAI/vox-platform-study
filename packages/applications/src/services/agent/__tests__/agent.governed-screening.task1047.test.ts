@@ -170,6 +170,26 @@ describe('agent publish — authoring-time screening (OD-4)', () => {
     expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
   });
 
+  it.each(['PROMPT_SAFETY_ADVISORY', 'PROMPT_QUASI_IDENTIFIER_ADVISORY'])(
+    'an advisory %s publishes as a WARNING and still stamps governance (owner "Scope it")',
+    async (code) => {
+      const text = 'Write a SOAP note.';
+      registry.screenAndRegister.mockResolvedValue({
+        passed: true,
+        policyVersion: 'pv-1',
+        digests: [sha(text)],
+        findings: [{ code, pieceKind: 'TEMPLATE_BODY', pieceKey: 'body', digest: sha(text), reason: 'r' }],
+      });
+      mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ systemPrompt: text }));
+      const published = await makeService().publish('agent-1', { activate: false });
+      expect(published.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+      const report = published.validationReport as unknown as { blocking: boolean; findings: Array<{ code: string; severity: string }> };
+      expect(report.blocking).toBe(false);
+      expect(report.findings).toContainEqual(expect.objectContaining({ code, severity: 'WARNING' }));
+      expect((published.compiledConfig as unknown as { governance?: unknown }).governance).toEqual({ policyVersion: 'pv-1', pieceDigests: [sha(text)] });
+    },
+  );
+
   it('the draft test bench does not screen (it is not a publish)', async () => {
     mockAgentRepository.findByIdVisible.mockResolvedValue(agent({ systemPrompt: 'x' }));
     const service = makeService();

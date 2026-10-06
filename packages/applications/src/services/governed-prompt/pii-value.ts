@@ -44,3 +44,19 @@ export function isPiiValue(label: string, text: string): boolean {
   if (/(id|number|account|card|iban|passport|licen|ssn|tax|mrn|record|routing)/.test(kind)) return digitCount(text) >= 4;
   return digitCount(text) >= 1 || text.includes('@');
 }
+
+/**
+ * Direct identifiers point at one person on their own (name, contact, identifier, street address);
+ * quasi-identifiers (dates, ages, places, facilities, anything unknown) do not — under HIPAA Safe
+ * Harbor a date only identifies alongside the individual it belongs to.
+ */
+export function piiIdentifierClass(label: string): 'direct' | 'quasi' {
+  const kind = label.toLowerCase();
+  if (/(date|birth|dob|age|city|state|country|region|location|facility|gender|nationality|religion)/.test(kind)) return 'quasi';
+  if (
+    /(email|phone|mobile|fax|telephone|name|person|address|street|id|number|account|card|iban|passport|licen|ssn|tax|mrn|record|routing)/.test(kind)
+  ) {
+    return 'direct';
+  }
+  return 'quasi';
+}

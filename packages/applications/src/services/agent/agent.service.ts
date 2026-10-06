@@ -155,7 +155,7 @@ import {
 } from './dto';
 import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
-import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
+import { IGovernedPromptRegistry, isBlockingPromptFinding } from '../governed-prompt/IGovernedPromptRegistry';
 import type { GovernedPieceFinding, IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
 import { piecesFromResolvedPrompt } from '../governed-prompt/governed-pieces';
 
@@ -2141,7 +2141,11 @@ export class AgentService extends BaseService implements IAgentService {
           }
         }
       } catch (error) {
-        this.logger.warn({ message: 'ASR diarization prerequisite check skipped', agentId: entity.id, error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          message: 'ASR diarization prerequisite check skipped',
+          agentId: entity.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -2159,7 +2163,11 @@ export class AgentService extends BaseService implements IAgentService {
           });
         }
       } catch (error) {
-        this.logger.warn({ message: 'ASR VAD prerequisite check skipped', agentId: entity.id, error: error instanceof Error ? error.message : String(error) });
+        this.logger.warn({
+          message: 'ASR VAD prerequisite check skipped',
+          agentId: entity.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return findings;
@@ -2196,8 +2204,10 @@ export class AgentService extends BaseService implements IAgentService {
     const message =
       finding.code === 'PROMPT_SCREENING_UNAVAILABLE'
         ? `${subject} could not be screened (${finding.reason}); publishing waits until guardrail screening is available.`
-        : `${subject} was refused by guardrail screening: ${finding.reason}.`;
-    return { severity: 'ERROR', code: finding.code, path, message };
+        : isBlockingPromptFinding(finding)
+          ? `${subject} was refused by guardrail screening: ${finding.reason}.`
+          : `${subject} — guardrail screening note: ${finding.reason}.`;
+    return { severity: isBlockingPromptFinding(finding) ? 'ERROR' : 'WARNING', code: finding.code, path, message };
   }
 
   /**
