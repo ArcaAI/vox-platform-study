@@ -36,6 +36,14 @@ describe('isPiiValue', () => {
     expect(isPiiValue(label, text)).toBe(true);
   });
 
+  it.each([
+    ['full_name', 'Shelcal 500 mg'],
+    ['full_name', 'Metformin 500 mg'],
+    ['person', 'Ecosprin 75 mg'],
+  ])('a name-labelled span with a digit is not a name (drug + dose in an example note): %s %j', (label, text) => {
+    expect(isPiiValue(label, text)).toBe(false);
+  });
+
   it('an unknown label counts only with a digit or an @', () => {
     expect(isPiiValue('custom_thing', 'something')).toBe(false);
     expect(isPiiValue('custom_thing', 'A-1234')).toBe(true);

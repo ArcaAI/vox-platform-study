@@ -25,7 +25,12 @@ function digitCount(text: string): number {
   return (text.match(/\d/g) ?? []).length;
 }
 
+/**
+ * A person's name never contains a digit; GLiNER2 labels drug + dose in example notes
+ * ("Shelcal 500 mg") as `full_name` (TASK-1047 live validation: 31 of 31 template hits).
+ */
 function hasProperName(text: string): boolean {
+  if (digitCount(text) > 0) return false;
   return text
     .split(/[\s,]+/)
     .map((token) => token.replace(/[.'’]+$/g, ''))

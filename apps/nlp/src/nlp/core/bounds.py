@@ -57,7 +57,7 @@ class InferenceBounds:
     max_batch_chars: int = 8192  # per-forward-pass sum of item chars
     threads_per_inference: int = 0  # 0 = derive from CPU budget / concurrency
     recycle_after_requests: int = 2000
-    recycle_rss_mib: int = 6144
+    recycle_rss_mib: int = 12288
 
 
 _lock = threading.Lock()

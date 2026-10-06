@@ -40,7 +40,7 @@ def test_default_bounds_are_the_frozen_fc8_values():
 
     b = bounds.get_bounds()
     assert (b.max_input_chars, b.max_input_words) == (8192, 2048)
-    assert (b.recycle_after_requests, b.recycle_rss_mib) == (2000, 6144)
+    assert (b.recycle_after_requests, b.recycle_rss_mib) == (2000, 12288)
     assert b.threads_per_inference == 0
 
 

@@ -85,7 +85,9 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.inference.maxInputWords': 2048,
   'nlp.inference.threadsPerInference': 0,
   'nlp.worker.recycleAfterRequests': 2000,
-  'nlp.worker.recycleRssMib': 6144,
+  // TASK-1047 live validation: the warm working set (all screening models loaded) peaks at 5.4–5.7 GiB,
+  // so the recycle ceiling sits ~2x above it — a leak backstop, never a per-request event.
+  'nlp.worker.recycleRssMib': 12288,
   // TASK-1047 F1 — per-batch character budget: a micro-batch closes before its summed text length
   // would exceed it, so transient memory is bounded by the budget, not by the batch COUNT.
   'nlp.inference.maxBatchChars': 8192,

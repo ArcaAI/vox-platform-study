@@ -13,7 +13,7 @@ const FC8 = {
   'nlp.inference.maxInputWords': 2048,
   'nlp.inference.threadsPerInference': 0,
   'nlp.worker.recycleAfterRequests': 2000,
-  'nlp.worker.recycleRssMib': 6144,
+  'nlp.worker.recycleRssMib': 12288,
 } as const;
 
 describe('FC-8 NLP bound settings', () => {
