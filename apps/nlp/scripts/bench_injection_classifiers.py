@@ -319,7 +319,7 @@ def cmd_latency(a: argparse.Namespace) -> int:
         scorer.score([w], batch_size=1)
         lat.append((time.perf_counter() - t) * 1000)
     t = time.perf_counter()
-    scorer.score(full, batch_size=8)
+    scorer.score(full, batch_size=a.batch_size)
     batch_s = time.perf_counter() - t
     steady_rss = _current_rss_mib()
     lat.sort()
@@ -331,7 +331,8 @@ def cmd_latency(a: argparse.Namespace) -> int:
         "p50_ms": round(statistics.median(lat), 1),
         "p95_ms": round(lat[int(0.95 * (len(lat) - 1))], 1),
         "max_ms": round(lat[-1], 1),
-        "batch8_windows_per_s": round(len(full) / batch_s, 2),
+        "batch_size": a.batch_size,
+        "batch_windows_per_s": round(len(full) / batch_s, 2),
         "rss_baseline_mib": round(base_rss, 1),
         "rss_loaded_mib": round(loaded_rss, 1),
         "rss_steady_mib": round(steady_rss, 1),
@@ -366,6 +367,9 @@ def cmd_latency_all(a: argparse.Namespace) -> int:
                 str(threads),
                 "--n",
                 str(a.n),
+                "--batch-size",
+                # GLiGuard's gliner2 runtime exceeds the RSS ceiling at batch 8 (§8.3)
+                "2" if name.startswith("gliguard") else "8",
                 "--out",
                 str(target),
             ]
@@ -539,6 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--model", required=True)
     lt.add_argument("--threads", type=int, default=4)
     lt.add_argument("--n", type=int, default=200)
+    lt.add_argument("--batch-size", type=int, default=8)
     lt.add_argument("--out", required=True)
     lt.add_argument("--max-rss-mib", type=float, default=4608)
     lt.add_argument("--min-free-pct", type=int, default=35)
