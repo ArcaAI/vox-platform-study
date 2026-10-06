@@ -712,6 +712,35 @@ Observation: the medical judge also rejects bare imperative caller text ("Write 
 consultation." → `administrative`). The composer's own calls passed the judge in V6, so this affects only
 hand-written direct callers; recorded, no change.
 
+### 8.8 V6 rerun, OD-14 (FC-5c), V4 load
+
+**V6 after FC-5b + the fixture fix:** 10 / 14 cases produced notes — critical-fact recall 0.718, dose accuracy
+0.688, unsupported-claim rate 1.5 %, reduced-encounter recall 0.50, stop→note p95 61.5 s (local Gemma 4 E2B).
+Inbound: all 18 calls allowed, 17 with recorded data findings. The 4 case errors were the OUTBOUND gate:
+`jailbreak_detection` flagged the generated notes on 5 of 18 calls (one with `pii_leak`); response
+safety/toxicity/refusal never fired. No TASK-1045 baseline exists (the set had never run live), so S8 is recorded
+as this first baseline rather than a comparison.
+
+**OD-14 / FC-5c** (lane outrec, merged `fd2ef5b26`): guardrail policy key `outboundRecordOnlyChecks` (default
+`["jailbreak_detection"]`, hashed into the policy version, unknown names ignored with a warning); a record-only
+outbound flag is reported as `data_findings: [{region: "response", …}]`, counted and logged; undetermined still
+blocks; apps/text records outbound findings like inbound. `pii_leak`/`containment_echo` can never be record-only.
+
+**V4 — `screening_load.py` on this workstation (12 performance + 4 efficiency cores, 48 GB, NLP on CPU):**
+
+| Consultations | Requests | OK | Shed (503) | p50 | p95 | NLP peak RSS |
+|---|---|---|---|---|---|---|
+| 10 (240 s) | 120 | 85 | 29.2 % | 1.1 s | 2.4 s | 3.5 GiB |
+| 25 (240 s) | 252 | 189 | 22.2 % | 6.7 s | 29.2 s | 4.1 GiB |
+| 100 (120 s smoke) | 534 | 4 | 99.1 % | 18.4 s | 28.7 s | 3.2 GiB |
+
+Memory is bounded under any load (S2 ceiling holds; the 36.8 GiB failure is gone). Throughput is not: CPU
+GLiNER2 inference saturates below 10 cold consultations here; sheds are guardrail's fail-closed 503 at the 30 s NLP
+deadline, which would refuse LLM calls in production. Short runs are cold-cache by construction (every
+consultation starts new), so steady state is better than these numbers, but 100 concurrent consultations on day 1
+need NLP capacity sized on the cluster (more CPU replicas and/or the GPU follow-up) — to be measured there. The 2 h
+soak was not run on this box.
+
 ## 9. Change History
 
 | Date | Change |
