@@ -100,13 +100,15 @@ def test_build_aci_records_dedupes_across_files(tmp_path):
     bps.validate_record(recs[0])
 
 
-def test_golden_set_is_exactly_75_windows():
+def test_golden_set_is_the_118_production_rendered_windows():
     recs = bps.build_golden_records()
     bps.assert_unique_ids(recs)
     for r in recs:
         bps.validate_record(r)
         assert r["set"] == "a" and r["split"] == "test" and r["label"] == 0
-    assert sum(len(list(iter_windows(r["text"], 2000, 256))) for r in recs) == 75
+    # one record per DATA region, rendered as the note composer renders it
+    assert all(r["text"].startswith("--- ") for r in recs)
+    assert sum(len(list(iter_windows(r["text"], 2000, 256))) for r in recs) == 118
 
 
 def test_detect_lang_heuristic():

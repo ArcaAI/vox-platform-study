@@ -135,3 +135,23 @@ def test_report_end_to_end_on_fake_scores(tmp_path: Path) -> None:
     assert op["recall_c2"]["caught"] == 60
     assert op["fp_gate"]["total"] == 280 + 75
     assert m["verdict"]["pending"] == ["p95_ms", "added_rss_mib"]
+
+
+def test_window_fp_by_length_bucket() -> None:
+    from injection_eval.analysis import window_fp_by_length
+
+    recs = [
+        {
+            "id": "1",
+            "set": "a",
+            "split": "test",
+            "label": 0,
+            "meta": {},
+            "scores": [0.9, 0.1, 0.9],
+            "lengths": [120, 2000, 900],
+        },
+    ]
+    by = window_fp_by_length(recs, threshold=0.5, sets={"a"}, split="test")
+    assert (by["<500"].flagged, by["<500"].total) == (1, 1)
+    assert (by["500-1499"].flagged, by["500-1499"].total) == (1, 1)
+    assert (by[">=1500"].flagged, by[">=1500"].total) == (0, 1)

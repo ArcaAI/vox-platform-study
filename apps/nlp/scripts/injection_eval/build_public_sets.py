@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from injection_eval.core import iter_windows, render_golden_case  # noqa: E402
+from injection_eval.core import iter_windows, render_production_regions  # noqa: E402
 
 SEED = 1049
 WINDOW_SIZE = 2000
@@ -219,19 +219,25 @@ def sample(items: Sequence, n: int, rng: random.Random) -> list:
 
 
 def build_golden_records() -> list[dict]:
+    """One record per production DATA region of each golden case (TASK-1049 §8).
+
+    `render_production_regions` mirrors the note composer; the earlier one-region
+    ``Speaker: text`` rendering hid GLiGuard's short-window false positives.
+    """
     data = json.loads(GOLDEN_FIXTURE.read_text(encoding="utf-8"))
     records = []
     for i, case in enumerate(data["cases"]):
         cid = str(case.get("caseId") or case.get("id") or f"case{i:03d}")
-        records.append(
-            make_record(
-                f"a:golden:{cid}",
-                "a",
-                0,
-                render_golden_case(case),
-                {"source": "multi_encounter_v1", "case": cid},
+        for key, text in render_production_regions(case):
+            records.append(
+                make_record(
+                    f"a:golden:{cid}:{key}",
+                    "a",
+                    0,
+                    text,
+                    {"source": "multi_encounter_v1", "case": cid, "region": key},
+                )
             )
-        )
     return records
 
 
@@ -461,8 +467,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         path = args.out / f"{name}.jsonl"
         write_jsonl(path, records)
         manifest["sets"][name] = manifest_entry(path, records, sources=SOURCES[name])
-    if manifest["sets"]["a"]["windows"] != 75:
-        raise SystemExit(f"golden set must be 75 windows, got {manifest['sets']['a']['windows']}")
+    if manifest["sets"]["a"]["windows"] != 118:
+        raise SystemExit(f"golden set must be 118 windows, got {manifest['sets']['a']['windows']}")
     (args.out / "public_sets_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

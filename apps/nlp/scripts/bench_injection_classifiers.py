@@ -35,6 +35,7 @@ from injection_eval.analysis import (  # noqa: E402
     decide,
     record_recall,
     window_fp,
+    window_fp_by_length,
 )
 from injection_eval.core import iter_windows, select_threshold  # noqa: E402
 
@@ -99,6 +100,7 @@ def cmd_score(a: argparse.Namespace) -> int:
                 row = {k: r[k] for k in ("id", "set", "split", "label", "meta")}
                 row["scores"] = [round(s.score, 6) for s in scored[lo:hi]]
                 row["segments"] = [s.n_segments for s in scored[lo:hi]]
+                row["lengths"] = [len(w) for w in windows[lo:hi]]
                 fh.write(json.dumps(row) + "\n")
         tmp.replace(target)
         meta = {
@@ -222,10 +224,16 @@ def _at_threshold(rows: list[dict], t: float) -> dict:
     carriers = record_recall(rows, threshold=t, sets={"c2"}, split="test", by="carrier")
     classes = record_recall(rows, threshold=t, sets={"c2"}, split="test", by="class")
     worst = min((r.rate for r in carriers.values()), default=0.0)
+    by_len = (
+        window_fp_by_length(rows, threshold=t, sets=BENIGN_GATE_SETS, split="test")
+        if all("lengths" in r for r in rows)
+        else {}
+    )
     return {
         "threshold": t,
         "fp_by_set": {k: _rate(v) for k, v in fp.items()},
         "fp_gate": _rate(gate_fp),
+        "fp_gate_by_length": {k: _rate(v) for k, v in by_len.items()},
         "fp_notinject": _rate(b3),
         "fp_public_benign_prompts": _rate(c1_benign),
         "recall_c2": _recall(c2),

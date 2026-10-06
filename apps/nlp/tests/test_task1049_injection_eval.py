@@ -157,3 +157,35 @@ def test_golden_rendering_yields_the_75_calibration_windows() -> None:
     cases = json.loads(fixture.read_text())["cases"]
     windows = [w for c in cases for w in iter_windows(render_golden_case(c), 2000, 256)]
     assert len(cases) == 14 and len(windows) == 75
+
+
+# 8. production region rendering (note-input-composer + labelled-transcript.renderer)
+def test_production_regions_match_the_composer_rendering() -> None:
+    from injection_eval.core import render_production_regions
+
+    case = {
+        "transcript": {
+            "preSummary": None,
+            "results": [{"text": "Troponin 12 ng/L\n(normal)."}],
+            "attachmentTranscripts": [],
+            "encounters": [
+                {
+                    "seq": 1,
+                    "visitType": "new-visit",
+                    "segments": [
+                        {"seq": 2, "speaker": "patient", "t0Ms": 9000, "text": "Tight chest."},
+                        {"seq": 1, "speaker": "Doctor", "t0Ms": 64999, "text": "Hi  \n there"},
+                        {"seq": 3, "speaker": "", "t0Ms": None, "text": "x"},
+                    ],
+                }
+            ],
+        }
+    }
+    regions = dict(render_production_regions(case))
+    assert regions["encounter_1"] == (
+        "--- Encounter 1 transcript (new-visit) ---\n"
+        "[S1 E1 Doctor 01:04] Hi there\n"
+        "[S2 E1 Patient 00:09] Tight chest.\n"
+        "[S3 E1 Unknown 00:00] x"
+    )
+    assert regions["results"] == "--- Results ---\n[R1] Troponin 12 ng/L (normal)."

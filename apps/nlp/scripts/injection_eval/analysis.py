@@ -150,3 +150,28 @@ def decide(
         elif value > limit:
             failures.append(f"{name} {value:.1f} > {limit}")
     return Verdict(passed=not failures and not pending, failures=failures, pending=pending)
+
+
+LENGTH_BUCKETS: tuple[tuple[str, int, int], ...] = (
+    ("<500", 0, 500),
+    ("500-1499", 500, 1500),
+    (">=1500", 1500, 10**9),
+)
+
+
+def window_fp_by_length(
+    records: Iterable[dict], *, threshold: float, sets: set[str], split: str | None = "test"
+) -> dict[str, Rate]:
+    """Benign-window FP split by window length (short tails/regions behave differently)."""
+    pairs = [
+        (score, length)
+        for r in _select(records, sets, split, 0)
+        for score, length in zip(r["scores"], r["lengths"], strict=True)
+    ]
+    return {
+        name: Rate(
+            sum(s >= threshold for s, n in pairs if lo <= n < hi),
+            sum(1 for _, n in pairs if lo <= n < hi),
+        )
+        for name, lo, hi in LENGTH_BUCKETS
+    }

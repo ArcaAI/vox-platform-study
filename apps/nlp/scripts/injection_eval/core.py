@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Iterator, Mapping, Sequence
 
 from scipy.stats import beta
@@ -125,3 +126,49 @@ def render_golden_case(case: dict) -> str:
         for encounter in transcript["encounters"]
         for segment in encounter["segments"]
     )
+
+
+def _mmss(ms: int | None) -> str:
+    total = max(0, (ms or 0) // 1000)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _one_line(text: str) -> str:
+    return re.sub(r"\s*\r?\n\s*", " ", text).strip()
+
+
+def _speaker(raw: str | None) -> str:
+    speaker = (raw or "").strip()
+    return speaker[:1].upper() + speaker[1:] if speaker else "Unknown"
+
+
+def render_production_regions(case: dict) -> list[tuple[str, str]]:
+    """A golden case as the DATA regions guardrail windows on a single-pass note call.
+
+    Mirrors `note-input-composer.service.ts` + `labelled-transcript.renderer.ts`
+    (block order: pre-summary, encounters, results, attachments; every block
+    verbatim) and `apps/text` `keyed_ranges` (a region starts at its
+    ``--- <label> ---`` line). Ledger-reduced plans are NOT modelled: every
+    encounter is rendered verbatim.
+    """
+    t = case["transcript"]
+    regions: list[tuple[str, str]] = []
+    if t.get("preSummary"):
+        regions.append(("pre_summary", f"--- Pre-summary ---\n{str(t['preSummary']).strip()}"))
+    for enc in t["encounters"]:
+        lines = [
+            f"[S{s['seq']} E{enc['seq']} {_speaker(s.get('speaker'))} {_mmss(s.get('t0Ms'))}] "
+            f"{_one_line(s['text'])}"
+            for s in sorted(enc["segments"], key=lambda s: s["seq"])
+        ]
+        label = f"Encounter {enc['seq']} transcript ({enc.get('visitType') or 'visit'})"
+        regions.append((f"encounter_{enc['seq']}", f"--- {label} ---\n" + "\n".join(lines)))
+    results = t.get("results") or []
+    if results:
+        body = "\n".join(f"[R{i + 1}] {_one_line(r['text'])}" for i, r in enumerate(results))
+        regions.append(("results", f"--- Results ---\n{body}"))
+    attachments = t.get("attachmentTranscripts") or []
+    if attachments:
+        body = "\n".join(f"[A{i + 1}] {_one_line(a['text'])}" for i, a in enumerate(attachments))
+        regions.append(("attachment_audio", f"--- Uploaded audio transcripts ---\n{body}"))
+    return regions

@@ -28,6 +28,7 @@ from injection_eval.core import token_segments  # noqa: E402
 from injection_eval.models import (  # noqa: E402
     CANDIDATES,
     GLIGUARD_JAILBREAK_LABELS,
+    GLIGUARD_TOXICITY_LABELS,
     REVISIONS,
     GliguardScorer,
     SeqClsScorer,
@@ -250,15 +251,37 @@ def test_gliguard_score_is_the_max_non_benign_confidence() -> None:
 
 
 def test_gliguard_is_called_as_production_with_every_label_returned() -> None:
+    # Guardrail sends ALL selected inbound tasks in ONE schema (taxonomy order) and no
+    # top-level threshold, so nlp's default 0.5 applies; the tasks condition each other.
     runtime = FakeGliner([_conf(benign=0.9)])
     GliguardScorer(runtime=runtime, revision="0" * 40).score(["a"], batch_size=3)
-    task = runtime.kwargs["tasks"]["jailbreak_detection"]
+    tasks = runtime.kwargs["tasks"]
+    assert list(tasks) == ["prompt_safety", "prompt_toxicity", "jailbreak_detection"]
+    assert tasks["prompt_safety"] == {"labels": ["safe", "unsafe"], "multi_label": False}
+    assert tasks["prompt_toxicity"]["labels"] == list(GLIGUARD_TOXICITY_LABELS)
+    assert tasks["prompt_toxicity"]["cls_threshold"] == 0.4
+    task = tasks["jailbreak_detection"]
     assert task["labels"] == list(GLIGUARD_JAILBREAK_LABELS)
     assert task["multi_label"] is True
     assert task["cls_threshold"] == 0.0  # continuous: nothing filtered
+    assert runtime.kwargs["threshold"] == 0.5
     assert runtime.kwargs["include_confidence"] is True
     assert runtime.kwargs["max_len"] == 2048
     assert runtime.kwargs["batch_size"] == 3
+
+
+def test_gliguard_score_flags_exactly_when_production_does() -> None:
+    windows = [
+        _conf(benign=0.30, roleplay_bypass=0.35),  # argmax fallback: prod flags at 0.35
+        _conf(benign=0.35, roleplay_bypass=0.30),  # benign argmax: not flagged
+        _conf(benign=0.20, instruction_override=0.81),
+    ]
+    scores = GliguardScorer(runtime=FakeGliner(windows), revision="0" * 40).score(["a", "b", "c"])
+    for conf, scored in zip(windows, scores, strict=True):
+        assert (scored.score >= 0.4) is gliguard_prod_flag(conf)
+    assert scores[0].score == pytest.approx(0.4)
+    assert scores[1].score == pytest.approx(0.30)
+    assert scores[2].score == pytest.approx(0.81)
 
 
 def test_gliguard_labels_match_the_seed_taxonomy() -> None:
@@ -269,6 +292,15 @@ def test_gliguard_labels_match_the_seed_taxonomy() -> None:
     block = seed.split("jailbreak_detection: {", 1)[1].split("]", 1)[0]
     assert tuple(re.findall(r"'([a-z_]+)'", block)) == GLIGUARD_JAILBREAK_LABELS
     assert len(GLIGUARD_JAILBREAK_LABELS) == 12
+
+
+def test_gliguard_toxicity_labels_match_the_seed_taxonomy() -> None:
+    seed = (
+        Path(__file__).resolve().parents[3]
+        / "packages/database/src/prisma/db_main/seed/ai-models/nlp.ts"
+    ).read_text()
+    block = seed.split("prompt_toxicity: {", 1)[1].split("]", 1)[0]
+    assert tuple(re.findall(r"'([a-z_]+)'", block)) == GLIGUARD_TOXICITY_LABELS
 
 
 def test_gliguard_unknown_label_raises() -> None:

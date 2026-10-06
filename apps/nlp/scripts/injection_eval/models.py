@@ -286,6 +286,27 @@ GLIGUARD_JAILBREAK_LABELS: tuple[str, ...] = (
     "social_engineering",
     "benign",
 )
+#: `prompt_toxicity` labels, verbatim from the seed (order matters to the schema).
+GLIGUARD_TOXICITY_LABELS: tuple[str, ...] = (
+    "violence_and_weapons",
+    "non_violent_crime",
+    "sexual_content",
+    "hate_and_discrimination",
+    "self_harm_and_suicide",
+    "pii_exposure",
+    "misinformation",
+    "copyright_violation",
+    "child_safety",
+    "political_manipulation",
+    "unethical_conduct",
+    "regulated_advice",
+    "privacy_violation",
+    "other",
+    "benign",
+)
+#: The top-level threshold nlp applies: guardrail sends none, so `GuardClassifyRequest`'s
+#: default (0.5) is used; the multi-label tasks carry their own `cls_threshold` 0.4.
+NLP_DEFAULT_THRESHOLD = 0.5
 GLIGUARD_BENIGN_LABELS: frozenset[str] = frozenset({"benign", "safe", "compliance"})
 GLIGUARD_ATTACK_LABELS: frozenset[str] = frozenset(GLIGUARD_JAILBREAK_LABELS) - (
     GLIGUARD_BENIGN_LABELS
@@ -332,20 +353,32 @@ class GliguardScorer:
     def label_confidences(
         self, windows: list[str], *, batch_size: int = 8, cls_threshold: float = 0.0
     ) -> list[dict[str, float]]:
-        """Every returned label's confidence per window (all 12 at `cls_threshold=0`)."""
+        """Every jailbreak label's confidence per window (all 12 at `cls_threshold=0`).
+
+        Called EXACTLY as production calls it: guardrail sends the three selected
+        inbound tasks in ONE schema (taxonomy order) and gliner2 conditions them on
+        each other — the jailbreak task alone scores the 75 golden windows differently
+        (TASK-1049 §8, 0 vs 1 flagged). Only the jailbreak confidences are read.
+        """
         tasks = {
+            "prompt_safety": {"labels": ["safe", "unsafe"], "multi_label": False},
+            "prompt_toxicity": {
+                "labels": list(GLIGUARD_TOXICITY_LABELS),
+                "multi_label": True,
+                "cls_threshold": GLIGUARD_THRESHOLD,
+            },
             GLIGUARD_TASK: {
                 "labels": list(GLIGUARD_JAILBREAK_LABELS),
                 "multi_label": True,
                 "cls_threshold": cls_threshold,
-            }
+            },
         }
         with torch.inference_mode():
             results = self.runtime.batch_classify_text(
                 list(windows),
                 tasks,
                 batch_size=batch_size,
-                threshold=GLIGUARD_THRESHOLD,
+                threshold=NLP_DEFAULT_THRESHOLD,
                 include_confidence=True,
                 max_len=self.max_len,
             )
@@ -357,15 +390,21 @@ class GliguardScorer:
         ]
 
     def score(self, windows: list[str], *, batch_size: int = 8) -> list[WindowScore]:
-        return [
-            WindowScore(
-                score=attack_score(
-                    confidences, attack=GLIGUARD_ATTACK_LABELS, benign=GLIGUARD_BENIGN_LABELS
-                ),
-                n_segments=1,
+        """Production-equivalent score: ``score >= 0.4`` exactly when production flags.
+
+        The raw score is the highest non-benign confidence. gliner2's argmax fallback
+        makes production flag some windows below 0.4 (see `gliguard_prod_flag`); those
+        are lifted to 0.4 so the bench's threshold rule reproduces the production flag.
+        """
+        out: list[WindowScore] = []
+        for confidences in self.label_confidences(windows, batch_size=batch_size):
+            raw = attack_score(
+                confidences, attack=GLIGUARD_ATTACK_LABELS, benign=GLIGUARD_BENIGN_LABELS
             )
-            for confidences in self.label_confidences(windows, batch_size=batch_size)
-        ]
+            if gliguard_prod_flag(confidences) and raw < GLIGUARD_THRESHOLD:
+                raw = GLIGUARD_THRESHOLD
+            out.append(WindowScore(score=raw, n_segments=1))
+        return out
 
 
 # ── loading ────────────────────────────────────────────────────────────────
