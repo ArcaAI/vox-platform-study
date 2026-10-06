@@ -119,7 +119,8 @@ class MedicalValidationResponse(BaseModel):
     #: and judged, in the order sent. `null` on a legacy `text` request. A caller
     #: fails closed when a key it sent is missing (version-skew guard).
     screened_regions: list[str] | None = Field(
-        default=None, description="Region keys covered — judged, or skipped as settings by `medicalJudgeConfigRegions` — (regions requests only), in order"
+        default=None,
+        description="Region keys covered — judged, or skipped as settings by `medicalJudgeConfigRegions` — (regions requests only), in order",
     )
 
 
