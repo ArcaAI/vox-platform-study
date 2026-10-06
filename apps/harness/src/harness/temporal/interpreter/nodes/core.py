@@ -56,7 +56,11 @@ from harness.services.note_plan.executor import (
 )
 from harness.services.note_plan.fallback import PlanAttempt, plan_attempts, walk_attempts
 from harness.services.note_plan.models import NotePlanRef
-from harness.services.system_governance import PolicyVersionProbe, build_system_governance
+from harness.services.system_governance import (
+    GovernanceVerifier,
+    PolicyVersionProbe,
+    build_system_governance,
+)
 from harness.services.text_client import TextServiceError, usage_detail_counters
 from harness.temporal.activities import (
     STEP_NODE,
@@ -990,6 +994,7 @@ async def _system_governance(
     composed: ComposedMessages,
     agent: ResolvedAgent,
     probe: PolicyVersionProbe,
+    verifier: GovernanceVerifier,
 ) -> dict[str, Any] | None:
     """TASK-1047 FC-6 — the ``system_governance`` this call may send, or ``None``.
 
@@ -1000,7 +1005,16 @@ async def _system_governance(
     stamp = (agent.compiled_config or {}).get("governance")
     if not composed_governance or not isinstance(stamp, dict):
         return None
-    return build_system_governance(composed_governance, stamp, await probe.get())
+    version = await probe.get()
+    governance = build_system_governance(composed_governance, stamp, version)
+    if governance is None:
+        return None
+    # The stamp covers only instruction pieces; the platform-owned ones (and the whole set, under
+    # the policy version in force) are confirmed by the gateway — once per activity and digest set.
+    governed, verified_version = await verifier.verify(composed_governance)
+    if not governed or verified_version != governance["policy_version"]:
+        return None
+    return governance
 
 
 def _compose_system_prompt(
@@ -2068,6 +2082,7 @@ async def _run_text_generation(
     # activity's recorded RESULT back, so no command changes and no `workflow.patched` is needed.
     platform_default = resolve_platform_output_language(await _output_language_snapshot())
     policy_version_probe = PolicyVersionProbe(_guardrail_client(settings), payload.tenant_id)
+    governance_verifier = GovernanceVerifier(_api_client(settings), payload.tenant_id)
     last_error: TextServiceError | None = None
     # §6.2 Gap A — one stats block per candidate that was TRIED and lost. The walk used to do
     # `last_error = exc; continue` with no timer at all, so a failed BYOK attempt cost the
@@ -2155,7 +2170,9 @@ async def _run_text_generation(
             await trace.model_request(provider, model, index, streaming, generation)
         call_kwargs: dict[str, Any] = {}
         # TASK-1047 FC-6 — per candidate: its own composed digests against ITS own stamp.
-        governance = await _system_governance(composed, candidate, policy_version_probe)
+        governance = await _system_governance(
+            composed, candidate, policy_version_probe, governance_verifier
+        )
         if governance is not None:
             call_kwargs["system_governance"] = governance
         if streaming and trace is not None:

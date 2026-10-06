@@ -1346,6 +1346,34 @@ class ApiClient:
             params["nodeIds"] = ",".join(node_ids)
         return await self._get(f"/consultations/{consultation_id}/live-handoff", params)
 
+    async def verify_governed_prompts(
+        self, *, tenant_id: str, digests: list[str], pieces: list[dict[str, str]] | None
+    ) -> dict[str, Any]:
+        """TASK-1047 FC-6 — is every piece digest of a composed system prompt governed?
+
+            POST /api/v1/internal/governed-prompts/verify
+            headers: X-Service-Token, X-Tenant-Id; body ``{tenantId, digests[, pieces]}``
+
+        Answers ``{governed, policyVersion}``. ``pieces`` carries the static text of
+        platform-owned pieces so the gateway can register them; the answer never echoes it. A
+        SIBLING mount of the harness prefix, so the URL is built off the base url. Raises
+        :class:`ApiServiceError` on any failure — the caller treats that as "not governed".
+        """
+        body: dict[str, Any] = {"tenantId": tenant_id, "digests": digests}
+        if pieces:
+            body["pieces"] = pieces
+        path = "/api/v1/internal/governed-prompts/verify"
+        headers = {**self._headers(), "X-Tenant-Id": tenant_id}
+        async with http_pool.borrow(self._transport, self._timeout) as client:
+            try:
+                resp = await client.post(
+                    f"{self._base_url}{path}", json=body, headers=headers, timeout=self._timeout
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise _api_error("/internal/governed-prompts/verify", exc) from exc
+            return cast("dict[str, Any]", resp.json())
+
     async def get_stt_session_transcript(
         self, session_id: str, *, tenant_id: str, run_id: str
     ) -> dict[str, Any]:

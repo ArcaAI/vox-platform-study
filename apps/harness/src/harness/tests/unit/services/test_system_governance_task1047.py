@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import httpx
 import pytest
 
+from harness.services.api_client import ApiClient, ApiServiceError
 from harness.services.guardrail_client import GuardrailClient, GuardrailServiceError
-from harness.services.system_governance import PolicyVersionProbe, build_system_governance
+from harness.services.system_governance import (
+    GovernanceVerifier,
+    PolicyVersionProbe,
+    build_system_governance,
+    non_instruction_pieces,
+)
 from harness.services.text_client import TextClient
+from harness.temporal.interpreter.compose_messages import output_language_step, platform_rules
 
 _T = "10000000-0000-0000-0000-000000000001"
 _COMPOSED = {
@@ -46,6 +54,106 @@ class TestBuild:
     )
     def test_omits_on_any_gap(self, composed: Any, compiled: Any, version: Any) -> None:
         assert build_system_governance(composed, compiled, version) is None
+
+    def test_non_instruction_pieces_need_no_stamp_entry(self) -> None:
+        # d1 (PLATFORM) is not in the stamp — only instruction pieces are checked against it.
+        compiled = {"policyVersion": "pv1", "pieceDigests": ["d2"]}
+        assert build_system_governance(_COMPOSED, compiled, "pv1") is not None
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class TestNonInstructionPieces:
+    def test_reconstructs_platform_and_language_text_when_digests_match(self) -> None:
+        rules, lang = platform_rules(), output_language_step("English")
+        governance = {
+            "pieces": [
+                {"kind": "PLATFORM", "key": "platform-rules@1", "digest": _sha(rules)},
+                {"kind": "TEMPLATE_BODY", "key": "body", "digest": "x"},
+                {"kind": "LANGUAGE", "key": "language:English", "digest": _sha(lang)},
+            ],
+            "composed_digest": "dc",
+        }
+        assert non_instruction_pieces(governance) == [
+            {"kind": "PLATFORM", "key": "platform-rules@1", "digest": _sha(rules), "text": rules},
+            {"kind": "LANGUAGE", "key": "language:English", "digest": _sha(lang), "text": lang},
+        ]
+
+    def test_drops_a_piece_whose_reconstruction_does_not_match(self) -> None:
+        governance = {"pieces": [{"kind": "PLATFORM", "key": "k", "digest": "0" * 64}]}
+        assert non_instruction_pieces(governance) == []
+
+
+class _Api:
+    def __init__(self, answers: list[Any]) -> None:
+        self.answers = answers
+        self.calls: list[dict[str, Any]] = []
+
+    async def verify_governed_prompts(self, *, tenant_id: str, digests: list[str], pieces: Any):
+        self.calls.append({"tenant_id": tenant_id, "digests": digests, "pieces": pieces})
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+class TestVerifier:
+    _G = {
+        "pieces": [{"kind": "TEMPLATE_BODY", "key": "body", "digest": "d2"}],
+        "composed_digest": "dc",
+    }
+
+    @pytest.mark.asyncio
+    async def test_returns_the_gateway_answer_and_caches_per_digest_set(self) -> None:
+        api = _Api([{"governed": True, "policyVersion": "pv1"}, {"governed": False}])
+        verifier = GovernanceVerifier(api, _T)  # type: ignore[arg-type]
+        assert await verifier.verify(self._G) == (True, "pv1")
+        assert await verifier.verify(self._G) == (True, "pv1")
+        assert len(api.calls) == 1
+        assert api.calls[0]["digests"] == ["d2"]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_verification_is_not_governed_and_not_retried(self) -> None:
+        api = _Api([ApiServiceError("down"), {"governed": True, "policyVersion": "pv1"}])
+        verifier = GovernanceVerifier(api, _T)  # type: ignore[arg-type]
+        assert await verifier.verify(self._G) == (False, None)
+        assert await verifier.verify(self._G) == (False, None)
+        assert len(api.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_offers_non_instruction_text_for_registration(self) -> None:
+        rules = platform_rules()
+        gov = {
+            "pieces": [{"kind": "PLATFORM", "key": "platform-rules@1", "digest": _sha(rules)}],
+            "composed_digest": "dc",
+        }
+        api = _Api([{"governed": True, "policyVersion": "pv1"}])
+        await GovernanceVerifier(api, _T).verify(gov)  # type: ignore[arg-type]
+        assert api.calls[0]["pieces"][0]["text"] == rules
+
+
+class TestApiClientVerify:
+    @pytest.mark.asyncio
+    async def test_posts_to_the_sibling_mount_with_token_and_tenant(self) -> None:
+        import json
+
+        seen: list[httpx.Request] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            seen.append(req)
+            return httpx.Response(200, json={"governed": True, "policyVersion": "pv1"})
+
+        client = ApiClient(
+            "http://api", service_token="tok", transport=httpx.MockTransport(handler)
+        )
+        out = await client.verify_governed_prompts(tenant_id=_T, digests=["d" * 64], pieces=None)
+        assert out == {"governed": True, "policyVersion": "pv1"}
+        assert seen[0].url.path == "/api/v1/internal/governed-prompts/verify"
+        assert seen[0].headers["x-service-token"] == "tok"
+        assert seen[0].headers["x-tenant-id"] == _T
+        assert json.loads(seen[0].content) == {"tenantId": _T, "digests": ["d" * 64]}
 
 
 class _Client:
