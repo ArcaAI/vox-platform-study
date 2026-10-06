@@ -50,6 +50,8 @@ logger = get_logger(__name__)
 __all__ = [
     "PLATFORM_TOKEN_SENTENCE",
     "SYSTEM_REGION",
+    "TRUST_DATA",
+    "TRUST_INSTRUCTION",
     "USER_REGION",
     "EgressContext",
     "InboundResult",
@@ -70,6 +72,22 @@ _SEGMENT_SEPARATOR = "\n\n"
 SYSTEM_REGION = "system"
 USER_REGION = "user"
 
+#: FC-5b region trust. Guardrail's ``decision`` follows INSTRUCTION regions only; a
+#: prompt-safety flag on a DATA region (an ``EXTERNAL_DATA`` block body) is reported
+#: in ``data_findings`` instead of blocking. Instruction is the strict default.
+TRUST_INSTRUCTION = "instruction"
+TRUST_DATA = "data"
+
+#: The key :func:`keyed_ranges` gives caller text outside any block while regions are
+#: built. A block name is ``[a-z0-9_]+``, so this can never be one: outside text is
+#: told apart from a block that happens to be NAMED ``user`` before both are keyed
+#: :data:`USER_REGION`.
+_OUTSIDE = "\x00outside"
+
+#: The prompt-safety checks a data finding may name (FC-5b); anything else counts as
+#: ``other`` so the metric label stays bounded.
+_DATA_FINDING_CHECKS = frozenset({"jailbreak_detection", "prompt_safety", "prompt_toxicity"})
+
 #: How segment 0 is treated: ``absent`` (no system prompt in ``segments`` at all —
 #: ``/translate``), ``governed`` (verified by digest — never screened) or
 #: ``untrusted`` (screened as region :data:`SYSTEM_REGION`).
@@ -81,6 +99,14 @@ SYSTEM_PROMPT_GOVERNANCE = Counter(
     "System prompts by governance outcome: governed (digest verified), absent (no "
     "system_governance), mismatch (claim did not verify), none (no system prompt)",
     ["governance"],
+)
+
+#: FC-5b data findings: one increment per (flagged data region, check). Counts only.
+DATA_FINDINGS = Counter(
+    "text_egress_data_findings_total",
+    "Prompt-safety flags on trust=data regions that guardrail reported instead of "
+    "blocking (TASK-1047 FC-5b), by check",
+    ["check"],
 )
 
 #: Appended to the provider-facing system prompt on every CLOUD call (§5.0).
@@ -156,8 +182,12 @@ class _ScreenRegion:
     key: str
     text: str = ""
     stretches: list[_Stretch] = field(default_factory=list)
+    trust: str = TRUST_DATA
 
-    def add(self, segment: int, source: str, start: int, end: int) -> None:
+    def add(self, segment: int, source: str, start: int, end: int, *, trust: str) -> None:
+        # One key, one trust: a stitched region is DATA only if every stretch is.
+        if trust == TRUST_INSTRUCTION:
+            self.trust = TRUST_INSTRUCTION
         if self.text:
             self.text += _SEGMENT_SEPARATOR
         self.stretches.append(_Stretch(segment, start, end, len(self.text)))
@@ -173,21 +203,33 @@ def _screen_regions(segments: list[str], *, system: SystemTrust) -> list[_Screen
     as a whole (markers aside) when ``untrusted``. Stretches sharing a key are
     stitched into ONE region with the segment separator, so every key is unique on
     the wire and a span maps back to exactly one stretch.
+
+    Trust (FC-5b): a block body is DATA; caller text outside blocks and an untrusted
+    system prompt are INSTRUCTION, and a region stitched from both is INSTRUCTION.
     """
     regions: dict[str, _ScreenRegion] = {}
     for index, text in enumerate(segments):
         is_system = index == 0 and system != "absent"
         if is_system and system == "governed":
             continue
-        for key, start, end in keyed_ranges(text, outside=USER_REGION):
+        for key, start, end in keyed_ranges(text, outside=_OUTSIDE):
+            trust = TRUST_DATA
             if is_system:
-                key = SYSTEM_REGION
-            regions.setdefault(key, _ScreenRegion(key)).add(index, text, start, end)
+                key, trust = SYSTEM_REGION, TRUST_INSTRUCTION
+            elif key == _OUTSIDE:
+                key, trust = USER_REGION, TRUST_INSTRUCTION
+            regions.setdefault(key, _ScreenRegion(key)).add(index, text, start, end, trust=trust)
     return list(regions.values())
 
 
 def _wire(regions: list[_ScreenRegion]) -> list[dict[str, str]]:
+    """Regions as the judge and the output screen take them: key and text only."""
     return [{"key": region.key, "text": region.text} for region in regions]
+
+
+def _screen_wire(regions: list[_ScreenRegion]) -> list[dict[str, str]]:
+    """Regions for the inbound screen: each with its explicit ``trust`` (FC-5b)."""
+    return [{"key": region.key, "text": region.text, "trust": region.trust} for region in regions]
 
 
 def source_regions(segments: list[str], *, system: SystemTrust) -> list[dict[str, str]]:
@@ -236,10 +278,47 @@ def _rebase(raw: Any, segment_count: int, regions: list[_ScreenRegion]) -> list[
 
 @dataclass(frozen=True)
 class InboundResult:
-    """What the inbound gate produced: guardrail's own spend, and spans per text."""
+    """What the inbound gate produced: guardrail's own spend, spans per text, and the
+    FC-5b data findings (``[{region, reasons}]`` — keys and check names, never text)."""
 
     guardrail_usage: UsageDetail | None
     spans_by_segment: list[list[Span]]
+    data_findings: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _record_data_findings(verdict: Any, regions: list[_ScreenRegion]) -> list[dict[str, Any]]:
+    """Log and count the screen's ``data_findings`` (FC-5b); return them.
+
+    One ``text.egress.data_findings`` line per request — region keys, check names and
+    counts, never text — and one ``text_egress_data_findings_total`` increment per
+    (region, check), with an unknown check name counted as ``other``. The client
+    already drops malformed items; they are re-checked here (any stub may stand in for
+    it) and dropped, never raised on. Nothing here touches the verdict.
+    """
+    raw = verdict.get("data_findings") if isinstance(verdict, dict) else None
+    sent = {region.key for region in regions}
+    findings = [
+        {"region": item["region"], "reasons": list(item["reasons"])}
+        for item in (raw if isinstance(raw, list) else [])
+        if isinstance(item, dict)
+        and item.get("region") in sent
+        and isinstance(item.get("reasons"), list)
+        and item["reasons"]
+        and all(isinstance(reason, str) for reason in item["reasons"])
+    ]
+    if not findings:
+        return []
+    for finding in findings:
+        for check in finding["reasons"]:
+            DATA_FINDINGS.labels(check=check if check in _DATA_FINDING_CHECKS else "other").inc()
+    logger.warning(
+        "text.egress.data_findings",
+        findings=findings,
+        regions_flagged=len({f["region"] for f in findings}),
+        data_regions=sum(1 for region in regions if region.trust == TRUST_DATA),
+        regions_screened=len(regions),
+    )
+    return findings
 
 
 def _raise_for(verdict: dict[str, Any], *, medical: bool) -> None:
@@ -287,7 +366,7 @@ async def run_inbound_gate(
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
     regions = _screen_regions(segments, system=system)
-    screen = guardrail_client.screen_inbound(regions=_wire(regions), tenant_id=tenant_id)
+    screen = guardrail_client.screen_inbound(regions=_screen_wire(regions), tenant_id=tenant_id)
     if medical_exempt == "internal":
         screen_verdict = await screen
         medical_verdict: dict[str, Any] | None = None
@@ -312,6 +391,9 @@ async def run_inbound_gate(
     usage = guardrail_usage_from_verdict(medical_verdict) if medical_verdict else None
     if usage is None and isinstance(screen_verdict, dict):
         usage = guardrail_usage_from_verdict(screen_verdict)
+    # FC-5b: recorded whatever the outcome — a data flag never blocks, but it is
+    # always visible.
+    data_findings = _record_data_findings(screen_verdict, regions)
 
     # Fail-closed default: a missing ``allowed`` key is a rejection.
     if medical_verdict is not None and not medical_verdict.get("allowed", False):
@@ -321,7 +403,11 @@ async def run_inbound_gate(
     if not screen_verdict.get("allowed", False):
         _raise_for(screen_verdict, medical=False)
 
-    return InboundResult(usage, _rebase(screen_verdict.get("pii_spans"), len(segments), regions))
+    return InboundResult(
+        usage,
+        _rebase(screen_verdict.get("pii_spans"), len(segments), regions),
+        data_findings,
+    )
 
 
 # ── pseudonymize / restore ───────────────────────────────────────────────────
@@ -338,6 +424,7 @@ class EgressContext:
     images_unredacted: int = 0
     restored: int = 0
     pii_leak_blocked: bool = False
+    data_findings: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_cloud(self) -> bool:
@@ -360,6 +447,7 @@ class EgressContext:
             restored=self.restored,
             pii_leak_blocked=self.pii_leak_blocked,
             images_unredacted=self.images_unredacted,
+            guardrail_data_findings=self.data_findings,
         )
 
     def log(self, where: str) -> None:
@@ -395,13 +483,15 @@ def prepare_egress(
     *,
     spans_by_segment: list[list[Span]] | None,
     system_governed: bool = False,
+    data_findings: list[dict[str, Any]] | None = None,
 ) -> EgressContext:
     """Build what the provider receives for ``request``, per its locality.
 
     The ``known_phi`` exact-match pass covers EVERY segment on cloud — a governed
     system prompt included, as defence in depth; ML spans exist only where the
     inbound screen looked. ``system_governed`` (verified by the caller, FC-4) keeps
-    the system prompt out of the ``pii_leak`` source regions.
+    the system prompt out of the ``pii_leak`` source regions. ``data_findings`` (the
+    inbound gate's FC-5b findings) ride on the egress summary.
     """
     locality = resolve_locality(request.provider, request.provider_locality)
     segments = request_segments(request)
@@ -456,6 +546,7 @@ def prepare_egress(
         provider_request=provider_request,
         source_regions=regions,
         images_unredacted=images,
+        data_findings=list(data_findings or []),
     )
 
 

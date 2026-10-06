@@ -44,6 +44,14 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
 
 
+class DataFinding(BaseModel):
+    """One FC-5b data finding: a ``trust: "data"`` region guardrail flagged without
+    blocking (TASK-1047). Region key and check names only, never text."""
+
+    region: str
+    reasons: list[str] = Field(default_factory=list)
+
+
 class EgressSummary(BaseModel):
     """What the egress pipeline did to this call (TASK-1035 §5.0). Counts only.
 
@@ -53,6 +61,8 @@ class EgressSummary(BaseModel):
     tokens were re-identified on the way back. ``images_unredacted`` counts image
     parts sent to a cloud provider as-is (images cannot be pseudonymized; owner
     decision 2026-10-02 lets them through and audits the count).
+    ``guardrail_data_findings`` (TASK-1047 FC-5b) lists the data regions the inbound
+    screen flagged without blocking — region keys and check names, never text.
     """
 
     locality: str
@@ -61,6 +71,7 @@ class EgressSummary(BaseModel):
     restored: int = 0
     pii_leak_blocked: bool = False
     images_unredacted: int = 0
+    guardrail_data_findings: list[DataFinding] = Field(default_factory=list)
 
 
 class GenerateResponse(BaseModel):
