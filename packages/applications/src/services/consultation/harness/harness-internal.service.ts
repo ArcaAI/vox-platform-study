@@ -126,6 +126,7 @@ import type {
 import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
+import { noteComposedSystem, styleReferenceBackground } from './note-plan-governance';
 
 /**
  * The routing task keys a harness worker may resolve a model for over
@@ -1655,7 +1656,8 @@ export class HarnessInternalService extends BaseService {
       sectionKeys: dto.sectionKeys,
       model: dto.model ?? null,
       extras: built.noteExtras,
-      system: async (blocks) => (await this.promptAssemblyService.assemble(withNoteInputs(built.params, { blocks }))).systemPrompt,
+      // TASK-1047: the assembly's governance rides back with the system text (FC-4 per planned call).
+      system: async (blocks) => noteComposedSystem(await this.promptAssemblyService.assemble(withNoteInputs(built.params, { blocks }))),
       cache: options.cache,
       waitForLedgers: options.waitForLedgers,
       ...(options.planId ? { planId: options.planId } : {}),
@@ -1933,6 +1935,14 @@ export class HarnessInternalService extends BaseService {
         text: `Test results stated by the clinic: ${testResults}`,
       });
     }
+
+    // TASK-1047: the doctor's style reference is data, not system text — it rides as plan background.
+    // (Optional call: the concrete service always has it; older partial test doubles do not.)
+    background.push(
+      ...styleReferenceBackground(
+        await this.promptAssemblyService.styleReference?.({ dnaStyleId: params.dnaStyleId, dnaRedactionRulesText: params.dnaRedactionRulesText }),
+      ),
+    );
 
     return { consultation: consultation ?? null, params, transcripts, caseNoteTexts, noteExtras: { background, results } };
   }
