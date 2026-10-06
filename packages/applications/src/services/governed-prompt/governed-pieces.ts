@@ -7,63 +7,59 @@
  * block. So a piece never contains a runtime value, and screening it at authoring time covers it
  * for every consultation.
  */
-import { createHash } from 'node:crypto';
+import { placeholderBlockName, renderTemplatePointers, sha256Hex, templateReferences } from '@arcaai/workflow-contract';
 import type { GovernedPieceInput, GovernedPromptSourceKind } from './IGovernedPromptRegistry';
 
-/** FC-2 — `digest(text) = sha256(utf8(text))`, lower-case hex. */
+/** FC-2 — `digest(text) = sha256(utf8(text))`, lower-case hex — the contract's own implementation. */
 export function pieceDigest(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
+  return sha256Hex(text);
 }
 
-/** FC-1 — the block name a placeholder path points at: lower-cased, every non `[a-z0-9]` run → `_`. */
+/** FC-1 — the block name a placeholder path points at (the contract's derived rule). */
 export function pointerBlockName(path: string): string {
-  return path.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  return placeholderBlockName(path);
 }
 
 /**
- * One placeholder, mirroring `@arcaai/workflow-contract`'s `template.ts` grammar:
- * `"{{" WS? path ( WS? "|" WS? "default" WS? "(" WS? string WS? ")" )? WS? "}}"`.
- * Sticky, so it only matches AT the scan position.
+ * A stand-in scope in which every referenced path resolves: pointer text never depends on a value,
+ * so authoring time (which has no scope) renders exactly what the composer renders at call time.
+ * Longest paths first, so a namespace is built before a shorter path could claim it as a leaf.
  */
-const PLACEHOLDER =
-  /\{\{[ \t]*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(?:[ \t]*\|[ \t]*default[ \t]*\([ \t]*"(?:[^"\\]|\\[\s\S])*"[ \t]*\))?[ \t]*\}\}/y;
+function standInScope(content: string): Record<string, unknown> {
+  const scope: Record<string, unknown> = {};
+  const paths = templateReferences(content).map((reference) => reference.path);
+  for (const one of [...paths].sort((a, b) => b.split('.').length - a.split('.').length)) {
+    const segments = one.split('.');
+    let node: Record<string, unknown> = scope;
+    let blocked = false;
+    for (const segment of segments.slice(0, -1)) {
+      const next = node[segment];
+      if (next === undefined) node[segment] = {};
+      else if (typeof next !== 'object' || next === null) {
+        blocked = true;
+        break;
+      }
+      node = node[segment] as Record<string, unknown>;
+    }
+    const leaf = segments[segments.length - 1] as string;
+    if (!blocked && node[leaf] === undefined) node[leaf] = '';
+  }
+  return scope;
+}
 
 /**
- * FC-1 pointer mode: every placeholder → `[see the <block> data section below]`; `{{{{` → `{{`; a
- * malformed `{{` stays literal (the contract's scanner records a problem and resumes the same way —
- * publish refuses such a template with `PROMPT_TEMPLATE_SYNTAX` regardless).
- *
- * TODO(TASK-1047 FC-1): replace with the contract's pointer render option once Lane L1 lands it in
- * `@arcaai/workflow-contract` (the orchestrator swaps this at merge). The block naming here is FC-1's
- * derived rule plus the caller's `aliases`; a composer that names a block differently produces a
- * different digest, which falls back to full screening — never to a skip.
+ * FC-1 pointer mode, rendered by the contract (`renderTemplatePointers`) — byte-identical to the
+ * pieces `composeMessages` emits, held by `tests/contracts/governed-piece-digest-parity.contract.test.ts`.
+ * A template with syntax problems cannot render; its raw text is screened instead (publish refuses it
+ * with `PROMPT_TEMPLATE_SYNTAX` regardless, so it never becomes a governed piece in use).
  */
 export function renderPointerMode(content: string, aliases: Readonly<Record<string, string>> = {}): string {
-  let out = '';
-  let index = 0;
-  while (index < content.length) {
-    if (content.startsWith('{{{{', index)) {
-      out += '{{';
-      index += 4;
-      continue;
-    }
-    if (content.startsWith('{{', index)) {
-      PLACEHOLDER.lastIndex = index;
-      const match = PLACEHOLDER.exec(content);
-      if (match) {
-        const path = match[1] as string;
-        out += `[see the ${aliases[path] ?? pointerBlockName(path)} data section below]`;
-        index = PLACEHOLDER.lastIndex;
-        continue;
-      }
-      out += '{{';
-      index += 2;
-      continue;
-    }
-    out += content[index];
-    index += 1;
+  try {
+    return renderTemplatePointers(content, standInScope(content), { blockAliases: aliases }).text;
+  } catch {
+    // swallow-ok: a syntactically broken template is refused at publish; screening its raw text is the safe fallback
+    return content;
   }
-  return out;
 }
 
 export interface PieceSource {

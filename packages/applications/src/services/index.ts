@@ -66,6 +66,7 @@ export * from './phi-redaction';
 // Phase 3A item 6 — read-only effective agentic instruction inventory.
 export * from './agentic-instructions';
 export * from './prompt-management';
+export * from './governed-prompt';
 export * from './dna-writing-style';
 // scheduled hard-delete of soft-deleted DNA writing-style
 // profiles past their retention window ("purge later").

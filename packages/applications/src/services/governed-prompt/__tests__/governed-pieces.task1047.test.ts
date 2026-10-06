@@ -11,7 +11,7 @@ import { pieceDigest, piecesFromResolvedPrompt, pointerBlockName, renderPointerM
 
 const sha = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
-describe('pointer rendering (FC-1, local until L1 ships the contract option)', () => {
+describe('pointer rendering (FC-1, via the contract renderTemplatePointers)', () => {
   it('derives the block name: lower-case, every non [a-z0-9] run → _', () => {
     expect(pointerBlockName('trigger.context.formatted_vitals')).toBe('trigger_context_formatted_vitals');
     expect(pointerBlockName('chiefComplaint')).toBe('chiefcomplaint');
@@ -31,8 +31,12 @@ describe('pointer rendering (FC-1, local until L1 ships the contract option)', (
     );
   });
 
-  it('keeps the {{{{ escape and leaves a malformed placeholder literal', () => {
-    expect(renderPointerMode('literal {{{{x}} and {{ 9bad }}')).toBe('literal {{x}} and {{ 9bad }}');
+  it('keeps the {{{{ escape', () => {
+    expect(renderPointerMode('literal {{{{x}} and {{ age }}')).toBe('literal {{x}} and [see the age data section below]');
+  });
+
+  it('a template with a syntax problem is screened as its raw text (publish refuses it with PROMPT_TEMPLATE_SYNTAX)', () => {
+    expect(renderPointerMode('literal {{{{x}} and {{ 9bad }}')).toBe('literal {{{{x}} and {{ 9bad }}');
   });
 
   it('a single brace is literal', () => {
