@@ -34,6 +34,12 @@
 #     stt-worker: several Dramatiq consumers on `dramatiq:stt_batch` are
 #     legitimate (that is how the queue scales). If you already started one by
 #     hand, start a subset without it (BUG-011).
+#   - A service that exits (OOM kill, crash, or NLP's --limit-max-requests recycle)
+#     is restarted with bounded exponential backoff (1s -> 30s, reset after 60s
+#     healthy); the exit code/signal is logged to its log. A first launch that
+#     dies within ~2s is a config error and is NOT retried. Tune/disable:
+#     SUPERVISOR_RESTART=0, SUPERVISOR_BACKOFF_{MIN,MAX}_S. Test:
+#     bash scripts/lib/stack-supervisor.test.sh
 #   - All logs are tailed in the foreground. Ctrl-C stops every spawned
 #     service (whole process trees, conda wrappers included).
 #   - `down` stops ONLY pids recorded in this stack's pidfiles.

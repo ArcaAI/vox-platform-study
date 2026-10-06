@@ -76,6 +76,17 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.interactiveInference.queueMaxDepth': 64,
   'nlp.interactiveInference.queueMaxWaitSeconds': 2,
 
+  // ── nlp bounded inference + worker recycling (TASK-1047 D6, FC-8) ─────
+  // Frozen defaults. `maxInputChars` is guardrail's `screenWindowChars` (4,000)
+  // + `screenWindowOverlapChars` (256) with headroom; guardrail refuses a policy
+  // whose window + overlap exceeds it. `threadsPerInference` 0 = derive
+  // `cpu_count // maxConcurrent` (min 1) in the service.
+  'nlp.inference.maxInputChars': 8192,
+  'nlp.inference.maxInputWords': 2048,
+  'nlp.inference.threadsPerInference': 0,
+  'nlp.worker.recycleAfterRequests': 2000,
+  'nlp.worker.recycleRssMib': 6144,
+
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
   // leaving guardrail/harness/tts as explicitly reserved subsets. This
@@ -300,6 +311,38 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
     description:
       "The interactive lane's declared SLO. Past it the verdict would arrive too late to gate " +
       'anything, so a 503 the caller can fail closed on beats a stale 200 already acted upon.',
+  },
+
+  'nlp.inference.maxInputChars': {
+    label: 'NLP max input length (characters)',
+    description:
+      'Hard input bound on every guard route and `/classify/tokens`: text longer than this is refused with ' +
+      '413 `INPUT_EXCEEDS_WINDOW` (callers window the text; nothing is silently truncated). Guardrail’s ' +
+      '`screenWindowChars + screenWindowOverlapChars` must stay at or below it. Bounds peak memory per request.',
+  },
+  'nlp.inference.maxInputWords': {
+    label: 'NLP max input length (words, gliner2 max_len)',
+    description:
+      'Second fence on the same routes: the `max_len` (in words) handed to gliner2, so the model never ' +
+      'attends over more than this even if the character bound is raised.',
+  },
+  'nlp.inference.threadsPerInference': {
+    label: 'NLP torch threads per inference',
+    description:
+      'CPU threads one inference may use. 0 = derive `cpu_count // nlp.inference.maxConcurrent` (minimum 1), ' +
+      'so concurrent inferences share the cores instead of oversubscribing them.',
+  },
+  'nlp.worker.recycleAfterRequests': {
+    label: 'NLP worker recycle after N requests',
+    description:
+      'The NLP worker exits gracefully after serving this many requests and is restarted by the supervisor / ' +
+      'uvicorn, so allocator retention cannot ratchet resident memory without bound. 0 disables the request-count recycle.',
+  },
+  'nlp.worker.recycleRssMib': {
+    label: 'NLP worker recycle RSS ceiling (MiB)',
+    description:
+      'After a response, a worker whose resident set exceeds this exits gracefully and is restarted by the ' +
+      'supervisor / uvicorn. Size it under the pod memory limit with headroom. 0 disables the RSS recycle.',
   },
 
   'guardrail.groundedness.enabled': {

@@ -158,6 +158,15 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // exists to catch. THE READ IS RETIRED FIRST; THE DESCRIPTOR FOLLOWS IT — which
   // is the order TASK-879/880 (tts) and TASK-888 (text) both took.
   platformSecret(
+    'guardrail.windowCacheKey',
+    'Guardrail window-verdict cache key',
+    'Root secret of the guardrail window-verdict cache (TASK-1047 FC-7): the per-tenant key is HMAC-SHA256(this, tenantId), and ' +
+      'cache keys are HMACs of (policyVersion, modelId, task, windowText) under it, so no clinical text is recoverable from Redis ' +
+      'and no tenant can hit another’s entry. ABSENT ⇒ the cache is disabled and every window is computed — never skipped. ' +
+      'Rotation is safe: it only makes the cache cold.',
+    'Service Tokens',
+  ),
+  platformSecret(
     'guardrail.serviceToken',
     'Guardrail service token',
     'Shared secret on the gateway↔guardrail hop (`X-Service-Token`).',
