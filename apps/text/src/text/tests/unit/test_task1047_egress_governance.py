@@ -162,7 +162,7 @@ async def test_a_one_byte_tamper_is_screened_as_the_system_region() -> None:
 
     assert governed is False
     screened = _screened_regions(client)
-    assert screened[0] == {"key": "system", "text": tampered}
+    assert screened[0] == {"key": "system", "text": tampered, "trust": "instruction"}
     # OD-1: the judge never sees the system prompt, governed or not.
     assert all(r["key"] != "system" for r in _judged_regions(client))
 
@@ -175,7 +175,7 @@ async def test_a_caller_system_prompt_without_governance_is_screened() -> None:
     governed, _ = await _gate(client, request)
 
     assert governed is False
-    assert {"key": "system", "text": injection} in _screened_regions(client)
+    assert {"key": "system", "text": injection, "trust": "instruction"} in _screened_regions(client)
 
 
 def test_an_upper_case_or_malformed_digest_is_never_a_4xx_and_never_governed() -> None:
@@ -229,10 +229,11 @@ async def test_data_blocks_and_outside_text_become_keyed_regions() -> None:
 
     await _gate(client, request)
 
+    # FC-5b: block bodies are `data`, caller text outside blocks is `instruction`.
     assert _screened_regions(client) == [
-        {"key": "user", "text": "Intro line\n\nOutro line"},
-        {"key": "trigger_context_formatted_vitals", "text": _VITALS_BODY},
-        {"key": "transcript", "text": _TRANSCRIPT_BODY},
+        {"key": "user", "text": "Intro line\n\nOutro line", "trust": "instruction"},
+        {"key": "trigger_context_formatted_vitals", "text": _VITALS_BODY, "trust": "data"},
+        {"key": "transcript", "text": _TRANSCRIPT_BODY, "trust": "data"},
     ]
 
 

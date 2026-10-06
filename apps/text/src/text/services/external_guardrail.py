@@ -71,6 +71,32 @@ def _coverage_missing(payload: dict[str, Any], regions: list[dict[str, str]]) ->
     return len(missing) if missing else None
 
 
+def _data_findings(payload: dict[str, Any], regions: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Guardrail's ``data_findings`` (TASK-1047 FC-5b), well-formed items only.
+
+    ``[{region, reasons}]``: a flag on a ``trust: "data"`` region that guardrail
+    reported instead of blocking — region keys and check names, never text. The
+    field is advisory: absent or malformed is ``[]``, an item that is not
+    ``{region: str, reasons: [str]}`` or names a region that was never sent is
+    dropped, and none of it ever touches ``allowed`` (guardrail's ``decision`` alone).
+    """
+    raw = payload.get("data_findings")
+    if not isinstance(raw, list):
+        return []
+    sent = {region["key"] for region in regions}
+    findings: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        region, reasons = item.get("region"), item.get("reasons")
+        if not isinstance(region, str) or region not in sent or not isinstance(reasons, list):
+            continue
+        if not reasons or not all(isinstance(reason, str) for reason in reasons):
+            continue
+        findings.append({"region": region, "reasons": list(reasons)})
+    return findings
+
+
 def _undetermined(call: str, missing: int) -> None:
     """Log (the COUNT, never text) and count a coverage failure."""
     SCREEN_COVERAGE_MISSING.labels(call=call).inc()
@@ -362,7 +388,10 @@ class ExternalGuardrailClient:
         extraction run concurrently guardrail-side. The verdict shape mirrors
         :meth:`screen_output` — ``allowed``, ``reason`` (a check NAME, never text),
         ``raw`` — plus ``pii_spans`` (``[{label, start, end, text, score, region}]``,
-        offsets relative to the named region's text). A verdict whose
+        offsets relative to the named region's text) and ``data_findings``
+        (``[{region, reasons}]``, FC-5b: flags on ``trust: "data"`` regions that
+        guardrail reported instead of blocking; ``[]`` when absent or malformed).
+        Each region carries its ``trust`` (``"instruction"`` / ``"data"``) as given. A verdict whose
         ``screened_regions`` does not echo every key sent is an outage, never an
         "allow" (TASK-1047). The span values are PHI: they
         exist only so the caller can replace them, and are never logged here. No
@@ -379,12 +408,18 @@ class ExternalGuardrailClient:
                     "allowed": False,
                     "reason": GUARDRAIL_UNAVAILABLE_REASON,
                     "pii_spans": [],
+                    "data_findings": [],
                     "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
                 }
             decision = payload.get("decision")
             spans = payload.get("pii_spans")
             if decision not in ("allow", "block") or not isinstance(spans, list):
-                return {"allowed": False, "reason": "malformed_verdict", "pii_spans": []}
+                return {
+                    "allowed": False,
+                    "reason": "malformed_verdict",
+                    "pii_spans": [],
+                    "data_findings": [],
+                }
             reasons = payload.get("reasons")
             first = reasons[0] if isinstance(reasons, list) and reasons else None
             allowed = decision == "allow"
@@ -394,6 +429,7 @@ class ExternalGuardrailClient:
                     str(first) if first else ("input_screened" if allowed else "input_blocked")
                 ),
                 "pii_spans": spans,
+                "data_findings": _data_findings(payload, regions),
                 "raw": {k: v for k, v in payload.items() if k != "pii_spans"},
             }
 
@@ -416,6 +452,7 @@ class ExternalGuardrailClient:
             "allowed": False,
             "reason": GUARDRAIL_UNAVAILABLE_REASON,
             "pii_spans": [],
+            "data_findings": [],
             "error": last_error,
         }
 

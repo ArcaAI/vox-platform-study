@@ -417,6 +417,9 @@ async def generate(
         request_body,
         spans_by_segment=inbound.spans_by_segment,
         system_governed=system_governed,
+        # FC-5b: data-region flags guardrail reported instead of blocking ride on
+        # the egress summary (region keys + check names only).
+        data_findings=inbound.data_findings,
     )
     provider_request = egress.provider_request
 
