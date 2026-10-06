@@ -25,7 +25,7 @@ import {
 import type { JsonValue } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { pieceDigest, piecesFromResolvedPrompt, templateBodyPiece } from './governed-pieces';
+import { pieceDigest, piecesFromResolvedPrompt, templateBodyPieces } from './governed-pieces';
 import { GuardrailPromptScreenClient, PromptScreeningUnavailableError, type PromptScreenOutcome } from './guardrail-prompt-screen.client';
 import type {
   GovernedPieceFinding,
@@ -321,7 +321,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
         tenantId: version.tenantId,
         sourceType: 'PROMPT_VERSION' as const,
         sourceId: version.promptTemplateId,
-        pieces: version.content ? [templateBodyPiece(version.content, version.promptTemplateId)] : [],
+        pieces: version.content ? templateBodyPieces(version.content, version.promptTemplateId) : [],
       })),
     ].filter((source) => source.pieces.length > 0);
 

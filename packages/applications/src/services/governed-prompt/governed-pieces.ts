@@ -8,6 +8,7 @@
  * for every consultation.
  */
 import { placeholderBlockName, renderTemplatePointers, sha256Hex, templateReferences } from '@arcaai/workflow-contract';
+import { PROMPT_ASSEMBLY_BLOCK_ALIASES } from '../consultation/prompt/prompt-assembly-blocks';
 import type { GovernedPieceInput, GovernedPromptSourceKind } from './IGovernedPromptRegistry';
 
 /** FC-2 — `digest(text) = sha256(utf8(text))`, lower-case hex — the contract's own implementation. */
@@ -62,6 +63,17 @@ export function renderPointerMode(content: string, aliases: Readonly<Record<stri
   }
 }
 
+/**
+ * Every pointer rendering of `content` a composer can emit: the contract's derived block names, and
+ * the prompt-assembly path's aliased names (`PROMPT_ASSEMBLY_BLOCK_ALIASES`) when they differ. Each
+ * variant is screened and registered, so a governed call matches whichever path composed it.
+ */
+export function pointerVariants(content: string, aliases?: Readonly<Record<string, string>>): string[] {
+  const base = renderPointerMode(content, aliases);
+  const assembly = renderPointerMode(content, { ...PROMPT_ASSEMBLY_BLOCK_ALIASES, ...(aliases ?? {}) });
+  return assembly === base ? [base] : [base, assembly];
+}
+
 export interface PieceSource {
   readonly sourceType: GovernedPromptSourceKind;
   readonly sourceId: string | null;
@@ -88,11 +100,12 @@ export function piecesFromResolvedPrompt(
     return fragments.flatMap((raw) => {
       const fragment = asRecord(raw);
       if (!fragment || typeof fragment.key !== 'string' || typeof fragment.content !== 'string' || fragment.content.length === 0) return [];
-      return [{ kind: 'FRAGMENT' as const, ...source, sourceKey: fragment.key, text: renderPointerMode(fragment.content, aliases) }];
+      const key: string = fragment.key;
+      return pointerVariants(fragment.content, aliases).map((text) => ({ kind: 'FRAGMENT' as const, ...source, sourceKey: key, text }));
     });
   }
   if ((prompt.source === 'template' || prompt.source === 'inline') && typeof prompt.content === 'string' && prompt.content.length > 0) {
-    return [{ kind: 'TEMPLATE_BODY', ...source, sourceKey: 'body', text: renderPointerMode(prompt.content, aliases) }];
+    return pointerVariants(prompt.content, aliases).map((text) => ({ kind: 'TEMPLATE_BODY' as const, ...source, sourceKey: 'body', text }));
   }
   return [];
 }
@@ -104,4 +117,15 @@ export function piecesFromResolvedPrompt(
  */
 export function templateBodyPiece(content: string, promptTemplateId: string): GovernedPieceInput {
   return { kind: 'TEMPLATE_BODY', sourceType: 'PROMPT_VERSION', sourceId: promptTemplateId, sourceKey: 'body', text: renderPointerMode(content) };
+}
+
+/** Every pointer variant of a template body at APPROVE time (see `pointerVariants`). */
+export function templateBodyPieces(content: string, promptTemplateId: string): GovernedPieceInput[] {
+  return pointerVariants(content).map((text) => ({
+    kind: 'TEMPLATE_BODY' as const,
+    sourceType: 'PROMPT_VERSION' as const,
+    sourceId: promptTemplateId,
+    sourceKey: 'body',
+    text,
+  }));
 }

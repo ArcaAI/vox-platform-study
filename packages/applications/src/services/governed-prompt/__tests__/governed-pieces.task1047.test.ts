@@ -7,7 +7,14 @@
  */
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { pieceDigest, piecesFromResolvedPrompt, pointerBlockName, renderPointerMode, templateBodyPiece } from '../governed-pieces';
+import {
+  pieceDigest,
+  piecesFromResolvedPrompt,
+  pointerBlockName,
+  renderPointerMode,
+  templateBodyPiece,
+  templateBodyPieces,
+} from '../governed-pieces';
 
 const sha = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
@@ -103,5 +110,30 @@ describe('pieces and digests (FC-2)', () => {
       sourceKey: 'body',
       text: 'Hi [see the x data section below]',
     });
+  });
+});
+
+describe('alias variants (TASK-1047 L2 hand-over: the prompt-assembly path names data blocks by its own aliases)', () => {
+  it('a body whose placeholder has an assembly alias yields BOTH pointer variants, keyed the same', () => {
+    const out = piecesFromResolvedPrompt(
+      { source: 'inline', content: 'Results: {{formatted_test_results}}' },
+      { sourceType: 'AGENT', sourceId: 'a' },
+    );
+    expect(out.map((piece) => piece.text)).toEqual([
+      'Results: [see the formatted_test_results data section below]',
+      'Results: [see the test_results data section below]',
+    ]);
+    expect(new Set(out.map((piece) => piece.sourceKey))).toEqual(new Set(['body']));
+  });
+
+  it('a body with no aliased placeholder yields one piece (no duplicate variant)', () => {
+    expect(piecesFromResolvedPrompt({ source: 'inline', content: 'Plain {{tone}}' }, { sourceType: 'AGENT', sourceId: 'a' })).toHaveLength(1);
+  });
+
+  it('templateBodyPiece-based approval registers both variants too', () => {
+    expect(templateBodyPieces('Vitals {{safe_vitals}}', 'tpl-1').map((piece) => piece.text)).toEqual([
+      'Vitals [see the safe_vitals data section below]',
+      'Vitals [see the recent_vitals data section below]',
+    ]);
   });
 });

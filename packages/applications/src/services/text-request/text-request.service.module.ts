@@ -7,6 +7,7 @@ import { EffectiveSettingsModule } from '../settings-registry/effective-settings
 import { ComposedPromptRecorderModule } from '../composed-prompt/composed-prompt-recorder.module';
 import { KnownPhiService } from './known-phi.service';
 import { TextRequestEnrichmentService } from './text-request-enrichment.service';
+import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
 
 /**
  * Supplies {@link TextRequestEnrichmentService} — the single implementation of
@@ -28,6 +29,8 @@ import { TextRequestEnrichmentService } from './text-request-enrichment.service'
     EffectiveSettingsModule,
     ConsultationContextSchemaServiceModule,
     ComposedPromptRecorderModule,
+    // TASK-1047 FC-3/FC-4 — the governed-prompt registry (a leaf module: no cycle).
+    GovernedPromptServiceModule,
   ],
   providers: [KnownPhiService, TextRequestEnrichmentService],
   exports: [KnownPhiService, TextRequestEnrichmentService],

@@ -12,6 +12,9 @@ import { describe, expect, it } from 'vitest';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const contract: any = await import(/* @vite-ignore */ path.resolve(__dirname, '../../packages/workflow-contract/src/index.ts'));
 const { collectPlaceholders, composeMessages, platformRules, templateSyntaxProblems } = contract;
+const blocks: any = await import(
+  /* @vite-ignore */ path.resolve(__dirname, '../../packages/applications/src/services/consultation/prompt/prompt-assembly-blocks.ts')
+);
 const pieces: any = await import(
   /* @vite-ignore */ path.resolve(__dirname, '../../packages/applications/src/services/governed-prompt/governed-pieces.ts')
 );
@@ -105,9 +108,20 @@ describe('authoring-time piece digests equal call-time composer digests (TASK-10
       scope,
     });
     const callTime = composed.governance.pieces.find((piece: { kind: string }) => piece.kind === 'TEMPLATE_BODY');
-    const [authoring] = pieces.piecesFromResolvedPrompt({ source: 'inline', content: prompt.content }, { sourceType: 'AGENT', sourceId: 'a' });
-    expect(authoring).toBeDefined();
+    const authoring = pieces
+      .piecesFromResolvedPrompt({ source: 'inline', content: prompt.content }, { sourceType: 'AGENT', sourceId: 'a' })
+      .map((piece: { text: string }) => pieces.pieceDigest(piece.text));
     expect(callTime).toBeDefined();
-    expect(pieces.pieceDigest(authoring.text)).toBe(callTime.digest);
+    // Every composer path's digest is among the registered variants: the derived names (agents,
+    // live lane, harness) and the prompt-assembly aliases (summary / pre-summary / finalize).
+    expect(authoring).toContain(callTime.digest);
+    const assembled = composeMessages({
+      platformRules: platformRules(),
+      resolvedPrompt: { source: 'inline', content: prompt.content },
+      scope,
+      blockAliases: blocks.PROMPT_ASSEMBLY_BLOCK_ALIASES,
+    });
+    const assembledBody = assembled.governance.pieces.find((piece: { kind: string }) => piece.kind === 'TEMPLATE_BODY');
+    expect(authoring).toContain(assembledBody.digest);
   });
 });

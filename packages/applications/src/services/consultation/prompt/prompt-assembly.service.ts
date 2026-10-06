@@ -56,36 +56,8 @@ import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService'
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { parseLanguageTag, summaryLanguageName } from '../consultation/summary-language';
 import { IActiveUserContext } from '../../../interfaces';
-
-/**
- * The per-encounter DATA sections, in the order the USER message presents them, and the
- * variable each one carries.
- *
- * Every one is DATA — transcript, extracted entities, the clinician's notes, attachments, prior
- * records, the live draft — so it travels in the user message inside the spotlighting delimiters
- * the platform rules describe, and never in the system message. A governed body that names one
- * of these variables inline (`Transcript:\n{{transcript}}`, the seeded shape) renders a POINTER
- * to the section instead of the value (TASK-1047 FC-1: the composer renders every placeholder as a
- * pointer; `blockAliases` keeps these sections' established names): the instruction stays stable
- * for the prefix cache, and transcript text can never sit at instruction trust.
- *
- * TASK-1047 D9 — the TRANSCRIPT is last: the stable context comes first so an engine's prefix
- * cache reuses it, and the text that changes most sits nearest the generation point.
- */
-const DATA_SECTIONS: ReadonlyArray<{ key: string; label: string; variable: string }> = [
-  { key: 'ner_entities', label: 'RECOGNIZED CLINICAL ENTITIES (from NER)', variable: 'ner_entities' },
-  { key: 'clinician_notes', label: 'CLINICIAN NOTES (case / work notes)', variable: 'clinician_notes' },
-  { key: 'attachments', label: 'ATTACHMENTS (lab / exam results)', variable: 'attachments' },
-  { key: 'case_notes', label: 'CASE NOTES', variable: 'case_notes' },
-  { key: 'recent_vitals', label: 'RECENT VITALS', variable: 'recent_vitals' },
-  { key: 'previous_case_notes_summary', label: 'PREVIOUS CASE NOTES SUMMARY', variable: 'previous_case_notes_summary' },
-  { key: 'test_results', label: 'TEST RESULTS', variable: 'formatted_test_results' },
-  { key: 'same_day_prequel_summary', label: 'SAME-DAY EARLIER VISIT(S)', variable: 'same_day_prequel_summary' },
-  { key: 'doctor_highlights', label: 'DOCTOR HIGHLIGHTS (clinician-flagged spans)', variable: 'doctor_highlights' },
-  { key: 'prior_visit_summary', label: 'PRIOR VISIT SUMMARY', variable: 'prior_visit_summary' },
-  { key: 'prior_draft', label: 'PRIOR DRAFT (running SOAP note from the live session — STAGE 1 SCRATCHPAD)', variable: 'pre_summary_text' },
-  { key: 'transcript', label: 'TRANSCRIPT', variable: 'transcript' },
-];
+import { DATA_SECTIONS, DATA_SECTION_ALIASES, PLACEHOLDER_PREFIXES, PROMPT_ASSEMBLY_BLOCK_ALIASES } from './prompt-assembly-blocks';
+export { PROMPT_ASSEMBLY_BLOCK_ALIASES } from './prompt-assembly-blocks';
 
 /** The department-scoped DNA style slots a governed body may name (one style per doctor fills them all). */
 const DNA_STYLE_VARIABLE_KEYS: readonly string[] = [
@@ -101,12 +73,6 @@ const DNA_STYLE_VARIABLE_KEYS: readonly string[] = [
   'style_DNA_doctor_department_surgical_oncology',
   'style_DNA_doctor_department_breast_endocrine',
 ];
-
-/** v1 names that carry the same value as a data section, so they point at it too. */
-const DATA_SECTION_ALIASES: Readonly<Record<string, string>> = {
-  safe_vitals: 'recent_vitals',
-  formatted_previous_visits: 'previous_case_notes_summary',
-};
 
 /**
  * Every name this assembly OWNS — the ones its value builders populate. A body that reads one
@@ -131,26 +97,6 @@ const OWNED_NAMES: ReadonlySet<string> = new Set([
 function bareName(path: string): string {
   return path.replace(/^trigger\.context\./, '').replace(/^context\./, '');
 }
-
-/**
- * TASK-1047 FC-1 — the placeholder spellings a scope admits for one bare name. `blockAliases` is
- * keyed by placeholder PATH, so each spelling a governed body may use is aliased.
- */
-const PLACEHOLDER_PREFIXES: readonly string[] = ['', 'context.', 'trigger.context.', 'variables.'];
-
-/**
- * TASK-1047 FC-1 — placeholder path → block name for this assembly's data sections (and v1's two
- * names for the same values), in every spelling a scope admits. STATIC: it depends on nothing but
- * this table, so a governed body renders the same system message for every encounter, and the
- * authoring-time digest (FC-3) can be computed with the very same map.
- */
-export const PROMPT_ASSEMBLY_BLOCK_ALIASES: Readonly<Record<string, string>> = Object.freeze(
-  Object.fromEntries(
-    [...DATA_SECTIONS.map((section) => [section.variable, section.key] as const), ...Object.entries(DATA_SECTION_ALIASES)].flatMap(([name, block]) =>
-      PLACEHOLDER_PREFIXES.map((prefix) => [`${prefix}${name}`, block] as const),
-    ),
-  ),
-);
 
 /**
  * How many approved notes are shown as style examples.

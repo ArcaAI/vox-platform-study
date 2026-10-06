@@ -79,7 +79,7 @@ import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../usageLedger/compute-device.resolver';
 import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
 import type { IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
-import { templateBodyPiece } from '../governed-prompt/governed-pieces';
+import { templateBodyPieces } from '../governed-prompt/governed-pieces';
 import type { ComputeAugmentedBatch } from '../usageLedger/compute-units';
 import type { UsageEventBatchInput } from '../usageLedger/dto';
 import {
@@ -2019,7 +2019,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    */
   private async assertTemplateBodyScreened(template: PromptTemplateEntity): Promise<void> {
     if (!this.governedPrompts || !template.content) return;
-    const result = await this.governedPrompts.screenAndRegister(template.tenantId, [templateBodyPiece(template.content, template.id)]);
+    const result = await this.governedPrompts.screenAndRegister(template.tenantId, templateBodyPieces(template.content, template.id));
     if (result.passed) return;
     const findings = result.findings.map(({ code, reason, digest }) => ({ code, reason, digest }));
     if (findings.every((finding) => finding.code === 'PROMPT_SCREENING_UNAVAILABLE')) {

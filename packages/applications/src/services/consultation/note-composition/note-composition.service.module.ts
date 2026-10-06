@@ -9,6 +9,7 @@ import { DocumentTemplateServiceModule } from '../../document-template/document-
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { NoteInputComposerService } from './note-input-composer.service';
 import { NoteTokenCounterToken, TextTokenCountClient } from './text-token-count.client';
+import { GovernedPromptServiceModule } from '../../governed-prompt/governed-prompt.service.module';
 
 /**
  * The note input composer and its token counter. The composer reads the record model through
@@ -26,6 +27,8 @@ import { NoteTokenCounterToken, TextTokenCountClient } from './text-token-count.
     DocumentTemplateServiceModule,
     HarnessPolicyServiceModule,
     RedisCacheModule.register(),
+    // TASK-1047 FC-3/FC-4 — the governed-prompt registry (a leaf module: no cycle).
+    GovernedPromptServiceModule,
   ],
   providers: [NoteInputComposerService, TextTokenCountClient, { provide: NoteTokenCounterToken, useExisting: TextTokenCountClient }],
   exports: [NoteInputComposerService, NoteTokenCounterToken],
