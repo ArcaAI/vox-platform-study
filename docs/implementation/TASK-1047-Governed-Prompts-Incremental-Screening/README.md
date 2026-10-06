@@ -446,6 +446,19 @@ Additive, backward compatible:
   (structured log `text.egress.data_findings` with region keys + reasons, a metric, and the findings on the
   response's guardrail metadata where one exists). The OUTBOUND gate is unchanged and keeps blocking.
 
+**FC-5c outbound record-only checks (owner decision OD-14, 2026-10-06 — amends FC-5b's last sentence).**
+- New guardrail policy key `outboundRecordOnlyChecks` on the `guardrail.safety` row's `_metadata.policy`
+  (declared in `core/policy.py`, `FAIL_OPEN_TO_DEFAULT`, default `["jailbreak_detection"]`; only names from
+  `OUTBOUND_TASKS` are honoured, anything else is ignored with a warning). Flipping a check back to blocking is a
+  config edit on the SYSTEM row — no deploy.
+- `POST /screen/outbound`: every check still runs; a check in `outboundRecordOnlyChecks` that flags does not set
+  `decision: "block"` — it is reported as `data_findings: [{ region: "response", reasons: [...] }]` (same field and
+  shape as FC-5b), counted in `guardrail_data_findings_total{task}` and logged by `guardrail.screen.data_findings`
+  (direction `outbound`). Undetermined still blocks. `response_safety`, `response_toxicity`, `response_refusal`
+  and `pii_leak` behaviour is unchanged.
+- apps/text's output gate records outbound `data_findings` PHI-safely exactly as FC-5b does inbound (log
+  `text.egress.data_findings` with `direction: "outbound"`, the same counter) and still raises on `decision: block`.
+
 
 **FC-6 Harness (L10).** The harness composes with the Python mirror (L1), checks every piece digest ∈
 `compiledConfig.governance.pieceDigests` (same `policyVersion` as guardrail's current one, fetched once per
