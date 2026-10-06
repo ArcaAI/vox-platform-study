@@ -77,8 +77,8 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.interactiveInference.queueMaxWaitSeconds': 2,
 
   // ── nlp bounded inference + worker recycling (TASK-1047 D6, FC-8) ─────
-  // Frozen defaults. `maxInputChars` is guardrail's `screenWindowChars` (4,000)
-  // + `screenWindowOverlapChars` (256) with headroom; guardrail refuses a policy
+  // Frozen defaults. `maxInputChars` covers guardrail's `screenWindowChars` (2,000 since the OD-6
+  // re-decision; 4,000 allowed) + `screenWindowOverlapChars` (256) with headroom; guardrail refuses a policy
   // whose window + overlap exceeds it. `threadsPerInference` 0 = derive
   // `cpu_count // maxConcurrent` (min 1) in the service.
   'nlp.inference.maxInputChars': 8192,
@@ -95,7 +95,7 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // (NER callers send whole transcripts and notes); `windowChars + windowOverlapChars` must stay
   // at or below `maxInputChars`, otherwise the service warns and uses these defaults.
   'nlp.ner.maxRequestChars': 200000,
-  'nlp.ner.windowChars': 4000,
+  'nlp.ner.windowChars': 2000,
   'nlp.ner.windowOverlapChars': 256,
 
   // ── the remaining in-process caches ───────────────────────────

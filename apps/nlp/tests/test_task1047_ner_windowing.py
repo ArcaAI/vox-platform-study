@@ -116,10 +116,10 @@ def test_default_ner_bounds_are_the_frozen_fc8a_values():
     b = bounds.get_bounds()
     assert (b.ner_max_request_chars, b.ner_window_chars, b.ner_window_overlap_chars) == (
         200000,
-        4000,
+        2000,
         256,
     )
-    assert bounds.resolve_ner_window() == (4000, 256)
+    assert bounds.resolve_ner_window() == (2000, 256)
 
 
 def test_ner_bounds_follow_the_control_plane_snapshot():
@@ -149,7 +149,7 @@ def test_a_window_pair_over_max_input_chars_falls_back_to_the_defaults():
     from nlp.core import bounds
 
     bounds.set_bounds(ner_window_chars=8000, ner_window_overlap_chars=500)
-    assert bounds.resolve_ner_window() == (4000, 256)
+    assert bounds.resolve_ner_window() == (2000, 256)
 
 
 def test_defaults_that_exceed_a_lowered_cap_shrink_to_fit_it():
@@ -289,8 +289,11 @@ def test_text_at_max_input_chars_is_still_one_pass(client, monkeypatch):
 
 
 def test_a_20k_text_is_windowed_rebased_and_merged(client, monkeypatch):
+    from nlp.core import bounds
     from nlp.core.metrics import NLP_NER_WINDOWS_TOTAL
 
+    # The fixture's overlap/straddle positions are laid out for 4,000-char windows.
+    bounds.set_bounds(ner_window_chars=4000)
     runtime = WindowRuntime()
     _install(monkeypatch, runtime)
     text = _long_text()
@@ -331,7 +334,7 @@ def test_a_misconfigured_window_pair_runs_on_the_defaults(client, monkeypatch):
     _install(monkeypatch, runtime)
     text = _long_text()
     assert client.post("/api/v1/classify/tokens", json=_body(text)).status_code == 200
-    assert runtime.texts == [text[s:e] for s, e in plan_ner_windows(text, 4000, 256)]
+    assert runtime.texts == [text[s:e] for s, e in plan_ner_windows(text, 2000, 256)]
 
 
 def test_over_max_request_chars_is_413_without_loading_a_model(client, monkeypatch):

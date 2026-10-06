@@ -70,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--window-chars",
         type=int,
-        default=4000,
+        default=2000,
         help="guardrail screenWindowChars (for expectations)",
     )
     p.add_argument(

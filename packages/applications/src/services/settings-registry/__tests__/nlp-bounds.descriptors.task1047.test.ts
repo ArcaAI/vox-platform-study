@@ -16,7 +16,7 @@ const FC8 = {
   'nlp.worker.recycleRssMib': 12288,
   // FC-8a (OD-10): /classify/tokens windows long text server-side.
   'nlp.ner.maxRequestChars': 200000,
-  'nlp.ner.windowChars': 4000,
+  'nlp.ner.windowChars': 2000,
   'nlp.ner.windowOverlapChars': 256,
 } as const;
 

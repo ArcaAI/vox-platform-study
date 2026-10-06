@@ -91,7 +91,7 @@ async def test_the_route_answers_a_stable_hex_hash() -> None:
             jailbreak_detection={"labels": ["benign", "jailbreak"]}
         ),
         lambda r: r[TASK_KEY_GUARDRAIL_SAFETY]["policy"].update(piiLeakMinScore=0.7),
-        lambda r: r[TASK_KEY_GUARDRAIL_SAFETY]["policy"].update(screenWindowChars=2_000),
+        lambda r: r[TASK_KEY_GUARDRAIL_SAFETY]["policy"].update(screenWindowChars=3_000),
         lambda r: r[TASK_KEY_GUARDRAIL_PII].update(model="gliner2-pii-v2"),
         lambda r: r[TASK_KEY_GUARDRAIL_PII_SPANS]["label_taxonomy"].update(labels=["email"]),
         lambda r: r[TASK_KEY_GUARDRAIL_VALIDATE]["policy"].update(
@@ -122,7 +122,7 @@ async def test_operational_knobs_do_not_move_the_version(key, value) -> None:
 
 async def test_an_out_of_range_geometry_that_resolves_to_the_default_is_the_same_version() -> None:
     rows = copy.deepcopy(BASE)
-    rows[TASK_KEY_GUARDRAIL_SAFETY]["policy"]["screenWindowChars"] = 4_000
+    rows[TASK_KEY_GUARDRAIL_SAFETY]["policy"]["screenWindowChars"] = 2_000
     assert await _version(rows) == await _version(BASE)
 
 

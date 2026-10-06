@@ -172,7 +172,8 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # yields byte-identical earlier windows (cache hits) on every flush. The PAIR
     # must also fit `NLP_MAX_INPUT_CHARS` — enforced by `screen_window_geometry`,
     # which falls back to BOTH defaults rather than honour half of a bad pair.
-    "screenWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, NLP_MAX_INPUT_CHARS),
+    # OD-6 re-decided 2026-10-06 on the V2 window sweep: 2,000 beats 4,000 on F1, p95 and memory.
+    "screenWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 2_000.0, 256.0, NLP_MAX_INPUT_CHARS),
     "screenWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 4_096.0),
     # Windows of ONE request computed at a time (not a `gather` of all of them).
     "screenWindowConcurrency": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 64.0),

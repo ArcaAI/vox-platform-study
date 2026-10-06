@@ -64,7 +64,7 @@ class InferenceBounds:
     recycle_after_requests: int = 2000
     recycle_rss_mib: int = 12288
     ner_max_request_chars: int = 200000
-    ner_window_chars: int = 4000
+    ner_window_chars: int = 2000
     ner_window_overlap_chars: int = 256
 
 

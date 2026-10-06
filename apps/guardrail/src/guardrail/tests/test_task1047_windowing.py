@@ -115,7 +115,8 @@ def test_region_windows_are_cut_from_the_region_start_so_appends_keep_earlier_wi
 def test_the_default_geometry_fits_inside_the_nlp_input_ceiling() -> None:
     policy = GuardrailPolicy.from_blob({})
     size, overlap = policy.screen_window_geometry
-    assert (size, overlap) == (4_000, 256)
+    # OD-6 re-decided 2026-10-06 (V2 window sweep): 2,000 beats 4,000 on F1, p95 and memory.
+    assert (size, overlap) == (2_000, 256)
     assert size + overlap <= NLP_MAX_INPUT_CHARS == 8_192
     assert policy.screen_window_concurrency == 4
     assert policy.window_cache_ttl_seconds == 86_400
@@ -126,14 +127,14 @@ def test_a_geometry_over_the_nlp_ceiling_falls_back_to_the_declared_defaults() -
     policy = GuardrailPolicy.from_blob(
         {"screenWindowChars": 8_000, "screenWindowOverlapChars": 512}
     )
-    assert policy.screen_window_geometry == (4_000, 256)
+    assert policy.screen_window_geometry == (2_000, 256)
 
 
 def test_an_admitted_geometry_is_honoured() -> None:
     policy = GuardrailPolicy.from_blob(
-        {"screenWindowChars": 2_000, "screenWindowOverlapChars": 128}
+        {"screenWindowChars": 3_000, "screenWindowOverlapChars": 128}
     )
-    assert policy.screen_window_geometry == (2_000, 128)
+    assert policy.screen_window_geometry == (3_000, 128)
 
 
 # ── span re-basing and overlap de-duplication ────────────────────────────────

@@ -447,7 +447,7 @@ disabled (compute every window), never a skip.
 `nlp.inference.threadsPerInference` (0 = `cpu_count // maxConcurrent`, min 1);
 `nlp.worker.recycleAfterRequests` (default 2,000) and `nlp.worker.recycleRssMib` (default 12,288 — raised from 6,144 by F6, §8.1: after a
 response the worker exits gracefully above it; the supervisor/uvicorn restarts it). Guardrail policy keys
-(in `apps/guardrail/.../core/policy.py`, L5): `screenWindowChars` 4,000, `screenWindowOverlapChars` 256,
+(in `apps/guardrail/.../core/policy.py`, L5): `screenWindowChars` 2,000 (4,000 until the OD-6 re-decision, §8.5), `screenWindowOverlapChars` 256,
 `screenWindowConcurrency` 4, `windowCacheTtlSeconds` 86,400, `nlpDeadlineSeconds` (default 30),
 and `screenWindowChars + screenWindowOverlapChars` must be ≤ nlp `maxInputChars`.
 
@@ -577,6 +577,42 @@ and the full re-screen under the corrected policy version registered 55/55 PASS 
 0 UNAVAILABLE). Not a product defect: the cluster sets guardrail's DB explicitly. **The main `hope` dev DB
 still lacks `medicalWindowScopeCriteria`** — anyone running the stack on it needs a reseed of the
 `granite-guardian-4.1-8b` row (`seed/ai-models/llm.ts`).
+
+### 8.5 V3 replay, window sweep, OD-6 re-decision and the CPU re-baseline (OD-12)
+
+**V3 — `screening_replay.py`, one 20-minute consultation, 60 flushes (guardrail on the right DB, §8.4):**
+
+| Counter (this run) | classify | pii | medical judge |
+|---|---|---|---|
+| windows computed | 66 | 66 | 73 |
+| plan's unique windows (a perfect cache) | 66 | 66 | 66 |
+
+The window cache is at its theoretical optimum: every window computed is a window never seen before.
+S4 reads 86.6 % (target 90 %) only because this replay's geometry cannot do better — every 20 s flush
+grows the transcript's tail window, which is new content by definition. S6 passed (judge calls ∝ new
+windows). S3 (1.85 M chars/min extrapolated to 100 consultations, target 150 k) and S5 (warm p95
+2.6 s, target 300 ms) both measure the same thing: the growing tail window (≤ window size) is re-screened in
+full on every flush, by GLiNER2 on CPU (~1.8 s per 4,000-char window here; the cluster's NLP is CPU too).
+S3/S5 were written as if only the new 250 characters were screened.
+
+**Window sweep (`bench_guard_memory.py --window-sweep`, PII golden set — 12 synthetic cases):**
+
+| Window | P | R | F1 | p95 ms | peak MiB |
+|---|---|---|---|---|---|
+| unwindowed | 0.849 | 0.983 | 0.911 | 2,445 | 3,464 |
+| 500 | 0.652 | 1.000 | 0.790 | 320 | 3,497 |
+| 1,000 | 0.788 | 0.992 | 0.878 | 457 | 2,956 |
+| **2,000** | 0.832 | 0.992 | **0.905** | **824** | **2,912** |
+| 4,000 | 0.825 | 0.983 | 0.897 | 1,834 | 3,623 |
+
+**Owner decisions 2026-10-06:**
+- **OD-6 re-decided: 2,000-character windows** — guardrail `screenWindowChars` default 2,000 (overlap 256)
+  and `nlp.ner.windowChars` 2,000. Better F1, ~55 % lower p95 and lower memory than 4,000; halves the tail
+  re-screen. Below 1,000 precision drops (500 → F1 0.79), so delta-sized windows were rejected as a
+  safety-screening quality regression. The golden set is small; V6 re-checks on the clinical set.
+- **OD-12: S3/S5 re-baselined for CPU** — the cache design stays; the measured CPU figures become the
+  baseline (S4 read as "computed windows = unique windows", which passes); NLP-on-GPU sizing for production
+  is a deployment follow-up; capacity is judged by the V4 load/soak (shed rate, memory, p95).
 
 ## 9. Change History
 
