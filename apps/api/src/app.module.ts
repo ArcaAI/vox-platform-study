@@ -81,6 +81,7 @@ import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.mod
 import { SecurityPolicyModule } from './modules/security-policy/security-policy.module';
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
+import { GovernedPromptModule } from './modules/governed-prompt/governed-prompt.module';
 import { ConsentModule } from './modules/consent/consent.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -483,6 +484,8 @@ const featureModules: any[] = [
   AuthModule,
   AuditLogModule,
   ConsultationModule,
+  // TASK-1047 L12 — `internal/governed-prompts/verify` (the harness's governed-system-prompt check).
+  GovernedPromptModule,
   // /admin/consent-grants — admin CRUD over ConsentGrant.
   ConsentModule,
   // Curated release notes: reader surface + super-admin authoring.

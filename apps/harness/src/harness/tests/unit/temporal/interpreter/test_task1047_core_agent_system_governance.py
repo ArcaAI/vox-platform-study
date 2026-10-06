@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from harness.services import composed_prompt_recorder as recorder
+from harness.services.api_client import ApiServiceError
 from harness.services.guardrail_client import GuardrailServiceError
 from harness.services.text_client import TextServiceError
 from harness.temporal.interpreter.models import NodeActivityInput
@@ -194,6 +195,9 @@ class _Guardrail:
         return self.answer
 
 
+verify_calls: list[dict[str, Any]] = []
+
+
 @pytest.fixture
 def go(monkeypatch: pytest.MonkeyPatch):
     async def _noop(*_a: Any, **_k: Any) -> None:
@@ -204,8 +208,14 @@ def go(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(recorder, "_send", _noop)
 
     async def _run(
-        *, composed_gov: Any, stamp: Any, version: Any = "pv1"
+        *,
+        composed_gov: Any,
+        stamp: Any,
+        version: Any = "pv1",
+        verify: Any = None,
     ) -> tuple[list[dict[str, Any]], _Guardrail]:
+        verify = {"governed": True, "policyVersion": "pv1"} if verify is None else verify
+        verify_calls.clear()
         text = _Text(set(), {"locality": "cloud"})
         guardrail = _Guardrail(version)
         answer = _wire({"source": "inline", "content": "Summarise."}, governance=stamp)
@@ -216,6 +226,12 @@ def go(monkeypatch: pytest.MonkeyPatch):
 
             async def get_policy(self, *_a: Any, **_k: Any) -> dict[str, Any]:
                 return {}
+
+            async def verify_governed_prompts(self, **k: Any) -> dict[str, Any]:
+                verify_calls.append(k)
+                if isinstance(verify, Exception):
+                    raise verify
+                return verify
 
         real = core._compose_agent_messages
 
@@ -275,3 +291,39 @@ class TestSystemGovernance:
         calls, guardrail = await go(composed_gov=None, stamp=_STAMP)
         assert calls[0].get("system_governance") is None
         assert guardrail.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_omitted_when_the_gateway_says_not_governed(self, go) -> None:
+        calls, _ = await go(
+            composed_gov=_GOV, stamp=_STAMP, verify={"governed": False, "policyVersion": "pv1"}
+        )
+        assert calls[0].get("system_governance") is None
+        assert verify_calls[0]["digests"] == ["d1", "d2"]
+        assert verify_calls[0]["tenant_id"] == _TENANT
+
+    @pytest.mark.asyncio
+    async def test_omitted_when_the_gateway_version_differs_from_guardrails(self, go) -> None:
+        calls, _ = await go(
+            composed_gov=_GOV, stamp=_STAMP, verify={"governed": True, "policyVersion": "pv0"}
+        )
+        assert calls[0].get("system_governance") is None
+
+    @pytest.mark.asyncio
+    async def test_omitted_when_verification_fails(self, go) -> None:
+        calls, _ = await go(composed_gov=_GOV, stamp=_STAMP, verify=ApiServiceError("down"))
+        assert calls[0].get("system_governance") is None
+
+    @pytest.mark.asyncio
+    async def test_platform_pieces_need_not_be_stamped_when_the_gateway_confirms_them(
+        self, go
+    ) -> None:
+        calls, _ = await go(
+            composed_gov=_GOV, stamp={"policyVersion": "pv1", "pieceDigests": ["d2"]}
+        )
+        assert calls[0]["system_governance"]["composed_digest"] == "dc"
+        assert len(verify_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_no_verification_call_without_a_stamp(self, go) -> None:
+        await go(composed_gov=_GOV, stamp=None)
+        assert verify_calls == []
