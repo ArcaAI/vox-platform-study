@@ -299,6 +299,25 @@ class _StashedTeardown:
     pushed_back: bool = False
 
 
+
+async def _report_degraded(publisher: Any, reason: str) -> None:
+    """TASK-1048 — tell the client an optional stage is off for this session. NEVER raises.
+
+    ``publish_degraded_once`` de-duplicates and swallows transport errors itself; this guard
+    additionally covers a publisher without it, or one whose call is not awaitable, so a
+    degradation report can never be the thing that fails session assembly.
+    """
+    publish = getattr(publisher, "publish_degraded_once", None)
+    if publish is None:
+        return
+    try:
+        result = publish(reason)
+        if inspect.isawaitable(result):
+            await result
+    except Exception as exc:  # noqa: BLE001 — a status frame never fails the session
+        logger.warning("stt.stream.degraded_report_failed", reason=reason, error=str(exc))
+
+
 def _positive_float(value: Any) -> float | None:
     """A real, positive number, or ``None``. ``bool`` is excluded (it is an int)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -1066,7 +1085,7 @@ class SessionManager:
             # TASK-1048 — VAD enabled but it did not load: the preprocessor runs on the
             # energy fallback. Say so; never fail the session over it.
             if vad_enabled and vad_service is None:
-                await publisher.publish_degraded_once("vad_unavailable")
+                await _report_degraded(publisher, "vad_unavailable")
 
         target_sr = (
             pipeline_config.preprocessing.target_sample_rate
@@ -1181,7 +1200,7 @@ class SessionManager:
                         exc_info=True,
                     )
                     # TASK-1048 — diarization is off for this session; report it.
-                    await publisher.publish_degraded_once("diarization_unavailable")
+                    await _report_degraded(publisher, "diarization_unavailable")
 
         speaker_identifier = None
         if (
@@ -1226,7 +1245,7 @@ class SessionManager:
                         session_id,
                         exc_info=True,
                     )
-                    await publisher.publish_degraded_once("segmentation_unavailable")
+                    await _report_degraded(publisher, "segmentation_unavailable")
 
             speaker_identifier = SpeakerIdentifier(
                 tracker=speaker_tracker,
@@ -1256,7 +1275,7 @@ class SessionManager:
                     error=str(exc),
                 )
                 seed_result = {"seeded": 0}
-                await publisher.publish_degraded_once("voice_profiles_unavailable")
+                await _report_degraded(publisher, "voice_profiles_unavailable")
             # `seed_voice_profiles` types its contract as `dict[str, object]`, and
             # `seeded` is always a non-negative count — `bool(...)` is "count > 0"
             # without a numeric cast off `object`.
@@ -1289,7 +1308,7 @@ class SessionManager:
             gloss_pipeline is None
             and getattr(inference_cfg, "streaming_english_gloss", False) is True
         ):
-            await publisher.publish_degraded_once("gloss_unavailable")
+            await _report_degraded(publisher, "gloss_unavailable")
 
         inference_worker = StreamingInferenceWorker(
             result_publisher=publisher,

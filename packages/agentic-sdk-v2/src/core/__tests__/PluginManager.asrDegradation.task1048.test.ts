@@ -36,18 +36,20 @@ vi.mock('../SttWebSocketClient', () => ({
 import { PluginManager } from '../PluginManager';
 import { createMockLogger } from '../../__tests__/setup';
 import type { AgenticClient } from '../AgenticClient';
+import type { AsrSessionWarning } from '@arcaai/types';
+import type { AsrDegradation } from '../../types/stt';
 
 const apiClient = { post: vi.fn(), get: vi.fn(), put: vi.fn(), delete: vi.fn(), getBaseUrl: vi.fn(() => 'https://api.test') } as unknown as AgenticClient;
 
 describe('PluginManager — ASR warnings & degradations (TASK-1048)', () => {
-  let onSttSessionWarnings: ReturnType<typeof vi.fn>;
-  let onSttDegraded: ReturnType<typeof vi.fn>;
+  let onSttSessionWarnings: ReturnType<typeof vi.fn<(warnings: AsrSessionWarning[]) => void>>;
+  let onSttDegraded: ReturnType<typeof vi.fn<(degradation: AsrDegradation) => void>>;
 
   beforeEach(() => {
     for (const k of Object.keys(captured)) delete captured[k];
     const manager = new PluginManager({ stt: { enabled: true, provider: 'backend', language: 'en' } }, createMockLogger(), apiClient, false);
-    onSttSessionWarnings = vi.fn();
-    onSttDegraded = vi.fn();
+    onSttSessionWarnings = vi.fn<(warnings: AsrSessionWarning[]) => void>();
+    onSttDegraded = vi.fn<(degradation: AsrDegradation) => void>();
     manager.setCallbacks({ onSttSessionWarnings, onSttDegraded });
     manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1');
   });

@@ -123,7 +123,7 @@ describe('batch jobs — the resolver’s warnings reach the caller', () => {
     ['createStreaming', 'createStreamingJob'],
   ] as const)('JSON %s returns the job plus the warnings, and never hands them to the job service', async (route, serviceMethod) => {
     const { controller, m } = build();
-    const out = await (controller[route] as (dto: unknown) => Promise<Record<string, unknown>>)({ mediaId: 'media-1' });
+    const out = await (controller[route] as unknown as (dto: unknown) => Promise<Record<string, unknown>>)({ mediaId: 'media-1' });
     expect(out).toMatchObject({ status: 'QUEUED', warnings: [WARNING] });
     expect(m.jobService[serviceMethod].mock.calls[0][0]).not.toHaveProperty('warnings');
   });

@@ -65,7 +65,12 @@ export type AgentFindingCode =
   | 'PROMPT_SCREENING_INJECTION'
   | 'PROMPT_SCREENING_UNSAFE'
   | 'PROMPT_CONTAINS_PII'
-  | 'PROMPT_SCREENING_UNAVAILABLE';
+  | 'PROMPT_SCREENING_UNAVAILABLE'
+  // TASK-1048 (OD-3) — speech-to-text prerequisites, all WARNING (advisory, never blocking): the
+  // stage is switched off at session time and transcription still runs.
+  | 'ASR_DIARIZATION_MODEL_MISSING'
+  | 'ASR_DIARIZATION_BACKEND_UNSUPPORTED'
+  | 'ASR_VAD_MODEL_MISSING';
 
 // `Omit` because the contract's own `code` is the NARROW union it can name (TASK-947); a finding's
 // `code` is the full vocabulary above, of which the contract's is a subset.

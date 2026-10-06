@@ -62,6 +62,7 @@ const recorder = {
   error: null as string | null,
   sessionId: null as string | null,
   levels: [] as number[],
+  degradations: [] as { key: string; label: string; detail?: string }[],
   start: vi.fn(async () => 'stt-9'),
   stop: vi.fn(async () => {}),
 };
