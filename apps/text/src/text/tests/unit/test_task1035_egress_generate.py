@@ -37,34 +37,51 @@ class _Guardrail:
     def __init__(
         self,
         *,
-        spans: list[dict[str, Any]] | None = None,
+        spans: list[tuple[str, str]] | None = None,
         inbound_allowed: bool = True,
         medical_allowed: bool = True,
         screen: dict[str, Any] | None = None,
         delay: float = 0.0,
     ) -> None:
+        # (needle, label): found in whichever region holds it, as GLiNER2 would.
         self.spans = spans or []
         self.inbound_allowed = inbound_allowed
         self.medical_allowed = medical_allowed
         self.screen = screen
         self.delay = delay
-        self.inbound_texts: list[str] = []
+        self.inbound_regions: list[list[dict[str, str]]] = []
         self.validate_calls = 0
         self.outputs: list[dict[str, Any]] = []
 
-    async def screen_inbound(self, text: str, *, tenant_id: str | None = None) -> dict[str, Any]:
-        self.inbound_texts.append(text)
+    async def screen_inbound(
+        self, *, regions: list[dict[str, str]], tenant_id: str | None = None
+    ) -> dict[str, Any]:
+        self.inbound_regions.append(regions)
         if self.delay:
             await asyncio.sleep(self.delay)
+        spans = []
+        for needle, label in self.spans:
+            for region in regions:
+                start = region["text"].find(needle)
+                if start >= 0:
+                    end = start + len(needle)
+                    spans.append(
+                        {
+                            "label": label,
+                            "start": start,
+                            "end": end,
+                            "text": needle,
+                            "score": 0.9,
+                            "region": region["key"],
+                        }
+                    )
         return {
             "allowed": self.inbound_allowed,
             "reason": "screened" if self.inbound_allowed else "prompt_safety",
-            "pii_spans": [
-                {**span, "text": text[span["start"] : span["end"]]} for span in self.spans
-            ],
+            "pii_spans": spans,
         }
 
-    async def validate(self, prompt: str, system_prompt: str | None = None, **_: Any):
+    async def validate(self, prompt: str = "", system_prompt: str | None = None, **_: Any):
         self.validate_calls += 1
         if self.delay:
             await asyncio.sleep(self.delay)
@@ -80,11 +97,6 @@ class _Guardrail:
         if self.screen is not None:
             return self.screen
         return {"allowed": True, "reason": "output_screened", "raw": {"decision": "allow"}}
-
-
-def _span(text: str, needle: str, label: str = "person") -> dict[str, Any]:
-    start = text.index(needle)
-    return {"label": label, "start": start, "end": start + len(needle), "score": 0.9}
 
 
 class _SpyProvider:
@@ -159,12 +171,11 @@ def _body(provider: str, **extra: Any) -> dict[str, Any]:
 
 
 def _guardrail_with_smith(**kwargs: Any) -> _Guardrail:
-    # The screen sees every segment the provider receives, system prompt included
-    # (TASK-1036 E1): spans are offsets into the joined text.
-    combined = f"{_SYSTEM}\n\n{_PROMPT}"
-    return _Guardrail(
-        spans=[_span(combined, "Dr Smith"), _span(combined, "MRN-0042", "mrn")], **kwargs
-    )
+    return _Guardrail(spans=[("Dr Smith", "person"), ("MRN-0042", "mrn")], **kwargs)
+
+
+def _source(output: dict[str, Any]) -> str:
+    return "\n\n".join(r["text"] for r in output["source_regions"])
 
 
 # ── locality decides the payload ─────────────────────────────────────────────
@@ -212,7 +223,7 @@ async def test_an_explicit_cloud_stamp_redacts_and_the_output_screen_sees_tokens
     # pii_leak runs BEFORE restore, against the pseudonymized source.
     screened = guardrail.outputs[0]
     assert screened["response"] == "[PATIENT_NAME_1] is stable."
-    assert "John Doe" not in screened["source_context"]
+    assert "John Doe" not in _source(screened)
     assert resp.json()["content"] == "John Doe is stable."
 
 
@@ -300,7 +311,7 @@ async def test_inbound_screen_and_medical_judge_run_concurrently(make_client) ->
     elapsed = time.monotonic() - started
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.validate_calls == 1 and len(guardrail.inbound_texts) == 1
+    assert guardrail.validate_calls == 1 and len(guardrail.inbound_regions) == 1
     assert elapsed < 0.55  # sequential would be >= 0.6 s
 
 
@@ -315,7 +326,7 @@ async def test_an_opt_out_in_the_request_is_ignored(make_client) -> None:
 
     assert resp.status_code == 200, resp.text
     assert guardrail.validate_calls == 1
-    assert len(guardrail.inbound_texts) == 1
+    assert len(guardrail.inbound_regions) == 1
     assert len(guardrail.outputs) == 1
 
 
@@ -337,7 +348,7 @@ async def test_medical_exempt_internal_skips_only_the_judge(make_client) -> None
 
     assert resp.status_code == 200, resp.text
     assert guardrail.validate_calls == 0
-    assert len(guardrail.inbound_texts) == 1
+    assert len(guardrail.inbound_regions) == 1
     assert len(guardrail.outputs) == 1
 
 
@@ -408,7 +419,7 @@ async def test_translate_runs_the_inbound_gate_and_redacts_for_a_cloud_provider(
     make_client,
 ) -> None:
     text = "John Doe has a fever."
-    guardrail = _Guardrail(spans=[_span(text, "John Doe")])
+    guardrail = _Guardrail(spans=[("John Doe", "person")])
     translator = _SpyTranslator()
     client = await _translate_client(make_client, guardrail, translator)
 
@@ -423,7 +434,7 @@ async def test_translate_runs_the_inbound_gate_and_redacts_for_a_cloud_provider(
     )
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.validate_calls == 1 and len(guardrail.inbound_texts) == 1
+    assert guardrail.validate_calls == 1 and len(guardrail.inbound_regions) == 1
     assert translator.texts == [["[PERSON_1] has a fever."]]
     assert resp.json()["translations"] == ["(ml) John Doe has a fever."]
     assert resp.json()["egress"]["locality"] == "cloud"
@@ -485,11 +496,8 @@ async def test_phi_rendered_into_the_system_prompt_never_reaches_a_cloud_provide
     # `composeMessages` renders the agent instruction over the request's variables
     # into the SYSTEM message; a caller may also send its own `system_prompt`.
     system = "Scribe for patient Jane Roe, DOB 1980-02-03."
-    combined = f"{system}\n\n{_PROMPT}"
     provider = _SpyProvider(reply="[PERSON_1] (born [DATE_OF_BIRTH_1]) is stable.")
-    guardrail = _Guardrail(
-        spans=[_span(combined, "Jane Roe"), _span(combined, "1980-02-03", "date_of_birth")]
-    )
+    guardrail = _Guardrail(spans=[("Jane Roe", "person"), ("1980-02-03", "date_of_birth")])
     client = await make_client(provider, guardrail)
 
     resp = await client.post(
@@ -498,11 +506,14 @@ async def test_phi_rendered_into_the_system_prompt_never_reaches_a_cloud_provide
     )
 
     assert resp.status_code == 200, resp.text
-    assert guardrail.inbound_texts == [combined]
+    # No `system_governance`: the system prompt is untrusted and screened (TASK-1047 FC-4).
+    assert guardrail.inbound_regions == [
+        [{"key": "system", "text": system}, {"key": "user", "text": _PROMPT}]
+    ]
     sent = provider.requests[0]
     assert "Jane Roe" not in sent.system_prompt and "1980-02-03" not in sent.system_prompt
     assert "[PERSON_1]" in sent.system_prompt and "[DATE_OF_BIRTH_1]" in sent.system_prompt
     assert resp.json()["content"] == "Jane Roe (born 1980-02-03) is stable."
-    # pii_leak is judged against everything sent, pseudonymised.
-    source = guardrail.outputs[0]["source_context"]
+    # pii_leak is judged against every untrusted region sent, pseudonymised.
+    source = _source(guardrail.outputs[0])
     assert "[PERSON_1]" in source and "Jane Roe" not in source

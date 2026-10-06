@@ -53,7 +53,7 @@ async def translate(
         guardrail_client,
         segments=list(request_body.texts),
         prompt="\n\n".join(request_body.texts),
-        system_prompt=None,
+        system="absent",
         tenant_id=x_tenant_id,
         medical_exempt=request_body.medical_exempt,
     )
@@ -103,7 +103,7 @@ async def translate(
         await gate_completion(
             guardrail_client,
             completion="\n\n".join(translations),
-            source_context=egress.source_context,
+            source_regions=egress.source_regions,
             tenant_id=x_tenant_id,
             tenant_policy=None,
             app_state=app_state,

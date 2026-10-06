@@ -149,7 +149,7 @@ async def test_the_input_gate_hands_the_requests_overrides_to_the_client() -> No
         client,
         segments=[request_body.prompt],
         prompt=request_body.prompt,
-        system_prompt=request_body.system_prompt,
+        system="absent",
         tenant_id=TENANT,
         provider_overrides=request_body.provider_overrides,
     )

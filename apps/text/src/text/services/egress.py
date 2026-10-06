@@ -4,13 +4,15 @@
 
 1. **classify locality** per provider actually called (`core/locality.py`);
 2. **inbound gate** — guardrail ``/screen/inbound`` (prompt safety + GLiNER2 PII
-   spans) over EVERY text the provider receives, system prompt included,
-   CONCURRENTLY with the medical judge (``/api/medical/validate``) over the
-   context only; both verdicts block. The judge is skipped only for
-   ``medical_exempt: "internal"``;
-3. **cloud: pseudonymize** — the caller's ``known_phi`` plus the spans, in every
-   text the provider receives, with ``[<LABEL>_<n>]`` tokens and one platform
-   sentence telling the model to copy them verbatim. Images pass through as-is and
+   spans) over every UNTRUSTED region the provider receives, CONCURRENTLY with the
+   medical judge (``/api/medical/validate``) over the data regions only; both
+   verdicts block. The judge is skipped only for ``medical_exempt: "internal"``.
+   A system prompt is untrusted unless its ``system_governance`` digest verifies
+   (TASK-1047 FC-4): GOVERNED text is static, registry-screened at authoring time,
+   and is neither screened nor judged per call;
+3. **cloud: pseudonymize** — the caller's ``known_phi`` (exact match, over EVERY
+   text, a governed system prompt included) plus the spans, with ``[<LABEL>_<n>]``
+   tokens and one platform sentence telling the model to copy them verbatim. Images pass through as-is and
    are counted (owner decision 2026-10-02). **Local:** the payload is untouched,
    but detection is still counted (OD-2);
 4. provider call;
@@ -25,9 +27,12 @@ and dies with the request: it is never logged, cached or serialised.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal
+
+from prometheus_client import Counter
 
 from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError
 from text.core.locality import CLOUD, LOCAL, resolve_locality
@@ -35,7 +40,7 @@ from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
 from text.models.responses import EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
-from text.services.data_blocks import screened_ranges
+from text.services.data_blocks import keyed_ranges
 from text.services.external_guardrail import GUARDRAIL_UNAVAILABLE_REASON
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
@@ -44,23 +49,186 @@ logger = get_logger(__name__)
 
 __all__ = [
     "PLATFORM_TOKEN_SENTENCE",
+    "SYSTEM_REGION",
+    "USER_REGION",
     "EgressContext",
     "InboundResult",
+    "SystemTrust",
     "prepare_egress",
     "prepare_text_egress",
     "request_segments",
     "run_inbound_gate",
-    "sent_text",
+    "source_regions",
+    "system_prompt_is_governed",
+    "verify_system_governance",
 ]
 
-#: Joins the texts of one request into the single string the inbound screen sees.
+#: Joins the platform sentence onto the system prompt, and the stretches of one region.
 _SEGMENT_SEPARATOR = "\n\n"
+
+#: FC-5 region keys: an untrusted system prompt, and caller text outside any block.
+SYSTEM_REGION = "system"
+USER_REGION = "user"
+
+#: How segment 0 is treated: ``absent`` (no system prompt in ``segments`` at all —
+#: ``/translate``), ``governed`` (verified by digest — never screened) or
+#: ``untrusted`` (screened as region :data:`SYSTEM_REGION`).
+SystemTrust = Literal["absent", "governed", "untrusted"]
+
+#: Per-call system-prompt trust outcomes (TASK-1047 FC-4). Counts only.
+SYSTEM_PROMPT_GOVERNANCE = Counter(
+    "text_egress_system_prompt_total",
+    "System prompts by governance outcome: governed (digest verified), absent (no "
+    "system_governance), mismatch (claim did not verify), none (no system prompt)",
+    ["governance"],
+)
 
 #: Appended to the provider-facing system prompt on every CLOUD call (§5.0).
 PLATFORM_TOKEN_SENTENCE = (
     "Bracketed tokens such as [PERSON_1] are placeholders for redacted identifiers: "
     "copy each one verbatim wherever it is needed, and never expand, alter or guess it."
 )
+
+
+# ── system-prompt governance (TASK-1047 FC-4) ─────────────────────────────────
+
+
+def _governance_outcome(request: Any) -> str:
+    system = getattr(request, "system_prompt", None)
+    if not system:
+        return "none"
+    governance = getattr(request, "system_governance", None)
+    if governance is None:
+        return "absent"
+    digest = hashlib.sha256(system.encode("utf-8")).hexdigest()
+    return "governed" if digest == governance.composed_digest else "mismatch"
+
+
+def system_prompt_is_governed(request: Any) -> bool:
+    """``True`` iff ``sha256(system_prompt)`` equals the claimed ``composed_digest``.
+
+    Presence of ``system_governance`` alone vouches for nothing: the digest is
+    recomputed over the exact ``system_prompt`` received, so a one-byte edit — or
+    any text the registry never screened — makes the system prompt UNTRUSTED.
+    """
+    return _governance_outcome(request) == "governed"
+
+
+def verify_system_governance(request: Any) -> bool:
+    """:func:`system_prompt_is_governed`, counted and logged — once per request.
+
+    The log line carries the outcome, the piece count and the policy version; never
+    the text. A mismatch is a warning: the composer only sends a claim it verified,
+    so a mismatch is a composer bug or a tampered request — either way it is
+    screened in full, never refused.
+    """
+    outcome = _governance_outcome(request)
+    SYSTEM_PROMPT_GOVERNANCE.labels(governance=outcome).inc()
+    governance = getattr(request, "system_governance", None)
+    fields: dict[str, Any] = {"governance": outcome}
+    if governance is not None:
+        fields["pieces"] = len(governance.pieces)
+        fields["policy_version"] = governance.policy_version
+    if outcome == "mismatch":
+        logger.warning("text.egress.system_prompt_governance", **fields)
+    else:
+        logger.info("text.egress.system_prompt_governance", **fields)
+    return outcome == "governed"
+
+
+# ── regions (TASK-1047 FC-5) ─────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _Stretch:
+    """One stretch of one segment, placed inside its region's text."""
+
+    segment: int
+    start: int  # in the segment
+    end: int  # in the segment
+    offset: int  # in the region text
+
+
+@dataclass
+class _ScreenRegion:
+    """One region as guardrail sees it, and where each of its stretches came from."""
+
+    key: str
+    text: str = ""
+    stretches: list[_Stretch] = field(default_factory=list)
+
+    def add(self, segment: int, source: str, start: int, end: int) -> None:
+        if self.text:
+            self.text += _SEGMENT_SEPARATOR
+        self.stretches.append(_Stretch(segment, start, end, len(self.text)))
+        self.text += source[start:end]
+
+
+def _screen_regions(segments: list[str], *, system: SystemTrust) -> list[_ScreenRegion]:
+    """The regions of ``segments`` an ML screen inspects, in first-appearance order.
+
+    Each ``EXTERNAL_DATA`` body is keyed by its block name and caller text outside
+    any block by :data:`USER_REGION`; segment 0 is the system prompt unless
+    ``system`` is ``absent`` — skipped when ``governed``, keyed :data:`SYSTEM_REGION`
+    as a whole (markers aside) when ``untrusted``. Stretches sharing a key are
+    stitched into ONE region with the segment separator, so every key is unique on
+    the wire and a span maps back to exactly one stretch.
+    """
+    regions: dict[str, _ScreenRegion] = {}
+    for index, text in enumerate(segments):
+        is_system = index == 0 and system != "absent"
+        if is_system and system == "governed":
+            continue
+        for key, start, end in keyed_ranges(text, outside=USER_REGION):
+            if is_system:
+                key = SYSTEM_REGION
+            regions.setdefault(key, _ScreenRegion(key)).add(index, text, start, end)
+    return list(regions.values())
+
+
+def _wire(regions: list[_ScreenRegion]) -> list[dict[str, str]]:
+    return [{"key": region.key, "text": region.text} for region in regions]
+
+
+def source_regions(segments: list[str], *, system: SystemTrust) -> list[dict[str, str]]:
+    """The ``pii_leak`` source (FC-5 ``source_regions``): the untrusted regions sent.
+
+    Governed system text is not a source — it carries no runtime value — and the
+    platform token sentence is never included (it names a token shape, not data).
+    """
+    return _wire(_screen_regions(segments, system=system))
+
+
+def _rebase(raw: Any, segment_count: int, regions: list[_ScreenRegion]) -> list[list[Span]]:
+    """Re-base guardrail's region-relative spans onto the segment each one fell in.
+
+    A span that is malformed, names no (or an unknown) region, or crosses a stitch
+    between two stretches is dropped from the span list — the caller's
+    ``known_phi`` still covers a value it knows.
+    """
+    by_segment: list[list[Span]] = [[] for _ in range(segment_count)]
+    if not isinstance(raw, list):
+        return by_segment
+    by_key = {region.key: region for region in regions}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        region = by_key.get(str(item.get("region")))
+        if region is None:
+            continue
+        try:
+            label = str(item["label"])
+            start = int(item["start"])
+            end = int(item["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        for stretch in region.stretches:
+            limit = stretch.offset + (stretch.end - stretch.start)
+            if stretch.offset <= start and end <= limit:
+                shift = stretch.start - stretch.offset
+                by_segment[stretch.segment].append(Span(label, start + shift, end + shift))
+                break
+    return by_segment
 
 
 # ── inbound gate ─────────────────────────────────────────────────────────────
@@ -72,75 +240,6 @@ class InboundResult:
 
     guardrail_usage: UsageDetail | None
     spans_by_segment: list[list[Span]]
-
-
-#: One screened stretch: (segment index, start, end) within that segment's text.
-_Region = tuple[int, int, int]
-
-
-def _regions(segments: list[str], *, skip: int | None = None) -> list[_Region]:
-    """The stretches of ``segments`` a guardrail inspects.
-
-    Every text the provider receives — ``EXTERNAL_DATA`` block bodies AND any text
-    outside a block — minus only the composer's own markers. ``skip`` leaves one
-    segment out; only the medical judge uses it, for the system prompt.
-
-    The inbound screen and the pseudonymiser cover EVERY segment, the system prompt
-    included (TASK-1035 §3.1): ``composeMessages`` renders the agent instruction
-    over the request's variables, ``context.*`` and bindings INTO the system
-    message, and a business caller may send its own ``system_prompt`` — so it can
-    carry PHI and injection text like any user message (TASK-1036 E1).
-    """
-    regions: list[_Region] = []
-    for index, text in enumerate(segments):
-        if index == skip:
-            continue
-        regions.extend((index, start, end) for start, end in screened_ranges(text))
-    return regions
-
-
-def _combine(segments: list[str], regions: list[_Region]) -> tuple[str, list[int]]:
-    """Join the ``regions`` and return each one's start offset in the joined text."""
-    offsets: list[int] = []
-    parts: list[str] = []
-    position = 0
-    for count, (index, start, end) in enumerate(regions):
-        if count:
-            parts.append(_SEGMENT_SEPARATOR)
-            position += len(_SEGMENT_SEPARATOR)
-        offsets.append(position)
-        parts.append(segments[index][start:end])
-        position += end - start
-    return "".join(parts), offsets
-
-
-def _split_spans(
-    raw: Any, segments: list[str], regions: list[_Region], offsets: list[int]
-) -> list[list[Span]]:
-    """Re-base the screen's spans onto the segment each one fell in.
-
-    A span that is malformed, or that crosses a region boundary, is dropped from
-    the span list — the caller's ``known_phi`` still covers a value it knows.
-    """
-    by_segment: list[list[Span]] = [[] for _ in segments]
-    if not isinstance(raw, list):
-        return by_segment
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        try:
-            label = str(item["label"])
-            start = int(item["start"])
-            end = int(item["end"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        for (index, region_start, region_end), base in zip(regions, offsets, strict=True):
-            limit = base + (region_end - region_start)
-            if base <= start and end <= limit:
-                shift = region_start - base
-                by_segment[index].append(Span(label, start + shift, end + shift))
-                break
-    return by_segment
 
 
 def _raise_for(verdict: dict[str, Any], *, medical: bool) -> None:
@@ -162,7 +261,7 @@ async def run_inbound_gate(
     *,
     segments: list[str],
     prompt: str,
-    system_prompt: str | None,
+    system: SystemTrust,
     tenant_id: str | None,
     tenant_policy: Any = None,
     provider_overrides: Any = None,
@@ -170,13 +269,13 @@ async def run_inbound_gate(
 ) -> InboundResult:
     """Run the inbound screen and the medical judge CONCURRENTLY; both verdicts block.
 
-    ``segments`` are the texts the provider will receive (segment 0 is the system
-    prompt whenever ``system_prompt`` is not ``None``). The screen sees ALL of them
-    — system prompt included; block bodies and text outside blocks, never the
-    composer's markers — joined, and its PII spans come back per segment, so the
-    cloud pseudonymiser covers every segment (TASK-1036 E1). The medical judge
-    keeps OD-1's narrower scope: the context (the non-system segments), never the
-    platform rules or the agent instruction.
+    ``segments`` are the texts the provider will receive; segment 0 is the system
+    prompt unless ``system`` is ``absent``. The screen gets the UNTRUSTED regions
+    (FC-5): every block body by its name, caller text outside blocks as ``user``,
+    and the system prompt as ``system`` unless it is ``governed`` (digest verified,
+    FC-4). Its PII spans come back region-relative and are re-based per segment, so
+    the cloud pseudonymiser covers every untrusted stretch. The medical judge keeps
+    OD-1's scope: the data regions only, never the system prompt, governed or not.
     A client that is not wired is only ever a process the lifespan did not build
     (the unit harness): nothing to call, no spans.
 
@@ -187,19 +286,18 @@ async def run_inbound_gate(
         return InboundResult(None, [[] for _ in segments])
     assert_not_in_judge_scope("egress.run_inbound_gate")
 
-    regions = _regions(segments)
-    combined, offsets = _combine(segments, regions)
-    judge_regions = _regions(segments, skip=0 if system_prompt is not None else None)
-    # An empty context is nothing to judge; the judge then gets the direct prompt.
-    judged = _combine(segments, judge_regions)[0] if judge_regions else prompt
-    screen = guardrail_client.screen_inbound(combined, tenant_id=tenant_id)
+    regions = _screen_regions(segments, system=system)
+    screen = guardrail_client.screen_inbound(regions=_wire(regions), tenant_id=tenant_id)
     if medical_exempt == "internal":
         screen_verdict = await screen
         medical_verdict: dict[str, Any] | None = None
     else:
+        judged = _wire(
+            _screen_regions(segments, system="absent" if system == "absent" else "governed")
+        )
+        # An empty context is nothing to judge; the judge then gets the direct prompt.
         judge = guardrail_client.validate(
-            prompt=judged,
-            system_prompt=None,
+            regions=judged or [{"key": USER_REGION, "text": prompt}],
             tenant_id=tenant_id,
             tenant_policy=tenant_policy,
             # The connection the gateway injected, forwarded so guardrail's judge
@@ -223,9 +321,7 @@ async def run_inbound_gate(
     if not screen_verdict.get("allowed", False):
         _raise_for(screen_verdict, medical=False)
 
-    return InboundResult(
-        usage, _split_spans(screen_verdict.get("pii_spans"), segments, regions, offsets)
-    )
+    return InboundResult(usage, _rebase(screen_verdict.get("pii_spans"), len(segments), regions))
 
 
 # ── pseudonymize / restore ───────────────────────────────────────────────────
@@ -238,7 +334,7 @@ class EgressContext:
     locality: str
     pseudonymizer: Pseudonymizer
     provider_request: Any
-    source_context: str
+    source_regions: list[dict[str, str]]
     images_unredacted: int = 0
     restored: int = 0
     pii_leak_blocked: bool = False
@@ -295,28 +391,38 @@ def _known(request: Any) -> list[tuple[str, str]]:
 
 
 def prepare_egress(
-    request: GenerateRequest, *, spans_by_segment: list[list[Span]] | None
+    request: GenerateRequest,
+    *,
+    spans_by_segment: list[list[Span]] | None,
+    system_governed: bool = False,
 ) -> EgressContext:
-    """Build what the provider receives for ``request``, per its locality."""
+    """Build what the provider receives for ``request``, per its locality.
+
+    The ``known_phi`` exact-match pass covers EVERY segment on cloud — a governed
+    system prompt included, as defence in depth; ML spans exist only where the
+    inbound screen looked. ``system_governed`` (verified by the caller, FC-4) keeps
+    the system prompt out of the ``pii_leak`` source regions.
+    """
     locality = resolve_locality(request.provider, request.provider_locality)
     segments = request_segments(request)
     spans = spans_by_segment or [[] for _ in segments]
     pseudonymizer = Pseudonymizer(_known(request))
+    system: SystemTrust = "governed" if system_governed else "untrusted"
 
     if locality == LOCAL:
         for text, segment_spans in zip(segments, spans, strict=False):
             pseudonymizer.count(text, segment_spans)
         provider_request = request
-        source_context = sent_text(segments)
+        regions = source_regions(segments, system=system)
     else:
         rewritten = [
             pseudonymizer.pseudonymize(text, segment_spans) if text else text
             for text, segment_spans in zip(segments, spans, strict=False)
         ]
-        # The output screen's source is everything the provider was given,
-        # pseudonymised, minus the platform sentence (it names a token shape, not
-        # anything the model read).
-        source_context = sent_text(rewritten)
+        # The output screen's source is the untrusted regions the provider was
+        # given, pseudonymised; never the platform sentence (it names a token
+        # shape, not anything the model read).
+        regions = source_regions(rewritten, system=system)
         system_prompt = rewritten[0]
         system_prompt = (
             f"{system_prompt}{_SEGMENT_SEPARATOR}{PLATFORM_TOKEN_SENTENCE}"
@@ -348,19 +454,9 @@ def prepare_egress(
         locality=locality,
         pseudonymizer=pseudonymizer,
         provider_request=provider_request,
-        source_context=source_context,
+        source_regions=regions,
         images_unredacted=images,
     )
-
-
-def sent_text(segments: list[str]) -> str:
-    """What the response was generated FROM, for the ``pii_leak`` check.
-
-    Every text the provider received — system prompt, user message, text parts —
-    minus only the composer's ``EXTERNAL_DATA`` markers, so a response that repeats
-    supplied PHI (wherever it was supplied) is judged against all of it (TASK-1036 E1).
-    """
-    return _combine(segments, _regions(segments))[0]
 
 
 def prepare_text_egress(
@@ -388,6 +484,6 @@ def prepare_text_egress(
         locality=locality,
         pseudonymizer=pseudonymizer,
         provider_request=None,
-        source_context=_SEGMENT_SEPARATOR.join(outgoing),
+        source_regions=source_regions(outgoing, system="absent"),
     )
     return context, outgoing

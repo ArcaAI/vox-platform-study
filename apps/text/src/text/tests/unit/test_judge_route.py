@@ -304,7 +304,7 @@ class TestCycleGuard:
         with judge_scope():
             with pytest.raises(GuardrailRecursionError):
                 await run_inbound_gate(
-                    guardrail, segments=["hi"], prompt="hi", system_prompt=None, tenant_id=None
+                    guardrail, segments=["hi"], prompt="hi", system="absent", tenant_id=None
                 )
 
         guardrail.validate.assert_not_awaited()
@@ -319,7 +319,7 @@ class TestCycleGuard:
         guardrail.screen_inbound = AsyncMock(return_value={"allowed": True, "pii_spans": []})
 
         result = await run_inbound_gate(
-            guardrail, segments=["hi"], prompt="hi", system_prompt=None, tenant_id="t-1"
+            guardrail, segments=["hi"], prompt="hi", system="absent", tenant_id="t-1"
         )
 
         assert result.guardrail_usage is None  # verdict carried no stats

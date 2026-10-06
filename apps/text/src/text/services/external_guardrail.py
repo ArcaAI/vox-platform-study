@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
-import time
-from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
 import httpx
 from hope_obs import outbound_context_headers
+from prometheus_client import Counter
 
 from text.core.guardrail_posture import GuardrailPosture, resolve_posture
 from text.core.logging import get_logger
@@ -43,6 +40,41 @@ _RETRYABLE_STATUSES = frozenset({502, 503, 504})
 # propagated: guardrail already waited its full judge budget and does not retry
 # a judgement, so this client does not either.
 _JUDGE_TIMED_OUT_MARKER = "undetermined (timeout)"
+
+
+# The verdict's ``error`` when guardrail answered a regions call without echoing every
+# region it was sent (TASK-1047 FC-5). The REASON stays ``GUARDRAIL_UNAVAILABLE_REASON``
+# so every gate maps it to the same retryable 503 as an outage: nothing was judged.
+GUARDRAIL_COVERAGE_MISSING_ERROR = "external_guardrail_screen_coverage_missing"
+
+SCREEN_COVERAGE_MISSING = Counter(
+    "text_egress_screen_coverage_missing_total",
+    "Regions verdicts failed closed because guardrail did not echo every region sent",
+    ["call"],
+)
+
+
+def _coverage_missing(payload: dict[str, Any], regions: list[dict[str, str]]) -> int | None:
+    """``None`` when every region key sent is in ``screened_regions``; else the gap.
+
+    A guardrail that predates the regions API ignores ``regions`` and screens an
+    empty ``text``; its "allow" inspected nothing. So the echo is the proof of
+    coverage: an ABSENT or malformed ``screened_regions`` covers nothing, even for
+    an empty ``regions`` list (the gap is then 0, and still a failure). An empty
+    list sent with ``screened_regions: []`` echoed is covered.
+    """
+    sent = {region["key"] for region in regions}
+    screened = payload.get("screened_regions")
+    if not isinstance(screened, list):
+        return len(sent)
+    missing = sent - {str(key) for key in screened}
+    return len(missing) if missing else None
+
+
+def _undetermined(call: str, missing: int) -> None:
+    """Log (the COUNT, never text) and count a coverage failure."""
+    SCREEN_COVERAGE_MISSING.labels(call=call).inc()
+    logger.error("text.egress.screen_coverage_missing", call=call, missing=missing)
 
 
 def _judge_timed_out(response: httpx.Response) -> bool:
@@ -114,46 +146,6 @@ def _describe(exc: BaseException) -> str:
     return f"{name}: {detail}" if detail else name
 
 
-#: Medical-judge verdict cache (TASK-1035 §3.2). Live flushes repeat the same
-#: prefix, and one judgement costs up to the judge's full budget. Bounded TTL; the
-#: TENANT is part of the key so one tenant's verdict is never served to another.
-MEDICAL_VERDICT_TTL_S = 300
-MEDICAL_VERDICT_LRU_MAX = 1024
-_MEDICAL_VERDICT_PREFIX = "text:medjudge:"
-
-
-def _medical_cache_key(tenant_id: str | None, text: str) -> str:
-    normalised = " ".join(text.split())
-    digest = hashlib.sha256(f"{tenant_id or ''}\x00{normalised}".encode()).hexdigest()
-    return f"{_MEDICAL_VERDICT_PREFIX}{digest}"
-
-
-class _VerdictLru:
-    """In-process fallback when no Redis is wired. TTL-bounded, size-bounded."""
-
-    def __init__(self, *, ttl_s: float, max_entries: int) -> None:
-        self._ttl_s = ttl_s
-        self._max = max_entries
-        self._entries: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
-
-    def get(self, key: str) -> dict[str, Any] | None:
-        entry = self._entries.get(key)
-        if entry is None:
-            return None
-        expires_at, value = entry
-        if expires_at < time.monotonic():
-            self._entries.pop(key, None)
-            return None
-        self._entries.move_to_end(key)
-        return value
-
-    def set(self, key: str, value: dict[str, Any]) -> None:
-        self._entries[key] = (time.monotonic() + self._ttl_s, value)
-        self._entries.move_to_end(key)
-        while len(self._entries) > self._max:
-            self._entries.popitem(last=False)
-
-
 class ExternalGuardrailClient:
     """Calls the Guardrail service: the inbound screen, the medical judge, the outbound screen.
 
@@ -196,9 +188,6 @@ class ExternalGuardrailClient:
             recovery_timeout=GUARDRAIL_BREAKER_RECOVERY_S,
             half_open_max_calls=1,
         )
-        self._verdict_lru = _VerdictLru(
-            ttl_s=MEDICAL_VERDICT_TTL_S, max_entries=MEDICAL_VERDICT_LRU_MAX
-        )
 
     def _platform_posture(self) -> GuardrailPosture:
         """The last posture the control plane served, or the in-code floors."""
@@ -207,13 +196,24 @@ class ExternalGuardrailClient:
 
     async def validate(
         self,
-        prompt: str,
+        prompt: str = "",
         system_prompt: str | None = None,
         tenant_id: str | None = None,
         tenant_policy: Any = None,
         provider_overrides: dict[str, Any] | None = None,
+        *,
+        regions: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Moderate ``prompt`` under the resolved posture.
+        """Moderate ``prompt`` — or, from the egress gate, ``regions`` — under the posture.
+
+        ``regions`` (TASK-1047 FC-5, OD-5) are the data regions ``[{key, text}]``;
+        a verdict that does not echo every key in ``screened_regions`` is an outage
+        (fail closed, ``GUARDRAIL_COVERAGE_MISSING_ERROR``);
+        guardrail judges them window by window and caches each window's verdict
+        (FC-7), so this client keeps NO verdict cache of its own: a whole-text key
+        missed on every live flush anyway (the transcript grows), was a bare sha256
+        of PHI in Redis, and carried no policy version. With ``regions`` the legacy
+        ``text`` is sent empty.
 
         ``tenant_policy`` is the request's PUSHED ``guardrail_policy`` block; it
         folds over the platform default tenant-first, widening only on absence
@@ -230,8 +230,21 @@ class ExternalGuardrailClient:
         posture = resolve_posture(self._platform_posture(), tenant_policy)
 
         text = prompt if not system_prompt else f"{system_prompt}\n\n{prompt}"
+        if regions is not None:
+            text = ""
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            if regions is not None:
+                missing = _coverage_missing(payload, regions)
+                if missing is not None:
+                    _undetermined("medical", missing)
+                    return {
+                        "allowed": False,
+                        "is_medical": False,
+                        "confidence": 0.0,
+                        "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                        "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                    }
             is_medical = bool(payload.get("is_medical", False))
             return {
                 "allowed": is_medical,
@@ -243,12 +256,9 @@ class ExternalGuardrailClient:
                 "raw": payload,
             }
 
-        cache_key = _medical_cache_key(tenant_id, text)
-        cached = await self._cached_verdict(cache_key)
-        if cached is not None:
-            return cached
-
         body: dict[str, Any] = {"text": text, "include_reasoning": posture.include_reasoning}
+        if regions is not None:
+            body["regions"] = regions
         if provider_overrides:
             body["provider_overrides"] = provider_overrides
 
@@ -260,7 +270,6 @@ class ExternalGuardrailClient:
             parse=_parse,
         )
         if verdict is not None:
-            await self._remember_verdict(cache_key, verdict)
             return verdict
         return {
             "allowed": False,
@@ -274,7 +283,7 @@ class ExternalGuardrailClient:
         self,
         response: str,
         *,
-        source_context: str | None = None,
+        source_regions: list[dict[str, str]] | None = None,
         tenant_id: str | None = None,
         tenant_policy: Any = None,
     ) -> dict[str, Any]:
@@ -284,9 +293,11 @@ class ExternalGuardrailClient:
         completion to guardrail's outbound screen
         (``POST /api/v1/guardrail/screen/outbound``), which runs the
         response-safety / toxicity / refusal classifiers, a PII-leak check against
-        ``source_context`` (the prompt the response was generated FROM — without
-        it that check is reported ``skipped``, never ``pass``) and containment-echo
-        detection. Guardrail's own decision is fail-CLOSED: a check that could not
+        ``source_regions`` (TASK-1047 FC-5: the untrusted regions the response was
+        generated FROM — without them that check is reported ``skipped``, never
+        ``pass``) and containment-echo detection. Guardrail windows the response
+        itself (OD-9). With ``source_regions``, a verdict whose ``screened_regions``
+        does not echo every key sent is an outage, never an "allow" (TASK-1047). Guardrail's own decision is fail-CLOSED: a check that could not
         run yields ``decision: "block"``.
 
         The verdict shape mirrors :meth:`validate` so both halves of the gate read
@@ -302,6 +313,15 @@ class ExternalGuardrailClient:
         posture = resolve_posture(self._platform_posture(), tenant_policy)
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            if source_regions is not None:
+                missing = _coverage_missing(payload, source_regions)
+                if missing is not None:
+                    _undetermined("outbound", missing)
+                    return {
+                        "allowed": False,
+                        "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                        "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                    }
             decision = payload.get("decision")
             if decision not in ("allow", "block"):
                 return {"allowed": False, "reason": "malformed_verdict", "raw": payload}
@@ -318,7 +338,7 @@ class ExternalGuardrailClient:
 
         verdict, last_error = await self._post_verdict(
             "/api/v1/guardrail/screen/outbound",
-            {"response": response, "source_context": source_context},
+            {"response": response, "source_regions": source_regions},
             headers=self._headers(tenant_id),
             posture=posture,
             parse=_parse,
@@ -331,21 +351,36 @@ class ExternalGuardrailClient:
             "error": last_error,
         }
 
-    async def screen_inbound(self, text: str, *, tenant_id: str | None = None) -> dict[str, Any]:
-        """Screen an inbound prompt AND return its PII spans (TASK-1035 §5.0).
+    async def screen_inbound(
+        self, *, regions: list[dict[str, str]], tenant_id: str | None = None
+    ) -> dict[str, Any]:
+        """Screen inbound REGIONS AND return their PII spans (TASK-1035 §5.0, TASK-1047 FC-5).
 
-        One call to guardrail's ``/screen/inbound`` with ``include_pii_spans``: the
-        prompt-safety / toxicity / jailbreak classification and the GLiNER2 span
+        One call to guardrail's ``/screen/inbound`` with ``regions`` (``text`` empty)
+        and ``include_pii_spans``: guardrail windows each region independently, and
+        the prompt-safety / toxicity / jailbreak classification and the GLiNER2 span
         extraction run concurrently guardrail-side. The verdict shape mirrors
         :meth:`screen_output` — ``allowed``, ``reason`` (a check NAME, never text),
-        ``raw`` — plus ``pii_spans`` (``[{label, start, end, text, score}]`` in the
-        coordinates of ``text``). The span values are PHI: they exist only so the
-        caller can replace them, and are never logged here. No containment envelope
-        is requested (``wrap: false``): the caller sends its own prompt.
+        ``raw`` — plus ``pii_spans`` (``[{label, start, end, text, score, region}]``,
+        offsets relative to the named region's text). A verdict whose
+        ``screened_regions`` does not echo every key sent is an outage, never an
+        "allow" (TASK-1047). The span values are PHI: they
+        exist only so the caller can replace them, and are never logged here. No
+        containment envelope is requested (``wrap: false``): the caller sends its own
+        prompt.
         """
         posture = self._platform_posture()
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            missing = _coverage_missing(payload, regions)
+            if missing is not None:
+                _undetermined("inbound", missing)
+                return {
+                    "allowed": False,
+                    "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                    "pii_spans": [],
+                    "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                }
             decision = payload.get("decision")
             spans = payload.get("pii_spans")
             if decision not in ("allow", "block") or not isinstance(spans, list):
@@ -364,7 +399,13 @@ class ExternalGuardrailClient:
 
         verdict, last_error = await self._post_verdict(
             "/api/v1/guardrail/screen/inbound",
-            {"text": text, "kind": "prompt", "wrap": False, "include_pii_spans": True},
+            {
+                "text": "",
+                "regions": regions,
+                "kind": "prompt",
+                "wrap": False,
+                "include_pii_spans": True,
+            },
             headers=self._headers(tenant_id),
             posture=posture,
             parse=_parse,
@@ -377,46 +418,6 @@ class ExternalGuardrailClient:
             "pii_spans": [],
             "error": last_error,
         }
-
-    async def _cached_verdict(self, key: str) -> dict[str, Any] | None:
-        """A cached medical verdict, or ``None``. A cache error is a miss, never a verdict."""
-        redis = getattr(self._app_state, "redis", None)
-        if redis is None:
-            return self._verdict_lru.get(key)
-        try:
-            raw = await redis.get(key)
-        except Exception as exc:  # noqa: BLE001 — a cache blip degrades to "ask guardrail"
-            logger.warning("external_guardrail.verdict_cache_read_failed", error=_describe(exc))
-            return None
-        if raw is None:
-            return None
-        try:
-            stored = json.loads(raw)
-        except (TypeError, ValueError):
-            return None
-        return stored if isinstance(stored, dict) else None
-
-    async def _remember_verdict(self, key: str, verdict: dict[str, Any]) -> None:
-        """Cache the PHI-free half of a medical verdict.
-
-        Only ``allowed`` / ``is_medical`` / ``confidence`` are kept: guardrail's
-        free-text ``reasoning`` can quote the prompt, so it never reaches the cache,
-        and neither does the usage block (a cache hit spent nothing).
-        """
-        stored = {
-            "allowed": bool(verdict.get("allowed")),
-            "is_medical": bool(verdict.get("is_medical")),
-            "confidence": float(verdict.get("confidence") or 0.0),
-            "reason": "medical_verdict_cached",
-        }
-        redis = getattr(self._app_state, "redis", None)
-        if redis is None:
-            self._verdict_lru.set(key, stored)
-            return
-        try:
-            await redis.set(key, json.dumps(stored), ex=MEDICAL_VERDICT_TTL_S)
-        except Exception as exc:  # noqa: BLE001 — caching is best-effort
-            logger.warning("external_guardrail.verdict_cache_write_failed", error=_describe(exc))
 
     def _headers(self, tenant_id: str | None) -> dict[str, str]:
         headers: dict[str, str] = {"Content-Type": "application/json"}

@@ -2,9 +2,10 @@
 
 * No platform switch and no tenant opt-out: `validate` always calls guardrail.
 * `screen_inbound` asks for PII spans and returns them.
-* The medical-judge verdict is cached per tenant: live flushes repeat the same
-  prefix, and a ~50 s judgement should not be paid twice for the same text. The
-  tenant is part of the key, so one tenant's verdict is never served to another.
+* The medical-judge verdict is NOT cached here any more (TASK-1047): guardrail
+  judges per window and caches each window's verdict under a tenant-keyed HMAC with
+  the policy version (FC-7). The whole-text cache this file used to pin missed on
+  every live flush (the transcript grows) and keyed Redis on a bare sha256 of PHI.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ class _Http:
                     "pii_spans": [
                         {"label": "person", "start": 0, "end": 4, "text": "John", "score": 0.9}
                     ],
+                    "screened_regions": [r["key"] for r in json.get("regions", [])],
                 }
             )
         return _Resp({"is_medical": True, "confidence": 0.9, "reasoning": "clinical"})
@@ -82,41 +84,25 @@ async def test_validate_always_calls_guardrail_whatever_the_request_says() -> No
 
 async def test_screen_inbound_requests_and_returns_pii_spans() -> None:
     http = _Http()
-    verdict = await _client(http).screen_inbound("John has a cough", tenant_id="t1")
+    regions = [{"key": "transcript", "text": "John has a cough"}]
+    verdict = await _client(http).screen_inbound(regions=regions, tenant_id="t1")
 
     call = http.calls[0]
     assert call["url"] == "http://guardrail/api/v1/guardrail/screen/inbound"
     assert call["json"]["include_pii_spans"] is True
-    assert call["json"]["text"] == "John has a cough"
+    assert call["json"]["regions"] == regions and call["json"]["text"] == ""
     assert call["headers"]["X-Tenant-Id"] == "t1"
     assert verdict["allowed"] is True
     assert verdict["pii_spans"][0]["label"] == "person"
 
 
-async def test_the_medical_verdict_is_cached_per_tenant() -> None:
-    http = _Http()
-    client = _client(http)
-
-    await client.validate("chest   pain", system_prompt="sys", tenant_id="t1")
-    await client.validate("chest pain", system_prompt="sys", tenant_id="t1")
-    assert len(http.calls) == 1  # normalized whitespace hit the cache
-
-    await client.validate("chest pain", system_prompt="sys", tenant_id="t2")
-    assert len(http.calls) == 2  # another tenant never reads t1's verdict
-
-
-async def test_the_medical_verdict_cache_uses_redis_without_storing_text() -> None:
+async def test_every_judgement_goes_to_guardrail_and_redis_holds_no_verdict() -> None:
     redis = fakeasync.FakeRedis(decode_responses=True)
     http = _Http()
 
     await _client(http, redis=redis).validate("chest pain", tenant_id="t1")
-    # A second client (another pod) reads the same verdict.
     await _client(http, redis=redis).validate("chest pain", tenant_id="t1")
 
-    assert len(http.calls) == 1
-    keys = await redis.keys("text:medjudge:*")
-    assert len(keys) == 1
-    stored = await redis.get(keys[0])
-    assert "chest pain" not in stored and "clinical" not in stored
-    assert await redis.ttl(keys[0]) > 0
+    assert len(http.calls) == 2
+    assert await redis.keys("text:medjudge:*") == []
     await redis.aclose()
