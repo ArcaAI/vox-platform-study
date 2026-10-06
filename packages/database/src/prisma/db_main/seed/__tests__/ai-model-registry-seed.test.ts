@@ -268,6 +268,14 @@ describe('the platform model catalogue (34 SYSTEM rows)', () => {
     expect(bySlug('gliner2-privacy-filter-pii-multi')?.metaData?.labelTaxonomy?.labels).toHaveLength(48);
     expect(bySlug('gliner2-guardrails-pii-multi')?.metaData?.capabilities).toEqual(['extract_entities', 'classify_text']);
     expect(Object.keys(bySlug('gliguard-llm-guardrails-300m')?.metaData?.labelTaxonomy?.tasks ?? {})).toHaveLength(6);
+    // TASK-1047 OD-14 follow-up (owner approved 2026-10-06): medical advice is the product, never "toxic";
+    // the weak classifier's outbound checks record instead of refusing until a better model is approved.
+    expect(bySlug('gliguard-llm-guardrails-300m')?.metaData?.labelTaxonomy?.benignLabels).toContain('regulated_advice');
+    expect(bySlug('gliguard-llm-guardrails-300m')?.metaData?.policy?.outboundRecordOnlyChecks).toEqual([
+      'jailbreak_detection',
+      'response_safety',
+      'response_toxicity',
+    ]);
     expect(bySlug('minicheck-flan-t5-large')?.metaData?.entailment?.adapter).toBe('minicheck-flan-t5');
     expect(bySlug('granite-guardian-4.1-8b')?.metaData?.policy?.medicalValidationCriteria).toMatch(/medical context validator/);
     expect(bySlug('kokoro')?.metaData?.voices?.length).toBeGreaterThan(0);

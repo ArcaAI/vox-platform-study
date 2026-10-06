@@ -85,9 +85,12 @@ describe('SYSTEM granite-guardian-4.1-8b row carries the guardrail policy blob',
     expect(policy.judgeMaxTokens).toBeLessThanOrEqual(100_000);
   });
 
-  it('is the only DEFAULT_AI_MODELS row carrying a policy blob (no accidental spread onto other rows)', () => {
+  it('only the judge row and the guardrail.safety row carry a policy blob (no accidental spread onto other rows)', () => {
     const withPolicy = DEFAULT_AI_MODELS.filter((m) => m.metaData?.policy !== undefined);
-    expect(withPolicy.map((m) => `${m.tenantId}::${m.slug}`)).toEqual([`${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`]);
+    // TASK-1047: guardrail reads `outboundRecordOnlyChecks` from the guardrail.safety row's policy (gliguard).
+    expect(withPolicy.map((m) => `${m.tenantId}::${m.slug}`).sort()).toEqual(
+      [`${SYSTEM_TENANT_ID}::gliguard-llm-guardrails-300m`, `${SYSTEM_TENANT_ID}::granite-guardian-4.1-8b`].sort(),
+    );
   });
 });
 
@@ -119,8 +122,7 @@ describe('seedAiModels propagates the policy blob to an existing AiModel row', (
     return { client, updates, creates };
   };
 
-  const graniteUpdate = (updates: UpdateCall[]) =>
-    updates.find((u) => u.where.id === `existing-${SYSTEM_TENANT_ID}-granite-guardian-4.1-8b`);
+  const graniteUpdate = (updates: UpdateCall[]) => updates.find((u) => u.where.id === `existing-${SYSTEM_TENANT_ID}-granite-guardian-4.1-8b`);
 
   it('writes metaData.policy on the existing row via update() (not skipped as create-only)', async () => {
     const { client, updates, creates } = makeExistingRowClient();

@@ -734,10 +734,15 @@ export const NLP_AI_MODELS: AiModelSeed[] = [
       // "scanned, found nothing". Selecting this row for `guardrail.pii` would
       // therefore silently disable redaction. Never do it.
       capabilities: ['classify_text'],
+      // TASK-1047 (owner approved 2026-10-06): this classifier false-flags clinical notes, so its outbound checks are
+      // RECORDED (guardrail `data_findings`), not refusing, until a better-calibrated model is approved.
+      // pii_leak, containment echo, response_refusal and any undetermined check still block.
+      policy: { outboundRecordOnlyChecks: ['jailbreak_detection', 'response_safety', 'response_toxicity'] },
       labelTaxonomy: {
         threshold: 0.4,
-        // Labels that mean "clean" and must never be reported as an issue.
-        benignLabels: ['benign', 'safe', 'compliance'],
+        // Labels that mean "clean" and must never be reported as an issue. `regulated_advice` is medical advice —
+        // the product itself (TASK-1047: it flagged 5 of 14 gold-standard reference notes as toxic).
+        benignLabels: ['benign', 'safe', 'compliance', 'regulated_advice'],
         // Task names are CALLER-SUPPLIED, not the model's own schema keys
         // (probed 2026-08-20 — `classify_text` conditions on whatever names and
         // labels it is handed). Labels are verbatim from the model card.
