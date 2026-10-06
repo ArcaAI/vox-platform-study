@@ -741,6 +741,36 @@ consultation starts new), so steady state is better than these numbers, but 100 
 need NLP capacity sized on the cluster (more CPU replicas and/or the GPU follow-up) — to be measured there. The 2 h
 soak was not run on this box.
 
+### 8.9 Owner-approved classifier configuration, authoring injection advisory, reboot recovery
+
+**Classifier configuration (owner approved 2026-10-06, `fb8e70061`, seeded):** on the SYSTEM
+`gliguard-llm-guardrails-300m` row, `labelTaxonomy.benignLabels` gains `regulated_advice` (5 of the 14
+gold-standard reference notes were "toxic" for containing medical advice), and `_metadata.policy.outboundRecordOnlyChecks`
+= `[jailbreak_detection, response_safety, response_toxicity]` (FC-5c): those outbound checks record instead of
+refusing; `pii_leak`, containment echo, `response_refusal` and undetermined still block.
+
+**Authoring-time injection advisory (owner decision, `a208f5bb6`):** after the reseed, 12 ArcaAI sources —
+the Surgery, Hematology and Breast & Endocrine summary agents and templates, which the V7 BREN path uses —
+failed authoring screening as INJECTION on ordinary instruction text, which would have left them ungoverned and
+refused at call time. An injection flag at authoring time is now `PROMPT_INJECTION_ADVISORY` (WARNING, registered
+PASS) behind the platform setting `governedPrompt.injectionBlocking` (default `false`); turning it on restores
+`PROMPT_SCREENING_INJECTION` (blocking). Direct-identifier PII and "screening unavailable" still block. After the
+change the boot backfill governed all 135 sources (0 FAIL, 0 UNAVAILABLE).
+
+**Model loading is owner-gated (owner rule 2026-10-06):** no model is loaded, swapped or reconfigured without
+approval. Approved for the remaining validation: Gemma 4 E2B (32k context, parallel 10, q4_0 KV), the
+granite-guardian-4.1-8b medical judge (JIT), the in-process NLP and STT models.
+
+**Workstation forced reset 17:23 (power-button reset; no kernel panic, no new jetsam).** The dev Vault is
+in-memory, so recovery was: re-run `hope-vault-init`, `refresh-vault-creds.sh`, `setup-dev-vault-db.sh`,
+`vault-seed-secrets.sh`, rebuild + reseed `hope_1045_e2e`. E2E tooling now lives in the repo under
+`.e2e-tools/` (excluded via `.git/info/exclude`, never committed) so a reboot no longer wipes it.
+
+**Memory observations after restart (monitor + alerts running):** NLP peaked at 5.6 GiB on the cold full
+re-screen (cold cache), then 237 MiB on the warm one; the admin console `next dev` spiked to 6.1 GiB RSS on its
+first Turbopack compile, but its physical footprint settled at ~0.4 GiB (RSS is mostly mapped cache files).
+The rest of the box's pressure is baseline desktop apps (Edge, Teams, Cursor, the Docker VM ≈ 12 GB together).
+
 ## 9. Change History
 
 | Date | Change |
