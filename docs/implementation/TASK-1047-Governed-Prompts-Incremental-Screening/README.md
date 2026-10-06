@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — implementation merged to `dev-2.2` and gated; validation V2–V6 next, then the TASK-1045 e2e (V7) |
+| Status | **Review** — merged to `dev-2.2`; V1–V7 validated locally (§8.2–8.12), including the ALaaS → HOPE e2e with sign-off. Awaiting owner sign-off and the findings in §8.12 |
 | Type | refactor + infrastructure (safety plane efficiency; no new product feature) |
 | Branch | `dev-2.2` (lanes in sibling worktrees, merged by the orchestrator) |
 | Raised by | TASK-1045 e2e, 2026-10-06 — `apps/nlp` reached 36.8 GiB resident (88.8 GiB peak), the dev Mac exhausted swap, Jetsam killed system daemons and the kernel panicked |
@@ -808,9 +808,49 @@ EMR event id already bound to another patient (`EXTERNAL_REF_CONFLICT`).
 Observation for follow-up: an abandoned consultation left `RECORDING` keeps its harness workflow polling
 `live-handoff` every few seconds until the idle sweep closes it.
 
+### 8.12 V7 continued — the medical judge's scope, and the end-to-end pass
+
+After V7-1..3 the note still failed. These were the two remaining causes, again visible only on the live path:
+
+| # | Commit | Defect | Fix |
+|---|---|---|---|
+| V7-4 | `c7e8b5f54` | `core.agent` governance required a TASK-1047 stamp on the agent row. Seeded agents and agents published before TASK-1047 carry none, so every BREN agent call went out `ungoverned` | No stamp ⇒ the gateway registry decides (`verify_governed_prompts`): the call is governed when the registry vouches for every piece. A stamp, when present, is still checked |
+| V7-5 | `77786f169`, `39bd245d7`, `c6c0e54cf` | The per-window medical judge (OD-5) judged the clinician's SETTINGS regions as well: the DNA writing-style text and the redaction rules. Those are style and policy instructions, not clinical claims, so granite-guardian refused them as "unsupported medical content" and the note failed | **Owner decision: judge clinical content only, by a guardrail config list.** `medicalJudgeConfigRegions` (screen policy; default `context_dna_style_text`, `context_dna_redaction_rules_text` and their `trigger_context_` forms) names the regions the judge skips. The route logs the skipped region KEYS (`guardrail.medical_validate.off_scope`, never text) and still echoes every region it received in `screened_regions`, so apps/text's coverage check holds |
+
+**V7 end to end (ALaaS → local HOPE + admin console, `hope_1045_e2e`, tenant ArcaAI, BREN), 2026-10-06:**
+
+| Step | Result |
+|---|---|
+| E1 new visit (`V7E10A`): open → record → pause/resume → stop | `STOPPED / IDLE / NOTE_READY`, 141 s from open to `note.final`. After stop the frames arrive in order: `transcript.final > note.requested > note.progress > note.final`. Runs: TRANSCRIBE_STREAM, FACT_LEDGER, NOTE_GENERATE (2,657 / 32,768 ctx), all OK |
+| E2 revisit, same patient (`V7E10B`) | Encounter 2 on the same consultation (`revisit`). `encounter.recap` + `encounter.transcript` delivered; note 3,565 / 32,768 ctx, OK. Final note: English, all 14 BREN headings, every line cited, both encounters merged; no fabricated sections ("Not discussed") |
+| Governance | Every text call `governed` (note 7 pieces, fact ledger 3, live 2). Outbound `response_safety` recorded only (FC-5c). Medical judge 3× ≈ 4 s each. Local PII detected and not redacted (local model, by design) |
+| Sign-off (TASK-1008) | `save_summary` did NOT sign. EMR copy (citation labels stripped) signed within ~1 s: `CLOSED_COMPLETE`, `closedReason=APPROVED`, a `feedback` row (`copy-to-emr`, correction), a `RAW_SUMMARY` attestation version, an approval row with snapshot and attestation digests. The governing run `COMPLETED`; the first run was `CANCELED` by the revisit's resume (supersede, TASK-1022) |
+| Admin console | `/consultations/[id]` timeline renders and decrypts: Closed (approved), 2 encounters, 8 AI runs, 11,481 / 4,292 tokens |
+
+**Memory during V7** (sampled every ~10 s, `mem-monitor.sh`): NLP peak 5.5 GiB (cold, with the old process still alive
+across a restart) and 4.9 / 4.2 GiB during E1 / E2. LM Studio peak 5.9 GiB (Gemma 4 E2B + granite-guardian), STT 3.2 GiB,
+api 1.6 GiB, harness 1.3 GiB, text 0.5 GiB. System free memory never fell below 27% (38% while recording), and no alert fired.
+`next-server` (admin console) reached 3.9–8.1 GiB RSS during first-compile bursts only. Swap allocation reached 14 GiB over the day
+and macOS does not give it back. It grew during stack restarts, when two NLP processes overlapped, not during runs.
+
+**Findings for the owner (not TASK-1047 defects):**
+
+1. **The live lane sends the agent's instruction twice.** Since TASK-1035 (`ccd1f1335`), `composeLivePromptParts` passes the
+   agent instruction as `resolvedPrompt` AND again inside the contract parts (`live-stable-prefix` = `agent.stableUserPrefix`).
+   The BREN live system message is 53,257 chars, and of that the ~19.4k-char department block appears twice, byte for byte
+   (composed-prompt inspector, `phase: live`). The finalizer prompt is clean (7,083 chars). Every live flush pays roughly 5k
+   extra prefill tokens. It is a plausible contributor to the live pre-summary on the 2B model echoing section guidance
+   ("Age, Sex, Date of Admission … - null"). The final note is unaffected. Proposed fix: when the governed prompt is
+   the agent instruction, the stable prefix contributes only the template's `promptInstruction`. That changes live prompt
+   bytes, so it needs an owner go.
+2. The warm-start pre-summary degrades with `no_case_notes` for a patient with no prior EMR notes. This is expected, but the
+   `presummary` frame says only `degraded`, so a client cannot tell "nothing to summarise" from a failure.
+3. `get_info.failed` warnings for `ollama` / `llama-cpp` on every provider-info probe, because neither provider is configured locally (noise).
+
 ## 9. Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-06 | Ticket created from the TASK-1045 e2e memory incident (NLP 36.8 GiB, swap exhaustion, kernel panic). Evidence: Jetsam/panic reports, controlled NLP memory probes (§2.1), code review of composition/egress/authoring (§2.2–2.4), external best practices (§3). Plan, lanes, TDD list, validation V1–V7 and decisions OD-1…OD-9 written. Status Pending. |
 | 2026-10-06 | Owner approved all recommendations; lanes L1–L12 + gate-fix lanes G1–G3 merged to `dev-2.2`; single gate pass green (§8). Owner reminder recorded: sub-agents never run gating tests — only the orchestrator, once, after the full merge. |
+| 2026-10-06 | V7 completed (§8.11–8.12): five live-path governance defects fixed (V7-1..5; V7-5 under the owner's "judge clinical content only" decision via `medicalJudgeConfigRegions`); E1 + E2 revisit + EMR-copy sign-off + admin console pass end to end; memory stayed bounded. Out-of-scope finding: the live lane has sent the agent instruction twice since TASK-1035. Status → Review. |
