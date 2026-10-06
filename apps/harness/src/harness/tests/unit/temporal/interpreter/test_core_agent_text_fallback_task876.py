@@ -262,7 +262,9 @@ class TestFallbackOnPrimaryFailure:
         assert served["model"] == "gemma-4-e2b-it-qat"
         assert served[
             "system_prompt"
-        ] == platform_rules() + "\n\nPLATFORM Ada\n\n" + default_output_language_step("English")
+        ] == platform_rules() + "\n\nPLATFORM [see the name data section below]\n\n" + default_output_language_step(
+            "English"
+        )
         assert served["temperature"] == 0.2 and served["max_tokens"] == 2048
         # And the output names the row that served — metering follows it.
         assert result.output is not None

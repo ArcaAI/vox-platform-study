@@ -179,14 +179,14 @@ class TestSystemPrompt:
             resolved, {"overrides": {"promptVariables": {"name": "Ada"}}}, {}
         )
 
-        assert prompt == "Resolved Ada"
+        assert prompt == "Resolved [see the name data section below]"
 
     def test_without_a_resolved_prompt_the_instruction_text_is_used(self) -> None:
         wire = _wire_863()
         wire["compiledConfig"]["resolvedPrompt"] = None
         resolved = ResolvedAgent.model_validate(wire)
 
-        assert core._system_prompt(resolved, {}, {}) == "Raw Raw"
+        assert core._system_prompt(resolved, {}, {}) == "Raw [see the name data section below]"
 
 
 def _payload(**config: Any) -> NodeActivityInput:

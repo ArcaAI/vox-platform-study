@@ -289,7 +289,9 @@ _CONVERSATION_LANGUAGE_BODY = (
     "5. Write all content values in the conversation language ({{language}}); "
     "keep the headings in English."
 )
-_RENDERED_BODY = _CONVERSATION_LANGUAGE_BODY.replace("{{language}}", "ml-en")
+_RENDERED_BODY = _CONVERSATION_LANGUAGE_BODY.replace(
+    "{{language}}", "[see the language data section below]"  # FC-1: the value rides in a data block
+)
 
 
 def _SENT(*layers: str) -> str:  # noqa: N802 — reads as the constant it builds

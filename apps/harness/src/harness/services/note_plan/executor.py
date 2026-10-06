@@ -149,6 +149,8 @@ class NoteCallRequest:
     response_format: dict[str, Any] | None = None
     #: ``1`` on the one retry of a call its output budget cut off (callers key idempotency on it).
     retry: int = 0
+    #: TASK-1047 FC-4 — the plan call's gateway-verified ``systemGovernance``, forwarded verbatim.
+    system_governance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -369,6 +371,7 @@ async def execute_plan(
             user=_user(user_prefix, call.directive),
             max_tokens=call.max_tokens,
             response_format=section_response_format(call.section_keys),
+            system_governance=call.system_governance or None,
         )
         for index, call in enumerate(plan.calls)
     ]

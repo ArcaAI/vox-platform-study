@@ -1791,6 +1791,7 @@ async def _run_note_plan_finalizer(
             tenant_id=payload.tenant_id,
             prompt=request.user,
             system_prompt=request.system,
+            system_governance=request.system_governance,
             provider=attempt.provider,
             model=attempt.model,
             temperature=generation.get("temperature"),

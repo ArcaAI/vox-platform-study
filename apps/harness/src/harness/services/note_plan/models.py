@@ -134,6 +134,10 @@ class NotePlanCall(_Wire):
     directive: str
     max_tokens: int
     prompt_tokens: int
+    #: TASK-1047 FC-4 — set by the gateway only when it verified the call's system prompt as
+    #: governed (``{composed_digest, pieces, policy_version}``, forwarded verbatim); absent or
+    #: null means apps/text screens the system prompt itself.
+    system_governance: dict[str, Any] | None = None
 
 
 class CoverageNumber(_Wire):
