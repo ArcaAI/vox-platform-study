@@ -16,6 +16,9 @@ const NOT_A_NAME = new Set([
   'dr', 'clinician', 'clinicians', 'person', 'persons', 'people', 'user', 'users', 'the', 'a', 'an', 'mr', 'mrs',
   'ms', 'miss', 'sir', 'madam', 'nurse', 'physician', 'consultant', 'family', 'relative', 'caregiver',
   'speaker', 'name_placeholder',
+  // Languages: instructions name the note language ("write in English"); the detector reads it as a person.
+  'english', 'malayalam', 'hindi', 'tamil', 'kannada', 'telugu', 'marathi', 'bengali', 'gujarati', 'punjabi',
+  'urdu', 'arabic', 'french', 'spanish', 'german', 'chinese', 'mandarin', 'japanese',
 ]); // prettier-ignore
 
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
@@ -64,4 +67,15 @@ export function piiIdentifierClass(label: string): 'direct' | 'quasi' {
     return 'direct';
   }
   return 'quasi';
+}
+
+/**
+ * `true` when a name-like span starts or ends inside a word of its region — a window cut, e.g. `ady English`
+ * from "Already English". Guardrail's windows overlap by 256 characters, so a real value cut at one window's
+ * edge is also seen whole in the neighbouring window; the fragment itself is never a value.
+ */
+export function isNameFragment(label: string, regionText: string | undefined, start: number, end: number): boolean {
+  if (regionText === undefined || !/(name|person)/.test(label.toLowerCase())) return false;
+  const isLetter = (ch: string | undefined) => ch !== undefined && /\p{L}/u.test(ch);
+  return isLetter(regionText[start - 1]) || isLetter(regionText[end]);
 }

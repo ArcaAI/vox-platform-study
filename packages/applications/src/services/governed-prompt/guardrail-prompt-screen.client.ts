@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { TENANTLESS, internalServiceHeaders, resolveInternalAccessToken } from '../../common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
-import { isPiiValue, piiIdentifierClass } from './pii-value';
+import { isNameFragment, isPiiValue, piiIdentifierClass } from './pii-value';
 
 /**
  * Fallback before the settings cache is warm. Authoring time is off the latency path and a long
@@ -137,7 +137,10 @@ export class GuardrailPromptScreenClient {
       // ("… phone number or email"), which the detector labels; only a span that carries an actual
       // value (an address with @, digits in a phone / ID / date, a proper name) is a finding.
       const label = spanLabel(raw);
-      if (!isPiiValue(label, spanText(raw, regions.find((candidate) => candidate.key === region)?.text))) continue;
+      const regionText = regions.find((candidate) => candidate.key === region)?.text;
+      const span = (raw ?? {}) as { start?: unknown; end?: unknown };
+      if (typeof span.start === 'number' && typeof span.end === 'number' && isNameFragment(label, regionText, span.start, span.end)) continue;
+      if (!isPiiValue(label, spanText(raw, regionText))) continue;
       if (piiIdentifierClass(label) === 'direct') piiRegions.add(region);
       else quasiRegions.add(region);
     }

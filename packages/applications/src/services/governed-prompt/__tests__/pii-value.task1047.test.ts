@@ -44,6 +44,14 @@ describe('isPiiValue', () => {
     expect(isPiiValue(label, text)).toBe(false);
   });
 
+  it.each([
+    ['person', 'English'],
+    ['person', 'Malayalam'],
+    ['full_name', 'Hindi'],
+  ])('a language name is not a person: %s %j', (label, text) => {
+    expect(isPiiValue(label, text)).toBe(false);
+  });
+
   it('an unknown label counts only with a digit or an @', () => {
     expect(isPiiValue('custom_thing', 'something')).toBe(false);
     expect(isPiiValue('custom_thing', 'A-1234')).toBe(true);
@@ -110,5 +118,19 @@ describe('GuardrailPromptScreenClient — only VALUE spans become PII findings',
     ]).screenRegions('t', mixed);
     expect([...outcome.piiRegions]).toEqual(['d']);
     expect([...outcome.quasiRegions]).toEqual([]);
+  });
+
+  it('a name span cut mid-word at a window edge is a fragment, not a value', async () => {
+    const cut = [{ key: 'e', text: 'Write the note in Already English unless told otherwise.' }];
+    const start = cut[0]!.text.indexOf('ady English');
+    const outcome = await client([{ region: 'e', label: 'person', start, end: start + 'ady English'.length }]).screenRegions('t', cut);
+    expect([...outcome.piiRegions]).toEqual([]);
+  });
+
+  it('a whole proper name is still a value', async () => {
+    const whole = [{ key: 'f', text: 'Seen with Anil Kumar today.' }];
+    const start = whole[0]!.text.indexOf('Anil');
+    const outcome = await client([{ region: 'f', label: 'person', start, end: start + 10 }]).screenRegions('t', whole);
+    expect([...outcome.piiRegions]).toEqual(['f']);
   });
 });
