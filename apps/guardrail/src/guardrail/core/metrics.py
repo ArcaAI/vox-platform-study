@@ -380,3 +380,24 @@ def record_screening_decision(direction: str, decision: str, reason: str) -> Non
         ).inc()
     except Exception:  # noqa: BLE001
         return
+
+
+# ---------------------------------------------------------------------------
+# Inbound DATA posture (TASK-1047 FC-5b, owner decision OD-13)
+# ---------------------------------------------------------------------------
+# `task` is the check NAME (`jailbreak_detection` | `prompt_safety` |
+# `prompt_toxicity`) — a closed vocabulary. Never a region key, never a tenant.
+
+GUARDRAIL_DATA_FINDINGS = Counter(
+    "guardrail_data_findings_total",
+    "Inbound checks that flagged on a `data`-trust region (reported, never blocking), by check.",
+    ["task"],
+)
+
+
+def record_data_finding(task: str) -> None:
+    """One (data region, flagged check) pair. Never raises."""
+    try:
+        GUARDRAIL_DATA_FINDINGS.labels(task=task).inc()
+    except Exception:  # noqa: BLE001
+        return
