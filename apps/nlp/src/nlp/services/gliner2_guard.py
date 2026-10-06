@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from nlp.core.bounds import get_bounds
 from nlp.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -120,6 +121,7 @@ class Gliner2GuardService:
             threshold=threshold,
             include_confidence=True,
             include_spans=True,
+            max_len=get_bounds().max_input_words,
         )
         return self._normalize_entities(text, result)
 
@@ -133,6 +135,7 @@ class Gliner2GuardService:
             threshold=threshold,
             include_confidence=True,
             include_spans=True,
+            max_len=get_bounds().max_input_words,
         )
         if len(results) != len(texts):
             # Never zip a short result onto the inputs: caller A would receive
@@ -160,6 +163,7 @@ class Gliner2GuardService:
             # asked; this one did not, which is the whole reason guardrail's
             # session aggregate is a flag rate rather than a graded mean.
             include_confidence=True,
+            max_len=get_bounds().max_input_words,
         )
         if len(results) != len(texts):
             raise RuntimeError(f"gliner2 returned {len(results)} results for {len(texts)} texts")
@@ -200,7 +204,13 @@ class Gliner2GuardService:
     def _sync_classify(self, text: str, tasks: dict[str, Any], threshold: float) -> dict[str, Any]:
         # `include_confidence=True` — see `_sync_batch_classify`.
         return dict(
-            self.runtime.classify_text(text, tasks, threshold=threshold, include_confidence=True)
+            self.runtime.classify_text(
+                text,
+                tasks,
+                threshold=threshold,
+                include_confidence=True,
+                max_len=get_bounds().max_input_words,
+            )
             or {}
         )
 

@@ -1,5 +1,6 @@
 import uvicorn
 
+from nlp.core.bounds import InferenceBounds
 from nlp.core.config import settings
 from nlp.core.logging import get_logger, setup_logging
 
@@ -20,6 +21,9 @@ def main() -> None:
         log_level=settings.service.log_level,
         factory=True,
         lifespan="on",
+        # TASK-1047 FC-8: belt-and-braces recycle at the FC-8 default; the in-process
+        # RecycleMiddleware honours the control-plane value (and the RSS limit).
+        limit_max_requests=InferenceBounds().recycle_after_requests,
     )
 
 
