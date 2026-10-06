@@ -18,7 +18,8 @@ Two distinct failure modes, both closed below:
    ``GUARDRAIL_SERVICE_TOKEN`` in ``.env.dev``, ``ServiceAuthMiddleware`` enforces,
    and every unauthenticated request in a test that is not about auth gets a
    genuine 401 instead of reaching its handler. Pre-setting the var to ``""``
-   (the documented dev / hermetic-CI bypass) gives the same posture CI has, where
+   (the documented dev / hermetic-CI bypass; ``INTERNAL_ACCESS_TOKEN`` is the
+   canonical twin and is neutralized the same way) gives the same posture CI has, where
    no env file is read at all.
 
 The token must be SET to empty, not deleted: ``load_env`` only fills keys that are
@@ -73,6 +74,10 @@ def _isolate_env_from_dot_env_dev() -> Iterator[None]:
     # Empty (not absent) — see the module docstring: absent keys get refilled
     # from .env.dev by the next load_env(), empty ones win over the file.
     os.environ["GUARDRAIL_SERVICE_TOKEN"] = ""
+    # The canonical shared credential is ACCEPTED inbound alongside the legacy one
+    # (`Settings.accepted_service_tokens`), so a real INTERNAL_ACCESS_TOKEN in
+    # `.env.dev` enforces auth just the same - neutralize it the same way.
+    os.environ["INTERNAL_ACCESS_TOKEN"] = ""
     try:
         yield
     finally:

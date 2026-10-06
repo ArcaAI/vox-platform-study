@@ -21,13 +21,14 @@ neither, so NLP was silently absent from the platform dashboard.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="module")
-def metrics_client() -> TestClient:
+def metrics_client() -> Iterator[TestClient]:
     """An app built the way production builds it — with ENABLE_METRICS unset.
 
     Deliberately does NOT use the ``mock_services`` fixture: that fixture
@@ -37,13 +38,27 @@ def metrics_client() -> TestClient:
 
     Module-scoped on purpose. ``prometheus_client`` uses a process-global
     ``REGISTRY``, so building a second app in the same process raises
-    ``DuplicateTimeseries``. One app per process is also what production does.
+    ``DuplicateTimeseries``. One app per process is also what production does -
+    so the HTTP instrumentation left in the registry by any earlier test that
+    built an app (``setup_prometheus`` unpatched) is cleared first, and again on
+    teardown so a later test is not collided with by ours.
     """
     os.environ.pop("ENABLE_METRICS", None)
+    _unregister_http_instrumentation()
 
     from nlp.app import get_app
 
-    return TestClient(get_app())
+    yield TestClient(get_app())
+    _unregister_http_instrumentation()
+
+
+def _unregister_http_instrumentation() -> None:
+    """Drop the instrumentator's ``http_*`` / ``fastapi_inprogress`` collectors."""
+    from prometheus_client import REGISTRY
+
+    for collector, names in list(REGISTRY._collector_to_names.items()):  # noqa: SLF001
+        if any(n.startswith(("http_", "fastapi_inprogress")) for n in names):
+            REGISTRY.unregister(collector)
 
 
 def test_metrics_endpoint_is_mounted_without_enable_metrics_env(

@@ -44,6 +44,8 @@ from text.services.external_guardrail import (
 )
 from text.services.output_gate import gate_completion, source_regions_of
 
+pytestmark = pytest.mark.usefixtures("capturable_module_loggers")
+
 _GOVERNED_SYSTEM = (
     "You are a clinical scribe. Use the data sections below. "
     "Patient: [see the patient_name data section below]."

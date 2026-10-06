@@ -27,6 +27,8 @@ from text.services.external_guardrail import (
 )
 from text.services.output_gate import OutputRejectedError, gate_completion
 
+pytestmark = pytest.mark.usefixtures("capturable_module_loggers")
+
 _REGIONS = [
     {"key": "transcript", "text": "Patient John Doe reports a cough."},
     {"key": "user", "text": "Summarise."},
