@@ -19,11 +19,15 @@ Synthetic and public data only. Never starts or calls a HOPE service.
 from __future__ import annotations
 
 import argparse
+import gc
 import json
+import os
+import re
 import resource
 import statistics
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -69,40 +73,146 @@ def _current_rss_mib() -> float:
     return psutil.Process().memory_info().rss / (1024 * 1024)
 
 
+# ------------------------------------------------------------------ memory safety
+# 2026-10-06: the dev Mac was force-restarted (reset cause `btn_rst`, no panic) while a
+# scoring run, LM Studio and the dev stack shared memory. Every model load is now gated
+# on system free memory, and the process hard-stops itself above an RSS ceiling.
+
+
+class MemoryGateError(RuntimeError):
+    """Refusing to load a model: the system does not have enough free memory."""
+
+
+def parse_free_pct(memory_pressure_output: str) -> int | None:
+    match = re.search(r"memory free percentage:\s*(\d+)%", memory_pressure_output)
+    return int(match.group(1)) if match else None
+
+
+def _system_free_pct() -> int | None:
+    try:
+        out = subprocess.run(
+            ["memory_pressure"], capture_output=True, text=True, timeout=30, check=False
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_free_pct(out)
+
+
+def assert_free_memory(*, min_free_pct: int, reader=_system_free_pct) -> None:
+    free = reader()
+    if free is None:
+        raise MemoryGateError("system free memory is unknown; refusing to load a model")
+    if free < min_free_pct:
+        raise MemoryGateError(f"system memory free {free}% < {min_free_pct}%; refusing to load")
+
+
+class RssGuard:
+    """Samples this process's RSS; calls `on_exceed` ONCE when it passes the ceiling."""
+
+    def __init__(self, *, ceiling_mib: float, reader, on_exceed) -> None:
+        self.ceiling_mib = ceiling_mib
+        self.reader = reader
+        self.on_exceed = on_exceed
+        self.peak_mib = 0.0
+        self._fired = False
+
+    def check(self) -> None:
+        rss = self.reader()
+        self.peak_mib = max(self.peak_mib, rss)
+        if rss > self.ceiling_mib and not self._fired:
+            self._fired = True
+            self.on_exceed(rss)
+
+    def start(self, interval_s: float = 0.2) -> threading.Thread:
+        def loop() -> None:
+            while True:
+                self.check()
+                time.sleep(interval_s)
+
+        thread = threading.Thread(target=loop, daemon=True, name="rss-guard")
+        thread.start()
+        return thread
+
+
+def _hard_stop(rss_mib: float) -> None:
+    # Progress is already on disk (chunked .partial files); a re-run resumes.
+    print(
+        f"[ABORT] RSS {rss_mib:.0f} MiB above the ceiling; stopping to protect the host",
+        file=sys.stderr,
+        flush=True,
+    )
+    os._exit(3)
+
+
+def _load_scorer(name: str, threads: int):
+    from injection_eval.models import load_scorer
+
+    return load_scorer(name, threads=threads)
+
+
 # --------------------------------------------------------------------------- score
+def _chunks(records: list[dict], chunk_windows: int):
+    """Yield (records, windows-per-record) closing a chunk once it holds >= chunk_windows."""
+    batch: list[tuple[dict, list[str]]] = []
+    size = 0
+    for r in records:
+        ws = [w for _, w in iter_windows(r["text"], WINDOW, OVERLAP)]
+        batch.append((r, ws))
+        size += len(ws)
+        if size >= chunk_windows:
+            yield batch
+            batch, size = [], 0
+    if batch:
+        yield batch
+
+
 def cmd_score(a: argparse.Namespace) -> int:
-    from injection_eval.models import CANDIDATES, load_scorer
+    from injection_eval.models import CANDIDATES
 
     records = load_sets(Path(a.sets))
     out_dir = Path(a.scores)
     out_dir.mkdir(parents=True, exist_ok=True)
     names = a.models.split(",") if a.models else list(CANDIDATES)
+    guard = RssGuard(ceiling_mib=a.max_rss_mib, reader=_current_rss_mib, on_exceed=_hard_stop)
+    guard.start()
     for name in names:
         target = out_dir / f"{name}.jsonl"
+        partial = out_dir / f"{name}.jsonl.partial"
         if target.exists() and not a.force:
             print(f"[skip] {name}: {target} exists")
             continue
+        done: set[str] = set()
+        if partial.exists() and not a.force:
+            done = {json.loads(line)["id"] for line in partial.read_text().splitlines() if line}
+        elif partial.exists():
+            partial.unlink()
+        todo = [r for r in records if r["id"] not in done]
+        assert_free_memory(min_free_pct=a.min_free_pct)
         started = time.perf_counter()
-        scorer = load_scorer(name, threads=a.threads)
+        scorer = _load_scorer(name, a.threads)
         load_s = time.perf_counter() - started
-        windows: list[str] = []
-        spans: list[tuple[int, int]] = []
-        for r in records:
-            ws = [w for _, w in iter_windows(r["text"], WINDOW, OVERLAP)]
-            spans.append((len(windows), len(windows) + len(ws)))
-            windows.extend(ws)
+        n_windows = 0
         t0 = time.perf_counter()
-        scored = scorer.score(windows, batch_size=a.batch_size)
+        with partial.open("a") as fh:
+            for chunk in _chunks(todo, a.chunk_windows):
+                flat = [w for _, ws in chunk for w in ws]
+                scored = scorer.score(flat, batch_size=a.batch_size)
+                pos = 0
+                for r, ws in chunk:
+                    part = scored[pos : pos + len(ws)]
+                    pos += len(ws)
+                    row = {k: r[k] for k in ("id", "set", "split", "label", "meta")}
+                    row["scores"] = [round(s.score, 6) for s in part]
+                    row["segments"] = [s.n_segments for s in part]
+                    row["lengths"] = [len(w) for w in ws]
+                    fh.write(json.dumps(row) + "\n")
+                fh.flush()
+                n_windows += len(flat)
+                print(f"[{name}] {n_windows} windows, rss {_current_rss_mib():.0f} MiB", flush=True)
         score_s = time.perf_counter() - t0
-        tmp = target.with_suffix(".jsonl.tmp")
-        with tmp.open("w") as fh:
-            for r, (lo, hi) in zip(records, spans, strict=True):
-                row = {k: r[k] for k in ("id", "set", "split", "label", "meta")}
-                row["scores"] = [round(s.score, 6) for s in scored[lo:hi]]
-                row["segments"] = [s.n_segments for s in scored[lo:hi]]
-                row["lengths"] = [len(w) for w in windows[lo:hi]]
-                fh.write(json.dumps(row) + "\n")
-        tmp.replace(target)
+        by_id = {json.loads(line)["id"]: line for line in partial.read_text().splitlines() if line}
+        target.write_text("".join(by_id[r["id"]] + "\n" for r in records))
+        partial.unlink()
         meta = {
             "name": name,
             "hf_id": scorer.hf_id,
@@ -112,12 +222,14 @@ def cmd_score(a: argparse.Namespace) -> int:
             "threads": a.threads,
             "load_s": round(load_s, 2),
             "score_s": round(score_s, 2),
-            "windows": len(windows),
+            "windows_scored_this_run": n_windows,
             "records": len(records),
+            "peak_rss_mib": round(max(guard.peak_mib, _current_rss_mib()), 1),
         }
         (out_dir / f"{name}.meta.json").write_text(json.dumps(meta, indent=2))
-        print(f"[done] {name}: {len(windows)} windows in {score_s:.1f}s")
+        print(f"[done] {name}: {n_windows} windows in {score_s:.1f}s", flush=True)
         del scorer
+        gc.collect()
     return 0
 
 
@@ -135,6 +247,8 @@ def cmd_latency(a: argparse.Namespace) -> int:
         for _, w in iter_windows(r["text"], WINDOW, OVERLAP)
     ]
     full = [w for w in benign if len(w) == WINDOW][: a.n]
+    assert_free_memory(min_free_pct=a.min_free_pct)
+    RssGuard(ceiling_mib=a.max_rss_mib, reader=_current_rss_mib, on_exceed=_hard_stop).start()
     base_rss = _current_rss_mib()
     t0 = time.perf_counter()
     scorer = load_scorer(a.model, threads=a.threads)
@@ -351,8 +465,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--sets", required=True)
     s.add_argument("--scores", required=True)
     s.add_argument("--models", default="")
-    s.add_argument("--threads", type=int, default=8)
+    s.add_argument("--threads", type=int, default=4)
     s.add_argument("--batch-size", type=int, default=8)
+    s.add_argument("--chunk-windows", type=int, default=128)
+    s.add_argument("--max-rss-mib", type=float, default=3072)
+    s.add_argument("--min-free-pct", type=int, default=35)
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_score)
     lt = sub.add_parser("latency")
@@ -361,6 +478,8 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--threads", type=int, default=4)
     lt.add_argument("--n", type=int, default=200)
     lt.add_argument("--out", required=True)
+    lt.add_argument("--max-rss-mib", type=float, default=3072)
+    lt.add_argument("--min-free-pct", type=int, default=35)
     lt.set_defaults(fn=cmd_latency)
     la = sub.add_parser("latency-all")
     la.add_argument("--sets", required=True)
