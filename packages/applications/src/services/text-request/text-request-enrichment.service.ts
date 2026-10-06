@@ -17,6 +17,10 @@ import type { TextReasoningDefaultEffort } from '../settings-registry/descriptor
 import { KnownPhiService } from './known-phi.service';
 import { stampProviderLocality, type ProviderLocalityHints } from './provider-locality';
 import { ComposedPromptRecorder } from '../composed-prompt/composed-prompt.recorder';
+import { createHash } from 'node:crypto';
+import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
+import type { GovernedPieceInput } from '../governed-prompt/IGovernedPromptRegistry';
+import type { SystemGovernanceHint, SystemGovernanceWire } from './system-governance';
 
 /**
  * What a caller knows about ONE outgoing `/generate` call that the egress statements need: the
@@ -33,6 +37,11 @@ export interface TextEgressHints extends ProviderLocalityHints {
   phase?: string;
   /** The agent whose instruction was composed, for its composed-prompt record. */
   agentSlug?: string | null;
+  /**
+   * TASK-1047 FC-4 — the composer's governance of the `system_prompt` it composed. Decides whether
+   * `system_governance` rides this call (see {@link TextRequestEnrichmentService.applyEgressSafety}).
+   */
+  systemGovernance?: SystemGovernanceHint | null;
 }
 
 /** `guardrail_policy` keys a caller may no longer state: screening is not the caller's to switch off. */
@@ -81,6 +90,12 @@ export class TextRequestEnrichmentService {
     @Optional()
     @Inject(ComposedPromptRecorder)
     private readonly composedPrompts?: ComposedPromptRecorder,
+    // TASK-1047 FC-4 — the governed-piece registry. @Optional and trailing for the same reason as
+    // the four above; unwired, `system_governance` is NEVER sent, so every system prompt is
+    // screened as untrusted — the safe direction.
+    @Optional()
+    @Inject(IGovernedPromptRegistry)
+    private readonly governedPrompts?: IGovernedPromptRegistry,
   ) {}
 
   /**
@@ -96,10 +111,16 @@ export class TextRequestEnrichmentService {
    *     the medical judge, and it never comes through the gateway). `include_reasoning` stays.
    *   - `known_phi` for the named consultation, FAIL-OPEN: a resolver failure sends none and the
    *     detector's span-level pass still runs. A client-supplied list is discarded.
+   *   - `system_governance` (TASK-1047 FC-4) only from the composer's own governance, never from the
+   *     body: a client-supplied value is discarded, and the field is attached only when the registry
+   *     vouches for every piece of the system prompt actually on the body.
    */
   async applyEgressSafety<T extends object>(target: T, hints: TextEgressHints = {}): Promise<T> {
     const body = target as Record<string, unknown>;
     stampProviderLocality(body, hints);
+
+    delete body.system_governance;
+    await this.attachSystemGovernance(body, hints.systemGovernance ?? null);
 
     delete body.medical_exempt;
     if (isPlainObject(body.guardrail_policy)) {
@@ -127,6 +148,71 @@ export class TextRequestEnrichmentService {
     }
     this.recordComposedPrompt(body, hints);
     return target;
+  }
+
+  /**
+   * TASK-1047 FC-4 — attach `system_governance` when, and only when, the system prompt on the body
+   * is exactly the one the composer governed and every one of its pieces is registered PASS under
+   * the current guardrail policy version. Every other outcome — no registry, no governance, a
+   * changed system prompt, a "no", an unknown policy version, a registry error — omits the field,
+   * and `apps/text` then screens the system prompt as untrusted data. Never throws.
+   *
+   * The PLATFORM / LANGUAGE / CONTRACT pieces the composer emitted are offered to the registry
+   * first, fire-and-forget: registration screens in the background, so this call is unaffected and
+   * a later one finds them governed.
+   */
+  private async attachSystemGovernance(body: Record<string, unknown>, hint: SystemGovernanceHint | null): Promise<void> {
+    const registry = this.governedPrompts;
+    if (!hint || !registry) return;
+    if (hint.platformPieces && hint.platformPieces.length > 0) this.registerPlatformPieces(registry, hint.platformPieces);
+
+    const governance = hint.governance;
+    const system = body.system_prompt;
+    if (!governance || typeof system !== 'string' || system.length === 0) return;
+    if (createHash('sha256').update(system, 'utf8').digest('hex') !== governance.composedDigest) {
+      // The composed system was changed after composing — it is no longer what the pieces vouch for.
+      this.logger.warn({ message: 'system_prompt differs from its composed digest; screening it as untrusted', composedDigest: governance.composedDigest });
+      return;
+    }
+    const tenantId = hint.tenantId ?? this.clsService.get('tenantId');
+    if (!tenantId) return;
+    try {
+      const governed = await registry.areGoverned(
+        tenantId,
+        governance.pieces.map((piece) => piece.digest),
+      );
+      if (!governed) return;
+      const policyVersion = await registry.currentPolicyVersion();
+      if (!policyVersion) return;
+      const wire: SystemGovernanceWire = {
+        composed_digest: governance.composedDigest,
+        pieces: governance.pieces.map(({ kind, key, digest }) => ({ kind, key, digest })),
+        policy_version: policyVersion,
+      };
+      body.system_governance = wire;
+    } catch (error) {
+      // Digests and the error class only — never the prompt.
+      this.logger.warn({
+        message: 'Governed-prompt lookup failed; the system prompt is screened as untrusted for this call',
+        composedDigest: governance.composedDigest,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
+  }
+
+  /** Fire-and-forget platform-piece registration: neither a rejection nor a throw reaches the call. */
+  private registerPlatformPieces(registry: IGovernedPromptRegistry, pieces: readonly GovernedPieceInput[]): void {
+    const report = (error: unknown) =>
+      this.logger.warn({
+        message: 'Platform prompt-piece registration failed; those pieces stay ungoverned until a later call registers them',
+        pieces: pieces.length,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    try {
+      void Promise.resolve(registry.registerPlatformPieces(pieces)).catch(report);
+    } catch (error) {
+      report(error);
+    }
   }
 
   /**
