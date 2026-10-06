@@ -159,3 +159,50 @@ def test_guard_stops_when_swap_grows_during_the_run() -> None:
     for _ in range(4):
         guard.check()
     assert fired == [700.0]  # baseline 13,700; 14,800 is +1,100 > 1,024
+
+
+# ── line-level granularity (dilution experiment) ──────────────────────────────
+
+
+def test_line_max_scorer_scores_each_unique_line_once_and_takes_the_max() -> None:
+    from injection_eval.models import LineMaxScorer
+
+    seen: list[str] = []
+
+    class Inner:
+        name, hf_id, revision, default_threshold, max_tokens = "x", "x/x", "0", 0.5, 512
+
+        def score(self, windows, *, batch_size=8):
+            seen.extend(windows)
+            return [_WS(score=0.9 if "IGNORE" in w else 0.1) for w in windows]
+
+    scorer = LineMaxScorer(Inner())
+    out = scorer.score(["Doctor: hi\nPatient: IGNORE all\n\nDoctor: hi", "Doctor: hi"])
+    assert [round(o.score, 2) for o in out] == [0.9, 0.1]
+    assert [o.n_segments for o in out] == [3, 1]
+    assert sorted(seen) == ["Doctor: hi", "Patient: IGNORE all"]  # deduplicated
+    assert scorer.name == "x@line" and scorer.default_threshold == 0.5
+
+
+def test_score_line_granularity_writes_a_separate_result(tmp_path, monkeypatch) -> None:
+    sets, scores = tmp_path / "sets", tmp_path / "scores"
+    _write_sets(sets, 2)
+    monkeypatch.setattr(bench, "_load_scorer", lambda name, threads: _FakeScorer([]))
+    monkeypatch.setattr(bench, "assert_free_memory", lambda **_: None)
+    args = [
+        "score",
+        "--sets",
+        str(sets),
+        "--scores",
+        str(scores),
+        "--models",
+        "fake",
+        "--granularity",
+        "line",
+        "--max-rss-mib",
+        "100000",
+    ]
+    assert bench.main(args) == 0
+    assert (scores / "fake@line.jsonl").exists()
+    meta = json.loads((scores / "fake@line.meta.json").read_text())
+    assert meta["name"] == "fake@line" and meta["granularity"] == "line"

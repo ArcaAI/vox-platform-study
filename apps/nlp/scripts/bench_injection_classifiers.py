@@ -226,7 +226,8 @@ def cmd_score(a: argparse.Namespace) -> int:
     names = a.models.split(",") if a.models else list(CANDIDATES)
     guard = _guard(a)
     guard.start()
-    for name in names:
+    for model in names:
+        name = model if a.granularity == "window" else f"{model}@{a.granularity}"
         target = out_dir / f"{name}.jsonl"
         partial = out_dir / f"{name}.jsonl.partial"
         if target.exists() and not a.force:
@@ -240,7 +241,11 @@ def cmd_score(a: argparse.Namespace) -> int:
         todo = [r for r in records if r["id"] not in done]
         assert_free_memory(min_free_pct=a.min_free_pct)
         started = time.perf_counter()
-        scorer = _load_scorer(name, a.threads)
+        scorer = _load_scorer(model, a.threads)
+        if a.granularity == "line":
+            from injection_eval.models import LineMaxScorer
+
+            scorer = LineMaxScorer(scorer)
         load_s = time.perf_counter() - started
         n_windows = 0
         t0 = time.perf_counter()
@@ -270,6 +275,7 @@ def cmd_score(a: argparse.Namespace) -> int:
             "revision": scorer.revision,
             "default_threshold": scorer.default_threshold,
             "max_tokens": scorer.max_tokens,
+            "granularity": a.granularity,
             "threads": a.threads,
             "load_s": round(load_s, 2),
             "score_s": round(score_s, 2),
@@ -521,6 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--threads", type=int, default=4)
     s.add_argument("--batch-size", type=int, default=8)
     s.add_argument("--chunk-windows", type=int, default=128)
+    s.add_argument("--granularity", choices=("window", "line"), default="window")
     s.add_argument("--max-rss-mib", type=float, default=4608)
     s.add_argument("--min-free-pct", type=int, default=35)
     s.add_argument("--min-sys-free-pct", type=float, default=15.0)

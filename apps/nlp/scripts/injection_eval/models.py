@@ -464,3 +464,35 @@ def load_scorer(name: str, *, threads: int = 4) -> Scorer:
     if name == "gliguard-300m":
         return _load_gliguard()
     return _load_seq_cls(name)
+
+
+class LineMaxScorer:
+    """Score every non-empty LINE of a window and take the max (TASK-1049 §8.5).
+
+    The dilution experiment: does a classifier miss an injected line because 2,000
+    chars of clinical dialogue surround it? Lines are deduplicated across the whole
+    run (transcript lines repeat a lot), and ``n_segments`` reports lines per window.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+        self.name = f"{inner.name}@line"
+        self.hf_id = inner.hf_id
+        self.revision = inner.revision
+        self.default_threshold = inner.default_threshold
+        self.max_tokens = inner.max_tokens
+        self._cache: dict[str, float] = {}
+
+    def score(self, windows: list[str], *, batch_size: int = 8) -> list[WindowScore]:
+        per_window = [[ln.strip() for ln in w.split("\n") if ln.strip()] for w in windows]
+        new = sorted({ln for lines in per_window for ln in lines} - set(self._cache))
+        if new:
+            for line, scored in zip(new, self.inner.score(new, batch_size=batch_size), strict=True):
+                self._cache[line] = scored.score
+        return [
+            WindowScore(
+                score=max((self._cache[ln] for ln in lines), default=0.0),
+                n_segments=len(lines),
+            )
+            for lines in per_window
+        ]
