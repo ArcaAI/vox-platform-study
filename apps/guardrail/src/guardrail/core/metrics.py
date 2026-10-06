@@ -231,6 +231,89 @@ GUARDRAIL_SCREENING_DECISIONS = Counter(
     ["direction", "decision", "reason"],
 )
 
+# ---------------------------------------------------------------------------
+# Region windows + window-verdict cache (TASK-1047 D8)
+# ---------------------------------------------------------------------------
+# `task` is the bounded task FAMILY (`pii`, `classify`, `medical_judge`) — never a
+# tenant, never a window, never a free-form task list. The hit ratio is a
+# per-process cumulative gauge so a dashboard can read it without a rate() pair;
+# the counters remain the source of truth for anything windowed in time.
+
+GUARDRAIL_WINDOWS_REQUESTED = Counter(
+    "guardrail_screen_windows_requested_total",
+    "Screen windows a request needed a verdict for, by task family.",
+    ["task"],
+)
+GUARDRAIL_WINDOWS_COMPUTED = Counter(
+    "guardrail_screen_windows_computed_total",
+    "Screen windows computed by a peer model (cache miss or cache disabled), by task family.",
+    ["task"],
+)
+GUARDRAIL_WINDOWS_CACHED = Counter(
+    "guardrail_screen_windows_cached_total",
+    "Screen windows answered from the window-verdict cache, by task family.",
+    ["task"],
+)
+GUARDRAIL_WINDOW_CACHE_HIT_RATIO = Gauge(
+    "guardrail_window_cache_hit_ratio",
+    "Cumulative window-verdict cache hit ratio (cached / requested) per process, by task.",
+    ["task"],
+)
+GUARDRAIL_WINDOW_LATENCY = Histogram(
+    "guardrail_screen_window_latency_seconds",
+    "Wall-clock latency of one computed screen window, by task family.",
+    ["task"],
+    buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
+)
+
+GUARDRAIL_SCREEN_CHARS_COMPUTED = Counter(
+    "guardrail_screen_chars_computed_total",
+    "Characters sent to a peer model for screening (computed windows only), by task family.",
+    ["task"],
+)
+GUARDRAIL_MEDICAL_JUDGE_CALLS = Counter(
+    "guardrail_medical_judge_calls_total",
+    "Medical-judge verdicts rendered by the delegated judge lane (whole-text or per window).",
+)
+
+_window_totals: dict[str, list[int]] = {}
+
+
+def record_screen_chars_computed(task: str, chars: int) -> None:
+    try:
+        GUARDRAIL_SCREEN_CHARS_COMPUTED.labels(task=task).inc(max(0, chars))
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_medical_judge_call() -> None:
+    try:
+        GUARDRAIL_MEDICAL_JUDGE_CALLS.inc()
+    except Exception:  # noqa: BLE001
+        return
+
+
+def record_window_results(task: str, *, requested: int, computed: int, cached: int) -> None:
+    """Count one run's windows. Never raises."""
+    try:
+        GUARDRAIL_WINDOWS_REQUESTED.labels(task=task).inc(requested)
+        GUARDRAIL_WINDOWS_COMPUTED.labels(task=task).inc(computed)
+        GUARDRAIL_WINDOWS_CACHED.labels(task=task).inc(cached)
+        totals = _window_totals.setdefault(task, [0, 0])
+        totals[0] += requested
+        totals[1] += cached
+        if totals[0]:
+            GUARDRAIL_WINDOW_CACHE_HIT_RATIO.labels(task=task).set(totals[1] / totals[0])
+    except Exception:  # noqa: BLE001 — telemetry never fails a safety check
+        return
+
+
+def observe_window_latency(task: str, seconds: float) -> None:
+    try:
+        GUARDRAIL_WINDOW_LATENCY.labels(task=task).observe(max(0.0, seconds))
+    except Exception:  # noqa: BLE001
+        return
+
 
 def set_requests_in_flight(gate: str, value: int) -> None:
     """Publish the in-flight count for a gate. Never raises."""

@@ -371,6 +371,16 @@ class Settings(BaseSettings):
         default=SecretStr(""), validation_alias=AliasChoices("INTERNAL_ACCESS_TOKEN")
     )
 
+    # ── Window-verdict cache key (TASK-1047 FC-7) ──────────────────────────
+    # A platform `vault-kv` secret: the HMAC root from which each tenant's cache
+    # key is derived (`services/window_cache.py`). Unprefixed on purpose, like the
+    # token above. ABSENT (or the unfilled sentinel) ⇒ the cache is DISABLED and
+    # every window is computed — it is never a reason to skip a screen. Rotating it
+    # colds the cache; it can never produce a wrong verdict.
+    window_cache_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("GUARDRAIL_WINDOW_CACHE_KEY")
+    )
+
     @property
     def accepted_service_tokens(self) -> tuple[str, ...]:
         """Every token accepted as inbound ``X-Service-Token``, shared token first.

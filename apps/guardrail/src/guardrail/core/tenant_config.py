@@ -1134,6 +1134,13 @@ def build_judge_client(
         ),
         provider_overrides=_judge_connection(provider, provider_overrides, tenant_cfg),
         breaker=breaker,
+        # TASK-1047 OD-5: optional HERE (only the `regions` path reads it, and that
+        # path fails closed without it), never defaulted.
+        window_criteria=(
+            policy.blob.get("medicalWindowScopeCriteria")
+            if isinstance(policy.blob.get("medicalWindowScopeCriteria"), str)
+            else None
+        ),
     )
 
 

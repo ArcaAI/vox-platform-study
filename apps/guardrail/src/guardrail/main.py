@@ -463,6 +463,7 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
     from guardrail.api.endpoints.medical import router as medical_router
+    from guardrail.api.endpoints.policy_version import router as policy_version_router
     from guardrail.api.endpoints.realtime import router as realtime_router
     from guardrail.api.endpoints.redact import router as redact_router
     from guardrail.api.endpoints.screen import router as screen_router
@@ -480,6 +481,8 @@ def create_app() -> FastAPI:
     app.include_router(redact_router, prefix="/api", tags=["guardrails"])
     # Bidirectional screening — inbound prompt + outbound response.
     app.include_router(screen_router, prefix="/api/v1", tags=["screening"])
+    # The tenant's screening policy version (TASK-1047 FC-3) — behind X-Service-Token.
+    app.include_router(policy_version_router, prefix="/api/v1", tags=["screening"])
     app.include_router(realtime_router, prefix="/api/v1", tags=["realtime"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 

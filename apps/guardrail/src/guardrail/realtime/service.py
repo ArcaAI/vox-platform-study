@@ -43,7 +43,7 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -64,6 +64,7 @@ from guardrail.realtime.verdict import (
     content_hash,
 )
 from guardrail.services.injection_defense import sanitize_untrusted
+from guardrail.services.windowing import iter_windows
 
 logger = get_logger(__name__)
 
@@ -196,17 +197,9 @@ class RealtimePolicy:
         return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 
 
-def _windows(text: str, size: int, overlap: int) -> Iterator[tuple[int, str]]:
-    """Cover the WHOLE text. The last window is short, never dropped."""
-    if not text:
-        return
-    step = max(1, size - max(0, overlap))
-    start = 0
-    while start < len(text):
-        yield start, text[start : start + size]
-        if start + size >= len(text):
-            return
-        start += step
+#: Generalised into `services/windowing.iter_windows` (TASK-1047 D4) — the screen
+#: paths now cut regions with the very same geometry rule.
+_windows = iter_windows
 
 
 class RealtimeValidator:

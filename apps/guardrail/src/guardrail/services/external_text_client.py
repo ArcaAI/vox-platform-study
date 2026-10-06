@@ -37,12 +37,14 @@ from guardrail.core.errors import (
     REASON_ENGINE_ERROR,
     REASON_INVALID_RESPONSE,
     REASON_TIMEOUT,
+    REASON_UNSUPPORTED,
     GuardrailUndeterminedError,
 )
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import (
     observe_peer_latency,
     record_guardrail_call,
+    record_medical_judge_call,
     track_model_inference,
 )
 from guardrail.providers.stats import GuardrailCallStats, normalize_stop_reason
@@ -160,6 +162,7 @@ class TextJudgeClient:
         provider_overrides: dict[str, Any] | None = None,
         breaker: CircuitBreaker | None = None,
         enabled: bool = True,
+        window_criteria: str | None = None,
     ) -> None:
         resolved_tenant = (tenant_id or "").strip()
         if not resolved_tenant:
@@ -181,6 +184,12 @@ class TextJudgeClient:
                 "failMode=closed) and has no code default."
             )
         self.criteria = resolved_criteria
+        # The PER-WINDOW criterion (TASK-1047 OD-5, policy key
+        # `medicalWindowScopeCriteria`). Optional at construction because only the
+        # `regions` path reads it — and that path fails CLOSED when it is absent
+        # (`judge_window_on_scope`), so a legacy caller is not 503'd by a key it
+        # never uses.
+        self.window_criteria = (window_criteria or "").strip() or None
         self.policy = policy or JudgePolicy()
         self.min_confidence = (
             self.policy.min_confidence if min_confidence is None else min_confidence
@@ -244,6 +253,9 @@ class TextJudgeClient:
             finally:
                 observe_peer_latency("text", "judge", time.monotonic() - started)
 
+        # One count per judgement REQUESTED of the lane (S6: judge calls must be
+        # proportional to new text) — cached windows never get here.
+        record_medical_judge_call()
         attempts = max(1, self.max_attempts)
         last_error = ""
         timed_out = False
@@ -297,6 +309,38 @@ class TextJudgeClient:
             prompt=f"Analyze this text for medical context:\n\n{text[: self.policy.max_input_chars]}",
             system_prompt=self.criteria,
         )
+        return self._interpret(payload)
+
+    async def judge_window_on_scope(self, window: str) -> dict[str, Any]:
+        """Judge ONE window `on_scope` (TASK-1047 OD-5). `is_medical` carries the answer.
+
+        The caller sizes the window to the judge lane's input cap, so nothing is cut
+        here. Same fail-CLOSED interpretation as the whole-text judge — an
+        unparseable or under-confident verdict raises — under the window criterion,
+        which has no code default: absent, nothing can be judged.
+        """
+        if not self.enabled:
+            return {
+                "is_medical": True,
+                "confidence": 1.0,
+                "context_type": "unknown",
+                "reasoning": "Guardian validation disabled",
+            }
+        if not self.window_criteria:
+            raise GuardrailUndeterminedError(
+                REASON_UNSUPPORTED,
+                "policy key 'medicalWindowScopeCriteria' is unresolved (failMode=closed): "
+                "the per-window judge criterion is configuration with no code default — "
+                "seed it on the guardrail.validate AiModel row's `_metadata.policy`",
+            )
+        payload = await self._judge(
+            prompt=f"Analyze this text for medical context:\n\n{window}",
+            system_prompt=self.window_criteria,
+        )
+        return self._interpret(payload)
+
+    def _interpret(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Turn one judge-lane payload into a verdict; raise when none was rendered."""
         content = str(payload.get("content") or "").strip()
         result = self._parse_verdict(content)
 

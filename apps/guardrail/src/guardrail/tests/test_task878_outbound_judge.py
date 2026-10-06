@@ -158,7 +158,11 @@ def test_the_outbound_jailbreak_check_is_a_classification_not_a_judgement() -> N
         )
     # The jailbreak task is dispatched through `_classify`, whose only executor is
     # the analyzer — the same object `build_screener` binds to two `NlpGuardClient`s.
-    assert "self._analyzer.classify_tasks" in inspect.getsource(screening.Screener._classify)
+    # Since TASK-1047 `_classify` runs it window by window via `_classify_windows`.
+    assert "self._classify_windows" in inspect.getsource(screening.Screener._classify)
+    assert "self._analyzer.classify_tasks" in inspect.getsource(
+        screening.Screener._classify_windows
+    )
 
 
 @pytest.mark.asyncio

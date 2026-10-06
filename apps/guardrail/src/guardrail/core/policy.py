@@ -39,6 +39,13 @@ from guardrail.core.errors import REASON_UNSUPPORTED, GuardrailUndeterminedError
 FAIL_CLOSED: Final = "closed"
 FAIL_OPEN_TO_DEFAULT: Final = "open-to-default"
 
+#: The largest text `apps/nlp` accepts on a guard route (TASK-1047 FC-8:
+#: `nlp.inference.maxInputChars`, default 8,192 — above it nlp answers 413
+#: `INPUT_EXCEEDS_WINDOW`). It is the PEER's input contract, not a guardrail knob,
+#: so it is the ceiling the window geometry below must fit inside: a window
+#: geometry that could produce a longer text would turn every screen into a 413.
+NLP_MAX_INPUT_CHARS: Final = 8_192
+
 
 @dataclass(frozen=True)
 class _KeySpec:
@@ -55,6 +62,15 @@ class _KeySpec:
 _SPECS: Final[dict[str, _KeySpec]] = {
     # --- verdict-deciding criteria (FAIL-CLOSED, no default by construction) ---
     "medicalValidationCriteria": _KeySpec(FAIL_CLOSED),
+    # TASK-1047 OD-5 — the PER-WINDOW medical judge (`/api/medical/validate` with
+    # `regions`). A different question from `medicalValidationCriteria`, which
+    # classifies a whole text as medical vs "general conversation": a window of a
+    # clinical encounter that is pure small talk must be ON scope here, and only
+    # content directing the assistant to non-medical work is off scope. Same
+    # posture as its sibling — it decides a verdict, so it has no code default and
+    # an unseeded row answers 503 on the regions path. Its reader is
+    # `TextJudgeClient.judge_window_on_scope`.
+    "medicalWindowScopeCriteria": _KeySpec(FAIL_CLOSED),
     #
     # `injectionScreeningCriteria` was declared here with NO READER — reserved
     # for "a future LLM-judge second opinion on the inbound path" that never
@@ -148,7 +164,38 @@ _SPECS: Final[dict[str, _KeySpec]] = {
         FAIL_OPEN_TO_DEFAULT, 120_000.0, 1_000.0, 10_000_000.0
     ),
     "realtimeVerdictTtlSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 3_600.0, 60.0, 86_400.0),
+    # region windows for every ML screen (TASK-1047 D4)
+    #
+    # Each region (data block / untrusted segment) is cut from its OWN start into
+    # windows of `screenWindowChars` overlapping by `screenWindowOverlapChars`, so
+    # no apps/nlp call ever carries more than one window and an append-only region
+    # yields byte-identical earlier windows (cache hits) on every flush. The PAIR
+    # must also fit `NLP_MAX_INPUT_CHARS` — enforced by `screen_window_geometry`,
+    # which falls back to BOTH defaults rather than honour half of a bad pair.
+    "screenWindowChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4_000.0, 256.0, NLP_MAX_INPUT_CHARS),
+    "screenWindowOverlapChars": _KeySpec(FAIL_OPEN_TO_DEFAULT, 256.0, 0.0, 4_096.0),
+    # Windows of ONE request computed at a time (not a `gather` of all of them).
+    "screenWindowConcurrency": _KeySpec(FAIL_OPEN_TO_DEFAULT, 4.0, 1.0, 64.0),
+    # Window-verdict cache lifetime (FC-7). Rotation of the cache key, a policy
+    # change or expiry all mean a COLD cache — never a wrong answer.
+    "windowCacheTtlSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 86_400.0, 60.0, 604_800.0),
+    # The whole-call deadline on a guardrail → apps/nlp call (D7). Every attempt
+    # lives inside it, and an attempt that may still be running is never retried.
+    "nlpDeadlineSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 30.0, 1.0, 600.0),
 }
+
+#: Keys that tune HOW a verdict is computed (time budgets, parallelism, cache
+#: lifetime) but cannot change WHICH verdict. They are excluded from the policy
+#: version (`core/policy_version.py`), so moving one never colds the window cache
+#: nor forces the gateway registry to re-screen every governed prompt.
+OPERATIONAL_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "screenWindowConcurrency",
+        "windowCacheTtlSeconds",
+        "nlpDeadlineSeconds",
+        "realtimeVerdictTtlSeconds",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -286,3 +333,34 @@ class GuardrailPolicy:
     @property
     def realtime_verdict_ttl_seconds(self) -> int:
         return int(self.number("realtimeVerdictTtlSeconds"))
+
+    # -- region windows (TASK-1047) -----------------------------------------
+
+    @property
+    def screen_window_geometry(self) -> tuple[int, int]:
+        """``(window, overlap)``. A pair that cannot fit nlp's ceiling is BOTH defaults.
+
+        Each key is bounded on its own by `_SPECS`; the pair has two more
+        invariants no single bound can state — the overlap is smaller than the
+        window (or the windows never advance), and window + overlap fits
+        `NLP_MAX_INPUT_CHARS`. A violating pair is treated as absence, the declared
+        open-to-default posture, rather than honouring one half of it.
+        """
+        size = int(self.number("screenWindowChars"))
+        overlap = int(self.number("screenWindowOverlapChars"))
+        if overlap >= size or size + overlap > NLP_MAX_INPUT_CHARS:
+            size = int(_SPECS["screenWindowChars"].default or 0)
+            overlap = int(_SPECS["screenWindowOverlapChars"].default or 0)
+        return size, overlap
+
+    @property
+    def screen_window_concurrency(self) -> int:
+        return int(self.number("screenWindowConcurrency"))
+
+    @property
+    def window_cache_ttl_seconds(self) -> int:
+        return int(self.number("windowCacheTtlSeconds"))
+
+    @property
+    def nlp_deadline_seconds(self) -> float:
+        return self.number("nlpDeadlineSeconds")

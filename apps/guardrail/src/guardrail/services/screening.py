@@ -31,6 +31,7 @@ substring.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -38,12 +39,15 @@ from guardrail.core.availability import PLATFORM_DEFAULT_AVAILABILITY, Guardrail
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.core.metrics import record_screening_decision
+from guardrail.core.policy import GuardrailPolicy
 from guardrail.services.injection_defense import (
     SanitizationReport,
     contains_fence_echo,
     sanitize_untrusted,
 )
+from guardrail.services.pii_extraction import windowed_spans
 from guardrail.services.safety_analyzer import _DEFAULT_BENIGN as _ANALYZER_DEFAULT_BENIGN
+from guardrail.services.windowing import WindowGeometry, WindowRunner, region_windows
 
 logger = get_logger(__name__)
 
@@ -64,6 +68,9 @@ OUTCOME_SKIPPED: Final = "skipped"
 #: reads "not run" as "passed" and nobody can tell a narrowed tenant from a
 #: broken one.
 REASON_NOT_SELECTED: Final = "not_selected_for_tenant"
+
+#: A regions request whose regions are all empty (TASK-1047 FC-5 addendum).
+REASON_NO_CONTENT: Final = "no_content"
 
 FAIL_CLOSED: Final = "closed"
 
@@ -196,6 +203,8 @@ class Screener:
         max_untrusted_chars: int | None = None,
         pii_leak_min_score: float = 0.5,
         availability: GuardrailAvailability | None = None,
+        window_geometry: WindowGeometry | None = None,
+        window_runner: WindowRunner | None = None,
     ) -> None:
         if not (tenant_id or "").strip():
             # Same construction-time invariant as the peer clients: a screening
@@ -211,6 +220,20 @@ class Screener:
         # The tenant's threshold may only TIGHTEN the model row's value. Composed
         # once here so no call site can compose it the other way round.
         self._pii_leak_min_score = self._availability.tighten("pii_leak", pii_leak_min_score)
+        # REGION WINDOWS (TASK-1047 D4). The default is the declared policy
+        # geometry with no cache — an un-wired screener still never sends more than
+        # one window to the peer, it just computes every one of them.
+        if window_geometry is None:
+            defaults = GuardrailPolicy.from_blob({})
+            size, overlap = defaults.screen_window_geometry
+            window_geometry = WindowGeometry(size, overlap, defaults.screen_window_concurrency)
+        self.window_geometry = window_geometry
+        self.window_runner = window_runner or WindowRunner(
+            tenant_id=tenant_id,
+            policy_version=None,
+            cache=None,
+            concurrency=window_geometry.concurrency,
+        )
 
     # -- helpers ------------------------------------------------------------
 
@@ -251,7 +274,48 @@ class Screener:
             reason=REASON_NOT_SELECTED,
         )
 
-    async def _classify(self, task_names: tuple[str, ...], text: str) -> list[CheckOutcome]:
+    async def _classify_windows(
+        self, selected: tuple[str, ...], texts: Sequence[str]
+    ) -> dict[str, Any]:
+        """Classify every window of every text; merge the labels per task.
+
+        A task's labels are the union across windows, so "block if ANY window
+        blocks" falls out of the per-task flag below. A task absent from EVERY
+        window's answer is absent from the merge (not in the taxonomy). Texts that
+        produce no window at all (empty) are still asked as one empty window — no
+        path composes an "allow" the model was never asked about.
+        """
+        windows = [
+            w.text
+            for index, text in enumerate(texts)
+            for w in region_windows(str(index), text, self.window_geometry)
+        ] or [""]
+        model = self._model(selected[0])
+
+        async def _compute(window_text: str) -> dict[str, Any]:
+            raw = await self._analyzer.classify_tasks(selected, window_text)
+            labels: dict[str, list[str]] = {}
+            for name, value in (raw or {}).items():
+                if value is None:
+                    continue
+                labels[str(name)] = (
+                    [str(value)] if isinstance(value, str) else [str(v) for v in value]
+                )
+            return {"labels": labels}
+
+        verdicts = await self.window_runner.run(
+            f"classify:{','.join(selected)}", model, windows, _compute
+        )
+        merged: dict[str, list[str]] = {}
+        for verdict in verdicts:
+            for name, labels in (verdict.get("labels") or {}).items():
+                bucket = merged.setdefault(name, [])
+                bucket.extend(label for label in labels if label not in bucket)
+        return merged
+
+    async def _classify(
+        self, task_names: tuple[str, ...], texts: Sequence[str]
+    ) -> list[CheckOutcome]:
         """Run the SELECTED moderation tasks; an outage marks every one undetermined.
 
         Only the tasks this tenant's availability set selects are sent to the
@@ -276,7 +340,7 @@ class Screener:
             return [self._not_selected(name) for name in task_names]
 
         try:
-            results = await self._analyzer.classify_tasks(selected, text)
+            results = await self._classify_windows(tuple(selected), texts)
         except GuardrailUndeterminedError as exc:
             logger.warning(
                 "guardrail.screen.undetermined",
@@ -371,7 +435,52 @@ class Screener:
         executes.
         """
         clean, report = sanitize_untrusted(text, max_chars=self._max_untrusted_chars)
-        checks = await self._classify(INBOUND_TASKS, clean)
+        checks = await self._classify(INBOUND_TASKS, [clean])
+        return self._finish(DIRECTION_INBOUND, checks, report)
+
+    async def screen_inbound_regions(
+        self, regions: Sequence[tuple[str, str]], *, kind: str = "content"
+    ) -> GuardrailDecision:
+        """Screen untrusted inbound REGIONS (TASK-1047 FC-5) — each windowed on its own.
+
+        Same composition rule as :meth:`screen_inbound` — sanitize, then classify
+        the sanitized text — applied per region, so every region's windows are cut
+        from that region's own start. The containment bound applies per region and
+        the sanitization report is the aggregate (counts only, never text).
+        """
+        cleaned: list[str] = []
+        removed: dict[str, int] = {}
+        truncated = False
+        original = sanitized = 0
+        for _key, text in regions:
+            clean, part = sanitize_untrusted(text, max_chars=self._max_untrusted_chars)
+            cleaned.append(clean)
+            for name, count in part.removed.items():
+                removed[name] = removed.get(name, 0) + count
+            truncated = truncated or part.truncated
+            original += part.original_length
+            sanitized += part.sanitized_length
+        report = SanitizationReport(
+            removed=removed,
+            truncated=truncated,
+            original_length=original,
+            sanitized_length=sanitized,
+        )
+        if not any(cleaned):
+            # Nothing exists to be unsafe (FC-5 addendum: `regions: []` / all-empty
+            # is ALLOW). Recorded as `skipped/no_content`, never as a model `pass`.
+            checks = [
+                CheckOutcome(
+                    name=name,
+                    outcome=OUTCOME_SKIPPED,
+                    fail_mode=_DECLARED_FAIL_MODES[name],
+                    model=self._model(name),
+                    reason=REASON_NO_CONTENT,
+                )
+                for name in INBOUND_TASKS
+            ]
+        else:
+            checks = await self._classify(INBOUND_TASKS, cleaned)
         return self._finish(DIRECTION_INBOUND, checks, report)
 
     # -- outbound -----------------------------------------------------------
@@ -382,15 +491,28 @@ class Screener:
         *,
         source_context: str | None = None,
         nonce: str | None = None,
+        source_regions: Sequence[tuple[str, str]] | None = None,
     ) -> GuardrailDecision:
-        """Screen a model response before it reaches a clinician (T4/T5/T6)."""
+        """Screen a model response before it reaches a clinician (T4/T5/T6).
+
+        ``source_regions`` (TASK-1047 FC-5) replaces ``source_context`` when given:
+        the governed system prompt is no longer part of the source, only the data
+        regions are.
+        """
         clean, report = sanitize_untrusted(response, max_chars=self._max_untrusted_chars)
-        checks = await self._classify(OUTBOUND_TASKS, clean)
-        checks.append(await self._check_pii_leak(clean, source_context))
+        checks = await self._classify(OUTBOUND_TASKS, [clean])
+        sources: list[str] | None
+        if source_regions is not None:
+            sources = [text for _key, text in source_regions if text and text.strip()]
+        elif source_context is not None:
+            sources = [source_context] if source_context.strip() else []
+        else:
+            sources = None
+        checks.append(await self._check_pii_leak(clean, sources))
         checks.append(self._check_containment_echo(clean, nonce))
         return self._finish(DIRECTION_OUTBOUND, checks, report)
 
-    async def _check_pii_leak(self, response: str, source_context: str | None) -> CheckOutcome:
+    async def _check_pii_leak(self, response: str, sources: list[str] | None) -> CheckOutcome:
         """PII in the response that is absent from the declared source is a leak.
 
         Either the model hallucinated an identifier or it surfaced one from outside
@@ -403,7 +525,7 @@ class Screener:
         name = "pii_leak"
         if not self._availability.is_enabled(name):
             return self._not_selected(name)
-        if source_context is None or not source_context.strip():
+        if not sources:
             return CheckOutcome(
                 name=name,
                 outcome=OUTCOME_SKIPPED,
@@ -413,7 +535,16 @@ class Screener:
             )
 
         try:
-            spans = await self._analyzer.extract_pii_entities(response)
+            # Windowed like every other screen (TASK-1047 C2): the response never
+            # reaches the PII model in one call, and its spans come back in
+            # response coordinates.
+            spans = await windowed_spans(
+                self.window_runner,
+                self._analyzer.extract_pii_entities,
+                self._model(name),
+                [(None, response)],
+                self.window_geometry,
+            )
         except GuardrailUndeterminedError as exc:
             return CheckOutcome(
                 name=name,
@@ -423,13 +554,15 @@ class Screener:
                 reason=exc.reason,
             )
 
-        haystack = source_context.casefold()
+        haystacks = [source.casefold() for source in sources]
         leaked: list[str] = []
         for span in spans:
             if float(getattr(span, "score", 1.0)) < self._pii_leak_min_score:
                 continue
             fragment = response[int(span.start) : int(span.end)].strip()
-            if fragment and fragment.casefold() not in haystack:
+            # Present in ANY one source region — never matched across a boundary
+            # between two regions, which no source actually contains.
+            if fragment and not any(fragment.casefold() in hay for hay in haystacks):
                 # The LABEL is recorded, never the fragment — this record is an
                 # audit artefact, and the fragment is the PHI.
                 leaked.append(str(span.label))

@@ -53,7 +53,12 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from guardrail.core.dependencies import ModelUnavailableError, get_safety_analyzer
+from guardrail.core.dependencies import (
+    ModelUnavailableError,
+    get_safety_analyzer,
+    require_tenant_id,
+    resolve_screen_policy,
+)
 from guardrail.core.logging import get_logger
 from guardrail.services.pii_extraction import DocumentSpan, extract_spans
 
@@ -149,14 +154,19 @@ async def _resolve_chunk_chars(app_state: Any) -> int:
         return _DEFAULT_CHUNK_CHARS
 
 
-async def _extract_spans(analyzer: Any, text: str, chunk_chars: int) -> list[_Span]:
+async def _extract_spans(
+    analyzer: Any, text: str, chunk_chars: int, *, concurrency: int = 4
+) -> list[_Span]:
     """Extract PII spans over bounded chunks, in document coordinates.
 
-    The chunks run CONCURRENTLY (`services/pii_extraction.extract_spans`). Any chunk
-    raising propagates — the endpoint's fail-closed posture is unchanged, and a
-    partially-extracted document must never be answered with 200.
+    The chunks run ``concurrency`` at a time (`services/pii_extraction.extract_spans`;
+    TASK-1047 replaced the unbounded fan-out). Any chunk raising propagates — the
+    endpoint's fail-closed posture is unchanged, and a partially-extracted document
+    must never be answered with 200.
     """
-    return await extract_spans(analyzer.extract_pii_entities, text, chunk_chars)
+    return await extract_spans(
+        analyzer.extract_pii_entities, text, chunk_chars, concurrency=concurrency
+    )
 
 
 def _apply_mask(text: str, entities: list[_Span], mode: RedactMode) -> str:
@@ -209,9 +219,20 @@ async def redact_text(
     # `get_safety_analyzer` already raised 428 (no tenant) / 503 (no selection or
     # no taxonomy) before this body ran.
     chunk_chars = await _resolve_chunk_chars(app_state)
+    # TASK-1047 C2: an admin-tuned chunk may never exceed the screen window, which
+    # is itself bounded by apps/nlp's input ceiling (a larger chunk would be a 413),
+    # and the chunks of one request share the screen's per-request concurrency.
+    screen_policy = await resolve_screen_policy(app_state, require_tenant_id(http_request))
+    window_chars, _overlap = screen_policy.screen_window_geometry
+    chunk_chars = min(chunk_chars, window_chars) if chunk_chars > 0 else window_chars
 
     try:
-        entities = await _extract_spans(analyzer, request.text, chunk_chars)
+        entities = await _extract_spans(
+            analyzer,
+            request.text,
+            chunk_chars,
+            concurrency=screen_policy.screen_window_concurrency,
+        )
     except ModelUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
