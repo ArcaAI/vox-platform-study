@@ -27,6 +27,7 @@ from guardrail.core.dependencies import (
     get_resolved_guardian_provider,
     get_settings,
     require_tenant_id,
+    resolve_screen_policy,
 )
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
@@ -219,6 +220,12 @@ async def _validate_regions(
         runner, geometry = await build_judge_window_plan(
             http_request.app.state, tenant_id, guardian_provider, settings
         )
+        # Settings regions (the clinician's DNA texts) are screened elsewhere and never judged for
+        # medical relevance (TASK-1047 V7, owner decision); the list is policy, not code.
+        skip = (
+            await resolve_screen_policy(http_request.app.state, tenant_id)
+        ).medical_judge_config_regions
+        regions = [(key, text) for key, text in regions if key not in skip]
         result = await judge_regions(guardian_provider, regions, runner=runner, geometry=geometry)
         if not result["is_medical"]:
             # Which regions were off scope — keys and counts only, never text (TASK-1047 V7).

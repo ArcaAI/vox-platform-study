@@ -204,6 +204,18 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     "outboundRecordOnlyChecks": _KeySpec(
         FAIL_OPEN_TO_DEFAULT, default_names=("jailbreak_detection",)
     ),
+    # TASK-1047 V7 (owner decision): data regions that carry SETTINGS rather than the request's
+    # subject — the clinician's DNA style and redaction rules — are inbound-screened as usual but
+    # never judged for medical relevance. Region keys are the composer's section names.
+    "medicalJudgeConfigRegions": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT,
+        default_names=(
+            "context_dna_style_text",
+            "context_dna_redaction_rules_text",
+            "trigger_context_dna_style_text",
+            "trigger_context_dna_redaction_rules_text",
+        ),
+    ),
 }
 
 #: Keys that tune HOW a verdict is computed (time budgets, parallelism, cache
@@ -402,6 +414,11 @@ class GuardrailPolicy:
         return self.number("nlpDeadlineSeconds")
 
     # -- outbound record-only checks (TASK-1047 FC-5c) ----------------------
+
+    @property
+    def medical_judge_config_regions(self) -> frozenset[str]:
+        """Region keys the per-window medical judge skips (settings, not subject matter)."""
+        return frozenset(self.names("medicalJudgeConfigRegions"))
 
     @property
     def outbound_record_only_checks(self) -> frozenset[str]:

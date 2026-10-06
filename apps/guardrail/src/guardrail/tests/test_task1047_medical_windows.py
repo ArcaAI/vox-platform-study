@@ -317,3 +317,64 @@ async def test_route_regions_over_http_injects_the_request(plan) -> None:
     assert response.status_code == 200, response.text
     assert response.json()["is_medical"] is True
     assert response.json()["screened_regions"] == ["transcript"]
+
+
+# ── TASK-1047 V7: configuration regions are not judged for medical relevance ─────────────
+
+from guardrail.core.policy import GuardrailPolicy  # noqa: E402
+
+
+def test_the_config_region_list_is_a_declared_name_list_with_platform_defaults() -> None:
+    policy = GuardrailPolicy.from_blob({})
+    assert "medicalJudgeConfigRegions" in GuardrailPolicy.DECLARED_KEYS
+    assert policy.medical_judge_config_regions == frozenset(
+        {
+            "context_dna_style_text",
+            "context_dna_redaction_rules_text",
+            "trigger_context_dna_style_text",
+            "trigger_context_dna_redaction_rules_text",
+        }
+    )
+    assert GuardrailPolicy.from_blob(
+        {"medicalJudgeConfigRegions": ["x"]}
+    ).medical_judge_config_regions == frozenset({"x"})
+
+
+async def test_route_a_settings_region_is_not_judged(plan) -> None:
+    # The doctor's DNA redaction rules read as "administrative" to the judge; they are settings,
+    # not the request's subject — still inbound-screened, never judged (owner decision).
+    http = _JudgeHttp()
+    response = await validate_medical_context(
+        MedicalValidationRequest(
+            regions=[
+                {"key": "encounter_1", "text": CLINICAL},
+                {"key": "context_dna_redaction_rules_text", "text": OFF_SCOPE},
+            ]
+        ),
+        Settings(),
+        _judge(http),
+        http_request=_http_request(),
+    )
+    assert response.is_medical is True
+    assert all(OFF_SCOPE not in prompt for prompt in http.prompts)
+
+
+async def test_route_an_emptied_config_list_judges_every_region(plan, monkeypatch) -> None:
+    import guardrail.api.endpoints.medical as medical_mod
+
+    async def _policy(_app_state, _tenant_id):
+        return GuardrailPolicy.from_blob({"medicalJudgeConfigRegions": []})
+
+    monkeypatch.setattr(medical_mod, "resolve_screen_policy", _policy)
+    response = await validate_medical_context(
+        MedicalValidationRequest(
+            regions=[
+                {"key": "encounter_1", "text": CLINICAL},
+                {"key": "context_dna_redaction_rules_text", "text": OFF_SCOPE},
+            ]
+        ),
+        Settings(),
+        _judge(_JudgeHttp()),
+        http_request=_http_request(),
+    )
+    assert response.is_medical is False
