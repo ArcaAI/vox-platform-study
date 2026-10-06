@@ -92,13 +92,25 @@ export {
   PromptTemplateSyntaxError,
   PromptVariableUnresolvedError,
   collectPlaceholders,
+  dataSectionPointer,
+  placeholderBlockName,
   renderTemplate,
+  renderTemplatePointers,
   resolveTemplatePath,
   templateReferenceProblems,
   templateReferences,
   templateSyntaxProblems,
 } from './template';
-export type { DeclaredNamespaces, PlaceholderReference, RenderTemplateOptions, TemplateReference } from './template';
+export type {
+  DeclaredNamespaces,
+  PlaceholderReference,
+  PointerPlaceholder,
+  RenderTemplateOptions,
+  RenderTemplatePointersOptions,
+  TemplateReference,
+} from './template';
+// TASK-1047 FC-2 — the digest every governed piece and composed system message is keyed by.
+export { sha256Hex } from './sha256';
 
 // The ONE render scope (`context` canonical, `trigger` its alias) and the ONE message composer:
 // platform rules → instruction → output-language step → output contract in the system message,
@@ -111,6 +123,7 @@ export { PLATFORM_RULES_VERSION, platformRules } from './platform-rules';
 export {
   COMPOSE_DATA_BLOCK_KEY_PATTERN,
   ComposeDataBlockKeyError,
+  ComposeOutputContractConflictError,
   EXTERNAL_DATA_MARKER_REPLACEMENT,
   EXTERNAL_DATA_TRUNCATION_MARKER,
   MESSAGE_LAYER_JOIN,

@@ -352,6 +352,78 @@ export function renderTemplate(content: string, scope: Readonly<Record<string, u
   return out;
 }
 
+/**
+ * TASK-1047 FC-1 — the fixed text a placeholder renders as inside a GOVERNED system message: a
+ * pointer to the EXTERNAL_DATA block that carries its value.
+ */
+export function dataSectionPointer(block: string): string {
+  return `[see the ${block} data section below]`;
+}
+
+/**
+ * TASK-1047 FC-1 — the data-block name a placeholder path travels under: `aliases[path]` when the
+ * caller names one (an established section name), else the path lower-cased with every run of
+ * characters outside `[a-z0-9]` replaced by ONE `_` (`trigger.context.formatted_vitals` →
+ * `trigger_context_formatted_vitals`). A derived name always satisfies the block-key grammar
+ * `^[a-z0-9_]+$`; an alias is checked by the composer.
+ */
+export function placeholderBlockName(path: string, aliases?: Readonly<Record<string, string>>): string {
+  const alias = aliases !== undefined && Object.prototype.hasOwnProperty.call(aliases, path) ? aliases[path] : undefined;
+  if (typeof alias === 'string') return alias;
+  return path.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+}
+
+/** TASK-1047 FC-1 — one placeholder OCCURRENCE of a pointer render: its path, block name and value. */
+export interface PointerPlaceholder {
+  readonly path: string;
+  readonly block: string;
+  /** The resolved value as the value renderer would have written it (string verbatim, else canonical JSON), or its `default("…")`. */
+  readonly value: string;
+}
+
+export interface RenderTemplatePointersOptions extends RenderTemplateOptions {
+  /** Placeholder path → block name (`placeholderBlockName`). */
+  readonly blockAliases?: Readonly<Record<string, string>>;
+}
+
+/**
+ * TASK-1047 FC-1 — render `content` with every placeholder replaced by `dataSectionPointer(block)`
+ * and report each occurrence's value, in source order. The same grammar, the same one pass, the
+ * same `{{{{` escape and the same two named errors as `renderTemplate`; the only difference is
+ * WHERE a value goes — out of the text, into `placeholders`.
+ */
+export function renderTemplatePointers(
+  content: string,
+  scope: Readonly<Record<string, unknown>>,
+  options?: RenderTemplatePointersOptions,
+): { text: string; placeholders: PointerPlaceholder[] } {
+  const scanned = scan(content);
+  if (scanned.problems.length > 0) {
+    throw new PromptTemplateSyntaxError(scanned.problems[0] as string, scanned.firstProblemOffset);
+  }
+  const templateRef = options?.templateRef ?? null;
+  let text = '';
+  const placeholders: PointerPlaceholder[] = [];
+  for (const segment of scanned.segments) {
+    if (segment.kind === 'text') {
+      text += segment.value;
+      continue;
+    }
+    const resolved = resolvePath(scope, segment.path);
+    let value: string;
+    if (resolved === undefined) {
+      if (segment.defaultValue === null) throw new PromptVariableUnresolvedError(segment.path, templateRef);
+      value = segment.defaultValue;
+    } else {
+      value = typeof resolved === 'string' ? resolved : canonicalJson(resolved);
+    }
+    const block = placeholderBlockName(segment.path, options?.blockAliases);
+    text += dataSectionPointer(block);
+    placeholders.push({ path: segment.path, block, value });
+  }
+  return { text, placeholders };
+}
+
 /** Every placeholder the template references, in source order. Malformed ones are skipped. */
 export function templateReferences(content: string): TemplateReference[] {
   return scan(content)

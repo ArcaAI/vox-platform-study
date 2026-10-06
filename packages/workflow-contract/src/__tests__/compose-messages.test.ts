@@ -29,8 +29,11 @@ describe('composeMessages — system layering', () => {
       outputLanguage: { name: 'English' },
       outputContract: 'Return JSON.',
     });
-    expect(result.system).toBe(['RULES', 'Write a note for Ada.', outputLanguageStep('English'), 'Return JSON.'].join('\n\n'));
-    expect(result.user).toBe('');
+    // TASK-1047 FC-1: the value travels as data; the instruction carries a pointer to it.
+    expect(result.system).toBe(
+      ['RULES', 'Write a note for [see the context_name data section below].', outputLanguageStep('English'), 'Return JSON.'].join('\n\n'),
+    );
+    expect(result.user).toBe('<<<EXTERNAL_DATA section="context_name">>>\n--- context_name ---\nAda\n<<<END_EXTERNAL_DATA>>>');
   });
 
   it('omits every empty layer, including a null instruction', () => {

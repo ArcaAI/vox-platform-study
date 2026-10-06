@@ -3,43 +3,168 @@
   "scopeCases": [
     {
       "name": "optional-absent-binds-empty-string-under-both-spellings",
-      "parts": { "variables": {}, "variableDeclarations": [{ "name": "suffix", "required": false }] },
-      "expected": { "suffix": "", "variables": { "suffix": "" } }
+      "parts": {
+        "variables": {},
+        "variableDeclarations": [
+          {
+            "name": "suffix",
+            "required": false
+          }
+        ]
+      },
+      "expected": {
+        "suffix": "",
+        "variables": {
+          "suffix": ""
+        }
+      }
     },
     {
       "name": "declared-default-fills-an-absent-variable",
-      "parts": { "variables": {}, "variableDeclarations": [{ "name": "lang", "required": true, "default": "English" }] },
-      "expected": { "lang": "English", "variables": { "lang": "English" } }
+      "parts": {
+        "variables": {},
+        "variableDeclarations": [
+          {
+            "name": "lang",
+            "required": true,
+            "default": "English"
+          }
+        ]
+      },
+      "expected": {
+        "lang": "English",
+        "variables": {
+          "lang": "English"
+        }
+      }
     },
     {
       "name": "present-value-wins-over-default-and-optional",
-      "parts": { "variables": { "lang": { "value": "Malayalam" } }, "variableDeclarations": [{ "name": "lang", "required": false, "default": "English" }] },
-      "expected": { "lang": "Malayalam", "variables": { "lang": "Malayalam" } }
+      "parts": {
+        "variables": {
+          "lang": {
+            "value": "Malayalam"
+          }
+        },
+        "variableDeclarations": [
+          {
+            "name": "lang",
+            "required": false,
+            "default": "English"
+          }
+        ]
+      },
+      "expected": {
+        "lang": "Malayalam",
+        "variables": {
+          "lang": "Malayalam"
+        }
+      }
     },
     {
       "name": "optional-unresolved-path-binding-renders-empty",
-      "parts": { "context": {}, "variables": { "age": { "path": "context.patient.age" } }, "variableDeclarations": [{ "name": "age", "required": false }] },
-      "expected": { "context": {}, "trigger": {}, "age": "", "variables": { "age": "" } }
+      "parts": {
+        "context": {},
+        "variables": {
+          "age": {
+            "path": "context.patient.age"
+          }
+        },
+        "variableDeclarations": [
+          {
+            "name": "age",
+            "required": false
+          }
+        ]
+      },
+      "expected": {
+        "context": {},
+        "trigger": {},
+        "age": "",
+        "variables": {
+          "age": ""
+        }
+      }
     },
     {
       "name": "required-unresolved-path-binding-still-throws",
-      "parts": { "context": {}, "variables": { "age": { "path": "context.patient.age" } }, "variableDeclarations": [{ "name": "age", "required": true }] },
-      "error": { "name": "PromptVariableUnresolved", "paths": ["context.patient.age"] }
+      "parts": {
+        "context": {},
+        "variables": {
+          "age": {
+            "path": "context.patient.age"
+          }
+        },
+        "variableDeclarations": [
+          {
+            "name": "age",
+            "required": true
+          }
+        ]
+      },
+      "error": {
+        "name": "PromptVariableUnresolved",
+        "paths": ["context.patient.age"]
+      }
     },
     {
       "name": "required-absent-is-left-absent-for-the-renderer-to-name",
-      "parts": { "variables": {}, "variableDeclarations": [{ "name": "must", "required": true }] },
-      "expected": { "variables": {} }
+      "parts": {
+        "variables": {},
+        "variableDeclarations": [
+          {
+            "name": "must",
+            "required": true
+          }
+        ]
+      },
+      "expected": {
+        "variables": {}
+      }
     },
     {
       "name": "null-value-is-absent",
-      "parts": { "variables": { "x": null }, "variableDeclarations": [{ "name": "x", "required": false }] },
-      "expected": { "x": "", "variables": { "x": "" } }
+      "parts": {
+        "variables": {
+          "x": null
+        },
+        "variableDeclarations": [
+          {
+            "name": "x",
+            "required": false
+          }
+        ]
+      },
+      "expected": {
+        "x": "",
+        "variables": {
+          "x": ""
+        }
+      }
     },
     {
       "name": "declaration-named-after-a-present-root-is-left-alone",
-      "parts": { "context": { "a": 1 }, "variables": {}, "variableDeclarations": [{ "name": "context", "required": false }] },
-      "expected": { "context": { "a": 1 }, "trigger": { "a": 1 }, "variables": {} }
+      "parts": {
+        "context": {
+          "a": 1
+        },
+        "variables": {},
+        "variableDeclarations": [
+          {
+            "name": "context",
+            "required": false
+          }
+        ]
+      },
+      "expected": {
+        "context": {
+          "a": 1
+        },
+        "trigger": {
+          "a": 1
+        },
+        "variables": {}
+      }
     }
   ],
   "cases": [
@@ -47,56 +172,214 @@
       "name": "optional-absent-renders-empty",
       "input": {
         "platformRules": "RULES",
-        "resolvedPrompt": { "source": "inline", "content": "Hello {{name}}{{suffix}}." },
-        "scopeParts": { "variables": { "name": { "value": "Ada" } }, "variableDeclarations": [{ "name": "name", "required": true }, { "name": "suffix", "required": false }] }
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "Hello {{name}}{{suffix}}."
+        },
+        "scopeParts": {
+          "variables": {
+            "name": {
+              "value": "Ada"
+            }
+          },
+          "variableDeclarations": [
+            {
+              "name": "name",
+              "required": true
+            },
+            {
+              "name": "suffix",
+              "required": false
+            }
+          ]
+        }
       },
-      "expected": { "system": "RULES\n\nHello Ada.", "user": "", "selected": [], "excluded": [], "blocks": [] }
+      "expected": {
+        "system": "RULES\n\nHello [see the name data section below][see the suffix data section below].",
+        "user": "<<<EXTERNAL_DATA section=\"name\">>>\n--- name ---\nAda\n<<<END_EXTERNAL_DATA>>>\n\n<<<EXTERNAL_DATA section=\"suffix\">>>\n--- suffix ---\n\n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [
+          {
+            "key": "name",
+            "chars": 3,
+            "truncated": false
+          },
+          {
+            "key": "suffix",
+            "chars": 0,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [
+            {
+              "kind": "PLATFORM",
+              "key": "platform-rules@1",
+              "digest": "fda8c6bc13b0b480ad643fa540df2e7838ffcb7988312767a7e6613b60209ed2"
+            },
+            {
+              "kind": "TEMPLATE_BODY",
+              "key": "body",
+              "digest": "c365a4e8aea66419e99b865f6eac8e86ca5526345b7627956118d32673a2082a"
+            }
+          ],
+          "composedDigest": "0fb3b125696b0d4bacd3c36f9d2912bf1019a98ee6b3ac3aac44576e64506fc8"
+        }
+      }
     },
     {
       "name": "optional-visible-under-the-variables-root",
       "input": {
         "platformRules": "",
-        "resolvedPrompt": { "source": "inline", "content": "[{{variables.suffix}}]" },
-        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "suffix", "required": false }] }
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "[{{variables.suffix}}]"
+        },
+        "scopeParts": {
+          "variables": {},
+          "variableDeclarations": [
+            {
+              "name": "suffix",
+              "required": false
+            }
+          ]
+        }
       },
-      "expected": { "system": "[]", "user": "", "selected": [], "excluded": [], "blocks": [] }
+      "expected": {
+        "system": "[[see the variables_suffix data section below]]",
+        "user": "<<<EXTERNAL_DATA section=\"variables_suffix\">>>\n--- variables_suffix ---\n\n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [
+          {
+            "key": "variables_suffix",
+            "chars": 0,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [
+            {
+              "kind": "TEMPLATE_BODY",
+              "key": "body",
+              "digest": "ca1568c9b345c1b71e7af364c3a7745a6f891601962056e34d90b59f2f17acd8"
+            }
+          ],
+          "composedDigest": "ca1568c9b345c1b71e7af364c3a7745a6f891601962056e34d90b59f2f17acd8"
+        }
+      }
     },
     {
       "name": "required-absent-still-fails-by-name",
       "input": {
         "platformRules": "RULES",
-        "resolvedPrompt": { "source": "inline", "content": "{{must}} {{opt}} {{undeclared}}" },
-        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "must", "required": true }, { "name": "opt", "required": false }] },
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "{{must}} {{opt}} {{undeclared}}"
+        },
+        "scopeParts": {
+          "variables": {},
+          "variableDeclarations": [
+            {
+              "name": "must",
+              "required": true
+            },
+            {
+              "name": "opt",
+              "required": false
+            }
+          ]
+        },
         "templateRef": "agent:x"
       },
-      "error": { "name": "PromptVariableUnresolved", "paths": ["must", "undeclared"] }
+      "error": {
+        "name": "PromptVariableUnresolved",
+        "paths": ["must", "undeclared"]
+      }
     },
     {
       "name": "optional-dotted-reference-still-fails",
       "input": {
         "platformRules": "RULES",
-        "resolvedPrompt": { "source": "inline", "content": "{{opt.x}}" },
-        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "opt", "required": false }] }
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "{{opt.x}}"
+        },
+        "scopeParts": {
+          "variables": {},
+          "variableDeclarations": [
+            {
+              "name": "opt",
+              "required": false
+            }
+          ]
+        }
       },
-      "error": { "name": "PromptVariableUnresolved", "paths": ["opt.x"] }
+      "error": {
+        "name": "PromptVariableUnresolved",
+        "paths": ["opt.x"]
+      }
     },
     {
       "name": "declared-default-renders",
       "input": {
         "platformRules": "",
-        "resolvedPrompt": { "source": "inline", "content": "Write in {{lang}}." },
-        "scopeParts": { "variables": {}, "variableDeclarations": [{ "name": "lang", "required": true, "default": "English" }] }
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "Write in {{lang}}."
+        },
+        "scopeParts": {
+          "variables": {},
+          "variableDeclarations": [
+            {
+              "name": "lang",
+              "required": true,
+              "default": "English"
+            }
+          ]
+        }
       },
-      "expected": { "system": "Write in English.", "user": "", "selected": [], "excluded": [], "blocks": [] }
+      "expected": {
+        "system": "Write in [see the lang data section below].",
+        "user": "<<<EXTERNAL_DATA section=\"lang\">>>\n--- lang ---\nEnglish\n<<<END_EXTERNAL_DATA>>>",
+        "selected": [],
+        "excluded": [],
+        "blocks": [
+          {
+            "key": "lang",
+            "chars": 7,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [
+            {
+              "kind": "TEMPLATE_BODY",
+              "key": "body",
+              "digest": "0f805c3d47dcb640d00a055fa7bee5d5c634c6b3a3e9c425331c68db038e5a07"
+            }
+          ],
+          "composedDigest": "0f805c3d47dcb640d00a055fa7bee5d5c634c6b3a3e9c425331c68db038e5a07"
+        }
+      }
     },
     {
       "name": "without-declarations-an-absent-variable-fails-as-in-v1",
       "input": {
         "platformRules": "",
-        "resolvedPrompt": { "source": "inline", "content": "{{suffix}}" },
-        "scopeParts": { "variables": {} }
+        "resolvedPrompt": {
+          "source": "inline",
+          "content": "{{suffix}}"
+        },
+        "scopeParts": {
+          "variables": {}
+        }
       },
-      "error": { "name": "PromptVariableUnresolved", "paths": ["suffix"] }
+      "error": {
+        "name": "PromptVariableUnresolved",
+        "paths": ["suffix"]
+      }
     },
     {
       "name": "drop-empty-blocks-drops-whitespace-only-content",
@@ -106,9 +389,21 @@
         "scopeParts": {},
         "dropEmptyBlocks": true,
         "dataBlocks": [
-          { "key": "blank", "label": "Blank", "content": "  \n\t \r\n" },
-          { "key": "empty", "label": "Empty", "content": "" },
-          { "key": "kept", "label": "Kept", "content": "B" }
+          {
+            "key": "blank",
+            "label": "Blank",
+            "content": "  \n\t \r\n"
+          },
+          {
+            "key": "empty",
+            "label": "Empty",
+            "content": ""
+          },
+          {
+            "key": "kept",
+            "label": "Kept",
+            "content": "B"
+          }
         ]
       },
       "expected": {
@@ -116,7 +411,17 @@
         "user": "<<<EXTERNAL_DATA section=\"kept\">>>\n--- Kept ---\nB\n<<<END_EXTERNAL_DATA>>>",
         "selected": [],
         "excluded": [],
-        "blocks": [{ "key": "kept", "chars": 1, "truncated": false }]
+        "blocks": [
+          {
+            "key": "kept",
+            "chars": 1,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [],
+          "composedDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
       }
     },
     {
@@ -126,8 +431,16 @@
         "resolvedPrompt": null,
         "scopeParts": {},
         "dataBlocks": [
-          { "key": "blank", "label": "Blank", "content": " " },
-          { "key": "kept", "label": "Kept", "content": "B" }
+          {
+            "key": "blank",
+            "label": "Blank",
+            "content": " "
+          },
+          {
+            "key": "kept",
+            "label": "Kept",
+            "content": "B"
+          }
         ]
       },
       "expected": {
@@ -135,7 +448,22 @@
         "user": "<<<EXTERNAL_DATA section=\"blank\">>>\n--- Blank ---\n \n<<<END_EXTERNAL_DATA>>>\n\n<<<EXTERNAL_DATA section=\"kept\">>>\n--- Kept ---\nB\n<<<END_EXTERNAL_DATA>>>",
         "selected": [],
         "excluded": [],
-        "blocks": [{ "key": "blank", "chars": 1, "truncated": false }, { "key": "kept", "chars": 1, "truncated": false }]
+        "blocks": [
+          {
+            "key": "blank",
+            "chars": 1,
+            "truncated": false
+          },
+          {
+            "key": "kept",
+            "chars": 1,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [],
+          "composedDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
       }
     },
     {
@@ -145,14 +473,30 @@
         "resolvedPrompt": null,
         "scopeParts": {},
         "dropEmptyBlocks": true,
-        "dataBlocks": [{ "key": "nbsp", "label": "NBSP", "content": " " }]
+        "dataBlocks": [
+          {
+            "key": "nbsp",
+            "label": "NBSP",
+            "content": " "
+          }
+        ]
       },
       "expected": {
         "system": "",
         "user": "<<<EXTERNAL_DATA section=\"nbsp\">>>\n--- NBSP ---\n \n<<<END_EXTERNAL_DATA>>>",
         "selected": [],
         "excluded": [],
-        "blocks": [{ "key": "nbsp", "chars": 1, "truncated": false }]
+        "blocks": [
+          {
+            "key": "nbsp",
+            "chars": 1,
+            "truncated": false
+          }
+        ],
+        "governance": {
+          "pieces": [],
+          "composedDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
       }
     }
   ]

@@ -17,6 +17,7 @@ import pytest
 
 from harness.temporal.interpreter.compose_messages import (
     ComposeDataBlockKeyError,
+    ComposeOutputContractConflictError,
     compose_messages,
     platform_rules,
 )
@@ -38,6 +39,7 @@ _ERRORS: dict[str, type[Exception]] = {
     "PromptVariableUnresolved": PromptVariableUnresolved,
     "PromptCompositionEmpty": PromptCompositionEmpty,
     "ComposeDataBlockKeyError": ComposeDataBlockKeyError,
+    "ComposeOutputContractConflictError": ComposeOutputContractConflictError,
 }
 
 
@@ -88,6 +90,8 @@ def test_compose(case: dict[str, Any]) -> None:
             data_blocks=given.get("dataBlocks"),
             template_ref=given.get("templateRef"),
             drop_empty_blocks=given.get("dropEmptyBlocks", False),
+            block_aliases=given.get("blockAliases"),
+            output_contract_parts=given.get("outputContractParts"),
         )
 
     if "expected" in case:
@@ -100,6 +104,11 @@ def test_compose(case: dict[str, Any]) -> None:
         assert [
             {"key": b.key, "chars": b.chars, "truncated": b.truncated} for b in result.blocks
         ] == expected["blocks"]
+        # TASK-1047 FC-2 — pieces + digests, snake_case on this side.
+        assert result.governance == {
+            "pieces": expected["governance"]["pieces"],
+            "composed_digest": expected["governance"]["composedDigest"],
+        }
         return
     error = case["error"]
     with pytest.raises(_ERRORS[error["name"]]) as excinfo:

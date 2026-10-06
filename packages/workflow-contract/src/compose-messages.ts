@@ -4,16 +4,34 @@
  * ```
  * system := join("\n\n", non-empty [
  *             platformRules,                       // platform tier, stable → prefix-cache friendly
- *             composePrompt(resolvedPrompt, scope), // the agent instruction (fragments selected + rendered)
+ *             composePrompt(resolvedPrompt, scope, // the agent instruction (fragments selected), every
+ *                           pointer mode),         //   placeholder rendered as a POINTER (TASK-1047 FC-1)
  *             outputLanguageStep(outputLanguage),  // one fixed sentence naming the note language
- *             outputContract,                      // what shape the answer must take
+ *             ...outputContractParts,              // what shape the answer must take, one layer per part
  *           ])
- * user   := join("\n\n", for block in dataBlocks (given order), skipping null / empty:
+ * user   := join("\n\n",
+ *             placeholder blocks (first appearance; one per distinct block name; not one a caller
+ *               block of the same key already emits), then
+ *             caller dataBlocks (given order), skipping null / empty:
  *             <<<EXTERNAL_DATA section="<key>">>>
  *             --- <label> ---
  *             <content, cut to maxChars at the last newline + "\n[…truncated]", markers neutralised>
  *             <<<END_EXTERNAL_DATA>>>)
  * ```
+ *
+ * TASK-1047 FC-1 — the system message is GOVERNED TEXT ONLY. Every placeholder of the instruction
+ * renders as the fixed pointer `[see the <block> data section below]`; its value (or its
+ * `default("…")`) travels as an EXTERNAL_DATA block of that name (label = the block name, no
+ * budget). `<block>` is `blockAliases[path]`, else the path lower-cased with every non `[a-z0-9]`
+ * run replaced by `_`. Two paths that collapse to one name share ONE block — the first
+ * occurrence's value. A placeholder block is emitted even when its value is empty, so a pointer
+ * never dangles; when a caller block of the same key is EMITTED, the caller block (its label,
+ * budget and position) carries the section instead, and when that caller block is skipped the
+ * placeholder block takes its place at the placeholder position.
+ *
+ * TASK-1047 FC-2 — `governance` lists the system message as ordered static pieces (PLATFORM,
+ * TEMPLATE_BODY `body` or each selected FRAGMENT, LANGUAGE, CONTRACT parts), each with
+ * `digest = sha256(utf8(text))`, plus `composedDigest = sha256(utf8(system))`.
  *
  * Every layer of the system message is stable for an agent, so the inference engine's prefix
  * cache stays warm; everything per-encounter is DATA in the user message, wrapped so the model
@@ -34,8 +52,10 @@
  * CODE POINTS on both sides (a JavaScript `.length` counts UTF-16 units and would cut a surrogate
  * pair in half), so a `maxChars` means the same thing in both languages.
  */
+import { PLATFORM_RULES_VERSION } from './platform-rules';
 import { composePrompt, unresolvedPromptVariables, type ComposableResolvedPrompt, type FragmentExclusion } from './prompt-composition';
-import { PromptVariableUnresolvedError } from './template';
+import { sha256Hex } from './sha256';
+import { PromptVariableUnresolvedError, type PointerPlaceholder } from './template';
 
 /** Joins the system layers and the user data blocks. */
 export const MESSAGE_LAYER_JOIN = '\n\n';
@@ -64,6 +84,14 @@ export class ComposeDataBlockKeyError extends Error {
     super(`Data block key ${JSON.stringify(key)} must match ^[a-z0-9_]+$.`);
     this.name = 'ComposeDataBlockKeyError';
     this.key = key;
+  }
+}
+
+/** TASK-1047 FC-2 — `outputContract` and `outputContractParts` were both given; they are one layer, said once. */
+export class ComposeOutputContractConflictError extends Error {
+  constructor() {
+    super('Give the answer shape as `outputContract` OR `outputContractParts`, not both.');
+    this.name = 'ComposeOutputContractConflictError';
   }
 }
 
@@ -132,9 +160,9 @@ export interface ComposedMessages {
   readonly blocks: readonly ComposedDataBlock[];
   /**
    * TASK-1047 FC-2 — the system message as governed pieces (static text only after FC-1) and the
-   * digest of the whole system message. Optional until Lane L1 populates it on every compose.
+   * digest of the whole system message. Always populated.
    */
-  readonly governance?: SystemGovernance;
+  readonly governance: SystemGovernance;
 }
 
 /** TASK-1047 FC-2 — what one static piece of a system message is. */
@@ -185,23 +213,68 @@ function wrapExternalData(key: string, label: string, body: string): string {
   return `<<<EXTERNAL_DATA section="${key}">>>\n--- ${label} ---\n${body}\n<<<END_EXTERNAL_DATA>>>`;
 }
 
+/** A system piece before digesting. */
+interface SystemPiece {
+  readonly kind: GovernedPieceKind;
+  readonly key: string;
+  readonly text: string;
+}
+
 /**
- * Compose the system and user messages. Throws `ComposeDataBlockKeyError`,
+ * Compose the system and user messages. Throws `ComposeDataBlockKeyError`, `ComposeOutputContractConflictError`,
  * `PromptVariableUnresolvedError` (every missing path), `PromptTemplateSyntaxError` and `PromptCompositionEmptyError` — never a partial prompt.
  */
 export function composeMessages(input: ComposeMessagesInput): ComposedMessages {
   const templateRef = input.templateRef ?? null;
+  if (nonEmpty(input.outputContract) && input.outputContractParts !== undefined && input.outputContractParts !== null) {
+    throw new ComposeOutputContractConflictError();
+  }
   const missing = unresolvedPromptVariables(input.resolvedPrompt, input.scope);
   if (missing.length > 0) throw new PromptVariableUnresolvedError(missing, templateRef);
 
-  const composed = composePrompt(input.resolvedPrompt, input.scope, templateRef === null ? {} : { templateRef });
-  const languageName = input.outputLanguage?.name;
-  const system = [input.platformRules, composed.prompt, nonEmpty(languageName) ? outputLanguageStep(languageName) : null, input.outputContract]
-    .filter(nonEmpty)
-    .join(MESSAGE_LAYER_JOIN);
+  const composed = composePrompt(input.resolvedPrompt, input.scope, {
+    ...(templateRef === null ? {} : { templateRef }),
+    placeholderMode: 'pointer',
+    ...(input.blockAliases === undefined ? {} : { blockAliases: input.blockAliases }),
+  });
 
-  const wrapped: string[] = [];
-  const blocks: ComposedDataBlock[] = [];
+  // FC-2 — the system message as ordered static pieces; empty layers contribute no piece.
+  const pieces: SystemPiece[] = [];
+  if (nonEmpty(input.platformRules)) pieces.push({ kind: 'PLATFORM', key: `platform-rules@${PLATFORM_RULES_VERSION}`, text: input.platformRules });
+  const instructionParts = composed.parts ?? [];
+  if (nonEmpty(composed.prompt)) {
+    if (input.resolvedPrompt?.source === 'composite') {
+      composed.selected.forEach((key, index) => pieces.push({ kind: 'FRAGMENT', key, text: instructionParts[index] ?? '' }));
+    } else {
+      pieces.push({ kind: 'TEMPLATE_BODY', key: 'body', text: composed.prompt });
+    }
+  }
+  const languageName = input.outputLanguage?.name;
+  const languageText = nonEmpty(languageName) ? outputLanguageStep(languageName) : null;
+  if (languageText !== null) pieces.push({ kind: 'LANGUAGE', key: `language:${languageName as string}`, text: languageText });
+  const contractParts = input.outputContractParts ?? (nonEmpty(input.outputContract) ? [{ key: 'contract', text: input.outputContract }] : []);
+  const contractTexts: string[] = [];
+  for (const part of contractParts) {
+    if (!nonEmpty(part?.text)) continue;
+    pieces.push({ kind: 'CONTRACT', key: String(part.key), text: part.text });
+    contractTexts.push(part.text);
+  }
+
+  const system = [input.platformRules, composed.prompt, languageText, ...contractTexts].filter(nonEmpty).join(MESSAGE_LAYER_JOIN);
+  const governance: SystemGovernance = {
+    pieces: pieces.map(({ kind, key, text }) => ({ kind, key, digest: sha256Hex(text) })),
+    composedDigest: sha256Hex(system),
+  };
+
+  // FC-1 — one placeholder block per distinct name, in first-appearance order.
+  const placeholderBlocks = new Map<string, PointerPlaceholder>();
+  for (const placeholder of composed.placeholders ?? []) {
+    if (!COMPOSE_DATA_BLOCK_KEY_PATTERN.test(placeholder.block)) throw new ComposeDataBlockKeyError(placeholder.block);
+    if (!placeholderBlocks.has(placeholder.block)) placeholderBlocks.set(placeholder.block, placeholder);
+  }
+
+  const callerWrapped: string[] = [];
+  const callerBlocks: ComposedDataBlock[] = [];
   for (const block of input.dataBlocks ?? []) {
     const key = String(block.key);
     if (!COMPOSE_DATA_BLOCK_KEY_PATTERN.test(key)) throw new ComposeDataBlockKeyError(key);
@@ -209,9 +282,20 @@ export function composeMessages(input: ComposeMessagesInput): ComposedMessages {
     if (input.dropEmptyBlocks === true && BLANK_CONTENT.test(block.content)) continue;
     const fitted = fitToBudget(block.content, block.maxChars);
     const body = neutraliseMarkers(fitted.kept) + (fitted.truncated ? EXTERNAL_DATA_TRUNCATION_MARKER : '');
-    wrapped.push(wrapExternalData(key, sanitiseLabel(String(block.label)), body));
-    blocks.push({ key, chars: fitted.chars, truncated: fitted.truncated });
+    callerWrapped.push(wrapExternalData(key, sanitiseLabel(String(block.label)), body));
+    callerBlocks.push({ key, chars: fitted.chars, truncated: fitted.truncated });
   }
+  const emittedByCaller = new Set(callerBlocks.map((block) => block.key));
 
-  return { system, user: wrapped.join(MESSAGE_LAYER_JOIN), selected: composed.selected, excluded: composed.excluded, blocks };
+  const wrapped: string[] = [];
+  const blocks: ComposedDataBlock[] = [];
+  for (const placeholder of placeholderBlocks.values()) {
+    if (emittedByCaller.has(placeholder.block)) continue;
+    wrapped.push(wrapExternalData(placeholder.block, placeholder.block, neutraliseMarkers(placeholder.value)));
+    blocks.push({ key: placeholder.block, chars: Array.from(placeholder.value).length, truncated: false });
+  }
+  wrapped.push(...callerWrapped);
+  blocks.push(...callerBlocks);
+
+  return { system, user: wrapped.join(MESSAGE_LAYER_JOIN), selected: composed.selected, excluded: composed.excluded, blocks, governance };
 }

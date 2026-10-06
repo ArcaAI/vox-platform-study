@@ -66,7 +66,9 @@ describe('resolvedPromptVariableDeclarations', () => {
     expect(resolvedPromptVariableDeclarations({ source: 'template', promptTemplateId: 't', promptVersionNumber: 1, content: 'x' })).toEqual([]);
   });
 
-  it('with dropEmptyBlocks: an absent optional variable renders "" and an empty data block is dropped', () => {
+  // TASK-1047 FC-1: the placeholder renders as a pointer and its "" value travels as a block that is
+  // ALWAYS emitted (the pointer never dangles); `dropEmptyBlocks` still drops the empty CALLER block.
+  it('with dropEmptyBlocks: an absent optional variable becomes an empty block and an empty caller block is dropped', () => {
     const resolvedPrompt = {
       source: 'template' as const,
       promptTemplateId: 't',
@@ -84,7 +86,8 @@ describe('resolvedPromptVariableDeclarations', () => {
       ],
       dropEmptyBlocks: true,
     });
-    expect(composed.system).toBe('Tone: .');
-    expect(composed.blocks.map((block) => block.key)).toEqual(['input']);
+    expect(composed.system).toBe('Tone: [see the tone data section below].');
+    expect(composed.blocks.map((block) => block.key)).toEqual(['tone', 'input']);
+    expect(composed.blocks[0]).toEqual({ key: 'tone', chars: 0, truncated: false });
   });
 });
