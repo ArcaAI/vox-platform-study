@@ -39384,7 +39384,8 @@
                 "ConsultationApproval",
                 "ConsultationAttachment",
                 "ConsultationFeedback",
-                "ConsultationFeedbackRollup"
+                "ConsultationFeedbackRollup",
+                "GovernedPromptPiece"
               ],
               "type": "string"
             }
@@ -39643,7 +39644,8 @@
                 "ConsultationApproval",
                 "ConsultationAttachment",
                 "ConsultationFeedback",
-                "ConsultationFeedbackRollup"
+                "ConsultationFeedbackRollup",
+                "GovernedPromptPiece"
               ],
               "type": "string"
             }
@@ -39903,7 +39905,8 @@
                 "ConsultationApproval",
                 "ConsultationAttachment",
                 "ConsultationFeedback",
-                "ConsultationFeedbackRollup"
+                "ConsultationFeedbackRollup",
+                "GovernedPromptPiece"
               ],
               "type": "string"
             }

@@ -132,7 +132,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationApproval'
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
-          | 'ConsultationFeedbackRollup';
+          | 'ConsultationFeedbackRollup'
+          | 'GovernedPromptPiece';
         search?: string;
         searchFields?: string;
         sort?: string;
@@ -268,7 +269,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationApproval'
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
-          | 'ConsultationFeedbackRollup';
+          | 'ConsultationFeedbackRollup'
+          | 'GovernedPromptPiece';
         to?: string;
         userId?: string;
       };
@@ -386,7 +388,8 @@ export class AdminAuditResource extends AdminResource {
           | 'ConsultationApproval'
           | 'ConsultationAttachment'
           | 'ConsultationFeedback'
-          | 'ConsultationFeedbackRollup';
+          | 'ConsultationFeedbackRollup'
+          | 'GovernedPromptPiece';
         search?: string;
         searchFields?: string;
         sort?: string;

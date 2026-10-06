@@ -14771,6 +14771,22 @@
       "apiExcluded": true
     },
     {
+      "controller": "GovernedPromptInternalController",
+      "handler": "verify",
+      "method": "POST",
+      "path": "/api/v1/internal/governed-prompts/verify",
+      "routePath": "/internal/governed-prompts/verify",
+      "svcScopes": [],
+      "forbidServiceAccount": false,
+      "apiKeyForbidden": false,
+      "apiKeyScopes": [],
+      "requiredPermissions": null,
+      "isPublic": true,
+      "permissionMode": null,
+      "requiresIfMatch": false,
+      "apiExcluded": true
+    },
+    {
       "controller": "HarnessInternalController",
       "handler": "assemble",
       "method": "POST",
