@@ -555,6 +555,29 @@ and the console ai-inference proxy (≤ 20k). Before TASK-1047 these were accept
 2026-10-06 (OD-10): **NLP windows NER server-side** — see §8.3. S1 decision (OD-11): keep
 `screenWindowConcurrency` 4 and judge memory by the V4 soak (S2); S1 is read per inference.
 
+### 8.3 OD-10 — NLP windows NER server-side (FC-8a), and the harness 4xx fix
+
+| Lane | Tier | Merged | Delivered |
+|---|---|---|---|
+| ner | opus | `78ebb6889` (+ orchestrator `d22c76959`) | `/api/v1/classify/tokens` only: text ≤ `nlp.inference.maxInputChars` → the old single pass, unchanged; ≤ `nlp.ner.maxRequestChars` (200,000) → windows of `nlp.ner.windowChars` (4,000) + `nlp.ner.windowOverlapChars` (256), cut on whitespace in the last 10 % of a window, each window starting after the first whitespace of its overlap (never mid-word — orchestrator fix), run one at a time through the normal bounded inference path; spans re-based to absolute offsets, identical spans keep the best score, same-label overlaps across windows keep the longer span. Above the request cap: 413 as before. `nlp_ner_windows` counter. Every other capped route keeps its 413 at 8,192. Descriptors for the three keys |
+| hretry | sonnet | `4bf20f570` | Harness: an NLP 4xx other than 408/429 fails the NER activity as a NON-retryable `NlpClientError` (activity layer only; no workflow code, retry policy or activity signature changed — replay-safe). 5xx/408/429/timeouts still retry |
+
+Response fields across windows: `vitals` per field first-found, `inference_ms` summed, `model_version`/`device`
+from the first window. Cost: a 200k-char text is ~50 sequential window passes (latency, not memory).
+
+### 8.4 Harness finding — guardrail read the wrong database (local e2e only)
+
+`apps/guardrail` takes its DB from `GUARDRAIL_DATABASE_URL` (default `…/hope`), not `DATABASE_URL`. The e2e
+launcher exported only `DATABASE_URL=…/hope_1045_e2e`, so guardrail resolved selections and policy from the
+main `hope` DB, which predates the `medicalWindowScopeCriteria` seed: every per-window medical judgement
+failed closed in ~2 ms (`unsupported_guardrail_type`), and none could be cached — the first V3 run's S4 45.9 %
+and its 1.15 M "computed" judge characters were that, not the cache design. The launcher now exports
+`GUARDRAIL_DATABASE_URL` too; after it, the medical judge answers (≈ 15 s per window on the local 2B model)
+and the full re-screen under the corrected policy version registered 55/55 PASS (135 sources, 0 FAIL,
+0 UNAVAILABLE). Not a product defect: the cluster sets guardrail's DB explicitly. **The main `hope` dev DB
+still lacks `medicalWindowScopeCriteria`** — anyone running the stack on it needs a reseed of the
+`granite-guardian-4.1-8b` row (`seed/ai-models/llm.ts`).
+
 ## 9. Change History
 
 | Date | Change |
