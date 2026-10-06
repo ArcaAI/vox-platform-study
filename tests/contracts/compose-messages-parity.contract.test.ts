@@ -7,6 +7,10 @@
  * `apps/harness/src/harness/tests/unit/temporal/interpreter/test_compose_messages_parity.py` — so
  * the FINAL system and user messages are byte-identical across the two runtimes, not merely the
  * template grammar. The suite also asserts the fixture is NOT VACUOUS.
+ *
+ * TASK-1047 FC-1 / FC-2: every placeholder renders in `system` as a pointer and travels as a block,
+ * and `governance` (pieces + digests) is pinned too — the `governed-*` cases exercise aliases,
+ * block order, defaults, `outputContractParts` and the digests themselves.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -29,8 +33,18 @@ interface ComposeCase {
     outputContract?: string | null;
     dataBlocks?: unknown[];
     templateRef?: string;
+    dropEmptyBlocks?: boolean;
+    blockAliases?: Record<string, string>;
+    outputContractParts?: Array<{ key: string; text: string }>;
   };
-  expected?: { system: string; user: string; selected: string[]; excluded: Array<{ key: string; reason: string }>; blocks: unknown[] };
+  expected?: {
+    system: string;
+    user: string;
+    selected: string[];
+    excluded: Array<{ key: string; reason: string }>;
+    blocks: unknown[];
+    governance: { pieces: Array<{ kind: string; key: string; digest: string }>; composedDigest: string };
+  };
   error?: { name: string; paths?: string[]; key?: string };
 }
 
@@ -67,6 +81,26 @@ describe('compose-messages fixture — not vacuous', () => {
     expect(fixture.scopeCases.map((entry) => entry.name)).toEqual(
       expect.arrayContaining(['trigger-only-aliases-context', 'context-only-aliases-trigger', 'both-kept-as-given']),
     );
+  });
+
+  it('pins the governed rendering (TASK-1047 FC-1 / FC-2)', () => {
+    expect(fixture.cases.every((entry) => entry.error !== undefined || entry.expected?.governance !== undefined)).toBe(true);
+    const names = fixture.cases.map((entry) => entry.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'governed-pointer-every-placeholder',
+        'governed-block-aliases',
+        'governed-block-order-placeholders-then-caller',
+        'governed-defaults-empty-values-and-collapsed-names',
+        'governed-composite-fragment-pieces',
+        'governed-output-contract-parts',
+        'governed-output-contract-conflict-raises',
+      ]),
+    );
+    const kinds = new Set(fixture.cases.flatMap((entry) => entry.expected?.governance.pieces.map((piece) => piece.kind) ?? []));
+    for (const kind of ['PLATFORM', 'TEMPLATE_BODY', 'FRAGMENT', 'LANGUAGE', 'CONTRACT']) expect(kinds).toContain(kind);
+    expect(fixture.cases.some((entry) => entry.input.blockAliases)).toBe(true);
+    expect(fixture.cases.some((entry) => entry.input.outputContractParts)).toBe(true);
   });
 });
 
@@ -107,6 +141,9 @@ describe('composeMessages over the shared fixture', () => {
         outputContract: input.outputContract,
         dataBlocks: input.dataBlocks,
         templateRef: input.templateRef,
+        dropEmptyBlocks: input.dropEmptyBlocks,
+        blockAliases: input.blockAliases,
+        outputContractParts: input.outputContractParts,
       });
     if (entry.expected) {
       const result = run();
@@ -115,6 +152,7 @@ describe('composeMessages over the shared fixture', () => {
       expect(result.selected).toEqual(entry.expected.selected);
       expect(result.excluded.map(({ key, reason }: { key: string; reason: string }) => ({ key, reason }))).toEqual(entry.expected.excluded);
       expect(result.blocks).toEqual(entry.expected.blocks);
+      expect(result.governance).toEqual(entry.expected.governance);
       return;
     }
     let caught: any;
