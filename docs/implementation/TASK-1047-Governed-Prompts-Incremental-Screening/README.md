@@ -430,6 +430,23 @@ otherwise the system prompt is UNTRUSTED and screened as a region. Never sent by
 - Region keys: governed system prompt never sent; untrusted system prompt key `system`; data blocks by block
   name; caller user text outside blocks key `user`.
 
+**FC-5b inbound data posture (owner decision OD-13, 2026-10-06 — supersedes FC-5's "any flag blocks" for data).**
+Additive, backward compatible:
+- `ScreenRegion` gains `trust: "instruction" | "data"`, default `"instruction"` (every existing caller —
+  authoring-time screening, legacy `text` — is unchanged).
+- Guardrail windows and classifies EVERY region exactly as before (no opt-out, same cache, same checks).
+  `decision` is computed from `instruction` regions ONLY. A `jailbreak_detection` / `prompt_safety` /
+  `prompt_toxicity` flag on a `data` region never sets `decision: "block"`; it is reported in a new response
+  field `data_findings: [{ region: str, reasons: [str] }]` (region keys + check names only — never text) and
+  counted in `guardrail_data_findings_total{task}`.
+- Fail-closed is unchanged: an UNDETERMINED check (could not run) on ANY region, data included, still blocks;
+  `screened_regions` coverage still applies; PII spans/posture unchanged.
+- apps/text marks every EXTERNAL_DATA block region `trust: "data"`; caller text outside blocks (`user`) and an
+  ungoverned `system` region stay `instruction` (they still block). Text records the findings PHI-safely
+  (structured log `text.egress.data_findings` with region keys + reasons, a metric, and the findings on the
+  response's guardrail metadata where one exists). The OUTBOUND gate is unchanged and keeps blocking.
+
+
 **FC-6 Harness (L10).** The harness composes with the Python mirror (L1), checks every piece digest ∈
 `compiledConfig.governance.pieceDigests` (same `policyVersion` as guardrail's current one, fetched once per
 run), and only then sends FC-4. Otherwise it omits `system_governance`.
