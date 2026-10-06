@@ -1,4 +1,13 @@
-import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
@@ -36,6 +45,9 @@ import { IConsultationContextSchemaService } from '../consultation-context-schem
 import { IAgentPromoteToSystemService } from './IAgentPromoteToSystemService';
 import { PromoteAgentToSystemRequest, PromoteAgentToSystemResponse } from './dto';
 import { runInTenantContext } from './tenant-context';
+import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
+import type { IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
+import { piecesFromResolvedPrompt } from '../governed-prompt/governed-pieces';
 
 /**
  * The Global build tenant. A LITERAL, exactly as `WorkflowDefinitionService` and
@@ -128,6 +140,10 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     private readonly moduleRef: ModuleRef,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1047 D2 — the promoted pieces are screened under SYSTEM before anything is written.
+    // Optional + trailing so positional fixtures keep their arity; the module always wires it, and
+    // the SYSTEM publish in step 6 re-checks through `AgentService.publish` regardless.
+    @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistryPort,
   ) {
     super(eventEmitter, clsService, ResourceType.AgentPromotion);
   }
@@ -145,6 +161,11 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     const sourceFallbacks = await runInTenantContext(this.clsService, GLOBAL_PLAYGROUND_TENANT_ID, () =>
       this.fallbackRepository.findByAgentId(source.id),
     );
+
+    // ---- 2b. Screen the promoted pieces UNDER SYSTEM (TASK-1047 D2, OD-4) --
+    // Before the context-schema copy and the transaction: a refused promotion must leave nothing
+    // behind in SYSTEM. The source's frozen prompt is exactly the text the copy will carry.
+    await this.assertPromotedPiecesScreened(source);
 
     const warnings: string[] = [];
 
@@ -298,6 +319,29 @@ export class AgentPromoteToSystemService extends BaseService implements IAgentPr
     if (!isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException('Only a platform administrator may promote an agent into the SYSTEM reference set.');
     }
+  }
+
+  /**
+   * TASK-1047 D2 — screen the source's frozen instruction pieces under SYSTEM. A content verdict is
+   * 409, an unanswered screen 503; there is no override.
+   */
+  private async assertPromotedPiecesScreened(source: AgentEntity): Promise<void> {
+    if (!this.governedPrompts) return;
+    const compiled = asRecord(source.compiledConfig);
+    const pieces = piecesFromResolvedPrompt(compiled?.resolvedPrompt, { sourceType: 'AGENT', sourceId: source.id });
+    if (pieces.length === 0) return;
+    const result = await this.governedPrompts.screenAndRegister(SYSTEM_TENANT_ID, pieces);
+    if (result.passed) return;
+    const findings = result.findings.map(({ code, pieceKind, pieceKey, digest, reason }) => ({ code, pieceKind, pieceKey, digest, reason }));
+    if (findings.every((finding) => finding.code === 'PROMPT_SCREENING_UNAVAILABLE')) {
+      throw new ServiceUnavailableException({
+        message: 'Prompt screening is unavailable, so the agent cannot be promoted into SYSTEM yet.',
+        code: 'PROMPT_SCREENING_UNAVAILABLE',
+        findings,
+      });
+    }
+    const first = findings.find((finding) => finding.code !== 'PROMPT_SCREENING_UNAVAILABLE') ?? findings[0];
+    throw new ConflictException({ message: 'Prompt screening refused the promoted agent.', code: first?.code, findings });
   }
 
   /** One collaborator, or `undefined` when the host app did not register it. */

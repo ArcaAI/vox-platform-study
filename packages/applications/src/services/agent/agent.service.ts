@@ -154,6 +154,9 @@ import {
 } from './dto';
 import { agentInputBlock } from './agent-input-block';
 import { IAgentService } from './IAgentService';
+import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
+import type { GovernedPieceFinding, IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
+import { piecesFromResolvedPrompt } from '../governed-prompt/governed-pieces';
 
 const AGENT_FILTER_MODEL = 'Agent';
 
@@ -170,6 +173,16 @@ const PUBLISHED_OR_DEPRECATED: ReadonlySet<WorkflowDefinitionStatus> = new Set([
 ]);
 
 type ResolvedPrompt = AgentCompiledConfig['resolvedPrompt'];
+
+/**
+ * TASK-1047 FC-3 — what publish stamps on `compiledConfig.governance`: the guardrail policy version
+ * the instruction pieces were screened PASS under, and their digests (pointer-rendered, FC-2).
+ * Rides as an intersection like `requiredVariables`: `@arcaai/types` does not name it yet.
+ */
+export interface AgentCompiledGovernance {
+  policyVersion: string;
+  pieceDigests: string[];
+}
 
 /**
  * TASK-1036 OD-10 — a template version's variable DECLARATIONS, frozen beside its content in
@@ -301,6 +314,10 @@ export class AgentService extends BaseService implements IAgentService {
     // TRAILING and @Optional() for the same reason as every dependency above; absent ⇒ no
     // inheritance, so a schema-less agent is checked against no `context.*` vocabulary.
     @Optional() private readonly workflowDefinitionRepository?: WorkflowDefinitionRepository,
+    // TASK-1047 D2 — authoring-time screening of the instruction pieces (OD-4: blocking, no
+    // override, guardrail down blocks too). TRAILING and @Optional() for the same reason as every
+    // dependency above; `AgentServiceModule` always wires it, and only a hand-built fixture omits it.
+    @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistryPort,
   ) {
     super(eventEmitter, clsService, ResourceType.Agent);
   }
@@ -635,7 +652,7 @@ export class AgentService extends BaseService implements IAgentService {
     const entity = await this.loadOwned(id);
     this.assertMutable(entity);
 
-    const { report, model, fallbackModels, resolvedPrompt, contextSchema } = await this.collectFindings(entity);
+    const { report, model, fallbackModels, resolvedPrompt, contextSchema, governance } = await this.collectFindings(entity);
     entity.validationReport = report as unknown as JsonValue;
     entity.validatedAt = new Date();
     if (report.blocking) {
@@ -646,7 +663,13 @@ export class AgentService extends BaseService implements IAgentService {
     }
 
     const fallbackRows = await this.fallbackRepository.findByAgentId(entity.id);
-    const compiled = this.compile(entity, model as AiModelEntity, fallbackModels, fallbackRows, resolvedPrompt, contextSchema);
+    // TASK-1047 FC-3 — the screened instruction pieces ride on the artifact, so a run-time reader
+    // with no registry access (the harness, FC-6) can verify a composed system message against them.
+    // Omitted — never `null` — when nothing was screened.
+    const compiled = {
+      ...this.compile(entity, model as AiModelEntity, fallbackModels, fallbackRows, resolvedPrompt, contextSchema),
+      ...(governance ? { governance } : {}),
+    };
     entity.compiledConfig = compiled as unknown as JsonValue;
     entity.compiledConfigChecksum = checksumOf(compiled);
     entity.status = WorkflowDefinitionStatus.PUBLISHED;
@@ -1980,6 +2003,7 @@ export class AgentService extends BaseService implements IAgentService {
     fallbackModels: AiModelEntity[];
     resolvedPrompt: ResolvedPrompt;
     contextSchema: AgentCompiledContextSchema | null;
+    governance: AgentCompiledGovernance | null;
   }> {
     const findings: AgentFinding[] = [];
     const context = await this.resolveContextSchema(entity);
@@ -2038,8 +2062,48 @@ export class AgentService extends BaseService implements IAgentService {
       findings.push(...this.promptTemplateFindings(entity, resolvedPrompt, pathSchema, outcome.templateVariables));
     }
 
+    // TASK-1047 D2 — screened once here, at validate/publish (never on the draft bench, which
+    // compiles a draft as it stands and runs on the full-screening path).
+    const screening = phase === 'publish' ? await this.screeningFindings(entity, resolvedPrompt) : { findings: [], governance: null };
+    findings.push(...screening.findings);
+
     const report: AgentValidationReport = { checkedAt: new Date().toISOString(), blocking: hasBlocking(findings), findings };
-    return { report, model, fallbackModels, resolvedPrompt, contextSchema: context.resolved };
+    return { report, model, fallbackModels, resolvedPrompt, contextSchema: context.resolved, governance: screening.governance };
+  }
+
+  /**
+   * TASK-1047 D2 (OD-4) — screen every instruction piece by guardrail and register the verdicts.
+   * The pieces are the pointer-rendered body / fragments (FC-1/FC-2): what the composer emits at
+   * call time, so the digest stamped here is the digest it will look up. A refusal of any kind is
+   * an ERROR finding at the piece's path; there is no override.
+   */
+  private async screeningFindings(
+    entity: AgentEntity,
+    resolvedPrompt: ResolvedPrompt,
+  ): Promise<{ findings: AgentFinding[]; governance: AgentCompiledGovernance | null }> {
+    if (!this.governedPrompts) return { findings: [], governance: null };
+    const pieces = piecesFromResolvedPrompt(resolvedPrompt, { sourceType: 'AGENT', sourceId: entity.id });
+    if (pieces.length === 0) return { findings: [], governance: null };
+    const result = await this.governedPrompts.screenAndRegister(entity.tenantId, pieces);
+    const findings = result.findings.map((finding) => this.screeningFinding(entity, finding));
+    const governance =
+      result.passed && result.policyVersion ? { policyVersion: result.policyVersion, pieceDigests: [...new Set(result.digests)] } : null;
+    return { findings, governance };
+  }
+
+  private screeningFinding(entity: AgentEntity, finding: GovernedPieceFinding): AgentFinding {
+    let path = 'instruction';
+    if (finding.pieceKind === 'FRAGMENT') {
+      const fragments = asRecord(entity.instruction)?.fragments;
+      const index = Array.isArray(fragments) ? fragments.findIndex((fragment) => asRecord(fragment)?.key === finding.pieceKey) : -1;
+      path = index >= 0 ? `instruction.fragments[${index}]` : 'instruction.fragments';
+    }
+    const subject = finding.pieceKind === 'FRAGMENT' ? `Fragment \`${finding.pieceKey ?? '?'}\`` : 'The instruction';
+    const message =
+      finding.code === 'PROMPT_SCREENING_UNAVAILABLE'
+        ? `${subject} could not be screened (${finding.reason}); publishing waits until guardrail screening is available.`
+        : `${subject} was refused by guardrail screening: ${finding.reason}.`;
+    return { severity: 'ERROR', code: finding.code, path, message };
   }
 
   /**

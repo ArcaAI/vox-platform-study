@@ -13,6 +13,7 @@ import { EntitlementsServiceModule } from '../entitlements/entitlements.service.
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
 import { ContextUserIdentityServiceModule } from '../user/identity';
 import { DocumentTemplateServiceModule } from '../document-template/document-template.service.module';
+import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
 import { AgentDraftTestService } from './agent-draft-test.service';
 import { AgentInvocationService } from './agent-invocation.service';
 import { AgentResolverService } from './agent-resolver.service';
@@ -62,6 +63,9 @@ import { IAgentService } from './IAgentService';
     // above: the injection is `@Optional()`, and an unnamed module would quietly serve the
     // platform shape for every agent that names a template.
     DocumentTemplateServiceModule,
+    // TASK-1047 D2 — `IGovernedPromptRegistry`: publish screens every instruction piece by guardrail
+    // and refuses on any finding (OD-4). Named for the same reason as the modules above.
+    GovernedPromptServiceModule,
   ],
   providers: [
     AgentService,

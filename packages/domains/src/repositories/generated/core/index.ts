@@ -56,6 +56,7 @@ export * from './GoldenCaseRepository';
 // Sibling that patches GoldenCaseRepository.prototype.
 export * from './GoldenCaseRepository.encryption';
 export * from './GoldenSetRepository';
+export * from './GovernedPromptPieceRepository';
 export * from './HarnessAuditEventRepository';
 // Sibling that patches HarnessAuditEventRepository.prototype
 // with encryptPayloads / decryptPayloadsFromEntity (encrypt-before-hash WORM).

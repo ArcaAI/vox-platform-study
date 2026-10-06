@@ -44,13 +44,23 @@ export interface IGovernedPromptRegistry {
   screenAndRegister(tenantId: string, pieces: readonly GovernedPieceInput[]): Promise<GovernedScreeningResult>;
   /** Call time: true iff EVERY digest is registered PASS under the current policy version ([tenant, SYSTEM]). */
   areGoverned(tenantId: string, digests: readonly string[]): Promise<boolean>;
-  /** The guardrail policy version verdicts are currently valid under (cached). `null` when unknown. */
-  currentPolicyVersion(): Promise<string | null>;
+  /**
+   * The guardrail policy version verdicts are currently valid under (cached per tenant). `null` when
+   * unknown. Guardrail resolves it PER TENANT (tenant → SYSTEM cascade of its selections), so the
+   * version is the one for `tenantId`; omitted ⇒ SYSTEM's. (TASK-1047 L3: `tenantId` added
+   * additively after L5 made the route tenant-resolved.)
+   */
+  currentPolicyVersion(tenantId?: string): Promise<string | null>;
   /**
    * Platform pieces (platform rules, platform CONTRACT constants, LANGUAGE sentences) seen by a
    * composer: register any not yet registered under SYSTEM, screening them in the background.
    * Idempotent and non-blocking for the caller; until a piece is registered its calls take the
    * full-screening path.
+   *
+   * Rows are always OWNED by SYSTEM; they are screened and recorded under the policy version of
+   * `tenantId` (the request tenant whose call emitted them — omitted ⇒ SYSTEM), because a tenant that
+   * overrides a guardrail selection has a different version and the platform pieces must be
+   * registered under it too. (`tenantId` added additively by L3 after L5.)
    */
-  registerPlatformPieces(pieces: readonly GovernedPieceInput[]): Promise<void>;
+  registerPlatformPieces(pieces: readonly GovernedPieceInput[], tenantId?: string): Promise<void>;
 }

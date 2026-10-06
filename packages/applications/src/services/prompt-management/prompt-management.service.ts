@@ -1,4 +1,14 @@
-import { Injectable, Inject, Logger, Optional, BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  Optional,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -67,6 +77,9 @@ import { IActiveUserContext } from '../../interfaces';
 import { renderTemplate, PromptVariableUnresolvedError, PromptTemplateSyntaxError } from '@arcaai/workflow-contract';
 import { IUsageLedgerService } from '../usageLedger/IUsageLedgerService';
 import { IComputeDeviceResolver } from '../usageLedger/compute-device.resolver';
+import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
+import type { IGovernedPromptRegistry as IGovernedPromptRegistryPort } from '../governed-prompt/IGovernedPromptRegistry';
+import { templateBodyPiece } from '../governed-prompt/governed-pieces';
 import type { ComputeAugmentedBatch } from '../usageLedger/compute-units';
 import type { UsageEventBatchInput } from '../usageLedger/dto';
 import {
@@ -278,6 +291,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // appender records no compute row for it rather than guessing one. Optional + trailing like
     // the ledger above it.
     @Optional() @Inject(IComputeDeviceResolver) private readonly computeDevice?: IComputeDeviceResolver,
+    // TASK-1047 D2 — approve screens the template body by guardrail and refuses on any finding
+    // (OD-4: blocking, no override, guardrail down blocks too). Optional + trailing like the
+    // dependencies above; `PromptManagementServiceModule` always wires it.
+    @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistryPort,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -684,6 +701,10 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (template.status === 'APPROVED' && template.approvedVersionNumber != null) {
       return PromptManagementDtoMapper.toTemplateResponse(template);
     }
+
+    // TASK-1047 D2 — the body is screened ONCE, here, before anything is written; the approved text
+    // is then governed and is not re-screened per call. Before the eval gate: it is the cheaper check.
+    await this.assertTemplateBodyScreened(template);
 
     // OD-3 eval promotion gate: if a department agent bound to this template
     // references a golden set, run the eval BEFORE promoting. In block-mode a
@@ -1991,6 +2012,32 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * hidden). Tenant-owned templates hide cross-tenant existence (404) and then
    * require `manage:PromptTemplate` for that tenant (or a super admin).
    */
+  /**
+   * TASK-1047 D2 (OD-4) — screen the pointer-rendered body under the TEMPLATE's tenant (SYSTEM for a
+   * library template). A content verdict is 409; a guardrail that could not answer is 503 — either
+   * way nothing is approved, and there is no override.
+   */
+  private async assertTemplateBodyScreened(template: PromptTemplateEntity): Promise<void> {
+    if (!this.governedPrompts || !template.content) return;
+    const result = await this.governedPrompts.screenAndRegister(template.tenantId, [templateBodyPiece(template.content, template.id)]);
+    if (result.passed) return;
+    const findings = result.findings.map(({ code, reason, digest }) => ({ code, reason, digest }));
+    if (findings.every((finding) => finding.code === 'PROMPT_SCREENING_UNAVAILABLE')) {
+      throw new ServiceUnavailableException({
+        message: 'Prompt screening is unavailable, so the template cannot be approved yet.',
+        code: 'PROMPT_SCREENING_UNAVAILABLE',
+        findings,
+      });
+    }
+    const first = findings.find((finding) => finding.code !== 'PROMPT_SCREENING_UNAVAILABLE') ?? findings[0];
+    throw new ConflictException({
+      message: 'Prompt screening refused the template — approval blocked.',
+      reason: 'PROMPT_SCREENING_REFUSED',
+      code: first?.code,
+      findings,
+    });
+  }
+
   private assertCanApprove(template: PromptTemplateEntity, id: string): void {
     if (template.tenantId === SYSTEM_TENANT_ID) {
       if (!isSuperAdmin(this.requestUser)) {

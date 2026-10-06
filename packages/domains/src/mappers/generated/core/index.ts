@@ -34,6 +34,7 @@ export * from './GateEditExemplarEntityMapper';
 export * from './GlobalSettingEntityMapper';
 export * from './GoldenCaseEntityMapper';
 export * from './GoldenSetEntityMapper';
+export * from './GovernedPromptPieceEntityMapper';
 export * from './HarnessAuditEventEntityMapper';
 export * from './HarnessPolicyChangeEntityMapper';
 export * from './HarnessPolicyEntityMapper';

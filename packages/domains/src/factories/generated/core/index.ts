@@ -22,6 +22,7 @@ export * from './GateEditExemplarFactory';
 export * from './GlobalSettingFactory';
 export * from './GoldenCaseFactory';
 export * from './GoldenSetFactory';
+export * from './GovernedPromptPieceFactory';
 export * from './HarnessAuditEventFactory';
 export * from './HarnessPolicyChangeFactory';
 export * from './HarnessPolicyFactory';

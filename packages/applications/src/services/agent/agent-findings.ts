@@ -57,7 +57,15 @@ export type AgentFindingCode =
   | 'PROMPT_FRAGMENT_CONDITION_SYNTAX'
   | 'PROMPT_FRAGMENT_CONDITION_ROOT'
   | 'PROMPT_COMPOSITION_NO_BASE'
-  | 'PROMPT_VARIABLE_CONFLICT';
+  | 'PROMPT_VARIABLE_CONFLICT'
+  // TASK-1047 D2 (OD-4) — authoring-time guardrail screening of every instruction piece, all
+  // ERROR with no override: an injection/jailbreak verdict, any other unsafe verdict, personal data
+  // in the prompt text, and a guardrail that could not answer (fail closed — an unscreened piece is
+  // never governed).
+  | 'PROMPT_SCREENING_INJECTION'
+  | 'PROMPT_SCREENING_UNSAFE'
+  | 'PROMPT_CONTAINS_PII'
+  | 'PROMPT_SCREENING_UNAVAILABLE';
 
 // `Omit` because the contract's own `code` is the NARROW union it can name (TASK-947); a finding's
 // `code` is the full vocabulary above, of which the contract's is a subset.
