@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ContextItemType } from '@arcaai/domains';
@@ -17,6 +18,7 @@ import { NOTE_PLAN_REDIS_PREFIX, NOTE_PLAN_TTL_SECONDS, notePlanV1Schema, type N
 import { estimateCounts, type TokenCountResult } from '../text-token-count.client';
 import type { FactLedgerV1 } from '../../fact-ledger/fact-ledger.schema';
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
+import { dataBlocksOf } from '../../prompt/__tests__/compose-spy';
 import { HarnessInternalService } from '../../harness/harness-internal.service';
 import { ChainSummaryService } from '../../summary/chain-summary.service';
 import { HARNESS_DRAFT_SUBTYPE } from '../../harness/harness-draft.constants';
@@ -560,6 +562,7 @@ function service(opts: {
   redis?: Map<string, { value: string; ttl: number }>;
   aiDraft?: string;
   policy?: { getEffectivePolicy: (tenantId: string) => Promise<{ warmStartEnabled: boolean | null }> };
+  registry?: unknown;
 }) {
   const items = opts.items;
   const contextItemRepository = {
@@ -614,6 +617,7 @@ function service(opts: {
     documentTemplates as never,
     { getVersionsByChangeReason: vi.fn(async () => (opts.aiDraft ? [{ content: opts.aiDraft }] : [])) } as never,
     opts.policy as never,
+    opts.registry as never,
   );
   return { svc, contextItemRepository, redis, counter, documentTemplates };
 }
@@ -820,10 +824,13 @@ describe('PromptAssemblyService — a composed note plan IS the user message', (
       noteInputBlocks: plan.blocks.map(({ key, label, content }) => ({ key, label, content })),
     });
 
-    expect(assembled.userPrompt).toBe(renderNotePlanUserPrefix(plan));
+    // TASK-1047 FC-1 — the plan's blocks follow the (EMPTY) transcript slot's own block: the data
+    // variables are bound empty, so nothing from outside the plan reaches the user message.
+    expect(assembled.userPrompt.endsWith(renderNotePlanUserPrefix(plan))).toBe(true);
+    expect(dataBlocksOf(assembled.userPrompt).get('transcript')).toBe('');
     expect(assembled.userPrompt).not.toContain('LEGACY');
     expect(assembled.userPrompt).not.toContain('STYLE EXAMPLE');
-    expect(assembled.systemPrompt).toContain('Transcript:\n[see the note input data sections below]');
+    expect(assembled.systemPrompt).toContain('Transcript:\n[see the transcript data section below]');
     expect(assembled.systemPrompt).toContain('NOTE INPUTS');
     expect(assembled.systemPrompt).toContain('PRIOR VISIT SUMMARY — REFERENCE ONLY');
     expect(assembled.systemPrompt).not.toContain('STYLE REFERENCE');
@@ -1109,5 +1116,76 @@ describe('NoteInputComposerService — the note follows the template the consult
     const { plan } = await h.svc.compose({ ...request, documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
 
     expect(await h.svc.loadRecipe(plan.planId)).toMatchObject({ documentTemplateSlug: 'arcaai-bren-soap-new-visit' });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// TASK-1047 FC-4 — each planned call carries the governance of the plan's system message
+// ------------------------------------------------------------------------------------------------
+
+describe('TASK-1047 — `systemGovernance` on every planned call', () => {
+  const sha = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
+  const SYSTEM = 'GOVERNED SYSTEM';
+  const governance = { pieces: [{ kind: 'TEMPLATE_BODY' as const, key: 'body', digest: sha(SYSTEM) }], composedDigest: sha(SYSTEM) };
+  const WIRE = { composed_digest: sha(SYSTEM), pieces: [{ kind: 'TEMPLATE_BODY', key: 'body', digest: sha(SYSTEM) }], policy_version: 'pv-1' };
+  const registry = (governed = true) => ({
+    areGoverned: vi.fn(async () => governed),
+    currentPolicyVersion: vi.fn(async () => 'pv-1'),
+    registerPlatformPieces: vi.fn(async () => undefined),
+    screenAndRegister: vi.fn(),
+  });
+  const request = {
+    tenantId: 't1',
+    consultationId: 'c1',
+    mode: 'final' as const,
+    model: 'lms-gemma-4-e2b-it-qat',
+    system: async () => ({ system: SYSTEM, governance }),
+    waitForLedgers: false,
+  };
+
+  it('composeFromSnapshot stamps the FC-4 object on every call, and the plan still parses', async () => {
+    const plan = await compose(snapshot(), { system: SYSTEM, systemGovernance: WIRE });
+    expect(plan.calls.length).toBeGreaterThan(0);
+    for (const call of plan.calls) expect(call.systemGovernance).toEqual(WIRE);
+    expect(notePlanV1Schema.safeParse(plan).success).toBe(true);
+  });
+
+  it('composeFromSnapshot leaves it off when the system is not governed', async () => {
+    const plan = await compose(snapshot());
+    for (const call of plan.calls) expect(call).not.toHaveProperty('systemGovernance');
+  });
+
+  it('the service attaches it when the registry vouches for the composed system, asking for the REQUEST tenant', async () => {
+    const reg = registry(true);
+    const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: reg });
+    const { plan } = await svc.compose(request);
+    expect(plan.system).toBe(SYSTEM);
+    for (const call of plan.calls) expect(call.systemGovernance).toEqual(WIRE);
+    expect(reg.areGoverned).toHaveBeenCalledWith('t1', [sha(SYSTEM)]);
+    expect(reg.currentPolicyVersion).toHaveBeenCalledWith('t1');
+  });
+
+  it('accepts the governance beside a STRING system too', async () => {
+    const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: registry(true) });
+    const { plan } = await svc.compose({ ...request, system: SYSTEM, systemGovernance: governance });
+    for (const call of plan.calls) expect(call.systemGovernance).toEqual(WIRE);
+  });
+
+  it.each([
+    ['the registry says no', { registry: registry(false), system: request.system }],
+    ['no registry is wired', { registry: undefined, system: request.system }],
+    ['the composer reported no governance', { registry: registry(true), system: async () => SYSTEM }],
+    ['the system is not the one the governance describes', { registry: registry(true), system: async () => ({ system: `${SYSTEM}!`, governance }) }],
+  ])('omits it when %s', async (_why, opts) => {
+    const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: opts.registry });
+    const { plan } = await svc.compose({ ...request, system: opts.system as never });
+    for (const call of plan.calls) expect(call).not.toHaveProperty('systemGovernance');
+  });
+
+  it('a registry error never fails the plan — it is composed ungoverned', async () => {
+    const reg = { ...registry(true), areGoverned: vi.fn(async () => Promise.reject(new Error('down'))) };
+    const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: reg });
+    const { plan } = await svc.compose(request);
+    for (const call of plan.calls) expect(call).not.toHaveProperty('systemGovernance');
   });
 });

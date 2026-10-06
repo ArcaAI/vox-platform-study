@@ -9,6 +9,7 @@
  * (`registerPlatformPieces`) so those pieces become governed once screened. Neither ever carries a
  * runtime value — after FC-1 the system message is static text by construction.
  */
+import { createHash } from 'node:crypto';
 import { PLATFORM_RULES_VERSION, outputLanguageStep, type GovernedPieceKind, type SystemGovernance } from '@arcaai/workflow-contract';
 import type { GovernedPieceInput } from '../governed-prompt/IGovernedPromptRegistry';
 
@@ -58,4 +59,33 @@ export function platformPiecesOf(input: {
     if (part.text.length > 0) pieces.push(piece('CONTRACT', part.key, part.text));
   }
   return pieces;
+}
+
+/** The registry calls `governedSystemWire` makes (a structural subset of `IGovernedPromptRegistry`). */
+export interface GovernedSystemVerifier {
+  areGoverned(tenantId: string, digests: readonly string[]): Promise<boolean>;
+  currentPolicyVersion(tenantId?: string): Promise<string | null>;
+}
+
+/**
+ * TASK-1047 FC-4 — the `system_governance` object for `system`, or `null` when it may not be sent:
+ * no governance, a system that no longer hashes to `composedDigest`, a piece the registry does not
+ * vouch for under the REQUEST tenant's current policy version, or an unknown policy version.
+ * Registry errors propagate — each caller decides how to degrade (always: send nothing).
+ */
+export async function governedSystemWire(
+  registry: GovernedSystemVerifier,
+  input: { system: string; governance: SystemGovernance | null | undefined; tenantId: string },
+): Promise<SystemGovernanceWire | null> {
+  const { system, governance, tenantId } = input;
+  if (!governance || system.length === 0) return null;
+  if (createHash('sha256').update(system, 'utf8').digest('hex') !== governance.composedDigest) return null;
+  if (!(await registry.areGoverned(tenantId, governance.pieces.map((piece) => piece.digest)))) return null;
+  const policyVersion = await registry.currentPolicyVersion(tenantId);
+  if (!policyVersion) return null;
+  return {
+    composed_digest: governance.composedDigest,
+    pieces: governance.pieces.map(({ kind, key, digest }) => ({ kind, key, digest })),
+    policy_version: policyVersion,
+  };
 }

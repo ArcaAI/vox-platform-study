@@ -115,6 +115,19 @@ export const noteBlockSchema = z
 
 export const noteHeadingSchema = z.object({ key: z.string(), title: z.string() }).strict();
 
+/**
+ * TASK-1047 FC-4 — the governance of the plan's system message, snake_case exactly as `apps/text`
+ * reads `system_governance`, so the harness forwards it verbatim. Present only when the gateway's
+ * registry vouched for every piece under the request tenant's policy version.
+ */
+export const noteSystemGovernanceSchema = z
+  .object({
+    composed_digest: z.string(),
+    pieces: z.array(z.object({ kind: z.enum(['PLATFORM', 'TEMPLATE_BODY', 'FRAGMENT', 'LANGUAGE', 'CONTRACT']), key: z.string(), digest: z.string() }).strict()),
+    policy_version: z.string(),
+  })
+  .strict();
+
 export const noteCallSchema = z
   .object({
     callId: z.string(),
@@ -122,6 +135,8 @@ export const noteCallSchema = z
     directive: z.string(),
     maxTokens: z.number().int().positive(),
     promptTokens: z.number().int(),
+    /** TASK-1047 FC-4 — `system_governance` for this call's system message; absent/null ⇒ screened as untrusted. */
+    systemGovernance: noteSystemGovernanceSchema.nullable().optional(),
   })
   .strict();
 

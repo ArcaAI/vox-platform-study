@@ -17,10 +17,9 @@ import type { TextReasoningDefaultEffort } from '../settings-registry/descriptor
 import { KnownPhiService } from './known-phi.service';
 import { stampProviderLocality, type ProviderLocalityHints } from './provider-locality';
 import { ComposedPromptRecorder } from '../composed-prompt/composed-prompt.recorder';
-import { createHash } from 'node:crypto';
 import { IGovernedPromptRegistry } from '../governed-prompt/IGovernedPromptRegistry';
 import type { GovernedPieceInput } from '../governed-prompt/IGovernedPromptRegistry';
-import type { SystemGovernanceHint, SystemGovernanceWire } from './system-governance';
+import { governedSystemWire, type SystemGovernanceHint } from './system-governance';
 
 /**
  * What a caller knows about ONE outgoing `/generate` call that the egress statements need: the
@@ -170,27 +169,10 @@ export class TextRequestEnrichmentService {
 
     const governance = hint.governance;
     const system = body.system_prompt;
-    if (!governance || typeof system !== 'string' || system.length === 0) return;
-    if (createHash('sha256').update(system, 'utf8').digest('hex') !== governance.composedDigest) {
-      // The composed system was changed after composing — it is no longer what the pieces vouch for.
-      this.logger.warn({ message: 'system_prompt differs from its composed digest; screening it as untrusted', composedDigest: governance.composedDigest });
-      return;
-    }
-    if (!tenantId) return;
+    if (!governance || typeof system !== 'string' || system.length === 0 || !tenantId) return;
     try {
-      const governed = await registry.areGoverned(
-        tenantId,
-        governance.pieces.map((piece) => piece.digest),
-      );
-      if (!governed) return;
-      const policyVersion = await registry.currentPolicyVersion(tenantId);
-      if (!policyVersion) return;
-      const wire: SystemGovernanceWire = {
-        composed_digest: governance.composedDigest,
-        pieces: governance.pieces.map(({ kind, key, digest }) => ({ kind, key, digest })),
-        policy_version: policyVersion,
-      };
-      body.system_governance = wire;
+      const wire = await governedSystemWire(registry, { system, governance, tenantId });
+      if (wire) body.system_governance = wire;
     } catch (error) {
       // Digests and the error class only — never the prompt.
       this.logger.warn({
