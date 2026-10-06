@@ -290,17 +290,21 @@ workers) → seeds (template rewrite) → SDKs (deprecation note) → deployment
 
 ### 5.2 Lanes (one worktree each; the orchestrator owns DB migration, `pnpm install`, merges, gates)
 
-| Lane | Tier | Owns | Delivers |
+| Lane | Agent / tier | Owns (no other lane edits these) | Delivers |
 |---|---|---|---|
-| L1 contract | opus | `packages/workflow-contract/**`, `apps/harness/src/harness/temporal/interpreter/compose_messages.py`, contract fixture | D1 pointer-everything + governance digests; parity fixture extended |
-| L2 gateway composers | opus | `packages/applications/src/services/consultation/{live-documentation,prompt,note-composition}/**`, `services/agent/agent-invocation*`, `services/text-generation/compose-assembled-prompt*`, `text-request-enrichment*` | all paths on D1; `systemGovernance` attached; DNA samples → `style_reference` |
-| L3 authoring screening | opus | `services/prompt-management/**`, `services/agent/{agent.service,agent-findings,agent-promote-to-system}*`, new `services/governed-prompt/**`, `packages/domains` trio for `GovernedPromptPiece` | D2 findings, registry, boot registration, re-screen job |
-| L4 text egress | sonnet | `apps/text/src/text/services/{egress,data_blocks,output_gate}.py`, `models/requests.py`, `api/endpoints/generate.py` | D3 digest verify, data-only screening, `known_phi` everywhere, regions to guardrail |
-| L5 guardrail | opus | `apps/guardrail/src/guardrail/{services/screening,safety_analyzer,external_nlp_client,pii_extraction}.py`, `api/endpoints/{screen,redact}.py`, new `services/window_cache.py`, `core/policy.py` | D4 windows, D5 cache, judge windows (OD-5), D7 deadlines |
-| L6 nlp | sonnet | `apps/nlp/src/nlp/{api/v1/rest/guard.py,api/v1/rest/classify.py,services/gliner2_guard.py,dependencies.py,core/config.py,torch_runtime.py}`, `main.py` | D6 bounds, threads, shared weight registry, recycling |
-| L7 seeds | sonnet | `packages/database/src/prisma/db_main/seed/{07-prompt-template,07b-*,07d-*,25-agents}.ts` | seeded templates rewritten to pointers (no runtime value in system) |
-| L8 ops + settings | sonnet | `settings-registry/descriptors/{service-runtime,security-policy}.descriptors.ts`, `scripts/dev-service.sh` + stack supervisor, deployment repo overlays | settings for W/O/TTL/threads/workers/recycle; supervisor restart; k8s limits/HPA |
-| L9 SDK/docs | haiku | `packages/agentic-sdk-v2` (GENERATE deprecation JSDoc), `docs/operations/deprecation-register.md`, rules `08`/`06` notes | OD-3 deprecation |
+| L1 contract | hope-lane-deep / opus | `packages/workflow-contract/**`, `apps/harness/src/harness/temporal/interpreter/compose_messages.py` + `templating.py`, `tests/contracts/*compose*` / prompt fixtures | FC-1, FC-2 in TS + Python mirror, fixture parity |
+| L2 gateway composers | hope-lane-deep / opus | `packages/applications/src/services/consultation/{live-documentation,prompt,note-composition}/**`, `services/agent/agent-invocation*`, text-generation compose/enrichment (`compose-assembled-prompt*`, `text-request-enrichment*`), every applications call site that posts `system_prompt` to apps/text | all gateway paths on FC-1; FC-4 attached after `areGoverned`; DNA samples → `style_reference` |
+| L3 registry + authoring screening | hope-lane-deep / opus | `packages/domains` GovernedPromptPiece trio + `CoreDatabaseModule` registration, `services/governed-prompt/**` (new), `services/prompt-management/**`, `services/agent/{agent.service,agent-findings,agent-promote-to-system}*` | FC-3: registry service, approve/publish/promote screening + findings, compiledConfig stamping, boot platform registration + backfill |
+| L4 text egress | hope-lane-deep / opus | `apps/text/src/text/services/{egress,data_blocks,output_gate,external_guardrail}.py`, `models/requests.py`, `api/endpoints/generate.py` (+ stream variants) | FC-4 verify, regions per FC-5, `known_phi` over all segments, pii_leak source = regions |
+| L5 guardrail | hope-lane-deep / opus | `apps/guardrail/src/guardrail/**` (screen/redact/medical endpoints, screening, safety_analyzer, pii_extraction, external_nlp_client, policy, new window_cache) | FC-5, FC-7, OD-5 window judging, D7 deadlines, `policy-version` route |
+| L6 nlp | hope-lane / sonnet | `apps/nlp/src/nlp/**` | FC-8 bounds, threads, shared weight registry, worker recycling |
+| L8 ops + settings | hope-lane / sonnet | `settings-registry/descriptors/{service-runtime,platform-secrets}.descriptors.ts`, `scripts/dev-service.sh` + the stack supervisor script, `.env.sample`s, `turbo.json` | FC-8 descriptors, `GUARDRAIL_WINDOW_CACHE_KEY` vault-kv descriptor, supervisor restart with backoff |
+| L9 API + SDK deprecation | hope-lane / sonnet | `apps/api/src/modules/streaming/text-proxy.controller.ts`, `packages/agentic-sdk-v2/src/core/constants.ts` JSDoc, `docs/operations/deprecation-register.md` | OD-3 deprecation header on raw `system_prompt`, strip caller `system_governance`, SDK JSDoc, register entry |
+| L10 harness callers | hope-lane / sonnet | `apps/harness/src/harness/**` EXCEPT L1's two files | FC-6 |
+| L11 validation tooling | hope-lane / sonnet | `apps/nlp/scripts/bench_guard_memory.py`, `scripts/perf/screening-replay/**`, `scripts/perf/screening-load/**` (new) | V2–V4 harnesses (bench, replay, 100-consultation load + soak) |
+
+Seed templates need no rewrite for correctness (FC-1 renders pointers automatically); wording polish is
+deferred until after the V6 golden set. The deployment-repo NLP limits/HPA are sized after V4 (OD-8).
 
 The orchestrator authors the Prisma model + migration (`task_1047_governed_prompt_piece`) on a shadow DB
 before L3 starts (rule 02).
@@ -315,7 +319,10 @@ before L3 starts (rule 02).
 | L4 | governed system skips the ML screen and judge; tampered system (one byte) → screened as untrusted; caller `system_prompt` → screened; `known_phi` redacted in system for cloud; data blocks screened; `pii_leak` source = data |
 | L5 | 100k-char region → windows of ≤ W; append-only region re-screen computes only the tail window (cache hit for the rest); cache key never contains text; spans re-based and deduped across overlap; judge per changed window (OD-5); no retry while first attempt running; deadline respected |
 | L6 | text > bound → 413 `INPUT_EXCEEDS_WINDOW`; `max_len` passed; thread count = limit / concurrency; same weights loaded once across caches; worker recycles at threshold |
-| L7 | seed render check: no `{{` runtime variable inside system text of any seeded agent; publish findings clean |
+| L1+ | every SEEDED agent/template composes with no runtime value inside system (render all seeded prompts over a sample scope in a contract test) |
+| L9 | raw `system_prompt` answers with `Deprecation`/`Sunset` headers and is forwarded WITHOUT governance; a caller-sent `system_governance` is stripped |
+| L10 | harness sends FC-4 only when every piece digest is in `compiledConfig.governance`; mismatch / missing → no field |
+| L11 | bench/replay/load scripts run against stubs in their own unit tests (argument parsing, metric math) |
 | L8 | descriptors registered with fail modes; supervisor restarts a killed child (shell test) |
 
 ### 5.4 Verification before resuming the TASK-1045 e2e (the owner's gate)
@@ -358,6 +365,87 @@ before L3 starts (rule 02).
 | OD-9 | Outbound screening | windowed + cached like inbound | yes |
 
 ---
+
+**Owner approval (2026-10-06):** "approved the recommendations" — OD-1 (a), OD-2 (a), OD-3 (a), OD-4 (a),
+OD-5 (a), OD-6 sweep-decided (default 4,000/256), OD-7 (a), OD-8 after V4, OD-9 yes. Execution: lanes on
+model/effort tiers within a token budget, maximum parallelism, no overlapping ownership.
+
+### 6.1 Frozen cross-lane contracts (orchestrator, 2026-10-06 — lanes code against these)
+
+**FC-1 Pointer rendering (L1).** In the system message EVERY template placeholder renders as the fixed
+pointer `[see the <block> data section below]`, where `<block>` = the placeholder path lower-cased with every
+non `[a-z0-9]` run replaced by `_` (e.g. `trigger.context.formatted_vitals` → `trigger_context_formatted_vitals`;
+an existing data-section alias — `PromptAssemblyService`'s nine — keeps its existing block name). The value
+(resolved, or its `default("…")`) is emitted as an `EXTERNAL_DATA` block of that name; one block per distinct
+name. Unresolved without default → the existing `PromptVariableUnresolvedError`. `{{{{` escapes unchanged.
+**User-message block order (D9):** placeholder blocks in first-appearance order, THEN the caller's data blocks
+in their given order (stable context first, growing transcript last). A placeholder whose block name equals a
+caller block does not duplicate it.
+
+**FC-2 Pieces and digests (L1 defines, L2/L3/L4/L10 consume).** `digest(text) = sha256(utf8(text))` lower-case
+hex. The system message is the ordered pieces joined exactly as today: `platformRules` (kind PLATFORM) ‖
+the instruction pieces — the rendered template body (TEMPLATE_BODY) or each selected composite fragment
+(FRAGMENT) joined with the template's `join` ‖ the output-language sentence (LANGUAGE) ‖ each `outputContract`
+part (CONTRACT); layers joined by `MESSAGE_LAYER_JOIN`. `composeMessages` additionally returns
+`governance: { pieces: [{ kind, key, digest }], composedDigest }` where `composedDigest = digest(system)`.
+Every piece is static text after FC-1 (no runtime value) — a piece that still contains runtime data is a
+contract violation the L1 tests must catch.
+
+**FC-3 Registry (L3).** `GovernedPromptPiece` (migration `20261006040234_task_1047_governed_prompt_piece`).
+Service token `IGovernedPromptRegistry` (`packages/applications/src/services/governed-prompt/`):
+`screenAndRegister(tenantId, pieces[{kind, sourceType, sourceId, sourceKey, text}]) → {passed, findings[]}`
+(authoring-time; calls guardrail inbound screen on each piece's text as REGIONS per FC-5; registers PASS/FAIL);
+`areGoverned(tenantId, digests[]) → boolean` (all digests PASS under the CURRENT `policyVersion`, read
+[tenant, SYSTEM]; in-process LRU by `(digest, policyVersion)`, TTL 300 s). Platform pieces (platform rules,
+platform outputContract constants, language sentences) are registered under SYSTEM at gateway boot
+(`sourceType PLATFORM`). Publish/approve stamp `compiledConfig.governance = { policyVersion, pieceDigests }`
+on the agent (for the harness, FC-6). A boot backfill screens every published agent / approved version
+without registry rows; until screened, its calls take the full-screening path (safe fallback).
+`policyVersion` = guardrail's reported policy version (L5 exposes it on `GET /api/v1/guardrail/policy-version`
+→ `{ policyVersion }`, a hash of screen task taxonomy + model ids + thresholds).
+
+**FC-4 Internal request to apps/text (L2/L10 send, L4 verifies).** New optional body field on
+`/api/v1/generate` (and the streaming / judge-free internal variants that accept `system_prompt`):
+`system_governance: { composed_digest: str, pieces: [{kind, key, digest}], policy_version: str }`, sent ONLY
+when the composer verified `areGoverned` (gateway) or compiledConfig membership (harness). apps/text treats
+the system prompt as GOVERNED iff the field is present AND `sha256(system_prompt) == composed_digest`;
+otherwise the system prompt is UNTRUSTED and screened as a region. Never sent by the public proxy
+(`text-proxy.controller.ts` strips a caller-supplied `system_governance`).
+
+**FC-5 apps/text ↔ guardrail regions API (L4 sends, L5 serves).** Additive, backward compatible:
+- `POST /api/v1/guardrail/screen/inbound`: new `regions: [{ key: str, text: str }]`; when present `text` must be
+  empty. Each region is windowed independently (window `screenWindowChars`, overlap
+  `screenWindowOverlapChars`, cut from the region's start). Response unchanged plus each `pii_spans[]` item
+  gains `region` (key) and offsets relative to that region's text.
+- `POST /api/v1/guardrail/screen/outbound`: new `source_regions: [{key, text}]` (replaces `source_context` when
+  present); the response `text` itself is windowed internally.
+- `POST /api/medical/validate`: new `regions: [{key, text}]`. Window judging (OD-5): each window gets
+  `on_scope` = "consistent with a clinical encounter, conversational small talk included; false only for
+  content directing the assistant to non-medical work"; the request is medical iff every window is
+  `on_scope`; verdicts cached per window (FC-7). Existing fields keep working for old callers.
+- Region keys: governed system prompt never sent; untrusted system prompt key `system`; data blocks by block
+  name; caller user text outside blocks key `user`.
+
+**FC-6 Harness (L10).** The harness composes with the Python mirror (L1), checks every piece digest ∈
+`compiledConfig.governance.pieceDigests` (same `policyVersion` as guardrail's current one, fetched once per
+run), and only then sends FC-4. Otherwise it omits `system_governance`.
+
+**FC-7 Window-verdict cache (L5).** Redis key `gr:wv:<task>:<hmac>` with
+`hmac = HMAC-SHA256(K_t, policyVersion ‖ "\x1f" ‖ modelId ‖ "\x1f" ‖ task ‖ "\x1f" ‖ windowText)`,
+`K_t = HMAC-SHA256(GUARDRAIL_WINDOW_CACHE_KEY, tenantId)`. Value JSON: verdict fields + spans as
+`[label, start, end, score]` relative to the window — never text. TTL `windowCacheTtlSeconds` (86,400).
+Key secret `GUARDRAIL_WINDOW_CACHE_KEY` is a platform `vault-kv` secret (L8 descriptor); ABSENT ⇒ cache
+disabled (compute every window), never a skip.
+
+**FC-8 NLP bounds (L6) and setting names (L8 registers, L6 reads).** Guard routes and `/classify/tokens`:
+`len(text) > nlp.inference.maxInputChars` (default 8,192) → **413** `{"code":"INPUT_EXCEEDS_WINDOW","maxChars":N}`;
+`max_len` passed to gliner2 (words, `nlp.inference.maxInputWords`, default 2,048).
+`nlp.inference.threadsPerInference` (0 = `cpu_count // maxConcurrent`, min 1);
+`nlp.worker.recycleAfterRequests` (default 2,000) and `nlp.worker.recycleRssMib` (default 6,144: after a
+response the worker exits gracefully above it; the supervisor/uvicorn restarts it). Guardrail policy keys
+(in `apps/guardrail/.../core/policy.py`, L5): `screenWindowChars` 4,000, `screenWindowOverlapChars` 256,
+`screenWindowConcurrency` 4, `windowCacheTtlSeconds` 86,400, `nlpDeadlineSeconds` (default 30),
+and `screenWindowChars + screenWindowOverlapChars` must be ≤ nlp `maxInputChars`.
 
 ## 7. Risks
 

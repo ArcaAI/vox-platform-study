@@ -1,0 +1,51 @@
+// TASK-1047 — the governed-prompt registry.
+//
+// One row per screened static prompt PIECE (a template body, a composite fragment, a platform
+// constant) — the exact text whose sha256 is `digest`, screened ONCE at authoring time
+// (PromptTemplate approve, agent publish, promote-to-system, or the boot backfill) by guardrail
+// under `policyVersion`. A per-call system message whose every piece digest is registered here
+// with verdict PASS under the CURRENT policy version skips the per-call ML screen
+// (`apps/text` verifies the composed digest); anything else is screened as untrusted data.
+//
+// The verdict is a property of the TEXT, not of the tenant: identical text under the same policy
+// screens identically. `tenantId` records ownership (the tenant whose content produced the piece;
+// SYSTEM for platform pieces and SYSTEM content), and lookups read the request tenant plus SYSTEM.
+// No text is stored — the digest and the source reference identify the piece.
+model GovernedPromptPiece {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields
+  digest        String // sha256 hex of the exact UTF-8 piece text
+  kind          GovernedPromptPieceKind
+  sourceType    GovernedPromptSourceType
+  sourceId      String? // PromptVersion / Agent id; null for PLATFORM pieces
+  sourceKey     String? // fragment key / platform constant name
+  policyVersion String // guardrail policy version the verdict was reached under
+  verdict       GovernedPromptVerdict
+  findings      Json?   @db.JsonB // finding codes + reasons (never text)
+  textChars     Int // length of the screened text, for audit and window accounting
+  screenedAt    DateTime
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, digest, policyVersion], map: "GovernedPromptPiece_tenantId_digest_policyVersion_key")
+  @@index([tenantId], name: "GovernedPromptPiece_tenantId_idx")
+  @@index([digest, policyVersion], name: "GovernedPromptPiece_digest_policyVersion_idx")
+  @@index([sourceType, sourceId], name: "GovernedPromptPiece_source_idx")
+  @@schema("core")
+}

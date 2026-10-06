@@ -113,6 +113,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'PromptUsageRecord',
   // composed-prompt.prisma (1) — the per-call prompt record (PHI ciphertext).
   'ComposedPromptRecord',
+  // TASK-1047 — governed-prompt registry (authoring-time screening verdicts per piece digest).
+  'GovernedPromptPiece',
   // prompt-template.prisma (2)
   'PromptTemplate',
   'PromptVersion',
@@ -496,6 +498,13 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // SUPER_ADMIN-gated at the controller/service layer — this widening
   // performs no authorization of its own. No secrets on the model.
   'ModelResidencyPolicy',
+  // TASK-1047 — the governed-prompt registry. A verdict is a property of the screened TEXT (its
+  // digest) under a policy version, not of a tenant: platform pieces and SYSTEM content (e.g. the
+  // platform-hidden DNA analyst agent) are registered under SYSTEM and must verify for every tenant's
+  // call. READS widen to [caller, SYSTEM]; WRITES are NOT widened (registration runs under the
+  // owner tenant at approve/publish, SYSTEM only for platform pieces and promote-to-system). The
+  // model stores no text and no secret — a digest, a verdict and a source reference.
+  'GovernedPromptPiece',
   // the MCP external-tools registry: server rows are registered by a
   // super admin under the SYSTEM tenant and every tenant's harness run must
   // READ the shared registry to resolve a server it references (server metadata

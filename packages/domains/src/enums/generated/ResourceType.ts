@@ -184,4 +184,5 @@ export enum ResourceType {
   ConsultationAttachment = 'ConsultationAttachment',
   ConsultationFeedback = 'ConsultationFeedback',
   ConsultationFeedbackRollup = 'ConsultationFeedbackRollup',
+  GovernedPromptPiece = 'GovernedPromptPiece',
 }

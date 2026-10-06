@@ -442,6 +442,8 @@ enum ResourceType {
   ConsultationAttachment
   ConsultationFeedback
   ConsultationFeedbackRollup
+  // TASK-1047 — governed-prompt registry rows (authoring-time screening verdicts)
+  GovernedPromptPiece
 
   @@schema("core")
 }

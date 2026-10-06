@@ -1199,3 +1199,31 @@ enum AiActivityRunStatus {
 
   @@schema("core")
 }
+
+// TASK-1047 — what a governed prompt piece is.
+enum GovernedPromptPieceKind {
+  TEMPLATE_BODY
+  FRAGMENT
+  PLATFORM
+  CONTRACT
+  LANGUAGE
+
+  @@schema("core")
+}
+
+// TASK-1047 — where a governed prompt piece came from.
+enum GovernedPromptSourceType {
+  PROMPT_VERSION
+  AGENT
+  PLATFORM
+
+  @@schema("core")
+}
+
+// TASK-1047 — the authoring-time screening outcome of a governed prompt piece.
+enum GovernedPromptVerdict {
+  PASS
+  FAIL
+
+  @@schema("core")
+}

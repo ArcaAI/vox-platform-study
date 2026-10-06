@@ -51,6 +51,7 @@ export * from './GateEditExemplarModel';
 export * from './GlobalSettingModel';
 export * from './GoldenCaseModel';
 export * from './GoldenSetModel';
+export * from './GovernedPromptPieceModel';
 export * from './HarnessAuditEventModel';
 export * from './HarnessPolicyChangeModel';
 export * from './HarnessPolicyModel';
