@@ -516,7 +516,7 @@ function asrInheritHints(profile: CatalogueAsrProfile | null): Record<string, st
  * skipped; VAD → loudness-based segmentation) and transcription still runs. Say so while the admin
  * is configuring. The slug is platform-managed, so the remedy names a platform admin.
  */
-function AsrPrerequisiteNotices({ value }: { value: Value }) {
+export function AsrPrerequisiteNotices({ value }: { value: Value }) {
   const diarizationMissing = getPath(value, ['audioFrontEnd', 'diarization', 'enabled']) === true && !getPath(value, ['audioFrontEnd', 'diarization', 'embeddingModelSlug']);
   const vadMissing = getPath(value, ['audioFrontEnd', 'vad', 'enabled']) === true && !getPath(value, ['audioFrontEnd', 'vad', 'modelSlug']);
   if (!diarizationMissing && !vadMissing) return null;

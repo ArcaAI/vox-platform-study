@@ -30,7 +30,7 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { getPath, props, setPath, type Schema, type Value } from '@/shared/agent-parameters';
 import { useSession } from '@/shared/auth';
 import { isServableDocumentTemplate, useDocumentTemplateCatalog } from '@/shared/catalog';
-import { JsonField, ParametersForm, useTaskModelCatalogue } from './agents-feature';
+import { AsrPrerequisiteNotices, JsonField, ParametersForm, useTaskModelCatalogue } from './agents-feature';
 import { capabilitiesOf, hasEditablePath, type WithCapabilities } from './capabilities';
 
 const NO_TEMPLATE = '__none__';
@@ -199,6 +199,8 @@ export function AgentSimpleParameters({ task, modelId, value, onChange, document
               </Link>
             </div>
           </SwitchRow>
+          {/* TASK-1048 — the model slugs are platform-managed: say what happens when a switch is on without one. */}
+          <AsrPrerequisiteNotices value={value} />
         </>
       ) : null}
 
