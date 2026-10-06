@@ -38,7 +38,7 @@ from typing import Any, Final
 from guardrail.core.availability import PLATFORM_DEFAULT_AVAILABILITY, GuardrailAvailability
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
-from guardrail.core.metrics import record_screening_decision
+from guardrail.core.metrics import record_data_finding, record_screening_decision
 from guardrail.core.policy import GuardrailPolicy
 from guardrail.services.injection_defense import (
     SanitizationReport,
@@ -73,6 +73,13 @@ REASON_NOT_SELECTED: Final = "not_selected_for_tenant"
 REASON_NO_CONTENT: Final = "no_content"
 
 FAIL_CLOSED: Final = "closed"
+
+#: Region trust (TASK-1047 FC-5b, owner decision OD-13). An `instruction` region
+#: decides the verdict; a `data` region is classified exactly the same way but a
+#: FLAG on it is reported as a data finding instead of blocking. An UNDETERMINED
+#: check blocks whatever the region's trust — fail-closed never depends on it.
+TRUST_INSTRUCTION: Final = "instruction"
+TRUST_DATA: Final = "data"
 
 #: The moderation tasks each direction consults. The NAMES are part of the model
 #: contract (they are the schema keys the safety model was trained on); the LABELS
@@ -142,6 +149,17 @@ class CheckOutcome:
 
 
 @dataclass(frozen=True)
+class DataFinding:
+    """A `data` region on which ≥1 inbound check flagged (FC-5b). Names only, never text."""
+
+    region: str
+    reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"region": self.region, "reasons": list(self.reasons)}
+
+
+@dataclass(frozen=True)
 class GuardrailDecision:
     """An ATTRIBUTABLE screening verdict. Carries no analysed text."""
 
@@ -165,6 +183,10 @@ class GuardrailDecision:
     #: reported one: a zero row tells the billing plane the call was FREE rather
     #: than that it never happened (the rule `_stats_of` states on /medical/validate).
     usage_detail: dict[str, Any] | None = None
+    #: FC-5b: one item per `data` region with ≥1 flagged check. ``None`` when the
+    #: request carried no `data` region (legacy / trust-less callers), ``[]`` when
+    #: it did and nothing flagged.
+    data_findings: list[DataFinding] | None = None
 
     @property
     def reasons(self) -> list[str]:
@@ -188,7 +210,24 @@ class GuardrailDecision:
                 self.sanitization.to_dict() if self.sanitization is not None else None
             ),
             "usageDetail": self.usage_detail,
+            # Present ONLY when the request carried a `data` region, so every
+            # earlier caller keeps the exact payload it had (FC-5b).
+            **(
+                {"dataFindings": [finding.to_dict() for finding in self.data_findings]}
+                if self.data_findings is not None
+                else {}
+            ),
         }
+
+
+def _merge_labels(per_text: Sequence[dict[str, list[str]]]) -> dict[str, list[str]]:
+    """Union of labels per task, first occurrence order (the window-merge rule)."""
+    merged: dict[str, list[str]] = {}
+    for labels_by_task in per_text:
+        for name, labels in labels_by_task.items():
+            bucket = merged.setdefault(name, [])
+            bucket.extend(label for label in labels if label not in bucket)
+    return merged
 
 
 class Screener:
@@ -276,20 +315,25 @@ class Screener:
 
     async def _classify_windows(
         self, selected: tuple[str, ...], texts: Sequence[str]
-    ) -> dict[str, Any]:
-        """Classify every window of every text; merge the labels per task.
+    ) -> list[dict[str, list[str]]]:
+        """Classify every window of every text in ONE run; merge the labels per text.
 
-        A task's labels are the union across windows, so "block if ANY window
-        blocks" falls out of the per-task flag below. A task absent from EVERY
-        window's answer is absent from the merge (not in the taxonomy). Texts that
-        produce no window at all (empty) are still asked as one empty window — no
-        path composes an "allow" the model was never asked about.
+        A task's labels are the union across a text's windows, so "block if ANY
+        window blocks" falls out of the per-task flag in :meth:`_classify`. A task
+        absent from EVERY window's answer is absent from the merge (not in the
+        taxonomy). One entry per text, in order; a text that produces no window
+        (empty) gets an empty mapping. When NO text produces a window the request
+        is still asked as one empty window, attributed to the first text — no path
+        composes an "allow" the model was never asked about.
         """
-        windows = [
-            w.text
-            for index, text in enumerate(texts)
-            for w in region_windows(str(index), text, self.window_geometry)
-        ] or [""]
+        owners: list[int] = []
+        windows: list[str] = []
+        for index, text in enumerate(texts):
+            for window in region_windows(str(index), text, self.window_geometry):
+                owners.append(index)
+                windows.append(window.text)
+        if not windows:
+            owners, windows = [0], [""]
         model = self._model(selected[0])
 
         async def _compute(window_text: str) -> dict[str, Any]:
@@ -306,17 +350,28 @@ class Screener:
         verdicts = await self.window_runner.run(
             f"classify:{','.join(selected)}", model, windows, _compute
         )
-        merged: dict[str, list[str]] = {}
-        for verdict in verdicts:
-            for name, labels in (verdict.get("labels") or {}).items():
-                bucket = merged.setdefault(name, [])
-                bucket.extend(label for label in labels if label not in bucket)
-        return merged
+        per_window: list[list[dict[str, list[str]]]] = [[] for _ in range(max(1, len(texts)))]
+        for owner, verdict in zip(owners, verdicts, strict=True):
+            per_window[owner].append(verdict.get("labels") or {})
+        return [_merge_labels(found) for found in per_window]
 
     async def _classify(
-        self, task_names: tuple[str, ...], texts: Sequence[str]
-    ) -> list[CheckOutcome]:
+        self,
+        task_names: tuple[str, ...],
+        texts: Sequence[str],
+        *,
+        data_mask: Sequence[bool] | None = None,
+    ) -> tuple[list[CheckOutcome], list[tuple[int, tuple[str, ...]]]]:
         """Run the SELECTED moderation tasks; an outage marks every one undetermined.
+
+        Returns the checks and the DATA findings (FC-5b). ``data_mask`` marks which
+        texts are `data`-trust: every text is classified exactly the same way, but
+        a check's outcome is composed from the OTHER (instruction) texts only, and
+        each data text whose labels flag a check is returned as
+        ``(text index, flagged check names in task order)``. Without a mask every
+        text decides (today's behaviour) and there are no findings. An outage is
+        undetermined for every check whatever the mask says — fail-closed never
+        depends on trust.
 
         Only the tasks this tenant's availability set selects are sent to the
         delegated classifier — the de-selected ones cost no peer call — but every
@@ -337,10 +392,10 @@ class Screener:
                 availability_source_tenant_id=self._availability.source_tenant_id,
                 tasks=list(task_names),
             )
-            return [self._not_selected(name) for name in task_names]
+            return [self._not_selected(name) for name in task_names], []
 
         try:
-            results = await self._classify_windows(tuple(selected), texts)
+            per_text = await self._classify_windows(tuple(selected), texts)
         except GuardrailUndeterminedError as exc:
             logger.warning(
                 "guardrail.screen.undetermined",
@@ -360,9 +415,17 @@ class Screener:
                     else self._not_selected(name)
                 )
                 for name in task_names
-            ]
+            ], []
 
         benign = self._benign()
+        results = _merge_labels(per_text)
+        deciding = (
+            results
+            if data_mask is None
+            else _merge_labels(
+                [labels for labels, is_data in zip(per_text, data_mask, strict=True) if not is_data]
+            )
+        )
         outcomes: list[CheckOutcome] = []
         for name in task_names:
             if name not in selected:
@@ -382,7 +445,9 @@ class Screener:
                     )
                 )
                 continue
-            labels = [value] if isinstance(value, str) else [str(v) for v in value]
+            # Present in SOME text's answer ⇒ the check ran; only the deciding
+            # (instruction) texts' labels can flag it.
+            labels = deciding.get(name, [])
             flagged = tuple(lbl for lbl in labels if lbl.lower() not in benign)
             outcomes.append(
                 CheckOutcome(
@@ -394,13 +459,26 @@ class Screener:
                     labels=flagged,
                 )
             )
-        return outcomes
+        findings: list[tuple[int, tuple[str, ...]]] = []
+        for index, is_data in enumerate(data_mask or ()):
+            if not is_data:
+                continue
+            reasons = tuple(
+                name
+                for name in task_names
+                if name in selected
+                and any(lbl.lower() not in benign for lbl in per_text[index].get(name, []))
+            )
+            if reasons:
+                findings.append((index, reasons))
+        return outcomes, findings
 
     def _finish(
         self,
         direction: str,
         checks: list[CheckOutcome],
         report: SanitizationReport | None,
+        data_findings: list[DataFinding] | None = None,
     ) -> GuardrailDecision:
         blocked = any(check.blocks for check in checks)
         decision = GuardrailDecision(
@@ -412,6 +490,7 @@ class Screener:
             availability_source_tenant_id=self._availability.source_tenant_id,
             sanitization=report,
             usage_detail=self._usage_detail(),
+            data_findings=data_findings,
         )
         record_screening_decision(
             direction, decision.decision, decision.reasons[0] if blocked else "none"
@@ -423,6 +502,20 @@ class Screener:
             decision=decision.decision,
             reasons=decision.reasons,
         )
+        if data_findings:
+            for finding in data_findings:
+                for task in finding.reasons:
+                    record_data_finding(task)
+            # PHI-safe: region KEYS and check names only, never the region text.
+            logger.info(
+                "guardrail.screen.data_findings",
+                tenant_id=self.tenant_id,
+                direction=direction,
+                decision=decision.decision,
+                regions=[finding.region for finding in data_findings],
+                findings=[finding.to_dict() for finding in data_findings],
+                count=sum(len(finding.reasons) for finding in data_findings),
+            )
         return decision
 
     # -- inbound ------------------------------------------------------------
@@ -435,11 +528,14 @@ class Screener:
         executes.
         """
         clean, report = sanitize_untrusted(text, max_chars=self._max_untrusted_chars)
-        checks = await self._classify(INBOUND_TASKS, [clean])
+        checks, _ = await self._classify(INBOUND_TASKS, [clean])
         return self._finish(DIRECTION_INBOUND, checks, report)
 
     async def screen_inbound_regions(
-        self, regions: Sequence[tuple[str, str]], *, kind: str = "content"
+        self,
+        regions: Sequence[tuple[str, str] | tuple[str, str, str]],
+        *,
+        kind: str = "content",
     ) -> GuardrailDecision:
         """Screen untrusted inbound REGIONS (TASK-1047 FC-5) — each windowed on its own.
 
@@ -447,12 +543,23 @@ class Screener:
         the sanitized text — applied per region, so every region's windows are cut
         from that region's own start. The containment bound applies per region and
         the sanitization report is the aggregate (counts only, never text).
+
+        A region is ``(key, text)`` or ``(key, text, trust)`` (FC-5b); trust
+        defaults to `instruction`. Every region is classified the same way; a FLAG
+        on a `data` region is reported in ``data_findings`` and does not block. A
+        request with no `data` region takes exactly the pre-FC-5b path.
         """
+        keys: list[str] = []
+        data_mask: list[bool] = []
         cleaned: list[str] = []
         removed: dict[str, int] = {}
         truncated = False
         original = sanitized = 0
-        for _key, text in regions:
+        for region in regions:
+            key, text = region[0], region[1]
+            trust = region[2] if len(region) > 2 else TRUST_INSTRUCTION
+            keys.append(key)
+            data_mask.append(trust == TRUST_DATA)
             clean, part = sanitize_untrusted(text, max_chars=self._max_untrusted_chars)
             cleaned.append(clean)
             for name, count in part.removed.items():
@@ -466,6 +573,8 @@ class Screener:
             original_length=original,
             sanitized_length=sanitized,
         )
+        has_data = any(data_mask)
+        data_findings: list[DataFinding] | None = [] if has_data else None
         if not any(cleaned):
             # Nothing exists to be unsafe (FC-5 addendum: `regions: []` / all-empty
             # is ALLOW). Recorded as `skipped/no_content`, never as a model `pass`.
@@ -479,9 +588,12 @@ class Screener:
                 )
                 for name in INBOUND_TASKS
             ]
+        elif not has_data:
+            checks, _ = await self._classify(INBOUND_TASKS, cleaned)
         else:
-            checks = await self._classify(INBOUND_TASKS, cleaned)
-        return self._finish(DIRECTION_INBOUND, checks, report)
+            checks, found = await self._classify(INBOUND_TASKS, cleaned, data_mask=data_mask)
+            data_findings = [DataFinding(region=keys[index], reasons=r) for index, r in found]
+        return self._finish(DIRECTION_INBOUND, checks, report, data_findings)
 
     # -- outbound -----------------------------------------------------------
 
@@ -500,7 +612,7 @@ class Screener:
         regions are.
         """
         clean, report = sanitize_untrusted(response, max_chars=self._max_untrusted_chars)
-        checks = await self._classify(OUTBOUND_TASKS, [clean])
+        checks, _ = await self._classify(OUTBOUND_TASKS, [clean])
         sources: list[str] | None
         if source_regions is not None:
             sources = [text for _key, text in source_regions if text and text.strip()]

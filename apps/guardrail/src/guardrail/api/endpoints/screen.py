@@ -19,7 +19,7 @@ call so a response that echoes the fence is caught (T6).
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
@@ -50,6 +50,12 @@ class ScreenRegion(BaseModel):
 
     key: str = Field(..., min_length=1, description="Region name, echoed on its spans")
     text: str = Field(..., description="The region's content")
+    trust: Literal["instruction", "data"] = Field(
+        default="instruction",
+        description="TASK-1047 FC-5b: `instruction` (default) — a flag blocks; `data` — "
+        "classified exactly the same way, but a flag is reported in `data_findings` and "
+        "does not block. An undetermined check blocks for either trust.",
+    )
 
 
 class InboundScreenRequest(BaseModel):
@@ -121,6 +127,18 @@ class PiiSpanModel(BaseModel):
     region: str | None = None
 
 
+class DataFindingModel(BaseModel):
+    """A `data`-trust region on which ≥1 inbound check flagged (TASK-1047 FC-5b).
+
+    Region key and check names only — never the region text.
+    """
+
+    region: str = Field(..., description="The region key")
+    reasons: list[str] = Field(
+        default_factory=list, description="The flagged check names, in inbound task order"
+    )
+
+
 class ScreenResponse(BaseModel):
     decision: str
     direction: str
@@ -155,6 +173,10 @@ class ScreenResponse(BaseModel):
     #: BLOCK alike. `null` on a legacy request. `apps/text` fails closed when a key
     #: it sent is missing, so a guardrail that ignored `regions` can never pass.
     screened_regions: list[str] | None = None
+    #: TASK-1047 FC-5b: inbound `regions` requests carrying ≥1 `data` region — one
+    #: item per data region with a flagged check (reported, never blocking). `[]`
+    #: when nothing flagged; `null` when no `data` region was sent.
+    data_findings: list[DataFindingModel] | None = None
 
 
 def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
@@ -169,6 +191,11 @@ def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
         availability_source_tenant_id=payload["availabilitySourceTenantId"],
         sanitization=payload["sanitization"],
         usage_detail=payload["usageDetail"],
+        data_findings=(
+            [DataFindingModel(**finding) for finding in payload["dataFindings"]]
+            if payload.get("dataFindings") is not None
+            else None
+        ),
         **extra,
     )
 
@@ -197,7 +224,8 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
             screener = await build_screener(app_state, tenant_id)
             if request.regions is not None:
                 screen = screener.screen_inbound_regions(
-                    [(region.key, region.text) for region in request.regions], kind=request.kind
+                    [(region.key, region.text, region.trust) for region in request.regions],
+                    kind=request.kind,
                 )
             else:
                 screen = screener.screen_inbound(request.text, kind=request.kind)
