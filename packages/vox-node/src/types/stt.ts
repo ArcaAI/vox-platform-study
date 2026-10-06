@@ -99,6 +99,34 @@ export interface CreateStreamSessionRequest {
 /** Lifecycle of a streaming session. */
 export type StreamingSessionStatus = 'active' | 'finalizing' | 'closed' | 'rejected';
 
+// -----------------------------------------------------------------------------
+// ASR degradation vocabulary (TASK-1048). Mirrored from `@arcaai/types`
+// (`asr-degradation.ts`) — this package inlines its types and takes no dependencies.
+// -----------------------------------------------------------------------------
+
+/** One non-fatal warning on a session/job creation response: an optional stage switched OFF, not refused. */
+export interface AsrSessionWarning {
+  readonly code: 'DIARIZATION_MODEL_MISSING' | 'DIARIZATION_BACKEND_UNSUPPORTED' | 'VAD_MODEL_MISSING' | 'FALLBACK_UNRUNNABLE';
+  readonly stage: 'diarization' | 'vad' | 'fallback';
+  readonly severity: 'WARNING';
+  /** Fixed, PHI-free sentence a UI may show verbatim. */
+  readonly message: string;
+  readonly agentSlug: string;
+  readonly agentVersionNumber?: number;
+}
+
+/** The `reason` of a mid-session `status: 'degraded'` frame. `denoise_degraded` keeps its own status. */
+export const ASR_RUNTIME_DEGRADED_REASONS = [
+  'script_mismatch',
+  'diarization_unavailable',
+  'voice_profiles_unavailable',
+  'vad_unavailable',
+  'segmentation_unavailable',
+  'lexicon_unavailable',
+  'gloss_unavailable',
+] as const;
+export type AsrRuntimeDegradedReason = (typeof ASR_RUNTIME_DEGRADED_REASONS)[number];
+
 /**
  * Response of `POST …/stream/session`. Mirrors `StreamSessionResponse`.
  *
@@ -141,6 +169,11 @@ export interface StreamSessionResponse {
    * {@link SttStatusMessage.languageResolution} and {@link SttReadyMessage.languageResolution}.
    */
   languageResolution?: LanguageResolution;
+  /**
+   * Non-fatal warnings (TASK-1048): optional ASR stages (diarization, VAD, a fallback) the gateway
+   * switched off for this session instead of refusing it. Absent/empty = none.
+   */
+  warnings?: AsrSessionWarning[];
   /** Echoed verbatim from {@link CreateStreamSessionRequest.context}, when the request carried one. */
   context?: Record<string, unknown>;
   /**
@@ -309,6 +342,20 @@ export interface SttStatusMessage {
    */
   languageResolution?: LanguageResolution;
   [key: string]: unknown;
+}
+
+/**
+ * A `status` frame reporting a mid-session degradation of an optional stage (TASK-1048). The
+ * session keeps running; `reason` says which stage went off.
+ */
+export interface SttDegradedStatusMessage extends SttStatusMessage {
+  status: 'degraded';
+  reason: AsrRuntimeDegradedReason | (string & {});
+}
+
+/** Narrow a status frame to {@link SttDegradedStatusMessage} (a `degraded` frame that names a reason). */
+export function isSttDegradedStatus(message: SttStatusMessage): message is SttDegradedStatusMessage {
+  return message.status === 'degraded' && typeof message.reason === 'string' && message.reason.length > 0;
 }
 
 /**

@@ -12,6 +12,7 @@
 import type { AgenticClient } from './AgenticClient';
 import { STT_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
+import type { AsrSessionWarning } from '@arcaai/types';
 import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt';
 
 /** Direction of a live-session provider switch.*/
@@ -37,6 +38,8 @@ export interface SessionManagerState {
    * or the field was omitted by an older API revision.
    */
   voiceProfileSeeded: boolean | null;
+  /** Non-fatal warnings from the session-creation response (TASK-1048); `[]` when none / no session. */
+  warnings: AsrSessionWarning[];
 }
 
 /**
@@ -403,6 +406,7 @@ export class StreamingSessionManager {
       maxConcurrent: this.sessionResponse?.maxConcurrent ?? null,
       currentActive: this.sessionResponse?.currentActive ?? null,
       voiceProfileSeeded: this.sessionResponse?.voiceProfileSeeded ?? null,
+      warnings: this.sessionResponse?.warnings ?? [],
     };
   }
 }

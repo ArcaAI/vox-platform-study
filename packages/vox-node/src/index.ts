@@ -210,6 +210,9 @@ export type {
 
 export { CONTEXT_CONTENT_MAX_LENGTH, CONTEXT_PRIMITIVES, TERMINAL_RUN_STATUSES, isTerminalRunStatus } from './types';
 
+/** ASR degradation vocabulary (TASK-1048): the runtime `degraded` reasons and the status-frame guard. */
+export { ASR_RUNTIME_DEGRADED_REASONS, isSttDegradedStatus } from './types';
+
 /** Note-ready predicate and the citation-label helpers (labels are stripped before text leaves HOPE for an EMR). */
 export { NOTE_READY_REASON, isNoteReady, CITATION_LABEL_PATTERN, citationLabelsOf, stripCitationLabels } from './types';
 
@@ -262,6 +265,9 @@ export type {
   StopRecordingRequest,
   UpdateConsultationLanguageRequest,
   StreamSessionResponse,
+  AsrSessionWarning,
+  AsrRuntimeDegradedReason,
+  SttDegradedStatusMessage,
   StreamTicketRefreshResponse,
   StreamingSessionStatus,
   SttAudioFrame,
