@@ -46,7 +46,7 @@ from injection_eval.core import iter_windows, select_threshold  # noqa: E402
 WINDOW, OVERLAP = 2000, 256
 BENIGN_GATE_SETS = {"a", "b1", "b2"}  # the < 1 % bar is judged on these (clinical data)
 DEV_BENIGN_SETS = {"b1", "b2"}
-SET_ORDER = ("a", "b1", "b2", "b3", "c1", "c2")
+SET_ORDER = ("a", "b1", "b2", "b3", "c1", "c2", "i")  # i: governed instruction texts
 
 
 def load_sets(sets_dir: Path) -> list[dict]:
@@ -412,6 +412,7 @@ def _at_threshold(rows: list[dict], t: float) -> dict:
         "fp_gate": _rate(gate_fp),
         "fp_gate_by_length": {k: _rate(v) for k, v in by_len.items()},
         "fp_notinject": _rate(b3),
+        "fp_instructions": _rate(window_fp(rows, threshold=t, sets={"i"}, split=None)),
         "fp_public_benign_prompts": _rate(c1_benign),
         "recall_c2": _recall(c2),
         "recall_c1": _recall(c1),
