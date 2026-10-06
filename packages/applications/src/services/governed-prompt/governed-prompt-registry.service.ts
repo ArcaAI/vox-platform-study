@@ -10,7 +10,7 @@
  * unknown policy version yields `PROMPT_SCREENING_UNAVAILABLE` and registers nothing, so a piece is
  * never governed without a verdict. No text is stored or logged — digests, codes and check names.
  */
-import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
@@ -25,6 +25,7 @@ import {
 import type { JsonValue } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { pieceDigest, piecesFromResolvedPrompt, templateBodyPieces } from './governed-pieces';
 import { GuardrailPromptScreenClient, PromptScreeningUnavailableError, type PromptScreenOutcome } from './guardrail-prompt-screen.client';
 import type {
@@ -46,6 +47,9 @@ const VERDICT_CACHE_MAX = 10_000;
 const REGION_KEY_CHARS = 16;
 /** The boot backfill's bounded concurrency (sources in flight at once). */
 const BACKFILL_CONCURRENCY = 2;
+/** Backfill retry backoff (code defaults; `governedPrompt.backfillRetry{Min,Max}Ms` override them). */
+const DEFAULT_BACKFILL_RETRY_MIN_MS = 30_000;
+const DEFAULT_BACKFILL_RETRY_MAX_MS = 900_000;
 /** The check guardrail names an injection/jailbreak verdict by (`INBOUND_TASKS`). */
 const INJECTION_CHECK = 'jailbreak_detection';
 
@@ -121,7 +125,7 @@ function toSourceType(sourceType: GovernedPromptSourceKind): GovernedPromptSourc
 }
 
 @Injectable()
-export class GovernedPromptRegistryService extends BaseService implements IGovernedPromptRegistry, OnApplicationBootstrap {
+export class GovernedPromptRegistryService extends BaseService implements IGovernedPromptRegistry, OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(GovernedPromptRegistryService.name);
   private readonly verdicts = new TtlLru<boolean>(VERDICT_CACHE_MAX, VERDICT_TTL_MS);
   /** Guardrail resolves its policy version PER TENANT (L5), so the cache is keyed by tenant. */
@@ -130,12 +134,21 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
   /** `${policyVersion}|${digest}` of platform pieces already handled in this process. */
   private readonly platformHandled = new Set<string>();
   private readonly background = new Set<Promise<unknown>>();
+  /** Backfill retry state: one pass at a time, one pending timer, backoff attempt counter. */
+  private passInFlight: Promise<void> | null = null;
+  private fullPassPending = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAttempt = 0;
+  private destroyed = false;
+  /** The last SYSTEM policy version actually read (a failed read never overwrites it). */
+  private lastSystemPolicyVersion: string | null = null;
 
   constructor(
     private readonly repository: GovernedPromptPieceRepository,
     private readonly screenClient: GuardrailPromptScreenClient,
     protected override readonly eventEmitter: EventEmitter2,
     @Inject(ClsService) protected override readonly clsService: ClsService<IActiveUserContext>,
+    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.GovernedPromptPiece);
   }
@@ -264,6 +277,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
         // swallow-ok: an unknown policy version IS the fail-closed answer (nothing is governed while it is null).
         .catch(() => null)
         .then((value) => {
+          this.noteSystemPolicyVersion(tenantId, value);
           this.policyVersions.set(tenantId, {
             value,
             expiresAt: Date.now() + (value === null ? POLICY_VERSION_NEGATIVE_TTL_MS : POLICY_VERSION_TTL_MS),
@@ -284,13 +298,88 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
 
   /** Never blocks boot: the backfill runs in the background and logs its outcome. */
   onApplicationBootstrap(): void {
-    this.track(
-      this.clsService
-        .run(() => this.runBackfill())
-        .catch((error: unknown) => {
-          this.logger.warn({ message: 'governed-prompt.backfill.failed', error: error instanceof Error ? error.message : 'unknown' });
-        }),
-    );
+    this.startPass();
+  }
+
+  onModuleDestroy(): void {
+    this.destroyed = true;
+    this.clearRetryTimer();
+  }
+
+  /**
+   * Single-flight backfill pass. `only` restricts it to those sources (a retry of the UNAVAILABLE
+   * ones); no `only` is a full pass, and a full request that arrives mid-pass is queued behind it.
+   */
+  private startPass(only?: ReadonlySet<string>): void {
+    if (this.destroyed) return;
+    if (this.passInFlight) {
+      if (!only) this.fullPassPending = true;
+      return;
+    }
+    if (!only) this.retryAttempt = 0;
+    this.clearRetryTimer();
+    const pass = this.clsService
+      .run(() => this.runBackfill(only))
+      .then((summary) => this.scheduleRetryIfNeeded(summary))
+      .catch((error: unknown) => {
+        this.logger.warn({ message: 'governed-prompt.backfill.failed', error: error instanceof Error ? error.message : 'unknown' });
+      })
+      .finally(() => {
+        this.passInFlight = null;
+        if (this.fullPassPending) {
+          this.fullPassPending = false;
+          this.startPass();
+        }
+      });
+    this.passInFlight = pass;
+    this.track(pass);
+  }
+
+  /** UNAVAILABLE sources (never FAIL — a FAIL is a real verdict) are retried with bounded backoff. */
+  private scheduleRetryIfNeeded(summary: GovernedBackfillSummary): void {
+    if (this.destroyed) return;
+    const unavailable = summary.failures.filter((failure) => failure.codes.every((code) => code === 'PROMPT_SCREENING_UNAVAILABLE'));
+    // A skipped pass (policy version unknown) retries everything; otherwise only the unavailable ones.
+    const only = summary.skipped
+      ? undefined
+      : new Set(unavailable.map((failure) => this.sourceKey(failure.tenantId, failure.sourceType, failure.sourceId)));
+    if (!summary.skipped && unavailable.length === 0) {
+      this.retryAttempt = 0;
+      return;
+    }
+    const min = this.settingMs('governedPrompt.backfillRetryMinMs', DEFAULT_BACKFILL_RETRY_MIN_MS);
+    const max = Math.max(min, this.settingMs('governedPrompt.backfillRetryMaxMs', DEFAULT_BACKFILL_RETRY_MAX_MS));
+    const delayMs = Math.min(max, min * 2 ** this.retryAttempt);
+    this.retryAttempt += 1;
+    this.logger.log({ message: 'governed-prompt.backfill.retry_scheduled', unavailable: unavailable.length, delayMs });
+    this.clearRetryTimer();
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      this.startPass(only);
+    }, delayMs);
+    this.retryTimer.unref?.();
+  }
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  private settingMs(key: string, fallback: number): number {
+    const value = this.appSettings?.getValueWithDefault<number>(key, fallback) ?? fallback;
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  /** A changed SYSTEM policy version invalidates every verdict, so it kicks a (single-flight) full pass. */
+  private noteSystemPolicyVersion(tenantId: string, value: string | null): void {
+    if (tenantId !== SYSTEM_TENANT_ID || value === null) return;
+    const previous = this.lastSystemPolicyVersion;
+    this.lastSystemPolicyVersion = value;
+    if (previous !== null && previous !== value) this.startPass();
+  }
+
+  private sourceKey(tenantId: string, sourceType: string, sourceId: string | null): string {
+    return `${tenantId}|${sourceType}|${sourceId ?? ''}`;
   }
 
   /**
@@ -298,7 +387,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
    * under its tenant's current policy version (SYSTEM's version is the availability probe). Bounded concurrency; failures are LISTED for the owner and
    * nothing is unpublished — until a source is screened, its calls take the full-screening path.
    */
-  async runBackfill(): Promise<GovernedBackfillSummary> {
+  async runBackfill(only?: ReadonlySet<string>): Promise<GovernedBackfillSummary> {
     const policyVersion = await this.currentPolicyVersion();
     const empty = { sources: 0, alreadyGoverned: 0, screened: 0, passed: 0, failed: 0, unavailable: 0, failures: [] };
     if (policyVersion === null) {
@@ -323,7 +412,7 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
         sourceId: version.promptTemplateId,
         pieces: version.content ? templateBodyPieces(version.content, version.promptTemplateId) : [],
       })),
-    ].filter((source) => source.pieces.length > 0);
+    ].filter((source) => source.pieces.length > 0 && (!only || only.has(this.sourceKey(source.tenantId, source.sourceType, source.sourceId))));
 
     const counts = { alreadyGoverned: 0, screened: 0, passed: 0, failed: 0, unavailable: 0 };
     const failures: GovernedBackfillFailure[] = [];
