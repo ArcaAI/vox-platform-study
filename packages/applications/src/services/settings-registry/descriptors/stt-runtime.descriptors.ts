@@ -60,6 +60,7 @@
 //    deployed and served `null` forever — `resolveKey` catches the "no resolver"
 //    throw and degrades to `env-fallback`. That is assessment RC-5, now closed.)
 
+import { STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY } from '@arcaai/types';
 import { SettingDescriptor } from '../registry.types';
 
 /**
@@ -564,7 +565,8 @@ const KNOBS: Record<string, SttKnob> = {
   },
 };
 
-export const STT_RUNTIME_SETTINGS: SettingDescriptor[] = Object.entries(KNOBS).map<SettingDescriptor>(([key, knob]) => ({
+/** The knobs above, as descriptors — every one of them rides the stt PULL route (`consumedBy: ['stt']`). */
+export const STT_RUNTIME_PULL_SETTINGS: SettingDescriptor[] = Object.entries(KNOBS).map<SettingDescriptor>(([key, knob]) => ({
   key,
   // D-2: `global-kv` is the one tier with a complete read + write + cascade +
   // invalidate loop. Every migrated Python knob defaults to it.
@@ -591,3 +593,56 @@ export const STT_RUNTIME_SETTINGS: SettingDescriptor[] = Object.entries(KNOBS).m
   description: knob.description,
   default: knob.default,
 }));
+
+/** A registry model slug: lower/upper alphanumerics, then `.`, `_`, `-` — what `AiModel.slug` admits. */
+const MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+/**
+ * TASK-1048 (owner decision OD-2, 2026-10-06) — the platform default speaker-embedding model.
+ *
+ * NOT a pull-route knob, which is why it sits outside `KNOBS`: it is read by the GATEWAY
+ * (`AsrAgentResolverService`), per session, for the session's TENANT — consulted only when an ASR
+ * agent enables diarization and names no `audioFrontEnd.diarization.embeddingModelSlug`. The slug
+ * is then resolved exactly like an agent-named one (a SPEAKER_EMBEDDING `AiModel` visible to the
+ * tenant). Unresolvable ⇒ diarization is switched off for that session with a
+ * `DIARIZATION_MODEL_MISSING` warning; it never refuses the session.
+ *
+ * - tenant → SYSTEM, widened on ABSENCE only (`maxScope: 'tenant'`) — a tenant may choose its own
+ *   default space; the SYSTEM row is the fallback for tenants with no opinion.
+ * - MODEL SELECTION, so `failMode: 'closed'` with NO code default (rule 09): the platform value is
+ *   the SEEDED SYSTEM row (`seed/11d-stt-diarization-default-setting.ts`, `wespeaker-voxceleb-resnet34`).
+ *   A literal here would re-hardcode the selection the seed exists to own.
+ * - No `consumedBy`: a tenant-varying key must never ride the platform-scope pull snapshot (D-1).
+ *
+ * The key is the frozen contract constant (`@arcaai/types`), not a literal, so the descriptor and
+ * every reader name one string.
+ */
+export const STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING: SettingDescriptor = {
+  key: STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY,
+  tier: 'global-kv',
+  dataType: 'string',
+  sensitivity: 'internal',
+  maxScope: 'tenant',
+  editableBy: 'GlobalSetting',
+  failMode: 'closed',
+  category: 'STT Audio',
+  label: 'Default speaker-embedding model',
+  description:
+    'The speaker-embedding model (an AiModel slug of task SPEAKER_EMBEDDING) a speech-to-text agent diarizes with when it ' +
+    'enables speaker diarization but names no `audioFrontEnd.diarization.embeddingModelSlug` of its own. Resolved tenant first, ' +
+    'then the platform value. It is also the vector space voice profiles enrolled against such an agent are stored in, so ' +
+    'changing it makes earlier enrolments stop matching. When it is unset, or names a model this tenant cannot see, ' +
+    'diarization is switched off for the session and the session reports DIARIZATION_MODEL_MISSING — transcription still runs.',
+  validate: (value: unknown) => {
+    if (typeof value !== 'string' || !MODEL_SLUG.test(value)) {
+      return 'must be the slug of a SPEAKER_EMBEDDING model, for example wespeaker-voxceleb-resnet34';
+    }
+  },
+};
+
+/**
+ * Everything this file declares: the pull-route knobs, plus the one gateway-read key above.
+ * `registry.ts` assembles THIS list; the pull-route governance asserts on
+ * {@link STT_RUNTIME_PULL_SETTINGS}.
+ */
+export const STT_RUNTIME_SETTINGS: SettingDescriptor[] = [...STT_RUNTIME_PULL_SETTINGS, STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING];
