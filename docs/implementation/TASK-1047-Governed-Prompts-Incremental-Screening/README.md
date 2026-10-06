@@ -445,7 +445,7 @@ disabled (compute every window), never a skip.
 `len(text) > nlp.inference.maxInputChars` (default 8,192) → **413** `{"code":"INPUT_EXCEEDS_WINDOW","maxChars":N}`;
 `max_len` passed to gliner2 (words, `nlp.inference.maxInputWords`, default 2,048).
 `nlp.inference.threadsPerInference` (0 = `cpu_count // maxConcurrent`, min 1);
-`nlp.worker.recycleAfterRequests` (default 2,000) and `nlp.worker.recycleRssMib` (default 6,144: after a
+`nlp.worker.recycleAfterRequests` (default 2,000) and `nlp.worker.recycleRssMib` (default 12,288 — raised from 6,144 by F6, §8.1: after a
 response the worker exits gracefully above it; the supervisor/uvicorn restarts it). Guardrail policy keys
 (in `apps/guardrail/.../core/policy.py`, L5): `screenWindowChars` 4,000, `screenWindowOverlapChars` 256,
 `screenWindowConcurrency` 4, `windowCacheTtlSeconds` 86,400, `nlpDeadlineSeconds` (default 30),
@@ -501,6 +501,22 @@ Known out of scope: 8 Python files not black-formatted predate TASK-1047 (black 
 
 Follow-ups recorded: deployment repo NLP pod `--limit-max-requests` + limits/HPA (after V4, OD-8);
 seed template wording for pointers (after V6).
+
+### 8.1 Fixes from live validation (local stack, `hope_1045_e2e`, 2026-10-06)
+
+| Id | Commit | Found | Fix |
+|---|---|---|---|
+| F1 | `60e1203aa` | NLP reached 7 GiB RSS on the boot backfill: batches were capped by item COUNT, so several 8k-char regions shared one GLiNER2 forward pass (memory is quadratic in the padded batch) | Character-budget batching, `nlp.inference.maxBatchChars` (default 8192). A single over-budget item still gets its own pass (it is already ≤ the 8192-char window). Measured peak after the fix: 2.7–5.4 GiB |
+| F2 | `2be91fed5` | A backfill pass that met a cold NLP left every source UNAVAILABLE until the next restart | UNAVAILABLE sources (never FAIL) are retried with doubling backoff, `governedPrompt.backfillRetryMinMs` 30 s → `backfillRetryMaxMs` 15 min; a policy-version change re-runs the full pass |
+| — | `9383196a4` | The new knobs had no descriptors (ungoverned) | Descriptors for `governedPrompt.screenTimeoutMs`, `backfillRetryMinMs`, `backfillRetryMaxMs`, `nlp.inference.maxBatchChars` |
+| F3 | `360caea3c` | The core note-finalisation instruction FAILED as `PROMPT_CONTAINS_PII`: it NAMES categories ("replace any … phone number or email") and GLiNER2 labels the word `email` at 0.968 | **Owner decision "Validate span values":** a PII span counts only when the sliced span text is an actual value (`pii-value.ts`: email needs `@` + domain, phone ≥ 7 digits, ID ≥ 4 digits, date/address a digit, name a capitalised proper name that is not a role word; `[NAME]`-style placeholders never count) |
+| F4 | `68b768b88` | After F3, two classes still blocked legitimate authoring: a dated EXAMPLE ("12-Mar-2026") and `prompt_toxicity` on a clinical return-visit fragment | **Owner decision "Scope it":** BLOCKING (FAIL, publish/approve refused) = injection/jailbreak, direct-identifier PII values (name, contact, identifier, street address), screening unavailable, and a block that names no reason. ADVISORY (registered PASS, surfaced as a `WARNING` finding) = safety/toxicity (`PROMPT_SAFETY_ADVISORY`) and quasi-identifier values (date, age, place, facility, unknown label) with no direct identifier in the same piece (`PROMPT_QUASI_IDENTIFIER_ADVISORY`). Boot backfill paced: one source at a time, starting after `governedPrompt.backfillInitialDelayMs` (default 60 s, 0 = at once) so NLP loads its models first |
+| F5 | `c4a2844ac` | After F3/F4, all 14 Global specialty templates still FAILED as `PROMPT_CONTAINS_PII`. Probe of every flagged span: 31 of 31 were drug + dose in example notes labelled `full_name` (`Shelcal 500 mg` ×22, `Metformin 500 mg` ×8, `Ecosprin 75 mg` ×1) | A name-labelled span containing a digit is never a person's name |
+| F6 | `c4a2844ac` | The NLP worker restarted on almost every long-template screen: the warm working set with all screening models loaded peaks at 5.4–5.7 GiB, right at the FC-8 recycle ceiling of 6,144 MiB. After the first response over the ceiling the worker SIGTERMs itself, guardrail's NEXT check call (one screen makes several NLP calls) finds no listener, and guardrail fails closed → 503 | Default `nlp.worker.recycleRssMib` raised to 12,288 (≈2× the measured working set) in both the descriptor and `apps/nlp` bounds — a leak backstop, not a per-request event. Deployment follow-up: the NLP pod limit must sit above it, and production runs ≥ 2 workers or replicas so a recycle never leaves guardrail with no listener |
+
+Rationale for F4's split: under HIPAA Safe Harbor a date or a place identifies only alongside the person
+it belongs to, so an instruction carrying an example date is not PHI on its own; the runtime path still
+screens every DATA region in full (D3), so an advisory at authoring time never weakens call-time egress.
 
 ## 9. Change History
 
