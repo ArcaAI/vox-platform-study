@@ -35,6 +35,9 @@ from typing import Any, Final
 
 from guardrail.core.config import JudgePolicy
 from guardrail.core.errors import REASON_UNSUPPORTED, GuardrailUndeterminedError
+from guardrail.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 FAIL_CLOSED: Final = "closed"
 FAIL_OPEN_TO_DEFAULT: Final = "open-to-default"
@@ -49,12 +52,18 @@ NLP_MAX_INPUT_CHARS: Final = 8_192
 
 @dataclass(frozen=True)
 class _KeySpec:
-    """One governed policy key: its posture and, for tuning keys, its bounds."""
+    """One governed policy key: its posture and, for tuning keys, its bounds.
+
+    A NAME-LIST key (TASK-1047 FC-5c) carries ``default_names`` instead of a
+    numeric default; it is read by :meth:`GuardrailPolicy.names`, never by
+    :meth:`GuardrailPolicy.number` (whose ``default is None`` check refuses it).
+    """
 
     fail_mode: str
     default: float | None = None
     minimum: float | None = None
     maximum: float | None = None
+    default_names: tuple[str, ...] | None = None
 
 
 #: The whole governed surface. Adding a key here is the ONLY step needed to make it
@@ -183,6 +192,18 @@ _SPECS: Final[dict[str, _KeySpec]] = {
     # The whole-call deadline on a guardrail → apps/nlp call (D7). Every attempt
     # lives inside it, and an attempt that may still be running is never retried.
     "nlpDeadlineSeconds": _KeySpec(FAIL_OPEN_TO_DEFAULT, 30.0, 1.0, 600.0),
+    # outbound record-only checks (TASK-1047 FC-5c, owner decision OD-14)
+    #
+    # Outbound checks whose FLAG is recorded as a finding (`data_findings` on the
+    # response, `guardrail_data_findings_total`, `guardrail.screen.data_findings`)
+    # instead of blocking. Every check still RUNS; an UNDETERMINED one still blocks.
+    # Only names in `OUTBOUND_TASKS` are honoured (`outbound_record_only_checks`).
+    # It DECIDES an outbound verdict, so it is NOT operational: its raw value rides
+    # the policy blob into the policy version. Flipping a check back to blocking is
+    # a config edit on the SYSTEM row (`[]` makes every outbound check blocking).
+    "outboundRecordOnlyChecks": _KeySpec(
+        FAIL_OPEN_TO_DEFAULT, default_names=("jailbreak_detection",)
+    ),
 }
 
 #: Keys that tune HOW a verdict is computed (time budgets, parallelism, cache
@@ -291,6 +312,20 @@ class GuardrailPolicy:
             return spec.default
         return as_float
 
+    def names(self, key: str) -> tuple[str, ...]:
+        """A NAME-LIST tuning value; absent or malformed ⇒ the declared default.
+
+        Malformed is anything but a list of strings — the open-to-default posture
+        treats it as absence rather than honouring half of it.
+        """
+        spec = _SPECS.get(key)
+        if spec is None or spec.default_names is None:
+            raise KeyError(f"{key!r} is not a declared name-list key")
+        value = self.blob.get(key)
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            return spec.default_names
+        return tuple(value)
+
     # Named accessors so call sites never spell a key by hand.
 
     @property
@@ -365,3 +400,26 @@ class GuardrailPolicy:
     @property
     def nlp_deadline_seconds(self) -> float:
         return self.number("nlpDeadlineSeconds")
+
+    # -- outbound record-only checks (TASK-1047 FC-5c) ----------------------
+
+    @property
+    def outbound_record_only_checks(self) -> frozenset[str]:
+        """The outbound checks whose flag is recorded, not blocking.
+
+        Filtered to `OUTBOUND_TASKS`: a name the outbound screen does not run
+        (`pii_leak`, an inbound task, a typo) is ignored with ONE warning per read
+        rather than failing the screen — the key is open-to-default tuning.
+        """
+        from guardrail.services.screening import OUTBOUND_TASKS
+
+        configured = self.names("outboundRecordOnlyChecks")
+        honoured = frozenset(name for name in configured if name in OUTBOUND_TASKS)
+        ignored = sorted({name for name in configured if name not in OUTBOUND_TASKS})
+        if ignored:
+            logger.warning(
+                "guardrail.policy.outbound_record_only.unknown_checks",
+                ignored=ignored,
+                source_tenant_id=self.source_tenant_id,
+            )
+        return honoured

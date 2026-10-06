@@ -81,6 +81,15 @@ FAIL_CLOSED: Final = "closed"
 TRUST_INSTRUCTION: Final = "instruction"
 TRUST_DATA: Final = "data"
 
+#: The region key an outbound RECORD-ONLY finding names (TASK-1047 FC-5c, owner
+#: decision OD-14): the response itself, in FC-5b's `data_findings` shape.
+REGION_RESPONSE: Final = "response"
+
+#: The reason on an outbound check that FLAGGED but is record-only for the tenant
+#: (FC-5c). Its outcome is `pass` — it did not block — and the flag rides on
+#: `data_findings`; the labels stay on the check so the record is reconstructible.
+REASON_RECORD_ONLY: Final = "recorded_as_finding"
+
 #: The moderation tasks each direction consults. The NAMES are part of the model
 #: contract (they are the schema keys the safety model was trained on); the LABELS
 #: behind each name are configuration and come from the registry taxonomy.
@@ -150,7 +159,8 @@ class CheckOutcome:
 
 @dataclass(frozen=True)
 class DataFinding:
-    """A `data` region on which ≥1 inbound check flagged (FC-5b). Names only, never text."""
+    """A `data` region on which ≥1 inbound check flagged (FC-5b), or the outbound
+    `response` on which ≥1 record-only check flagged (FC-5c). Names only, never text."""
 
     region: str
     reasons: tuple[str, ...]
@@ -185,7 +195,9 @@ class GuardrailDecision:
     usage_detail: dict[str, Any] | None = None
     #: FC-5b: one item per `data` region with ≥1 flagged check. ``None`` when the
     #: request carried no `data` region (legacy / trust-less callers), ``[]`` when
-    #: it did and nothing flagged.
+    #: it did and nothing flagged. FC-5c (outbound): ``[{region: "response", …}]``
+    #: when a record-only check flagged, ``[]`` when none did, ``None`` when the
+    #: tenant's record-only set is empty (every outbound check blocks).
     data_findings: list[DataFinding] | None = None
 
     @property
@@ -244,6 +256,7 @@ class Screener:
         availability: GuardrailAvailability | None = None,
         window_geometry: WindowGeometry | None = None,
         window_runner: WindowRunner | None = None,
+        outbound_record_only: frozenset[str] = frozenset(),
     ) -> None:
         if not (tenant_id or "").strip():
             # Same construction-time invariant as the peer clients: a screening
@@ -272,6 +285,15 @@ class Screener:
             policy_version=None,
             cache=None,
             concurrency=window_geometry.concurrency,
+        )
+        # OUTBOUND RECORD-ONLY checks (TASK-1047 FC-5c). The constructor default is
+        # EMPTY — an un-wired screener blocks on every outbound flag, the strictest
+        # reading. `build_screener` passes the tenant's resolved policy value
+        # (`GuardrailPolicy.outbound_record_only_checks`, default jailbreak only).
+        # Names outside `OUTBOUND_TASKS` are dropped here too, so no caller can
+        # make `pii_leak` or `containment_echo` record-only.
+        self.outbound_record_only = frozenset(
+            name for name in outbound_record_only if name in OUTBOUND_TASKS
         )
 
     # -- helpers ------------------------------------------------------------
@@ -613,6 +635,7 @@ class Screener:
         """
         clean, report = sanitize_untrusted(response, max_chars=self._max_untrusted_chars)
         checks, _ = await self._classify(OUTBOUND_TASKS, [clean])
+        checks, data_findings = self._record_only(checks)
         sources: list[str] | None
         if source_regions is not None:
             sources = [text for _key, text in source_regions if text and text.strip()]
@@ -622,7 +645,43 @@ class Screener:
             sources = None
         checks.append(await self._check_pii_leak(clean, sources))
         checks.append(self._check_containment_echo(clean, nonce))
-        return self._finish(DIRECTION_OUTBOUND, checks, report)
+        return self._finish(DIRECTION_OUTBOUND, checks, report, data_findings)
+
+    def _record_only(
+        self, checks: list[CheckOutcome]
+    ) -> tuple[list[CheckOutcome], list[DataFinding] | None]:
+        """Turn a FLAG on a record-only outbound check into a finding (FC-5c).
+
+        Every check has already run. A record-only check that flagged becomes a
+        `pass` with reason :data:`REASON_RECORD_ONLY` (its labels kept) and is named
+        in one ``data_findings`` item for region ``response``; it no longer
+        contributes to ``decision``. Only FLAG is converted — an UNDETERMINED check
+        still blocks whatever the policy says, and a non-record-only check is
+        untouched.
+        """
+        if not self.outbound_record_only:
+            return checks, None
+        kept: list[CheckOutcome] = []
+        recorded: list[str] = []
+        for check in checks:
+            if check.outcome == OUTCOME_FLAG and check.name in self.outbound_record_only:
+                recorded.append(check.name)
+                kept.append(
+                    CheckOutcome(
+                        name=check.name,
+                        outcome=OUTCOME_PASS,
+                        fail_mode=check.fail_mode,
+                        model=check.model,
+                        reason=REASON_RECORD_ONLY,
+                        labels=check.labels,
+                    )
+                )
+            else:
+                kept.append(check)
+        findings = (
+            [DataFinding(region=REGION_RESPONSE, reasons=tuple(recorded))] if recorded else []
+        )
+        return kept, findings
 
     async def _check_pii_leak(self, response: str, sources: list[str] | None) -> CheckOutcome:
         """PII in the response that is absent from the declared source is a leak.

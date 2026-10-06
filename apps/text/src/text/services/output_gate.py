@@ -49,6 +49,7 @@ from text.core.locality import CLOUD, LOCAL
 from text.core.logging import get_logger
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.egress import (
+    record_outbound_data_findings,
     request_segments,
     system_prompt_is_governed,
 )
@@ -246,6 +247,9 @@ async def gate_completion(
         # response still burned guardrail tokens. (Guardrail's outbound screen
         # carries no usage block yet — this is ``None`` until it does.)
         guardrail_usage = guardrail_usage_from_verdict(verdict)
+        # TASK-1047 FC-5c: record-only checks that flagged are findings, recorded
+        # PHI-safely whatever the decision. Advisory — never consulted for `allowed`.
+        record_outbound_data_findings(verdict, where=where)
         if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
             reason = str(verdict.get("reason", "not_allowed"))
             raw = verdict.get("raw")
