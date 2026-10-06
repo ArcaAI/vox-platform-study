@@ -179,7 +179,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // +1 (90): `ComposedPromptRecord` — the per-call composed-prompt incident record, tenant-owned PHI ciphertext.
     // +6 (96): TASK-1045 ConsultationEncounter, ConsultationApproval, ConsultationAttachment, ConsultationFeedback,
     // ConsultationFeedbackDailyRollup, AiActivityRun.
-    expect(TENANT_SCOPED_MODELS.size).toBe(96);
+    // +1 (97): TASK-1047 adds `GovernedPromptPiece` — tenant-owned governed-prompt registry row (also SYSTEM-shared-read).
+    expect(TENANT_SCOPED_MODELS.size).toBe(97);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing
@@ -486,6 +487,10 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // its CLS carries; WRITES are not widened and the admin routes are
         // SUPER_ADMIN-gated in the service.
         'ModelResidencyPolicy',
+        // TASK-1047 — governed-prompt registry: a verdict is a property of the screened text's digest,
+        // not of a tenant, so platform/SYSTEM pieces must verify for every tenant. READS widen to
+        // [caller, SYSTEM]; WRITES are NOT widened. No text and no secret on the model.
+        'GovernedPromptPiece',
       ]),
     );
   });
