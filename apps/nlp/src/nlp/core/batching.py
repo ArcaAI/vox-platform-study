@@ -97,6 +97,7 @@ class _Waiter(Generic[ItemT, ResultT]):
     item: ItemT
     future: asyncio.Future[ResultT]
     enqueued_at: float = field(default=0.0)
+    cost: int = 0
 
 
 class MicroBatcher(Generic[ItemT, ResultT]):
@@ -117,6 +118,7 @@ class MicroBatcher(Generic[ItemT, ResultT]):
         max_queue: int = DEFAULT_MAX_QUEUE,
         max_wait_s: float = DEFAULT_MAX_WAIT_S,
         max_inflight_batches: int = DEFAULT_MAX_INFLIGHT_BATCHES,
+        max_batch_chars: int | Callable[[], int] | None = None,
         name: str = "micro_batcher",
         on_batch: Callable[[str, int], None] | None = None,
         inflight_gate: InflightGate | None = None,
@@ -133,6 +135,10 @@ class MicroBatcher(Generic[ItemT, ResultT]):
         self._max_batch_size = max_batch_size
         self._linger_s = max(linger_ms, 0) / 1000.0
         self._max_queue = max_queue
+        # TASK-1047 FC-8: a batch also closes on the SUM of its items' `cost`
+        # (text length). A callable is re-read per batch so a control-plane
+        # change applies without rebuilding the batcher. None = count only.
+        self._max_batch_chars = max_batch_chars
         self._max_wait_s = max_wait_s
         self._name = name
         self._on_batch = on_batch
@@ -160,12 +166,13 @@ class MicroBatcher(Generic[ItemT, ResultT]):
 
     # ── submission ───────────────────────────────────────────────────────
 
-    async def submit(self, group: str, item: ItemT) -> ResultT:
+    async def submit(self, group: str, item: ItemT, cost: int = 0) -> ResultT:
         """Enqueue one item and await its own result.
 
         Raises `InferenceQueueFull` immediately when the queue is at capacity,
         and `InferenceQueueTimeout` if the item is still waiting when the
-        dispatcher reaches it past `max_wait_s`.
+        dispatcher reaches it past `max_wait_s`. `cost` is the item's size in
+        characters, counted against `max_batch_chars`.
         """
         if self._closed:
             raise RuntimeError(f"{self._name} is closed")
@@ -176,7 +183,11 @@ class MicroBatcher(Generic[ItemT, ResultT]):
 
         loop = asyncio.get_running_loop()
         waiter: _Waiter[ItemT, ResultT] = _Waiter(
-            group=group, item=item, future=loop.create_future(), enqueued_at=loop.time()
+            group=group,
+            item=item,
+            future=loop.create_future(),
+            enqueued_at=loop.time(),
+            cost=cost,
         )
         self._pending.append(waiter)
         self._arrival.set()
@@ -237,17 +248,30 @@ class MicroBatcher(Generic[ItemT, ResultT]):
             return []
 
         group = self._pending[0].group
+        budget = self._char_budget()
+        total = 0
         batch: list[_Waiter[ItemT, ResultT]] = []
         keep: deque[_Waiter[ItemT, ResultT]] = deque()
         while self._pending:
             waiter = self._pending.popleft()
-            if waiter.group == group and len(batch) < self._max_batch_size:
+            fits = (
+                budget is None
+                or not batch  # an item over budget on its own still runs, alone
+                or total + waiter.cost <= budget
+            )
+            if waiter.group == group and len(batch) < self._max_batch_size and fits:
                 batch.append(waiter)
+                total += waiter.cost
             else:
                 keep.append(waiter)
         keep.extend(self._pending)
         self._pending = keep
         return batch
+
+    def _char_budget(self) -> int | None:
+        budget = self._max_batch_chars
+        value = budget() if callable(budget) else budget
+        return value if value is not None and value > 0 else None
 
     def _reject_expired(self, now: float) -> None:
         if self._max_wait_s <= 0:

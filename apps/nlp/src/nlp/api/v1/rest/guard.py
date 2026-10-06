@@ -168,7 +168,9 @@ async def _submit_pii(
     batcher = await get_batcher(slot_key, "pii", run_batch, lane)
     started = time.perf_counter()
     try:
-        entities, inference_ms = await batcher.submit(pii_group_key(labels, threshold), text)
+        entities, inference_ms = await batcher.submit(
+            pii_group_key(labels, threshold), text, cost=len(text)
+        )
         return entities, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
@@ -201,7 +203,9 @@ async def _submit_classify(
     batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
-        results, inference_ms = await batcher.submit(classify_group_key(tasks, threshold), text)
+        results, inference_ms = await batcher.submit(
+            classify_group_key(tasks, threshold), text, cost=len(text)
+        )
         return results, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
