@@ -330,6 +330,12 @@ NLP_INPUT_EXCEEDS_WINDOW_TOTAL = Counter(
     ["route"],
 )
 
+# TASK-1047 FC-8a (OD-10): /classify/tokens windows text over maxInputChars.
+NLP_NER_WINDOWS_TOTAL = Counter(
+    "nlp_ner_windows",
+    "Windows run by /classify/tokens for texts longer than nlp.inference.maxInputChars.",
+)
+
 NLP_PROCESS_RSS_BYTES = Gauge(
     "nlp_process_rss_bytes",
     "Resident set size of this worker, sampled after every served response.",

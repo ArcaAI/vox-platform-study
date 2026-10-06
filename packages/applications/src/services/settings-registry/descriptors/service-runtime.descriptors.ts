@@ -91,6 +91,12 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   // TASK-1047 F1 — per-batch character budget: a micro-batch closes before its summed text length
   // would exceed it, so transient memory is bounded by the budget, not by the batch COUNT.
   'nlp.inference.maxBatchChars': 8192,
+  // TASK-1047 FC-8a (OD-10) — `/classify/tokens` windows text above `maxInputChars` server-side
+  // (NER callers send whole transcripts and notes); `windowChars + windowOverlapChars` must stay
+  // at or below `maxInputChars`, otherwise the service warns and uses these defaults.
+  'nlp.ner.maxRequestChars': 200000,
+  'nlp.ner.windowChars': 4000,
+  'nlp.ner.windowOverlapChars': 256,
 
   // ── the remaining in-process caches ───────────────────────────
   // The `<svc>.modelCache.<knob>` grammar originally served stt only,
@@ -321,8 +327,9 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'nlp.inference.maxInputChars': {
     label: 'NLP max input length (characters)',
     description:
-      'Hard input bound on every guard route and `/classify/tokens`: text longer than this is refused with ' +
-      '413 `INPUT_EXCEEDS_WINDOW` (callers window the text; nothing is silently truncated). Guardrail’s ' +
+      'Hard input bound on every guard and text-classification route: text longer than this is refused with ' +
+      '413 `INPUT_EXCEEDS_WINDOW` (callers window the text; nothing is silently truncated). `/classify/tokens` ' +
+      'instead windows such text server-side up to `nlp.ner.maxRequestChars`. Guardrail’s ' +
       '`screenWindowChars + screenWindowOverlapChars` must stay at or below it. Bounds peak memory per request.',
   },
   'nlp.inference.maxBatchChars': {
@@ -331,6 +338,27 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
       'A micro-batch of guard inferences closes before the summed length of its texts would exceed this budget (an ' +
       'item longer than the budget runs alone). Transient memory then scales with the budget, not with the batch ' +
       'count — 8 padded 4,000-char windows in one pass drove NLP to 7 GiB in the TASK-1047 validation.',
+  },
+  'nlp.ner.maxRequestChars': {
+    label: 'NLP NER max request length (characters)',
+    description:
+      'Hard input bound on `/classify/tokens`: text longer than this is refused with 413 `INPUT_EXCEEDS_WINDOW`. ' +
+      'Text above `nlp.inference.maxInputChars` but within this bound is split into windows server-side and run ' +
+      'one window at a time, so memory stays bounded by the window, not by the request.',
+  },
+  'nlp.ner.windowChars': {
+    label: 'NLP NER window length (characters)',
+    description:
+      'Nominal window length when `/classify/tokens` splits a text longer than `nlp.inference.maxInputChars`. ' +
+      'Cuts prefer whitespace in the last 10% of the window. `windowChars + windowOverlapChars` must stay at or ' +
+      'below `nlp.inference.maxInputChars`; a pair that does not is ignored (the defaults apply, with a warning).',
+  },
+  'nlp.ner.windowOverlapChars': {
+    label: 'NLP NER window overlap (characters)',
+    description:
+      'Characters each NER window re-reads before the previous cut, so an entity straddling a cut is seen whole ' +
+      'by one window. Duplicate spans from the overlap are merged (identical spans keep the best score; ' +
+      'overlapping spans of one label keep the longer).',
   },
   'nlp.inference.maxInputWords': {
     label: 'NLP max input length (words, gliner2 max_len)',

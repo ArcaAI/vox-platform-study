@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
-from nlp.core.bounds import enforce_input_cap
+from nlp.core.bounds import enforce_input_cap, get_bounds
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
 from nlp.dependencies import (
@@ -32,6 +32,7 @@ from nlp.services.external_text_client import (
 )
 from nlp.services.gliner_token_classifier import ExtractorLabelsUnavailable
 from nlp.services.model_cache import ModelUnavailableError
+from nlp.services.ner_windowing import classify_tokens_windowed
 
 logger = get_logger(__name__)
 
@@ -225,7 +226,13 @@ async def classify_tokens(
     """
     # model_name (gateway-injected AiModel.sourceUri) is required;
     # a missing/unloadable model fails closed with HTTP 503.
-    enforce_input_cap("classify_tokens", request.text)
+    # FC-8a (OD-10): above maxInputChars this route windows the text server-side
+    # (callers send whole transcripts); only above nlp.ner.maxRequestChars is it 413.
+    bounds = get_bounds()
+    # A text within maxInputChars is always served in one pass, whatever maxRequestChars says.
+    request_cap = max(bounds.ner_max_request_chars, bounds.max_input_chars)
+    enforce_input_cap("classify_tokens", request.text, limit=request_cap)
+    windowed = len(request.text) > bounds.max_input_chars
     if not request.model_name:
         raise HTTPException(status_code=503, detail="Token classification model not available")
 
@@ -236,9 +243,13 @@ async def classify_tokens(
                     status_code=503, detail="Token classification model not available"
                 )
 
-            # Bound concurrent inference.
-            async with inference_bound:
-                result = await service.process(request)
+            if windowed:
+                # Each window takes the inference bound itself, one at a time.
+                result = await classify_tokens_windowed(service, request, inference_bound)
+            else:
+                # Bound concurrent inference.
+                async with inference_bound:
+                    result = await service.process(request)
             logger.info("nlp.classify.tokens_done", entity_count=len(result.entities))
             return result
     except ExtractorLabelsUnavailable as e:
