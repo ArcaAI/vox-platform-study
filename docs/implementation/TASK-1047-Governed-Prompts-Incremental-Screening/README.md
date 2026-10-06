@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Pending** — plan written, awaiting owner decisions (§6) and an explicit go |
+| Status | **In Progress** — implementation merged to `dev-2.2` and gated; validation V2–V6 next, then the TASK-1045 e2e (V7) |
 | Type | refactor + infrastructure (safety plane efficiency; no new product feature) |
 | Branch | `dev-2.2` (lanes in sibling worktrees, merged by the orchestrator) |
 | Raised by | TASK-1045 e2e, 2026-10-06 — `apps/nlp` reached 36.8 GiB resident (88.8 GiB peak), the dev Mac exhausted swap, Jetsam killed system daemons and the kernel panicked |
@@ -465,10 +465,46 @@ and `screenWindowChars + screenWindowOverlapChars` must be ≤ nlp `maxInputChar
 
 ## 8. Implementation Summary
 
-_Not started — awaiting the owner's go on §6._
+Owner go 2026-10-06 (all OD recommendations approved). Orchestrator-authored base: model + migration
+`20261006040234_task_1047_governed_prompt_piece`, frozen contracts FC-1…FC-8 (§6.1) and type seams
+(`SystemGovernance`, `IGovernedPromptRegistry`), committed before any lane started.
+
+| Lane | Tier | Merged | Delivered |
+|---|---|---|---|
+| L1 contract | opus | `f7f587a9f` | FC-1 pointer rendering + FC-2 piece digests in `composeMessages` (TS) and the Python mirror, one fixture; pure-TS `sha256Hex` (the package is imported by admin-console client components); contract test over every seeded prompt |
+| L2 composers | opus | `9c2d3b909` | every gateway path free of runtime values in system text (prompt-assembly via `blockAliases`, live lane, agent invocation, assembled route, note plan); DNA samples → `style_reference`; D9 block order; FC-4 decided once in `text-request-enrichment` (`areGoverned` + digest check); note-plan calls carry `systemGovernance` |
+| L3 registry | opus | `cb18d6e32` | GovernedPromptPiece domain trio; `GovernedPromptRegistryService`; authoring screening on approve / publish / promote-to-system (four ERROR findings, fail closed); `compiledConfig.governance` stamp; boot backfill; per-tenant policy version |
+| L4 text egress | opus | `cdbc2f117` | digest-verified governed system skips ML screen + judge; untrusted text screened as regions; spans re-based per segment; `known_phi` over all segments; `source_regions`; fail-closed `screened_regions` coverage check (version-skew guard); whole-text judge cache removed |
+| L5 guardrail | opus | `47dc67f71` | region windows on every path (the C2 fix), FC-7 HMAC window cache, windowed medical judge (`medicalWindowScopeCriteria`, seeded), NLP deadline with no retry once sent, NLP 413 = undetermined (blocks), `policy-version` route, `screened_regions` echo, metrics |
+| L6 nlp | sonnet | `593c95252` | 413 `INPUT_EXCEEDS_WINDOW` before semaphore/model on every route (multi-label added by the orchestrator), gliner2 `max_len`, threads per inference, shared weight registry, post-response worker recycling |
+| L8 ops | sonnet | `4db77f114` | FC-8 descriptors, `GUARDRAIL_WINDOW_CACHE_KEY` vault-kv secret, dev supervisor restart with backoff, `--limit-max-requests` |
+| L9 deprecation | sonnet | `a4ad7c8cb` | raw `system_prompt` → Deprecation/Sunset + counter; caller `system_governance` stripped; SDK JSDoc; register entry |
+| L10 harness | sonnet | `d89878811` | `core.agent` + note-plan calls forward governance; 25 harness tests moved to the pointer contract |
+| L11 validation tools | sonnet | `38f1162d4` | `bench_guard_memory.py` (V2), `screening_replay.py` (V3), `screening_load.py` (V4) |
+| L12 verify route | sonnet | `29ca89b9c` | `POST internal/governed-prompts/verify`; harness confirms the whole digest set through it (FC-6 gap) |
+| G1–G3 gate fixes | sonnet | `8e404b25a`, `9099fe6c8`, `101ae4fa5` | test isolation (structlog cache, env tokens, Prometheus registry), tests moved to the pointer contract, new tag, env-file / tenant-scope / checkpoint registry entries |
+
+Orchestrator integration on `dev-2.2`: authoring pieces render through the contract
+(`renderTemplatePointers` + `sha256Hex`) and register both pointer variants (derived + prompt-assembly
+aliases) — `tests/contracts/governed-piece-digest-parity.contract.test.ts` proves authoring digest ==
+call-time digest for all 65 seeded prompts on both composer paths; registry wired into text-request and
+note-composition modules; note plans return governance and carry the style reference; artifacts
+regenerated (route manifest, openapi, portal, vox-node admin); gate fixes incl. a **clinical-safety
+regression from TASK-1045 `3439b86fd`**: coverage accepted "TDS" as covering a twice-daily fact —
+frequency/duration words are now generic in term matching.
+
+**Gate (single pass after full merge, orchestrator only, 2026-10-06):** typecheck, lint, ruff, mypy
+(text/guardrail/nlp/harness), openapi/portal/gen:admin checks, env-sync, gen model/entity/factory drift —
+all 0; TS unit 32,087 passed / 0 failed; text 2,106, guardrail 659, nlp 797, harness 3,663, perf tools 27
+passed; vox, vox-node, admin-console tests + build, SDK build/exports/codegen, ALaaS tsc/jest/web — all 0.
+Known out of scope: 8 Python files not black-formatted predate TASK-1047 (black is not the lint gate).
+
+Follow-ups recorded: deployment repo NLP pod `--limit-max-requests` + limits/HPA (after V4, OD-8);
+seed template wording for pointers (after V6).
 
 ## 9. Change History
 
 | Date | Change |
 |---|---|
 | 2026-10-06 | Ticket created from the TASK-1045 e2e memory incident (NLP 36.8 GiB, swap exhaustion, kernel panic). Evidence: Jetsam/panic reports, controlled NLP memory probes (§2.1), code review of composition/egress/authoring (§2.2–2.4), external best practices (§3). Plan, lanes, TDD list, validation V1–V7 and decisions OD-1…OD-9 written. Status Pending. |
+| 2026-10-06 | Owner approved all recommendations; lanes L1–L12 + gate-fix lanes G1–G3 merged to `dev-2.2`; single gate pass green (§8). Owner reminder recorded: sub-agents never run gating tests — only the orchestrator, once, after the full merge. |
