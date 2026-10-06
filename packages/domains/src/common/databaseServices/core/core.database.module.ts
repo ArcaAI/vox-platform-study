@@ -58,6 +58,7 @@ import { FederatedIdentityRepository } from '../../../repositories/generated/cor
 import { GlobalSettingRepository } from '../../../repositories/generated/core/GlobalSettingRepository';
 import { GoldenCaseRepository } from '../../../repositories/generated/core/GoldenCaseRepository';
 import { GoldenSetRepository } from '../../../repositories/generated/core/GoldenSetRepository';
+import { GovernedPromptPieceRepository } from '../../../repositories/generated/core/GovernedPromptPieceRepository';
 import { HarnessAuditEventRepository } from '../../../repositories/generated/core/HarnessAuditEventRepository';
 import { HarnessPolicyChangeRepository } from '../../../repositories/generated/core/HarnessPolicyChangeRepository';
 import { HarnessPolicyRepository } from '../../../repositories/generated/core/HarnessPolicyRepository';
@@ -247,6 +248,8 @@ const repositories = [
   GoldenCaseRepository,
   EvalRunRepository,
   EvalScoreRepository,
+  // TASK-1047 — the governed-prompt registry (authoring-time screening verdicts per piece digest).
+  GovernedPromptPieceRepository,
   HarnessAuditEventRepository,
   // Agentic SOTA ordered session trajectory — tenant-scoped
   // ops telemetry, soft-delete + sys-event exempt (see repository/entity docs).

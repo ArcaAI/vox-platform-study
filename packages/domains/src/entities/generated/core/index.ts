@@ -22,6 +22,7 @@ export * from './GateEditExemplarEntity';
 export * from './GlobalSettingEntity';
 export * from './GoldenCaseEntity';
 export * from './GoldenSetEntity';
+export * from './GovernedPromptPieceEntity';
 export * from './HarnessAuditEventEntity';
 export * from './HarnessPolicyChangeEntity';
 export * from './HarnessPolicyEntity';
