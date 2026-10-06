@@ -596,6 +596,8 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         availability=await _resolve_availability(app_state, tenant_id),
         window_geometry=geometry,
         window_runner=await build_window_runner(app_state, tenant_id, policy, geometry),
+        # TASK-1047 FC-5c: the outbound checks this tenant records instead of blocking.
+        outbound_record_only=policy.outbound_record_only_checks,
     )
 
 

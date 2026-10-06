@@ -41,7 +41,10 @@ from text.models.requests import GenerateRequest, TextContentPart, serialize_pro
 from text.models.responses import EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.data_blocks import keyed_ranges
-from text.services.external_guardrail import GUARDRAIL_UNAVAILABLE_REASON
+from text.services.external_guardrail import (
+    GUARDRAIL_UNAVAILABLE_REASON,
+    OUTBOUND_FINDING_REGION,
+)
 from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pseudonymizer import Pseudonymizer, Span
 
@@ -58,6 +61,7 @@ __all__ = [
     "SystemTrust",
     "prepare_egress",
     "prepare_text_egress",
+    "record_outbound_data_findings",
     "request_segments",
     "run_inbound_gate",
     "source_regions",
@@ -84,9 +88,19 @@ TRUST_DATA = "data"
 #: :data:`USER_REGION`.
 _OUTSIDE = "\x00outside"
 
-#: The prompt-safety checks a data finding may name (FC-5b); anything else counts as
-#: ``other`` so the metric label stays bounded.
-_DATA_FINDING_CHECKS = frozenset({"jailbreak_detection", "prompt_safety", "prompt_toxicity"})
+#: The checks a data finding may name — the inbound prompt-safety checks (FC-5b) and
+#: the outbound screen's classifier checks (FC-5c record-only); anything else counts
+#: as ``other`` so the metric label stays bounded.
+_DATA_FINDING_CHECKS = frozenset(
+    {
+        "jailbreak_detection",
+        "prompt_safety",
+        "prompt_toxicity",
+        "response_safety",
+        "response_toxicity",
+        "response_refusal",
+    }
+)
 
 #: How segment 0 is treated: ``absent`` (no system prompt in ``segments`` at all —
 #: ``/translate``), ``governed`` (verified by digest — never screened) or
@@ -101,11 +115,11 @@ SYSTEM_PROMPT_GOVERNANCE = Counter(
     ["governance"],
 )
 
-#: FC-5b data findings: one increment per (flagged data region, check). Counts only.
+#: FC-5b / FC-5c data findings: one increment per (flagged region, check). Counts only.
 DATA_FINDINGS = Counter(
     "text_egress_data_findings_total",
-    "Prompt-safety flags on trust=data regions that guardrail reported instead of "
-    "blocking (TASK-1047 FC-5b), by check",
+    "Guardrail flags reported instead of blocking — prompt-safety on trust=data "
+    "regions (TASK-1047 FC-5b) and outbound record-only checks (FC-5c), by check",
     ["check"],
 )
 
@@ -295,9 +309,50 @@ def _record_data_findings(verdict: Any, regions: list[_ScreenRegion]) -> list[di
     already drops malformed items; they are re-checked here (any stub may stand in for
     it) and dropped, never raised on. Nothing here touches the verdict.
     """
+    findings = _well_formed_findings(verdict, {region.key for region in regions})
+    if not findings:
+        return []
+    _count_findings(findings)
+    logger.warning(
+        "text.egress.data_findings",
+        direction="inbound",
+        findings=findings,
+        regions_flagged=len({f["region"] for f in findings}),
+        data_regions=sum(1 for region in regions if region.trust == TRUST_DATA),
+        regions_screened=len(regions),
+    )
+    return findings
+
+
+def record_outbound_data_findings(verdict: Any, *, where: str) -> list[dict[str, Any]]:
+    """Log and count the OUTBOUND screen's ``data_findings`` (TASK-1047 FC-5c); return them.
+
+    Guardrail reports a record-only check (``outboundRecordOnlyChecks``, default
+    ``jailbreak_detection``) that flagged on the response as
+    ``[{region: "response", reasons}]`` instead of blocking. Recorded exactly like the
+    inbound findings: one ``text.egress.data_findings`` line with ``direction:
+    "outbound"`` (region + check names, never text) and the same
+    ``text_egress_data_findings_total`` counter. Malformed items are dropped, never
+    raised on, and nothing here touches the verdict.
+    """
+    findings = _well_formed_findings(verdict, {OUTBOUND_FINDING_REGION})
+    if not findings:
+        return []
+    _count_findings(findings)
+    logger.warning(
+        "text.egress.data_findings",
+        direction="outbound",
+        where=where,
+        findings=findings,
+        regions_flagged=len({f["region"] for f in findings}),
+    )
+    return findings
+
+
+def _well_formed_findings(verdict: Any, sent: set[str]) -> list[dict[str, Any]]:
+    """``verdict["data_findings"]`` items shaped ``{region in sent, reasons: [str, …]}``."""
     raw = verdict.get("data_findings") if isinstance(verdict, dict) else None
-    sent = {region.key for region in regions}
-    findings = [
+    return [
         {"region": item["region"], "reasons": list(item["reasons"])}
         for item in (raw if isinstance(raw, list) else [])
         if isinstance(item, dict)
@@ -306,19 +361,12 @@ def _record_data_findings(verdict: Any, regions: list[_ScreenRegion]) -> list[di
         and item["reasons"]
         and all(isinstance(reason, str) for reason in item["reasons"])
     ]
-    if not findings:
-        return []
+
+
+def _count_findings(findings: list[dict[str, Any]]) -> None:
     for finding in findings:
         for check in finding["reasons"]:
             DATA_FINDINGS.labels(check=check if check in _DATA_FINDING_CHECKS else "other").inc()
-    logger.warning(
-        "text.egress.data_findings",
-        findings=findings,
-        regions_flagged=len({f["region"] for f in findings}),
-        data_regions=sum(1 for region in regions if region.trust == TRUST_DATA),
-        regions_screened=len(regions),
-    )
-    return findings
 
 
 def _raise_for(verdict: dict[str, Any], *, medical: bool) -> None:

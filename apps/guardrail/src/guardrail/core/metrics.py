@@ -383,14 +383,16 @@ def record_screening_decision(direction: str, decision: str, reason: str) -> Non
 
 
 # ---------------------------------------------------------------------------
-# Inbound DATA posture (TASK-1047 FC-5b, owner decision OD-13)
+# Inbound DATA posture (TASK-1047 FC-5b, owner decision OD-13) and outbound
+# record-only checks (FC-5c, OD-14)
 # ---------------------------------------------------------------------------
-# `task` is the check NAME (`jailbreak_detection` | `prompt_safety` |
-# `prompt_toxicity`) — a closed vocabulary. Never a region key, never a tenant.
+# `task` is the check NAME (an `INBOUND_TASKS` or `OUTBOUND_TASKS` name) — a
+# closed vocabulary. Never a region key, never a tenant.
 
 GUARDRAIL_DATA_FINDINGS = Counter(
     "guardrail_data_findings_total",
-    "Inbound checks that flagged on a `data`-trust region (reported, never blocking), by check.",
+    "Checks that flagged on an inbound `data`-trust region (FC-5b) or as an outbound "
+    "record-only check (FC-5c) — reported, never blocking — by check.",
     ["task"],
 )
 
