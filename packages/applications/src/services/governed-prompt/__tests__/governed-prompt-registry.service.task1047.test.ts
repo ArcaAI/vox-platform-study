@@ -347,6 +347,13 @@ describe('registerPlatformPieces', () => {
     );
   });
 
+  it('resolves only once the pieces are registered, so a composer can await it before verifying (V7)', async () => {
+    const { service, repository } = makeHarness();
+    const rules = piece('Platform rules.', { kind: 'PLATFORM', sourceType: 'PLATFORM', sourceId: null, sourceKey: 'platform-rules@1' });
+    await service.registerPlatformPieces([rules]);
+    expect(repository.upsertVerdict).toHaveBeenCalledWith(expect.objectContaining({ kind: 'PLATFORM', tenantId: SYSTEM_TENANT_ID }));
+  });
+
   it('never throws to the composer, and retries after an unavailable guardrail', async () => {
     const { service, client } = makeHarness();
     client.screenRegions.mockRejectedValueOnce(new PromptScreeningUnavailableError('down'));

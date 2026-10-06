@@ -9,8 +9,16 @@
 import type { SystemGovernance } from '@arcaai/workflow-contract';
 import type { NoteComposedSystem } from '../note-composition/note-input-composer.service';
 
-export function noteComposedSystem(assembled: { systemPrompt: string; governance?: SystemGovernance | null }): NoteComposedSystem {
-  return { system: assembled.systemPrompt, governance: assembled.governance ?? null };
+export function noteComposedSystem(assembled: {
+  systemPrompt: string;
+  governance?: SystemGovernance | null;
+  platformPieces?: NoteComposedSystem['platformPieces'];
+}): NoteComposedSystem {
+  return {
+    system: assembled.systemPrompt,
+    governance: assembled.governance ?? null,
+    ...(assembled.platformPieces ? { platformPieces: assembled.platformPieces } : {}),
+  };
 }
 
 export function styleReferenceBackground(styleReference: string | null | undefined): Array<{ key: string; label: string; text: string }> {

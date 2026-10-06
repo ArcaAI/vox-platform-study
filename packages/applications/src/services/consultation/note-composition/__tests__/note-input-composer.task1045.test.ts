@@ -1159,6 +1159,25 @@ describe('TASK-1047 — `systemGovernance` on every planned call', () => {
     expect(reg.currentPolicyVersion).toHaveBeenCalledWith('t1');
   });
 
+  it("registers the assembly's platform pieces for the REQUEST tenant BEFORE verifying (V7: they were never registered)", async () => {
+    const reg = registry(true);
+    const order: string[] = [];
+    reg.registerPlatformPieces.mockImplementation(async () => {
+      order.push('register');
+    });
+    reg.areGoverned.mockImplementation(async () => {
+      order.push('verify');
+      return true;
+    });
+    const platformPieces = [
+      { kind: 'CONTRACT' as const, sourceType: 'PLATFORM' as const, sourceId: null, sourceKey: 'note-contract', text: 'Return JSON.' },
+    ];
+    const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: reg });
+    await svc.compose({ ...request, system: async () => ({ system: SYSTEM, governance, platformPieces }) });
+    expect(reg.registerPlatformPieces).toHaveBeenCalledWith(platformPieces, 't1');
+    expect(order).toEqual(['register', 'verify']);
+  });
+
   it('accepts the governance beside a STRING system too', async () => {
     const { svc } = service({ items: [seg(1, 1, 'Cough.')], registry: registry(true) });
     const { plan } = await svc.compose({ ...request, system: SYSTEM, systemGovernance: governance });

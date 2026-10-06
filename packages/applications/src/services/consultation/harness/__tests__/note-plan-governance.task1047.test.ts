@@ -12,6 +12,17 @@ describe('noteComposedSystem', () => {
     expect(noteComposedSystem({ systemPrompt: 'SYSTEM', governance })).toEqual({ system: 'SYSTEM', governance });
   });
 
+  it("carries the assembly's platform pieces so the note composer can register them (V7)", () => {
+    const platformPieces = [
+      { kind: 'CONTRACT' as const, sourceType: 'PLATFORM' as const, sourceId: null, sourceKey: 'note-contract', text: 'Return JSON.' },
+    ];
+    expect(noteComposedSystem({ systemPrompt: 'SYSTEM', governance: null, platformPieces })).toEqual({
+      system: 'SYSTEM',
+      governance: null,
+      platformPieces,
+    });
+  });
+
   it('absent governance is null (the plan call then carries none and apps/text screens it)', () => {
     expect(noteComposedSystem({ systemPrompt: 'SYSTEM' })).toEqual({ system: 'SYSTEM', governance: null });
   });

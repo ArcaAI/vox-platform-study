@@ -14,7 +14,7 @@ import {
   type ContextItemEntity,
 } from '@arcaai/domains';
 import { composeMessages, type SystemGovernance } from '@arcaai/workflow-contract';
-import { IGovernedPromptRegistry } from '../../governed-prompt/IGovernedPromptRegistry';
+import { IGovernedPromptRegistry, type GovernedPieceInput } from '../../governed-prompt/IGovernedPromptRegistry';
 import { governedSystemWire, type SystemGovernanceWire } from '../../text-request/system-governance';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -764,6 +764,8 @@ export interface NoteComposeRequest {
 export interface NoteComposedSystem {
   system: string;
   governance?: SystemGovernance | null;
+  /** The PLATFORM / LANGUAGE / CONTRACT pieces the assembly emitted; registered before the plan is verified. */
+  platformPieces?: readonly GovernedPieceInput[];
 }
 
 /** What a plan was composed FROM — ids only, so a cache miss can recompose the same plan. */
@@ -826,6 +828,23 @@ export class NoteInputComposerService {
    * TASK-1047 FC-4 — the `system_governance` the harness may forward for this plan's system message,
    * or `null`. Never throws: a registry failure composes the plan ungoverned (screened as untrusted).
    */
+  /**
+   * TASK-1047 V7 — the note's own PLATFORM / LANGUAGE / CONTRACT pieces are registered (and awaited) before
+   * the plan is verified; without this they were never registered and no note plan was ever governed.
+   * Never throws: a failure leaves the plan ungoverned, which apps/text then screens in full.
+   */
+  private async registerPlatformPieces(tenantId: string, pieces: readonly GovernedPieceInput[] | undefined): Promise<void> {
+    if (!this.governedPrompts || !pieces || pieces.length === 0) return;
+    try {
+      await this.governedPrompts.registerPlatformPieces(pieces, tenantId);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Platform prompt-piece registration failed for a note plan',
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
+  }
+
   private async verifySystemGovernance(tenantId: string, system: string, governance: SystemGovernance | null): Promise<SystemGovernanceWire | null> {
     if (!this.governedPrompts || !governance) return null;
     try {
@@ -849,6 +868,7 @@ export class NoteInputComposerService {
     const composedSystem = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
     const system = typeof composedSystem === 'string' ? composedSystem : composedSystem.system;
     const governance = typeof composedSystem === 'string' ? (request.systemGovernance ?? null) : (composedSystem.governance ?? null);
+    if (typeof composedSystem !== 'string') await this.registerPlatformPieces(request.tenantId, composedSystem.platformPieces);
     const systemGovernance = await this.verifySystemGovernance(request.tenantId, system, governance);
     const plan = await composeFromSnapshot(snapshot, {
       systemGovernance,

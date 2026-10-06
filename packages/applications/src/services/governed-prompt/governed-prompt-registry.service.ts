@@ -223,29 +223,31 @@ export class GovernedPromptRegistryService extends BaseService implements IGover
     const fresh = this.distinct(pieces).filter((one) => !this.platformHandled.has(`${policyVersion}|${one.digest}`));
     if (fresh.length === 0) return;
     for (const one of fresh) this.platformHandled.add(`${policyVersion}|${one.digest}`);
-    this.track(
-      this.screenAs(
-        tenantId,
-        SYSTEM_TENANT_ID,
-        fresh.map((one) => one.piece),
-      )
-        .then((result) => {
-          // Unavailable ⇒ forget, so a later compose retries; a real verdict (PASS or FAIL) stays handled.
-          for (const finding of result.findings) {
-            if (finding.code === 'PROMPT_SCREENING_UNAVAILABLE') this.platformHandled.delete(`${policyVersion}|${finding.digest}`);
-          }
-          if (!result.passed) {
-            this.logger.warn({
-              message: 'governed-prompt.platform.refused',
-              findings: result.findings.map(({ code, pieceKey, digest }) => ({ code, pieceKey, digest })),
-            });
-          }
-        })
-        .catch((error: unknown) => {
-          for (const one of fresh) this.platformHandled.delete(`${policyVersion}|${one.digest}`);
-          this.logger.warn({ message: 'governed-prompt.platform.failed', error: error instanceof Error ? error.name : 'unknown' });
-        }),
-    );
+    // Resolves once screened (TASK-1047 V7): the note composer awaits it before verifying; the egress
+    // enrichment still calls it fire-and-forget.
+    const work = this.screenAs(
+      tenantId,
+      SYSTEM_TENANT_ID,
+      fresh.map((one) => one.piece),
+    )
+      .then((result) => {
+        // Unavailable ⇒ forget, so a later compose retries; a real verdict (PASS or FAIL) stays handled.
+        for (const finding of result.findings) {
+          if (finding.code === 'PROMPT_SCREENING_UNAVAILABLE') this.platformHandled.delete(`${policyVersion}|${finding.digest}`);
+        }
+        if (!result.passed) {
+          this.logger.warn({
+            message: 'governed-prompt.platform.refused',
+            findings: result.findings.map(({ code, pieceKey, digest }) => ({ code, pieceKey, digest })),
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        for (const one of fresh) this.platformHandled.delete(`${policyVersion}|${one.digest}`);
+        this.logger.warn({ message: 'governed-prompt.platform.failed', error: error instanceof Error ? error.name : 'unknown' });
+      });
+    this.track(work);
+    await work;
   }
 
   // ============================================================
