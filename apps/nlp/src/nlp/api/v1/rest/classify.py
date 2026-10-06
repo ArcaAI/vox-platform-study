@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from nlp.api.tenant import TENANT_HEADER, assert_tenant_matches_header
+from nlp.core.bounds import enforce_input_cap
 from nlp.core.concurrency import ResizableSemaphore
 from nlp.core.logging import get_logger
 from nlp.dependencies import (
@@ -126,6 +127,7 @@ async def classify_text(
     """
     # model_name (gateway-injected AiModel.sourceUri) is required;
     # a missing/unloadable model fails closed with HTTP 503.
+    enforce_input_cap("classify_text", request.text)
     if not request.model_name:
         raise HTTPException(status_code=503, detail="Text classification model not available")
 
@@ -222,6 +224,7 @@ async def classify_tokens(
     """
     # model_name (gateway-injected AiModel.sourceUri) is required;
     # a missing/unloadable model fails closed with HTTP 503.
+    enforce_input_cap("classify_tokens", request.text)
     if not request.model_name:
         raise HTTPException(status_code=503, detail="Token classification model not available")
 

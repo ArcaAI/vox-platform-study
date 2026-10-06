@@ -321,3 +321,16 @@ def publish_queue_depths(depths: dict[str, int]) -> None:
     """Publish current queue depth per batcher onto the gauge."""
     for batcher, depth in depths.items():
         NLP_INFERENCE_QUEUE_DEPTH.labels(batcher=batcher).set(depth)
+
+
+# TASK-1047 (L6): bounded inference.
+NLP_INPUT_EXCEEDS_WINDOW_TOTAL = Counter(
+    "nlp_input_exceeds_window",
+    "Requests refused with 413 INPUT_EXCEEDS_WINDOW (text over nlp.inference.maxInputChars).",
+    ["route"],
+)
+
+NLP_PROCESS_RSS_BYTES = Gauge(
+    "nlp_process_rss_bytes",
+    "Resident set size of this worker, sampled after every served response.",
+)

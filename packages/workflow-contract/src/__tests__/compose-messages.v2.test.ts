@@ -26,6 +26,8 @@ interface ComposeCase {
     dataBlocks?: ComposeDataBlock[];
     templateRef?: string;
     dropEmptyBlocks?: boolean;
+    blockAliases?: Record<string, string>;
+    outputContractParts?: Array<{ key: string; text: string }>;
   };
   expected?: unknown;
   error?: { name: string; paths?: string[]; key?: string };
@@ -54,6 +56,8 @@ function run(entry: ComposeCase): unknown {
     dataBlocks: entry.input.dataBlocks ?? [],
     ...(entry.input.templateRef === undefined ? {} : { templateRef: entry.input.templateRef }),
     ...(entry.input.dropEmptyBlocks === undefined ? {} : { dropEmptyBlocks: entry.input.dropEmptyBlocks }),
+    ...(entry.input.blockAliases === undefined ? {} : { blockAliases: entry.input.blockAliases }),
+    ...(entry.input.outputContractParts === undefined ? {} : { outputContractParts: entry.input.outputContractParts }),
   });
 }
 

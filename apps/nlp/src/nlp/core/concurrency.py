@@ -172,6 +172,13 @@ async def refresh_inference_limit(client: Any) -> ResizableSemaphore:
                 current=limit,
                 in_flight=semaphore.in_flight,
             )
+
+        # TASK-1047 FC-8: input/recycle bounds ride the same pull, and the
+        # per-inference thread share follows the (possibly resized) concurrency.
+        from nlp.core import bounds
+
+        bounds.apply_snapshot(snapshot)
+        bounds.apply_threads(semaphore.limit)
     except Exception as exc:  # noqa: BLE001 — a config refresh may never break inference
         logger.warning(
             "nlp.effective_config.apply_error",

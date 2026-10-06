@@ -36,7 +36,7 @@
 import { evaluateCondition, expressionRootIdentifiers, parseExpression, type ExpressionValue } from './expressions';
 import type { PromptVariableDeclaration } from './derive-variable-declarations';
 import type { PromptScopeVariableDeclaration } from './prompt-scope';
-import { collectPlaceholders, renderTemplate, resolveTemplatePath } from './template';
+import { collectPlaceholders, renderTemplate, renderTemplatePointers, resolveTemplatePath, type PointerPlaceholder } from './template';
 
 /** The roots a `when` may read — the render scope's own (`buildAgentPromptScope`), by name. */
 export const AGENT_CONDITION_ROOTS: readonly string[] = Object.freeze(['context', 'trigger', 'input', 'vars', 'nodes', 'variables']);
@@ -99,11 +99,26 @@ export interface ComposedPrompt {
   /** Selected fragment KEYS in order — empty for the two single-body shapes. */
   readonly selected: readonly string[];
   readonly excluded: readonly FragmentExclusion[];
+  /**
+   * TASK-1047 FC-1 — `placeholderMode: 'pointer'` only: the rendered instruction pieces in order
+   * (the one body, or each selected fragment) — `prompt` is these joined.
+   */
+  readonly parts?: readonly string[];
+  /** TASK-1047 FC-1 — `placeholderMode: 'pointer'` only: every placeholder occurrence, in render order. */
+  readonly placeholders?: readonly PointerPlaceholder[];
 }
 
 export interface ComposePromptOptions {
   /** What to name the agent in errors — an agent slug, a bench id. Fragments are named `<templateRef>#<key>`. */
   readonly templateRef?: string;
+  /**
+   * TASK-1047 FC-1 — `'value'` (default) substitutes each placeholder's value; `'pointer'` renders
+   * `[see the <block> data section below]` instead and reports the values in `placeholders`
+   * (what `composeMessages` uses, so a system message carries no runtime value).
+   */
+  readonly placeholderMode?: 'value' | 'pointer';
+  /** `'pointer'` mode only: placeholder path → block name (`placeholderBlockName`). */
+  readonly blockAliases?: Readonly<Record<string, string>>;
 }
 
 /** Every fragment's condition was false or failed. Publish enforces a base fragment (OD-6), so this is defensive. */
@@ -169,10 +184,21 @@ export function composePrompt(
 ): ComposedPrompt {
   if (resolvedPrompt === null || resolvedPrompt === undefined) return { prompt: null, selected: [], excluded: [] };
   const templateRef = options.templateRef ?? null;
+  const pointer = options.placeholderMode === 'pointer';
+  const placeholders: PointerPlaceholder[] = [];
+  const render = (content: string, ref: string | null): string => {
+    if (!pointer) return renderTemplate(content, scope, ref === null ? undefined : { templateRef: ref });
+    const rendered = renderTemplatePointers(content, scope, {
+      ...(ref === null ? {} : { templateRef: ref }),
+      ...(options.blockAliases === undefined ? {} : { blockAliases: options.blockAliases }),
+    });
+    placeholders.push(...rendered.placeholders);
+    return rendered.text;
+  };
 
   if (resolvedPrompt.source !== 'composite') {
-    const prompt = renderTemplate(contentOf(resolvedPrompt), scope, templateRef === null ? undefined : { templateRef });
-    return { prompt, selected: [], excluded: [] };
+    const prompt = render(contentOf(resolvedPrompt), templateRef);
+    return pointer ? { prompt, selected: [], excluded: [], parts: [prompt], placeholders } : { prompt, selected: [], excluded: [] };
   }
 
   // A composite that carries no fragment list cannot be published (publish always stamps one),
@@ -183,10 +209,9 @@ export function composePrompt(
   if (selected.length === 0) throw new PromptCompositionEmptyError(excluded, templateRef);
 
   const join = typeof resolvedPrompt.join === 'string' ? resolvedPrompt.join : PROMPT_COMPOSITION_JOIN;
-  const parts = selected.map((fragment) =>
-    renderTemplate(contentOf(fragment), scope, { templateRef: templateRef === null ? `#${fragment.key}` : `${templateRef}#${fragment.key}` }),
-  );
-  return { prompt: parts.join(join), selected: selected.map((fragment) => fragment.key), excluded };
+  const parts = selected.map((fragment) => render(contentOf(fragment), templateRef === null ? `#${fragment.key}` : `${templateRef}#${fragment.key}`));
+  const composed = { prompt: parts.join(join), selected: selected.map((fragment) => fragment.key), excluded };
+  return pointer ? { ...composed, parts, placeholders } : composed;
 }
 
 /**

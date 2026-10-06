@@ -20,6 +20,7 @@ from nlp.core.config import (
     TokenClassificationConfig,
 )
 from nlp.core.websocket_manager import WebSocketManager
+from nlp.core.weight_registry import get_weight_registry
 from nlp.services.document_extractor import DocumentExtractor
 from nlp.services.external_text_client import ExternalTextClient
 from nlp.services.medical_suggester import MedicalSuggester
@@ -185,7 +186,7 @@ async def _create_token_classifier(cache_key: str) -> TokenClassifier:
     # Blocking (filesystem / a small cached download) — never on the event loop.
     config = await asyncio.to_thread(read_checkpoint_config, source)
     if is_gliner_checkpoint(config):
-        return await _create_gliner_token_classifier(model_name, source)
+        return await _create_gliner_token_classifier(model_name, source, model_path)
 
     configs = TokenClassificationConfig(model_name=source, tokenizer_name=source)
     instance = TransformerTokenClassifier(configs=configs)
@@ -193,7 +194,9 @@ async def _create_token_classifier(cache_key: str) -> TokenClassifier:
     return instance
 
 
-async def _create_gliner_token_classifier(model_name: str, source: str) -> TokenClassifier:
+async def _create_gliner_token_classifier(
+    model_name: str, source: str, model_path: str | None = None
+) -> TokenClassifier:
     """The `gliner2` extractor behind the token-classification contract.
 
     Placement is decided HERE, from configuration, before a tensor executes —
@@ -205,13 +208,20 @@ async def _create_gliner_token_classifier(model_name: str, source: str) -> Token
     from nlp.services.gliner2_guard import Gliner2GuardService
     from nlp.services.gliner_token_classifier import Gliner2TokenClassifier
 
-    runtime = Gliner2GuardService(
-        weights_source=source,
-        model_id=model_name,
-        device=resolve_inference_device(settings.service.inference_device),
-        cpu_only_modules=parse_cpu_only_modules(settings.service.inference_device_cpu_only_modules),
-    )
-    await asyncio.to_thread(runtime.load)
+    async def load() -> Gliner2GuardService:
+        runtime = Gliner2GuardService(
+            weights_source=source,
+            model_id=model_name,
+            device=resolve_inference_device(settings.service.inference_device),
+            cpu_only_modules=parse_cpu_only_modules(
+                settings.service.inference_device_cpu_only_modules
+            ),
+        )
+        await asyncio.to_thread(runtime.load)
+        return runtime
+
+    # TASK-1047 C8: the guard cache may already hold these exact weights.
+    runtime = await get_weight_registry().get_or_load((model_name, model_path), load)
     instance = Gliner2TokenClassifier(model_name=model_name, runtime=runtime)
     await instance.initialize()
     return instance
@@ -514,15 +524,27 @@ async def _create_gliner2_guard(cache_key: str) -> Any:
     # Placement is decided HERE, from configuration, before a single tensor
     # executes: an op the accelerator does not support aborts the process
     # instead of raising, so there is no "try it and fall back".
-    service = Gliner2GuardService(
-        weights_source=resolve_guard_weights_source(model_name, model_path),
-        model_id=model_name,
-        device=resolve_inference_device(settings.service.inference_device),
-        cpu_only_modules=parse_cpu_only_modules(settings.service.inference_device_cpu_only_modules),
-    )
-    # GLiNER2 load is blocking/CPU-bound — keep the event loop responsive.
-    await asyncio.to_thread(service.load)
-    return service
+    # Resolved (and fail-closed validated) BEFORE the shared registry is
+    # consulted, so reuse can never serve weights for a reference that does not
+    # resolve.
+    weights_source = resolve_guard_weights_source(model_name, model_path)
+
+    async def load() -> Gliner2GuardService:
+        service = Gliner2GuardService(
+            weights_source=weights_source,
+            model_id=model_name,
+            device=resolve_inference_device(settings.service.inference_device),
+            cpu_only_modules=parse_cpu_only_modules(
+                settings.service.inference_device_cpu_only_modules
+            ),
+        )
+        # GLiNER2 load is blocking/CPU-bound — keep the event loop responsive.
+        await asyncio.to_thread(service.load)
+        return service
+
+    # TASK-1047 C8: one resident copy per weight identity, shared with the
+    # token-classifier cache.
+    return await get_weight_registry().get_or_load((model_name, model_path), load)
 
 
 #: `cache_key -> EntailmentCalibration` for the load currently being requested.

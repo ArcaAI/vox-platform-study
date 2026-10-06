@@ -3,10 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from nlp.api import api_router
+from nlp.core.bounds import INPUT_EXCEEDS_WINDOW, InputExceedsWindow
 from nlp.core.config import settings
 from nlp.core.internal_auth import assert_internal_access_token
 from nlp.core.logging import get_logger, setup_logging
 from nlp.core.observability import setup_opentelemetry, setup_prometheus
+from nlp.core.recycle import RecycleMiddleware
 from nlp.lifespan import lifespan
 from nlp.residency import residency_router
 from nlp.utils import is_production
@@ -53,6 +55,9 @@ def get_app() -> FastAPI:
 
     app.add_middleware(ServiceAuthMiddleware)
 
+    # TASK-1047 FC-8: graceful worker recycling after a response is delivered.
+    app.add_middleware(RecycleMiddleware)
+
     # Observability HERE, in the factory — never from the lifespan (TASK-987
     # B-1). Starlette builds `middleware_stack` on the first `__call__`, and the
     # lifespan scope IS a `__call__`, so an `add_middleware` from inside the
@@ -78,6 +83,7 @@ def get_app() -> FastAPI:
 
     setup_prometheus(app)
 
+    app.add_exception_handler(InputExceedsWindow, input_exceeds_window_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)
 
@@ -86,6 +92,14 @@ def get_app() -> FastAPI:
     app.include_router(residency_router())
 
     return app
+
+
+async def input_exceeds_window_handler(request: Request, exc: Exception) -> JSONResponse:
+    """FC-8: 413 with the frozen body. Callers window their input; nothing is truncated."""
+    max_chars = exc.max_chars if isinstance(exc, InputExceedsWindow) else 0
+    return JSONResponse(
+        status_code=413, content={"code": INPUT_EXCEEDS_WINDOW, "maxChars": max_chars}
+    )
 
 
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:

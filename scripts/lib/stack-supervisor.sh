@@ -15,6 +15,21 @@
 #   set_command_for <service>   sets the global CMD array for that service
 #   port_for <service>          echoes the TCP port, or "" for portless workers
 #
+# RESTART (TASK-1047 C9): each service runs under a small per-service loop that
+# restarts it when it exits (an OOM `Killed: 9`, a crash, or uvicorn's
+# `--limit-max-requests` recycle, which exits 0 on purpose) with bounded
+# exponential backoff and logs the exit code / signal into the service's log.
+#   SUPERVISOR_RESTART          1|0  (default 1 for the dev stack, 0 for test)
+#   SUPERVISOR_BACKOFF_MIN_S    first restart delay            (default 1)
+#   SUPERVISOR_BACKOFF_MAX_S    delay ceiling                  (default 30)
+#   SUPERVISOR_HEALTHY_S        a run this long resets backoff (default 60)
+#   SUPERVISOR_STARTUP_GRACE_S  a FIRST launch dying sooner than this is a
+#                               config error: not retried, the loop exits and
+#                               the start-up check reports it     (default 2)
+# A stop (Ctrl-C, `down`) sets a flag in the loop and kills the child; the loop
+# never restarts after that. Exit 0 is restarted too (it is the recycle path),
+# after the minimum delay and without escalating the backoff.
+#
 # State layout (chmod 700, symlinks refused — dev logs can contain PHI, CWE-377):
 #   ${HOPE_DEV_STATE_DIR:-$XDG_STATE_HOME/hope-dev}/
 #     logs/<stack>/<service>.log
@@ -58,12 +73,16 @@ proc_start_time() {
     ps -o lstart= -p "$1" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true
 }
 
+# Children are captured BEFORE the parent is signalled: a restart loop must see
+# its stop signal before its child dies (or it would respawn it), and once the
+# parent is gone `pgrep -P` can no longer find the grandchildren.
 kill_tree() {
-    local pid="$1" child
-    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    local pid="$1" child children
+    children="$(pgrep -P "$pid" 2>/dev/null || true)"
+    kill "$pid" 2>/dev/null || true
+    for child in $children; do
         kill_tree "$child"
     done
-    kill "$pid" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -152,6 +171,74 @@ supervisor_preflight() {
 }
 
 # ---------------------------------------------------------------------------
+# supervisor_spawn_one <service> <logfile>
+# Needs CMD set (set_command_for). Starts the service, under the restart loop
+# when enabled, in the background; sets SUPERVISOR_LAST_PID to the pid to record
+# (the loop's, whose tree contains the service).
+# ---------------------------------------------------------------------------
+supervisor_restart_enabled() {
+    local default=0
+    [ "$STACK_NAME" = "dev" ] && default=1
+    [ "${SUPERVISOR_RESTART:-$default}" = "1" ]
+}
+
+# "exit 137" -> "exit 137 (SIGKILL)"; plain codes stay plain.
+describe_exit() {
+    local code="$1" sig=""
+    if [ "$code" -gt 128 ] 2>/dev/null; then
+        sig="$(kill -l $((code - 128)) 2>/dev/null || true)"
+    fi
+    if [ -n "$sig" ]; then echo "exit code $code (SIG${sig#SIG})"; else echo "exit code $code"; fi
+}
+
+supervisor_spawn_one() {
+    local svc="$1" log="$2"
+    if ! supervisor_restart_enabled; then
+        "${CMD[@]}" >>"$log" 2>&1 &
+        SUPERVISOR_LAST_PID=$!
+        return 0
+    fi
+    (
+        local min="${SUPERVISOR_BACKOFF_MIN_S:-1}" max="${SUPERVISOR_BACKOFF_MAX_S:-30}"
+        local healthy="${SUPERVISOR_HEALTHY_S:-60}" grace="${SUPERVISOR_STARTUP_GRACE_S:-2}"
+        local delay="$min" restarts=0 stopping=0 child="" first=1 started code runtime
+        local childfile="$PID_DIR/$svc.child"
+        # `kill_tree` here is the whole point of the flag: set it BEFORE killing so
+        # the loop below cannot race a respawn against the stop.
+        trap 'stopping=1; [ -n "$child" ] && kill_tree "$child"; rm -f "$childfile"; exit 0' TERM INT
+        while :; do
+            started=$SECONDS
+            "${CMD[@]}" >>"$log" 2>&1 &
+            child=$!
+            printf '%s\n' "$child" > "$childfile"
+            set +e; wait "$child"; code=$?; set -e
+            [ "$stopping" = "1" ] && exit 0
+            runtime=$((SECONDS - started))
+            if [ "$first" = "1" ] && [ "$runtime" -lt "$grace" ]; then
+                echo "[supervisor] $svc failed on first launch ($(describe_exit "$code") after ${runtime}s) — not restarting; fix the cause" >>"$log"
+                rm -f "$childfile"
+                exit "$code"
+            fi
+            first=0
+            if [ "$runtime" -ge "$healthy" ]; then delay="$min"; fi
+            restarts=$((restarts + 1))
+            if [ "$code" -eq 0 ]; then
+                # an intentional recycle (uvicorn --limit-max-requests): restart at the minimum delay
+                echo "[supervisor] $svc exited cleanly after ${runtime}s; restart #$restarts in ${min}s" >>"$log"
+                sleep "$min" & child=$!; set +e; wait "$child"; set -e
+            else
+                echo "[supervisor] $svc exited ($(describe_exit "$code")) after ${runtime}s; restart #$restarts in ${delay}s" >>"$log"
+                sleep "$delay" & child=$!; set +e; wait "$child"; set -e
+                delay=$((delay * 2)); [ "$delay" -gt "$max" ] && delay="$max"
+            fi
+            child=""
+            [ "$stopping" = "1" ] && exit 0
+        done
+    ) &
+    SUPERVISOR_LAST_PID=$!
+}
+
+# ---------------------------------------------------------------------------
 # Spawn + supervise
 # supervisor_run <service>...
 # Blocks tailing logs until interrupted; Ctrl-C stops every spawned tree.
@@ -202,8 +289,8 @@ supervisor_run() {
         refuse_symlink_file "$pidfile"
         : > "$log"
         set_command_for "$svc"
-        "${CMD[@]}" >>"$log" 2>&1 &
-        pid=$!
+        supervisor_spawn_one "$svc" "$log"
+        pid=$SUPERVISOR_LAST_PID
         SUPERVISOR_PIDS+=("$pid")
         SUPERVISOR_SPAWNED+=("$svc")
         printf '%s\n%s\n' "$pid" "$(proc_start_time "$pid")" > "$pidfile"

@@ -24,6 +24,7 @@ from harness.temporal.interpreter.compose_messages import (
     EXTERNAL_DATA_TRUNCATION_MARKER,
     PLATFORM_RULES_VERSION,
     ComposeDataBlockKeyError,
+    ComposeOutputContractConflictError,
     compose_messages,
     output_language_step,
     platform_rules,
@@ -52,6 +53,7 @@ _ERRORS: dict[str, type[Exception]] = {
     "PromptVariableUnresolved": PromptVariableUnresolved,
     "PromptCompositionEmpty": PromptCompositionEmpty,
     "ComposeDataBlockKeyError": ComposeDataBlockKeyError,
+    "ComposeOutputContractConflictError": ComposeOutputContractConflictError,
 }
 
 
@@ -87,6 +89,23 @@ def test_fixture_is_not_vacuous() -> None:
         EXTERNAL_DATA_MARKER_REPLACEMENT in case.get("expected", {}).get("user", "")
         for case in _CASES
     )
+    # TASK-1047 FC-1 / FC-2 — governed rendering is pinned, every piece kind is exercised.
+    assert all("error" in case or "governance" in case["expected"] for case in _CASES)
+    assert {
+        "governed-pointer-every-placeholder",
+        "governed-block-aliases",
+        "governed-block-order-placeholders-then-caller",
+        "governed-defaults-empty-values-and-collapsed-names",
+        "governed-composite-fragment-pieces",
+        "governed-output-contract-parts",
+        "governed-output-contract-conflict-raises",
+    } <= set(names)
+    kinds = {
+        piece["kind"]
+        for case in _CASES
+        for piece in case.get("expected", {}).get("governance", {}).get("pieces", [])
+    }
+    assert {"PLATFORM", "TEMPLATE_BODY", "FRAGMENT", "LANGUAGE", "CONTRACT"} <= kinds
     scope_names = {case["name"] for case in _SCOPE_CASES}
     assert {
         "trigger-only-aliases-context",
@@ -131,6 +150,9 @@ def test_compose_messages_matches_the_fixture(case: dict[str, Any]) -> None:
             output_contract=given.get("outputContract"),
             data_blocks=given.get("dataBlocks"),
             template_ref=given.get("templateRef"),
+            drop_empty_blocks=given.get("dropEmptyBlocks", False),
+            block_aliases=given.get("blockAliases"),
+            output_contract_parts=given.get("outputContractParts"),
         )
 
     if "expected" in case:
@@ -143,6 +165,11 @@ def test_compose_messages_matches_the_fixture(case: dict[str, Any]) -> None:
         assert [
             {"key": b.key, "chars": b.chars, "truncated": b.truncated} for b in result.blocks
         ] == expected["blocks"]
+        # TASK-1047 FC-2 — pieces + digests, snake_case on this side.
+        assert result.governance == {
+            "pieces": expected["governance"]["pieces"],
+            "composed_digest": expected["governance"]["composedDigest"],
+        }
         return
 
     error = case["error"]
