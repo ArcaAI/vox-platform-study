@@ -37,7 +37,17 @@ import {
   type ComposeDataBlock,
   type ComposedDataBlock,
   type ComposedMessages,
+  type SystemGovernance,
 } from '@arcaai/workflow-contract';
+import type { GovernedPieceInput } from '../../governed-prompt/IGovernedPromptRegistry';
+import { platformPiecesOf, type OutputContractPart } from '../../text-request/system-governance';
+import {
+  DNA_REDACTION_GUIDANCE,
+  DNA_STYLE_GUIDANCE,
+  STYLE_REFERENCE_BLOCK,
+  STYLE_REFERENCE_EXEMPLARS_GUIDANCE,
+  styleReferenceContent,
+} from './style-reference';
 // TASK-890 §3.4 — the legacy bridge: the SYSTEM schema that DECLARES the v1 prompt vocabulary,
 // cloned into every tenant by the reference set. The slug is imported, never re-typed.
 import { LEGACY_CONTEXT_SCHEMA_SLUG, payloadSchemaFromDefinition } from '../../consultation-context-schema/context-schema-definition';
@@ -55,11 +65,14 @@ import { IActiveUserContext } from '../../../interfaces';
  * records, the live draft — so it travels in the user message inside the spotlighting delimiters
  * the platform rules describe, and never in the system message. A governed body that names one
  * of these variables inline (`Transcript:\n{{transcript}}`, the seeded shape) renders a POINTER
- * to the section instead of the value: the instruction stays stable for the prefix cache, and
- * transcript text can never sit at instruction trust.
+ * to the section instead of the value (TASK-1047 FC-1: the composer renders every placeholder as a
+ * pointer; `blockAliases` keeps these sections' established names): the instruction stays stable
+ * for the prefix cache, and transcript text can never sit at instruction trust.
+ *
+ * TASK-1047 D9 — the TRANSCRIPT is last: the stable context comes first so an engine's prefix
+ * cache reuses it, and the text that changes most sits nearest the generation point.
  */
 const DATA_SECTIONS: ReadonlyArray<{ key: string; label: string; variable: string }> = [
-  { key: 'transcript', label: 'TRANSCRIPT', variable: 'transcript' },
   { key: 'ner_entities', label: 'RECOGNIZED CLINICAL ENTITIES (from NER)', variable: 'ner_entities' },
   { key: 'clinician_notes', label: 'CLINICIAN NOTES (case / work notes)', variable: 'clinician_notes' },
   { key: 'attachments', label: 'ATTACHMENTS (lab / exam results)', variable: 'attachments' },
@@ -71,6 +84,7 @@ const DATA_SECTIONS: ReadonlyArray<{ key: string; label: string; variable: strin
   { key: 'doctor_highlights', label: 'DOCTOR HIGHLIGHTS (clinician-flagged spans)', variable: 'doctor_highlights' },
   { key: 'prior_visit_summary', label: 'PRIOR VISIT SUMMARY', variable: 'prior_visit_summary' },
   { key: 'prior_draft', label: 'PRIOR DRAFT (running SOAP note from the live session — STAGE 1 SCRATCHPAD)', variable: 'pre_summary_text' },
+  { key: 'transcript', label: 'TRANSCRIPT', variable: 'transcript' },
 ];
 
 /** The department-scoped DNA style slots a governed body may name (one style per doctor fills them all). */
@@ -118,10 +132,25 @@ function bareName(path: string): string {
   return path.replace(/^trigger\.context\./, '').replace(/^context\./, '');
 }
 
-/** What a data variable renders as inside the instruction when its section is present. */
-function dataSectionPointer(label: string): string {
-  return `[see the ${label} data section below]`;
-}
+/**
+ * TASK-1047 FC-1 — the placeholder spellings a scope admits for one bare name. `blockAliases` is
+ * keyed by placeholder PATH, so each spelling a governed body may use is aliased.
+ */
+const PLACEHOLDER_PREFIXES: readonly string[] = ['', 'context.', 'trigger.context.', 'variables.'];
+
+/**
+ * TASK-1047 FC-1 — placeholder path → block name for this assembly's data sections (and v1's two
+ * names for the same values), in every spelling a scope admits. STATIC: it depends on nothing but
+ * this table, so a governed body renders the same system message for every encounter, and the
+ * authoring-time digest (FC-3) can be computed with the very same map.
+ */
+export const PROMPT_ASSEMBLY_BLOCK_ALIASES: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(
+    [...DATA_SECTIONS.map((section) => [section.variable, section.key] as const), ...Object.entries(DATA_SECTION_ALIASES)].flatMap(([name, block]) =>
+      PLACEHOLDER_PREFIXES.map((prefix) => [`${prefix}${name}`, block] as const),
+    ),
+  ),
+);
 
 /**
  * How many approved notes are shown as style examples.
@@ -151,12 +180,6 @@ const PRIOR_VISIT_SUMMARY_GUIDANCE = [
   'leave it out rather than carrying it forward. Never populate examination findings, vitals, results, or medication',
   'statements from this section without current-visit evidence.',
 ].join('\n');
-
-/**
- * What every data variable renders as inside the instruction when the user message is a composed
- * note plan: the plan's blocks carry the whole record, so a body's `{{transcript}}` points at them.
- */
-const NOTE_INPUTS_POINTER = '[see the note input data sections below]';
 
 /**
  * The platform guidance that accompanies a composed note plan's blocks (system message).
@@ -482,6 +505,13 @@ export interface AssembledPrompt {
   excluded?: { key: string; reason: string }[];
   /** One entry per data section the user message carries, in order. */
   blocks?: ComposedDataBlock[];
+  /**
+   * TASK-1047 FC-2 — the system message as governed pieces, from the composer (absent until the
+   * composer reports it). Forwarded as the egress hint; never sent to TEXT by itself.
+   */
+  governance?: SystemGovernance;
+  /** TASK-1047 FC-3 — the PLATFORM / LANGUAGE / CONTRACT pieces this assembly emitted, for registration. */
+  platformPieces?: GovernedPieceInput[];
 }
 
 /**
@@ -650,63 +680,55 @@ export class PromptAssemblyService {
 
     const referenced = referencedNames([...instructionContents(instruction), ...bindingPaths(agentVariables)]);
     const values = await this.buildVariables(params, referenced);
+    // The doctor's style and rules travel in STYLE REFERENCE only where the body does not place them
+    // itself; a body that names a slot carries the value in that slot's own block (no duplicate).
+    const dnaPlacedByBody = referenced.has('dna_style_text') || this.getDnaVariableKeys().some((key) => referenced.has(key));
+    const rulesPlacedByBody = referenced.has('dna_redaction_rules_text');
 
     // DATA → the USER message. Each section is wrapped in the spotlighting delimiters the
     // platform rules describe (F-03); a section with nothing in it is skipped by the composer.
     // A composed note plan replaces every per-encounter section with its own blocks.
     const noteInputs = params.noteInputBlocks;
     const fewShot = noteInputs ? null : await this.buildFewShotExemplars(params);
+    const styleReference = noteInputs
+      ? null
+      : styleReferenceContent({
+          style: dnaPlacedByBody ? null : values.dna_style_text,
+          rules: rulesPlacedByBody ? null : values.dna_redaction_rules_text,
+          exemplars: fewShot,
+        });
     const dataBlocks: ComposeDataBlock[] = noteInputs
       ? noteInputs.map((block) => ({ key: block.key, label: block.label, content: block.content }))
       : [
-          // Placed first, so the engine's prefix cache still hits across flushes for one exemplar set.
-          ...(fewShot
-            ? [
-                {
-                  key: 'style_reference',
-                  label: `STYLE REFERENCE — APPROVED NOTES FROM DIFFERENT PATIENTS (set ${fewShot.version})`,
-                  content: fewShot.text,
-                },
-              ]
-            : []),
+          // Placed first, so the engine's prefix cache still hits across flushes for one doctor and exemplar set.
+          ...(styleReference ? [{ key: STYLE_REFERENCE_BLOCK.key, label: STYLE_REFERENCE_BLOCK.label, content: styleReference }] : []),
           ...DATA_SECTIONS.map((section) => ({ key: section.key, label: section.label, content: values[section.variable] ?? null })),
         ];
 
-    // The instruction sees a POINTER where it names a data variable whose section is present,
-    // and the value itself otherwise (a scalar, or a section that is empty — its absence value).
+    // TASK-1047 FC-1 — the instruction renders a POINTER for every placeholder (the composer's job);
+    // the STATIC `PROMPT_ASSEMBLY_BLOCK_ALIASES` keep each data section's established block name, so
+    // a body naming `{{transcript}}` points at the TRANSCRIPT section rather than at a second copy of
+    // it — and the system message depends on the template alone, never on which sections this
+    // encounter happens to fill (a skipped section's slot carries its own absence value instead).
+    // A composed note plan IS the user message, so its data variables are bound EMPTY: the plan's
+    // blocks carry the record, and the system message is byte-identical to the non-plan one.
     const rendered: Record<string, string> = { ...values };
-    for (const section of DATA_SECTIONS) {
-      if (noteInputs) {
-        if (section.variable in values) rendered[section.variable] = NOTE_INPUTS_POINTER;
-      } else if (values[section.variable]) {
-        rendered[section.variable] = dataSectionPointer(section.label);
-      }
+    if (noteInputs) {
+      for (const section of DATA_SECTIONS) if (section.variable in values) rendered[section.variable] = '';
+      for (const alias of Object.keys(DATA_SECTION_ALIASES)) if (alias in rendered) rendered[alias] = '';
     }
-    for (const [alias, sectionKey] of Object.entries(DATA_SECTION_ALIASES)) {
-      const section = DATA_SECTIONS.find((candidate) => candidate.key === sectionKey);
-      if (!section || !(alias in rendered)) continue;
-      if (noteInputs) rendered[alias] = NOTE_INPUTS_POINTER;
-      else if (values[section.variable]) rendered[alias] = dataSectionPointer(section.label);
-    }
-
-    // GUIDANCE → the tail of the SYSTEM message: platform-authored instructions about the data
-    // sections above, and the doctor's own style and redaction rules (trusted, platform-resolved
-    // instruction about tone and formatting — not patient data) where the body did not place them.
-    const outputContract = [
-      fewShot
-        ? `The STYLE REFERENCE data section holds approved notes written for OTHER patients (set ${fewShot.version}), included ONLY as a reference for house formatting, section order and tone. They are NOT this patient's history: never carry a clinical fact, finding, or medication across from them.`
+    // GUIDANCE → the tail of the SYSTEM message: STATIC, keyed, platform-authored instructions about
+    // the data sections (TASK-1047 D1 — never a runtime value; the doctor's style and rules are in
+    // the STYLE REFERENCE section, and only what to do with them is said here).
+    const contractParts: OutputContractPart[] = [
+      fewShot ? { key: 'style-reference-exemplars', text: STYLE_REFERENCE_EXEMPLARS_GUIDANCE } : null,
+      noteInputs ? { key: 'note-inputs', text: NOTE_INPUTS_GUIDANCE } : null,
+      values.prior_visit_summary || noteInputs?.some((block) => block.key === 'prior_visit_summary')
+        ? { key: 'prior-visit-summary', text: PRIOR_VISIT_SUMMARY_GUIDANCE }
         : null,
-      noteInputs ? NOTE_INPUTS_GUIDANCE : null,
-      values.prior_visit_summary || noteInputs?.some((block) => block.key === 'prior_visit_summary') ? PRIOR_VISIT_SUMMARY_GUIDANCE : null,
-      values.dna_style_text && !referenced.has('dna_style_text') && !this.getDnaVariableKeys().some((key) => referenced.has(key))
-        ? `--- CLINICIAN WRITING STYLE (apply to tone, formatting, and section phrasing; this is style guidance, not patient data) ---\n${values.dna_style_text}`
-        : null,
-      values.dna_redaction_rules_text && !referenced.has('dna_redaction_rules_text')
-        ? `--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n${values.dna_redaction_rules_text}`
-        : null,
-    ]
-      .filter((part): part is string => !!part)
-      .join('\n\n');
+      values.dna_style_text && !dnaPlacedByBody ? { key: 'dna-style', text: DNA_STYLE_GUIDANCE } : null,
+      values.dna_redaction_rules_text && !rulesPlacedByBody ? { key: 'dna-redaction-rules', text: DNA_REDACTION_GUIDANCE } : null,
+    ].filter((part): part is OutputContractPart => part !== null);
 
     // The note's OUTPUT language — the platform default every caller passes — stated once, as the
     // composer's fixed sentence.
@@ -716,7 +738,8 @@ export class PromptAssemblyService {
       rendered,
       agentVariables,
       variableDeclarations,
-      outputContract,
+      outputContractParts: contractParts,
+      blockAliases: PROMPT_ASSEMBLY_BLOCK_ALIASES,
       outputLanguage: languageName ? { name: languageName } : null,
       dataBlocks,
     });
@@ -750,7 +773,19 @@ export class PromptAssemblyService {
       selected: [...composed.selected],
       excluded: composed.excluded.map(({ key, reason }) => ({ key, reason })),
       blocks: [...composed.blocks],
+      ...(composed.governance ? { governance: composed.governance } : {}),
+      platformPieces: platformPiecesOf({ platformRules: platformRules(), outputLanguageName: languageName, contractParts }),
     };
+  }
+
+  /**
+   * TASK-1047 D1 — the STYLE REFERENCE block's content for a caller that composes the USER message
+   * itself (the note plan): the doctor's DNA writing style and redaction rules, or `null` when
+   * neither applies. A composed note plan carries no few-shot exemplars, as on the assembly.
+   */
+  async styleReference(params: Pick<PromptAssemblyParams, 'dnaStyleId' | 'dnaRedactionRulesText'>): Promise<string | null> {
+    const style = params.dnaStyleId ? await this.resolveDnaStyleText(params.dnaStyleId) : null;
+    return styleReferenceContent({ style, rules: params.dnaRedactionRulesText?.trim() || null });
   }
 
   /**
@@ -773,13 +808,14 @@ export class PromptAssemblyService {
       rendered: Record<string, string>;
       agentVariables: Record<string, unknown>;
       variableDeclarations?: readonly PromptScopeVariableDeclaration[];
-      outputContract: string;
+      outputContractParts: readonly OutputContractPart[];
+      blockAliases: Readonly<Record<string, string>>;
       outputLanguage: { name: string } | null;
       dataBlocks: ComposeDataBlock[];
     },
   ): Promise<ComposedMessages> {
     const templateRef = promptId ?? params.promptType ?? 'prompt-assembly';
-    const compose = (instruction: ComposableResolvedPrompt, outputContract: string): ComposedMessages => {
+    const compose = (instruction: ComposableResolvedPrompt, outputContractParts: readonly OutputContractPart[]): ComposedMessages => {
       // `context` is the flat view every governed body reads (`{{context.safe_age}}`); `trigger`
       // is the run-payload envelope an agent's `{ path: 'trigger.context.*' }` binding reads; the
       // bare names are bound too, so a body authored either way renders the same bytes.
@@ -796,7 +832,9 @@ export class PromptAssemblyService {
         resolvedPrompt: instruction,
         scope,
         outputLanguage: input.outputLanguage,
-        outputContract,
+        // TASK-1047 FC-2 — static, keyed parts; each is one CONTRACT piece.
+        ...(outputContractParts.length > 0 ? { outputContractParts } : {}),
+        blockAliases: input.blockAliases,
         dataBlocks: input.dataBlocks,
         templateRef,
         // TASK-1036 OD-10 — a whitespace-only data section is dropped, not sent empty.
@@ -811,7 +849,7 @@ export class PromptAssemblyService {
     const bound = new Set(Object.keys(input.rendered));
     for (;;) {
       try {
-        return compose(input.instruction, input.outputContract);
+        return compose(input.instruction, input.outputContractParts);
       } catch (error) {
         if (!(error instanceof PromptVariableUnresolvedError)) throw error;
         const owned = error.paths.map(bareName).filter((name) => OWNED_NAMES.has(name) && !bound.has(name));
@@ -861,10 +899,12 @@ export class PromptAssemblyService {
           promptType: params.promptType,
           error: error.message,
         });
+        const verbatim = input.instruction?.content ?? '';
         return this.compose(params, promptId, {
           ...input,
           instruction: null,
-          outputContract: [input.instruction?.content ?? '', input.outputContract].filter((part) => part.length > 0).join('\n\n'),
+          // The governed body, verbatim, as its own keyed part — static text, never a runtime value.
+          outputContractParts: [...(verbatim.length > 0 ? [{ key: 'template-body-verbatim', text: verbatim }] : []), ...input.outputContractParts],
         });
       }
       throw error;

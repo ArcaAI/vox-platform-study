@@ -4,6 +4,12 @@
  * only renders what it is given, and renders nothing when it is given nothing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { lastBlockAliases, lastComposeInput, lastScopeContext, lastSystemSide } from './compose-spy';
+
+vi.mock('@arcaai/workflow-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arcaai/workflow-contract')>();
+  return { ...actual, composeMessages: vi.fn(actual.composeMessages) };
+});
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -98,24 +104,33 @@ function resolvesTo(content: string): void {
 const RULES_TEXT = '- Never write "Ms. Ada Byron".\n- Always write "pt" as "patient".';
 
 describe('TASK-1034 R3 — `dna_redaction_rules_text` in the gateway-assembled prompt', () => {
-  it('appends the rules under their own heading — an INSTRUCTION, in the system message — when the template has no slot for them', async () => {
+  // TASK-1047 D1 — the doctor's rules are a per-doctor RUNTIME value: DATA in the STYLE REFERENCE
+  // section; the system message carries only the static instruction about applying them.
+  it('carries the rules as DATA under their own heading in STYLE REFERENCE, with a static instruction in the system message', async () => {
     resolvesTo('Write the note.');
-    const { systemPrompt, userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
-    expect(systemPrompt).toContain('--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n' + RULES_TEXT);
-    expect(userPrompt).not.toContain('CLINICIAN REDACTION RULES');
+    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
+    expect(userPrompt).toContain('<<<EXTERNAL_DATA section="style_reference">>>');
+    expect(userPrompt).toContain('--- CLINICIAN REDACTION RULES (never include / always rewrite) ---\n' + RULES_TEXT);
+    expect(lastSystemSide()).not.toContain(RULES_TEXT);
+    expect((lastComposeInput().outputContractParts ?? []).map((part) => part.key)).toEqual(['dna-redaction-rules']);
   });
 
-  it('a template that binds `{{context.dna_redaction_rules_text}}` renders it ONCE, in place', async () => {
+  it('a template that binds `{{context.dna_redaction_rules_text}}` carries them in that slot — ONCE, no STYLE REFERENCE copy', async () => {
     resolvesTo('Rules:\n{{context.dna_redaction_rules_text}}');
-    const { systemPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
-    expect(systemPrompt).toContain('Rules:\n' + RULES_TEXT);
-    expect(systemPrompt).not.toContain('CLINICIAN REDACTION RULES');
+    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: RULES_TEXT });
+    expect(lastScopeContext().dna_redaction_rules_text).toBe(RULES_TEXT);
+    expect(lastBlockAliases()).not.toHaveProperty('context.dna_redaction_rules_text');
+    expect(userPrompt).not.toContain('section="style_reference"');
+    expect(lastSystemSide()).not.toContain(RULES_TEXT);
+    expect(lastComposeInput().outputContractParts ?? []).toEqual([]);
   });
 
   it.each([[undefined], ['']])('renders nothing for %j — the gate is off or the doctor authored no rules', async (text) => {
     resolvesTo('Rules: [{{context.dna_redaction_rules_text}}]');
-    const { systemPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: text });
-    expect(systemPrompt).toContain('Rules: []');
-    expect(systemPrompt).not.toContain('CLINICIAN REDACTION RULES');
+    const { userPrompt } = await (await getService()).assemble({ ...params(), dnaRedactionRulesText: text });
+    expect(lastScopeContext().dna_redaction_rules_text).toBe('');
+    expect(lastBlockAliases()).not.toHaveProperty('context.dna_redaction_rules_text');
+    expect(userPrompt).not.toContain('style_reference');
+    expect(lastSystemSide()).not.toContain('REDACTION RULES');
   });
 });

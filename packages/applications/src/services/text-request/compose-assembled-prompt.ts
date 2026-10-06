@@ -9,6 +9,11 @@
  *
  * Lives in `@arcaai/applications` so the gateway controller composes through the contract
  * without a direct dependency on it.
+ *
+ * TASK-1047 D1 — the visit label and the clinician's style are RUNTIME values, so they are data
+ * blocks (`visit_type`, `style_reference`); the system message is the platform rules, the template
+ * (its `{{visit_type}}` a pointer, FC-1) and STATIC keyed contract parts. The composed `governance`
+ * and the platform pieces are returned for the caller's egress hint (FC-4).
  */
 import { BadRequestException } from '@nestjs/common';
 import {
@@ -18,7 +23,11 @@ import {
   composeMessages,
   platformRules,
   type ComposeDataBlock,
+  type SystemGovernance,
 } from '@arcaai/workflow-contract';
+import type { GovernedPieceInput } from '../governed-prompt/IGovernedPromptRegistry';
+import { DNA_STYLE_GUIDANCE, STYLE_REFERENCE_BLOCK, styleReferenceContent } from '../consultation/prompt/style-reference';
+import { platformPiecesOf, type OutputContractPart } from './system-governance';
 
 export interface AssembledPromptBlock {
   /** Machine key, `^[a-z0-9_]+$`. */
@@ -47,28 +56,50 @@ const DEFAULT_INSTRUCTIONS: Readonly<Record<ComposeAssembledPromptInput['type'],
   summary: 'You are a medical documentation assistant. Generate a comprehensive clinical summary from the provided transcript and context.',
 };
 
+/** What the route sends: the messages, plus the FC-4 egress hint's two halves. */
+export interface ComposedAssembledPrompt {
+  system: string;
+  user: string;
+  /** The composer's governance of `system` (FC-2); hand it to the egress as `systemGovernance`. */
+  governance?: SystemGovernance;
+  /** The PLATFORM / CONTRACT pieces this composer emitted, for background registration (FC-3). */
+  platformPieces: GovernedPieceInput[];
+}
+
+/** The visit label's block: a RUNTIME value (any label a tenant defines), so data. */
+const VISIT_TYPE_BLOCK = { key: 'visit_type', label: 'VISIT TYPE' } as const;
+
 /** Compose the system + user messages, or refuse with a named 400. */
-export function composeAssembledPrompt(input: ComposeAssembledPromptInput): { system: string; user: string } {
+export function composeAssembledPrompt(input: ComposeAssembledPromptInput): ComposedAssembledPrompt {
   const typeLabel = input.type === 'pre-summary' ? 'pre-summary' : 'clinical summary';
-  const outputContract = [
-    input.styleText ? `Apply the following writing style:\n${input.styleText}` : null,
-    // A LABELLED FIELD, not a sentence the label has to fit grammatically.
-    input.visitLabel ? `Visit type: ${input.visitLabel}.` : null,
-    `Generate a ${typeLabel} from the data sections.`,
-  ]
-    .filter((part): part is string => !!part)
-    .join('\n\n');
+  // STATIC parts only: `typeLabel` is one of two platform constants.
+  const contractParts: OutputContractPart[] = [
+    ...(input.styleText ? [{ key: 'dna-style', text: DNA_STYLE_GUIDANCE }] : []),
+    { key: 'assembled-task', text: `Generate a ${typeLabel} from the data sections.` },
+  ];
+  const style = styleReferenceContent({ style: input.styleText });
   const templateRef = input.templateRef ?? 'text-proxy:assembled';
   try {
-    return composeMessages({
+    const composed = composeMessages({
       platformRules: platformRules(),
       resolvedPrompt: { source: 'inline', content: input.templateContent ?? DEFAULT_INSTRUCTIONS[input.type] },
-      // The only value this route holds that a template may name.
+      // The only value this route holds that a template may name — rendered as a pointer to its block.
       scope: buildPromptScope({ variables: input.visitLabel ? { visit_type: input.visitLabel } : {}, templateRef }),
-      outputContract,
-      dataBlocks: input.blocks.map((block): ComposeDataBlock => ({ key: block.key, label: block.label, content: block.content })),
+      outputContractParts: contractParts,
+      // Stable first (D9): the doctor's style, the visit label, then the caller's items in order.
+      dataBlocks: [
+        ...(style ? [{ key: STYLE_REFERENCE_BLOCK.key, label: STYLE_REFERENCE_BLOCK.label, content: style }] : []),
+        ...(input.visitLabel ? [{ key: VISIT_TYPE_BLOCK.key, label: VISIT_TYPE_BLOCK.label, content: input.visitLabel }] : []),
+        ...input.blocks.map((block): ComposeDataBlock => ({ key: block.key, label: block.label, content: block.content })),
+      ],
       templateRef,
     });
+    return {
+      system: composed.system,
+      user: composed.user,
+      ...(composed.governance ? { governance: composed.governance } : {}),
+      platformPieces: platformPiecesOf({ platformRules: platformRules(), contractParts }),
+    };
   } catch (error) {
     if (error instanceof PromptVariableUnresolvedError) {
       throw new BadRequestException({
@@ -79,7 +110,11 @@ export function composeAssembledPrompt(input: ComposeAssembledPromptInput): { sy
       });
     }
     if (error instanceof PromptTemplateSyntaxError) {
-      throw new BadRequestException({ message: 'The prompt template is not a valid template.', code: 'PROMPT_TEMPLATE_SYNTAX', detail: error.message });
+      throw new BadRequestException({
+        message: 'The prompt template is not a valid template.',
+        code: 'PROMPT_TEMPLATE_SYNTAX',
+        detail: error.message,
+      });
     }
     throw error;
   }

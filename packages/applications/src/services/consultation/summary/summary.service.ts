@@ -85,7 +85,7 @@ import type { ComputeDevice, UsageAttributes } from '../../usageLedger/usage-att
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, TENANTLESS, assertParentInScope, encryptPhiFields, internalServiceHeaders, resolveInternalAccessToken } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
-import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
+import { PromptAssemblyService, type AssembledPrompt } from '../prompt/prompt-assembly.service';
 import { clientCaseNoteRenderings, clientClinicalContextReaderFor, type ClientClinicalContext } from '../context/client-clinical-context';
 import { resolveSameDayPrequel, resolveSameDayPrequelTimeZone } from '../harness/same-day-prequel';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -188,6 +188,9 @@ interface TextCallPayload {
       strict: boolean;
     } | null;
     resolvedFrom: PromptResolutionTier;
+    /** TASK-1047 FC-2 / FC-3 — the assembly's governance of `systemPrompt` and the platform pieces it emitted. */
+    governance?: AssembledPrompt['governance'];
+    platformPieces?: AssembledPrompt['platformPieces'];
   };
   options?: Record<string, unknown>;
   context?: Record<string, unknown>;
@@ -1774,6 +1777,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       deploymentKind: deploymentKind ?? null,
       consultationId: payload.consultationId ?? null,
       phase: 'finalize',
+      // TASK-1047 FC-4 — the assembly's governance of the system message this body carries.
+      systemGovernance: {
+        governance: payload.assembledPrompt.governance ?? null,
+        platformPieces: payload.assembledPrompt.platformPieces,
+        tenantId: this.tenantId ?? null,
+      },
     });
     // D-D: the ONE shared `INTERNAL_ACCESS_TOKEN` (the per-service `TEXT_SERVICE_TOKEN`
     // fallback was retired with its descriptor, TASK-888). `X-Tenant-Id` is MANDATORY on this hop — this

@@ -19,6 +19,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { lastBlockAliases, lastScopeContext, lastSystemSide } from './compose-spy';
+
+// TASK-1047 — the composer renders the pointers (FC-1); this suite pins which block a slot points
+// at and what the scope binds, at the composer's input.
+vi.mock('@arcaai/workflow-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arcaai/workflow-contract')>();
+  return { ...actual, composeMessages: vi.fn(actual.composeMessages) };
+});
 
 const V1_PRE_SUMMARY_BODY = [
   '- **Recent Vitals:** {{context.safe_vitals}} (two most recent encounters)',
@@ -70,7 +78,7 @@ describe('the client-supplied vitals reach the prompt', () => {
   it('points the body’s vitals slot at the RECENT VITALS data section, instead of "Not available"', async () => {
     const service = await getService();
 
-    const { systemPrompt, userPrompt } = await service.assemble({
+    const { userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -78,22 +86,23 @@ describe('the client-supplied vitals reach the prompt', () => {
       vitals: VITALS_LINE,
     });
 
-    expect(systemPrompt).toContain('- **Recent Vitals:** [see the RECENT VITALS data section below] (two most recent encounters)');
+    expect(lastBlockAliases()['context.safe_vitals']).toBe('recent_vitals');
+    expect(lastScopeContext().safe_vitals).toBe(VITALS_LINE);
     expect(userPrompt).toContain('<<<EXTERNAL_DATA section="recent_vitals">>>\n--- RECENT VITALS ---\n' + VITALS_LINE);
-    expect(systemPrompt).not.toContain('Not available');
   });
 
   it("keeps v1's own default when the client stated no reading", async () => {
     const service = await getService();
 
-    const { systemPrompt } = await service.assemble({
+    await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
       conversationLanguage: 'en',
     });
 
-    expect(systemPrompt).toContain('- **Recent Vitals:** Not available');
+    // The slot is bound to v1's own default — which then fills the (otherwise skipped) section.
+    expect(lastScopeContext().safe_vitals).toBe('Not available');
   });
 
   it('appends the readings as a RECENT VITALS data block on a body that inlines nothing', async () => {
@@ -128,7 +137,7 @@ describe('the client-supplied vitals reach the prompt', () => {
   it('never states the readings twice: the section appears ONCE and the body only points at it', async () => {
     const service = await getService();
 
-    const { systemPrompt, userPrompt } = await service.assemble({
+    const { userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -137,7 +146,8 @@ describe('the client-supplied vitals reach the prompt', () => {
     });
 
     expect(userPrompt.split('section="recent_vitals"').length - 1).toBe(1);
-    expect(systemPrompt).not.toContain(VITALS_LINE);
+    expect(lastBlockAliases()['context.safe_vitals']).toBe('recent_vitals');
+    expect(lastSystemSide()).not.toContain(VITALS_LINE);
   });
 });
 
@@ -145,7 +155,7 @@ describe('the client-supplied previous visits reach the prompt', () => {
   it('points the body’s history slot at the PREVIOUS CASE NOTES SUMMARY data section', async () => {
     const service = await getService();
 
-    const { systemPrompt, userPrompt } = await service.assemble({
+    const { userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -153,7 +163,7 @@ describe('the client-supplied previous visits reach the prompt', () => {
       previousVisits: PREVIOUS_VISITS,
     });
 
-    expect(systemPrompt).toContain('- **Previous Visits:** [see the PREVIOUS CASE NOTES SUMMARY data section below]');
+    expect(lastBlockAliases()['context.formatted_previous_visits']).toBe('previous_case_notes_summary');
     expect(userPrompt).toContain(PREVIOUS_VISITS);
   });
 
@@ -177,7 +187,7 @@ describe('the client-supplied previous visits reach the prompt', () => {
   it('never states the history twice', async () => {
     const service = await getService();
 
-    const { systemPrompt, userPrompt } = await service.assemble({
+    const { userPrompt } = await service.assemble({
       tenantId: 'tenant-1',
       promptType: 'pre-summary',
       transcript: 'case notes',
@@ -186,7 +196,8 @@ describe('the client-supplied previous visits reach the prompt', () => {
     });
 
     expect(userPrompt.split('section="previous_case_notes_summary"').length - 1).toBe(1);
-    expect(systemPrompt).not.toContain(PREVIOUS_VISITS);
+    expect(lastBlockAliases()['context.formatted_previous_visits']).toBe('previous_case_notes_summary');
+    expect(lastSystemSide()).not.toContain(PREVIOUS_VISITS);
   });
 });
 

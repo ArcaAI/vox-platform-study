@@ -17,6 +17,14 @@
  *     marker, so a multi-visit episode cannot grow the prompt without limit.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { lastBlockAliases, lastSystemSide } from './compose-spy';
+
+// TASK-1047 — the guidance is a keyed CONTRACT part and the composer renders the pointers (FC-1/2),
+// so this suite reads both at the composer's input.
+vi.mock('@arcaai/workflow-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arcaai/workflow-contract')>();
+  return { ...actual, composeMessages: vi.fn(actual.composeMessages) };
+});
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -44,7 +52,10 @@ async function buildService() {
   );
 }
 
-const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: string; systemPrompt: string }> }, extra: Record<string, unknown> = {}) =>
+const assemble = (
+  service: { assemble: (p: unknown) => Promise<{ userPrompt: string; systemPrompt: string }> },
+  extra: Record<string, unknown> = {},
+) =>
   service.assemble({
     tenantId: TENANT,
     departmentId: 'dept-1',
@@ -74,7 +85,8 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
   it('appends a spotlighting-wrapped, explicitly non-authoritative block when supplied', async () => {
     const service = await buildService();
 
-    const { userPrompt, systemPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER hypertension stable on ramipril' });
+    const { userPrompt } = await assemble(service as never, { priorVisitSummary: 'PRIOR-NOTE-MARKER hypertension stable on ramipril' });
+    const systemPrompt = lastSystemSide();
 
     expect(userPrompt).toContain('<<<EXTERNAL_DATA section="prior_visit_summary">>>');
     expect(userPrompt).toContain('PRIOR-NOTE-MARKER hypertension stable on ramipril');
@@ -118,11 +130,11 @@ describe('PromptAssemblyService — prior-visit carry-forward', () => {
     );
     const service = await buildService();
 
-    const { userPrompt, systemPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'MORNING-PREQUEL-MARKER' });
+    const { userPrompt } = await assemble(service as never, { sameDayPrequelSummary: 'MORNING-PREQUEL-MARKER' });
 
     // The variable has a producer again (`harness/same-day-prequel.ts`): the body points at its
     // data section…
-    expect(systemPrompt).toContain('Prequel: [see the SAME-DAY EARLIER VISIT(S) data section below].');
+    expect(lastBlockAliases()['context.same_day_prequel_summary']).toBe('same_day_prequel_summary');
     // …which appears once, and never switches the carry-forward block on.
     expect(userPrompt.split('MORNING-PREQUEL-MARKER').length - 1).toBe(1);
     expect(userPrompt).not.toContain('prior_visit_summary');

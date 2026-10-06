@@ -28,6 +28,11 @@
  */
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolvingPointers } from './compose-spy';
+
+// TASK-1047 FC-1 — the system message carries POINTERS and the values travel as data blocks; this
+// suite is about how each value RESOLVES, so it reads the system with its pointers resolved
+// (`governedSystemPrompt` is the raw one).
 
 /** The legacy body as the seeds carry it TODAY (single brace) — the BEFORE side of the golden pair. */
 const LEGACY_BODY = [
@@ -93,16 +98,18 @@ async function getService(withClone = true) {
   } else {
     mockSchemaRepository.findByTenantAndSlug.mockResolvedValue(null);
   }
-  return new PromptAssemblyService(
-    mockPromptResolutionService as never,
-    mockPromptTemplateRepository as never,
-    mockDnaWritingStyleRepository as never,
-    undefined,
-    undefined,
-    undefined,
-    mockDepartmentRepository as never,
-    mockSchemaRepository as never,
-    mockSchemaVersionRepository as never,
+  return resolvingPointers(
+    new PromptAssemblyService(
+      mockPromptResolutionService as never,
+      mockPromptTemplateRepository as never,
+      mockDnaWritingStyleRepository as never,
+      undefined,
+      undefined,
+      undefined,
+      mockDepartmentRepository as never,
+      mockSchemaRepository as never,
+      mockSchemaVersionRepository as never,
+    ),
   );
 }
 
@@ -242,9 +249,9 @@ describe('PromptAssemblyService renders `context.*` through the shared grammar',
 describe('the transcript is a bound variable, and consuming it suppresses the duplicate append', () => {
   it('points the author’s placement at the transcript data section — the transcript itself never enters the system message', async () => {
     resolvesTo('Notes.\n\nTranscript:\n{{transcript}}');
-    const { systemPrompt, userPrompt } = await (await getService()).assemble(params());
+    const { governedSystemPrompt: systemPrompt, userPrompt } = await (await getService()).assemble(params());
 
-    expect(systemPrompt).toContain('Notes.\n\nTranscript:\n[see the TRANSCRIPT data section below]');
+    expect(systemPrompt).toContain('Notes.\n\nTranscript:\n[see the transcript data section below]');
     expect(systemPrompt).not.toContain('case notes');
     expect(userPrompt).toContain('<<<EXTERNAL_DATA section="transcript">>>\n--- TRANSCRIPT ---\ncase notes\n<<<END_EXTERNAL_DATA>>>');
   });

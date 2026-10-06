@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { outputLanguageStep, platformRules } from '@arcaai/workflow-contract';
+import { resolvePointers } from './compose-spy';
 
 const mockPromptResolutionService = { resolve: vi.fn() };
 const mockPromptTemplateRepository = { findById: vi.fn() };
@@ -47,7 +48,8 @@ describe('the body is the SYSTEM message', () => {
 
     const assembled = await (await getService()).assemble({ ...base, clinicianNotes: ['[case note] review'], vitals: 'BP 120/80' });
 
-    expect(assembled.blocks?.map((block) => block.key)).toEqual(['transcript', 'clinician_notes', 'recent_vitals']);
+    // TASK-1047 D9 — stable context first, the transcript last.
+    expect(assembled.blocks?.map((block) => block.key)).toEqual(['clinician_notes', 'recent_vitals', 'transcript']);
   });
 });
 
@@ -58,7 +60,12 @@ describe('a COMPOSITE agent instruction composes on finalize (no primary-templat
     join: '\n\n',
     fragments: [
       { key: 'base', source: 'inline' as const, content: 'BASE body.' },
-      { key: 'revisit', source: 'inline' as const, content: 'REVISIT branch for {{trigger.context.current_department}}.', when: "trigger.context.visit_type == 'revisit'" },
+      {
+        key: 'revisit',
+        source: 'inline' as const,
+        content: 'REVISIT branch for {{trigger.context.current_department}}.',
+        when: "trigger.context.visit_type == 'revisit'",
+      },
       { key: 'new', source: 'inline' as const, content: 'NEW-VISIT branch.', when: "trigger.context.visit_type == 'new-visit'" },
     ],
   };
@@ -75,7 +82,9 @@ describe('a COMPOSITE agent instruction composes on finalize (no primary-templat
 
     const assembled = await (await getService()).assemble({ ...base, promptType: 'pre-summary', visitType: 'revisit' });
 
-    expect(assembled.systemPrompt).toContain('BASE body.\n\nREVISIT branch for General.');
+    // TASK-1047 FC-1 — the department is a pointer in the system message, its value a data block.
+    expect(resolvePointers(assembled.systemPrompt, assembled.userPrompt)).toContain('BASE body.\n\nREVISIT branch for General.');
+    expect(assembled.systemPrompt).not.toContain('General');
     expect(assembled.systemPrompt).not.toContain('NEW-VISIT branch.');
     expect(assembled.systemPrompt).not.toContain('PRIMARY TEMPLATE ONLY.');
     expect(assembled.selected).toEqual(['base', 'revisit']);
@@ -91,8 +100,8 @@ describe('a COMPOSITE agent instruction composes on finalize (no primary-templat
       promptVariables: { lang: { path: 'trigger.context.language' }, complaint: { path: 'trigger.context.chief_complaint' } },
     });
 
-    const { systemPrompt } = await (await getService()).assemble({ ...base });
+    const { systemPrompt, userPrompt } = await (await getService()).assemble({ ...base });
 
-    expect(systemPrompt).toContain('Language en; complaint [].');
+    expect(resolvePointers(systemPrompt, userPrompt)).toContain('Language en; complaint [].');
   });
 });

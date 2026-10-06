@@ -13,7 +13,9 @@ import {
   type AiModelEntity,
   type ContextItemEntity,
 } from '@arcaai/domains';
-import { composeMessages } from '@arcaai/workflow-contract';
+import { composeMessages, type SystemGovernance } from '@arcaai/workflow-contract';
+import { IGovernedPromptRegistry } from '../../governed-prompt/IGovernedPromptRegistry';
+import { governedSystemWire, type SystemGovernanceWire } from '../../text-request/system-governance';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
@@ -150,6 +152,11 @@ export interface ComposeFromSnapshotOptions {
   planId: string;
   /** Carry the previous AI draft (`draft_ai`); absent ⇒ carried. The clinician's sections always are. */
   carryAiDraft?: boolean;
+  /**
+   * TASK-1047 FC-4 — the verified `system_governance` for `system`, stamped on every planned call
+   * (the harness sends `system` on each); `null`/absent ⇒ no call carries one.
+   */
+  systemGovernance?: SystemGovernanceWire | null;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -712,7 +719,7 @@ export async function composeFromSnapshot(snapshot: NoteSourceSnapshot, options:
     system: options.system,
     blocks,
     headings: [...snapshot.headings],
-    calls: plan.calls,
+    calls: options.systemGovernance ? plan.calls.map((call) => ({ ...call, systemGovernance: options.systemGovernance })) : plan.calls,
     coverage: { criticalFacts: model.criticalFacts, sourceIds: model.sourceIds, repairPasses: settings.repairPasses },
     preserve,
   };
@@ -738,14 +745,25 @@ export interface NoteComposeRequest {
   documentTemplateSlug?: string | null;
   /** Inputs the caller has already rendered: background history and extra cited items. */
   extras?: { background?: NoteSourceSnapshot['background']; results?: NoteSnapshotText[] };
-  /** The system message, or a function composing it beside the (uncounted) verbatim blocks. */
-  system: string | ((blocks: NoteBlock[]) => Promise<string>);
+  /**
+   * The system message, or a function composing it beside the (uncounted) verbatim blocks. The
+   * function may also return the composer's governance of it (TASK-1047 FC-2).
+   */
+  system: string | ((blocks: NoteBlock[]) => Promise<string | NoteComposedSystem>);
+  /** TASK-1047 FC-2 — the composer's governance of a STRING `system`. */
+  systemGovernance?: SystemGovernance | null;
   /** Recompose under a known id (a cache miss for a plan the harness was already handed). */
   planId?: string;
   /** `false` for a preview: nothing is cached. */
   cache?: boolean;
   /** `false` for a preview: never wait for a fact ledger to catch up. */
   waitForLedgers?: boolean;
+}
+
+/** TASK-1047 — a system message together with the composer's governance of it. */
+export interface NoteComposedSystem {
+  system: string;
+  governance?: SystemGovernance | null;
 }
 
 /** What a plan was composed FROM — ids only, so a cache miss can recompose the same plan. */
@@ -799,7 +817,28 @@ export class NoteInputComposerService {
     @Optional() @Inject(ContextItemVersionRepository) private readonly contextItemVersionRepository?: ContextItemVersionRepository,
     // Warm start (`warmStartEnabled`, tenant → SYSTEM) decides whether the previous AI draft is carried.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: Pick<HarnessPolicyService, 'getEffectivePolicy'>,
+    // TASK-1047 FC-4 — verifies the plan's system message. Unwired ⇒ no call carries governance, so
+    // the harness's system prompt is screened as untrusted — the safe direction.
+    @Optional() @Inject(IGovernedPromptRegistry) private readonly governedPrompts?: IGovernedPromptRegistry,
   ) {}
+
+  /**
+   * TASK-1047 FC-4 — the `system_governance` the harness may forward for this plan's system message,
+   * or `null`. Never throws: a registry failure composes the plan ungoverned (screened as untrusted).
+   */
+  private async verifySystemGovernance(tenantId: string, system: string, governance: SystemGovernance | null): Promise<SystemGovernanceWire | null> {
+    if (!this.governedPrompts || !governance) return null;
+    try {
+      return await governedSystemWire(this.governedPrompts, { system, governance, tenantId });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Governed-prompt lookup failed; the note plan is composed without system governance',
+        composedDigest: governance.composedDigest,
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+      return null;
+    }
+  }
 
   /** Compose (and, unless a preview, cache) the plan plus the preserved section text a regenerate needs. */
   async compose(request: NoteComposeRequest): Promise<NotePlanEnvelope> {
@@ -807,8 +846,12 @@ export class NoteInputComposerService {
     const model = await this.resolveModel(request.tenantId, request.model ?? null);
     const snapshot = await this.gather(request, model, settings.ledgerWaitSeconds);
     const carryAiDraft = await this.resolveCarryAiDraft(request.tenantId);
-    const system = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
+    const composedSystem = typeof request.system === 'string' ? request.system : await request.system(previewNoteBlocks(snapshot, carryAiDraft));
+    const system = typeof composedSystem === 'string' ? composedSystem : composedSystem.system;
+    const governance = typeof composedSystem === 'string' ? (request.systemGovernance ?? null) : (composedSystem.governance ?? null);
+    const systemGovernance = await this.verifySystemGovernance(request.tenantId, system, governance);
     const plan = await composeFromSnapshot(snapshot, {
+      systemGovernance,
       mode: request.mode,
       carryAiDraft,
       sectionKeys: request.sectionKeys,

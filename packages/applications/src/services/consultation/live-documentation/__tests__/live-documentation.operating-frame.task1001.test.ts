@@ -36,6 +36,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LiveDocumentationService } from '../live-documentation.service';
+import { resolvePointers } from '../../prompt/__tests__/compose-spy';
 import { CONSULTATION_REALTIME_GRAPH_EXECUTOR_KEY } from '../../consultation-gates.constants';
 import { CONSULTATION_OUTPUT_LANGUAGE_KEY } from '../../../settings-registry/descriptors/consultation-output-language.descriptors';
 import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot } from '../live-agent.port';
@@ -256,7 +257,8 @@ async function flushOnce(
   const prompt = String(body.prompt ?? '');
   // The turn's operating frame is an instruction, so it is part of the SYSTEM message, after the
   // agent's instruction and the stable lead-in; `systemPrompt` is everything before it.
-  const system = String(body.system_prompt ?? '');
+  // TASK-1047 FC-1 — read as the model reads it: each pointer resolved to its data block's value.
+  const system = resolvePointers(String(body.system_prompt ?? ''), prompt);
   const frameAt = system.indexOf('HOW TO PRODUCE THIS TURN:');
   const frame = system.slice(frameAt);
   return {

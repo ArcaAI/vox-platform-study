@@ -13,6 +13,14 @@
  * block; and an absent value leaves the prompt byte-identical.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { dataBlocksOf, lastBlockAliases, lastScopeContext, lastSystemSide } from './compose-spy';
+
+// TASK-1047 — the composer renders the pointers (FC-1); this suite reads which block a slot points
+// at, and what the scope binds, at the composer's input.
+vi.mock('@arcaai/workflow-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@arcaai/workflow-contract')>();
+  return { ...actual, composeMessages: vi.fn(actual.composeMessages) };
+});
 
 const PLAIN_BODY = 'Write the note in {{context.conversation_language}}.';
 const V1_BODY = ['- Tests: {{context.formatted_test_results}}', '- Language: {{context.language_name}}'].join('\n');
@@ -61,10 +69,10 @@ describe('TASK-1020 — same_day_prequel_summary', () => {
     withBody('Earlier today:\n{{context.same_day_prequel_summary}}\n' + PLAIN_BODY);
     const service = await getService();
 
-    const { userPrompt, systemPrompt } = await service.assemble({ ...base, sameDayPrequelSummary: PREQUEL });
+    const { userPrompt } = await service.assemble({ ...base, sameDayPrequelSummary: PREQUEL });
 
-    expect(systemPrompt).toContain('Earlier today:\n[see the SAME-DAY EARLIER VISIT(S) data section below]');
-    expect(systemPrompt).not.toContain('MORNING-NOTE');
+    expect(lastBlockAliases()['context.same_day_prequel_summary']).toBe('same_day_prequel_summary');
+    expect(lastSystemSide()).not.toContain('MORNING-NOTE');
     expect(userPrompt.split('MORNING-NOTE').length - 1).toBe(1);
   });
 
@@ -80,10 +88,10 @@ describe('TASK-1020 — same_day_prequel_summary', () => {
     withBody('Earlier today: [{{context.same_day_prequel_summary}}] ' + PLAIN_BODY);
     const service = await getService();
 
-    const { userPrompt, systemPrompt } = await service.assemble({ ...base });
+    const { userPrompt } = await service.assemble({ ...base });
 
-    expect(systemPrompt).toContain('Earlier today: [] ');
-    expect(userPrompt).not.toContain('same_day_prequel_summary');
+    expect(lastScopeContext().same_day_prequel_summary).toBe('');
+    expect(dataBlocksOf(userPrompt).get('same_day_prequel_summary') ?? '').toBe('');
   });
 
   it('leaves the prompt byte-identical when no prequel is supplied', async () => {
@@ -102,9 +110,9 @@ describe('TASK-1020 — formatted_test_results', () => {
     withBody(V1_BODY);
     const service = await getService();
 
-    const { userPrompt, systemPrompt } = await service.assemble({ ...base, promptType: 'pre-summary', testResults: RESULTS });
+    const { userPrompt } = await service.assemble({ ...base, promptType: 'pre-summary', testResults: RESULTS });
 
-    expect(systemPrompt).toContain('- Tests: [see the TEST RESULTS data section below]');
+    expect(lastBlockAliases()['context.formatted_test_results']).toBe('test_results');
     expect(userPrompt.split('Haemoglobin').length - 1).toBe(1);
   });
 
@@ -112,9 +120,9 @@ describe('TASK-1020 — formatted_test_results', () => {
     withBody(V1_BODY);
     const service = await getService();
 
-    const { systemPrompt } = await service.assemble({ ...base, promptType: 'pre-summary' });
+    await service.assemble({ ...base, promptType: 'pre-summary' });
 
-    expect(systemPrompt).toContain('- Tests: \n');
+    expect(lastScopeContext().formatted_test_results).toBe('');
   });
 
   it('appends a TEST RESULTS data block on a body that inlines nothing', async () => {

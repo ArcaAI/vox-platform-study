@@ -31,6 +31,7 @@ import {
 } from '../consultation-context-schema/context-schema-definition';
 import { IContextUserIdentityService, extractUserIdentityValue } from '../user/identity';
 import { agentInputBlock } from './agent-input-block';
+import { platformPiecesOf } from '../text-request/system-governance';
 import { promptVariableSlot, splitBindings, type PromptVariableSlot } from './agent-required-variables';
 import { wireModelIdOf } from './agent-wire-model';
 
@@ -449,6 +450,9 @@ export class AgentInvocationService {
       deploymentKind: resolved.models.find((entry) => entry.role === 'primary')?.deploymentKind ?? null,
       phase: 'invoke',
       agentSlug: resolved.slug,
+      // TASK-1047 FC-4 — the composer's governance of `system_prompt`; the enrichment sends
+      // `system_governance` only when the registry vouches for every piece (FC-3).
+      systemGovernance: { governance: composed.governance ?? null, platformPieces: platformPiecesOf({ platformRules: platformRules() }), tenantId },
     });
     const headers = internalServiceHeaders({
       serviceToken: await resolveInternalAccessToken(this.secretsService, 'INTERNAL_ACCESS_TOKEN'),

@@ -225,12 +225,15 @@ beforeEach(() => {
 describe('BYTE IDENTITY — an agent that is not composite renders exactly as it did before TASK-947', () => {
   it('an `inline` artifact produces the same bytes (composePrompt`s single-body branch IS renderTemplate)', async () => {
     const { service, post } = buildService(
-      withArtifact({ source: 'inline', content: 'Patient {{patient.name}}, ward {{patient.ward}}.' }, { variables: { patient: { name: 'Ada', ward: '3' } } }),
+      withArtifact(
+        { source: 'inline', content: 'Patient {{patient.name}}, ward {{patient.ward}}.' },
+        { variables: { patient: { name: 'Ada', ward: '3' } } },
+      ),
     );
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
+    expect(headOf(calls[0], 'Patient Ada, ward 3.')).toBe(agentSystemHead('Patient Ada, ward 3.'));
   });
 
   it('a `template` artifact produces the same bytes', async () => {
@@ -240,7 +243,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, `Visit: ${VISIT_TYPE}.`)).toBe(agentSystemHead(`Visit: ${VISIT_TYPE}.`));
+    expect(headOf(calls[0], `Visit: ${VISIT_TYPE}.`)).toBe(agentSystemHead(`Visit: ${VISIT_TYPE}.`));
   });
 
   it('a candidate with NO resolvedPrompt still falls back to `instruction.systemPrompt`', async () => {
@@ -248,7 +251,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, `INLINE FALLBACK ${VISIT_TYPE}`)).toBe(agentSystemHead(`INLINE FALLBACK ${VISIT_TYPE}`));
+    expect(headOf(calls[0], `INLINE FALLBACK ${VISIT_TYPE}`)).toBe(agentSystemHead(`INLINE FALLBACK ${VISIT_TYPE}`));
   });
 
   it('a candidate carrying no instruction body at all still sends the platform prompt', async () => {
@@ -256,7 +259,7 @@ describe('BYTE IDENTITY — an agent that is not composite renders exactly as it
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
+    expect(headOf(calls[0], LIVE_DOCUMENT_SYSTEM_PROMPT)).toBe(agentSystemHead(LIVE_DOCUMENT_SYSTEM_PROMPT));
   });
 
   it('stamps NO `prompt_fragments` on the stats — a single-body agent has no fragments to report', async () => {
@@ -282,7 +285,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, `BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`)).toBe(agentSystemHead(`BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`));
+    expect(headOf(calls[0], `BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`)).toBe(agentSystemHead(`BASE for ${VISIT_TYPE}.\n\nREVISIT ADDENDUM.`));
   });
 
   it('never sends the STATIC PROJECTION alone — the pre-947 read (`resolvedPrompt.content`) would have', async () => {
@@ -318,7 +321,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
     const { calls, stats } = await runOneFlush(service, post);
 
     expect(calls, 'an unevaluable condition took the node out').toHaveLength(1);
-    expect(headOf(calls[0]?.system_prompt, 'BASE.')).toBe(agentSystemHead('BASE.'));
+    expect(headOf(calls[0], 'BASE.')).toBe(agentSystemHead('BASE.'));
     expect(stats?.prompt_fragments).toEqual(['base']);
   });
 
@@ -338,7 +341,7 @@ describe('a COMPOSITE artifact selects over the §3.3 scope, renders per fragmen
 
     const { calls } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, '{{\n\ntrigger.context.visit_type}}')).toBe(agentSystemHead('{{\n\ntrigger.context.visit_type}}'));
+    expect(headOf(calls[0], '{{\n\ntrigger.context.visit_type}}')).toBe(agentSystemHead('{{\n\ntrigger.context.visit_type}}'));
   });
 
   it('OD-6 — a composition that selects NOTHING degrades the node without calling TEXT', async () => {
@@ -400,7 +403,7 @@ describe('R1 #1 — the `context` alias is the UNWRAPPED view when the agent bin
 
     const { calls, stats } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, `BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`)).toBe(agentSystemHead(`BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`));
+    expect(headOf(calls[0], `BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`)).toBe(agentSystemHead(`BASE.\n\nUNWRAPPED ${VISIT_TYPE}.`));
     expect(stats?.prompt_fragments).toEqual(['base', 'revisit']);
   });
 
@@ -409,7 +412,7 @@ describe('R1 #1 — the `context` alias is the UNWRAPPED view when the agent bin
 
     const { calls, stats } = await runOneFlush(service, post);
 
-    expect(headOf(calls[0]?.system_prompt, 'BASE.')).toBe(agentSystemHead('BASE.'));
+    expect(headOf(calls[0], 'BASE.')).toBe(agentSystemHead('BASE.'));
     expect(stats?.prompt_fragments).toEqual(['base']);
   });
 });
