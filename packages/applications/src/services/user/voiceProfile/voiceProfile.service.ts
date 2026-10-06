@@ -9,7 +9,7 @@ import {
   UserVoiceProfileRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
-import type { ResolvedAsrSpec } from '@arcaai/types';
+import type { AsrSessionWarning, ResolvedAsrSpec } from '@arcaai/types';
 import { HttpService } from '@nestjs/axios';
 import {
   BadRequestException,
@@ -48,6 +48,44 @@ interface ExtractionResponse {
  * used to compare the returned vector against a hardcoded 256 and reject anything else, which
  * is precisely the single platform embedding space the owner removed.
  */
+
+/** TASK-1048 — the diarization degradation the ASR resolver reported for this spec, if any. */
+type DiarizationDegradation = Extract<AsrSessionWarning['code'], 'DIARIZATION_MODEL_MISSING' | 'DIARIZATION_BACKEND_UNSUPPORTED'>;
+
+function diarizationDegradation(warnings: readonly AsrSessionWarning[] | undefined): DiarizationDegradation | null {
+  const found = warnings?.find((w) => w.code === 'DIARIZATION_MODEL_MISSING' || w.code === 'DIARIZATION_BACKEND_UNSUPPORTED');
+  return found ? (found.code as DiarizationDegradation) : null;
+}
+
+/**
+ * TASK-1048 — the 409 for "this agent DOES enable diarization, but it could not run". Distinct from
+ * `ASR_AGENT_DIARIZATION_DISABLED`, whose advice ("enable the switch") would send the admin in a
+ * circle. The codes are the ones the resolver used before TASK-1048 for the same agent states, so
+ * a client that already matched them keeps working.
+ */
+function enrollmentDegradedConflict(agentSlug: string, degradation: DiarizationDegradation, tenantWide: boolean): ConflictException {
+  const elsewhere = tenantWide
+    ? ' and no other published speech-to-text agent in this tenant diarizes with a speaker-embedding model'
+    : '';
+  if (degradation === 'DIARIZATION_BACKEND_UNSUPPORTED') {
+    return new ConflictException({
+      code: 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
+      message:
+        `Agent '${agentSlug}' enables speaker diarization with a backend this platform no longer runs${elsewhere}, ` +
+        `so no voice profile can be enrolled. Publish a new version of the agent with ` +
+        `\`audioFrontEnd.diarization.backend\` set to \`embedding\`.`,
+    });
+  }
+  return new ConflictException({
+    code: 'ASR_AGENT_DIARIZATION_MODEL_MISSING',
+    message:
+      `Agent '${agentSlug}' enables speaker diarization, but no speaker-embedding model resolves for it${elsewhere}, ` +
+      `so there is no space to enroll a voice profile into. The agent names no \`audioFrontEnd.diarization.embeddingModelSlug\` ` +
+      `(or names one this tenant cannot see) and the platform default \`stt.diarization.defaultEmbeddingModelSlug\` is unset ` +
+      `or not a SPEAKER_EMBEDDING model visible to this tenant. Ask a platform administrator to set that default, ` +
+      `or bind an embedding model on the agent.`,
+  });
+}
 
 @Injectable()
 export class VoiceProfileService extends BaseService implements IVoiceProfileService {
@@ -155,6 +193,13 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
    * An EXPLICIT `agentSlug` is never substituted. The caller named the agent they expect to be
    * matched by, so quietly enrolling them somewhere else would store an embedding that agent
    * can never compare against — the precise failure this whole method exists to prevent.
+   *
+   * TASK-1048 (owner decision OD-1, 2026-10-06) — the resolver no longer REFUSES an agent whose
+   * diarization cannot run (no resolvable embedding model, a retired backend); it switches the
+   * stage off and reports a warning, because a SESSION can live without speaker labels. Enrollment
+   * cannot live without the model, so such an agent is unusable here: the sibling search still runs
+   * for an unnamed agent, and when nothing usable is found the 409 says what is actually missing
+   * (`ASR_AGENT_DIARIZATION_MODEL_MISSING` / `…_BACKEND_UNSUPPORTED`), never "switch diarization on".
    */
   async enrollmentTarget(agentSlug?: string): Promise<VoiceProfileEnrollmentTarget> {
     const tenantId = this.tenantId;
@@ -165,7 +210,10 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       throw new ServiceUnavailableException('ASR agent resolution is not configured on this gateway');
     }
     const named = agentSlug ?? null;
-    const { spec: preferred } = await this.asrResolver.resolve({ tenantId, agentSlug: named, departmentId: null });
+    const { spec: preferred, warnings } = await this.asrResolver.resolve({ tenantId, agentSlug: named, departmentId: null });
+    // TASK-1048 — the stage is ON in the agent but the resolver switched it OFF for want of a
+    // runnable embedding model / backend. A session degrades; enrollment genuinely needs the model.
+    const degraded = diarizationDegradation(warnings);
 
     // The same 409 body the ASR resolver gives its own refusals (`{ code, message }`), so a
     // client reads one convention for every agent-shaped conflict on this path. The CODE is
@@ -173,6 +221,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     // named" from "nothing in this tenant".
     let spec: ResolvedAsrSpec = preferred;
     if (!preferred.audioFrontEnd.diarization.enabled) {
+      if (named && degraded) throw enrollmentDegradedConflict(preferred.agent.slug, degraded, false);
       if (named) {
         throw new ConflictException({
           code: 'ASR_AGENT_DIARIZATION_DISABLED',
@@ -183,6 +232,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
         });
       }
       const sibling = await this.firstDiarizingSpec(tenantId, preferred.agent.slug);
+      if (!sibling && degraded) throw enrollmentDegradedConflict(preferred.agent.slug, degraded, true);
       if (!sibling) {
         throw new ConflictException({
           code: 'ASR_AGENT_DIARIZATION_DISABLED',
@@ -198,11 +248,10 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
 
     const embedding = spec.models.embedding;
     if (!embedding) {
-      // Unreachable through `buildResolvedAsrSpec`, which refuses an enabled stage with no
-      // embedding model (409 `ASR_AGENT_DIARIZATION_MODEL_MISSING`) and, since TASK-980, any
-      // backend but `embedding` (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`) — the retired
-      // `sortformer` backend was the only way here. Kept as an invariant guard with the
-      // resolver's OWN answer for this state, never the old 400: the request is fine, the agent is not.
+      // Unreachable through `buildResolvedAsrSpec`, which (TASK-1048) switches an enabled stage with
+      // no runnable embedding model or backend OFF and reports it in `warnings` — handled above.
+      // Kept as an invariant guard with the same code, never the old 400: the request is fine,
+      // the agent is not.
       throw new ConflictException({
         code: 'ASR_AGENT_DIARIZATION_MODEL_MISSING',
         message:
@@ -243,7 +292,9 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
       if (candidate.slug === preferredSlug || isPlatformHiddenAgentSlug(candidate.slug)) continue;
       try {
         const { spec } = await this.asrResolver.resolve({ tenantId, agentSlug: candidate.slug, departmentId: null });
-        if (spec.audioFrontEnd.diarization.enabled) return spec;
+        // TASK-1048 — a sibling whose diarization DEGRADED resolves with the stage off, so it is
+        // skipped here like any other non-diarizing agent; the model check is the invariant.
+        if (spec.audioFrontEnd.diarization.enabled && spec.models.embedding) return spec;
       } catch (error: unknown) {
         this.logger.warn({
           message: 'Speech-to-text agent skipped while looking for one that diarizes',

@@ -9,9 +9,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AgentTask } from '@arcaai/domains';
-import { QuotaExceededException } from '@arcaai/exceptions';
-import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
+import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
+import type { AsrSessionWarning, ResolvedAgent, ResolvedAgentModel, ResolvedAsrSpec } from '@arcaai/types';
+import { STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY } from '@arcaai/types';
 import { AgentResolverService, ConnectionIdentityLookup, failedBindingKey, providerOverrideKey } from '../../agent/agent-resolver.service';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
 import { ProviderCredentialResolver } from '../../ai-provider-connection/provider-credential-resolver';
 import {
   CLOUD_BYO_PROVIDERS,
@@ -26,7 +28,14 @@ import type {
   ProviderFunding,
 } from '../../ai-provider-connection/IProviderConnectionService';
 import type { SttProviderOverrides } from '../stt-provider-overrides';
-import { AsrSpecBuildError, asrChainModels, buildResolvedAsrSpec, type AsrConnectionBinding } from './build-resolved-asr-spec';
+import {
+  AsrSpecBuildError,
+  asrChainModels,
+  asrDegradation,
+  buildResolvedAsrSpec,
+  needsPlatformEmbeddingDefault,
+  type AsrConnectionBinding,
+} from './build-resolved-asr-spec';
 import {
   GoverningWorkflowAsrReader,
   workflowAsrAgentUnavailable,
@@ -107,6 +116,13 @@ export interface ResolvedAsrSession {
    * (request > consultation > agent > auto); resolution itself never looked at it.
    */
   consultationLanguageMode?: string | null;
+  /**
+   * TASK-1048 (OD-1) — the OPTIONAL stages this resolution switched off (or the fallback it
+   * skipped) instead of refusing the session. OMITTED when there are none. Never part of
+   * `spec`: the spec is the parity-pinned `apps/stt` wire contract; warnings are for the CALLER
+   * (the session/job creation response), and each one is also logged here at WARN.
+   */
+  warnings?: AsrSessionWarning[];
 }
 
 const rec = (value: unknown): Record<string, unknown> =>
@@ -157,6 +173,10 @@ export class AsrAgentResolverService {
     // same arity reason as the two above; a `consultationId` without it fails CLOSED (503) rather
     // than silently skipping the workflow the consultation is governed by.
     @Optional() private readonly governingWorkflows?: GoverningWorkflowAsrReader,
+    // TASK-1048 (OD-2) — reads `stt.diarization.defaultEmbeddingModelSlug` (tenant → SYSTEM).
+    // Optional and TRAILING for the same arity reason; unwired, an agent that needs the platform
+    // default simply degrades (`DIARIZATION_MODEL_MISSING`) — never a substituted literal.
+    @Optional() private readonly effectiveSettings?: EffectiveSettingsService,
   ) {}
 
   /**
@@ -175,7 +195,11 @@ export class AsrAgentResolverService {
     const { tenantId } = input;
     const { agent, workflowDefinitionSlug, consultation } = await this.resolvePrimary(input);
 
-    const fallbackAgent = await this.resolveFallbackAgent(agent, tenantId);
+    // TASK-1048 (OD-1) — every optional stage switched off / fallback skipped while resolving.
+    const warnings: AsrSessionWarning[] = [];
+    const fallbackAgent = await this.resolveFallbackAgent(agent, tenantId, warnings);
+    // TASK-1048 (OD-2) — read only when some chain will actually use it.
+    const defaultEmbeddingModel = await this.resolveDefaultEmbeddingModel(tenantId, [agent, fallbackAgent]);
 
     // TASK-958 — credentials are resolved BEFORE the spec is built, because the spec
     // now CARRIES the identity of the connection each chain authenticates as. The two
@@ -189,6 +213,8 @@ export class AsrAgentResolverService {
         agent,
         fallbackAgent,
         connections,
+        defaultEmbeddingModel,
+        onWarning: (warning) => warnings.push(warning),
         // TASK-934 — a decode profile the row declared but this gateway cannot act on
         // (unknown key, wrong type, out of range) is DROPPED, because tuning is
         // `open-to-default` and a session must not fail on it. This is what stops it
@@ -200,11 +226,21 @@ export class AsrAgentResolverService {
           ),
       });
     } catch (error) {
-      // TASK-880 — `code` is the error's own now, so an embedding-space mismatch is
-      // distinguishable from "this agent resolved no primary model" by a caller that
-      // only sees the 409 body.
+      // TASK-880 — `code` is the error's own. Since TASK-1048 only a CORE problem (no primary
+      // ASR model, a non-SPEECH_TO_TEXT primary) reaches here; optional stages degrade.
       if (error instanceof AsrSpecBuildError) throw new ConflictException({ code: error.code, message: error.message });
       throw error;
+    }
+    // One WARN line per degradation — codes and agent identity only, no PHI.
+    for (const warning of warnings) {
+      this.logger.warn({
+        message: 'ASR optional stage degraded for this session',
+        tenantId,
+        code: warning.code,
+        stage: warning.stage,
+        agentSlug: warning.agentSlug,
+        ...(warning.agentVersionNumber !== undefined ? { agentVersionNumber: warning.agentVersionNumber } : {}),
+      });
     }
 
     // TASK-951 — the PRIMARY agent's bound schema. The fallback agent's is deliberately ignored:
@@ -218,7 +254,52 @@ export class AsrAgentResolverService {
       ...(contextSchema ? { contextSchema } : {}),
       ...(workflowDefinitionSlug ? { workflowDefinitionSlug } : {}),
       ...(consultation ? { consultationLanguageMode: consultation.spokenLanguageMode } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /**
+   * TASK-1048 (owner decision OD-2) — the platform default speaker-embedding model, or `null`.
+   *
+   * Consulted ONLY when a chain enables diarization and names no embedding model
+   * ({@link needsPlatformEmbeddingDefault}). The setting resolves tenant → SYSTEM on absence
+   * (`stt.diarization.defaultEmbeddingModelSlug`, `failMode: 'closed'`, no code default — the
+   * SYSTEM row is seeded); its slug is then resolved EXACTLY like an agent-named one, as a
+   * SPEAKER_EMBEDDING row visible to the tenant. "Unset" (the declared fail-closed raise) and "not
+   * visible" both answer `null`, which the builder turns into `DIARIZATION_MODEL_MISSING`; a backend
+   * error propagates and is never disguised as "no default".
+   */
+  private async resolveDefaultEmbeddingModel(tenantId: string, chainAgents: ReadonlyArray<ResolvedAgent | null>): Promise<ResolvedAgentModel | null> {
+    if (!chainAgents.some((candidate) => candidate && needsPlatformEmbeddingDefault(candidate))) return null;
+    if (!this.effectiveSettings) return null;
+    let setting: { value: unknown; sourceScope: string };
+    try {
+      setting = await this.effectiveSettings.resolveEffective(STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY, { tenantId });
+    } catch (error) {
+      if (!(error instanceof ArgumentInvalidException)) throw error;
+      return null;
+    }
+    const slug = typeof setting.value === 'string' ? setting.value.trim() : '';
+    if (!slug) return null;
+    const model = await this.agents.resolveModelBySlug(slug, tenantId, { role: 'embedding', taskType: 'SPEAKER_EMBEDDING' });
+    if (!model) {
+      this.logger.warn({
+        message: 'Platform default speaker-embedding model is not a SPEAKER_EMBEDDING model visible to this tenant; diarization degrades',
+        tenantId,
+        settingKey: STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY,
+        modelSlug: slug,
+        sourceScope: setting.sourceScope,
+      });
+      return null;
+    }
+    // Which tier supplied it — the spec has no model-provenance field, so it is logged here.
+    this.logger.log({
+      message: 'ASR diarization uses the platform default speaker-embedding model',
+      tenantId,
+      modelSlug: model.slug,
+      sourceScope: setting.sourceScope,
+    });
+    return model;
   }
 
   /**
@@ -399,11 +480,18 @@ export class AsrAgentResolverService {
     return overrides;
   }
 
-  private async resolveFallbackAgent(agent: ResolvedAgent, tenantId: string): Promise<ResolvedAgent | null> {
+  /**
+   * The primary's `parameters.fallback.agentSlug`, resolved — or `null`, and when the agent named
+   * one that cannot serve, a `FALLBACK_UNRUNNABLE` warning (TASK-1048). Screened HERE, before the
+   * credentials are resolved, so a fallback that will never run never has a credential resolved for
+   * it and the model chain that replaces it keeps its own binding.
+   */
+  private async resolveFallbackAgent(agent: ResolvedAgent, tenantId: string, warnings: AsrSessionWarning[] = []): Promise<ResolvedAgent | null> {
     const slug = rec(rec(agent.compiledConfig.parameters).fallback).agentSlug;
     if (typeof slug !== 'string' || slug.length === 0 || slug === agent.slug) return null;
+    let fallback: ResolvedAgent;
     try {
-      return await this.agents.resolve({ tenantId, task: AgentTask.SPEECH_TO_TEXT, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
+      fallback = await this.agents.resolve({ tenantId, task: AgentTask.SPEECH_TO_TEXT, agentSlug: slug, departmentId: null, primaryBinding: 'mark' });
     } catch (error) {
       this.logger.warn({
         message: 'ASR fallback agent did not resolve; continuing without it',
@@ -412,8 +500,14 @@ export class AsrAgentResolverService {
         fallbackAgentSlug: slug,
         error: error instanceof Error ? error.message : String(error),
       });
+      warnings.push(asrDegradation('FALLBACK_UNRUNNABLE', { slug }));
       return null;
     }
+    if (fallback.task !== 'SPEECH_TO_TEXT' || !fallback.models.some((m) => m.role === 'primary')) {
+      warnings.push(asrDegradation('FALLBACK_UNRUNNABLE', fallback));
+      return null;
+    }
+    return fallback;
   }
 
   /**

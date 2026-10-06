@@ -13,9 +13,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ResolvedAgent } from '@arcaai/types';
+import type { AsrSessionWarning, ResolvedAgent } from '@arcaai/types';
 import { describe, expect, it } from 'vitest';
-import { AsrSpecBuildError, buildResolvedAsrSpec } from '../build-resolved-asr-spec';
+import { buildResolvedAsrSpec } from '../build-resolved-asr-spec';
 
 interface FixtureCase {
   input: { agent: ResolvedAgent; fallbackAgent: ResolvedAgent | null };
@@ -81,40 +81,51 @@ describe('TASK-977 D-2 — denoise enablement is declared, never inferred from a
   });
 });
 
-describe('TASK-977 D-3 — an enabled stage with no model bound is refused, not silently emitted', () => {
-  it('VAD enabled with no VOICE_ACTIVITY_DETECTION model fails closed', () => {
-    let thrown: unknown;
-    try {
-      specOf(withFrontEnd({ vad: { enabled: true } }, withoutModel('vad')));
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(AsrSpecBuildError);
-    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_VAD_MODEL_MISSING');
+/**
+ * TASK-1048 (owner decision OD-1, 2026-10-06) REVERSED D-3's refusal: an enabled VAD stage with no
+ * model is switched OFF for the session and REPORTED (`VAD_MODEL_MISSING`) — it is still never
+ * resolved from whatever weights a cache happens to hold, which was D-3's actual concern.
+ */
+describe('TASK-977 D-3 / TASK-1048 — an enabled stage with no model bound is switched off and reported, not silently emitted', () => {
+  const degradeOf = (agent: ResolvedAgent, fallbackAgent: ResolvedAgent | null = null) => {
+    const warnings: AsrSessionWarning[] = [];
+    const spec = buildResolvedAsrSpec({ agent, fallbackAgent, onWarning: (w) => warnings.push(w) });
+    return { spec, codes: warnings.map((w) => w.code) };
+  };
+
+  it('VAD enabled with no VOICE_ACTIVITY_DETECTION model degrades: vad off, no model, VAD_MODEL_MISSING', () => {
+    const { spec, codes } = degradeOf(withFrontEnd({ vad: { enabled: true } }, withoutModel('vad')));
+    expect(spec.audioFrontEnd.vad.enabled).toBe(false);
+    expect(spec.models).not.toHaveProperty('vad');
+    expect(codes).toEqual(['VAD_MODEL_MISSING']);
   });
 
   it('VAD enabled WITH a model is runnable', () => {
-    expect(() => specOf(withFrontEnd({ vad: { enabled: true } }))).not.toThrow();
+    expect(degradeOf(withFrontEnd({ vad: { enabled: true } })).codes).toEqual([]);
   });
 
   it('VAD disabled with no model is runnable — off is not a configuration error', () => {
-    expect(() => specOf(withFrontEnd({}, withoutModel('vad')))).not.toThrow();
+    expect(degradeOf(withFrontEnd({}, withoutModel('vad'))).codes).toEqual([]);
   });
 
   it('denoise enabled with NO model is runnable — the denoise engines are runtime-owned', () => {
     // `StreamingDenoiser` loads pyrnnoise's own weights and `DeepFilterNet3StreamingDenoiser`
     // calls `init_df(default_model='DeepFilterNet3')`; the engine is chosen by NAME
-    // (`DenoiseConfig.engine`), never from `models.denoise`. Refusing here would refuse the
+    // (`DenoiseConfig.engine`), never from `models.denoise`. Reporting here would flag the
     // default, legitimate configuration — so denoise gets NO model guard.
-    expect(() => specOf(withFrontEnd({ denoise: { enabled: true } }, withoutModel('denoise')))).not.toThrow();
+    const { spec, codes } = degradeOf(withFrontEnd({ denoise: { enabled: true } }, withoutModel('denoise')));
+    expect(spec.audioFrontEnd.denoise.enabled).toBe(true);
+    expect(codes).toEqual([]);
   });
 
-  it('the guard reaches the fallback chain too', () => {
+  it('the rule reaches the fallback chain too', () => {
     const fallbackAgent = withFrontEnd(
       { vad: { enabled: true } },
       withoutModel('vad', (FIXTURE.cloudWithAgentFallback as FixtureCase).input.fallbackAgent as ResolvedAgent),
     );
-    expect(() => buildResolvedAsrSpec({ agent: base, fallbackAgent })).toThrow(AsrSpecBuildError);
+    const { spec, codes } = degradeOf(base, fallbackAgent);
+    expect(spec.fallback.spec?.audioFrontEnd.vad.enabled).toBe(false);
+    expect(codes).toEqual(['VAD_MODEL_MISSING']);
   });
 });
 

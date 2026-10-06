@@ -6,9 +6,15 @@
 // `apps/stt/tests/unit/test_task799_descriptor_parity.py`, because that is the
 // side that can read the authoritative defaults without transcribing them.
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY } from '@arcaai/types';
 import { describe, expect, it } from 'vitest';
+import { TenantSettingsService } from '../tenant-settings.service';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
-import { STT_RUNTIME_SETTINGS } from '../descriptors/stt-runtime.descriptors';
+import { STT_RUNTIME_PULL_SETTINGS, STT_RUNTIME_SETTINGS } from '../descriptors/stt-runtime.descriptors';
 import { SERVICE_RUNTIME_DEFAULTS } from '../descriptors/service-runtime.descriptors';
 
 describe('STT_RUNTIME_SETTINGS', () => {
@@ -30,7 +36,7 @@ describe('STT_RUNTIME_SETTINGS', () => {
   });
 
   it('puts every key on the stt pull route and nothing else', () => {
-    for (const descriptor of STT_RUNTIME_SETTINGS) {
+    for (const descriptor of STT_RUNTIME_PULL_SETTINGS) {
       expect(descriptor.key.startsWith('stt.'), descriptor.key).toBe(true);
       expect(descriptor.consumedBy, descriptor.key).toEqual(['stt']);
     }
@@ -41,7 +47,7 @@ describe('STT_RUNTIME_SETTINGS', () => {
     // pull route is a single cached snapshot per service process, so a
     // tenant-varying key on it would turn one cache entry into one per customer.
     // Anything tenant-varying travels the PUSH channel instead.
-    for (const descriptor of STT_RUNTIME_SETTINGS) {
+    for (const descriptor of STT_RUNTIME_PULL_SETTINGS) {
       expect(descriptor.maxScope, descriptor.key).toBe('system');
       expect(descriptor.globalOnly, descriptor.key).toBe(true);
     }
@@ -59,7 +65,7 @@ describe('STT_RUNTIME_SETTINGS', () => {
   });
 
   it('is tuning, so a control-plane miss degrades instead of failing the pull', () => {
-    for (const descriptor of STT_RUNTIME_SETTINGS) {
+    for (const descriptor of STT_RUNTIME_PULL_SETTINGS) {
       expect(descriptor.failMode, descriptor.key).toBe('open-to-default');
     }
   });
@@ -69,7 +75,7 @@ describe('STT_RUNTIME_SETTINGS', () => {
     // an unseeded deployment runs on exactly the values it ran on before. A
     // descriptor with no default would instead resolve to `undefined`, fail the
     // dataType check, and log a warning on every pull.
-    for (const descriptor of STT_RUNTIME_SETTINGS) {
+    for (const descriptor of STT_RUNTIME_PULL_SETTINGS) {
       expect(descriptor.default, descriptor.key).toBeDefined();
       expect(typeof descriptor.default, descriptor.key).toBe(
         descriptor.dataType === 'boolean' ? 'boolean' : descriptor.dataType === 'number' ? 'number' : 'string',
@@ -177,5 +183,94 @@ describe('STT_RUNTIME_SETTINGS', () => {
     const storage = HOPE_SETTINGS_REGISTRY.get('storage.platformDefault.provider');
     expect(storage?.tier).toBe('db-config');
     expect(storage?.consumedBy).toEqual(['stt']);
+  });
+});
+
+/**
+ * TASK-1048 (owner decision OD-2, 2026-10-06) — the platform default speaker-embedding model.
+ *
+ * Consulted by the GATEWAY (`AsrAgentResolverService`) only when an ASR agent enables diarization
+ * and names no `embeddingModelSlug`. It is model SELECTION, so it fails CLOSED with no code
+ * default (rule 09 §Configuration Tiers): the platform value is a SEEDED SYSTEM row, and an
+ * absent value makes the resolver switch diarization off and report `DIARIZATION_MODEL_MISSING`.
+ * Tenant → SYSTEM, widened on ABSENCE only — which is why it is NOT on the stt pull route.
+ */
+describe(`${STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY} (TASK-1048 OD-2)`, () => {
+  const KEY = STT_DIARIZATION_DEFAULT_EMBEDDING_MODEL_SETTING_KEY;
+  const SEED_FILE = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    '../../../../../database/src/prisma/db_main/seed/11d-stt-diarization-default-setting.ts',
+  );
+  const SYSTEM_VALUE = 'wespeaker-voxceleb-resnet34';
+  const TENANT = '11111111-1111-1111-1111-111111111111';
+
+  const descriptor = () => HOPE_SETTINGS_REGISTRY.get(KEY);
+  const cascade = (platform: Record<string, unknown>, tenant: Record<string, Record<string, unknown>> = {}) =>
+    new TenantSettingsService({
+      getValueFromCache: (key: string) => (key in platform ? platform[key] : null),
+      getTenantValueFromCache: (tenantId: string, key: string) => tenant[tenantId]?.[key] ?? null,
+    } as never);
+
+  it('is registered, declared in this file, and is NOT a pull-route knob', () => {
+    expect(descriptor()).toBeDefined();
+    expect(STT_RUNTIME_SETTINGS.map((d) => d.key)).toContain(KEY);
+    expect(STT_RUNTIME_PULL_SETTINGS.map((d) => d.key)).not.toContain(KEY);
+    // Tenant-varying ⇒ never on the platform-scope pull snapshot (D-1); the gateway reads it.
+    expect(descriptor()?.consumedBy).toBeUndefined();
+  });
+
+  it('is a tenant-scoped, governed global-kv string that fails CLOSED with no code default (it is model selection)', () => {
+    expect(descriptor()).toMatchObject({
+      tier: 'global-kv',
+      dataType: 'string',
+      sensitivity: 'internal',
+      maxScope: 'tenant',
+      editableBy: 'GlobalSetting',
+      failMode: 'closed',
+    });
+    expect(descriptor()?.globalOnly).toBeFalsy();
+    expect(descriptor()?.default).toBeUndefined();
+    expect(descriptor()?.label).toBeTruthy();
+  });
+
+  it('refuses a write that is not a model slug', () => {
+    const validate = descriptor()?.validate;
+    expect(validate).toBeTypeOf('function');
+    expect(validate!(SYSTEM_VALUE)).toBeFalsy();
+    expect(validate!('')).toEqual(expect.any(String));
+    expect(validate!('has spaces')).toEqual(expect.any(String));
+    expect(validate!(42)).toEqual(expect.any(String));
+  });
+
+  it('resolves tenant → SYSTEM, widening on absence only, and raises when neither tier has a value', () => {
+    expect(cascade({ [KEY]: SYSTEM_VALUE }, { [TENANT]: { [KEY]: 'tenant-embedding' } }).resolve(KEY, TENANT)).toMatchObject({
+      value: 'tenant-embedding',
+      source: 'tenant',
+    });
+    expect(cascade({ [KEY]: SYSTEM_VALUE }).resolve(KEY, TENANT)).toMatchObject({ value: SYSTEM_VALUE, source: 'system' });
+    expect(() => cascade({}).resolve(KEY, TENANT)).toThrow(ArgumentInvalidException);
+  });
+
+  describe('the SYSTEM seed row', () => {
+    const source = () => readFileSync(SEED_FILE, 'utf8');
+
+    it('seeds exactly this key, with the owner-chosen value, on the SYSTEM tenant in the registry namespace', () => {
+      expect([...source().matchAll(/^\s{2}key: '([^']+)',$/gm)].map((m) => m[1])).toEqual([KEY]);
+      expect(source()).toMatch(new RegExp(`^\\s{2}value: '${SYSTEM_VALUE}',$`, 'm'));
+      expect(source()).toContain('tenantId: SYSTEM_TENANT_ID');
+      expect(source()).not.toMatch(/tenantId: SEED_TENANT_ID/);
+      expect(source()).toContain("const NAMESPACE = 'registry'");
+    });
+
+    it('names the row exactly as the descriptor label the write lane would create (row identity)', () => {
+      expect([...source().matchAll(/^\s{2}name: '([^']+)',$/gm)].map((m) => m[1])).toEqual([descriptor()?.label]);
+    });
+
+    it('never writes `value` on re-seed — an operator who changed the default keeps it', () => {
+      const update = source().match(/update:\s*\{([^}]*)\}/);
+      expect(update).not.toBeNull();
+      // No `value:` PROPERTY (`defaultValue: row.value` is code-owned metadata and allowed).
+      expect(update![1]).not.toMatch(/^\s*value:/m);
+    });
   });
 });

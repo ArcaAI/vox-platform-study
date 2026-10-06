@@ -28,6 +28,7 @@ import { seedGlobalSetting } from './11-global-setting';
 import { seedPlatformKnobSettings } from './11a-platform-knob-settings';
 import { seedTenantAllowedOrigins } from './11b-tenant-allowed-origins';
 import { seedConsultationGateSettings } from './11c-consultation-gate-settings';
+import { seedSttDiarizationDefaultSetting } from './11d-stt-diarization-default-setting';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedEntitlements } from './15-entitlements';
@@ -280,6 +281,10 @@ export const seed = async () => {
     // assemble a kill-switch that defaults ON — so the seeded ROW is what
     // enables them, and `defaultValue` stays at the fail-safe.
     await seedConsultationGateSettings(client);
+    console.log('');
+    // TASK-1048 (OD-2) — the platform default speaker-embedding model. Model SELECTION, so its
+    // descriptor fails closed with no code default: this SYSTEM row IS the platform value.
+    await seedSttDiarizationDefaultSetting(client);
     console.log('');
     // `seedTtsEngineFlagSettings` ran here — five `GlobalSetting` rows for the tts
     // provider/engine enable flags. TASK-879 removed it: "may this engine serve"

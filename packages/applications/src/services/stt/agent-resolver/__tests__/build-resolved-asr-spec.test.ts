@@ -7,7 +7,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
+import type { AsrSessionWarning, ResolvedAgent, ResolvedAsrSpec } from '@arcaai/types';
 import { AI_MODEL_ASR_PROFILE_DECODING_RANGES, AI_MODEL_ASR_PROFILE_WINDOW_RANGES } from '@arcaai/types';
 import { AGENT_PARAMETER_SCHEMAS } from '@arcaai/workflow-contract';
 import { describe, expect, it } from 'vitest';
@@ -286,7 +286,7 @@ describe('buildResolvedAsrSpec — AiModel._metadata.asr rides each model', () =
  * column is dimension-agnostic `vector`, and matching only ever considers profiles from the SAME
  * model. A width mismatch is impossible by construction — there is nothing left to refuse.
  *
- * What remains refusable is the fail-closed case: embedding diarization ON with no model named.
+ * What remained refusable — embedding diarization ON with no model named — DEGRADES since TASK-1048.
  */
 describe('buildResolvedAsrSpec — the agent declares the diarization space', () => {
   const base = (fixture.platformDefault as FixtureCase).input.agent;
@@ -316,63 +316,59 @@ describe('buildResolvedAsrSpec — the agent declares the diarization space', ()
     expect(spec.models.embedding?.slug).toBe('ecapa-tdnn-voxceleb');
   });
 
-  it('refuses embedding diarization with no embedding model bound, naming the parameter to set', () => {
-    let thrown: unknown;
-    try {
-      buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'embedding' }, withoutEmbeddingModel()), fallbackAgent: null });
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(AsrSpecBuildError);
-    expect((thrown as AsrSpecBuildError).code).toBe('ASR_AGENT_DIARIZATION_MODEL_MISSING');
-    expect((thrown as AsrSpecBuildError).message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
+  /**
+   * TASK-1048 (owner decision OD-1, 2026-10-06) — REVERSES the TASK-887 / TASK-980 refusals below:
+   * an optional stage whose prerequisite is missing is switched OFF and reported through
+   * `onWarning`, never a 409. The cases are kept, with the degrade assertion in place of the throw.
+   */
+  const degradeOf = (input: Parameters<typeof buildResolvedAsrSpec>[0]) => {
+    const warnings: AsrSessionWarning[] = [];
+    const spec = buildResolvedAsrSpec({ ...input, onWarning: (w) => warnings.push(w) });
+    return { spec, warnings, codes: warnings.map((w) => w.code) };
+  };
+
+  it('degrades embedding diarization with no embedding model bound, naming the parameter in the warning', () => {
+    const { spec, warnings } = degradeOf({ agent: withDiarization({ enabled: true, backend: 'embedding' }, withoutEmbeddingModel()), fallbackAgent: null });
+    expect(spec.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(warnings[0]?.code).toBe('DIARIZATION_MODEL_MISSING');
+    expect(warnings[0]?.message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
   });
 
   /**
    * TASK-980 (owner decision 2026-09-16) — the `sortformer` backend is RETIRED. A published agent
    * version is immutable stored content and may still say `sortformer`; coercing that to
-   * `embedding` would silently run a diarizer the agent never declared, so it is REFUSED.
+   * `embedding` would silently run a diarizer the agent never declared, so the stage is switched
+   * OFF (TASK-1048) — never coerced, and never a refusal of the whole session.
    */
-  const refusalOf = (run: () => unknown): AsrSpecBuildError => {
-    try {
-      run();
-    } catch (error) {
-      if (error instanceof AsrSpecBuildError) return error;
-      throw error;
-    }
-    throw new Error('expected buildResolvedAsrSpec to refuse the agent');
-  };
-
-  it('refuses an ENABLED sortformer stage with a named code — never coerced to embedding', () => {
+  it('switches an ENABLED sortformer stage off with a named code — never coerced to embedding', () => {
     // The embedding model stays bound, so nothing but the backend could be the cause.
-    const error = refusalOf(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'sortformer' }), fallbackAgent: null }));
-    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
-    expect(error.message).toContain(`'${base.slug}' v${base.versionNumber}`);
-    expect(error.message).toContain("'sortformer'");
-    expect(error.message).toContain('retired');
-    expect(error.message).toContain('TASK-980');
+    const { spec, warnings } = degradeOf({ agent: withDiarization({ enabled: true, backend: 'sortformer' }), fallbackAgent: null });
+    expect(spec.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(spec.models).not.toHaveProperty('embedding');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ code: 'DIARIZATION_BACKEND_UNSUPPORTED', agentSlug: base.slug, agentVersionNumber: base.versionNumber });
+    expect(warnings[0]?.message).toContain('embedding');
   });
 
   it('reports the retired backend, not a missing model, when a sortformer stage also binds no embedding model', () => {
-    const error = refusalOf(() =>
-      buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'sortformer' }, withoutEmbeddingModel()), fallbackAgent: null }),
-    );
-    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+    const { codes } = degradeOf({ agent: withDiarization({ enabled: true, backend: 'sortformer' }, withoutEmbeddingModel()), fallbackAgent: null });
+    expect(codes).toEqual(['DIARIZATION_BACKEND_UNSUPPORTED']);
   });
 
-  it('refuses ANY enabled backend other than embedding, naming the stored value', () => {
-    const error = refusalOf(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: true, backend: 'pyannote' }), fallbackAgent: null }));
-    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
-    expect(error.message).toContain("'pyannote'");
+  it('switches off ANY enabled backend other than embedding', () => {
+    const { spec, codes } = degradeOf({ agent: withDiarization({ enabled: true, backend: 'pyannote' }), fallbackAgent: null });
+    expect(spec.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(codes).toEqual(['DIARIZATION_BACKEND_UNSUPPORTED']);
   });
 
-  it('emits embedding for a DISABLED stage whatever backend it stored — nothing runs, so nothing to refuse', () => {
-    const spec = buildResolvedAsrSpec({
+  it('emits embedding for a DISABLED stage whatever backend it stored — nothing runs, so nothing to report', () => {
+    const { spec, warnings } = degradeOf({
       agent: withDiarization({ enabled: false, backend: 'sortformer' }, withoutEmbeddingModel()),
       fallbackAgent: null,
     });
     expect(spec.audioFrontEnd.diarization).toMatchObject({ enabled: false, backend: 'embedding' });
     expect(spec.models).not.toHaveProperty('embedding');
+    expect(warnings).toEqual([]);
   });
 
   it('reads an absent backend as embedding', () => {
@@ -380,27 +376,34 @@ describe('buildResolvedAsrSpec — the agent declares the diarization space', ()
     expect(spec.audioFrontEnd.diarization).toMatchObject({ enabled: true, backend: 'embedding' });
   });
 
-  it('refuses a sortformer FALLBACK AGENT too — the chain it would switch to is just as unrunnable', () => {
+  it('degrades a sortformer FALLBACK AGENT in place — the chain it would switch to still runs ASR', () => {
     const fallbackAgent = withDiarization({ enabled: true, backend: 'sortformer' });
-    const error = refusalOf(() => buildResolvedAsrSpec({ agent: base, fallbackAgent }));
-    expect(error.code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+    const { spec, codes } = degradeOf({ agent: base, fallbackAgent });
+    expect(spec.fallback.kind).toBe('agent');
+    expect(spec.fallback.spec?.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(codes).toEqual(['DIARIZATION_BACKEND_UNSUPPORTED']);
   });
 
-  it('refuses a sortformer agent whose MODEL-level fallback chain is built from the same parameters', () => {
-    // `base` carries a fallback ASR row, so the model chain is built — and it must refuse as well.
+  it('degrades a sortformer agent whose MODEL-level fallback chain is built from the same parameters', () => {
+    // `base` carries a fallback ASR row, so the model chain is built — and it degrades as well.
     const agent = withDiarization({ enabled: true, backend: 'sortformer' });
     const fallbackRow = agent.models.find((m) => m.role === 'fallback');
     if (!fallbackRow) throw new Error('fixture agent lost its fallback ASR row');
-    expect(refusalOf(() => buildAsrSpecCore(agent, { asr: fallbackRow, runtimeKey: 'k' })).code).toBe('ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED');
+    const warnings: AsrSessionWarning[] = [];
+    const core = buildAsrSpecCore(agent, { asr: fallbackRow, runtimeKey: 'k' }, undefined, null, { onWarning: (w) => warnings.push(w) });
+    expect(core.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(warnings.map((w) => w.code)).toEqual(['DIARIZATION_BACKEND_UNSUPPORTED']);
   });
 
   it('says nothing about an agent with diarization off and no embedding model — the OFF default', () => {
-    expect(() => buildResolvedAsrSpec({ agent: withDiarization({ enabled: false }, withoutEmbeddingModel()), fallbackAgent: null })).not.toThrow();
+    expect(degradeOf({ agent: withDiarization({ enabled: false }, withoutEmbeddingModel()), fallbackAgent: null }).warnings).toEqual([]);
   });
 
-  it('checks the FALLBACK chain too — a fallback agent may not diarize without a model either', () => {
+  it('checks the FALLBACK chain too — a fallback agent that diarizes without a model degrades, the session still builds', () => {
     const fallbackAgent = withDiarization({ enabled: true, backend: 'embedding' }, withoutEmbeddingModel());
-    expect(() => buildResolvedAsrSpec({ agent: base, fallbackAgent })).toThrow(AsrSpecBuildError);
+    const { spec, codes } = degradeOf({ agent: base, fallbackAgent });
+    expect(spec.fallback.spec?.audioFrontEnd.diarization.enabled).toBe(false);
+    expect(codes).toEqual(['DIARIZATION_MODEL_MISSING']);
   });
 
   it('carries matchThreshold when the agent sets it, and OMITS the key when it does not', () => {

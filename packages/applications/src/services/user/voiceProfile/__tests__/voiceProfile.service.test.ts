@@ -414,12 +414,11 @@ describe('VoiceProfileService', () => {
       });
 
       /**
-       * TASK-980 — the retired `sortformer` backend was the only way a resolved spec could enable
-       * diarization without an embedding model; `buildResolvedAsrSpec` now refuses both that backend
-       * (409 `ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED`) and embedding-without-a-model (409
-       * `ASR_AGENT_DIARIZATION_MODEL_MISSING`). Should a spec ever arrive in that state anyway, the
-       * service answers the resolver's OWN 409 for it — not the old 400, which blamed the request
-       * for an agent-configuration conflict and named a backend that no longer exists.
+       * TASK-980 / TASK-1048 — a resolved spec never ENABLES diarization without an embedding model:
+       * `buildResolvedAsrSpec` switches such a stage off and reports it in `warnings` (see the
+       * TASK-1048 block below). Should a spec ever arrive enabled-but-modelless anyway, the service
+       * answers 409 `ASR_AGENT_DIARIZATION_MODEL_MISSING` — not the old 400, which blamed the
+       * request for an agent-configuration conflict.
        */
       it('refuses with the resolver’s 409 ASR_AGENT_DIARIZATION_MODEL_MISSING if a spec enables diarization with no embedding model', async () => {
         mockAsrResolver.resolve.mockResolvedValue(asrSpec({ embedding: undefined, enabled: true }));
@@ -737,6 +736,81 @@ describe('VoiceProfileService', () => {
       // The admin is still told exactly which knob to set.
       expect(body.message).toContain('audioFrontEnd.diarization.enabled');
       expect(body.message).not.toContain('embeddingModelSlug');
+    });
+  });
+
+  /**
+   * TASK-1048 (owner decision OD-1, 2026-10-06) — a session no longer refuses an agent whose
+   * diarization cannot run; the resolver switches the stage OFF and reports it in `warnings`. A
+   * SESSION can live with that. ENROLLMENT cannot: it needs the speaker-embedding model. So a
+   * degraded agent is unusable for enrollment and gets a clear, actionable 409 — but only when no
+   * sibling agent that genuinely diarizes (with an embedding model) is available.
+   */
+  describe('enrollmentTarget — an agent whose diarization DEGRADED (TASK-1048)', () => {
+    const degraded = (code: 'DIARIZATION_MODEL_MISSING' | 'DIARIZATION_BACKEND_UNSUPPORTED', slug = AGENT_SLUG) => ({
+      ...asrSpec({ slug, enabled: false, embedding: undefined }),
+      warnings: [{ code, stage: 'diarization', severity: 'WARNING', message: 'Speaker diarization is off for this session: …', agentSlug: slug }],
+    });
+
+    it('a NAMED agent with no resolvable embedding model is a 409 ASR_AGENT_DIARIZATION_MODEL_MISSING that says what to set', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(degraded('DIARIZATION_MODEL_MISSING'));
+
+      const thrown = await service.enrollmentTarget(AGENT_SLUG).catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(ConflictException);
+      const body = (thrown as ConflictException).getResponse() as { code: string; message: string };
+      expect(body.code).toBe('ASR_AGENT_DIARIZATION_MODEL_MISSING');
+      expect(body.message).toContain(`'${AGENT_SLUG}'`);
+      expect(body.message).toContain('audioFrontEnd.diarization.embeddingModelSlug');
+      expect(body.message).toContain('stt.diarization.defaultEmbeddingModelSlug');
+      // NOT "switch diarization on" — it IS on; that advice would send the admin in a circle.
+      expect(body.code).not.toBe('ASR_AGENT_DIARIZATION_DISABLED');
+      expect(mockAgentRepository.findPublishedActiveVisible).not.toHaveBeenCalled();
+    });
+
+    it('a NAMED agent on a retired backend is a 409 ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED', async () => {
+      mockAsrResolver.resolve.mockResolvedValue(degraded('DIARIZATION_BACKEND_UNSUPPORTED'));
+
+      const thrown = await service.enrollmentTarget(AGENT_SLUG).catch((error: unknown) => error);
+
+      expect((thrown as ConflictException).getResponse()).toEqual({
+        code: 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
+        message: expect.stringContaining('embedding'),
+      });
+    });
+
+    it('the ASSIGNED agent degraded but a sibling genuinely diarizes → enrolls against the sibling, no 409', async () => {
+      mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) =>
+        input.agentSlug === SIBLING_SLUG ? siblingSpec() : degraded('DIARIZATION_MODEL_MISSING'),
+      );
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: AGENT_SLUG }, { slug: SIBLING_SLUG }]);
+
+      await expect(service.enrollmentTarget()).resolves.toMatchObject({ agentSlug: SIBLING_SLUG, modelId: SIBLING_EMBEDDING_SLUG });
+    });
+
+    it('skips a degraded SIBLING too and keeps looking', async () => {
+      mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) => {
+        if (input.agentSlug === 'degraded-sibling') return degraded('DIARIZATION_MODEL_MISSING', 'degraded-sibling');
+        return input.agentSlug === SIBLING_SLUG ? siblingSpec() : asrSpec({ enabled: false });
+      });
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: 'degraded-sibling' }, { slug: SIBLING_SLUG }]);
+
+      await expect(service.enrollmentTarget()).resolves.toMatchObject({ agentSlug: SIBLING_SLUG });
+    });
+
+    it('nothing usable tenant-wide and the assigned agent DEGRADED → 409 ASR_AGENT_DIARIZATION_MODEL_MISSING (not "switch it on")', async () => {
+      mockAsrResolver.resolve.mockImplementation(async (input: { agentSlug: string | null }) =>
+        input.agentSlug === 'degraded-sibling' ? degraded('DIARIZATION_MODEL_MISSING', 'degraded-sibling') : degraded('DIARIZATION_MODEL_MISSING'),
+      );
+      mockAgentRepository.findPublishedActiveVisible.mockResolvedValue([{ slug: AGENT_SLUG }, { slug: 'degraded-sibling' }]);
+
+      const thrown = await service.enrollmentTarget().catch((error: unknown) => error);
+
+      expect(thrown).toBeInstanceOf(ConflictException);
+      const body = (thrown as ConflictException).getResponse() as { code: string; message: string };
+      expect(body.code).toBe('ASR_AGENT_DIARIZATION_MODEL_MISSING');
+      expect(body.message).toContain('stt.diarization.defaultEmbeddingModelSlug');
+      expect(body.message).toContain('no other published speech-to-text agent');
     });
   });
 

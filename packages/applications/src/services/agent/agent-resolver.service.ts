@@ -505,6 +505,28 @@ export class AgentResolverService {
     return { entry: { provider, ...entry }, fundingTier: entry.funding };
   }
 
+  /**
+   * TASK-1048 (OD-2) — one registry model by slug, resolved EXACTLY like an agent-named auxiliary
+   * slug in `materialiseModels`: the caller's own row first, then the SYSTEM catalogue, mapped
+   * through the same `toResolvedModel`. Used by the ASR resolver for the platform default
+   * speaker-embedding model, so "a configured default" and "an agent-named slug" can never resolve
+   * by different rules.
+   *
+   * `taskType` additionally refuses a row of another kind (a setting is free text; an agent's slug
+   * was schema-checked at publish). Answers `null` — never throws — for "no such usable row"; a
+   * backend fault propagates, exactly as `modelBySlug` lets it.
+   */
+  async resolveModelBySlug(
+    slug: string,
+    tenantId: string,
+    options: { role: ResolvedAgentModelRole; taskType?: string },
+  ): Promise<ResolvedAgentModel | null> {
+    const model = await this.modelBySlug(slug, tenantId);
+    if (!model) return null;
+    if (options.taskType && String(model.taskType) !== options.taskType) return null;
+    return toResolvedModel(model, options.role);
+  }
+
   private async modelById(id: string, tenantId: string): Promise<AiModelEntity | null> {
     const model = await this.aiModelRepository
       .findById(id)
