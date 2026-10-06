@@ -518,6 +518,43 @@ Rationale for F4's split: under HIPAA Safe Harbor a date or a place identifies o
 it belongs to, so an instruction carrying an example date is not PHI on its own; the runtime path still
 screens every DATA region in full (D3), so an advisory at authoring time never weakens call-time egress.
 
+### 8.2 Validation results (local stack, Apple Silicon, 2026-10-06)
+
+**Boot backfill (after F4–F6):** 135 sources, 116 already governed, 19 screened → 19 PASS, 0 FAIL,
+0 UNAVAILABLE; one pass in ~60 s after the 60 s delay; no NLP restart. 7 rows carry an ADVISORY finding.
+One stale FAIL row remains for a digest no current source renders (pre-F3 rendering) — inert.
+
+**V2 / S1 — `bench_guard_memory.py`** (RSS deltas over the warm baseline; warm baseline with every
+screening model loaded ≈ 4.7–5.1 GiB on this Mac):
+
+| Path | Size (chars) | Peak Δ MiB | Result |
+|---|---|---|---|
+| direct PII | 1k / 2k / 4k / 8k | 174 / 112 / 555 / **1,901** | 8k over the 1 GiB budget |
+| direct classify | 1k / 2k / 4k / 8k | 12 / 54 / 129 / 691 | within |
+| direct, > 8,192 | 16k–200k | 0 (413 in ≤ 7 ms) | cap works |
+| direct leak check | 30 × 4k | +43 MiB plateau (tol 64) | no leak |
+| direct concurrency | 4 / 8 × 4k | ≤ 833 | within |
+| via guardrail | 1k / 2k / 4k | 82 / 177 / 635 | within |
+| via guardrail | 8k / 16k / 32k / 64k / 200k | **1,109** / 649 / 945 / 832 / **1,626** | 8k and 200k over |
+| via guardrail leak check | 30 × 4k | +0 MiB | no leak |
+
+Reading: one window-sized inference (≤ 4,256 chars, what guardrail sends) costs ≤ ~0.65 GiB — the
+per-inference S1 target holds there. Requests that fan out into several windows run up to
+`screenWindowConcurrency` (4) × `nlp.inference.maxConcurrent` (4) windows at once, and the SUM of their
+transient memory reaches 1.1–1.6 GiB; the absolute peak seen was 8.35 GiB (32k via guardrail). The
+36.8 GiB failure mode is gone (bounded, no ratchet), but the S1 per-REQUEST reading misses by up to
+0.6 GiB at the default concurrency. S2 (steady-state ≤ 6 GiB per pod) is decided by V4.
+
+**Regression found while sizing S1 — NER callers vs the 8,192-char cap (FC-8 / L6):** the 413 cap
+applies to `/classify/tokens` too, and five callers send unwindowed text there: the NER agent invoke
+(`agent-invocation.service.ts:576`), summary `extractEntities` (`summary.service.ts:2009`, up to 200k),
+live documentation's NER (`live-tool-registry.ts:206`, whole transcript when the delta is empty), the
+harness `extract_entities` on transcript and note (`activities.py:1307`, degrades and RETRIES the 413),
+and the console ai-inference proxy (≤ 20k). Before TASK-1047 these were accepted at quadratic memory
+(the original blow-up); now long inputs fail or silently degrade (no entities in the note). Owner decision
+2026-10-06 (OD-10): **NLP windows NER server-side** — see §8.3. S1 decision (OD-11): keep
+`screenWindowConcurrency` 4 and judge memory by the V4 soak (S2); S1 is read per inference.
+
 ## 9. Change History
 
 | Date | Change |
