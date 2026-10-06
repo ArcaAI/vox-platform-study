@@ -46,6 +46,7 @@ from typing import Any
 import structlog
 
 from nlp.core.batching import MicroBatcher
+from nlp.core.bounds import get_bounds
 from nlp.core.config import settings
 from nlp.core.metrics import observe_batch_size
 from nlp.core.priority_gate import PRIORITY_BULK, PRIORITY_INTERACTIVE, PriorityGate
@@ -205,6 +206,7 @@ async def get_batcher(
                 on_batch=lambda _group, size: observe_batch_size(name, size),
                 inflight_gate=_gate_for(slot_key),
                 priority=_LANE_PRIORITY[lane],
+                max_batch_chars=lambda: get_bounds().max_batch_chars,
                 **_batching_config(lane),
             )
             _batchers[key] = batcher

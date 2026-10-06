@@ -10,6 +10,8 @@ descriptors that serve them are registered by lane L8.
 * ``nlp.inference.maxInputChars``     -> :attr:`InferenceBounds.max_input_chars`
 * ``nlp.inference.maxInputWords``     -> :attr:`InferenceBounds.max_input_words`
   (``max_len`` for gliner2: one forward pass otherwise spans the whole text)
+* ``nlp.inference.maxBatchChars``     -> :attr:`InferenceBounds.max_batch_chars`
+  (a micro-batch closes when its items' summed text length would exceed it)
 * ``nlp.inference.threadsPerInference`` -> torch intra-op threads per inference
 * ``nlp.worker.recycleAfterRequests`` / ``nlp.worker.recycleRssMib`` -> see
   :mod:`nlp.core.recycle`
@@ -52,6 +54,7 @@ class InputExceedsWindow(Exception):
 class InferenceBounds:
     max_input_chars: int = 8192
     max_input_words: int = 2048
+    max_batch_chars: int = 8192  # per-forward-pass sum of item chars
     threads_per_inference: int = 0  # 0 = derive from CPU budget / concurrency
     recycle_after_requests: int = 2000
     recycle_rss_mib: int = 6144
@@ -109,6 +112,7 @@ def apply_snapshot(snapshot: EffectiveConfigSnapshot) -> InferenceBounds:
     mapping = (
         ("max_input_chars", "nlp.inference.maxInputChars", False),
         ("max_input_words", "nlp.inference.maxInputWords", False),
+        ("max_batch_chars", "nlp.inference.maxBatchChars", False),
         ("threads_per_inference", "nlp.inference.threadsPerInference", True),
         ("recycle_after_requests", "nlp.worker.recycleAfterRequests", False),
         ("recycle_rss_mib", "nlp.worker.recycleRssMib", False),
