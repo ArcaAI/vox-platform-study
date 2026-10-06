@@ -1798,6 +1798,15 @@ async def _run_note_plan_finalizer(
         if trace is not None:
             await trace.model_request(attempt.provider, attempt.model, index, False, generation)
 
+    # TASK-1047 V7 — the claim must describe the system this finalizer sends (the agent's own
+    # composition), verified exactly as every other core.agent call is (FC-6); never the plan's.
+    own_governance = await _system_governance(
+        composed,
+        candidate,
+        PolicyVersionProbe(_guardrail_client(settings), payload.tenant_id),
+        GovernanceVerifier(_api_client(settings), payload.tenant_id),
+    )
+
     async def _generate(
         request: NoteCallRequest, attempt: PlanAttempt, index: int
     ) -> NoteCallResult:
@@ -1805,7 +1814,9 @@ async def _run_note_plan_finalizer(
             tenant_id=payload.tenant_id,
             prompt=request.user,
             system_prompt=request.system,
-            system_governance=request.system_governance,
+            # The finalizer sends the AGENT's composed system, never the plan's: the plan calls'
+            # `systemGovernance` describes the plan's system and would never match (TASK-1047 V7).
+            system_governance=own_governance,
             provider=attempt.provider,
             model=attempt.model,
             temperature=generation.get("temperature"),
