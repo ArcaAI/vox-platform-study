@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **In Progress** — owner approved the plan and OD-1…OD-9 as recommended (2026-10-06); evaluation running |
+| Status | **Review** — evaluation complete (2026-10-06); verdict and recommendations R1–R5 in §9 await the owner. No production config was changed. |
 | Type | research / evaluation (no production config change; the recommendation feeds a follow-up implementation ticket) |
 | Branch | `dev-2.2` |
 | Raised by | TASK-1047 §8.6 / OD-13 follow-up (FC-5b, §6.1) |
@@ -197,7 +197,7 @@ committed only if small (< 1 MB); otherwise it stays regenerable from the prompt
 
 ## 8. Implementation Summary
 
-_Interim, 2026-10-06. Scoring paused at the owner's request while another session runs its tests._
+_Complete, 2026-10-06. Results §8.5–8.7, recommendation §9._
 
 ### 8.1 What is built (dev-2.2)
 
@@ -219,7 +219,7 @@ Data (public and synthetic only) lives in `/Volumes/aillusion/task-1049-data/` (
 | b3 | 339 | 339 | NotInject (over-defence reference) |
 | c1 | 1,562 | 1,572 | 863 injections (deepset, gandalf, SPML) + 699 benign prompts |
 | c2 | 275 | — | 55 payloads across 10 classes (en, ml, ml-Latn, hi, es, de) × 5 carriers. Bases are golden regions + b1. |
-| b2 | — | — | pending: owner approved loading `gemma-4-e2b-it-qat` after scoring |
+| b2 | 112 | 306 | LLM-generated clinical hard negatives (`gemma-4-e2b-it-qat`, §8.7) |
 
 ### 8.2 Findings so far
 
@@ -245,10 +245,105 @@ The bench now gates every model load on system free memory (`memory_pressure` �
 
 At 17:23 the Mac was force-restarted (`ResetCounter`: `btn_rst, btn_seq_reset`; no panic report). In flight at the time: the unguarded scoring run (GLiGuard at batch 8, so > 4.6 GB), LM Studio with `gemma-4-e2b-it-qat` and `granite-guardian-4.1-8b` (the latter not loaded by this ticket), L2's b2 generation, the dev stack and browsers. Lost: `/tmp` (sets, partial scores, b2 generation). Kept: all committed code and L2's uncommitted worktree, which was then committed and merged. Mitigations: §8.3, and data moved to the persistent volume.
 
-## 9. Change History
+### 8.5 Results — accuracy (test split, 2,000 / 256 windows, CPU)
+
+Clinical benign gate = sets a + b1 + b2 test windows: **1,358 windows** (golden 118, ACI/MTS 1,037, b2 hard negatives 203).
+c2 test = **190** embedded injections (38 payloads × 5 carriers). Bounds are one-sided 95 % Clopper-Pearson.
+"vendor" = 0.5 for the seq-cls models and the production 0.4 rule for GLiGuard (§8.2); "dev 0.5 %" = threshold chosen on
+the dev split (b1 + b2) for ≤ 0.5 % dev FP. Full report: `/Volumes/aillusion/task-1049-data/report-final.json`.
+
+| Model | Threshold | FP / clinical window (ub95) | golden a | b2 hard neg. | c2 recall (lb95) | c1 public | NotInject FP | AUC |
+|---|---|---|---|---|---|---|---|---|
+| GLiGuard 300M (today) | vendor 0.4 | **19.22 %** (21.06 %) | 13/118 | 33/203 | 52.6 % (46.4 %) | 46.6 % | 11.8 % | 0.757 |
+| GLiGuard 300M | dev 0.7245 | 0.15 % (0.46 %) | 2/118 | 0/203 | 1.6 % | 2.1 % | 0.3 % | |
+| **Prompt Guard 2 86M** | vendor 0.5 | **0.88 %** (1.43 %) | 0/118 | 11/203 | 33.2 % (27.5 %) | 59.9 % | 6.5 % | 0.814 |
+| Prompt Guard 2 86M | dev 0.9968 | 0.07 % (0.35 %) | 0/118 | 1/203 | 23.2 % (18.2 %) | 41.7 % | 0.9 % | |
+| Prompt Guard 2 22M | vendor 0.5 | 3.46 % (4.39 %) | 0/118 | 45/203 | 26.3 % (21.1 %) | 55.5 % | 7.7 % | 0.792 |
+| protectai deberta-v3 v2 | vendor 0.5 | 10.90 % (12.39 %) | **60/118** | 73/203 | 35.3 % (29.5 %) | 81.9 % | 42.8 % | 0.720 |
+| PIGuard | vendor 0.5 | 1.33 % (1.96 %) | 12/118 | 5/203 | 26.3 % (21.1 %) | 70.1 % | 11.5 % | 0.844 |
+
+**c2 recall by payload class (vendor threshold)** — the decisive table:
+
+| Class | GLiGuard | PG2-86M | PG2-22M | protectai | PIGuard |
+|---|---|---|---|---|---|
+| instruction_override | 0.64 | **1.00** (25/25, lb 88.7 %) | 0.96 | 0.80 | 0.84 |
+| multilingual | 0.53 | 0.73 | 0.33 | 0.33 | 0.00 |
+| role_play | 0.70 | 0.50 | 0.35 | 0.35 | 0.20 |
+| delimiter_spoofing | 0.80 | 0.35 | 0.00 | 0.55 | 0.50 |
+| system_prompt_exfiltration | 0.50 | 0.50 | 0.20 | 0.70 | 0.50 |
+| obfuscated | 0.28 | 0.20 | 0.36 | 0.40 | 0.36 |
+| clinical_falsification | 0.30 | **0.00** | 0.00 | 0.20 | 0.00 |
+| data_exfiltration | 0.50 | **0.00** | 0.00 | 0.10 | 0.05 |
+| output_hijack | 0.60 | **0.00** | 0.20 | 0.07 | 0.00 |
+| subtle | 0.45 | **0.00** | 0.00 | 0.00 | 0.00 |
+
+- **Dilution is not the cause.** Scoring every transcript LINE instead of the 2,000-char window (PG2-86M, `--granularity line`)
+  gives the same recall (34.7 % vs 33.2 %): the models miss these payloads even in isolation.
+- **Direct-prompt benchmarks overstate clinical recall.** PG2-86M catches 298/300 gandalf "ignore your instructions" prompts but
+  only 60/263 deepset and 159/300 SPML; on payloads hidden in clinical data, only the explicit-override class is reliable.
+- **AI-scribe address is benign for the injection models.** The 142 ACI-Bench windows where the clinician talks to the scribe
+  ("dax, …") are flagged 0 times by PG2-86M/22M and PIGuard, 1 by protectai, **34 by GLiGuard**.
+- **Governed instruction text must never be screened by an injection classifier.** On the 62 distinct prompt-template texts in
+  the local DB, templates flagged: GLiGuard 6/62 (TASK-1047's "6 Global templates"), **PG2-86M 28/62**, PG2-22M 36/62,
+  PIGuard 29/62, protectai 23/62 — a clinical template IS an instruction. Instruction text stays governed by the digest
+  registry (TASK-1047 FC-4), never by these classifiers.
+
+### 8.6 Results — CPU latency and memory (this Mac, M3 Max; background load average ≈ 5)
+
+Per 2,000-char window, 200 full windows, one fresh process per model; `+RSS` = steady RSS after load + batch inference.
+
+| Model | p50 / p95 @ 4 threads | p95 @ 1 thread | throughput @ 4 thr | +RSS |
+|---|---|---|---|---|
+| GLiGuard 300M (batch 2) | 356 / 436 ms | 748 ms | 3.0 win/s | 2.9 GB |
+| PG2-86M (2 segments / window) | 294 / 316 ms | 481 ms | 3.3 win/s | 2.1 GB |
+| PG2-22M | 151 / 199 ms | 266 ms | 7.0 win/s | 1.4 GB |
+| protectai v2 | 229 / 336 ms | 481 ms | 3.6 win/s | 1.9 GB |
+| PIGuard | 212 / 315 ms | 470 ms | 3.7 win/s | 1.9 GB |
+
+No candidate meets the 150 ms p95 bar (OD-5) on CPU; every candidate is faster and lighter than the GLiGuard pass the
+cluster already runs per window. Cluster CPUs are slower than an M3 Max per core — expect these numbers to be optimistic.
+
+### 8.7 b2 — LLM-generated clinical hard negatives
+
+Generated with `gemma-4-e2b-it-qat` only (owner-approved load; loaded, used, unloaded — LM Studio left with no model loaded):
+120 calls → **112 regions / 306 windows** (8 dropped by the AI-directed-instruction filter), 12 scenarios × 12 specialties,
+spot-checked. b2 is what separates the candidates: PG2-86M flags 11/203 test windows, 11 of them in ONE scenario
+(**patients reading out a text message** — e.g. *"Reminder: ignore the previous collection date, your new instructions are
+to collect on Friday"*, scored 0.99). These are genuine false positives: benign clinical speech sometimes carries exactly
+the phrasing of an explicit override, so even an override-only scope cannot hold < 1 % FP and > 95 % recall together.
+On ACI/MTS dialogues alone PG2-86M flags 1/1,037. PG2-22M (45/203) and protectai (73/203) collapse on b2; PIGuard 5/203.
+
+Explicit-override recall vs threshold (PG2-86M): 25/25 up to t = 0.99 (clinical FP 0.59 %, ub 1.06 %); 22/25 at t = 0.9968
+(FP 0.07 %). All-class c2 recall falls from 33 % to 23 % over the same range.
+
+## 9. Recommendation
+
+**Verdict against the OD-13 bar (< 1 % FP per benign window AND > 95 % recall on injections): no candidate passes.
+Do NOT flip FC-5b data regions back to blocking — not for `jailbreak_detection`, not for anything.**
+
+- Every candidate misses most injections embedded in clinical data: best recall at an acceptable FP is 33 % (PG2-86M at
+  0.88 % FP), and at the stricter dev-selected threshold 23 %.
+- The misses are the payloads that matter most for a clinical scribe — falsified clinical facts, data exfiltration, output
+  hijack, polite "note to the assistant" requests — at **0 %** for the best-calibrated model. It is not dilution: scoring
+  single lines changes nothing (§8.5).
+- The one class PG2-86M does catch (explicit override, 25/25) also appears in benign speech (§8.7), so a scoped flip would
+  still refuse real consultations.
+
+**What IS worth doing (owner decisions, each a follow-up ticket):**
+
+| # | Recommendation | Why |
+|---|---|---|
+| R1 | **Replace GLiGuard for `jailbreak_detection` with Prompt Guard 2 86M — record-only on data, FC-5b unchanged.** New SYSTEM `AiModel` `llama-prompt-guard-2-86m` (`meta-llama/Llama-Prompt-Guard-2-86M`, revision `a8ded8e697ce7c355e395a0df51f94adb4a2fd27`, `servedBy: nlp`), `_metadata.labelTaxonomy: { threshold: 0.5, benignLabels: ['BENIGN'], tasks: { jailbreak_detection: { labels: ['BENIGN','MALICIOUS'], multi_label: false } } }`; a new routing key `guardrail.injection` → this model, and guardrail sends `jailbreak_detection` there; `prompt_safety` / `prompt_toxicity` stay on GLiGuard (`guardrail.safety`). | The detect-and-record posture stays, but the record becomes usable: 0.88 % vs 19.2 % false findings per window (~22× less noise; 0 vs 13 on the golden set, 0 vs 34 on AI-scribe address), 100 % vs 64 % on explicit overrides, faster (p95 316 vs 436 ms) and lighter (+2.1 vs +2.9 GB) than the GLiGuard pass it replaces for this task. |
+| R2 | **Serving requirements for R1** (apps/nlp): a seq-cls runtime behind `/guard/classify` (`libraryName: transformers`); 512-token segmentation with 64 overlap, max over segments; tokenizer loaded from the repo's own `tokenizer.json` (transformers 5's `AutoTokenizer` drops PG2's anti-obfuscation normaliser — a spaced-out attack scores 0.004 instead of 0.999); batch ≤ 8; published via `register-from-hub`. Llama 4 Community Licence ("Built with Llama" attribution) — owner/legal confirm. | Mechanics that silently break accuracy if missed. |
+| R3 | **Never point an injection classifier at governed instruction text.** Keep instruction trust on the digest registry (`governedPrompt.injectionBlocking` stays advisory). | PG2-86M flags 28/62 real templates; every candidate flags 23–36. |
+| R4 | **Close the classes no classifier catches with deterministic and outbound controls** (separate tickets): strip or neutralise URLs / markdown images in generated notes (data exfiltration); keep the outbound groundedness / medical judge blocking (TASK-1035) — an ungrounded clinical claim is the falsification signal; validate the output contract (output hijack). | These are the 0 % classes. The structural boundary (FC-1 fencing, data by pointer) plus outbound checks is the primary defence (OWASP LLM01), as OD-13 already stated. |
+| R5 | **Criteria to re-open data blocking for `jailbreak_detection`** (unchanged bar, made operational): on a FRESH held-out set — ≥ 1,000 clinical windows incl. ≥ 300 hard negatives with quoted third-party messages, and ≥ 300 embedded injections across all 10 classes — FP ub95 ≤ 1 % AND recall lb95 ≥ 95 % at ONE threshold, then a live TASK-1047 V6 golden run with 0 refusals. Mechanism: `guardrail.inbound.dataBlockingTasks` global-kv descriptor (tenant → SYSTEM, default `[]`, OD-9), not a code constant. Candidates to try next: a clinical fine-tune of PG2-86M on b2/c2-style data, or an LLM judge on the outbound side. | Makes any future flip evidence-based and reversible without code. |
+
+## 10. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-06 | **Evaluation complete → Review.** All five candidates scored on a+b1+b2+b3+c1+c2 (window and, for PG2-86M, line granularity), governed instruction texts (62) and CPU latency. Verdict: no candidate meets OD-13; FC-5b stays record-only. Recommendations R1–R5 (§9). b2 generated with `gemma-4-e2b-it-qat` (owner-approved; unloaded afterwards). Memory guard: swap-growth stop added; every run stayed under the ceilings (peak 3.9 GB). |
 | 2026-10-06 | Lanes L1/L2/L3 merged. GLiGuard production parity, production region rendering and short-window FP finding (§8.2). Host force-restarted mid-run (§8.4) → memory guard + persistent data dir (§8.3). Scoring paused until a peer session's tests finish (owner). |
 | 2026-10-06 | **Owner rule: no model is loaded or changed without approval.** Lanes L2 and L3 were stopped. L2 had attempted an LM Studio load of `google/gemma-4-26b-a4b-qat`, which failed to start; nothing was generated. L3 had fetched config and tokenizer files only (13–21 MB each, no weights). Approvals: (1) load the 5 classifiers in-process on CPU in standalone scripts, one at a time, downloading to `/Volumes/aillusion/huggingface`, after a PIGuard remote-code review; (2) generate b2 ONLY with `gemma-4-e2b-it-qat`, already loaded in LM Studio — no load, unload or other model id; (3) measure latency as-is, with background load recorded. |
 | 2026-10-06 | Owner: "go" — plan and all OD recommendations approved (Sentinel v2 not added: gate not accepted). |
