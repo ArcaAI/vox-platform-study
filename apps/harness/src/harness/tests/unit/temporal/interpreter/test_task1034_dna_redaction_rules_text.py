@@ -41,11 +41,18 @@ class TestDnaRedactionRulesText:
 
         assert context["trigger"]["context"]["dna_redaction_rules_text"] == _RULES
         prompt = core._system_prompt(_resolved(_BLOCK), {}, context)
-        assert prompt == f"Never include / always rewrite:\n{_RULES}\nEND"
+        # FC-1: the system prompt points; the rules text rides in the user message data block.
+        assert prompt == (
+            "Never include / always rewrite:\n"
+            "[see the context_dna_redaction_rules_text data section below]\nEND"
+        )
 
     def test_the_block_renders_empty_when_the_handoff_carries_no_rules(self) -> None:
         context = _run_context_after_handoff({"dna_style_text": "Terse."})
 
         assert "dna_redaction_rules_text" not in context["trigger"]
         prompt = core._system_prompt(_resolved(_BLOCK), {}, context)
-        assert prompt == "Never include / always rewrite:\n\nEND"
+        assert prompt == (
+            "Never include / always rewrite:\n"
+            "[see the context_dna_redaction_rules_text data section below]\nEND"
+        )

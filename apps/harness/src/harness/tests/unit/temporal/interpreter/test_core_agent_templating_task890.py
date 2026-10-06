@@ -103,7 +103,10 @@ class TestCoreAgentTemplating:
             _run_context(),
         )
 
-        assert prompt == "Patient is Ada, age 41."
+        assert (
+            prompt
+            == "Patient is [see the trigger_patient_name data section below], age [see the trigger_patientage data section below]."
+        )
 
     def test_context_is_an_alias_of_trigger(self) -> None:
         """§3.3 — one prompt is portable between a run and a standalone invocation."""
@@ -111,14 +114,20 @@ class TestCoreAgentTemplating:
         by_trigger = core._system_prompt(_resolved("{{trigger.patient.name}}"), {}, context)
         by_context = core._system_prompt(_resolved("{{context.patient.name}}"), {}, context)
 
-        assert by_trigger == by_context == "Ada"
+        # Each placeholder points at a block named for the path as written; the value is
+        # the same one in both (see the user-message check below).
+        assert by_trigger == "[see the trigger_patient_name data section below]"
+        assert by_context == "[see the context_patient_name data section below]"
 
     def test_vars_and_nodes_namespaces_render(self) -> None:
         prompt = core._system_prompt(
             _resolved("{{vars.tone}} / {{nodes.n1.text}}"), {}, _run_context()
         )
 
-        assert prompt == "formal / prior note"
+        assert (
+            prompt
+            == "[see the vars_tone data section below] / [see the nodes_n1_text data section below]"
+        )
 
     def test_a_bare_bound_variable_still_renders_and_the_node_override_wins(self) -> None:
         prompt = core._system_prompt(
@@ -127,7 +136,7 @@ class TestCoreAgentTemplating:
             _run_context(),
         )
 
-        assert prompt == "Ward 7"
+        assert prompt == "Ward [see the ward data section below]"
 
     def test_an_unresolved_variable_raises_instead_of_shipping_a_literal(self) -> None:
         with pytest.raises(PromptVariableUnresolved) as excinfo:
@@ -140,7 +149,8 @@ class TestCoreAgentTemplating:
             _resolved('{{trigger.absent | default("n/a")}}'), {}, _run_context()
         )
 
-        assert prompt == "n/a"
+        # The system prompt carries the pointer; the default value rides in the data block.
+        assert prompt == "[see the trigger_absent data section below]"
 
     def test_a_single_brace_is_literal(self) -> None:
         """§3.11 — the deleted single-brace grammar is not honoured by a fallback pass."""
@@ -222,7 +232,7 @@ class TestCoreAgentBindingForm:
             _resolved("Tone: {{tone}}", {"tone": {"value": "formal"}}), {}, _run_context()
         )
 
-        assert prompt == "Tone: formal"
+        assert prompt == "Tone: [see the tone data section below]"
 
     def test_a_path_binding_resolves_from_the_roots(self) -> None:
         prompt = core._system_prompt(
@@ -233,7 +243,10 @@ class TestCoreAgentBindingForm:
             _run_context(),
         )
 
-        assert prompt == "Age 41 / 41"
+        assert (
+            prompt
+            == "Age [see the age data section below] / [see the context_patientage data section below]"
+        )
 
     def test_a_node_override_is_a_plain_value_and_still_wins(self) -> None:
         prompt = core._system_prompt(
@@ -242,14 +255,14 @@ class TestCoreAgentBindingForm:
             _run_context(),
         )
 
-        assert prompt == "Tone: terse"
+        assert prompt == "Tone: [see the tone data section below]"
 
     def test_the_resolved_map_is_what_variables_star_exposes(self) -> None:
         prompt = core._system_prompt(
             _resolved("{{variables.tone}}", {"tone": {"value": "formal"}}), {}, _run_context()
         )
 
-        assert prompt == "formal"
+        assert prompt == "[see the variables_tone data section below]"
 
     def test_an_unresolvable_path_binding_raises_naming_the_path(self) -> None:
         with pytest.raises(PromptVariableUnresolved) as excinfo:
@@ -315,7 +328,7 @@ class TestSingleKindContextEnvelope:
             self._bound("Age {{context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
         )
 
-        assert prompt == "Age 41."
+        assert prompt == "Age [see the context_safe_age data section below]."
 
     def test_trigger_keeps_the_envelope_verbatim(self) -> None:
         """``trigger`` IS the run payload; only the ``context`` alias is the unwrapped view."""
@@ -325,7 +338,7 @@ class TestSingleKindContextEnvelope:
             self._bound("Age {{trigger.context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
         )
 
-        assert prompt == "Age 41."
+        assert prompt == "Age [see the trigger_context_safe_age data section below]."
 
     def test_a_flat_payload_is_left_alone(self) -> None:
         """A run whose trigger already carries the flat kind object needs no unwrap."""
@@ -335,7 +348,7 @@ class TestSingleKindContextEnvelope:
             self._bound("Age {{context.safe_age}}.", self._LEGACY_SCHEMA), {}, context
         )
 
-        assert prompt == "Age 41."
+        assert prompt == "Age [see the context_safe_age data section below]."
 
     def test_a_multi_kind_envelope_stays_verbatim(self) -> None:
         context = {
@@ -348,7 +361,7 @@ class TestSingleKindContextEnvelope:
             self._bound("Age {{context.context.safe_age}}.", self._MULTI_SCHEMA), {}, context
         )
 
-        assert prompt == "Age 41."
+        assert prompt == "Age [see the context_context_safe_age data section below]."
 
     def test_an_unbound_agent_keeps_the_plain_alias(self) -> None:
         """No bound schema, no rule to apply — the §3.3 alias is unchanged."""
@@ -356,7 +369,7 @@ class TestSingleKindContextEnvelope:
 
         prompt = core._system_prompt(_resolved("Age {{context.patientAge}}."), {}, context)
 
-        assert prompt == "Age 41."
+        assert prompt == "Age [see the context_patientage data section below]."
 
 
 def _composite(
@@ -418,7 +431,10 @@ class TestCoreAgentCompositeInstruction:
             _run_context(),
         )
 
-        assert prompt == "Write a note for Ada.\n\nCompare with the prior note."
+        assert (
+            prompt
+            == "Write a note for [see the context_patient_name data section below].\n\nCompare with the prior note."
+        )
 
     def test_a_false_condition_excludes_its_fragment(self) -> None:
         prompt = core._system_prompt(
@@ -510,7 +526,7 @@ class TestCoreAgentCompositeInstruction:
             _run_context(),
         )
 
-        assert composed.prompt == "Tone formal.\n\nBe formal."
+        assert composed.prompt == "Tone [see the tone data section below].\n\nBe formal."
         assert composed.selected == ["base", "formal"]
 
     def test_an_unresolved_variable_inside_a_fragment_names_that_fragment(self) -> None:

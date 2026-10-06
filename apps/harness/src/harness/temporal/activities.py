@@ -2184,6 +2184,7 @@ async def execute_note_plan(payload: ExecuteNotePlanInput) -> ExecuteNotePlanRes
             tenant_id=tenant_id,
             prompt=request.user,
             system_prompt=request.system,
+            system_governance=request.system_governance,
             provider=attempt.provider,
             model=attempt.model,
             temperature=hp.get("temperature"),

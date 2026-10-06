@@ -257,3 +257,31 @@ class GuardrailClient:
         except httpx.HTTPError as exc:
             raise GuardrailServiceError(f"guardrail redact failed: {exc}") from exc
         return RedactResult.model_validate(data)
+
+    async def policy_version(self, *, tenant_id: str) -> str:
+        """Guardrail's current policy version (TASK-1047 FC-3) — ``GET /api/v1/guardrail/policy-version``.
+
+        One bounded retry on a transport/HTTP failure, then :class:`GuardrailServiceError`.
+        """
+        url = f"{self._base_url}/api/v1/guardrail/policy-version"
+        headers = {
+            "X-Service-Token": self._service_token,
+            "X-Tenant-Id": tenant_id,
+            **outbound_context_headers(),
+        }
+        last: httpx.HTTPError | None = None
+        for _attempt in range(2):
+            try:
+                async with httpx.AsyncClient(
+                    transport=self._transport, timeout=self._timeout
+                ) as client:
+                    resp = await client.get(url, headers=headers)
+                    resp.raise_for_status()
+                    version = resp.json().get("policyVersion")
+            except httpx.HTTPError as exc:
+                last = exc
+                continue
+            if isinstance(version, str) and version:
+                return version
+            raise GuardrailServiceError("guardrail policy-version answered no policyVersion")
+        raise GuardrailServiceError(f"guardrail policy-version failed: {last}") from last

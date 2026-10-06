@@ -274,7 +274,15 @@ class TestScope:
             )
         )
 
-        assert "Ada|Ada" in calls[0]["system_prompt"]
+        # TASK-1047 FC-1 — the system message points; the value is an EXTERNAL_DATA block.
+        pointer = "[see the {} data section below]"
+        assert (
+            pointer.format("context_patient_name") + "|" + pointer.format("trigger_patient_name")
+            in calls[0]["system_prompt"]
+        )
+        assert "Ada" not in calls[0]["system_prompt"]
+        for block in ("context_patient_name", "trigger_patient_name"):
+            assert _block(block, block, "Ada") in calls[0]["prompt"]
 
     @pytest.mark.asyncio
     async def test_the_single_kind_context_envelope_is_unwrapped(self, run) -> None:
@@ -288,7 +296,9 @@ class TestScope:
             payload,
         )
 
-        assert "Age 41." in calls[0]["system_prompt"]
+        assert "Age [see the context_safe_age data section below]." in calls[0]["system_prompt"]
+        assert "41" not in calls[0]["system_prompt"]
+        assert _block("context_safe_age", "context_safe_age", "41") in calls[0]["prompt"]
 
     @pytest.mark.asyncio
     async def test_a_path_binding_resolves_against_the_roots(self, run) -> None:
@@ -299,7 +309,9 @@ class TestScope:
             )
         )
 
-        assert "Name Ada." in calls[0]["system_prompt"]
+        assert "Name [see the who data section below]." in calls[0]["system_prompt"]
+        assert "Ada" not in calls[0]["system_prompt"]
+        assert _block("who", "who", "Ada") in calls[0]["prompt"]
 
 
 class TestMissingVariables:

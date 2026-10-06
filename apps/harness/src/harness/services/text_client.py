@@ -248,6 +248,7 @@ class TextClient:
         provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
         reasoning: Mapping[str, Any] | None = None,
+        system_governance: Mapping[str, Any] | None = None,
     ) -> TextGenerationResult:
         """Generate a completion synchronously and parse the response.
 
@@ -290,6 +291,7 @@ class TextClient:
             provider_locality=provider_locality,
             known_phi=known_phi,
             reasoning=reasoning,
+            system_governance=system_governance,
             stream=False,
         )
 
@@ -349,6 +351,7 @@ class TextClient:
         provider_locality: Mapping[str, str] | None = None,
         known_phi: list[dict[str, str]] | None = None,
         reasoning: Mapping[str, Any] | None = None,
+        system_governance: Mapping[str, Any] | None = None,
     ) -> TextGenerationResult:
         """TASK-1038 R8 — the same generation as :meth:`generate`, with ``stream: true``.
 
@@ -376,6 +379,7 @@ class TextClient:
             provider_locality=provider_locality,
             known_phi=known_phi,
             reasoning=reasoning,
+            system_governance=system_governance,
             stream=True,
         )
         headers["Accept"] = "text/event-stream"
@@ -426,6 +430,7 @@ class TextClient:
         known_phi: list[dict[str, str]] | None,
         stream: bool,
         reasoning: Mapping[str, Any] | None = None,
+        system_governance: Mapping[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any], dict[str, str]]:
         """``(url, body, headers)`` of one generate call — the ONE preparation both the blocking
         and the streaming calls use (tenant guard, credential fold, locality, PHI, headers)."""
@@ -439,6 +444,9 @@ class TextClient:
         body: dict[str, Any] = {"prompt": prompt, "stream": stream}
         if system_prompt is not None:
             body["system_prompt"] = system_prompt
+            # TASK-1047 FC-4 — only ever with a system prompt, and only when the caller verified it.
+            if system_governance:
+                body["system_governance"] = dict(system_governance)
         if provider:
             body["provider"] = provider
         if model:

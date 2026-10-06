@@ -93,8 +93,10 @@ def test_an_absent_optional_variable_renders_empty_and_an_empty_block_is_dropped
         ],
         rules="",
     )
-    assert composed.system == "Tone: ."
-    assert [block.key for block in composed.blocks] == ["input"]
+    assert composed.system == "Tone: [see the tone data section below]."
+    # The empty caller block is still dropped; FC-1 emits the placeholder's own (empty) block so
+    # the pointer never dangles.
+    assert [block.key for block in composed.blocks] == ["tone", "input"]
 
 
 def test_an_absent_required_variable_still_fails_by_name() -> None:
