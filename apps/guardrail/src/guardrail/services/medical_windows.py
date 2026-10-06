@@ -65,6 +65,7 @@ async def judge_regions(
             "reasoning": "no content to judge",
             "windows": 0,
             "off_scope_windows": 0,
+            "off_scope_regions": [],
             "stats": None,
         }
 
@@ -77,6 +78,14 @@ async def judge_regions(
     )
 
     off_scope = [v for v in verdicts if not bool(v.get("is_medical"))]
+    # Region KEYS of the off-scope windows, in first-seen order — never text (TASK-1047 V7 diagnosis).
+    off_scope_regions = list(
+        dict.fromkeys(
+            str(w.region)
+            for w, v in zip(windows, verdicts, strict=True)
+            if not bool(v.get("is_medical"))
+        )
+    )
     deciding = (
         off_scope[0]
         if off_scope
@@ -90,5 +99,6 @@ async def judge_regions(
         "reasoning": f"{len(windows)} window(s) judged; {len(off_scope)} off scope",
         "windows": len(windows),
         "off_scope_windows": len(off_scope),
+        "off_scope_regions": off_scope_regions,
         "stats": _sum_stats(verdicts),
     }

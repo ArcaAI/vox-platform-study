@@ -220,6 +220,17 @@ async def _validate_regions(
             http_request.app.state, tenant_id, guardian_provider, settings
         )
         result = await judge_regions(guardian_provider, regions, runner=runner, geometry=geometry)
+        if not result["is_medical"]:
+            # Which regions were off scope — keys and counts only, never text (TASK-1047 V7).
+            logger.info(
+                "guardrail.medical_validate.off_scope",
+                tenant_id=tenant_id,
+                regions=[key for key, _ in regions],
+                off_scope_regions=result.get("off_scope_regions", []),
+                off_scope_windows=result.get("off_scope_windows", 0),
+                windows=result.get("windows", 0),
+                context_type=result.get("context_type"),
+            )
     except HTTPException:
         raise
     except GuardrailUndeterminedError as exc:

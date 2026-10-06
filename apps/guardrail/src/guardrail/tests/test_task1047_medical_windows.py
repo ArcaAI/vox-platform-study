@@ -114,6 +114,7 @@ async def test_small_talk_inside_a_clinical_encounter_is_on_scope() -> None:
     )
     assert verdict["is_medical"] is True
     assert http.system_prompts == [WINDOW_CRITERIA]
+    assert verdict["off_scope_regions"] == []
 
 
 async def test_a_window_directing_the_assistant_to_non_medical_work_blocks() -> None:
@@ -124,6 +125,8 @@ async def test_a_window_directing_the_assistant_to_non_medical_work_blocks() -> 
     )
     assert verdict["is_medical"] is False
     assert len(http.prompts) > 1  # judged per window, not once
+    # TASK-1047 V7: the off-scope regions are named (keys only, never text) for diagnosis.
+    assert verdict["off_scope_regions"] == ["transcript"]
 
 
 async def test_every_judge_prompt_is_bounded_to_one_window() -> None:
