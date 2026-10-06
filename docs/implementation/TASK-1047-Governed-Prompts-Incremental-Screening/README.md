@@ -771,6 +771,23 @@ re-screen (cold cache), then 237 MiB on the warm one; the admin console `next de
 first Turbopack compile, but its physical footprint settled at ~0.4 GiB (RSS is mostly mapped cache files).
 The rest of the box's pressure is baseline desktop apps (Edge, Teams, Cursor, the Docker VM ≈ 12 GB together).
 
+### 8.10 V6 confirm and the post-merge gate (2026-10-06, after the reboot)
+
+**V6 with every approved setting:** 14 / 14 cases produced notes, 0 case errors — critical-fact recall 0.986,
+dose accuracy 0.875, unsupported-claim rate 2.3 %, reduced-encounter recall 0.83, stop→note p95 64 s (local Gemma 4
+E2B). Below the strict gate thresholds (1.0 / 1.0 / 0.02) on model quality, not on refusals. Memory peaks during
+the run: NLP 3.5 GiB, API 1.1 GiB, guardrail 0.1 GiB, text 0.2 GiB, LM Studio (Gemma + granite-guardian) 6.1 GiB;
+minimum system free memory 28 %.
+
+**Gate (orchestrator, once, after everything merged; e2e stack stopped, vitest capped at 8 workers):**
+typecheck, lint, ruff, mypy (text / guardrail / nlp / harness / stt), openapi / portal / gen:admin, gen
+model/entity/factory drift — all 0; Python: harness, text 2,143, stt, guardrail, nlp, perf — all green; TS unit
+32,233 / 32,250, vox, vox-node, admin-console tests; SDK build / exports / codegen, console build; ALaaS tsc / jest /
+web — all 0. Fixed during the gate: the seed `policy` type (`49c0ba1ae`), the egress summary's typed findings and one
+test expecting pre-FC-5b region dicts (`fae02c183`). **Out of scope, left to their owners:** `env:sync` drift from
+`HF_TOKEN` read by the TASK-1049 session's in-progress `apps/nlp/scripts/injection_eval/` (2 env-sync tests), and
+the TASK-1048 null dereference in `AsrAgentResolverService.resolveFallbackAgent` (1 contract test).
+
 ## 9. Change History
 
 | Date | Change |
