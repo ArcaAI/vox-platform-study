@@ -52,9 +52,10 @@ beforeEach(() => {
   post.mockResolvedValue({ data: { task_id: 't', status: 'completed', content: 'x' } });
 });
 
-/** The `Visit type: …` line the route appends to the system prompt. */
-function systemPrompt(): string {
-  return post.mock.calls[0]![1].system_prompt as string;
+/** The `visit_type` data block the route puts in the user message (TASK-1047 D1: never the system prompt). */
+function visitTypeBlock(): string {
+  const prompt = post.mock.calls[0]![1].prompt as string;
+  return /<<<EXTERNAL_DATA section="visit_type">>>\n--- VISIT TYPE ---\n(.*)\n<<<END_EXTERNAL_DATA>>>/.exec(prompt)?.[1] ?? '';
 }
 
 describe('the platform vocabulary at the front door', () => {
@@ -62,13 +63,13 @@ describe('the platform vocabulary at the front door', () => {
     for (const visit_type of ['new_visit', 'referral']) {
       post.mockClear();
       await controller().generateAssembled({ type: 'summary', message: 'transcript', visit_type } as never);
-      expect(systemPrompt()).toContain('Visit type: New visit.');
+      expect(visitTypeBlock()).toBe('New visit');
     }
   });
 
   it('accepts an alias of the second visit type too', async () => {
     await controller().generateAssembled({ type: 'summary', message: 'transcript', visit_type: 'Follow-Up' } as never);
-    expect(systemPrompt()).toContain('Visit type: Revisit.');
+    expect(visitTypeBlock()).toBe('Revisit');
   });
 
   it('refuses a value the vocabulary does not name, and says what it does name', async () => {
