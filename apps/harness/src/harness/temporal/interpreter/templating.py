@@ -42,15 +42,19 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 __all__ = [
+    "PointerPlaceholder",
     "PromptTemplateSyntaxError",
     "PromptVariableUnresolved",
     "TemplateReference",
+    "data_section_pointer",
+    "placeholder_block_name",
     "render_template",
+    "render_template_pointers",
     "resolve_template_path",
     "template_references",
     "template_syntax_problems",
@@ -303,6 +307,69 @@ def render_template(content: str, scope: dict[str, Any], *, template_ref: str | 
             continue
         out.append(value if isinstance(value, str) else _canonical_json(value))
     return "".join(out)
+
+
+def data_section_pointer(block: str) -> str:
+    """TASK-1047 FC-1 — the fixed text a placeholder renders as inside a GOVERNED system message.
+    Mirrors ``dataSectionPointer``."""
+    return f"[see the {block} data section below]"
+
+
+_NON_BLOCK_CHARS = re.compile(r"[^a-z0-9]+")
+
+
+def placeholder_block_name(path: str, aliases: Mapping[str, Any] | None = None) -> str:
+    """TASK-1047 FC-1 — the data-block name a placeholder path travels under: ``aliases[path]``
+    when it is a string, else the path lower-cased with every run outside ``[a-z0-9]`` replaced
+    by ONE ``_``. Mirrors ``placeholderBlockName``."""
+    if isinstance(aliases, Mapping):
+        alias = aliases.get(path)
+        if isinstance(alias, str):
+            return alias
+    return _NON_BLOCK_CHARS.sub("_", path.lower())
+
+
+@dataclass(frozen=True)
+class PointerPlaceholder:
+    """One placeholder OCCURRENCE of a pointer render: path, block name and the value the value
+    renderer would have written (or its ``default("…")``). Mirrors ``PointerPlaceholder``."""
+
+    path: str
+    block: str
+    value: str
+
+
+def render_template_pointers(
+    content: str,
+    scope: dict[str, Any],
+    *,
+    template_ref: str | None = None,
+    block_aliases: Mapping[str, Any] | None = None,
+) -> tuple[str, list[PointerPlaceholder]]:
+    """TASK-1047 FC-1 — render with every placeholder replaced by ``data_section_pointer(block)``
+    and report each occurrence's value, in source order. Same grammar, one pass, ``{{{{`` escape
+    and the same two named errors as ``render_template``. Mirrors ``renderTemplatePointers``."""
+    scanned = _scan(content)
+    if scanned.problems:
+        raise PromptTemplateSyntaxError(scanned.problems[0], scanned.first_problem_offset)
+
+    out: list[str] = []
+    placeholders: list[PointerPlaceholder] = []
+    for segment in scanned.segments:
+        if isinstance(segment, str):
+            out.append(segment)
+            continue
+        resolved = _resolve_path(scope, segment.path)
+        if resolved is _MISSING:
+            if segment.default_value is None:
+                raise PromptVariableUnresolved(segment.path, template_ref)
+            value = segment.default_value
+        else:
+            value = resolved if isinstance(resolved, str) else _canonical_json(resolved)
+        block = placeholder_block_name(segment.path, block_aliases)
+        out.append(data_section_pointer(block))
+        placeholders.append(PointerPlaceholder(path=segment.path, block=block, value=value))
+    return "".join(out), placeholders
 
 
 def resolve_template_path(scope: Any, path: str) -> Any:
