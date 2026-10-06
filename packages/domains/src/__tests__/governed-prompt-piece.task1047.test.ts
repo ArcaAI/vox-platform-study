@@ -94,7 +94,17 @@ describe('GovernedPromptPieceRepository', () => {
 
   it('findPassing reads PASS rows for the digests under one policy version in [tenant, SYSTEM], de-duplicated', async () => {
     base.findMany.mockResolvedValue([
-      { id: 'r1', tenantId: SYSTEM, digest: DIGEST_A, policyVersion: 'pv-1', verdict: 'PASS', kind: 'PLATFORM', sourceType: 'PLATFORM', textChars: 1, screenedAt: new Date() },
+      {
+        id: 'r1',
+        tenantId: SYSTEM,
+        digest: DIGEST_A,
+        policyVersion: 'pv-1',
+        verdict: 'PASS',
+        kind: 'PLATFORM',
+        sourceType: 'PLATFORM',
+        textChars: 1,
+        screenedAt: new Date(),
+      },
     ]);
     const rows = await repo.findPassing('t-1', [DIGEST_A, DIGEST_B, DIGEST_A], 'pv-1');
     expect(base.findMany).toHaveBeenCalledWith({
@@ -171,7 +181,10 @@ describe('GovernedPromptPieceRepository — boot backfill sources', () => {
     const promptTemplate = { findMany: vi.fn().mockResolvedValue([{ id: 'pt1', approvedVersionNumber: 3 }]) };
     const promptVersion = { findMany: vi.fn().mockResolvedValue([{ id: 'pv1', tenantId: 't-1', promptTemplateId: 'pt1', content: 'x' }]) };
     const { GovernedPromptPieceRepository } = await import('../repositories/generated/core/GovernedPromptPieceRepository');
-    const repo = new GovernedPromptPieceRepository({ getDatabaseService: () => ({}) } as never, { baseClient: { promptTemplate, promptVersion } } as never);
+    const repo = new GovernedPromptPieceRepository(
+      { getDatabaseService: () => ({}) } as never,
+      { baseClient: { promptTemplate, promptVersion } } as never,
+    );
     expect(await repo.findApprovedVersionSources()).toHaveLength(1);
     expect(promptVersion.findMany.mock.calls[0][0].where).toEqual({ OR: [{ promptTemplateId: 'pt1', versionNumber: 3 }] });
   });
@@ -180,7 +193,10 @@ describe('GovernedPromptPieceRepository — boot backfill sources', () => {
     const promptTemplate = { findMany: vi.fn().mockResolvedValue([]) };
     const promptVersion = { findMany: vi.fn() };
     const { GovernedPromptPieceRepository } = await import('../repositories/generated/core/GovernedPromptPieceRepository');
-    const repo = new GovernedPromptPieceRepository({ getDatabaseService: () => ({}) } as never, { baseClient: { promptTemplate, promptVersion } } as never);
+    const repo = new GovernedPromptPieceRepository(
+      { getDatabaseService: () => ({}) } as never,
+      { baseClient: { promptTemplate, promptVersion } } as never,
+    );
     expect(await repo.findApprovedVersionSources()).toEqual([]);
     expect(promptVersion.findMany).not.toHaveBeenCalled();
   });

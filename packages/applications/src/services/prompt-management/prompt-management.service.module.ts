@@ -12,6 +12,7 @@ import { UserProfileServiceModule } from '../user/userProfile/userProfile.servic
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EvalServiceModule } from '../eval/eval.service.module';
 import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.module';
+import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
 
 @Module({
   // HttpModule + ConfigModule wire the TEXT/text-generation client
@@ -37,6 +38,8 @@ import { UsageLedgerServiceModule } from '../usageLedger/usage-ledger.service.mo
     EntitlementsServiceModule,
     EvalServiceModule,
     UsageLedgerServiceModule,
+    // TASK-1047 D2 — approve screens the template body (IGovernedPromptRegistry).
+    GovernedPromptServiceModule,
   ],
   providers: [
     PromptManagementService,

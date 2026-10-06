@@ -9,6 +9,7 @@ import { IAgentPromotionService } from './IAgentPromotionService';
 import { CommonServiceModule } from '../baseServices';
 import { EvalServiceModule } from '../eval/eval.service.module';
 import { AuthorizationModule } from '../../authorization/authorization.module';
+import { GovernedPromptServiceModule } from '../governed-prompt/governed-prompt.service.module';
 
 /**
  * Agent promotion between tenants.
@@ -31,7 +32,17 @@ import { AuthorizationModule } from '../../authorization/authorization.module';
  * `AgentServiceModule` here closes a cycle that stops the gateway booting.
  */
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, EventEmitterModule, ClsModule, EvalServiceModule, AuthorizationModule],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    EventEmitterModule,
+    ClsModule,
+    EvalServiceModule,
+    AuthorizationModule,
+    // TASK-1047 D2 — promote-to-system screens the promoted pieces under SYSTEM. No cycle: the
+    // registry module imports no agent or promotion module.
+    GovernedPromptServiceModule,
+  ],
   providers: [
     AgentPromotionService,
     {
