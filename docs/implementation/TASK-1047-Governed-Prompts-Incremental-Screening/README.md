@@ -631,6 +631,47 @@ S3/S5 were written as if only the new 250 characters were screened.
   baseline (S4 read as "computed windows = unique windows", which passes); NLP-on-GPU sizing for production
   is a deployment follow-up; capacity is judged by the V4 load/soak (shed rate, memory, p95).
 
+### 8.6 V6 first run, the inbound classifier on clinical data, OD-13
+
+**V6 first run (golden set, 14 multi-encounter cases, via `POST admin/harness/golden-sets/:id/run`):** all 14
+cases errored in 54 s. Two defects, both found only by running the set live for the first time:
+1. **15 of 16 generation calls refused `CONTENT_BLOCKED`** by the inbound gate — guardrail decisions during the
+   run: 11 × `jailbreak_detection + prompt_safety + prompt_toxicity`, 1 × `prompt_safety + prompt_toxicity`,
+   3 × `prompt_toxicity`, 1 allow.
+2. The one call that passed answered **404 `PROVIDER_NOT_FOUND`**: the fixture named the engine `lmstudio`;
+   apps/text serves `lm-studio` (the AiModel convention). Fixed in `1ed5acf78` with a guard test.
+
+**Why the inbound gate refuses clinical content.** Before TASK-1047 the whole joined prompt (≤ 100k chars) was
+scored in ONE classifier pass, so the encoder's length limit meant only the head — mostly the governed system
+prompt — was ever scored; L5's region windows (the C2 fix) now score every window of every data block.
+Calibration of the SYSTEM inbound classifier `gliguard-llm-guardrails-300m` (`fastino/gliguard-LLMGuardrails-300M`):
+
+| Check | Benign clinical windows flagged (75 × 2k, golden transcripts) | Injections caught (10, embedded in clinical dialogue) |
+|---|---|---|
+| `jailbreak_detection` | 4 / 75 (5 %), scores 0.14–0.93 | 7 / 10, scores 0.23–0.95 (overlaps benign) |
+| `prompt_safety` | 7 / 75 (9 %), median 0.95 | 7 / 10 |
+| `prompt_toxicity` | 15 / 75 (20 %) — label `regulated_advice` (medical advice) | 7 / 10 |
+
+Benign and attack scores overlap, so no threshold separates them. A note call carries many windows, so per-window
+false-positive rates compound into near-certain refusal. The same classifier also flags seeded specialty
+templates at authoring time (6 Global templates FAIL as INJECTION under the 2k geometry) and calls
+"Write a concise SOAP note from the consultation transcript." toxic.
+
+**Owner decision OD-13 (2026-10-06): detect-and-record on DATA regions** — contract FC-5b (§6.1). Data blocks
+are still screened every time (no opt-out); a flag on a data region is a recorded finding (response
+`data_findings`, metrics, PHI-safe logs), not a refusal. Refusal stays for caller instruction text and
+ungoverned system prompts, for any undetermined check, and on the outbound gate. Rationale: the structural
+boundary (FC-1 governed system, data by pointer, EXTERNAL_DATA fencing, nonce containment) is the primary
+injection defence and the outbound gate catches compliance with an injected instruction (OWASP LLM01); a
+classifier this weak cannot be the sole gate on clinical content, and patient disclosures must never stop
+documentation. Follow-up (separate ticket): evaluate an injection-specific classifier (e.g. Llama Prompt Guard 2,
+deberta-v3 prompt-injection-v2) and re-enable blocking on data for `jailbreak_detection` once it shows < 1 %
+false positives per benign window and > 95 % recall on this calibration set.
+
+Authoring-time note: the 6 template FAILs above are INJECTION findings on instruction text, which stays
+BLOCKING under OD-4/"Scope it" — they remain un-governed (screened as untrusted at call time) until the
+classifier follow-up lands or the templates are reworded.
+
 ## 9. Change History
 
 | Date | Change |
