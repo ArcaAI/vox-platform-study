@@ -14,3 +14,16 @@ export function withPlatformRules(instruction: string): string {
 export function asInputBlock(text: string): string {
   return `<<<EXTERNAL_DATA section="input">>>\n--- Input ---\n${text}\n<<<END_EXTERNAL_DATA>>>`;
 }
+
+export { dataBlocksOf, resolvePointers } from '../../consultation/prompt/__tests__/compose-spy';
+
+/**
+ * TASK-1047 FC-1 — the SYSTEM message as the model reads it: every pointer replaced by the value of
+ * the data block it names. For assertions about how a value RESOLVES; where it travels (a pointer
+ * in system, the value in a block) is asserted on the raw body.
+ */
+export function readByModel(body: { system_prompt?: unknown; prompt?: unknown }): string {
+  return resolvePointersOf(String(body.system_prompt ?? ''), String(body.prompt ?? ''));
+}
+
+import { resolvePointers as resolvePointersOf } from '../../consultation/prompt/__tests__/compose-spy';

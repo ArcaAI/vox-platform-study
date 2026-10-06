@@ -9,7 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ResolvedAgent } from '@arcaai/types';
 import { AGENT_IO_DEFAULTS } from '@arcaai/workflow-contract';
 import { AgentInvocationService } from '../agent-invocation.service';
-import { withPlatformRules } from './compose-expectations';
+import { withPlatformRules, readByModel } from './compose-expectations';
+
+// TASK-1047 FC-1 — placeholders are POINTERS in the system message and their values data blocks; the
+// rendering assertions below read the system as the model does (`readByModel`).
+
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 const post = vi.fn();
@@ -58,8 +62,10 @@ beforeEach(() => {
 describe('OD-10 on the invocation lane', () => {
   it('an absent OPTIONAL variable renders "" and a whitespace-only message block is dropped', async () => {
     await service().invokeText(agent([{ name: 'tone', type: 'string', required: false }]), TENANT, { message: '  \n ' }, 'blocking');
-    expect(sent().system_prompt).toBe(withPlatformRules('Tone: .'));
-    expect(sent().prompt).toBe('');
+    expect(readByModel(sent())).toBe(withPlatformRules('Tone: .'));
+    // TASK-1047 FC-1 — the placeholder's (empty) value is its own block so the pointer never
+    // dangles; the whitespace-only MESSAGE block is still dropped.
+    expect(sent().prompt).toBe('<<<EXTERNAL_DATA section="tone">>>\n--- tone ---\n\n<<<END_EXTERNAL_DATA>>>');
   });
 
   it('an absent REQUIRED variable still refuses the call by name', async () => {

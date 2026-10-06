@@ -21,7 +21,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type { ResolvedAgent } from '@arcaai/types';
 import { AgentInvocationService } from '../agent-invocation.service';
-import { asInputBlock, withPlatformRules } from './compose-expectations';
+import { asInputBlock, withPlatformRules, readByModel } from './compose-expectations';
+
+// TASK-1047 FC-1 — placeholders are POINTERS in the system message and their values data blocks; the
+// rendering assertions below read the system as the model does (`readByModel`).
+
 
 const TENANT = '50000000-0000-0000-0000-000000000001';
 
@@ -111,7 +115,7 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
     );
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe(withPlatformRules('Language en for p-1 in tone concise; age 48.'));
+    expect(readByModel(post.mock.calls[0]![1] as Record<string, unknown>)).toBe(withPlatformRules('Language en for p-1 in tone concise; age 48.'));
   });
 
   it('asks for nothing a `default("…")` covers', async () => {
@@ -122,7 +126,7 @@ describe('an incomplete invocation is refused ONCE, naming every missing placeho
       'blocking',
     );
 
-    expect((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt).toBe(withPlatformRules('unknown'));
+    expect(readByModel(post.mock.calls[0]![1] as Record<string, unknown>)).toBe(withPlatformRules('unknown'));
   });
 
   it('is SELECTION-AWARE: a fragment this call excludes asks for nothing', async () => {
@@ -233,6 +237,6 @@ describe('the seeded general-medicine agent — bindings are part of the SAME re
     await service().invokeText(seededAgent, TENANT, { text: 't', context }, 'blocking');
 
     expect(post).toHaveBeenCalledTimes(1);
-    expect(String((post.mock.calls[0]![1] as Record<string, unknown>).system_prompt)).toContain('Headings S/O/A/P/S/O/A/P');
+    expect(readByModel(post.mock.calls[0]![1] as Record<string, unknown>)).toContain('Headings S/O/A/P/S/O/A/P');
   });
 });
