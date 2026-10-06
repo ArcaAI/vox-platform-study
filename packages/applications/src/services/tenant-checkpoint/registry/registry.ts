@@ -407,6 +407,10 @@ const LOGS: CheckpointModelDescriptor[] = [
   log('AiUsageRollupHourly', false),
   log('AiUsageRollupDaily', false),
   log('ConsultationFeedbackDailyRollup', false, TENANT, { notes: 'Derived per-day feedback aggregate; recomputed, never restored.' }),
+  log('GovernedPromptPiece', true, TENANT, {
+    notes:
+      'Derived authoring-time screening verdict per piece digest (no text); captured, never restored — a restored verdict could outlive the policy it was screened under, and absence only means "re-screen".',
+  }),
   log('AiActivityRun', false, TENANT, { notes: 'Per-AI-activity run record (ids and numbers only); telemetry, never restored.' }),
   log('TenantUsageMeter', true),
   log('TenantPlanHistory', false),
