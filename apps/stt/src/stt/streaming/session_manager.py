@@ -1063,6 +1063,10 @@ class SessionManager:
             vad_service = await self._load_vad_service(pipeline_config, session_id)
             vad_enabled = bool(pipeline_config and pipeline_config.preprocessing.vad.enabled)
             vad_kwargs = self._build_preprocessor_vad_kwargs(pipeline_config)
+            # TASK-1048 — VAD enabled but it did not load: the preprocessor runs on the
+            # energy fallback. Say so; never fail the session over it.
+            if vad_enabled and vad_service is None:
+                await publisher.publish_degraded_once("vad_unavailable")
 
         target_sr = (
             pipeline_config.preprocessing.target_sample_rate
@@ -1176,6 +1180,8 @@ class SessionManager:
                         session_id,
                         exc_info=True,
                     )
+                    # TASK-1048 — diarization is off for this session; report it.
+                    await publisher.publish_degraded_once("diarization_unavailable")
 
         speaker_identifier = None
         if (
@@ -1220,6 +1226,7 @@ class SessionManager:
                         session_id,
                         exc_info=True,
                     )
+                    await publisher.publish_degraded_once("segmentation_unavailable")
 
             speaker_identifier = SpeakerIdentifier(
                 tracker=speaker_tracker,
@@ -1233,11 +1240,23 @@ class SessionManager:
             # read here and a profile from another model is ignored rather than compared.
             # TASK-991 — retain the result so the session-create/status response can echo
             # a truthful `voiceProfileSeeded` instead of the previous hardcoded `False`.
-            seed_result = self._seed_voice_profiles(
-                speaker_tracker,
-                session_id,
-                self._spec_embedding_slug(pipeline_config),
-            )
+            # TASK-1048 — seeding is optional: ANY failure leaves the session diarizing with
+            # anonymous speaker labels and reports `voice_profiles_unavailable`. Zero
+            # enrolled profiles is not a failure and reports nothing.
+            try:
+                seed_result = self._seed_voice_profiles(
+                    speaker_tracker,
+                    session_id,
+                    self._spec_embedding_slug(pipeline_config),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "stt.stream.voice_profile_seed_failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+                seed_result = {"seeded": 0}
+                await publisher.publish_degraded_once("voice_profiles_unavailable")
             # `seed_voice_profiles` types its contract as `dict[str, object]`, and
             # `seeded` is always a non-negative count — `bool(...)` is "count > 0"
             # without a numeric cast off `object`.
@@ -1264,6 +1283,13 @@ class SessionManager:
 
         # Opt-in English gloss (None unless enabled)
         gloss_pipeline = await self._load_gloss_pipeline(pipeline_config, session_id)
+        # TASK-1048 — gloss ENABLED in the spec but not built (load failure or an engine
+        # that cannot translate): the session runs without it; report it.
+        if (
+            gloss_pipeline is None
+            and getattr(inference_cfg, "streaming_english_gloss", False) is True
+        ):
+            await publisher.publish_degraded_once("gloss_unavailable")
 
         inference_worker = StreamingInferenceWorker(
             result_publisher=publisher,

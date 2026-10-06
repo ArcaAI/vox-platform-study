@@ -341,6 +341,10 @@ class StreamingInferenceWorker:
         #: know the session went wrong, not to be told again on every utterance for the
         #: next forty minutes. The metric and the log line still fire per occurrence.
         self._script_mismatch_reported: bool = False
+        # TASK-1048 — `_apply_lexicon` is synchronous, so a failure is flagged here and
+        # published by the next async call site (`_flush_lexicon_degraded`).
+        self._lexicon_degraded_pending: bool = False
+        self._lexicon_degraded_reported: bool = False
         # TASK-1003 F-15 — cumulative per-session script-class letter counts across
         # every FINAL, independent of `_expects_latin_script`: the code-switch pairs
         # this exists for are UNPINNED (`language=None`) and never reach
@@ -477,6 +481,30 @@ class StreamingInferenceWorker:
         """
         return self._apply_lexicon(text, session_id, utterance)
 
+    async def _report_degraded(self, reason: str, utterance_index: int | None = None) -> None:
+        """TASK-1048 — tell the client an optional stage is off (once per reason per session).
+
+        Never raises: the publisher de-duplicates and swallows transport errors, and a
+        publisher double without ``publish_degraded_once`` still must not fail the stream.
+        """
+        publisher = self._publisher
+        if publisher is None:
+            return
+        publish = getattr(publisher, "publish_degraded_once", None)
+        if publish is None:
+            return
+        try:
+            await publish(reason, utterance_index)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("stt.streaming.degraded_publish_failed", reason=reason, error=str(exc))
+
+    async def _flush_lexicon_degraded(self, utterance: AudioUtterance) -> None:
+        if not self._lexicon_degraded_pending:
+            return
+        self._lexicon_degraded_pending = False
+        self._lexicon_degraded_reported = True
+        await self._report_degraded("lexicon_unavailable", utterance.utterance_index)
+
     def _apply_lexicon(self, text: str, session_id: str, utterance: AudioUtterance) -> str:
         """Snap configured clinical terms in *text*; log every change.
 
@@ -492,7 +520,17 @@ class StreamingInferenceWorker:
         )
         if corrector is None or not text.strip():
             return text
-        corrected, corrections = corrector.correct(text)
+        try:
+            corrected, corrections = corrector.correct(text)
+        except Exception as exc:  # noqa: BLE001 — TASK-1048: an optional stage never fails the stream
+            if not self._lexicon_degraded_pending and not self._lexicon_degraded_reported:
+                logger.warning(
+                    "stt.postprocessing.lexicon.failed",
+                    session_id=session_id,
+                    error=str(exc),
+                )
+            self._lexicon_degraded_pending = True
+            return text
         if not corrections:
             return text
         self.lexicon_correction_count += len(corrections)
@@ -885,6 +923,7 @@ class StreamingInferenceWorker:
         # delete. Lowercasing still runs after it, so a case-folding pipeline folds the
         # correction too.
         text = self._apply_lexicon(text, session_id, utterance)
+        await self._flush_lexicon_degraded(utterance)
 
         # Lowercase postprocessing
         if self._postprocessing_config and self._postprocessing_config.lowercase:
@@ -1755,6 +1794,7 @@ class StreamingInferenceWorker:
                 tenant_id=self._tenant_id,
                 error=str(exc),
             )
+            await self._report_degraded("diarization_unavailable")
             return None
 
     async def _identify_speaker(
@@ -1789,6 +1829,7 @@ class StreamingInferenceWorker:
                 tenant_id=self._tenant_id,
                 error=str(exc),
             )
+            await self._report_degraded("diarization_unavailable")
             return None, None
 
     @staticmethod
@@ -2045,6 +2086,7 @@ class StreamingInferenceWorker:
         # so a single-word correction at partial N can be superseded by a phrase
         # correction at N+1, mutating characters already counted as stable.
         text = self._apply_lexicon(text, session_id, utterance)
+        await self._flush_lexicon_degraded(utterance)
 
         # NOTE: Do NOT update self._previous_text for partials
 

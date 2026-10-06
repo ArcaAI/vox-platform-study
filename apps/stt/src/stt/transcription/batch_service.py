@@ -502,6 +502,10 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             inline_identifier: Any = None
             inline_diarization_config: Any = None
+            # TASK-1048 — optional stages that switched themselves off for this job; reported
+            # to the gateway in `result.metadata["degradations"]` (reason strings are the
+            # `ASR_RUNTIME_DEGRADED_REASONS` vocabulary). A degraded stage never fails the job.
+            degradations: list[str] = []
             if spec.diarization.enabled and tenant_id:
                 try:
                     from ..diarization.embedding_service import create_embedding_service
@@ -720,6 +724,8 @@ class BatchTranscriptionService:
                         ]
                     except Exception as e:
                         logger.warning(f"[{job_id}] VAD fallback failed: {e}")
+                        if "vad_unavailable" not in degradations:
+                            degradations.append("vad_unavailable")
 
                 logger.info(f"[{job_id}] Running speaker diarization...")
                 diarization_raw = RawTranscription(text="", segments=diarization_segments)
@@ -741,6 +747,8 @@ class BatchTranscriptionService:
                         )
                 except Exception as e:
                     logger.warning(f"[{job_id}] Diarization failed (non-fatal): {e}")
+                    if "diarization_unavailable" not in degradations:
+                        degradations.append("diarization_unavailable")
 
             timing.diarization_seconds = time.time() - diarization_start
 
@@ -807,6 +815,8 @@ class BatchTranscriptionService:
             result.metadata["timing"] = timing
             if diarization_meta:
                 result.metadata["diarization"] = diarization_meta
+            if degradations:
+                result.metadata["degradations"] = list(degradations)
 
             # Include per-segment results when available
             if (

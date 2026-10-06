@@ -480,6 +480,8 @@ class ResultPublisher:
         self._redis = redis
         self._session_id = session_id
         self._maxlen = maxlen
+        # TASK-1048 — reasons already reported on this session (see publish_degraded_once).
+        self._degraded_reasons: set[str] = set()
 
     def _resolve_maxlen(self) -> int:
         if self._maxlen is not None:
@@ -596,6 +598,29 @@ class ResultPublisher:
             approximate=True,
         )
         return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+
+    async def publish_degraded_once(self, reason: str, utterance_index: int | None = None) -> bool:
+        """TASK-1048 — publish ``status: degraded`` for *reason* at most once per session.
+
+        An optional stage that cannot run switches itself off and says so; it never fails
+        the session. This wrapper is the single place that guarantees both halves: a reason
+        is de-duplicated per session, and a Redis failure is logged, never raised.
+        Returns ``True`` when a frame was actually published.
+        """
+        if reason in self._degraded_reasons:
+            return False
+        self._degraded_reasons.add(reason)
+        try:
+            await self.publish_degraded(reason=reason, utterance_index=utterance_index)
+        except Exception as exc:  # noqa: BLE001 — a status frame never fails the session
+            logger.warning(
+                "stt.stream.degraded_publish_failed",
+                session_id=self._session_id,
+                reason=reason,
+                error=str(exc),
+            )
+            return False
+        return True
 
     async def publish_denoise_degraded(self, *, engine: str, reason: str, detail: str = "") -> str:
         """Publish a ``denoise_degraded`` status result (TASK-1030, OD-2).
