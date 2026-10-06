@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { LanguageResolutionResponse } from '@arcaai/applications';
+import { ASR_DEGRADATION_CODES, LanguageResolutionResponse } from '@arcaai/applications';
+import type { AsrDegradationCode, AsrDegradedStage, AsrSessionWarning } from '@arcaai/applications';
 import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
@@ -238,6 +239,38 @@ export class CreateStreamSessionRequest {
   context?: Record<string, unknown>;
 }
 
+/**
+ * TASK-1048 — one optional speech-to-text stage that was switched OFF for this session/job instead
+ * of refusing it (owner decision OD-1, 2026-10-06). The documented mirror of the frozen
+ * `AsrSessionWarning` contract (`@arcaai/types`, re-exported by `@arcaai/applications`). Carries
+ * no PHI: a code, the agent identity, and a fixed sentence.
+ */
+export class AsrSessionWarningResponse implements AsrSessionWarning {
+  @ApiProperty({
+    description:
+      'What was switched off: DIARIZATION_MODEL_MISSING (diarization enabled, no speaker-embedding model resolves), ' +
+      'DIARIZATION_BACKEND_UNSUPPORTED (a retired diarization backend), VAD_MODEL_MISSING (VAD enabled with no VAD model — ' +
+      'audio is segmented on energy), FALLBACK_UNRUNNABLE (a configured fallback could not be built and was skipped).',
+    enum: ASR_DEGRADATION_CODES,
+  })
+  code!: AsrDegradationCode;
+
+  @ApiProperty({ description: 'The optional stage the warning concerns.', enum: ['diarization', 'vad', 'fallback'] })
+  stage!: AsrDegradedStage;
+
+  @ApiProperty({ description: "Always 'WARNING' — a refusal is an HTTP error, never an entry here.", enum: ['WARNING'] })
+  severity!: 'WARNING';
+
+  @ApiProperty({ description: 'A fixed, PHI-free sentence a UI may show verbatim.' })
+  message!: string;
+
+  @ApiProperty({ description: 'The agent whose configuration caused it — the primary, or the fallback that was skipped.' })
+  agentSlug!: string;
+
+  @ApiPropertyOptional({ description: 'Version number of that agent, when known.' })
+  agentVersionNumber?: number;
+}
+
 export class StreamSessionResponse {
   @ApiProperty({ description: 'Session ID' })
   sessionId!: string;
@@ -350,6 +383,19 @@ export class StreamSessionResponse {
   @IsObject()
   @IsOptional()
   languageResolution?: LanguageResolutionResponse;
+
+  /**
+   * TASK-1048 — optional stages switched off for this session instead of refusing it (diarization
+   * with no speaker-embedding model, VAD with no VAD model, a skipped fallback). Absent when none.
+   */
+  @ApiPropertyOptional({
+    type: AsrSessionWarningResponse,
+    isArray: true,
+    description:
+      'Optional speech-to-text stages switched OFF for this session instead of refusing it (the core transcription still ' +
+      'runs). Absent when there are none.',
+  })
+  warnings?: AsrSessionWarningResponse[];
 }
 
 export class BatchTranscribeResponse {
@@ -371,6 +417,14 @@ export class BatchTranscribeResponse {
 
   @ApiPropertyOptional({ description: 'ASR Agent VERSION id the job runs on' })
   agentVersionId?: string;
+
+  /** TASK-1048 — optional stages switched off for this job instead of refusing it. Absent when none. */
+  @ApiPropertyOptional({
+    type: AsrSessionWarningResponse,
+    isArray: true,
+    description: 'Optional speech-to-text stages switched OFF for this job instead of refusing it. Absent when there are none.',
+  })
+  warnings?: AsrSessionWarningResponse[];
 }
 
 /**

@@ -25,7 +25,7 @@ import {
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
-import type { LanguageModeSource, ResolvedAsrJobSelection, ResolvedAsrSession, ResolvedAsrSpec } from '@arcaai/applications';
+import type { AsrSessionWarning, LanguageModeSource, ResolvedAsrJobSelection, ResolvedAsrSession, ResolvedAsrSpec } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
 import type { Response } from 'express';
 import { createHash } from 'node:crypto';
@@ -97,6 +97,19 @@ const TRANSCRIPTION_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
  */
 type TranscribeCaller =
   { credentialClass: 'service-account' } | { credentialClass: 'api-key'; boundUserId: string | null } | { credentialClass: 'jwt' };
+
+/**
+ * TASK-1048 — the resolver's optional-stage `warnings`, as a response fragment: `{ warnings }` when
+ * there are any, `{}` otherwise, so a response with none is byte-identical to the pre-1048 one.
+ */
+function withAsrWarnings(resolved: Pick<ResolvedAsrSession, 'warnings'>): { warnings?: AsrSessionWarning[] } {
+  return resolved.warnings && resolved.warnings.length > 0 ? { warnings: resolved.warnings } : {};
+}
+
+/** TASK-1048 — a created job, plus `warnings` when there are any; the service's object untouched otherwise. */
+function withJobWarnings<T extends object>(job: T, warnings: AsrSessionWarning[] | undefined): T | (T & { warnings: AsrSessionWarning[] }) {
+  return warnings && warnings.length > 0 ? { ...job, warnings } : job;
+}
 
 /** RFC 7232 §3.2 — `If-None-Match` is a list compared WEAKLY, so `W/"x"` matches `"x"`. */
 function ifNoneMatchHits(header: string | undefined, etag: string): boolean {
@@ -524,7 +537,8 @@ export class TranscriptionJobController {
     // tenant's assigned ASR agent, keys the job to a `ResolvedAsrSpec`. The gateway never guesses,
     // and (TASK-1012 L-7) never takes a caller's `agentVersionId` / `resolvedSpec`.
     const { agentSlug, ...rest } = dto;
-    return this.jobService.create({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
+    const { selection, warnings } = await this.resolveJobAgent(agentSlug, dto.consultationId);
+    return withJobWarnings(await this.jobService.create({ ...rest, ...selection }), warnings);
   }
 
   @Post('batch')
@@ -532,7 +546,8 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Create a batch transcription job' })
   async createBatch(@Body() dto: CreateBatchJobRequest) {
     const { agentSlug, ...rest } = dto;
-    return this.jobService.createBatchJob({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
+    const { selection, warnings } = await this.resolveJobAgent(agentSlug, dto.consultationId);
+    return withJobWarnings(await this.jobService.createBatchJob({ ...rest, ...selection }), warnings);
   }
 
   @Post('streaming')
@@ -540,17 +555,27 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Create a streaming transcription job' })
   async createStreaming(@Body() dto: CreateStreamingJobRequest) {
     const { agentSlug, ...rest } = dto;
-    return this.jobService.createStreamingJob({ ...rest, ...(await this.resolveJobAgent(agentSlug, dto.consultationId)) });
+    const { selection, warnings } = await this.resolveJobAgent(agentSlug, dto.consultationId);
+    return withJobWarnings(await this.jobService.createStreamingJob({ ...rest, ...selection }), warnings);
   }
 
   /**
    * TASK-1012 L-7 — the ONE selection for the three job-create routes: the resolved ASR agent
    * (`agentSlug`, else the assignment cascade). Spread LAST over the request, so a caller-supplied
    * `agentVersionId` / `resolvedSpec` that slipped past the pipe is overwritten, never honoured.
+   *
+   * TASK-1048 — the resolver's optional-stage `warnings` come back BESIDE the selection, never in
+   * it: they belong on the response, not on the job row.
    */
-  private async resolveJobAgent(agentSlug: string | undefined, consultationId: string | undefined): Promise<ResolvedAsrJobSelection> {
+  private async resolveJobAgent(
+    agentSlug: string | undefined,
+    consultationId: string | undefined,
+  ): Promise<{ selection: ResolvedAsrJobSelection; warnings?: AsrSessionWarning[] }> {
     const resolved = await this.resolveAsrAgent(this.getTenantId(), agentSlug, consultationId);
-    return { agentVersionId: resolved.spec.agent.versionId, resolvedSpec: resolved.spec as unknown as Record<string, unknown> };
+    return {
+      selection: { agentVersionId: resolved.spec.agent.versionId, resolvedSpec: resolved.spec as unknown as Record<string, unknown> },
+      ...withAsrWarnings(resolved),
+    };
   }
 
   @Get('stats')
@@ -810,6 +835,8 @@ export class TranscriptionJobController {
       audioUri,
       agentSlug: resolved.spec.agent.slug,
       agentVersionId: resolved.spec.agent.versionId,
+      // TASK-1048 — optional stages switched off for this job; never on the row or the queue.
+      ...withAsrWarnings(resolved),
     };
   }
 
@@ -912,7 +939,9 @@ export class TranscriptionJobController {
       'names more than one speech-to-text agent, or one that can no longer serve, is refused with 409 ' +
       'WORKFLOW_ASR_AGENT_UNAVAILABLE. TASK-1042: `workflowSlug` opens a session for a STANDALONE workflow run ' +
       "(bind it with input.<audio>.sttSessionId on POST /workflows/{slug}/runs); the agent then comes from that workflow's " +
-      'speech-to-text step.',
+      'speech-to-text step. TASK-1048: an OPTIONAL stage of the agent that cannot run (speaker diarization with no ' +
+      'speaker-embedding model, voice-activity detection with no VAD model, a fallback that cannot be built) is switched ' +
+      'off for the session and reported in `warnings` — it never refuses the session.',
   })
   @ApiResponse({ status: 201, description: 'Streaming session created', type: StreamSessionResponse })
   // TASK-951 R2 — the two refusals `context` introduces. Documented here because a client that
@@ -1149,6 +1178,9 @@ export class TranscriptionJobController {
       sessionEpochMs,
       // TASK-1004 — what the session was asked for and what its serving engine applied.
       ...(result.languageResolution ? { languageResolution: result.languageResolution } : {}),
+      // TASK-1048 — optional stages switched off instead of refusing the session (owner rule 3:
+      // the user starting it gets a notice). Never sent to STT; absent when there are none.
+      ...withAsrWarnings(resolved),
     };
   }
 

@@ -503,7 +503,7 @@ export class AsrAgentResolverService {
       warnings.push(asrDegradation('FALLBACK_UNRUNNABLE', { slug }));
       return null;
     }
-    if (fallback.task !== AgentTask.SPEECH_TO_TEXT || !fallback.models.some((m) => m.role === 'primary')) {
+    if (fallback.task !== 'SPEECH_TO_TEXT' || !fallback.models.some((m) => m.role === 'primary')) {
       warnings.push(asrDegradation('FALLBACK_UNRUNNABLE', fallback));
       return null;
     }
