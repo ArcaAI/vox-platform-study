@@ -93,13 +93,15 @@ def test_guard_entailment_caps_each_text_field(client, monkeypatch, field):
 
 
 def test_classify_tokens_over_bound_is_413(client, monkeypatch):
+    # FC-8a (OD-10): /classify/tokens windows text above maxInputChars server-side;
+    # its 413 bound is nlp.ner.maxRequestChars (see test_task1047_ner_windowing.py).
     import nlp.api.v1.rest.classify as classify
     from nlp.core import bounds
 
-    bounds.set_bounds(max_input_chars=50)
+    bounds.set_bounds(max_input_chars=50, ner_max_request_chars=60)
     monkeypatch.setattr(classify, "pinned_token_classifier", _boom_acquire)
-    body = {"text": "x" * 51, "model_name": MODEL}
-    _assert_413(client.post("/api/v1/classify/tokens", json=body), 50)
+    body = {"text": "x" * 61, "model_name": MODEL}
+    _assert_413(client.post("/api/v1/classify/tokens", json=body), 60)
 
 
 def test_classify_text_over_bound_is_413(client, monkeypatch):

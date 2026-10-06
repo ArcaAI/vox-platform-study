@@ -15,6 +15,11 @@ descriptors that serve them are registered by lane L8.
 * ``nlp.inference.threadsPerInference`` -> torch intra-op threads per inference
 * ``nlp.worker.recycleAfterRequests`` / ``nlp.worker.recycleRssMib`` -> see
   :mod:`nlp.core.recycle`
+* ``nlp.ner.maxRequestChars`` / ``nlp.ner.windowChars`` /
+  ``nlp.ner.windowOverlapChars`` -> FC-8a (OD-10): ``/classify/tokens`` windows a
+  text above ``maxInputChars`` server-side (:mod:`nlp.services.ner_windowing`)
+  and answers 413 only above ``maxRequestChars``. ``windowChars +
+  windowOverlapChars`` must stay <= ``maxInputChars`` (:func:`resolve_ner_window`).
 
 THREAD PRECEDENCE. ``configure_torch_threading`` (``torch_runtime.py``) sizes the
 pools once, at boot, from ``OMP_NUM_THREADS`` > ``NLP_TORCH_NUM_THREADS`` >
@@ -58,6 +63,9 @@ class InferenceBounds:
     threads_per_inference: int = 0  # 0 = derive from CPU budget / concurrency
     recycle_after_requests: int = 2000
     recycle_rss_mib: int = 12288
+    ner_max_request_chars: int = 200000
+    ner_window_chars: int = 4000
+    ner_window_overlap_chars: int = 256
 
 
 _lock = threading.Lock()
@@ -83,13 +91,15 @@ def reset_bounds() -> None:
         _applied_threads = None
 
 
-def enforce_input_cap(route: str, *texts: str) -> None:
+def enforce_input_cap(route: str, *texts: str, limit: int | None = None) -> None:
     """Raise :class:`InputExceedsWindow` if any text is over the bound.
 
     Called BEFORE the inference semaphore and before any model is touched, and
-    never truncates: the caller windows its input.
+    never truncates: the caller windows its input. ``limit`` defaults to
+    ``maxInputChars``; ``/classify/tokens`` passes ``nlp.ner.maxRequestChars``.
     """
-    limit = _bounds.max_input_chars
+    if limit is None:
+        limit = _bounds.max_input_chars
     if any(len(text) > limit for text in texts):
         from nlp.core.metrics import NLP_INPUT_EXCEEDS_WINDOW_TOTAL
 
@@ -116,6 +126,9 @@ def apply_snapshot(snapshot: EffectiveConfigSnapshot) -> InferenceBounds:
         ("threads_per_inference", "nlp.inference.threadsPerInference", True),
         ("recycle_after_requests", "nlp.worker.recycleAfterRequests", False),
         ("recycle_rss_mib", "nlp.worker.recycleRssMib", False),
+        ("ner_max_request_chars", "nlp.ner.maxRequestChars", False),
+        ("ner_window_chars", "nlp.ner.windowChars", False),
+        ("ner_window_overlap_chars", "nlp.ner.windowOverlapChars", True),
     )
     changes: dict[str, int] = {}
     for attr, key, allow_zero in mapping:
@@ -123,6 +136,32 @@ def apply_snapshot(snapshot: EffectiveConfigSnapshot) -> InferenceBounds:
         if value is not None:
             changes[attr] = value
     return set_bounds(**changes) if changes else _bounds
+
+
+def resolve_ner_window() -> tuple[int, int]:
+    """``(windowChars, windowOverlapChars)`` for NER windowing, never over the cap.
+
+    A configured pair whose sum exceeds ``maxInputChars`` is ignored with a
+    warning and the FC-8a defaults apply. If an operator lowered
+    ``maxInputChars`` below even the defaults, they shrink to fit it: one
+    window is never a pass over the cap.
+    """
+    b = _bounds
+    window, overlap = b.ner_window_chars, b.ner_window_overlap_chars
+    if window > 0 and window + overlap <= b.max_input_chars:
+        return window, overlap
+    logger.warning(
+        "nlp.ner.window_invalid",
+        window_chars=window,
+        overlap_chars=overlap,
+        max_input_chars=b.max_input_chars,
+    )
+    defaults = InferenceBounds()
+    window, overlap = defaults.ner_window_chars, defaults.ner_window_overlap_chars
+    if window + overlap > b.max_input_chars:
+        overlap = min(overlap, b.max_input_chars // 16)
+        window = max(1, b.max_input_chars - overlap)
+    return window, overlap
 
 
 def resolve_threads_per_inference(configured: int, cpu_allowance: int, max_concurrent: int) -> int:
