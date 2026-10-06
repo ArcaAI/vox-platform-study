@@ -100,7 +100,7 @@ from harness.services.api_client import (
 )
 from harness.services.embeddings_client import EmbeddingsClient
 from harness.services.guardrail_client import GuardrailClient
-from harness.services.nlp_client import NlpClient
+from harness.services.nlp_client import NlpClient, NlpServiceError
 from harness.services.note_plan.executor import (
     ACTIVITY_NOTE_SECTION_GROUP,
     REPAIR_STEP_OFFSET,
@@ -1304,16 +1304,28 @@ async def _extract_clinical_entities(
         else []
     )
     clinical_taxonomy = model.get("clinicalTaxonomy")
-    data = await _nlp_client(settings).classify_tokens_raw(
-        text,
-        tenant_id=tenant_id,
-        # `model_name` only, exactly like the gateway's clinical NER: NLP keys its model
-        # cache on (name, path), so also sending the path would load a second copy.
-        model_name=source_uri,
-        labels=labels or None,
-        clinical_taxonomy=clinical_taxonomy if isinstance(clinical_taxonomy, dict) else None,
-        language=language,
-    )
+    try:
+        data = await _nlp_client(settings).classify_tokens_raw(
+            text,
+            tenant_id=tenant_id,
+            # `model_name` only, exactly like the gateway's clinical NER: NLP keys its model
+            # cache on (name, path), so also sending the path would load a second copy.
+            model_name=source_uri,
+            labels=labels or None,
+            clinical_taxonomy=clinical_taxonomy if isinstance(clinical_taxonomy, dict) else None,
+            language=language,
+        )
+    except NlpServiceError as exc:
+        status = exc.status_code
+        if status is not None and 400 <= status < 500 and status not in (408, 429):
+            # Deterministic client error (400 / 413 INPUT_EXCEEDS_WINDOW / 422): a retry
+            # re-sends the same text. PHI-free message: status + route only.
+            raise ApplicationError(
+                f"nlp classify/tokens rejected the request with HTTP {status}",
+                type="NlpClientError",
+                non_retryable=True,
+            ) from exc
+        raise
     return NlpClient.entities_from(data)
 
 
