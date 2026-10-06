@@ -389,7 +389,11 @@ the instruction pieces — the rendered template body (TEMPLATE_BODY) or each se
 part (CONTRACT); layers joined by `MESSAGE_LAYER_JOIN`. `composeMessages` additionally returns
 `governance: { pieces: [{ kind, key, digest }], composedDigest }` where `composedDigest = digest(system)`.
 Every piece is static text after FC-1 (no runtime value) — a piece that still contains runtime data is a
-contract violation the L1 tests must catch.
+contract violation the L1 tests must catch. The input gains `blockAliases` (path → block name) and `outputContractParts`
+(`[{key, text}]`, each a CONTRACT piece; a plain `outputContract` string is one part keyed `contract`). Piece
+keys: platform rules `platform-rules@<PLATFORM_RULES_VERSION>`, template body `body`, fragment = its key,
+language `language:<name>`, contract part = its key. **Python mirror shape** (snake_case):
+`result["governance"] = {"pieces": [{"kind", "key", "digest"}], "composed_digest": str}`.
 
 **FC-3 Registry (L3).** `GovernedPromptPiece` (migration `20261006040234_task_1047_governed_prompt_piece`).
 Service token `IGovernedPromptRegistry` (`packages/applications/src/services/governed-prompt/`):
@@ -398,7 +402,7 @@ Service token `IGovernedPromptRegistry` (`packages/applications/src/services/gov
 `areGoverned(tenantId, digests[]) → boolean` (all digests PASS under the CURRENT `policyVersion`, read
 [tenant, SYSTEM]; in-process LRU by `(digest, policyVersion)`, TTL 300 s). Platform pieces (platform rules,
 platform outputContract constants, language sentences) are registered under SYSTEM at gateway boot
-(`sourceType PLATFORM`). Publish/approve stamp `compiledConfig.governance = { policyVersion, pieceDigests }`
+(`sourceType PLATFORM`). Composers call `registerPlatformPieces(pieces)` (idempotent, background screening) for PLATFORM / CONTRACT / LANGUAGE pieces they emit. Publish/approve stamp `compiledConfig.governance = { policyVersion, pieceDigests }`
 on the agent (for the harness, FC-6). A boot backfill screens every published agent / approved version
 without registry rows; until screened, its calls take the full-screening path (safe fallback).
 `policyVersion` = guardrail's reported policy version (L5 exposes it on `GET /api/v1/guardrail/policy-version`

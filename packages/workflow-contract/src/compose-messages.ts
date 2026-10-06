@@ -98,6 +98,18 @@ export interface ComposeMessagesInput {
    * dropped block is absent from `blocks[]`, like a skipped one.
    */
   readonly dropEmptyBlocks?: boolean;
+  /**
+   * TASK-1047 FC-1 — placeholder path → block name, for paths whose data section already has an
+   * established name (e.g. `PromptAssemblyService`'s nine sections). Absent paths use the derived
+   * name (lower-case, non `[a-z0-9]` runs → `_`).
+   */
+  readonly blockAliases?: Readonly<Record<string, string>>;
+  /**
+   * TASK-1047 FC-2 — the answer-shape instruction as NAMED static parts (each one CONTRACT piece,
+   * `key` = the part name). Mutually exclusive with `outputContract` (a plain string is one part
+   * keyed `contract`). Parts must be static text — runtime values belong in `dataBlocks`.
+   */
+  readonly outputContractParts?: readonly { readonly key: string; readonly text: string }[];
 }
 
 /** OD-10 — content a `dropEmptyBlocks` compose treats as empty. */
