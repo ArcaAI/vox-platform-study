@@ -21,7 +21,7 @@ import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStat
 import { AgentService } from '../agent.service';
 import { AgentDraftTestService } from '../agent-draft-test.service';
 import { TextRequestEnrichmentService } from '../../text-request/text-request-enrichment.service';
-import { asInputBlock, withPlatformRules } from './compose-expectations';
+import { asInputBlock, dataBlocksOf, readByModel, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -149,8 +149,13 @@ describe('testDraft — dry run (the default)', () => {
     });
 
     expect(ack.mode).toBe('dry-run');
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('You are a scribe for Ward B.'));
-    expect(ack.assembledUserPrompt).toBe(asInputBlock('Summarise the visit'));
+    // Pointer in the system message, value as a data block in the user message (TASK-1047 D1).
+    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('You are a scribe for [see the context_clinic data section below].'));
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(
+      withPlatformRules('You are a scribe for Ward B.'),
+    );
+    expect(dataBlocksOf(ack.assembledUserPrompt!).get('context_clinic')).toBe('Ward B');
+    expect(ack.assembledUserPrompt).toContain(asInputBlock('Summarise the visit'));
     expect(ack.taskId).toBeUndefined();
     expect(mockDraftTest.submit).not.toHaveBeenCalled();
   });
@@ -162,7 +167,7 @@ describe('testDraft — dry run (the default)', () => {
       context: { clinic: 'Ward B' },
       input: { message: 'Summarise {{input.note}}', note: 'the visit' },
     });
-    expect(ack.assembledUserPrompt).toBe(asInputBlock('Summarise the visit'));
+    expect(ack.assembledUserPrompt).toContain(asInputBlock('Summarise the visit'));
   });
 
   it('resolves the target off the agent`s own row, with a DERIVED funding tier', async () => {
@@ -208,7 +213,9 @@ describe('testDraft — dry run (the default)', () => {
     );
     bindTemplate('Tone: {{tone}} / {{context.style}}');
     const ack = await makeService().testDraft('agent-1', { context: { style: 'concise' } });
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Tone: concise / concise'));
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(
+      withPlatformRules('Tone: concise / concise'),
+    );
   });
 
   it('lets the caller`s `variables` win over the agent`s own binding', async () => {
@@ -217,7 +224,7 @@ describe('testDraft — dry run (the default)', () => {
     );
     bindTemplate('Tone: {{tone}}');
     const ack = await makeService().testDraft('agent-1', { variables: { tone: 'blunt' } });
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Tone: blunt'));
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(withPlatformRules('Tone: blunt'));
   });
 });
 
@@ -277,7 +284,7 @@ describe('testDraft — the gates', () => {
     });
 
     const ack = await makeService().testDraft('agent-1', { context: { safe_age: '41' } });
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Age 41.'));
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(withPlatformRules('Age 41.'));
   });
 
   it('a non-TEXT_GENERATION draft answers dry-run only', async () => {

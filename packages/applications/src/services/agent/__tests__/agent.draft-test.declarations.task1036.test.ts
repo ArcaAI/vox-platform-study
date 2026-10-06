@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentService } from '../agent.service';
+import { readByModel } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 const clsStore: Record<string, unknown> = { tenantId: TENANT, user: { id: 'user-1', roles: [] } };
@@ -111,7 +112,7 @@ beforeEach(() => {
 describe('testDraft passes the template declarations (OD-10)', () => {
   it('renders an absent OPTIONAL variable empty', async () => {
     const ack = await makeService().testDraft('agent-1', { input: { patient: 'Asha' } });
-    expect(ack.assembledSystemPrompt).toContain('Patient: Asha. Note: ');
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toContain('Patient: Asha. Note: ');
   });
 
   it('still fails a missing REQUIRED variable by name', async () => {

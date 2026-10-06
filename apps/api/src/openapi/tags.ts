@@ -469,6 +469,13 @@ export const API_TAGS: readonly ApiTagDefinition[] = [
     description:
       'Service-to-service record of the composed messages a harness text call was sent. Excluded from the public reference; reachable only with an internal service token.',
   },
+  {
+    name: 'internal-governed-prompts',
+    displayName: 'Internal — Governed Prompts',
+    plane: 'platform',
+    description:
+      'Service-to-service verification of governed prompt pieces for a harness text call. Excluded from the public reference; reachable only with an internal service token.',
+  },
   { name: 'health', displayName: 'Health', plane: 'platform', description: 'Liveness, readiness, and dependency health probes.' },
   // Emitted by the VENDORED `@willsoto/nestjs-prometheus` controller, which we
   // do not own and therefore cannot re-tag at the source. Declared verbatim

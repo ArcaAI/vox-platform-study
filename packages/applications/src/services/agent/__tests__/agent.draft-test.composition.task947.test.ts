@@ -14,7 +14,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentTask, ResourceStatusType, SYSTEM_TENANT_ID, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { AgentService } from '../agent.service';
-import { asInputBlock, withPlatformRules } from './compose-expectations';
+import { readByModel, withPlatformRules } from './compose-expectations';
 
 const TENANT = '50000000-0000-0000-0000-000000000000';
 
@@ -126,7 +126,12 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B', visit_type: 'revisit' } });
 
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('You are a scribe for Ward B.\n\nThis is a follow-up.'));
+    // The value travels as a data block; the system message carries a pointer (TASK-1047 D1).
+    expect(ack.assembledSystemPrompt).toContain('You are a scribe for [see the context_clinic data section below].');
+    expect(ack.assembledSystemPrompt).not.toContain('Ward B');
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(
+      withPlatformRules('You are a scribe for Ward B.\n\nThis is a follow-up.'),
+    );
     expect(ack.composition).toEqual({ selected: ['base', 'revisit'], excluded: [] });
   });
 
@@ -194,7 +199,7 @@ describe('testDraft composes, and reports the composition (OD-11)', () => {
 
     const ack = await makeService().testDraft('agent-1', { context: { clinic: 'Ward B' } });
 
-    expect(ack.assembledSystemPrompt).toBe(withPlatformRules('Scribe for Ward B.'));
+    expect(readByModel({ system_prompt: ack.assembledSystemPrompt, prompt: ack.assembledUserPrompt })).toBe(withPlatformRules('Scribe for Ward B.'));
     expect(ack.composition).toBeUndefined();
   });
 

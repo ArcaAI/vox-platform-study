@@ -535,9 +535,7 @@ describe('TextProxyController', () => {
     it('does NOT re-POST /generate/assembled after a post-send ECONNRESET', async () => {
       mockHttpService.axiosRef.post.mockRejectedValue(codeError('ECONNRESET'));
 
-      const outcome = controller
-        .generateAssembled({ type: 'summary', message: 'Patient transcript' })
-        .catch((e: unknown) => e);
+      const outcome = controller.generateAssembled({ type: 'summary', message: 'Patient transcript' }).catch((e: unknown) => e);
       await vi.runAllTimersAsync();
       expect(await outcome).toBeInstanceOf(HttpException);
 
@@ -1347,7 +1345,9 @@ describe('TextProxyController', () => {
       expect(mockContextItemRepo.findById).toHaveBeenCalledTimes(2);
       const postedPrompt = mockHttpService.axiosRef.post.mock.calls[0][1].prompt;
       // Each item is ONE delimited data block, labelled by its type, in the order asked for.
-      expect(postedPrompt).toContain('<<<EXTERNAL_DATA section="transcript">>>\n--- Transcript ---\nTranscript content here\n<<<END_EXTERNAL_DATA>>>');
+      expect(postedPrompt).toContain(
+        '<<<EXTERNAL_DATA section="transcript">>>\n--- Transcript ---\nTranscript content here\n<<<END_EXTERNAL_DATA>>>',
+      );
       expect(postedPrompt).toContain('<<<EXTERNAL_DATA section="case_note">>>\n--- Case Note ---\nCase note content here\n<<<END_EXTERNAL_DATA>>>');
       expect(postedPrompt.indexOf('--- Transcript ---')).toBeLessThan(postedPrompt.indexOf('--- Case Note ---'));
       expect(result._debug.context_item_ids).toEqual(['ctx-1', 'ctx-2']);
@@ -1528,9 +1528,15 @@ describe('TextProxyController', () => {
       await controller.generateAssembled({ type: 'summary', message: 'Chest pain.', prompt_template_id: 'tmpl-vt', visit_type: 'revisit' });
 
       const posted = mockHttpService.axiosRef.post.mock.calls[0][1] as { prompt: string; system_prompt: string };
-      expect(posted.system_prompt).toContain('Scribe a Revisit visit.');
+      // The system message carries a POINTER, never the value (TASK-1047 D1).
+      expect(posted.system_prompt).toContain('Scribe a [see the visit_type data section below] visit.');
+      expect(posted.system_prompt).not.toContain('Revisit');
       expect(posted.system_prompt).not.toContain('{{');
-      expect(posted.prompt).toBe('<<<EXTERNAL_DATA section="message">>>\n--- Message ---\nChest pain.\n<<<END_EXTERNAL_DATA>>>');
+      // The value travels as a delimited data block in the user message.
+      expect(posted.prompt).toBe(
+        '<<<EXTERNAL_DATA section="visit_type">>>\n--- VISIT TYPE ---\nRevisit\n<<<END_EXTERNAL_DATA>>>\n\n' +
+          '<<<EXTERNAL_DATA section="message">>>\n--- Message ---\nChest pain.\n<<<END_EXTERNAL_DATA>>>',
+      );
     });
 
     it('should throw NotFoundException when prompt template does not exist', async () => {
@@ -1575,10 +1581,16 @@ describe('TextProxyController', () => {
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
-          system_prompt: expect.stringContaining('concise, formal medical language'),
+          // The style samples are DATA (user message, `style_reference` block); the system
+          // message only points at the section (TASK-1047 D1).
+          prompt: expect.stringContaining('<<<EXTERNAL_DATA section="style_reference">>>'),
+          system_prompt: expect.stringContaining('STYLE REFERENCE data section'),
         }),
         expect.any(Object),
       );
+      const dnaPosted = mockHttpService.axiosRef.post.mock.calls[0][1] as { prompt: string; system_prompt: string };
+      expect(dnaPosted.prompt).toContain('concise, formal medical language');
+      expect(dnaPosted.system_prompt).not.toContain('concise, formal medical language');
       expect(result._debug.dna_writing_style_id).toBe('dna-1');
     });
 
@@ -1610,7 +1622,7 @@ describe('TextProxyController', () => {
       );
     });
 
-    it('should include visit type in system prompt', async () => {
+    it('should send the visit type as a data block, not in the system prompt', async () => {
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: {
           task_id: 'task-visit-1',
@@ -1631,10 +1643,13 @@ describe('TextProxyController', () => {
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
-          system_prompt: expect.stringContaining('Visit type: New visit.'),
+          // The label is a DATA block in the user message, never text in the system message.
+          prompt: expect.stringContaining('<<<EXTERNAL_DATA section="visit_type">>>\n--- VISIT TYPE ---\nNew visit\n<<<END_EXTERNAL_DATA>>>'),
         }),
         expect.any(Object),
       );
+      const vtPosted = mockHttpService.axiosRef.post.mock.calls[0][1] as { system_prompt: string };
+      expect(vtPosted.system_prompt).not.toContain('Visit type: New visit.');
     });
 
     it('should forward streaming request and return stream_url with debug metadata', async () => {
@@ -1725,9 +1740,12 @@ describe('TextProxyController', () => {
 
       const callArgs = mockHttpService.axiosRef.post.mock.calls[0];
       const systemPrompt = callArgs[1].system_prompt;
+      const userPrompt = callArgs[1].prompt as string;
       expect(systemPrompt).toContain('specialist');
-      expect(systemPrompt).toContain('bullet points');
-      expect(systemPrompt).toContain('Visit type: New visit.');
+      expect(systemPrompt).toContain('STYLE REFERENCE data section');
+      expect(systemPrompt).not.toContain('bullet points');
+      expect(userPrompt).toContain('<<<EXTERNAL_DATA section="style_reference">>>');
+      expect(userPrompt).toContain('bullet points');
     });
 
     describe('DNA writing-style ownership', () => {
