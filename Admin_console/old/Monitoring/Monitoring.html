@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Console — Interactive Telemetry & Architecture Explainer (Dashboard & Monitoring)</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --surface: #0f172a;
+      --card-bg: #111827;
+      --card-border: #1e293b;
+      --card-hover: #1e2942;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --purple: #8b5cf6;
+      --cyan: #06b6d4;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --code-bg: #0b1120;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* TOP SITE HEADER */
+    header.site-header {
+      background: #0b1120;
+      border-bottom: 1px solid var(--card-border);
+      padding: 0 20px;
+      height: 56px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      z-index: 50;
+    }
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+    }
+    .brand-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      background: #1e293b;
+      color: #38bdf8;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      border: 1px solid #334155;
+    }
+    .tenant-badge {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border-color: rgba(16, 185, 129, 0.3);
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover, .tab-btn.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    /* 3-COLUMN APP SHELL */
+    .app-shell {
+      flex: 1;
+      display: flex;
+      height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+
+    /* 1. PRIMARY SIDEBAR (DOMAIN RAIL - 56px) */
+    nav.domain-rail {
+      width: 56px;
+      background: #090d16;
+      border-right: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 0;
+      gap: 8px;
+      flex-shrink: 0;
+      z-index: 40;
+    }
+    .domain-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.15rem;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .domain-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+    }
+    .domain-btn.active {
+      background: #1e3a8a;
+      color: #93c5fd;
+      border-color: #3b82f6;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    }
+    .domain-tooltip {
+      position: absolute;
+      left: 62px;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      border: 1px solid #334155;
+    }
+    .domain-btn:hover .domain-tooltip {
+      opacity: 1;
+    }
+
+    /* 2. SECONDARY SIDEBAR (NAV SIDEBAR - 220px) */
+    aside.nav-sidebar {
+      width: 220px;
+      background: #0d1424;
+      border-right: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 12px;
+      flex-shrink: 0;
+      overflow-y: auto;
+    }
+    .nav-section-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      padding: 6px 10px;
+      margin-bottom: 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-size: 0.84rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      transition: all 0.15s;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.03);
+      color: #f8fafc;
+    }
+    .nav-item.active {
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      font-weight: 600;
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+    .nav-item .nav-icon {
+      font-size: 1rem;
+    }
+    .nav-item .nav-tag {
+      margin-left: auto;
+      font-size: 0.65rem;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #1e293b;
+      color: #64748b;
+      font-family: var(--font-mono);
+    }
+
+    /* 3. MAIN WORKSPACE AREA (2 PANES: SCREEN + INSPECTOR) */
+    main.workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      height: 100%;
+      overflow: hidden;
+    }
+    @media (max-width: 1200px) {
+      main.workspace {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+    }
+
+    /* LEFT WORKSPACE PANE: SCREEN CANVAS */
+    .screen-canvas {
+      padding: 24px;
+      overflow-y: auto;
+      border-right: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .screen-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .screen-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .screen-route-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: #111827;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--card-border);
+    }
+    .inspect-instruction {
+      font-size: 0.78rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.08);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+
+    /* COMMON STAT GRIDS */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 900px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+      overflow: hidden;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      background: var(--card-hover);
+    }
+    .stat-card.selected {
+      border-color: #60a5fa;
+      background: #172554;
+      box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+    }
+    .stat-card::after {
+      content: "INSPECT";
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: #38bdf8;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .stat-card:hover::after { opacity: 1; }
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .stat-value {
+      font-size: 1.55rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .stat-hint {
+      font-size: 0.7rem;
+      color: #38bdf8;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* OVERVIEW DASHBOARD SPECIFIC */
+    .services-strip {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .services-strip:hover, .services-strip.selected {
+      border-color: #38bdf8;
+      background: #141f36;
+    }
+    .service-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+    .status-dot.amber { background: var(--warning); box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+    .status-dot.red { background: var(--danger); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chart-card:hover, .chart-card.selected {
+      border-color: #818cf8;
+      background: #151b2e;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .chart-header h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .recharts-tag {
+      font-size: 0.7rem;
+      color: #a78bfa;
+      background: rgba(167, 139, 250, 0.12);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+    .bar-chart-container {
+      height: 170px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      padding: 10px 10px 0 10px;
+      border-bottom: 1px solid #334155;
+    }
+    .bar-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .bar-group:hover .bar-column { filter: brightness(1.25); }
+    .bar-column {
+      width: 100%;
+      max-width: 44px;
+      background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+      border-radius: 4px 4px 0 0;
+      transition: height 0.4s ease;
+      min-height: 4px;
+    }
+    .bar-value {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .bar-label {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      margin-top: 8px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .audit-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .audit-card:hover, .audit-card.selected {
+      border-color: #f59e0b;
+      background: #171d2b;
+    }
+    .audit-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .audit-item {
+      display: grid;
+      grid-template-columns: 80px 140px 1fr 140px;
+      align-items: center;
+      padding: 8px 12px;
+      background: #0b1120;
+      border-radius: 6px;
+      border: 1px solid #1e293b;
+      font-size: 0.76rem;
+      gap: 12px;
+    }
+    .audit-item time { color: var(--text-muted); font-family: var(--font-mono); }
+    .audit-action { font-family: var(--font-mono); color: #f59e0b; font-weight: 600; }
+    .audit-resource { color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .audit-actor { color: #38bdf8; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* MONITORING SCREEN SPECIFIC */
+    .monitoring-health-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 900px) {
+      .monitoring-health-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .service-health-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .service-health-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      background: var(--card-hover);
+    }
+    .service-health-card.selected {
+      border-color: #38bdf8;
+      background: #14223d;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
+    }
+    .service-health-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .service-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .health-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .health-badge.healthy {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .service-metric-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .service-metric-value {
+      font-family: var(--font-mono);
+      color: #f8fafc;
+      font-weight: 600;
+    }
+
+    .monitoring-lower-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+    }
+    @media (max-width: 900px) {
+      .monitoring-lower-grid { grid-template-columns: 1fr; }
+    }
+
+    .redis-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .redis-card:hover, .redis-card.selected {
+      border-color: #f59e0b;
+      background: #1a1e2d;
+    }
+    .redis-stats-dl {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .redis-stat-box {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+    .redis-stat-dt {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+    .redis-stat-dd {
+      font-size: 1.1rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: #f8fafc;
+    }
+
+    .sessions-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .sessions-card:hover, .sessions-card.selected {
+      border-color: #8b5cf6;
+      background: #17172f;
+    }
+    .sessions-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      margin-top: 10px;
+    }
+    .sessions-table th, .sessions-table td {
+      padding: 6px 10px;
+      text-align: left;
+      border-bottom: 1px solid #1e293b;
+    }
+    .sessions-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .monitoring-footer-status {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 6px;
+      background: #0b1120;
+      border: 1px solid var(--card-border);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* RIGHT PANE: DEEP-DIVE TECHNICAL INSPECTOR */
+    .inspector-pane {
+      background: #090e1a;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .inspector-header {
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 12px;
+    }
+    .inspector-header h2 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-bottom: 4px;
+    }
+    .inspector-header p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .detail-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .detail-section h4 {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #38bdf8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .detail-text {
+      font-size: 0.86rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+    .callout {
+      border-left: 3px solid #3b82f6;
+      background: #0f1c3f;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: #bfdbfe;
+    }
+    .callout.amber { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1); color: #fef3c7; }
+    .callout.green { border-left-color: #10b981; background: rgba(16, 185, 129, 0.1); color: #d1fae5; }
+    .callout.purple { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.1); color: #e9d5ff; }
+
+    .pipeline-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .pipe-step {
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 12px;
+      align-items: flex-start;
+      position: relative;
+    }
+    .pipe-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 26px;
+      bottom: -10px;
+      width: 2px;
+      background: #1e293b;
+    }
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #1e293b;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border: 1px solid #334155;
+    }
+    .step-content {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+    }
+    .step-title {
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 2px;
+    }
+    .step-desc {
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    pre.code-block {
+      background: var(--code-bg);
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
+    .db-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 10px;
+    }
+    .db-table th, .db-table td {
+      border: 1px solid #1e293b;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .db-table th { background: #1e293b; color: #38bdf8; font-weight: 600; }
+    .db-table tr:nth-child(even) { background: rgba(15, 23, 42, 0.4); }
+
+    /* SVG ARCHIFY VIEW IFRAME */
+    #archify-view {
+      display: none;
+      width: 100%;
+      height: calc(100vh - 56px);
+      border: none;
+      background: #070b14;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP SITE HEADER -->
+  <header class="site-header">
+    <div class="brand-section">
+      <div class="brand-logo">🛡️</div>
+      <div class="brand-title">
+        <span>Project Hope / VOX</span>
+        <span class="badge">ADMIN CONSOLE</span>
+      </div>
+      <div class="tenant-badge">
+        <span>🏢</span>
+        <span>Working Tenant: <strong>Arca Health System</strong> (SuperAdmin)</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="tab-btn active" id="tab-interactive" onclick="switchMainTab('interactive')">Interactive UI Explainer</button>
+      <button class="tab-btn" id="tab-archify" onclick="switchMainTab('archify')">Verified Archify Dataflow (SVG)</button>
+    </div>
+  </header>
+
+  <!-- 3-TIER APPLICATION SHELL -->
+  <div class="app-shell" id="interactive-layout">
+    
+    <!-- 1. PRIMARY SIDEBAR (DOMAIN RAIL - 56px) -->
+    <nav class="domain-rail" aria-label="Capability Domains">
+      <button class="domain-btn active" title="Overview" onclick="switchDomain('overview')">
+        <span>🏠</span>
+        <span class="domain-tooltip">Overview</span>
+      </button>
+      <button class="domain-btn" title="Tenancy" onclick="alert('Tenancy domain: Tenant hierarchy, isolation quotas, and working tenant switcher.')">
+        <span>🏢</span>
+        <span class="domain-tooltip">Tenancy</span>
+      </button>
+      <button class="domain-btn" title="Platform Ops" onclick="alert('Platform Ops domain: System queues, rate limits, and feature flags.')">
+        <span>⚡</span>
+        <span class="domain-tooltip">Platform Ops</span>
+      </button>
+      <button class="domain-btn" title="AI Platform" onclick="alert('AI Platform domain: LLM prompt chains, Whisper STT, and granite guardrails.')">
+        <span>🧠</span>
+        <span class="domain-tooltip">AI Platform</span>
+      </button>
+      <button class="domain-btn" title="Knowledge & Agents" onclick="alert('Knowledge & Agents domain: Vector stores, clinical knowledge bases, and agent policies.')">
+        <span>💡</span>
+        <span class="domain-tooltip">Knowledge & Agents</span>
+      </button>
+      <button class="domain-btn" title="Clinical" onclick="alert('Clinical domain: Consultations, SOAP clinical notes, and EHR integrations.')">
+        <span>🩺</span>
+        <span class="domain-tooltip">Clinical</span>
+      </button>
+      <button class="domain-btn" title="Workflow & Harness" onclick="alert('Workflow & Harness domain: Clinical test harness and assertion runners.')">
+        <span>🔀</span>
+        <span class="domain-tooltip">Workflow & Harness</span>
+      </button>
+      <button class="domain-btn" title="Identity & Access" onclick="alert('Identity & Access domain: Casbin RBAC, API Keys, and Service Accounts.')">
+        <span>🔒</span>
+        <span class="domain-tooltip">Identity & Access</span>
+      </button>
+      <button class="domain-btn" title="Playground" onclick="alert('Playground domain: Live voice and prompt sandbox testing.')">
+        <span>🧪</span>
+        <span class="domain-tooltip">Playground</span>
+      </button>
+    </nav>
+
+    <!-- 2. SECONDARY SIDEBAR (NAV SIDEBAR - 220px) -->
+    <aside class="nav-sidebar" aria-label="Navigation Sidebar">
+      <div class="nav-section-title">Overview Domain</div>
+      <button class="nav-item active" id="nav-btn-dashboard" onclick="switchScreen('dashboard')">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+        <span class="nav-tag">20-29</span>
+      </button>
+      <button class="nav-item" id="nav-btn-monitoring" onclick="switchScreen('monitoring')">
+        <span class="nav-icon">📈</span>
+        <span>Monitoring</span>
+        <span class="nav-tag">20-29</span>
+      </button>
+      <button class="nav-item" id="nav-btn-releases" onclick="alert('Releases screen: Service version & release registry. Grouped with Monitoring under overview domain.')">
+        <span class="nav-icon">🏷️</span>
+        <span>Releases</span>
+        <span class="nav-tag">v2.4</span>
+      </button>
+    </aside>
+
+    <!-- 3. MAIN WORKSPACE (SCREEN CANVAS + TECHNICAL INSPECTOR) -->
+    <main class="workspace">
+      
+      <!-- SCREEN 1: DASHBOARD (OVERVIEW) SCREEN CANVAS -->
+      <div class="screen-canvas" id="screen-dashboard">
+        
+        <div class="screen-header-row">
+          <div>
+            <h1 class="screen-title">
+              <span>📊 Platform Dashboard (Overview)</span>
+            </h1>
+            <span class="screen-route-tag">/dashboard · apps/admin-console/src/features/platform/components/platform-dashboard.tsx</span>
+          </div>
+          <span class="inspect-instruction">👈 Click any widget to inspect technical flow</span>
+        </div>
+
+        <!-- Downstream Services Health Strip -->
+        <div class="services-strip" id="node-services" onclick="inspect('services')">
+          <span style="font-size: 0.78rem; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Downstream Services:</span>
+          <div class="service-pill"><span class="status-dot"></span><span>gateway</span></div>
+          <div class="service-pill"><span class="status-dot"></span><span>text (LLM)</span></div>
+          <div class="service-pill"><span class="status-dot"></span><span>guardrail</span></div>
+          <div class="service-pill"><span class="status-dot"></span><span>stt (voice)</span></div>
+          <div class="service-pill"><span class="status-dot"></span><span>nlp</span></div>
+        </div>
+
+        <!-- 4 Stat Cards Strip -->
+        <div class="stat-grid">
+          <!-- 1. Requests / min -->
+          <div class="stat-card selected" id="node-rpm" onclick="inspect('rpm')">
+            <div class="stat-label">Requests / min</div>
+            <div class="stat-value">1,420</div>
+            <div class="stat-hint"><span>⚡</span> Platform throughput</div>
+          </div>
+
+          <!-- 2. P95 latency -->
+          <div class="stat-card" id="node-p95" onclick="inspect('p95')">
+            <div class="stat-label">P95 latency</div>
+            <div class="stat-value">245 ms</div>
+            <div class="stat-hint"><span>⏱️</span> 95% users &le; 245ms</div>
+          </div>
+
+          <!-- 3. Error rate -->
+          <div class="stat-card" id="node-error" onclick="inspect('error')">
+            <div class="stat-label">Error rate</div>
+            <div class="stat-value" style="color: #10b981;">0.08%</div>
+            <div class="stat-hint"><span>🛡️</span> 5xx HTTP errors / total</div>
+          </div>
+
+          <!-- 4. Open sockets -->
+          <div class="stat-card" id="node-sockets" onclick="inspect('sockets')">
+            <div class="stat-label">Open sockets</div>
+            <div class="stat-value">42</div>
+            <div class="stat-hint"><span>🎙️</span> 18 opened/min (live mic)</div>
+          </div>
+        </div>
+
+        <!-- Requests by Service Chart Card -->
+        <div class="chart-card" id="node-chart" onclick="inspect('chart')">
+          <div class="chart-header">
+            <div>
+              <h3>Requests by service</h3>
+              <span style="font-size: 0.72rem; color: var(--text-muted);">Real-time request volume distribution across microservices</span>
+            </div>
+            <span class="recharts-tag">Built with Recharts &lt;BarChart&gt;</span>
+          </div>
+          <div class="bar-chart-container">
+            <div class="bar-group">
+              <span class="bar-value">580</span>
+              <div class="bar-column" style="height: 85%;"></div>
+              <span class="bar-label">gateway</span>
+            </div>
+            <div class="bar-group">
+              <span class="bar-value">320</span>
+              <div class="bar-column" style="height: 48%; background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);"></div>
+              <span class="bar-label">text</span>
+            </div>
+            <div class="bar-group">
+              <span class="bar-value">240</span>
+              <div class="bar-column" style="height: 36%; background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%);"></div>
+              <span class="bar-label">guardrail</span>
+            </div>
+            <div class="bar-group">
+              <span class="bar-value">190</span>
+              <div class="bar-column" style="height: 28%; background: linear-gradient(180deg, #34d399 0%, #059669 100%);"></div>
+              <span class="bar-label">stt</span>
+            </div>
+            <div class="bar-group">
+              <span class="bar-value">90</span>
+              <div class="bar-column" style="height: 14%; background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);"></div>
+              <span class="bar-label">nlp</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Admin Activity & Audit Logs Card -->
+        <div class="audit-card" id="node-audit" onclick="inspect('audit')">
+          <div class="chart-header">
+            <div>
+              <h3>Recent admin activity</h3>
+              <span style="font-size: 0.72rem; color: var(--text-muted);">Last 10 administrative actions across all tenants</span>
+            </div>
+            <span class="badge" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">PostgreSQL core."AuditLog"</span>
+          </div>
+          <ul class="audit-list">
+            <li class="audit-item">
+              <time>2m ago</time>
+              <span class="audit-action">TENANT_UPDATE</span>
+              <span class="audit-resource">Tenant · t-hope-central (quota 500GB)</span>
+              <span class="audit-actor">superadmin@hope.ai</span>
+            </li>
+            <li class="audit-item">
+              <time>14m ago</time>
+              <span class="audit-action">POLICY_ASSIGN</span>
+              <span class="audit-resource">Policy · role:clinician-lead</span>
+              <span class="audit-actor">dr.sarah@general.org</span>
+            </li>
+            <li class="audit-item">
+              <time>1h ago</time>
+              <span class="audit-action">GUARDRAIL_MOD</span>
+              <span class="audit-resource">GuardrailRule · pii_redaction_strict</span>
+              <span class="audit-actor">compliance-bot (machine)</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+
+      <!-- SCREEN 2: MONITORING SCREEN CANVAS (EXACT FRONTEND REPLICA) -->
+      <div class="screen-canvas" id="screen-monitoring" style="display: none;">
+        
+        <div class="screen-header-row">
+          <div>
+            <h1 class="screen-title">
+              <span>📈 Operations Monitoring</span>
+            </h1>
+            <span class="screen-route-tag">/monitoring · apps/admin-console/src/features/monitoring/components/monitoring-screen.tsx</span>
+          </div>
+          <span class="inspect-instruction">👈 Click any Monitoring card to inspect technical pipeline</span>
+        </div>
+
+        <!-- Monitoring Key Metrics Stat Strip (4 Cards) -->
+        <div class="stat-grid">
+          <!-- 1. Services Healthy -->
+          <div class="stat-card" id="node-mon-services-healthy" onclick="inspect('mon-services-healthy')">
+            <div class="stat-label">Services healthy</div>
+            <div class="stat-value" style="color: #10b981;">6 / 6</div>
+            <div class="stat-hint"><span>●</span> All downstream probes UP</div>
+          </div>
+
+          <!-- 2. Lowest Uptime -->
+          <div class="stat-card" id="node-mon-lowest-uptime" onclick="inspect('mon-lowest-uptime')">
+            <div class="stat-label">Lowest uptime</div>
+            <div class="stat-value">99.8%</div>
+            <div class="stat-hint"><span>⏱️</span> 90-sample window (45 min)</div>
+          </div>
+
+          <!-- 3. Active Sessions -->
+          <div class="stat-card" id="node-mon-active-sessions-stat" onclick="inspect('mon-active-sessions-stat')">
+            <div class="stat-label">Active sessions</div>
+            <div class="stat-value">0</div>
+            <div class="stat-hint"><span>🎙️</span> In-flight consultation sessions</div>
+          </div>
+
+          <!-- 4. Redis Latency -->
+          <div class="stat-card" id="node-mon-redis-latency-stat" onclick="inspect('mon-redis-latency-stat')">
+            <div class="stat-label">Redis latency</div>
+            <div class="stat-value" style="color: #38bdf8;">1.2 ms</div>
+            <div class="stat-hint"><span>⚡</span> BullMQ Queue PING roundtrip</div>
+          </div>
+        </div>
+
+        <!-- Service Health Grid (6 Monitored Microservices) -->
+        <div class="detail-section" style="padding: 14px;" id="node-mon-service-health-grid" onclick="inspect('mon-service-health-grid')">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="margin: 0; color: #f8fafc; font-size: 0.88rem;">Downstream Service Health Grid</h4>
+            <span class="badge" style="color: #38bdf8;">GET admin/health/services (5s timeout)</span>
+          </div>
+
+          <div class="monitoring-health-grid">
+            <!-- Service 1: Text -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Text (LLM)</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8862/api/v1/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">100%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">14 ms</span></div>
+            </div>
+
+            <!-- Service 2: Medical NLP -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Medical NLP</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8864/api/v1/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">99.8%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">22 ms</span></div>
+            </div>
+
+            <!-- Service 3: STT -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Speech to Text</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8861/api/v1/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">100%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">18 ms</span></div>
+            </div>
+
+            <!-- Service 4: TTS -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Text to Speech</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8865/api/v1/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">100%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">12 ms</span></div>
+            </div>
+
+            <!-- Service 5: Guardrail -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Guardrail</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8863/api/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">100%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">28 ms</span></div>
+            </div>
+
+            <!-- Service 6: Harness -->
+            <div class="service-health-card">
+              <div class="service-health-card-header">
+                <span class="service-name"><span class="status-dot"></span> Clinical Harness</span>
+                <span class="health-badge healthy">healthy</span>
+              </div>
+              <div class="service-metric-row"><span>Port / Path:</span><span class="service-metric-value">:8866/api/v1/health</span></div>
+              <div class="service-metric-row"><span>Uptime SLA:</span><span class="service-metric-value" style="color: #34d399;">100%</span></div>
+              <div class="service-metric-row"><span>Response time:</span><span class="service-metric-value">16 ms</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lower Monitoring 2-Column Grid: Response Time Chart & Redis/Sessions -->
+        <div class="monitoring-lower-grid">
+          
+          <!-- Response Time by Service Bar Chart -->
+          <div class="chart-card" id="node-mon-response-time-chart" onclick="inspect('mon-response-time-chart')">
+            <div class="chart-header">
+              <div>
+                <h3>Response time by service</h3>
+                <span style="font-size: 0.72rem; color: var(--text-muted);">Latest probe roundtrip duration in milliseconds</span>
+              </div>
+              <span class="recharts-tag">Recharts &lt;BarChart&gt;</span>
+            </div>
+            <div class="bar-chart-container">
+              <div class="bar-group">
+                <span class="bar-value">14ms</span>
+                <div class="bar-column" style="height: 46%;"></div>
+                <span class="bar-label">text</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-value">22ms</span>
+                <div class="bar-column" style="height: 72%; background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);"></div>
+                <span class="bar-label">nlp</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-value">18ms</span>
+                <div class="bar-column" style="height: 58%; background: linear-gradient(180deg, #34d399 0%, #059669 100%);"></div>
+                <span class="bar-label">stt</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-value">12ms</span>
+                <div class="bar-column" style="height: 38%; background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%);"></div>
+                <span class="bar-label">tts</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-value">28ms</span>
+                <div class="bar-column" style="height: 92%; background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);"></div>
+                <span class="bar-label">guardrail</span>
+              </div>
+              <div class="bar-group">
+                <span class="bar-value">16ms</span>
+                <div class="bar-column" style="height: 52%; background: linear-gradient(180deg, #f43f5e 0%, #be123c 100%);"></div>
+                <span class="bar-label">harness</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stack of Redis Health Card & Active Sessions -->
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            
+            <!-- Redis Health Card -->
+            <div class="redis-card" id="node-mon-redis-health-card" onclick="inspect('mon-redis-health-card')">
+              <div class="chart-header" style="margin-bottom: 8px;">
+                <div>
+                  <h3>Redis queue health</h3>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">Queue infrastructure connection (Platform-ops only)</span>
+                </div>
+                <span class="badge" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">manage:all</span>
+              </div>
+              <div class="redis-stats-dl">
+                <div class="redis-stat-box">
+                  <div class="redis-stat-dt">Connection Status</div>
+                  <div class="redis-stat-dd" style="color: #10b981; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+                    <span class="status-dot"></span> Healthy
+                  </div>
+                </div>
+                <div class="redis-stat-box">
+                  <div class="redis-stat-dt">PING Latency</div>
+                  <div class="redis-stat-dd">1.2 ms</div>
+                </div>
+                <div class="redis-stat-box">
+                  <div class="redis-stat-dt">Connected Clients</div>
+                  <div class="redis-stat-dd">14</div>
+                </div>
+                <div class="redis-stat-box">
+                  <div class="redis-stat-dt">Memory Usage</div>
+                  <div class="redis-stat-dd">46.0 MB <span style="font-size: 0.68rem; color: #64748b;">(62MB peak)</span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Sessions Card -->
+            <div class="sessions-card" id="node-mon-active-sessions-card" onclick="inspect('mon-active-sessions-card')">
+              <div class="chart-header" style="margin-bottom: 6px;">
+                <div>
+                  <h3>Active sessions by service</h3>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">Real-time voice stream WebSocket allocation</span>
+                </div>
+                <span class="badge" style="color: #8b5cf6;">static 0 stub</span>
+              </div>
+              <table class="sessions-table">
+                <thead>
+                  <tr>
+                    <th>Service</th>
+                    <th style="text-align: right;">Active Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>Text conversation</td><td style="text-align: right; font-family: var(--font-mono); color: #cbd5e1;">0</td></tr>
+                  <tr><td>Speech to Text (STT)</td><td style="text-align: right; font-family: var(--font-mono); color: #cbd5e1;">0</td></tr>
+                  <tr><td>Guardrail moderation</td><td style="text-align: right; font-family: var(--font-mono); color: #cbd5e1;">0</td></tr>
+                  <tr><td>Clinical Documentation Harness</td><td style="text-align: right; font-family: var(--font-mono); color: #cbd5e1;">0</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Monitoring Status Footer -->
+        <div class="monitoring-footer-status">
+          <span>🔄 Auto-refresh interval: 30s · Gateway throttled at 30 req/min</span>
+          <span>Last polled: just now (refreshedAt: 2026-10-01T15:38:43Z)</span>
+        </div>
+
+      </div>
+
+      <!-- RIGHT PANE: DEEP-DIVE TECHNICAL INSPECTOR -->
+      <div class="inspector-pane" id="inspector-pane">
+        <!-- Dynamically filled by JS -->
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- SVG ARCHIFY VIEW IFRAME -->
+  <iframe id="archify-view" src="archify-overview-diagram.html"></iframe>
+
+  <script>
+    const INSPECTION_DATA = {
+      // =========================================================================
+      // DASHBOARD / OVERVIEW FEATURES (100% PRESERVED)
+      // =========================================================================
+      rpm: {
+        title: "Requests / min (Throughput)",
+        badge: "Core Platform Health KPI",
+        color: "#3b82f6",
+        whyUi: "Why are we adding this on the UI?<br>In any healthcare AI platform, throughput is the primary pulse. An SRE or Admin needs to instantly know: Is the system taking normal traffic (e.g. 1,400 req/min)? Is there a sudden surge or DDoS attack? Or did traffic collapse to zero (indicating a DNS failure or gateway crash)?",
+        whereFrom: "Where does this data come from?<br>Every microservice (Fastify, NestJS, Python FastAPI) emits standard Prometheus metrics when handling HTTP requests. Prometheus scrapes these into the counter <code>http_requests_total</code>.",
+        formula: "sum(rate(http_requests_total[5m])) * 60",
+        calculationDetail: "Prometheus measures requests per second over the last 5 minutes. The backend multiplies this rate by 60 to convert it into Requests Per Minute (RPM) for human readability.",
+        dbTruth: {
+          store: "Prometheus TSDB & Redis",
+          explanation: "This is NOT stored in PostgreSQL! Calculating real-time request counts across millions of HTTP requests using PostgreSQL would overwhelm the database and cause severe write bloat. Instead, Prometheus TSDB stores time-series counters, and the NestJS backend caches the aggregated number in Redis for 12 seconds (<code>platform:metrics</code>) to protect Prometheus from high-frequency dashboard polling."
+        },
+        pipeline: [
+          { title: "Incoming HTTP Traffic", desc: "Clinicians and clients send requests to Gateway and AI services." },
+          { title: "Prometheus Counter Emission", desc: "Each service increments `http_requests_total{service, status}`." },
+          { title: "Prometheus TSDB Scrape", desc: "Scraped every 15s into Prometheus memory." },
+          { title: "NestJS Backend Query", desc: "`PlatformMetricsService` executes `sum(rate(http_requests_total[5m]))` via `IPrometheusQueryService`." },
+          { title: "Redis 12s Cache", desc: "Cached in Redis under `platform:metrics` with a 12-second TTL." },
+          { title: "React Query Poll", desc: "`usePlatformMetrics()` polls every 30s and displays the number on `StatCard`." }
+        ],
+        codeSnippet: `// packages/applications/src/services/platform-metrics/platform-metrics.service.ts
+const PROMQL = {
+  requestRate: 'sum(rate(http_requests_total[5m]))',
+};
+
+async getPlatformMetrics(): Promise<PlatformMetricsResponse> {
+  return this.cached('platform:metrics', async () => {
+    const requestRate = await this.prometheus.instant(PROMQL.requestRate);
+    return {
+      requestsPerMinute: round(toNumber(requestRate) * 60), // Multiplied by 60 for RPM
+    };
+  });
+}`
+      },
+
+      sockets: {
+        title: "Open sockets (Live WebSocket Sessions)",
+        badge: "Real-Time Voice Streaming Sockets",
+        color: "#38bdf8",
+        whyUi: "Why are we adding this on the UI?<br>Project Hope / VOX is a clinical voice platform. Doctors speak into their microphones while examining patients. This audio is streamed over <b>persistent WebSockets</b> directly to Whisper STT. Each open socket represents an active audio session holding server memory and file descriptors. If open sockets spike to 500 when only 20 doctors are logged in, it immediately warns admins of <b>hanging connections or leaking WebSockets</b>!",
+        whereFrom: "Where does this data come from?<br>Each API gateway instance runs <code>SttWsGateway.getActiveSessionCount()</code>. Every instance publishes its local count to Redis under <code>hope:platform:sockets:inst:${hostname}:${pid}</code> with a 45-second TTL. The backend aggregates these counts across all cluster pods using Redis!",
+        formula: "Sum of live instance keys in Redis + sum(rate(active_connections_count[5m])) for socket rate",
+        calculationDetail: "Distributed Horizontal Scaling: If you have 10 NestJS gateway pods running in Kubernetes, each pod publishes its local open count to Redis. When the dashboard asks for total open sockets, `SocketRegistryService.getAggregateCount()` reads all pod keys and sums them.",
+        dbTruth: {
+          store: "Redis In-Memory Key-Value Store",
+          explanation: "Stored in Redis with short TTL (45 seconds). When a gateway pod crashes, its key automatically disappears after 45s without leaving stale ghost sessions behind."
+        },
+        pipeline: [
+          { title: "Doctor starts microphone", desc: "Browser opens WebSocket to `wss://api.hope.ai/ws/stt`." },
+          { title: "Gateway registers connection", desc: "`SttWsGateway` increments local session counter." },
+          { title: "Publish to Redis", desc: "Pod writes to `hope:platform:sockets:inst:${podId}` with 45s TTL." },
+          { title: "Cluster Aggregate Read", desc: "`SocketRegistryService.getAggregateCount()` scans keys and computes total." },
+          { title: "StatCard rendering", desc: "`StatCard` shows total live sockets plus `socketsPerMinute` rate." }
+        ],
+        codeSnippet: `// packages/applications/src/services/platform-metrics/socket-registry.service.ts
+const KEY_PREFIX = 'hope:platform:sockets:inst:';
+const KEY_TTL_SECONDS = 45;
+
+async publishLocalCount(count: number): Promise<void> {
+  await this.cache.setex(\`\${KEY_PREFIX}\${this.instanceId}\`, KEY_TTL_SECONDS, String(count));
+}
+
+async getAggregateCount(): Promise<number> {
+  const keys = await this.cache.scanKeys(\`\${KEY_PREFIX}*\`);
+  const values = await Promise.all(keys.map(k => this.cache.get(k)));
+  return values.reduce((sum, v) => sum + (parseInt(v) || 0), 0);
+}`
+      },
+
+      error: {
+        title: "Error rate (% of 5xx HTTP Failures)",
+        badge: "Reliability & Crash Indicator",
+        color: "#10b981",
+        whyUi: "Why are we adding this on the UI?<br>Admins need to know if the platform is healthy or failing. If the error rate rises above 0.5% or 1%, it means users are encountering 'Internal Server Error' (500), 'Bad Gateway' (502), or 'Gateway Timeout' (504). It acts as the primary alarm for ongoing incidents.",
+        whereFrom: "Where does this data come from?<br>From Prometheus scraping HTTP status codes labeled with status regex <code>5..</code> across all services, divided by the total request volume.",
+        formula: "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)",
+        calculationDetail: "The backend divides 5xx requests by total requests and multiplies by 100 to get a clean percentage (e.g. 0.08%). The `clamp_min(..., 1)` prevents division by zero when traffic is low.",
+        dbTruth: {
+          store: "Prometheus TSDB",
+          explanation: "Prometheus tracks HTTP responses by status code. Errors are calculated in memory over a rolling 5-minute sliding window."
+        },
+        pipeline: [
+          { title: "Server encounters error", desc: "A downstream service throws an unhandled exception or timeouts." },
+          { title: "HTTP 500 response", desc: "Fastify / NestJS logs status 500 and increments `http_requests_total{status='500'}`." },
+          { title: "Prometheus Ratio Query", desc: "Prometheus calculates ratio: 5xx count / total count." },
+          { title: "Display on UI", desc: "`formatPercent(data.errorRatePct)` formats `0.08%` in green (healthy) or red (alert)." }
+        ],
+        codeSnippet: `// PromQL in packages/applications/src/services/platform-metrics/platform-metrics.service.ts
+const PROMQL = {
+  errorRatio: 'sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)',
+};
+
+// Formatted in apps/admin-console/src/features/platform/components/platform-dashboard.tsx:
+<StatCard label="Error rate" value={data ? formatPercent(data.errorRatePct) : null} />`
+      },
+
+      p95: {
+        title: "P95 latency (95th Percentile Response Time)",
+        badge: "Real User Experience SLA",
+        color: "#f59e0b",
+        whyUi: "Why are we adding this on the UI?<br><b>Why P95 instead of Average?</b><br>Average latency is deceptively misleading: if 99 clinicians get 50ms responses, but 1 clinician experiences a 10-second freeze, the average latency is only 150ms! But that 1 doctor had a broken consultation.<br><b>P95 latency means:</b> 95% of all users experienced response times faster than or equal to this number (e.g., 245ms). Only the worst 5% were slower. In healthcare AI, P95 guarantees SLA compliance.",
+        whereFrom: "Where does this data come from?<br>From Prometheus duration histogram buckets (`http_request_duration_seconds_bucket`).",
+        formula: "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
+        calculationDetail: "Prometheus records request durations into exponential buckets (e.g. &le; 0.1s, &le; 0.25s, &le; 0.5s, &le; 1s). The `histogram_quantile(0.95, ...)` calculates the mathematical 95th percentile in seconds, and the backend multiplies by 1,000 to show milliseconds (`ms`).",
+        dbTruth: {
+          store: "Prometheus TSDB Duration Histograms",
+          explanation: "Histograms bucket latency into discrete intervals without storing individual timestamps, keeping memory usage constant regardless of traffic volume."
+        },
+        pipeline: [
+          { title: "Request executes", desc: "Request completes in 230ms." },
+          { title: "Histogram bucket increment", desc: "Prometheus increments duration buckets for `le='0.25'`." },
+          { title: "Quantile Math", desc: "`histogram_quantile(0.95, ...)` calculates the exact cutoff for 95% of traffic." },
+          { title: "Millisecond conversion", desc: "Converted from seconds to milliseconds: `round(toNumber(p95) * 1000)`." }
+        ],
+        codeSnippet: `// Prometheus calculation in platform-metrics.service.ts:
+const PROMQL = {
+  p95: 'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))',
+};
+
+// Multiplied by 1000 for milliseconds:
+p95LatencyMs: round(toNumber(p95) * 1000),`
+      },
+
+      chart: {
+        title: "Requests by service (Traffic Breakdown)",
+        badge: "Recharts Bar Chart Component",
+        color: "#818cf8",
+        whyUi: "What is it showing and why is it here?<br>This graph breaks down the platform's total traffic by individual microservice (<code>gateway</code>, <code>text</code>, <code>guardrail</code>, <code>stt</code>, <code>nlp</code>).<br>If total traffic spikes to 2,000 req/min, an admin can glance at this graph and immediately know: <b>Which service is absorbing the load?</b> (e.g., Is Voice STT getting hit? Or is Gemma LLM summarizing notes?)",
+        whereFrom: "Where does this data come from?<br>From Prometheus grouping HTTP requests by the <code>service</code> label:<br><code>sum by (service) (rate(http_requests_total[5m]))</code>.<br>The backend returns an array of objects: <code>[{ key: 'gateway', requestsPerMinute: 580 }, { key: 'text', requestsPerMinute: 320 }, ...]</code>.",
+        formula: "sum by (service) (rate(http_requests_total[5m])) * 60",
+        calculationDetail: "Prometheus calculates the per-second rate grouped by the `service` label. The backend maps each service row, converts to RPM, merges with the service health names, and builds the chart dataset.",
+        dbTruth: {
+          store: "Prometheus TSDB (Categorical Labels)",
+          explanation: "Prometheus labels allow dynamic dimension aggregation (`by (service)`). No relational database join is needed."
+        },
+        pipeline: [
+          { title: "Microservice tagging", desc: "Each service exports its name via Prometheus labels (`service=\"text\"`, `service=\"guardrail\"`)." },
+          { title: "Prometheus instantVector", desc: "`this.prometheus.instantVector(PROMQL.perServiceRate)`." },
+          { title: "Backend mapping", desc: "Constructs `{ key: 'guardrail', requestsPerMinute: 240 }`." },
+          { title: "Chart Data merging", desc: "`chartData = serviceKeys.map(key => ({ service: name, requests: rpm }))`." },
+          { title: "Recharts Rendering", desc: "`<MetricChart kind='bar' data={chartData} xKey='service' series={[{ key: 'requests' }]} />`." }
+        ],
+        codeSnippet: `// What is used to make that graph?
+// 1. Library: Recharts (BarChart, Bar, XAxis, YAxis, ResponsiveContainer)
+// 2. Component: packages/ui/src/components/metrics/metric-chart.tsx (wraps Recharts in shadcn ChartContainer)
+// 3. Screen: apps/admin-console/src/features/platform/components/platform-dashboard.tsx:
+
+<MetricChart
+  kind="bar"
+  data={chartData}
+  xKey="service"
+  series={[{ key: 'requests', label: 'Requests / min' }]}
+  height={240}
+  isLoading={isLoading}
+  valueFormatter={(value) => formatNumber(value)}
+  aria-label="Requests per minute by service"
+/>`
+      },
+
+      audit: {
+        title: "Recent admin activity & Audit Logs",
+        badge: "PostgreSQL core.\"AuditLog\" (HIPAA Compliance)",
+        color: "#f59e0b",
+        whyUi: "What is it showing and why is it here?<br>In healthcare software (HIPAA compliant), <b>every single administrative change must be tracked and visible</b>.<br>If someone changes tenant permissions, deletes a doctor's account, modifies a clinical prompt, or changes a guardrail safety rule, this card immediately shows <b>WHO did it, WHAT they changed, and WHEN it happened</b>. It provides total non-repudiation and instant auditing.",
+        whereFrom: "Where does this data come from?<br>From the PostgreSQL database table <code>core.\"AuditLog\"</code>! Whenever an admin action occurs (POST/PATCH/DELETE), an interceptor automatically writes an immutable audit row with encrypted payload diffs.",
+        formula: "SELECT * FROM core.\"AuditLog\" ORDER BY \"createdAt\" DESC LIMIT 10;",
+        calculationDetail: "`AuditLogController.fetchAll({ limit: 10 })` queries PostgreSQL, resolves the responsible user's display name or email, and returns the 10 most recent entries.",
+        dbTruth: {
+          store: "PostgreSQL Database (core.\"AuditLog\")",
+          explanation: "Unlike metrics (which live in Prometheus/Redis), <b>Audit Logs MUST live in PostgreSQL</b> because they require ACID durability, strict immutability, foreign-key relationships, and HIPAA-mandated retention (7 years). Furthermore, sensitive payload diffs are protected using Vault Transit Envelope Encryption (DEK)."
+        },
+        pipeline: [
+          { title: "Admin performs action", desc: "SuperAdmin updates tenant quota or edits a guardrail rule." },
+          { title: "Audit Interceptor", desc: "NestJS audit interceptor captures actor ID, IP, resource, and diff." },
+          { title: "Vault Envelope Encryption", desc: "Sensitive payload encrypted with Data Encryption Key (DEK)." },
+          { title: "PostgreSQL INSERT", desc: "Written into immutable append-only `core.\"AuditLog\"` table." },
+          { title: "Dashboard read", desc: "`useAuditLogs({ limit: 10 })` fetches last 10 rows and renders `RecentActivityCard`." }
+        ],
+        codeSnippet: `// packages/database/src/prisma/db_main/audit.prisma
+model AuditLog {
+  id                          String       @id @default(uuid(7))
+  tenantId                    String
+  responsibleUserId           String?      // Interactive human (JWT)
+  responsibleServiceAccountId String?      // Machine identity
+  responsibleIp               String?      // Client IP address
+  resourceType                ResourceType // e.g. TENANT, USER, POLICY, GUARDRAIL
+  resourceId                  String?      // ID of target resource
+  action                      AuditAction  // CREATE, READ, UPDATE, DELETE
+  eventType                   String?      // 'AUTHORIZATION', 'SYSTEM', etc.
+  createdAt                   DateTime     @default(now())
+  dekWrapped                  String?      // Vault Transit envelope encryption
+}`
+      },
+
+      services: {
+        title: "Downstream Services Health Strip",
+        badge: "Real-Time Health Probes",
+        color: "#10b981",
+        whyUi: "Why is it on the UI?<br>Shows whether the 5 core backend services (`gateway`, `text`, `guardrail`, `stt`, `nlp`) are online and responding to health probes. If any service crashes, its dot turns yellow (degraded) or red (down) immediately.",
+        whereFrom: "Where does it come from?<br>From `AdminHealthServicesController` issuing real-time HTTP probes to `:8862/api/v1/health` (text), `:8863/api/health` (guardrail), `:8861/api/v1/health` (stt), `:8864/api/v1/health` (nlp).",
+        formula: "Direct HTTP GET probe with 500ms timeout",
+        calculationDetail: "Pure stateless probe! Does NOT write to any database to prevent false-positive stale cache reads.",
+        dbTruth: {
+          store: "Stateless / Real-Time HTTP Probe",
+          explanation: "Health checks are direct HTTP probes throttled at 30 requests/min via Redis rate limiting to prevent probe storms."
+        },
+        pipeline: [
+          { title: "HTTP Probe issued", desc: "API issues parallel GET requests to microservice health ports." },
+          { title: "Service replies", desc: "Services return `{ status: 'healthy', uptime: 12040 }`." },
+          { title: "Semantic status role", desc: "`serviceStatusRole()` maps 'healthy' -> green dot, 'degraded' -> amber." }
+        ],
+        codeSnippet: `// apps/api/src/modules/health/admin-health-services.controller.ts
+@Get()
+@Throttle({ default: { limit: 30, ttl: 60000 } })
+async checkServices() {
+  const results = await Promise.allSettled(this.downstreamServices.map((svc) => this.probeService(svc)));
+  return { status: overallStatus, timestamp: new Date().toISOString(), services };
+}`
+      },
+
+      // =========================================================================
+      // MONITORING SCREEN FEATURES (NEWLY ADDED)
+      // =========================================================================
+      'mon-services-healthy': {
+        title: "Services Healthy (Live Fan-Out Health)",
+        badge: "GET admin/health/services",
+        color: "#10b981",
+        whyUi: "Why are we adding this on the UI?<br>Gives the operator an immediate cluster-wide vitality ratio (e.g. <b>6 / 6</b>). In healthcare AI pipelines where audio streaming, LLM extraction, and clinical safety moderation are interdependent, if even 1 microservice goes down, consultation notes will fail to generate. This stat is the first warning sign.",
+        whereFrom: "Where does this data come from?<br>From <code>AdminHealthServicesController.checkServices()</code> in <code>apps/api/src/modules/health/admin-health-services.controller.ts</code>. It fires parallel HTTP GET requests using Axios to the <code>/health</code> endpoints of all 6 downstream microservices.",
+        formula: "healthyCount = count(services where status !== 'down') / totalServices (6)",
+        calculationDetail: "Each probe has a strict 5000ms (5s) timeout. If all 6 respond, `overallStatus` is 'healthy'. If any service times out or fails (e.g. ECONNREFUSED), its internal IP/port is stripped via `redactTopology()` to protect internal infrastructure topology from leaking to client browsers.",
+        dbTruth: {
+          store: "Stateless Parallel HTTP Probes (No DB Write)",
+          explanation: "Live health checks intentionally bypass all databases (PostgreSQL/Redis) to guarantee zero-latency, fresh truth. Storing live health checks in PostgreSQL would cause database write bloat; storing in Redis risks stale cache reads if workers die. Topology is redacted on error via `redactTopology()` to prevent leaking internal IPs/ports."
+        },
+        pipeline: [
+          { title: "Frontend Polling", desc: "`useServicesHealth()` hook polls `admin/health/services` every 30 seconds." },
+          { title: "Gateway Authorization", desc: "Gated with `@CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])` and `@ForbidApiKey()`." },
+          { title: "Outbound Parallel Probe", desc: "Axios executes `Promise.allSettled` to ports 8861 (STT), 8862 (Text), 8863 (Guardrail), 8864 (NLP), 8865 (TTS), 8866 (Harness)." },
+          { title: "Error Topology Redaction", desc: "If a service is down, `redactTopology(err.message)` strips host/port/URL." },
+          { title: "Aggregated Response", desc: "Returns JSON `{ status: 'healthy', timestamp: '...', services: { ... } }`." },
+          { title: "UI Stat Card Render", desc: "`StatStrip` counts healthy services and displays `6 / 6`." }
+        ],
+        codeSnippet: `// apps/api/src/modules/health/admin-health-services.controller.ts
+@Get()
+@CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
+@Throttle({ default: { limit: 30, ttl: 60000 } })
+async checkServices() {
+  const results = await Promise.allSettled(this.downstreamServices.map((svc) => this.probeService(svc)));
+  const services: Record<string, any> = {};
+  let healthyCount = 0;
+
+  this.downstreamServices.forEach((svc, i) => {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      services[svc.key] = result.value;
+      if (result.value.status !== 'down') healthyCount++;
+    } else {
+      services[svc.key] = {
+        status: 'down',
+        service: svc.name,
+        error: redactTopology(result.reason instanceof Error ? result.reason.message : String(result.reason)),
+      };
+    }
+  });
+
+  return { status: healthyCount === 6 ? 'healthy' : 'degraded', services };
+}`
+      },
+
+      'mon-lowest-uptime': {
+        title: "Lowest Uptime (Historical Heartbeat SLA)",
+        badge: "GET admin/monitoring/uptime",
+        color: "#3b82f6",
+        whyUi: "Why are we adding this on the UI?<br>While 'Services Healthy' shows a single snapshot in time, 'Lowest Uptime' reveals recent intermittent crashes or flapping services over the last 45 minutes (90-sample window). If an AI service crashed 10 minutes ago, rebooted, and is now online, 'Services Healthy' will say 6/6, but 'Lowest Uptime' will alert the admin with <b>98.2%</b>.",
+        whereFrom: "Where does this data come from?<br>From <code>MonitoringController.getUptime()</code> in <code>apps/api/src/modules/monitoring/monitoring.controller.ts</code>. It reads Redis heartbeat lists <code>monitoring:heartbeat:{service}</code> populated every 30s by <code>ServiceHealthMonitoringService</code>.",
+        formula: "uptimePercentage = (upCount / totalHeartbeats) * 100",
+        calculationDetail: "`ServiceHealthMonitoringService` runs `@Cron(CronExpression.EVERY_30_SECONDS)`. On every cycle, it probes the 6 services and pushes a JSON record `{ status: 'up'|'down', responseTime: 18, timestamp: '...' }` into Redis. It keeps exactly 90 entries (`LTRIM 0 89`). `getUptime()` reads this list via `LRANGE` and calculates the mathematical uptime percentage.",
+        dbTruth: {
+          store: "Redis Key-Value Lists (monitoring:heartbeat:{svc})",
+          explanation: "This data is stored in **Redis, NOT PostgreSQL**! Heartbeats are pushed as JSON strings to Redis lists via `LPUSH`, trimmed with `LTRIM key 0 89` to exactly 90 entries, and set with a 24-hour TTL (`EXPIRE 86400`). PostgreSQL is never touched, preventing database write exhaustion."
+        },
+        pipeline: [
+          { title: "30s Cron Poller", desc: "`@Cron(CronExpression.EVERY_30_SECONDS)` starts `performHealthChecks()` in `ServiceHealthMonitoringService`." },
+          { title: "Probe Execution", desc: "Probes 6 services, measures response time in ms." },
+          { title: "Redis LPUSH & LTRIM", desc: "`redis.lpush(key, json); redis.ltrim(key, 0, 89); redis.expire(key, 86400);`." },
+          { title: "Dashboard Request", desc: "`useUptime()` requests `GET admin/monitoring/uptime` every 30s." },
+          { title: "Uptime Calculation", desc: "Backend counts `status === 'up'` records and returns `{ uptimePercentage: 99.8 }`." },
+          { title: "StatStrip Render", desc: "Finds minimum uptime across all services and renders `Lowest uptime: 99.8%`." }
+        ],
+        codeSnippet: `// packages/applications/src/services/baseServices/serviceHealth/serviceHealthMonitoring.service.ts
+const HEARTBEAT_HISTORY_SIZE = 90;
+const REDIS_KEY_PREFIX = 'monitoring:heartbeat:';
+
+@Cron(CronExpression.EVERY_30_SECONDS)
+async performHealthChecks(): Promise<void> {
+  const checkPromises = this.services.map((service) => this.checkServiceHealth(service));
+  await Promise.allSettled(checkPromises);
+}
+
+private async storeHeartbeat(serviceKey: string, data: { status: 'up' | 'down'; responseTime: number }) {
+  const key = \`\${REDIS_KEY_PREFIX}\${serviceKey}\`;
+  const heartbeat: HeartbeatRecord = {
+    timestamp: new Date().toISOString(),
+    status: data.status,
+    responseTime: data.responseTime,
+  };
+  await this.redis.lpush(key, JSON.stringify(heartbeat));
+  await this.redis.ltrim(key, 0, HEARTBEAT_HISTORY_SIZE - 1);
+  await this.redis.expire(key, 86400);
+}`
+      },
+
+      'mon-active-sessions-stat': {
+        title: "Active Sessions (Consultation Stream KPI)",
+        badge: "GET admin/monitoring/sessions",
+        color: "#8b5cf6",
+        whyUi: "Why are we adding this on the UI?<br>In a clinical audio streaming platform, doctors stream real-time consultations over WebSockets into STT and LLM workers. This stat card displays the total number of ongoing, in-flight consultation sessions actively consuming server memory and GPU inference channels.",
+        whereFrom: "Where does this data come from?<br>From <code>MonitoringController.getSessions()</code> in <code>apps/api/src/modules/monitoring/monitoring.controller.ts</code> calling <code>IServiceHealthMonitoringService.getSessionCounts()</code>.",
+        formula: "totalActiveSessions = sum(services.sessionCounts)",
+        calculationDetail: "Currently returns static stub counts (0 per service) in the service layer: `{ text: 0, stt: 0, nlp: 0, guardrail: 0, harness: 0 }`. The frontend displays the sum of these values.",
+        dbTruth: {
+          store: "In-Memory Service Stub (Pending Redis WebSocket Registry)",
+          explanation: "The endpoint and frontend hooks are fully wired and functional, but the active session counting is currently hardcoded to return 0 in `ServiceHealthMonitoringService.getSessionCounts()`. A distributed Redis socket counter (similar to `SocketRegistryService` in overview) is planned."
+        },
+        pipeline: [
+          { title: "Frontend Polling", desc: "`useSessions()` React Query hook calls `GET admin/monitoring/sessions` every 30s." },
+          { title: "Controller Delegation", desc: "`MonitoringController.getSessions()` delegates to `IServiceHealthMonitoringService`." },
+          { title: "Service Count Retrieval", desc: "`getSessionCounts()` returns `{ text: 0, stt: 0, nlp: 0, guardrail: 0, harness: 0 }`." },
+          { title: "Frontend StatCard", desc: "Sums all service counts (total = 0) and renders `Active sessions: 0`." }
+        ],
+        codeSnippet: `// packages/applications/src/services/baseServices/serviceHealth/serviceHealthMonitoring.service.ts
+async getSessionCounts(): Promise<SessionsResponse> {
+  // Marked: Not specified in current source — currently static 0 per service
+  return {
+    text: 0,
+    stt: 0,
+    nlp: 0,
+    guardrail: 0,
+    harness: 0,
+  };
+}
+
+// apps/api/src/modules/monitoring/monitoring.controller.ts
+@Get('sessions')
+@ApiOperation({ summary: 'Get active session counts per service' })
+async getSessions(): Promise<SessionsResponse> {
+  return this.monitoringService.getSessionCounts();
+}`
+      },
+
+      'mon-redis-latency-stat': {
+        title: "Redis Latency (Queue Infra Health)",
+        badge: "GET admin/queues/health/redis",
+        color: "#f59e0b",
+        whyUi: "Why are we adding this on the UI?<br>BullMQ Redis queues handle background consultation processing, audio transcription pipelines, and EHR sync. If Redis latency increases from 1ms to 50ms, background jobs back up and doctor consultations freeze. This stat displays immediate Redis PING roundtrip duration.",
+        whereFrom: "Where does this data come from?<br>From <code>QueueAdminController.getRedisHealth()</code> in <code>apps/api/src/modules/queue-admin/queue-admin.controller.ts</code>. It sends a raw <code>PING</code> command over the BullMQ Redis connection and measures high-resolution roundtrip time.",
+        formula: "latencyMs = performance.now() - pingStartTime",
+        calculationDetail: "The controller executes `await redis.ping()` and reads server memory/client statistics from `redis.info()`. The route is guarded so it <b>never throws an HTTP 500 error</b> — if Redis is down, it catches the error and returns `{ status: 'down', latencyMs: 0 }`.",
+        dbTruth: {
+          store: "BullMQ Redis Engine (ioredis connection)",
+          explanation: "Evaluates the connection to the BullMQ Redis instance. Protected by strict `@Authorize(['manage', 'all'])` and hidden from tenant admins (`platformOps` flag) to prevent cross-tenant infrastructure inspection."
+        },
+        pipeline: [
+          { title: "Platform Operator Check", desc: "`useRedisHealth(platformOps)` executes only if user has `manage:all` permission." },
+          { title: "Admin API Gate", desc: "`QueueAdminController` verifies `@Authorize(['manage', 'all'])` and `@ForbidApiKey()`." },
+          { title: "Redis PING Execution", desc: "Executes `redis.ping()` and captures latency in milliseconds (`1.2 ms`)." },
+          { title: "StatStrip Render", desc: "Renders `Redis latency: 1.2 ms` with green dot indicator." }
+        ],
+        codeSnippet: `// apps/api/src/modules/queue-admin/queue-admin.controller.ts
+@Get('health/redis')
+@ApiOperation({ summary: 'Redis connection health for queue infra (PING latency + INFO stats)' })
+@Authorize(['manage', 'all'])
+@ForbidApiKey()
+getRedisHealth(): Promise<RedisHealthInfo> {
+  return this.queueService.getRedisHealth();
+}`
+      },
+
+      'mon-service-health-grid': {
+        title: "Service Health Grid (6 Microservice Cards)",
+        badge: "Full Downstream Cluster Health",
+        color: "#10b981",
+        whyUi: "Why are we adding this on the UI?<br>Provides a detailed breakdown of all 6 individual microservices powering the AI consultation pipeline:<br>• <b>Text (:8862)</b>: LLM conversation orchestration<br>• <b>Medical NLP (:8864)</b>: Clinical entity extraction<br>• <b>Speech to Text (:8861)</b>: Whisper audio transcription<br>• <b>Text to Speech (:8865)</b>: Audio synthesis<br>• <b>Guardrail (:8863)</b>: Safety moderation & PII redaction<br>• <b>Clinical Harness (:8866)</b>: Clinical trial evaluation harness<br>Admins can immediately see each service's health status, port, uptime percentage, and response latency.",
+        whereFrom: "Where does this data come from?<br>Merges live fan-out probes from <code>GET admin/health/services</code> with historical uptime from <code>GET admin/monitoring/uptime</code>.",
+        formula: "Combined status badge + latestResponseTimeMs + uptimePercentage",
+        calculationDetail: "For each service, `ServiceHealthGrid` displays:<br>1. Status indicator: `healthy` (green), `degraded` (amber), `down` (red)<br>2. Uptime %: calculated over the 90-entry Redis list<br>3. Latency: roundtrip milliseconds from the most recent probe<br>4. Error redaction: if a service fails, `redactTopology()` ensures internal host/port/IP are never leaked to the client.",
+        dbTruth: {
+          store: "Live HTTP Probes + Redis Lists",
+          explanation: "Live status is queried over HTTP from the microservices. Uptime is computed from Redis heartbeat history. PostgreSQL is not used."
+        },
+        pipeline: [
+          { title: "Dual React Query Hook", desc: "`useServicesHealth()` and `useUptime()` fetch in parallel every 30s." },
+          { title: "Per-Service Key Alignment", desc: "Data aligned by service keys: `text`, `nlp`, `stt`, `tts`, `guardrail`, `harness`." },
+          { title: "Semantic Role Mapping", desc: "`serviceStatusRole(status)` sets badge colors and status dots." },
+          { title: "Grid Display", desc: "Renders 6 interactive cards with SLA uptime, latency, and port endpoints." }
+        ],
+        codeSnippet: `// apps/admin-console/src/features/monitoring/components/service-health-grid.tsx
+export function ServiceHealthGrid({ health, uptime }: ServiceHealthGridProps) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {SERVICES.map((service) => {
+        const probe = health.data?.services[service.key];
+        const serviceUptime = uptime.data?.services[service.key];
+        return (
+          <ServiceHealthCard
+            key={service.key}
+            service={service}
+            probe={probe}
+            uptime={serviceUptime}
+          />
+        );
+      })}
+    </div>
+  );
+}`
+      },
+
+      'mon-response-time-chart': {
+        title: "Response Time by Service (Recharts Bar Chart)",
+        badge: "Recharts <MetricChart>",
+        color: "#3b82f6",
+        whyUi: "What is it showing and why is it here?<br>This bar chart graphs the latest probe response time (ms) for all 6 microservices side-by-side.<br>In a multi-model pipeline, latency bottlenecks are critical: if Guardrail moderation takes 28ms while STT takes 18ms, an operator can immediately detect which service is slowing down the doctor's consultation experience.",
+        whereFrom: "Where does this data come from?<br>From the most recent heartbeat recorded in Redis lists (<code>monitoring:heartbeat:{svc}</code>) returned by <code>GET admin/monitoring/uptime</code>.",
+        formula: "latestResponseTimeMs = first(LRANGE monitoring:heartbeat:{svc} 0 0).responseTime",
+        calculationDetail: "Built using the shared <code>MetricChart</code> component in <code>@arcaai/ui/components/metrics/metric-chart.tsx</code>, wrapping Recharts <code>ResponsiveContainer</code>, <code>BarChart</code>, <code>Bar</code>, <code>XAxis</code>, and <code>YAxis</code>. Formatted with <code>${formatNumber(value)} ms</code>.",
+        dbTruth: {
+          store: "Redis Lists (monitoring:heartbeat:{svc})",
+          explanation: "Recorded every 30 seconds by `ServiceHealthMonitoringService` using `Date.now() - startTime`. Stored in Redis as `{ responseTime: 24, status: 'up' }`."
+        },
+        pipeline: [
+          { title: "Cron Probe Timer", desc: "Measures HTTP request duration `Date.now() - startTime` for each service." },
+          { title: "Push to Redis", desc: "LPUSH to `monitoring:heartbeat:{service}`." },
+          { title: "Uptime Query", desc: "`MonitoringController.getUptime()` extracts `latestResponseTimeMs`." },
+          { title: "Chart Data Assembly", desc: "`chartData = SERVICES.map(s => ({ service: s.name, ms: data.services[s.key]?.latestResponseTimeMs }))`." },
+          { title: "Recharts Render", desc: "`<MetricChart kind='bar' data={chartData} xKey='service' series={[{ key: 'ms' }]} />`." }
+        ],
+        codeSnippet: `// apps/admin-console/src/features/monitoring/components/monitoring-screen.tsx
+function ResponseTimeCard({ uptime, health }: { uptime: ReturnType<typeof useUptime>; health: ReturnType<typeof useServicesHealth> }) {
+  const chartData = useMemo(() => {
+    return SERVICES.map((service) => {
+      const serviceUptime = uptime.data?.services[service.key];
+      const probe = health.data?.services[service.key];
+      return {
+        service: service.name,
+        ms: serviceUptime?.latestResponseTimeMs ?? probe?.duration_ms ?? 0,
+      };
+    });
+  }, [uptime.data, health.data]);
+
+  return (
+    <MetricChart
+      kind="bar"
+      data={chartData}
+      xKey="service"
+      series={[{ key: 'ms', label: 'Response time (ms)' }]}
+      height={240}
+      valueFormatter={(value) => \`\${formatNumber(value)} ms\`}
+    />
+  );
+}`
+      },
+
+      'mon-redis-health-card': {
+        title: "Redis Health Card (Queue Infrastructure)",
+        badge: "Platform-Ops Only (manage:all)",
+        color: "#f59e0b",
+        whyUi: "Why are we adding this on the UI?<br>In Project Hope, BullMQ Redis powers asynchronous queues (audio chunking, medical note transcription jobs, EHR integration pushes). If Redis memory exhausts or connections saturate, queue jobs fail silently. This card provides dedicated visibility into:<br>• Connection Status (Healthy/Down)<br>• PING Latency (ms)<br>• Connected Clients count<br>• Used Memory & Peak Memory",
+        whereFrom: "Where does this data come from?<br>From <code>QueueAdminController.getRedisHealth()</code> in <code>apps/api/src/modules/queue-admin/queue-admin.controller.ts</code>. It sends Redis <code>PING</code> and queries <code>INFO memory</code> and <code>INFO clients</code>.",
+        formula: "GET /api/v1/admin/queues/health/redis",
+        calculationDetail: "Gated with `@Authorize(['manage', 'all'])`. In the frontend, the card is wrapped in `{platformOps ? <RedisHealthCard redis={redis} /> : null}`. When a Tenant Admin views the screen, `useRedisHealth({ enabled: false })` disables the query to prevent 403 Forbidden errors.",
+        dbTruth: {
+          store: "BullMQ Redis Server (Raw INFO & PING)",
+          explanation: "Raw Redis server telemetry queried directly via Redis client connection. Strictly gated to `manage:all` callers to protect infrastructure secrets."
+        },
+        pipeline: [
+          { title: "RBAC Evaluation", desc: "Frontend checks if `platformOps = true` (SuperAdmin role holding `manage:all`)." },
+          { title: "Query Execution", desc: "`useRedisHealth(platformOps)` calls `GET admin/queues/health/redis`." },
+          { title: "Redis Driver Query", desc: "`ioredis` executes `PING` and parses `INFO` memory output." },
+          { title: "Stat Formatting", desc: "Memory converted via `formatBytes(bytes)` (e.g. `46.0 MB`)." },
+          { title: "Card Render", desc: "Displays 4 key telemetry boxes: Status, Latency, Clients, and Memory." }
+        ],
+        codeSnippet: `// apps/admin-console/src/features/monitoring/components/monitoring-screen.tsx
+function RedisHealthCard({ redis }: { redis: ReturnType<typeof useRedisHealth> }) {
+  const data = redis.data;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Redis health</CardTitle>
+        <CardDescription>Queue infrastructure connection</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+          <div><dt>Status</dt><dd><StatusDot label={data.status} /></dd></div>
+          <div><dt>Latency</dt><dd>{formatNumber(data.latencyMs)} ms</dd></div>
+          <div><dt>Clients</dt><dd>{formatNumber(data.connectedClients)}</dd></div>
+          <div><dt>Memory</dt><dd>{formatBytes(data.usedMemoryBytes)}</dd></div>
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}`
+      },
+
+      'mon-active-sessions-card': {
+        title: "Active Sessions Card (Voice Streams)",
+        badge: "GET admin/monitoring/sessions",
+        color: "#8b5cf6",
+        whyUi: "Why are we adding this on the UI?<br>Shows active audio session allocation broken down per service (Text, STT, Guardrail, Harness). If doctors report microphone connection dropouts or audio latency, this inventory table helps determine if a specific service's session pool is saturated.",
+        whereFrom: "Where does this data come from?<br>From <code>MonitoringController.getSessions()</code> in <code>apps/api/src/modules/monitoring/monitoring.controller.ts</code>.",
+        formula: "GET /api/v1/admin/monitoring/sessions",
+        calculationDetail: "Renders table listing each service with its active session integer. Marked in the codebase as a stub returning 0 until the distributed WebSocket session registry is hooked up.",
+        dbTruth: {
+          store: "In-Memory Service Stub (Pending Redis Registry)",
+          explanation: "Returns `0` for all services in the current implementation. Documented as static stub awaiting distributed socket registry."
+        },
+        pipeline: [
+          { title: "React Query Poll", desc: "`useSessions()` polls every 30s." },
+          { title: "API Gateway Read", desc: "`MonitoringController` retrieves session counts." },
+          { title: "Table Population", desc: "Constructs rows for each service." },
+          { title: "Render Card", desc: "`ActiveSessionsCard` displays table with 0 counts." }
+        ],
+        codeSnippet: `// apps/admin-console/src/features/monitoring/components/monitoring-screen.tsx
+function ActiveSessionsCard({ sessions }: { sessions: ReturnType<typeof useSessions> }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Active sessions</CardTitle>
+        <CardDescription>Live consultation sessions per service</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Table of active sessions per service */}
+      </CardContent>
+    </Card>
+  );
+}`
+      }
+    };
+
+    let currentScreen = 'dashboard';
+
+    function switchScreen(screen) {
+      currentScreen = screen;
+      document.getElementById('nav-btn-dashboard').classList.toggle('active', screen === 'dashboard');
+      document.getElementById('nav-btn-monitoring').classList.toggle('active', screen === 'monitoring');
+
+      document.getElementById('screen-dashboard').style.display = screen === 'dashboard' ? 'flex' : 'none';
+      document.getElementById('screen-monitoring').style.display = screen === 'monitoring' ? 'flex' : 'none';
+
+      // Update iframe source for Archify view
+      const archifyIframe = document.getElementById('archify-view');
+      archifyIframe.src = screen === 'dashboard' ? 'archify-overview-diagram.html' : 'monitoring-dataflow.html';
+
+      // Auto inspect default item of the screen
+      if (screen === 'dashboard') {
+        inspect('rpm');
+      } else {
+        inspect('mon-services-healthy');
+      }
+    }
+
+    function switchDomain(domain) {
+      if (domain !== 'overview') {
+        alert(`Domain ${domain} clicked. Returning to Overview.`);
+        return;
+      }
+    }
+
+    function inspect(key) {
+      // Clear previous selected styling
+      document.querySelectorAll('.stat-card, .chart-card, .audit-card, .services-strip, .detail-section, .redis-card, .sessions-card').forEach(el => el.classList.remove('selected'));
+      
+      const activeEl = document.getElementById(`node-${key}`);
+      if (activeEl) activeEl.classList.add('selected');
+
+      const data = INSPECTION_DATA[key];
+      if (!data) return;
+
+      const pane = document.getElementById('inspector-pane');
+      pane.innerHTML = `
+        <div class="inspector-header">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <h2>${data.title}</h2>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.15); border-color: ${data.color}; color: ${data.color}; font-weight: 700;">${data.badge}</span>
+          </div>
+          <p>Technical breakdown, source code origin, and data pipeline</p>
+        </div>
+
+        <!-- 1. Why on UI -->
+        <div class="detail-section">
+          <h4>💡 Why is it on the UI?</h4>
+          <div class="detail-text">${data.whyUi}</div>
+        </div>
+
+        <!-- 2. Where is it coming from -->
+        <div class="detail-section">
+          <h4>📡 Where does the data come from?</h4>
+          <div class="detail-text">${data.whereFrom}</div>
+          <div class="callout">
+            <strong>Formula / Endpoint / Command:</strong><br>
+            <code>${data.formula}</code>
+          </div>
+          <div class="detail-text" style="margin-top: 8px; font-size: 0.82rem; color: #94a3b8;">
+            ${data.calculationDetail}
+          </div>
+        </div>
+
+        <!-- 3. Database & Storage Truth -->
+        <div class="detail-section">
+          <h4>🗄️ Database & Storage Truth</h4>
+          <table class="db-table">
+            <tr>
+              <th style="width: 30%;">Store / Technology</th>
+              <th>How it is handled in this codebase</th>
+            </tr>
+            <tr>
+              <td><strong style="color: #60a5fa;">${data.dbTruth.store}</strong></td>
+              <td>${data.dbTruth.explanation}</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- 4. End-to-End Pipeline -->
+        <div class="detail-section">
+          <h4>🔄 End-to-End Runtime Pipeline</h4>
+          <div class="pipeline-steps">
+            ${data.pipeline.map((step, idx) => `
+              <div class="pipe-step">
+                <div class="step-num">${idx + 1}</div>
+                <div class="step-content">
+                  <div class="step-title">${step.title}</div>
+                  <div class="step-desc">${step.desc}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- 5. Real Code Evidence -->
+        <div class="detail-section">
+          <h4>💻 Real Code Evidence</h4>
+          <pre class="code-block"><code>${data.codeSnippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+        </div>
+      `;
+    }
+
+    function switchMainTab(mode) {
+      const interactiveLayout = document.getElementById('interactive-layout');
+      const archifyView = document.getElementById('archify-view');
+      const btnInteractive = document.getElementById('tab-interactive');
+      const btnArchify = document.getElementById('tab-archify');
+
+      if (mode === 'interactive') {
+        interactiveLayout.style.display = 'flex';
+        archifyView.style.display = 'none';
+        btnInteractive.classList.add('active');
+        btnArchify.classList.remove('active');
+      } else {
+        interactiveLayout.style.display = 'none';
+        archifyView.style.display = 'block';
+        archifyView.src = currentScreen === 'dashboard' ? 'archify-overview-diagram.html' : 'monitoring-dataflow.html';
+        btnArchify.classList.add('active');
+        btnInteractive.classList.remove('active');
+      }
+    }
+
+    // Default inspect rpm on initial load
+    inspect('rpm');
+  </script>
+</body>
+</html>

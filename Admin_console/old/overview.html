@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Console Overview — Interactive Telemetry & Architecture Explainer</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111726;
+      --card-border: #1e293b;
+      --card-hover: #1e2942;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --purple: #8b5cf6;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --code-bg: #0b1120;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Banner & Header */
+    header {
+      background: #0f172a;
+      border-bottom: 1px solid var(--card-border);
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      background: #1e293b;
+      color: #38bdf8;
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      border: 1px solid #334155;
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .tab-btn {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover, .tab-btn.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    /* Future modules expansion pill */
+    .module-switcher {
+      background: #0b1120;
+      border-bottom: 1px solid var(--card-border);
+      padding: 8px 24px;
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      font-size: 0.82rem;
+    }
+    .module-pill {
+      padding: 4px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .module-pill.active {
+      background: #1e3a8a;
+      color: #93c5fd;
+      border-color: #3b82f6;
+      font-weight: 600;
+    }
+    .module-pill.upcoming {
+      color: var(--text-muted);
+      border-color: #1e293b;
+      opacity: 0.75;
+    }
+    .module-pill.upcoming:hover {
+      opacity: 1;
+      border-color: #475569;
+    }
+
+    /* Main Container Grid */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      flex: 1;
+      height: calc(100vh - 105px);
+    }
+    @media (max-width: 1024px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+    }
+
+    /* Left Pane: Interactive Simulated Dashboard UI */
+    .dashboard-pane {
+      padding: 24px;
+      overflow-y: auto;
+      border-right: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-header h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .instruction-tooltip {
+      font-size: 0.8rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    /* Services Health Strip */
+    .services-strip {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .services-strip:hover, .services-strip.selected {
+      border-color: #38bdf8;
+      background: #141f36;
+    }
+    .service-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+
+    /* 4 Stat Cards Grid */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 800px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s;
+      overflow: hidden;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      background: var(--card-hover);
+    }
+    .stat-card.selected {
+      border-color: #60a5fa;
+      background: #172554;
+      box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
+    }
+    .stat-card::after {
+      content: "CLICK TO INSPECT";
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: #38bdf8;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .stat-card:hover::after {
+      opacity: 1;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text);
+    }
+    .stat-hint {
+      font-size: 0.72rem;
+      color: #38bdf8;
+      margin-top: 6px;
+    }
+
+    /* Requests by Service Chart Card */
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chart-card:hover, .chart-card.selected {
+      border-color: #818cf8;
+      background: #151b2e;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .chart-header h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .recharts-tag {
+      font-size: 0.72rem;
+      color: #a78bfa;
+      background: rgba(167, 139, 250, 0.12);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+    .bar-chart-container {
+      height: 180px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      padding: 10px 10px 0 10px;
+      border-bottom: 1px solid #334155;
+      position: relative;
+    }
+    .bar-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      position: relative;
+    }
+    .bar-group:hover .bar-column {
+      filter: brightness(1.25);
+    }
+    .bar-column {
+      width: 100%;
+      max-width: 44px;
+      background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+      border-radius: 4px 4px 0 0;
+      transition: height 0.4s ease;
+      min-height: 4px;
+    }
+    .bar-value {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .bar-label {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-top: 8px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    /* Recent Admin Activity / Audit Logs Card */
+    .audit-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .audit-card:hover, .audit-card.selected {
+      border-color: #f59e0b;
+      background: #171d2b;
+    }
+    .audit-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .audit-item {
+      display: grid;
+      grid-template-columns: 80px 140px 1fr 140px;
+      align-items: center;
+      padding: 8px 12px;
+      background: #0b1120;
+      border-radius: 6px;
+      border: 1px solid #1e293b;
+      font-size: 0.78rem;
+      gap: 12px;
+    }
+    .audit-item time {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .audit-action {
+      font-family: var(--font-mono);
+      color: #f59e0b;
+      font-weight: 600;
+    }
+    .audit-resource {
+      color: #cbd5e1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .audit-actor {
+      color: #38bdf8;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Right Pane: Deep-Dive Technical Inspector */
+    .inspector-pane {
+      background: #0d1322;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .inspector-header {
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 14px;
+    }
+    .inspector-header h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #60a5fa;
+      margin-bottom: 4px;
+    }
+    .inspector-header p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .detail-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .detail-section h4 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #38bdf8;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .detail-text {
+      font-size: 0.88rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+    .highlight {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+    }
+
+    .callout {
+      border-left: 3px solid #3b82f6;
+      background: #0f1c3f;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: #bfdbfe;
+    }
+    .callout.amber {
+      border-left-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
+      color: #fef3c7;
+    }
+    .callout.green {
+      border-left-color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+      color: #d1fae5;
+    }
+
+    /* Step Pipeline visualization */
+    .pipeline-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .pipe-step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 12px;
+      align-items: flex-start;
+      position: relative;
+    }
+    .pipe-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 13px;
+      top: 26px;
+      bottom: -10px;
+      width: 2px;
+      background: #1e293b;
+    }
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #1e293b;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      border: 1px solid #334155;
+    }
+    .step-content {
+      background: #0b1120;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+    }
+    .step-title {
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 2px;
+    }
+    .step-desc {
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Code block */
+    pre.code-block {
+      background: var(--code-bg);
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin-top: 8px;
+    }
+
+    /* DB Comparison Table */
+    .db-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 10px;
+    }
+    .db-table th, .db-table td {
+      border: 1px solid #1e293b;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .db-table th {
+      background: #1e293b;
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .db-table tr:nth-child(even) {
+      background: rgba(15, 23, 42, 0.4);
+    }
+
+    /* Archify Embed View */
+    #archify-view {
+      display: none;
+      width: 100%;
+      height: calc(100vh - 105px);
+      border: none;
+      background: #090d16;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header>
+    <div class="brand-title">
+      <span>🛡️ Arca AI / Project Hope</span>
+      <span class="badge">ADMIN CONSOLE</span>
+      <span style="color: var(--text-muted); font-size: 0.88rem; font-weight: 400;">/</span>
+      <span style="font-size: 0.95rem; font-weight: 600; color: #60a5fa;">Overview Architecture Explainer</span>
+    </div>
+    <div class="header-actions">
+      <button class="tab-btn active" id="tab-interactive" onclick="switchMainTab('interactive')">Interactive UI Explainer</button>
+      <button class="tab-btn" id="tab-archify" onclick="switchMainTab('archify')">Verified Archify Dataflow (SVG)</button>
+    </div>
+  </header>
+
+  <!-- Extensibility Navigation Ribbon (Upcoming Modules) -->
+  <div class="module-switcher">
+    <div class="module-pill active">
+      <span>📊</span>
+      <span>1. Overview & Telemetry (Active)</span>
+    </div>
+    <div class="module-pill upcoming" onclick="alert('Module 2: Tenancy & Isolation is scheduled next. We will map Tenant Hierarchy, Working Tenant switcher, and capabilities-matrix!')">
+      <span>🏢</span>
+      <span>2. Tenancy & Isolation (Planned)</span>
+    </div>
+    <div class="module-pill upcoming" onclick="alert('Module 3: AI Platform & Guardrail will map Whisper STT, Gemma LLM, Granite Guardrail, and SMR pipelines.')">
+      <span>🤖</span>
+      <span>3. AI Models & Guardrail (Planned)</span>
+    </div>
+    <div class="module-pill upcoming" onclick="alert('Module 4: Clinical Workflows will map Consultations, Audio Recording, SOAP Notes, and EHR push.')">
+      <span>🩺</span>
+      <span>4. Clinical Workflows (Planned)</span>
+    </div>
+    <div class="module-pill upcoming" onclick="alert('Module 5: Security & HIPAA will map Casbin RBAC, Vault DEK envelope encryption, and Audit Trails.')">
+      <span>🔐</span>
+      <span>5. Security & Audit (Planned)</span>
+    </div>
+  </div>
+
+  <!-- Interactive Explainer Mode -->
+  <div class="main-layout" id="interactive-layout">
+    
+    <!-- LEFT PANE: Simulated Live Admin Dashboard -->
+    <div class="dashboard-pane">
+      
+      <div class="section-header">
+        <h2>
+          <span>🖥️ Platform Dashboard Screen</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">(apps/admin-console/src/features/platform/components/platform-dashboard.tsx)</span>
+        </h2>
+        <span class="instruction-tooltip">👈 Click any card, graph, or list to inspect its technical pipeline</span>
+      </div>
+
+      <!-- Downstream Services Health Strip -->
+      <div class="services-strip" id="node-services" onclick="inspect('services')">
+        <span style="font-size: 0.8rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Downstream Services:</span>
+        <div class="service-pill"><span class="status-dot"></span><span>gateway</span></div>
+        <div class="service-pill"><span class="status-dot"></span><span>text (LLM)</span></div>
+        <div class="service-pill"><span class="status-dot"></span><span>guardrail</span></div>
+        <div class="service-pill"><span class="status-dot"></span><span>stt (voice)</span></div>
+        <div class="service-pill"><span class="status-dot"></span><span>nlp</span></div>
+      </div>
+
+      <!-- 4 Stat Cards Strip -->
+      <div class="stat-grid">
+        <!-- 1. Requests / min -->
+        <div class="stat-card selected" id="node-rpm" onclick="inspect('rpm')">
+          <div class="stat-label">Requests / min</div>
+          <div class="stat-value">1,420</div>
+          <div class="stat-hint">Platform throughput</div>
+        </div>
+
+        <!-- 2. P95 latency -->
+        <div class="stat-card" id="node-p95" onclick="inspect('p95')">
+          <div class="stat-label">P95 latency</div>
+          <div class="stat-value">245 ms</div>
+          <div class="stat-hint">95% users &le; 245ms</div>
+        </div>
+
+        <!-- 3. Error rate -->
+        <div class="stat-card" id="node-error" onclick="inspect('error')">
+          <div class="stat-label">Error rate</div>
+          <div class="stat-value" style="color: #10b981;">0.08%</div>
+          <div class="stat-hint">5xx HTTP errors / total</div>
+        </div>
+
+        <!-- 4. Open sockets -->
+        <div class="stat-card" id="node-sockets" onclick="inspect('sockets')">
+          <div class="stat-label">Open sockets</div>
+          <div class="stat-value">42</div>
+          <div class="stat-hint">18 opened/min (live mic)</div>
+        </div>
+      </div>
+
+      <!-- Requests by Service Chart Card -->
+      <div class="chart-card" id="node-chart" onclick="inspect('chart')">
+        <div class="chart-header">
+          <div>
+            <h3>Requests by service</h3>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Real-time request volume distribution across microservices</span>
+          </div>
+          <span class="recharts-tag">Built with Recharts &lt;BarChart&gt;</span>
+        </div>
+        <div class="bar-chart-container">
+          <div class="bar-group">
+            <span class="bar-value">580</span>
+            <div class="bar-column" style="height: 85%;"></div>
+            <span class="bar-label">gateway</span>
+          </div>
+          <div class="bar-group">
+            <span class="bar-value">320</span>
+            <div class="bar-column" style="height: 48%; background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);"></div>
+            <span class="bar-label">text</span>
+          </div>
+          <div class="bar-group">
+            <span class="bar-value">240</span>
+            <div class="bar-column" style="height: 36%; background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%);"></div>
+            <span class="bar-label">guardrail</span>
+          </div>
+          <div class="bar-group">
+            <span class="bar-value">190</span>
+            <div class="bar-column" style="height: 28%; background: linear-gradient(180deg, #34d399 0%, #059669 100%);"></div>
+            <span class="bar-label">stt</span>
+          </div>
+          <div class="bar-group">
+            <span class="bar-value">90</span>
+            <div class="bar-column" style="height: 14%; background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);"></div>
+            <span class="bar-label">nlp</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Admin Activity & Audit Logs Card -->
+      <div class="audit-card" id="node-audit" onclick="inspect('audit')">
+        <div class="chart-header">
+          <div>
+            <h3>Recent admin activity</h3>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Last 10 administrative actions across all tenants</span>
+          </div>
+          <span class="badge" style="color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">PostgreSQL core."AuditLog"</span>
+        </div>
+        <ul class="audit-list">
+          <li class="audit-item">
+            <time>2m ago</time>
+            <span class="audit-action">TENANT_UPDATE</span>
+            <span class="audit-resource">Tenant · t-hope-central (quota 500GB)</span>
+            <span class="audit-actor">superadmin@hope.ai</span>
+          </li>
+          <li class="audit-item">
+            <time>14m ago</time>
+            <span class="audit-action">POLICY_ASSIGN</span>
+            <span class="audit-resource">Policy · role:clinician-lead</span>
+            <span class="audit-actor">dr.sarah@general.org</span>
+          </li>
+          <li class="audit-item">
+            <time>1h ago</time>
+            <span class="audit-action">GUARDRAIL_MOD</span>
+            <span class="audit-resource">GuardrailRule · pii_redaction_strict</span>
+            <span class="audit-actor">compliance-bot (machine)</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- RIGHT PANE: Deep-Dive Technical Inspector -->
+    <div class="inspector-pane" id="inspector-pane">
+      <!-- Dynamically filled by JS -->
+    </div>
+
+  </div>
+
+  <!-- Archify SVG Verified Dataflow Embed View -->
+  <iframe id="archify-view" src="archify-overview-diagram.html"></iframe>
+
+  <script>
+    const INSPECTION_DATA = {
+      rpm: {
+        title: "Requests / min (Throughput)",
+        badge: "Core Platform Health KPI",
+        color: "#3b82f6",
+        whyUi: "Why are we adding this on the UI?<br>In any healthcare AI platform, throughput is the primary pulse. An SRE or Admin needs to instantly know: Is the system taking normal traffic (e.g. 1,400 req/min)? Is there a sudden surge or DDoS attack? Or did traffic collapse to zero (indicating a DNS failure or gateway crash)?",
+        whereFrom: "Where does this data come from?<br>Every microservice (Fastify, NestJS, Python FastAPI) emits standard Prometheus metrics when handling HTTP requests. Prometheus scrapes these into the counter <code>http_requests_total</code>.",
+        formula: "sum(rate(http_requests_total[5m])) * 60",
+        calculationDetail: "Prometheus measures requests per second over the last 5 minutes. The backend multiplies this rate by 60 to convert it into Requests Per Minute (RPM) for human readability.",
+        dbTruth: {
+          store: "Prometheus TSDB & Redis",
+          explanation: "This is NOT stored in PostgreSQL! Calculating real-time request counts across millions of HTTP requests using PostgreSQL would overwhelm the database and cause severe write bloat. Instead, Prometheus TSDB stores time-series counters, and the NestJS backend caches the aggregated number in Redis for 12 seconds (<code>platform:metrics</code>) to protect Prometheus from high-frequency dashboard polling."
+        },
+        pipeline: [
+          { title: "Incoming HTTP Traffic", desc: "Clinicians and clients send requests to Gateway and AI services." },
+          { title: "Prometheus Counter Emission", desc: "Each service increments `http_requests_total{service, status}`." },
+          { title: "Prometheus TSDB Scrape", desc: "Scraped every 15s into Prometheus memory." },
+          { title: "NestJS Backend Query", desc: "`PlatformMetricsService` executes `sum(rate(http_requests_total[5m]))` via `IPrometheusQueryService`." },
+          { title: "Redis 12s Cache", desc: "Cached in Redis under `platform:metrics` with a 12-second TTL." },
+          { title: "React Query Poll", desc: "`usePlatformMetrics()` polls every 30s and displays the number on `StatCard`." }
+        ],
+        codeSnippet: `// packages/applications/src/services/platform-metrics/platform-metrics.service.ts
+const PROMQL = {
+  requestRate: 'sum(rate(http_requests_total[5m]))',
+};
+
+async getPlatformMetrics(): Promise<PlatformMetricsResponse> {
+  return this.cached('platform:metrics', async () => {
+    const requestRate = await this.prometheus.instant(PROMQL.requestRate);
+    return {
+      requestsPerMinute: round(toNumber(requestRate) * 60), // Multiplied by 60 for RPM
+      // ...
+    };
+  });
+}`
+      },
+
+      sockets: {
+        title: "Open sockets (Live WebSocket Sessions)",
+        badge: "Real-Time Voice Streaming Sockets",
+        color: "#38bdf8",
+        whyUi: "Why are we adding this on the UI?<br>Project Hope / VOX is a clinical voice platform. Doctors speak into their microphones while examining patients. This audio is streamed over <b>persistent WebSockets</b> directly to Whisper STT. Each open socket represents an active audio session holding server memory and file descriptors. If open sockets spike to 500 when only 20 doctors are logged in, it immediately warns admins of <b>hanging connections or leaking WebSockets</b>!",
+        whereFrom: "Where does this data come from?<br>Each API gateway instance runs <code>SttWsGateway.getActiveSessionCount()</code>. Every instance publishes its local count to Redis under <code>hope:platform:sockets:inst:${hostname}:${pid}</code> with a 45-second TTL. The backend aggregates these counts across all cluster pods using Redis!",
+        formula: "Sum of live instance keys in Redis + sum(rate(active_connections_count[5m])) for socket rate",
+        calculationDetail: "Distributed Horizontal Scaling: If you have 10 NestJS gateway pods running in Kubernetes, each pod publishes its local open count to Redis. When the dashboard asks for total open sockets, `SocketRegistryService.getAggregateCount()` reads all pod keys and sums them.",
+        dbTruth: {
+          store: "Redis In-Memory Key-Value Store",
+          explanation: "Stored in Redis with short TTL (45 seconds). When a gateway pod crashes, its key automatically disappears after 45s without leaving stale ghost sessions behind."
+        },
+        pipeline: [
+          { title: "Doctor starts microphone", desc: "Browser opens WebSocket to `wss://api.hope.ai/ws/stt`." },
+          { title: "Gateway registers connection", desc: "`SttWsGateway` increments local session counter." },
+          { title: "Publish to Redis", desc: "Pod writes to `hope:platform:sockets:inst:${podId}` with 45s TTL." },
+          { title: "Cluster Aggregate Read", desc: "`SocketRegistryService.getAggregateCount()` scans keys and computes total." },
+          { title: "StatCard rendering", desc: "`StatCard` shows total live sockets plus `socketsPerMinute` rate." }
+        ],
+        codeSnippet: `// packages/applications/src/services/platform-metrics/socket-registry.service.ts
+const KEY_PREFIX = 'hope:platform:sockets:inst:';
+const KEY_TTL_SECONDS = 45;
+
+async publishLocalCount(count: number): Promise<void> {
+  await this.cache.setex(\`\${KEY_PREFIX}\${this.instanceId}\`, KEY_TTL_SECONDS, String(count));
+}
+
+async getAggregateCount(): Promise<number> {
+  const keys = await this.cache.scanKeys(\`\${KEY_PREFIX}*\`);
+  const values = await Promise.all(keys.map(k => this.cache.get(k)));
+  return values.reduce((sum, v) => sum + (parseInt(v) || 0), 0);
+}`
+      },
+
+      error: {
+        title: "Error rate (% of 5xx HTTP Failures)",
+        badge: "Reliability & Crash Indicator",
+        color: "#10b981",
+        whyUi: "Why are we adding this on the UI?<br>Admins need to know if the platform is healthy or failing. If the error rate rises above 0.5% or 1%, it means users are encountering 'Internal Server Error' (500), 'Bad Gateway' (502), or 'Gateway Timeout' (504). It acts as the primary alarm for ongoing incidents.",
+        whereFrom: "Where does this data come from?<br>From Prometheus scraping HTTP status codes labeled with status regex <code>5..</code> across all services, divided by the total request volume.",
+        formula: "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)",
+        calculationDetail: "The backend divides 5xx requests by total requests and multiplies by 100 to get a clean percentage (e.g. 0.08%). The `clamp_min(..., 1)` prevents division by zero when traffic is low.",
+        dbTruth: {
+          store: "Prometheus TSDB",
+          explanation: "Prometheus tracks HTTP responses by status code. Errors are calculated in memory over a rolling 5-minute sliding window."
+        },
+        pipeline: [
+          { title: "Server encounters error", desc: "A downstream service throws an unhandled exception or timeouts." },
+          { title: "HTTP 500 response", desc: "Fastify / NestJS logs status 500 and increments `http_requests_total{status='500'}`." },
+          { title: "Prometheus Ratio Query", desc: "Prometheus calculates ratio: 5xx count / total count." },
+          { title: "Display on UI", desc: "`formatPercent(data.errorRatePct)` formats `0.08%` in green (healthy) or red (alert)." }
+        ],
+        codeSnippet: `// PromQL in packages/applications/src/services/platform-metrics/platform-metrics.service.ts
+const PROMQL = {
+  errorRatio: 'sum(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(http_requests_total[5m])), 1)',
+};
+
+// Formatted in apps/admin-console/src/features/platform/components/platform-dashboard.tsx:
+<StatCard label="Error rate" value={data ? formatPercent(data.errorRatePct) : null} />`
+      },
+
+      p95: {
+        title: "P95 latency (95th Percentile Response Time)",
+        badge: "Real User Experience SLA",
+        color: "#f59e0b",
+        whyUi: "Why are we adding this on the UI?<br><b>Why P95 instead of Average?</b><br>Average latency is deceptively misleading: if 99 clinicians get 50ms responses, but 1 clinician experiences a 10-second freeze, the average latency is only 150ms! But that 1 doctor had a broken consultation.<br><b>P95 latency means:</b> 95% of all users experienced response times faster than or equal to this number (e.g., 245ms). Only the worst 5% were slower. In healthcare AI, P95 guarantees SLA compliance.",
+        whereFrom: "Where does this data come from?<br>From Prometheus duration histogram buckets (`http_request_duration_seconds_bucket`).",
+        formula: "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
+        calculationDetail: "Prometheus records request durations into exponential buckets (e.g. &le; 0.1s, &le; 0.25s, &le; 0.5s, &le; 1s). The `histogram_quantile(0.95, ...)` calculates the mathematical 95th percentile in seconds, and the backend multiplies by 1,000 to show milliseconds (`ms`).",
+        dbTruth: {
+          store: "Prometheus TSDB Duration Histograms",
+          explanation: "Histograms bucket latency into discrete intervals without storing individual timestamps, keeping memory usage constant regardless of traffic volume."
+        },
+        pipeline: [
+          { title: "Request executes", desc: "Request completes in 230ms." },
+          { title: "Histogram bucket increment", desc: "Prometheus increments duration buckets for `le='0.25'`." },
+          { title: "Quantile Math", desc: "`histogram_quantile(0.95, ...)` calculates the exact cutoff for 95% of traffic." },
+          { title: "Millisecond conversion", desc: "Converted from seconds to milliseconds: `round(toNumber(p95) * 1000)`." }
+        ],
+        codeSnippet: `// Prometheus calculation in platform-metrics.service.ts:
+const PROMQL = {
+  p95: 'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))',
+};
+
+// Multiplied by 1000 for milliseconds:
+p95LatencyMs: round(toNumber(p95) * 1000),`
+      },
+
+      chart: {
+        title: "Requests by service (Traffic Breakdown)",
+        badge: "Recharts Bar Chart Component",
+        color: "#818cf8",
+        whyUi: "What is it showing and why is it here?<br>This graph breaks down the platform's total traffic by individual microservice (<code>gateway</code>, <code>text</code>, <code>guardrail</code>, <code>stt</code>, <code>nlp</code>).<br>If total traffic spikes to 2,000 req/min, an admin can glance at this graph and immediately know: <b>Which service is absorbing the load?</b> (e.g., Is Voice STT getting hit? Or is Gemma LLM summarizing notes?)",
+        whereFrom: "Where does this data come from?<br>From Prometheus grouping HTTP requests by the <code>service</code> label:<br><code>sum by (service) (rate(http_requests_total[5m]))</code>.<br>The backend returns an array of objects: <code>[{ key: 'gateway', requestsPerMinute: 580 }, { key: 'text', requestsPerMinute: 320 }, ...]</code>.",
+        formula: "sum by (service) (rate(http_requests_total[5m])) * 60",
+        calculationDetail: "Prometheus calculates the per-second rate grouped by the `service` label. The backend maps each service row, converts to RPM, merges with the service health names, and builds the chart dataset.",
+        dbTruth: {
+          store: "Prometheus TSDB (Categorical Labels)",
+          explanation: "Prometheus labels allow dynamic dimension aggregation (`by (service)`). No relational database join is needed."
+        },
+        pipeline: [
+          { title: "Microservice tagging", desc: "Each service exports its name via Prometheus labels (`service=\"text\"`, `service=\"guardrail\"`)." },
+          { title: "Prometheus instantVector", desc: "`this.prometheus.instantVector(PROMQL.perServiceRate)`." },
+          { title: "Backend mapping", desc: "Constructs `{ key: 'guardrail', requestsPerMinute: 240 }`." },
+          { title: "Chart Data merging", desc: "`chartData = serviceKeys.map(key => ({ service: name, requests: rpm }))`." },
+          { title: "Recharts Rendering", desc: "`<MetricChart kind='bar' data={chartData} xKey='service' series={[{ key: 'requests' }]} />`." }
+        ],
+        codeSnippet: `// What is used to make that graph?
+// 1. Library: Recharts (BarChart, Bar, XAxis, YAxis, ResponsiveContainer)
+// 2. Component: packages/ui/src/components/metrics/metric-chart.tsx (wraps Recharts in shadcn ChartContainer)
+// 3. Screen: apps/admin-console/src/features/platform/components/platform-dashboard.tsx:
+
+<MetricChart
+  kind="bar"
+  data={chartData}
+  xKey="service"
+  series={[{ key: 'requests', label: 'Requests / min' }]}
+  height={240}
+  isLoading={isLoading}
+  valueFormatter={(value) => formatNumber(value)}
+  aria-label="Requests per minute by service"
+/>`
+      },
+
+      audit: {
+        title: "Recent admin activity & Audit Logs",
+        badge: "PostgreSQL core.\"AuditLog\" (HIPAA Compliance)",
+        color: "#f59e0b",
+        whyUi: "What is it showing and why is it here?<br>In healthcare software (HIPAA compliant), <b>every single administrative change must be tracked and visible</b>.<br>If someone changes tenant permissions, deletes a doctor's account, modifies a clinical prompt, or changes a guardrail safety rule, this card immediately shows <b>WHO did it, WHAT they changed, and WHEN it happened</b>. It provides total non-repudiation and instant auditing.",
+        whereFrom: "Where does this data come from?<br>From the PostgreSQL database table <code>core.\"AuditLog\"</code>! Whenever an admin action occurs (POST/PATCH/DELETE), an interceptor automatically writes an immutable audit row with encrypted payload diffs.",
+        formula: "SELECT * FROM core.\"AuditLog\" ORDER BY \"createdAt\" DESC LIMIT 10;",
+        calculationDetail: "`AuditLogController.fetchAll({ limit: 10 })` queries PostgreSQL, resolves the responsible user's display name or email, and returns the 10 most recent entries.",
+        dbTruth: {
+          store: "PostgreSQL Database (core.\"AuditLog\")",
+          explanation: "Unlike metrics (which live in Prometheus/Redis), <b>Audit Logs MUST live in PostgreSQL</b> because they require ACID durability, strict immutability, foreign-key relationships, and HIPAA-mandated retention (7 years). Furthermore, sensitive payload diffs are protected using Vault Transit Envelope Encryption (DEK)."
+        },
+        pipeline: [
+          { title: "Admin performs action", desc: "SuperAdmin updates tenant quota or edits a guardrail rule." },
+          { title: "Audit Interceptor", desc: "NestJS audit interceptor captures actor ID, IP, resource, and diff." },
+          { title: "Vault Envelope Encryption", desc: "Sensitive payload encrypted with Data Encryption Key (DEK)." },
+          { title: "PostgreSQL INSERT", desc: "Written into immutable append-only `core.\"AuditLog\"` table." },
+          { title: "Dashboard read", desc: "`useAuditLogs({ limit: 10 })` fetches last 10 rows and renders `RecentActivityCard`." }
+        ],
+        codeSnippet: `// packages/database/src/prisma/db_main/audit.prisma
+model AuditLog {
+  id                          String       @id @default(uuid(7))
+  tenantId                    String
+  responsibleUserId           String?      // Interactive human (JWT)
+  responsibleServiceAccountId String?      // Machine identity
+  responsibleIp               String?      // Client IP address
+  resourceType                ResourceType // e.g. TENANT, USER, POLICY, GUARDRAIL
+  resourceId                  String?      // ID of target resource
+  action                      AuditAction  // CREATE, READ, UPDATE, DELETE
+  eventType                   String?      // 'AUTHORIZATION', 'SYSTEM', etc.
+  createdAt                   DateTime     @default(now())
+  // Data Encryption Key (DEK) wrapped via HashiCorp Vault Transit
+  dekWrapped                  String?
+}`
+      },
+
+      services: {
+        title: "Downstream Services Health Strip",
+        badge: "Real-Time Health Probes",
+        color: "#10b981",
+        whyUi: "Why is it on the UI?<br>Shows whether the 5 core backend services (`gateway`, `text`, `guardrail`, `stt`, `nlp`) are online and responding to health probes. If any service crashes, its dot turns yellow (degraded) or red (down) immediately.",
+        whereFrom: "Where does it come from?<br>From `AdminHealthServicesController` issuing real-time HTTP probes to `:8862/api/v1/health` (text), `:8863/api/v1/health` (guardrail), `:8865/health` (stt), `:8864/health` (nlp).",
+        formula: "Direct HTTP GET probe with 500ms timeout",
+        calculationDetail: "Pure stateless probe! Does NOT write to any database to prevent false-positive stale cache reads.",
+        dbTruth: {
+          store: "Stateless / Real-Time HTTP Probe",
+          explanation: "Health checks are direct HTTP probes throttled at 30 requests/min via Redis rate limiting to prevent probe storms."
+        },
+        pipeline: [
+          { title: "HTTP Probe issued", desc: "API issues parallel GET requests to microservice health ports." },
+          { title: "Service replies", desc: "Services return `{ status: 'healthy', uptime: 12040 }`." },
+          { title: "Semantic status role", desc: "`serviceStatusRole()` maps 'healthy' -> green dot, 'degraded' -> amber." }
+        ],
+        codeSnippet: `// apps/api/src/modules/health/admin-health-services.controller.ts
+@Get('services')
+async getServicesHealth() {
+  return this.healthService.checkDownstreamServices();
+}`
+      }
+    };
+
+    function inspect(key) {
+      // Clear previous selection
+      document.querySelectorAll('.stat-card, .chart-card, .audit-card, .services-strip').forEach(el => el.classList.remove('selected'));
+      const activeEl = document.getElementById(`node-${key}`);
+      if (activeEl) activeEl.classList.add('selected');
+
+      const data = INSPECTION_DATA[key];
+      if (!data) return;
+
+      const pane = document.getElementById('inspector-pane');
+      pane.innerHTML = `
+        <div class="inspector-header">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <h2>${data.title}</h2>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.15); border-color: ${data.color}; color: ${data.color}; font-weight: 700;">${data.badge}</span>
+          </div>
+          <p>Technical breakdown, source code origin, and data pipeline</p>
+        </div>
+
+        <!-- 1. Why on UI -->
+        <div class="detail-section">
+          <h4>💡 Why is it on the UI?</h4>
+          <div class="detail-text">${data.whyUi}</div>
+        </div>
+
+        <!-- 2. Where is it coming from -->
+        <div class="detail-section">
+          <h4>📡 Where does the data come from?</h4>
+          <div class="detail-text">${data.whereFrom}</div>
+          <div class="callout">
+            <strong>Formula / PromQL:</strong><br>
+            <code>${data.formula}</code>
+          </div>
+          <div class="detail-text" style="margin-top: 8px; font-size: 0.82rem; color: #94a3b8;">
+            ${data.calculationDetail}
+          </div>
+        </div>
+
+        <!-- 3. Database & Storage Truth -->
+        <div class="detail-section">
+          <h4>🗄️ Database & Storage Truth</h4>
+          <table class="db-table">
+            <tr>
+              <th style="width: 30%;">Store / Technology</th>
+              <th>How it is handled in this codebase</th>
+            </tr>
+            <tr>
+              <td><strong style="color: #60a5fa;">${data.dbTruth.store}</strong></td>
+              <td>${data.dbTruth.explanation}</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- 4. End-to-End Pipeline -->
+        <div class="detail-section">
+          <h4>🔄 End-to-End Runtime Pipeline</h4>
+          <div class="pipeline-steps">
+            ${data.pipeline.map((step, idx) => `
+              <div class="pipe-step">
+                <div class="step-num">${idx + 1}</div>
+                <div class="step-content">
+                  <div class="step-title">${step.title}</div>
+                  <div class="step-desc">${step.desc}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- 5. Real Code Evidence -->
+        <div class="detail-section">
+          <h4>💻 Real Code Evidence</h4>
+          <pre class="code-block"><code>${data.codeSnippet.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+        </div>
+      `;
+    }
+
+    function switchMainTab(mode) {
+      const interactiveLayout = document.getElementById('interactive-layout');
+      const archifyView = document.getElementById('archify-view');
+      const btnInteractive = document.getElementById('tab-interactive');
+      const btnArchify = document.getElementById('tab-archify');
+
+      if (mode === 'interactive') {
+        interactiveLayout.style.display = 'grid';
+        archifyView.style.display = 'none';
+        btnInteractive.classList.add('active');
+        btnArchify.classList.remove('active');
+      } else {
+        interactiveLayout.style.display = 'none';
+        archifyView.style.display = 'block';
+        btnArchify.classList.add('active');
+        btnInteractive.classList.remove('active');
+      }
+    }
+
+    // Default inspect rpm
+    inspect('rpm');
+  </script>
+</body>
+</html>
