@@ -22,9 +22,8 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from guardrail.api.endpoints.redact import _resolve_chunk_chars
 from guardrail.core.dependencies import (
     ModelUnavailableError,
     admitted,
@@ -34,15 +33,36 @@ from guardrail.core.dependencies import (
 )
 from guardrail.core.logging import get_logger
 from guardrail.services.injection_defense import wrap_untrusted
-from guardrail.services.pii_extraction import DocumentSpan, extract_spans
+from guardrail.services.pii_extraction import windowed_spans
+from guardrail.services.windowing import RegionSpan
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
 
+class ScreenRegion(BaseModel):
+    """One independently-windowed piece of content (TASK-1047 FC-5).
+
+    `key` names it — a data block's name, `system` for an UNTRUSTED system prompt,
+    `user` for caller text outside any block — and is echoed on its PII spans.
+    """
+
+    key: str = Field(..., min_length=1, description="Region name, echoed on its spans")
+    text: str = Field(..., description="The region's content")
+
+
 class InboundScreenRequest(BaseModel):
-    text: str = Field(..., description="Untrusted inbound content to screen")
+    text: str = Field(
+        default="",
+        description="Untrusted inbound content to screen (legacy single-text shape). "
+        "Must be empty when `regions` is given.",
+    )
+    regions: list[ScreenRegion] | None = Field(
+        default=None,
+        description="TASK-1047 FC-5: content as regions, each windowed from its own "
+        "start. When present `text` must be empty (422 otherwise).",
+    )
     kind: str = Field(
         default="content",
         description="What the content IS (transcript, note, document, prompt) — "
@@ -59,6 +79,12 @@ class InboundScreenRequest(BaseModel):
         "pseudonymize a cloud-bound prompt (TASK-1035).",
     )
 
+    @model_validator(mode="after")
+    def _regions_xor_text(self) -> InboundScreenRequest:
+        if self.regions is not None and self.text:
+            raise ValueError("`text` must be empty when `regions` is given")
+        return self
+
 
 class OutboundScreenRequest(BaseModel):
     response: str = Field(..., description="Model response to screen before delivery")
@@ -71,10 +97,16 @@ class OutboundScreenRequest(BaseModel):
         default=None,
         description="The containment nonce from the inbound screen, for echo detection",
     )
+    source_regions: list[ScreenRegion] | None = Field(
+        default=None,
+        description="TASK-1047 FC-5: the source as regions (the data blocks the "
+        "response was generated from). Replaces `source_context` when present.",
+    )
 
 
 class PiiSpanModel(BaseModel):
-    """One PII span; offsets index the SUBMITTED `text`, and `text` is that slice.
+    """One PII span; offsets index the SUBMITTED `text` — or, with `regions`, the
+    text of the region named by `region` — and `text` is that slice.
 
     The value travels back to the internal caller ONLY so it can be replaced on the
     way to a cloud provider. It is never logged here.
@@ -85,6 +117,8 @@ class PiiSpanModel(BaseModel):
     end: int
     text: str
     score: float
+    #: The region key (TASK-1047 FC-5); `null` for a legacy single-`text` request.
+    region: str | None = None
 
 
 class ScreenResponse(BaseModel):
@@ -116,6 +150,11 @@ class ScreenResponse(BaseModel):
     nonce: str | None = None
     #: Inbound only, and only when `include_pii_spans` was set (TASK-1035).
     pii_spans: list[PiiSpanModel] | None = None
+    #: TASK-1047 FC-5: on a `regions` (inbound) / `source_regions` (outbound)
+    #: request, every key windowed and screened, in the order sent — on ALLOW and
+    #: BLOCK alike. `null` on a legacy request. `apps/text` fails closed when a key
+    #: it sent is missing, so a guardrail that ignored `regions` can never pass.
+    screened_regions: list[str] | None = None
 
 
 def _to_response(decision: Any, **extra: Any) -> ScreenResponse:
@@ -144,20 +183,38 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
     found".
     """
     tenant_id = require_tenant_id(http_request)
-    spans: list[DocumentSpan] | None = None
+    spans: list[RegionSpan] | None = None
+    # Legacy `text` is ONE region with no key: windowed exactly like a region
+    # (TASK-1047 C2), its spans indexing the submitted text as before.
+    regions: list[tuple[str | None, str]] = (
+        [(region.key, region.text) for region in request.regions]
+        if request.regions is not None
+        else [(None, request.text)]
+    )
     try:
         async with admitted(http_request):
             app_state = http_request.app.state
             screener = await build_screener(app_state, tenant_id)
-            if request.include_pii_spans:
-                span_client = await build_pii_span_client(app_state, tenant_id)
-                chunk_chars = await _resolve_chunk_chars(app_state)
-                decision, spans = await asyncio.gather(
-                    screener.screen_inbound(request.text, kind=request.kind),
-                    extract_spans(span_client.extract_pii_entities, request.text, chunk_chars),
+            if request.regions is not None:
+                screen = screener.screen_inbound_regions(
+                    [(region.key, region.text) for region in request.regions], kind=request.kind
                 )
             else:
-                decision = await screener.screen_inbound(request.text, kind=request.kind)
+                screen = screener.screen_inbound(request.text, kind=request.kind)
+            if request.include_pii_spans:
+                span_client = await build_pii_span_client(app_state, tenant_id)
+                decision, spans = await asyncio.gather(
+                    screen,
+                    windowed_spans(
+                        screener.window_runner,
+                        span_client.extract_pii_entities,
+                        str(getattr(span_client, "model_id", "") or ""),
+                        regions,
+                        screener.window_geometry,
+                    ),
+                )
+            else:
+                decision = await screen
     except HTTPException:
         raise
     except ModelUnavailableError as exc:
@@ -171,7 +228,9 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
         ) from exc
 
     envelope = nonce = None
-    if request.wrap:
+    # A regions request has no single text to fence; the envelope is a legacy-only
+    # convenience (`apps/text` sends `wrap: false`).
+    if request.wrap and request.regions is None:
         sanitized_length = decision.sanitization.sanitized_length if decision.sanitization else 0
         # Wrap the SANITIZED text — wrapping the raw text would place smuggled
         # characters inside the envelope, defeating the point of both defenses.
@@ -179,21 +238,31 @@ async def screen_inbound(request: InboundScreenRequest, http_request: Request) -
             request.text[:sanitized_length] if decision.sanitization else request.text,
             kind=request.kind,
         )
+    region_text = dict(regions)
     pii_spans = (
         [
             PiiSpanModel(
                 label=span.label,
                 start=span.start,
                 end=span.end,
-                text=request.text[span.start : span.end],
+                text=region_text[span.region][span.start : span.end],
                 score=span.score,
+                region=span.region,
             )
             for span in spans
         ]
         if spans is not None
         else None
     )
-    return _to_response(decision, envelope=envelope, nonce=nonce, pii_spans=pii_spans)
+    return _to_response(
+        decision,
+        envelope=envelope,
+        nonce=nonce,
+        pii_spans=pii_spans,
+        screened_regions=(
+            [region.key for region in request.regions] if request.regions is not None else None
+        ),
+    )
 
 
 @router.post("/guardrail/screen/outbound", response_model=ScreenResponse)
@@ -207,6 +276,11 @@ async def screen_outbound(request: OutboundScreenRequest, http_request: Request)
                 request.response,
                 source_context=request.source_context,
                 nonce=request.nonce,
+                source_regions=(
+                    [(region.key, region.text) for region in request.source_regions]
+                    if request.source_regions is not None
+                    else None
+                ),
             )
     except HTTPException:
         raise
@@ -219,4 +293,11 @@ async def screen_outbound(request: OutboundScreenRequest, http_request: Request)
             detail="outbound screening failed — refusing to report 'allow'",
         ) from exc
 
-    return _to_response(decision)
+    return _to_response(
+        decision,
+        screened_regions=(
+            [region.key for region in request.source_regions]
+            if request.source_regions is not None
+            else None
+        ),
+    )

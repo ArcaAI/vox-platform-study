@@ -232,9 +232,8 @@ async def resolve_judge_timeout_s(app_state: Any) -> float:
 
     `guardrail.judge.timeoutSeconds`, `global-kv` / `globalOnly` /
     `open-to-default`, served on the pull route. It replaced
-    `JudgePolicy.timeout_s`, which had TWO readers — the judge client and the nlp
-    client's fallback — and both read this instead, because both are the same
-    thing: how long guardrail waits on a peer it delegated to.
+    `JudgePolicy.timeout_s`. Since TASK-1047 (D7) it budgets the JUDGE only — the
+    apps/nlp clients take the policy `nlpDeadlineSeconds` instead.
 
     NEVER raises. A config-plane outage must not take a safety route down, so
     every failure keeps the declared default — the same posture
@@ -381,14 +380,15 @@ def _nlp_client(
     *,
     labels: list[str] | None = None,
     threshold: float = 0.5,
-    peer_timeout_s: float,
+    deadline_s: float,
 ) -> NlpGuardClientT:
     """Build a tenant-bound `apps/nlp` client for one resolved selection.
 
-    ``peer_timeout_s`` is the platform ``guardrail.judge.timeoutSeconds``, resolved
-    by the async caller (`resolve_judge_timeout_s`). It is the same budget the
-    delegated judgement uses and was the same `JudgePolicy.timeout_s` literal
-    before TASK-878 — one number for "how long guardrail waits on a peer".
+    ``deadline_s`` is the policy ``nlpDeadlineSeconds`` (TASK-1047 D7) — the WHOLE
+    call's budget, every attempt included. It replaced the judge's
+    ``guardrail.judge.timeoutSeconds`` here: an NLP window and an 8B-model
+    judgement have nothing in common but the word "peer". A row's own
+    ``configJson`` timeout may only SHORTEN it, never extend it.
     """
     from guardrail.services.external_nlp_client import NlpGuardClient
 
@@ -407,8 +407,23 @@ def _nlp_client(
         # working, which is why this travels with the selection rather than
         # being configured independently on either side.
         calibration=getattr(cfg, "entailment", None),
-        timeout_s=float(cfg.timeout_s or peer_timeout_s),
+        timeout_s=(
+            min(float(cfg.timeout_s), float(deadline_s)) if cfg.timeout_s else float(deadline_s)
+        ),
         breaker=_breaker(app_state, "nlp"),
+    )
+
+
+def _row_policy(cfg: Any) -> Any:
+    """The selected row's governed policy blob as a `GuardrailPolicy` (`{}` = no opinion)."""
+    from guardrail.core.policy import GuardrailPolicy
+
+    blob = getattr(cfg, "policy", None)
+    if isinstance(blob, GuardrailPolicy):
+        return blob
+    return GuardrailPolicy.from_blob(
+        blob if isinstance(blob, dict) else None,
+        source_tenant_id=getattr(cfg, "source_tenant_id", None),
     )
 
 
@@ -465,7 +480,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             policy_kwargs[key] = float(value)
 
     policy = SafetyPolicy(**policy_kwargs)
-    peer_timeout_s = await resolve_judge_timeout_s(app_state)
+    deadline_s = _row_policy(safety_cfg).nlp_deadline_seconds
     return SafetyAnalyzer(
         policy,
         safety_client=_nlp_client(
@@ -473,7 +488,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             tenant_id,
             safety_cfg,
             threshold=policy.classification_threshold,
-            peer_timeout_s=peer_timeout_s,
+            deadline_s=deadline_s,
         ),
         pii_client=_nlp_client(
             app_state,
@@ -481,7 +496,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             pii_cfg,
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
-            peer_timeout_s=peer_timeout_s,
+            deadline_s=_row_policy(pii_cfg).nlp_deadline_seconds,
         ),
     )
 
@@ -515,7 +530,7 @@ async def build_pii_span_client(app_state: Any, tenant_id: str) -> NlpGuardClien
             if isinstance(threshold, (int, float)) and not isinstance(threshold, bool)
             else SafetyPolicy.pii_threshold
         ),
-        peer_timeout_s=await resolve_judge_timeout_s(app_state),
+        deadline_s=_row_policy(cfg).nlp_deadline_seconds,
     )
 
 
@@ -571,6 +586,7 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         getattr(safety_cfg, "policy", None),
         source_tenant_id=getattr(safety_cfg, "source_tenant_id", None),
     )
+    geometry = window_geometry_of(policy)
     return Screener(
         analyzer=analyzer,
         tenant_id=tenant_id,
@@ -578,7 +594,98 @@ async def build_screener(app_state: Any, tenant_id: str) -> Any:
         max_untrusted_chars=policy.max_untrusted_chars,
         pii_leak_min_score=policy.pii_leak_min_score,
         availability=await _resolve_availability(app_state, tenant_id),
+        window_geometry=geometry,
+        window_runner=await build_window_runner(app_state, tenant_id, policy, geometry),
     )
+
+
+def window_geometry_of(policy: Any) -> Any:
+    """The screen window geometry a `GuardrailPolicy` declares (TASK-1047 D4)."""
+    from guardrail.services.windowing import WindowGeometry
+
+    size, overlap = policy.screen_window_geometry
+    return WindowGeometry(size=size, overlap=overlap, concurrency=policy.screen_window_concurrency)
+
+
+async def build_window_runner(app_state: Any, tenant_id: str, policy: Any, geometry: Any) -> Any:
+    """One request's window runner: per-request concurrency + the verdict cache.
+
+    The cache exists only when ALL of its inputs do (TASK-1047 FC-7): the platform
+    secret `GUARDRAIL_WINDOW_CACHE_KEY`, a Redis client, and this tenant's policy
+    version. Any one missing ⇒ no cache ⇒ every window is computed — never skipped,
+    and never cached under a key that could not name its policy.
+    """
+    from hope_env import real_secret
+
+    from guardrail.core.policy_version import (
+        PolicyVersionUnavailableError,
+        resolve_policy_version,
+    )
+    from guardrail.services.window_cache import WindowVerdictCache
+    from guardrail.services.windowing import WindowRunner
+
+    settings = getattr(app_state, "settings", None)
+    secret_field = getattr(settings, "window_cache_key", None)
+    secret = real_secret(secret_field) if secret_field is not None else ""
+    cache = WindowVerdictCache.build(
+        getattr(app_state, "redis", None), secret, ttl_s=policy.window_cache_ttl_seconds
+    )
+    policy_version: str | None = None
+    if cache is not None:
+        try:
+            policy_version = await resolve_policy_version(app_state, tenant_id)
+        except PolicyVersionUnavailableError as exc:
+            logger.warning(
+                "guardrail.window_cache.no_policy_version",
+                tenant_id=tenant_id,
+                error=str(exc),
+            )
+    return WindowRunner(
+        tenant_id=tenant_id,
+        policy_version=policy_version,
+        cache=cache,
+        concurrency=geometry.concurrency,
+    )
+
+
+async def resolve_screen_policy(app_state: Any, tenant_id: str) -> Any:
+    """The `guardrail.safety` row's policy — the screen geometry's one source.
+
+    NEVER raises: every key it is read for is open-to-default tuning, so an
+    unresolvable row means the declared defaults (logged), not a failed request.
+    Routes that need the safety SELECTION itself still fail closed on their own.
+    """
+    from guardrail.core.policy import GuardrailPolicy
+    from guardrail.core.tenant_config import TASK_KEY_GUARDRAIL_SAFETY
+
+    try:
+        cfg = await _resolve_selection(app_state, tenant_id, TASK_KEY_GUARDRAIL_SAFETY)
+    except SelectionUnavailableError as exc:
+        logger.warning("guardrail.screen_policy.defaults", tenant_id=tenant_id, error=str(exc))
+        return GuardrailPolicy.from_blob({})
+    return _row_policy(cfg)
+
+
+async def build_judge_window_plan(
+    app_state: Any, tenant_id: str, judge: Any, settings: Settings
+) -> tuple[Any, Any]:
+    """`(runner, geometry)` for the per-window medical judge (TASK-1047 OD-5).
+
+    The judge's window is the screen window bounded by the judge lane's input cap
+    (`core/policy_version.judge_window_chars`), so every character is judged.
+    """
+    from guardrail.core.policy_version import judge_window_chars
+    from guardrail.services.windowing import WindowGeometry
+
+    policy = await resolve_screen_policy(app_state, tenant_id)
+    _size, overlap = policy.screen_window_geometry
+    size = judge_window_chars(policy, settings.judge.max_input_chars)
+    geometry = WindowGeometry(
+        size=size,
+        overlap=min(overlap, max(0, size - 1)),
+        concurrency=policy.screen_window_concurrency,
+    )
+    return await build_window_runner(app_state, tenant_id, policy, geometry), geometry
 
 
 async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
@@ -755,7 +862,7 @@ async def acquire_groundedness_verifier(
     yield GroundednessNliVerifier(
         gate.model_copy(update={"entailment_threshold": threshold}),
         scorer=_nlp_client(
-            app_state, tenant_id, cfg, peer_timeout_s=await resolve_judge_timeout_s(app_state)
+            app_state, tenant_id, cfg, deadline_s=_row_policy(cfg).nlp_deadline_seconds
         ),
     )
 

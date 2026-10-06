@@ -597,7 +597,7 @@ def test_delegation_call_site_presents_the_shared_token_not_the_legacy_one(
         app_state,
         "50000000-0000-0000-0000-000000000000",
         SimpleNamespace(model="a-model", entailment=None, timeout_s=None),
-        peer_timeout_s=1.0,
+        deadline_s=1.0,
     )
 
     assert client._service_token == SHARED_TOKEN

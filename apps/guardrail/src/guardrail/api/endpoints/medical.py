@@ -17,17 +17,21 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field, model_validator
 
+from guardrail.api.endpoints.screen import ScreenRegion
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
+    build_judge_window_plan,
     get_resolved_guardian_provider,
     get_settings,
+    require_tenant_id,
 )
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.logging import get_logger
 from guardrail.services.external_text_client import TextJudgeClient
+from guardrail.services.medical_windows import judge_regions
 
 logger = get_logger(__name__)
 
@@ -66,10 +70,25 @@ _PROVIDER_OVERRIDES_FIELD = Field(
 class MedicalValidationRequest(BaseModel):
     """Request model for medical context validation."""
 
-    text: str = Field(..., description="Text to validate for medical context")
+    text: str = Field(
+        default="",
+        description="Text to validate for medical context (legacy whole-text judge). "
+        "Must be empty when `regions` is given.",
+    )
+    regions: list[ScreenRegion] | None = Field(
+        default=None,
+        description="TASK-1047 FC-5 / OD-5: content as regions; every window is judged "
+        "on scope (cached per window) and the request is medical iff all are.",
+    )
     request_id: str | None = Field(None, description="Optional request ID for tracking")
     include_reasoning: bool = Field(False, description="Include reasoning in response")
     provider_overrides: dict[str, Any] | None = _PROVIDER_OVERRIDES_FIELD
+
+    @model_validator(mode="after")
+    def _regions_xor_text(self) -> MedicalValidationRequest:
+        if self.regions is not None and self.text:
+            raise ValueError("`text` must be empty when `regions` is given")
+        return self
 
 
 class MedicalValidationResponse(BaseModel):
@@ -94,6 +113,12 @@ class MedicalValidationResponse(BaseModel):
     # free call. Metered for COGS; never quota-blocked, never invoiced (D16).
     stats: dict[str, Any] | None = Field(
         None, description="Per-call LLM usage stats for this validation, when a model was invoked"
+    )
+    #: TASK-1047 FC-5: on a `regions` request, every region key that was windowed
+    #: and judged, in the order sent. `null` on a legacy `text` request. A caller
+    #: fails closed when a key it sent is missing (version-skew guard).
+    screened_regions: list[str] | None = Field(
+        default=None, description="Region keys judged (regions requests only), in order"
     )
 
 
@@ -122,6 +147,9 @@ async def validate_medical_context(
     request: MedicalValidationRequest,
     settings: Settings = Depends(get_settings),
     guardian_provider: GuardianLike = Depends(get_resolved_guardian_provider),
+    # LAST and defaulted so in-process callers of the legacy shape keep working;
+    # FastAPI injects it by annotation. Only the `regions` path reads it.
+    http_request: Request = None,  # type: ignore[assignment]
 ) -> MedicalValidationResponse:
     """
     Validate if text contains medical context using the Guardian model.
@@ -140,6 +168,11 @@ async def validate_medical_context(
     undocumented key a caller has to know about.
     """
     start_time = time.monotonic()
+
+    if request.regions is not None:
+        return await _validate_regions(
+            request, http_request, settings, guardian_provider, start_time
+        )
 
     try:
         result = await guardian_provider.validate_medical_context(
@@ -169,6 +202,47 @@ async def validate_medical_context(
         timestamp=datetime.now(UTC).isoformat(),
         error=result.get("error"),
         stats=_stats_of(result),
+    )
+
+
+async def _validate_regions(
+    request: MedicalValidationRequest,
+    http_request: Request,
+    settings: Settings,
+    guardian_provider: GuardianLike,
+    start_time: float,
+) -> MedicalValidationResponse:
+    """The OD-5 path: per-window `on_scope`, cached, fail-CLOSED (503 on undetermined)."""
+    regions = [(region.key, region.text) for region in request.regions or []]
+    try:
+        tenant_id = require_tenant_id(http_request)
+        runner, geometry = await build_judge_window_plan(
+            http_request.app.state, tenant_id, guardian_provider, settings
+        )
+        result = await judge_regions(guardian_provider, regions, runner=runner, geometry=geometry)
+    except HTTPException:
+        raise
+    except GuardrailUndeterminedError as exc:
+        raise HTTPException(status_code=503, detail=exc.as_detail()) from exc
+    except Exception as exc:
+        logger.exception("guardrail.medical_validate.regions_failed", error_type=type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="medical validation failed — refusing to report 'is_medical'",
+        ) from exc
+
+    return MedicalValidationResponse(
+        is_medical=bool(result["is_medical"]),
+        confidence=float(result["confidence"]),
+        context_type=str(result["context_type"]),
+        reasoning=result["reasoning"] if request.include_reasoning else None,
+        matched_keywords=None,
+        processing_time_ms=(time.monotonic() - start_time) * 1000,
+        request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
+        timestamp=datetime.now(UTC).isoformat(),
+        error=None,
+        stats=result["stats"],
+        screened_regions=[key for key, _text in regions],
     )
 
 

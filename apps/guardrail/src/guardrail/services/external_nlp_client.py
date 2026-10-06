@@ -12,8 +12,12 @@ Wire contract (per rule 06's peer-client shape):
 * ``X-Tenant-Id`` — **MANDATORY**. This client REFUSES TO CONSTRUCT without one,
   so an unattributable safety decision cannot be made at all. A genuinely
   tenant-less caller declares ``tenantless:<reason>``;
-* a bounded retry budget owned HERE (guardrail decides how long a safety check
-  may take), not by `apps/nlp`;
+* a DEADLINE owned HERE (guardrail decides how long a safety check may take), not
+  by `apps/nlp` — TASK-1047 D7: `timeout_s` bounds the WHOLE call, every attempt
+  included, and an attempt is retried ONLY when it provably never left (a
+  connect-phase error). Once an attempt may still be running in the peer — a read
+  timeout, the deadline, any answered status — a retry would only stack a second
+  inference on the one still running (C6), so it is never made;
 * a DECLARED fail posture — see below.
 
 **Fail posture.** Every method RAISES :class:`GuardrailUndeterminedError` on an
@@ -111,6 +115,20 @@ def _parse_scores(blob: Any, labels: dict[str, Any]) -> dict[str, dict[str, floa
         if confidences:
             parsed[str(task)] = confidences
     return parsed
+
+
+#: The request never reached the peer, so nothing can still be running there —
+#: the only failures it is safe to retry (TASK-1047 D7).
+_NOT_SENT_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+#: `apps/nlp` refuses a text longer than its window (TASK-1047 FC-8). Guardrail
+#: windows every screen, so this is a contract breach between the two — logged,
+#: never retried, and fail-CLOSED like any other undetermined screen.
+_INPUT_EXCEEDS_WINDOW_STATUS = 413
 
 
 class _PeerStatusError(RuntimeError):
@@ -219,15 +237,22 @@ class NlpGuardClient:
         if self.calibration:
             body["calibration"] = self.calibration
 
+        deadline = time.monotonic() + self._timeout_s
+
         async def _once() -> dict[str, Any]:
+            budget = max(0.001, deadline - time.monotonic())
             started = time.monotonic()
             try:
-                response = await self._http.post(
-                    f"{self._base_url}{path}",
-                    json=body,
-                    headers=self._headers(),
-                    timeout=self._timeout_s,
-                )
+                # The deadline is ENFORCED here, not merely passed to httpx (whose
+                # timeouts are per phase): an expiry cancels the request and closes
+                # the connection, which is what lets the peer notice and drop it.
+                async with asyncio.timeout(budget):
+                    response = await self._http.post(
+                        f"{self._base_url}{path}",
+                        json=body,
+                        headers=self._headers(),
+                        timeout=budget,
+                    )
             finally:
                 observe_peer_latency("nlp", what, time.monotonic() - started)
             if response.status_code < 400:
@@ -236,10 +261,28 @@ class NlpGuardClient:
                     return {}
                 self.record_usage_detail(result.get("usage_detail"))
                 return result
+            if response.status_code == _INPUT_EXCEEDS_WINDOW_STATUS:
+                max_chars = None
+                try:
+                    detail = response.json()
+                    if isinstance(detail, dict):
+                        max_chars = detail.get("maxChars")
+                except Exception:  # noqa: BLE001 — the status alone is the signal
+                    pass
+                # PHI-safe: the LENGTH and the peer's bound, never the text.
+                logger.error(
+                    "guardrail.nlp_delegation.input_exceeds_window",
+                    what=what,
+                    input_chars=len(str(payload.get("text") or "")),
+                    max_chars=max_chars,
+                )
             raise _PeerStatusError(response.status_code)
 
         last_error = ""
         for attempt in range(self._max_attempts):
+            if deadline - time.monotonic() <= 0:
+                last_error = last_error or "deadline_exceeded"
+                break
             try:
                 if self._breaker is not None:
                     return await self._breaker.call(_once)
@@ -259,16 +302,24 @@ class NlpGuardClient:
                 # widening must not silently start counting one.
                 raise
             except _PeerStatusError as exc:
+                # The peer ANSWERED. Not retried (D7): a 4xx will be refused
+                # identically, and a 5xx / 429 means the peer is already struggling —
+                # a retry is load amplification on exactly the wrong service.
                 last_error = f"HTTP {exc.status_code}"
-                # 4xx that is not a transient overload is not worth retrying —
-                # a rejected request will be rejected identically next time.
-                if 400 <= exc.status_code < 500 and exc.status_code != 429:
-                    break
-            except Exception as exc:  # noqa: BLE001 — every transport failure is fail-closed
+                break
+            except _NOT_SENT_ERRORS as exc:
+                # The request never left, so nothing is running in the peer: the
+                # one failure a retry cannot amplify.
                 last_error = f"{type(exc).__name__}"
+            except Exception as exc:  # noqa: BLE001 — every transport failure is fail-closed
+                # A read timeout, the deadline, a reset mid-response: the inference
+                # may STILL be running in the peer. Never retried (C6).
+                last_error = f"{type(exc).__name__}"
+                break
 
-            if attempt + 1 < self._max_attempts and self._retry_backoff_s > 0:
-                await asyncio.sleep(self._retry_backoff_s * (attempt + 1))
+            remaining = deadline - time.monotonic()
+            if attempt + 1 < self._max_attempts and self._retry_backoff_s > 0 and remaining > 0:
+                await asyncio.sleep(min(remaining, self._retry_backoff_s * (attempt + 1)))
 
         # PHI-safe: the error string carries no request text.
         logger.error(f"guardrail.nlp_delegation.failed what={what} error={last_error}")
