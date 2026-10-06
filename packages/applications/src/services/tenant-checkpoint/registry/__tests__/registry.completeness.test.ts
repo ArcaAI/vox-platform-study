@@ -115,7 +115,7 @@ describe('checkpoint registry', () => {
       GlobalSetting: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       GoldenCase: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       GoldenSet: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
-      GovernedPromptPiece: 'LOGS CAPTURE_ONLY softDelete tenantColumn',
+      GovernedPromptPiece: 'LOGS CAPTURE_ONLY never tenantColumn',
       HarnessAuditEvent: 'LOGS CAPTURE_ONLY never tenantColumn',
       HarnessPolicy: 'CONFIG_CONTENT RECONCILE softDelete tenantColumn',
       HarnessPolicyChange: 'LOGS CAPTURE_ONLY never tenantColumn',
