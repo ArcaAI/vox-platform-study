@@ -402,3 +402,48 @@ def test_c2_build_is_deterministic(payloads: list[dict], tmp_path: Path) -> None
     assert first.read_bytes() == second.read_bytes()
     lines = first.read_text(encoding="utf-8").splitlines()
     assert len({json.loads(line)["id"] for line in lines}) == len(lines)
+
+
+# ── orchestrator additions (post-reboot, 2026-10-06) ───────────────────────────
+
+
+def test_no_generate_builds_c2_without_touching_lm_studio(tmp_path, monkeypatch) -> None:
+    import json as _json
+
+    from injection_eval import build_adversarial_sets as bas
+
+    def _forbidden(*_a, **_k):
+        raise AssertionError("LM Studio must not be called with --no-generate")
+
+    monkeypatch.setattr(bas, "lmstudio_complete", _forbidden)
+    monkeypatch.setattr(bas, "assert_model_loaded", _forbidden)
+    bases = tmp_path / "b1.jsonl"
+    bases.write_text(
+        _json.dumps(
+            {
+                "id": "b1:x",
+                "set": "b1",
+                "split": "test",
+                "label": 0,
+                "meta": {},
+                "text": "Doctor: hello there.\nPatient: my knee hurts.\n" * 60,
+            }
+        )
+        + "\n"
+    )
+    out = tmp_path / "out"
+    assert bas.main(["--out", str(out), "--no-generate", "--bases-jsonl", str(bases)]) == 0
+    c2 = [_json.loads(x) for x in (out / "c2.jsonl").read_text().splitlines()]
+    assert len(c2) == 5 * len(bas.load_payloads())
+    used = {r["meta"]["base_id"] for r in c2}
+    assert any("b1:x" in u for u in used)
+    assert any(u.startswith("golden:") for u in used)
+    assert not (out / "b2.jsonl").exists()
+
+
+def test_golden_bases_are_production_rendered_regions() -> None:
+    from injection_eval import build_adversarial_sets as bas
+
+    pool = bas._base_pool([], bas.load_golden_cases())
+    assert all(text.startswith("--- ") for _, text in pool)
+    assert any(base_id.endswith(":encounter_1") for base_id, _ in pool)

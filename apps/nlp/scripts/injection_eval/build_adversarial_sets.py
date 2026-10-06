@@ -36,7 +36,7 @@ if __package__ in (None, ""):
 from injection_eval.core import (  # noqa: E402
     embed_payload,
     iter_windows,
-    render_golden_case,
+    render_production_regions,
     straddle_payload,
 )
 
@@ -613,9 +613,18 @@ def _fit_lead_in(need: int) -> str:
     return "".join(w + g for w, g in zip(words, gaps, strict=True))
 
 
-def _base_pool(b2_records: list[dict], golden_cases: list[dict]) -> list[tuple[str, str]]:
-    pool = [(f"golden:{case['caseId']}", render_golden_case(case)) for case in golden_cases]
+def _base_pool(
+    b2_records: list[dict], golden_cases: list[dict], extra_bases: list[dict] | None = None
+) -> list[tuple[str, str]]:
+    """Benign regions to embed payloads into: golden DATA regions rendered as the note
+    composer renders them, plus b2 and any extra benign records (e.g. b1)."""
+    pool = [
+        (f"golden:{case['caseId']}:{key}", text)
+        for case in golden_cases
+        for key, text in render_production_regions(case)
+    ]
     pool += [(f"b2:{record['id']}", record["text"]) for record in b2_records]
+    pool += [(str(record["id"]), record["text"]) for record in extra_bases or []]
     return sorted(pool)
 
 
@@ -649,9 +658,14 @@ def _boundary_region(
     return region, ids, start
 
 
-def build_c2(payloads: list[dict], b2_records: list[dict], golden_cases: list[dict]) -> list[dict]:
+def build_c2(
+    payloads: list[dict],
+    b2_records: list[dict],
+    golden_cases: list[dict],
+    extra_bases: list[dict] | None = None,
+) -> list[dict]:
     """Every payload under five carriers; deterministic given the inputs."""
-    pool = _base_pool(b2_records, golden_cases)
+    pool = _base_pool(b2_records, golden_cases, extra_bases)
     records: list[dict] = []
     for payload in sorted(payloads, key=lambda p: p["id"]):
         pid, text = payload["id"], payload["text"]
@@ -784,7 +798,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--fresh", action="store_true", help="ignore <out>/b2_raw.jsonl")
+    parser.add_argument(
+        "--no-generate",
+        action="store_true",
+        help="build c2 only; never contact LM Studio (no b2)",
+    )
+    parser.add_argument(
+        "--bases-jsonl",
+        type=Path,
+        action="append",
+        default=[],
+        help="extra benign records (contract JSONL) to embed payloads into",
+    )
     args = parser.parse_args(argv)
+    extra_bases = [r for path in args.bases_jsonl for r in read_jsonl(path) if r["label"] == 0]
+    if args.no_generate:
+        args.out.mkdir(parents=True, exist_ok=True)
+        payloads = load_payloads()
+        c2 = build_c2(payloads, [], load_golden_cases(), extra_bases)
+        write_jsonl(args.out / "c2.jsonl", c2)
+        print(
+            json.dumps(
+                {"c2": len(c2), "bases": len(_base_pool([], load_golden_cases(), extra_bases))}
+            )
+        )
+        return 0
 
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -824,7 +862,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     write_jsonl(out / "b2_dropped.jsonl", dropped)
     payloads = load_payloads()
-    c2 = build_c2(payloads, b2, load_golden_cases())
+    c2 = build_c2(payloads, b2, load_golden_cases(), extra_bases)
     write_jsonl(out / "b2.jsonl", b2)
     write_jsonl(out / "c2.jsonl", c2)
     manifest = build_manifest(out, b2, c2, stats, payloads)
