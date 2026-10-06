@@ -438,11 +438,13 @@ class _Http:
 
     async def post(self, url, json=None, headers=None, timeout=None):  # noqa: ANN001
         self.calls.append({"url": url, "json": json})
+        sent = json.get("regions") or json.get("source_regions") or []
+        echo = {"screened_regions": [r["key"] for r in sent]}
         if url.endswith("/screen/inbound"):
-            return _Resp({"decision": "allow", "reasons": [], "pii_spans": []})
+            return _Resp({"decision": "allow", "reasons": [], "pii_spans": [], **echo})
         if url.endswith("/screen/outbound"):
-            return _Resp({"decision": "allow", "reasons": []})
-        return _Resp({"is_medical": True, "confidence": 0.9})
+            return _Resp({"decision": "allow", "reasons": [], **echo})
+        return _Resp({"is_medical": True, "confidence": 0.9, **echo})
 
 
 def _wire_client(http: _Http) -> ExternalGuardrailClient:

@@ -45,6 +45,7 @@ class _Http:
                     "pii_spans": [
                         {"label": "person", "start": 0, "end": 4, "text": "John", "score": 0.9}
                     ],
+                    "screened_regions": [r["key"] for r in json.get("regions", [])],
                 }
             )
         return _Resp({"is_medical": True, "confidence": 0.9, "reasoning": "clinical"})

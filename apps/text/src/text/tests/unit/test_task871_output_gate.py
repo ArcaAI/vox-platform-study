@@ -200,7 +200,14 @@ def _client(http: Any, **posture: Any) -> ExternalGuardrailClient:
 class TestScreenOutputClient:
     @pytest.mark.asyncio
     async def test_posts_response_and_source_to_the_outbound_screen(self) -> None:
-        http = _RecordingHttp({"decision": "allow", "direction": "outbound", "reasons": []})
+        http = _RecordingHttp(
+            {
+                "decision": "allow",
+                "direction": "outbound",
+                "reasons": [],
+                "screened_regions": ["user"],  # TASK-1047: the coverage echo
+            }
+        )
         client = _client(http)
 
         verdict = await client.screen_output(

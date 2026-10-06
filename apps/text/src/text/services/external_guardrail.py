@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from hope_obs import outbound_context_headers
+from prometheus_client import Counter
 
 from text.core.guardrail_posture import GuardrailPosture, resolve_posture
 from text.core.logging import get_logger
@@ -39,6 +40,41 @@ _RETRYABLE_STATUSES = frozenset({502, 503, 504})
 # propagated: guardrail already waited its full judge budget and does not retry
 # a judgement, so this client does not either.
 _JUDGE_TIMED_OUT_MARKER = "undetermined (timeout)"
+
+
+# The verdict's ``error`` when guardrail answered a regions call without echoing every
+# region it was sent (TASK-1047 FC-5). The REASON stays ``GUARDRAIL_UNAVAILABLE_REASON``
+# so every gate maps it to the same retryable 503 as an outage: nothing was judged.
+GUARDRAIL_COVERAGE_MISSING_ERROR = "external_guardrail_screen_coverage_missing"
+
+SCREEN_COVERAGE_MISSING = Counter(
+    "text_egress_screen_coverage_missing_total",
+    "Regions verdicts failed closed because guardrail did not echo every region sent",
+    ["call"],
+)
+
+
+def _coverage_missing(payload: dict[str, Any], regions: list[dict[str, str]]) -> int | None:
+    """``None`` when every region key sent is in ``screened_regions``; else the gap.
+
+    A guardrail that predates the regions API ignores ``regions`` and screens an
+    empty ``text``; its "allow" inspected nothing. So the echo is the proof of
+    coverage: an ABSENT or malformed ``screened_regions`` covers nothing, even for
+    an empty ``regions`` list (the gap is then 0, and still a failure). An empty
+    list sent with ``screened_regions: []`` echoed is covered.
+    """
+    sent = {region["key"] for region in regions}
+    screened = payload.get("screened_regions")
+    if not isinstance(screened, list):
+        return len(sent)
+    missing = sent - {str(key) for key in screened}
+    return len(missing) if missing else None
+
+
+def _undetermined(call: str, missing: int) -> None:
+    """Log (the COUNT, never text) and count a coverage failure."""
+    SCREEN_COVERAGE_MISSING.labels(call=call).inc()
+    logger.error("text.egress.screen_coverage_missing", call=call, missing=missing)
 
 
 def _judge_timed_out(response: httpx.Response) -> bool:
@@ -171,6 +207,8 @@ class ExternalGuardrailClient:
         """Moderate ``prompt`` — or, from the egress gate, ``regions`` — under the posture.
 
         ``regions`` (TASK-1047 FC-5, OD-5) are the data regions ``[{key, text}]``;
+        a verdict that does not echo every key in ``screened_regions`` is an outage
+        (fail closed, ``GUARDRAIL_COVERAGE_MISSING_ERROR``);
         guardrail judges them window by window and caches each window's verdict
         (FC-7), so this client keeps NO verdict cache of its own: a whole-text key
         missed on every live flush anyway (the transcript grows), was a bare sha256
@@ -196,6 +234,17 @@ class ExternalGuardrailClient:
             text = ""
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            if regions is not None:
+                missing = _coverage_missing(payload, regions)
+                if missing is not None:
+                    _undetermined("medical", missing)
+                    return {
+                        "allowed": False,
+                        "is_medical": False,
+                        "confidence": 0.0,
+                        "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                        "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                    }
             is_medical = bool(payload.get("is_medical", False))
             return {
                 "allowed": is_medical,
@@ -247,7 +296,8 @@ class ExternalGuardrailClient:
         ``source_regions`` (TASK-1047 FC-5: the untrusted regions the response was
         generated FROM — without them that check is reported ``skipped``, never
         ``pass``) and containment-echo detection. Guardrail windows the response
-        itself (OD-9). Guardrail's own decision is fail-CLOSED: a check that could not
+        itself (OD-9). With ``source_regions``, a verdict whose ``screened_regions``
+        does not echo every key sent is an outage, never an "allow" (TASK-1047). Guardrail's own decision is fail-CLOSED: a check that could not
         run yields ``decision: "block"``.
 
         The verdict shape mirrors :meth:`validate` so both halves of the gate read
@@ -263,6 +313,15 @@ class ExternalGuardrailClient:
         posture = resolve_posture(self._platform_posture(), tenant_policy)
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            if source_regions is not None:
+                missing = _coverage_missing(payload, source_regions)
+                if missing is not None:
+                    _undetermined("outbound", missing)
+                    return {
+                        "allowed": False,
+                        "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                        "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                    }
             decision = payload.get("decision")
             if decision not in ("allow", "block"):
                 return {"allowed": False, "reason": "malformed_verdict", "raw": payload}
@@ -303,7 +362,9 @@ class ExternalGuardrailClient:
         extraction run concurrently guardrail-side. The verdict shape mirrors
         :meth:`screen_output` — ``allowed``, ``reason`` (a check NAME, never text),
         ``raw`` — plus ``pii_spans`` (``[{label, start, end, text, score, region}]``,
-        offsets relative to the named region's text). The span values are PHI: they
+        offsets relative to the named region's text). A verdict whose
+        ``screened_regions`` does not echo every key sent is an outage, never an
+        "allow" (TASK-1047). The span values are PHI: they
         exist only so the caller can replace them, and are never logged here. No
         containment envelope is requested (``wrap: false``): the caller sends its own
         prompt.
@@ -311,6 +372,15 @@ class ExternalGuardrailClient:
         posture = self._platform_posture()
 
         def _parse(payload: dict[str, Any]) -> dict[str, Any]:
+            missing = _coverage_missing(payload, regions)
+            if missing is not None:
+                _undetermined("inbound", missing)
+                return {
+                    "allowed": False,
+                    "reason": GUARDRAIL_UNAVAILABLE_REASON,
+                    "pii_spans": [],
+                    "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
+                }
             decision = payload.get("decision")
             spans = payload.get("pii_spans")
             if decision not in ("allow", "block") or not isinstance(spans, list):
