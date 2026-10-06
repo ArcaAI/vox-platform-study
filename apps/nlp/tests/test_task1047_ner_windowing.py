@@ -16,6 +16,8 @@ from typing import Any
 
 import pytest
 
+from nlp.services.ner_windowing import plan_ner_windows
+
 TENANT = "11111111-1111-1111-1111-111111111111"
 MODEL = "some/gliner2-model"
 
@@ -176,10 +178,21 @@ def test_cut_prefers_whitespace_in_the_last_tenth_of_the_window():
     chars[3500] = " "  # outside the last 10% — ignored
     windows = plan_ner_windows("".join(chars), 4000, 256)
     assert windows[0] == (0, 3701)
-    assert windows[1][0] == 3701 - 256
+    # The overlap [3445, 3701) holds a space at 3500: the next window starts after it,
+    # never mid-word (a fragment of a different label would otherwise survive the merge).
+    assert windows[1][0] == 3501
     for start, end in windows:
         assert end - start <= 4256
     assert windows[-1][1] == 9000
+
+
+def test_a_window_never_starts_mid_word_when_the_overlap_has_whitespace():
+    from nlp.services.ner_windowing import plan_ner_windows
+
+    text = " ".join(f"word{i:05d}" for i in range(3000))  # 10-char tokens, ~30k chars
+    for start, end in plan_ner_windows(text, 4000, 256)[1:]:
+        assert text[start - 1].isspace(), (start, text[start - 5 : start + 5])
+        assert end - start <= 4256
 
 
 # ── merge ────────────────────────────────────────────────────────────────
@@ -286,9 +299,9 @@ def test_a_20k_text_is_windowed_rebased_and_merged(client, monkeypatch):
     response = client.post("/api/v1/classify/tokens", json=_body(text))
 
     assert response.status_code == 200
-    assert runtime.texts == [text[s:e] for s, e in EXPECTED_WINDOWS]
+    assert runtime.texts == [text[s:e] for s, e in plan_ner_windows(text, 4000, 256)]
     assert all(len(window) <= 4256 for window in runtime.texts)
-    assert NLP_NER_WINDOWS_TOTAL._value.get() == before + len(EXPECTED_WINDOWS)
+    assert NLP_NER_WINDOWS_TOTAL._value.get() == before + len(plan_ner_windows(text, 4000, 256))
 
     body = response.json()
     got = [
@@ -318,7 +331,7 @@ def test_a_misconfigured_window_pair_runs_on_the_defaults(client, monkeypatch):
     _install(monkeypatch, runtime)
     text = _long_text()
     assert client.post("/api/v1/classify/tokens", json=_body(text)).status_code == 200
-    assert runtime.texts == [text[s:e] for s, e in EXPECTED_WINDOWS]
+    assert runtime.texts == [text[s:e] for s, e in plan_ner_windows(text, 4000, 256)]
 
 
 def test_over_max_request_chars_is_413_without_loading_a_model(client, monkeypatch):

@@ -43,13 +43,20 @@ def plan_ner_windows(text: str, window_chars: int, overlap_chars: int) -> list[W
     A window's nominal end is ``window_chars`` past where the previous one was
     cut; the cut prefers whitespace, searched backward over the last 10% of the
     window (hard cut if none). Every window after the first starts
-    ``overlap_chars`` before the previous cut.
+    ``overlap_chars`` before the previous cut, moved forward past the first
+    whitespace in the overlap so it never opens mid-word (a fragment labelled
+    differently from the full span would survive the merge).
     """
     n = len(text)
     windows: list[Window] = []
     core = 0
     while True:
         start = max(0, core - overlap_chars)
+        if start > 0:
+            for i in range(start, core):
+                if text[i].isspace():
+                    start = i + 1
+                    break
         if n - core <= window_chars:
             windows.append((start, n))
             return windows
