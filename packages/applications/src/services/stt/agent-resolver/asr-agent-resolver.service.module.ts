@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { AgentServiceModule } from '../../agent/agent.service.module';
 import { AiProviderConnectionServiceModule } from '../../ai-provider-connection/ai-provider-connection.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { AsrAgentResolverService } from './asr-agent-resolver.service';
 import { GoverningWorkflowAsrReader } from './governing-workflow-asr';
 
@@ -14,9 +15,12 @@ import { GoverningWorkflowAsrReader } from './governing-workflow-asr';
  * TASK-1002 — `GoverningWorkflowAsrReader` (tier 2: the consultation's governing workflow) reads
  * the consultation / workflow-run / workflow-definition / agent repositories, hence
  * `CoreDatabaseModule`.
+ *
+ * TASK-1048 (OD-2) — `EffectiveSettingsModule` backs the platform default speaker-embedding model
+ * (`stt.diarization.defaultEmbeddingModelSlug`, tenant → SYSTEM).
  */
 @Module({
-  imports: [AgentServiceModule, AiProviderConnectionServiceModule, CoreDatabaseModule],
+  imports: [AgentServiceModule, AiProviderConnectionServiceModule, CoreDatabaseModule, EffectiveSettingsModule],
   providers: [AsrAgentResolverService, GoverningWorkflowAsrReader],
   exports: [AsrAgentResolverService],
 })
