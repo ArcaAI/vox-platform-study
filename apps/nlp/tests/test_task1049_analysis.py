@@ -155,3 +155,15 @@ def test_window_fp_by_length_bucket() -> None:
     assert (by["<500"].flagged, by["<500"].total) == (1, 1)
     assert (by["500-1499"].flagged, by["500-1499"].total) == (1, 1)
     assert (by[">=1500"].flagged, by[">=1500"].total) == (0, 1)
+
+
+def test_report_ignores_appledouble_sidecars(tmp_path: Path) -> None:
+    import json
+
+    import bench_injection_classifiers as bench
+
+    row = {"id": "a:0", "set": "a", "split": "test", "label": 0, "meta": {}, "scores": [0.1]}
+    (tmp_path / "m.jsonl").write_text(json.dumps(row))
+    (tmp_path / "m.meta.json").write_text(json.dumps({"name": "m", "default_threshold": 0.5}))
+    (tmp_path / "._m.meta.json").write_bytes(b"\x00\x05\x16\x07\xb0 binary resource fork")
+    assert list(bench._load_scores(tmp_path)) == ["m"]

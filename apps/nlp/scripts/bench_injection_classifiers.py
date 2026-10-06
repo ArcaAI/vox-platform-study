@@ -372,6 +372,8 @@ def cmd_latency_all(a: argparse.Namespace) -> int:
 def _load_scores(scores_dir: Path) -> dict[str, tuple[dict, list[dict]]]:
     out: dict[str, tuple[dict, list[dict]]] = {}
     for meta_path in sorted(scores_dir.glob("*.meta.json")):
+        if meta_path.name.startswith("._"):  # macOS AppleDouble sidecar on exFAT volumes
+            continue
         meta = json.loads(meta_path.read_text())
         rows_path = scores_dir / f"{meta['name']}.jsonl"
         with rows_path.open() as fh:
