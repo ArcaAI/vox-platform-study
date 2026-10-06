@@ -112,6 +112,16 @@ def test_classify_text_over_bound_is_413(client, monkeypatch):
     _assert_413(client.post("/api/v1/classify/text", json=body), 50)
 
 
+def test_classify_text_multi_label_over_bound_is_413(client, monkeypatch):
+    import nlp.api.v1.rest.classify as classify
+    from nlp.core import bounds
+
+    bounds.set_bounds(max_input_chars=50)
+    monkeypatch.setattr(classify, "pinned_text_classifier", _boom_acquire)
+    body = {"text": "x" * 51, "model_name": MODEL}
+    _assert_413(client.post("/api/v1/classify/text/multi-label", json=body), 50)
+
+
 def test_input_exactly_at_the_bound_is_served(client, monkeypatch):
     import nlp.api.v1.rest.guard as guard
     from nlp.core import bounds

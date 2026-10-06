@@ -175,6 +175,7 @@ async def classify_text_multi_label(
     cache as `/classify/text` — the model IS the taxonomy; nothing is
     invented here.
     """
+    enforce_input_cap("classify_text_multi_label", request.text)
     # model_name (gateway-injected AiModel.sourceUri) is required;
     # a missing/unloadable model fails closed with HTTP 503, mirroring
     # /classify/text's posture exactly.
