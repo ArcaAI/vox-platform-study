@@ -119,12 +119,17 @@ class RssGuard:
         on_exceed,
         sys_free_reader=None,
         min_sys_free_pct: float = 0.0,
+        swap_reader=None,
+        max_swap_growth_mib: float = float("inf"),
     ) -> None:
         self.ceiling_mib = ceiling_mib
         self.reader = reader
         self.on_exceed = on_exceed
         self.sys_free_reader = sys_free_reader
         self.min_sys_free_pct = min_sys_free_pct
+        self.swap_reader = swap_reader
+        self.max_swap_growth_mib = max_swap_growth_mib
+        self._swap_base: float | None = None
         self.peak_mib = 0.0
         self._fired = False
 
@@ -134,7 +139,13 @@ class RssGuard:
         low_system = (
             self.sys_free_reader is not None and self.sys_free_reader() < self.min_sys_free_pct
         )
-        if (rss > self.ceiling_mib or low_system) and not self._fired:
+        swap_grew = False
+        if self.swap_reader is not None:
+            swap = self.swap_reader()
+            if self._swap_base is None:
+                self._swap_base = swap
+            swap_grew = swap - self._swap_base > self.max_swap_growth_mib
+        if (rss > self.ceiling_mib or low_system or swap_grew) and not self._fired:
             self._fired = True
             self.on_exceed(rss)
 
@@ -156,6 +167,12 @@ def _sys_available_pct() -> float:
     return 100.0 * vm.available / vm.total
 
 
+def _swap_used_mib() -> float:
+    import psutil
+
+    return psutil.swap_memory().used / (1024 * 1024)
+
+
 def _guard(a: argparse.Namespace) -> RssGuard:
     return RssGuard(
         ceiling_mib=a.max_rss_mib,
@@ -163,6 +180,8 @@ def _guard(a: argparse.Namespace) -> RssGuard:
         on_exceed=_hard_stop,
         sys_free_reader=_sys_available_pct,
         min_sys_free_pct=a.min_sys_free_pct,
+        swap_reader=_swap_used_mib,
+        max_swap_growth_mib=a.max_swap_growth_mib,
     )
 
 
@@ -503,6 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-rss-mib", type=float, default=4608)
     s.add_argument("--min-free-pct", type=int, default=35)
     s.add_argument("--min-sys-free-pct", type=float, default=15.0)
+    s.add_argument("--max-swap-growth-mib", type=float, default=1024)
     s.add_argument("--force", action="store_true")
     s.set_defaults(fn=cmd_score)
     lt = sub.add_parser("latency")
@@ -514,6 +534,7 @@ def build_parser() -> argparse.ArgumentParser:
     lt.add_argument("--max-rss-mib", type=float, default=4608)
     lt.add_argument("--min-free-pct", type=int, default=35)
     lt.add_argument("--min-sys-free-pct", type=float, default=15.0)
+    lt.add_argument("--max-swap-growth-mib", type=float, default=1024)
     lt.set_defaults(fn=cmd_latency)
     la = sub.add_parser("latency-all")
     la.add_argument("--sets", required=True)

@@ -144,3 +144,18 @@ def test_guard_also_stops_when_the_system_runs_low() -> None:
     for _ in range(4):
         guard.check()
     assert fired == [500.0]  # fired once, on the first reading below 15 %
+
+
+def test_guard_stops_when_swap_grows_during_the_run() -> None:
+    fired: list[float] = []
+    swap = iter([13_700.0, 14_000.0, 14_800.0, 15_000.0])
+    guard = bench.RssGuard(
+        ceiling_mib=100_000,
+        reader=lambda: 700.0,
+        on_exceed=fired.append,
+        swap_reader=lambda: next(swap),
+        max_swap_growth_mib=1024,
+    )
+    for _ in range(4):
+        guard.check()
+    assert fired == [700.0]  # baseline 13,700; 14,800 is +1,100 > 1,024
