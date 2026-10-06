@@ -16,6 +16,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resolvingPointers } from './compose-spy';
+
+// TASK-1047 FC-1 — the system message carries POINTERS and the values travel as data blocks; this
+// suite is about how each value RESOLVES, so it reads the system with its pointers resolved
+// (`governedSystemPrompt` is the raw one).
 
 const V1_PRE_SUMMARY_BODY = [
   '- **Department:** {{context.current_department}}',
@@ -35,7 +40,8 @@ const mockDepartmentRepository = { findById: vi.fn() };
 
 async function getService(cls?: { get: (key: string) => unknown }) {
   const { PromptAssemblyService } = await import('../prompt-assembly.service');
-  return new PromptAssemblyService(
+  return resolvingPointers(
+    new PromptAssemblyService(
     mockPromptResolutionService as any,
     mockPromptTemplateRepository as any,
     mockDnaWritingStyleRepository as any,
@@ -43,6 +49,7 @@ async function getService(cls?: { get: (key: string) => unknown }) {
     undefined, // exemplarRetriever
     undefined, // secretsService
     mockDepartmentRepository as any,
+  ),
   );
 }
 

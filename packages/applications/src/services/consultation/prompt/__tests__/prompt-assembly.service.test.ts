@@ -166,8 +166,10 @@ describe('PromptAssemblyService', () => {
         conversationLanguage: 'French',
       });
 
-      expect(result.systemPrompt).toContain('French');
-      expect(result.systemPrompt).not.toContain('{{context.conversation_language}}');
+      // TASK-1047 FC-1 — a pointer in the system message, the value a data block.
+      expect(result.systemPrompt).toContain('[see the context_conversation_language data section below]');
+      expect(result.systemPrompt).not.toContain('French');
+      expect(result.userPrompt).toContain('<<<EXTERNAL_DATA section="context_conversation_language">>>\n--- context_conversation_language ---\nFrench');
     });
 
     it('should substitute {style_DNA_*} when dnaStyleId is provided', async () => {
@@ -180,8 +182,10 @@ describe('PromptAssemblyService', () => {
         dnaStyleId: 'dna-001',
       });
 
-      expect(result.systemPrompt).toContain('Use bullet points. Be concise.');
-      expect(result.systemPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
+      // TASK-1047 D1 — the style is DATA in STYLE REFERENCE; the slot points at it.
+      expect(result.systemPrompt).toContain('[see the style_reference data section below]');
+      expect(result.systemPrompt).not.toContain('Use bullet points. Be concise.');
+      expect(result.userPrompt).toContain('Use bullet points. Be concise.');
     });
 
     // The styleText column is Vault-Transit ciphertext (plaintext
@@ -202,8 +206,9 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(mockDnaWritingStyleRepository.findByIdWithDecryptedFields).toHaveBeenCalledWith('dna-001', mockSecretsService);
-      expect(result.systemPrompt).toContain('Formal prose, no abbreviations.');
-      expect(result.systemPrompt).not.toContain('{{context.style_DNA_doctor_department_surgery}}');
+      expect(result.systemPrompt).toContain('[see the style_reference data section below]');
+      expect(result.systemPrompt).not.toContain('Formal prose, no abbreviations.');
+      expect(result.userPrompt).toContain('Formal prose, no abbreviations.');
     });
 
     // ArcaAI governed templates declare NO {style_DNA_*} placeholder,
@@ -231,9 +236,12 @@ describe('PromptAssemblyService', () => {
         dnaStyleId: 'dna-001',
       });
 
-      // Trusted style INSTRUCTION, so it rides the system message — never the data sections.
-      expect(result.systemPrompt).toContain('Terse SOAP, active voice.');
-      expect(result.userPrompt).not.toContain('Terse SOAP, active voice.');
+      // TASK-1047 D1 — the doctor's style is a per-doctor runtime value: DATA in STYLE REFERENCE,
+      // with only the static instruction about applying it in the system message.
+      expect(result.userPrompt).toContain('<<<EXTERNAL_DATA section="style_reference">>>');
+      expect(result.userPrompt).toContain('Terse SOAP, active voice.');
+      expect(result.systemPrompt).not.toContain('Terse SOAP, active voice.');
+      expect(result.systemPrompt).toContain("CLINICIAN WRITING STYLE is this clinician's own style");
     });
 
     it('should load hyperparameters from template metaData.promptConfig', async () => {
@@ -401,7 +409,7 @@ describe('PromptAssemblyService', () => {
 
       // The body names it, so it reaches the model — as a DATA section the body points at.
       expect(result.userPrompt).toContain('Previous notes: HbA1c 7.2%');
-      expect(result.systemPrompt).toContain('[see the PRIOR DRAFT');
+      expect(result.systemPrompt).toContain('[see the prior_draft data section below]');
       expect(result.systemPrompt).not.toContain('{{context.pre_summary_text}}');
       expect(result.systemPrompt).not.toContain('HbA1c 7.2%');
     });
@@ -496,7 +504,7 @@ describe('PromptAssemblyService', () => {
 
       expect(result.userPrompt).toContain('icd:J18.9');
       // The body POINTS at the section; the entities themselves are data, once, in the user message.
-      expect(result.systemPrompt).toContain('Known entities: [see the RECOGNIZED CLINICAL ENTITIES (from NER) data section below]');
+      expect(result.systemPrompt).toContain('Known entities: [see the ner_entities data section below]');
       expect(result.systemPrompt).not.toContain('icd:J18.9');
       expect(result.userPrompt.split('--- RECOGNIZED CLINICAL ENTITIES').length - 1).toBe(1);
     });
@@ -658,8 +666,8 @@ describe('PromptAssemblyService', () => {
 
       expect(result.userPrompt).toContain('Follow up in 2 weeks');
       expect(result.userPrompt).toContain('CBC within normal limits');
-      expect(result.systemPrompt).toContain('Notes: [see the CLINICIAN NOTES (case / work notes) data section below]');
-      expect(result.systemPrompt).toContain('Attachments: [see the ATTACHMENTS (lab / exam results) data section below]');
+      expect(result.systemPrompt).toContain('Notes: [see the clinician_notes data section below]');
+      expect(result.systemPrompt).toContain('Attachments: [see the attachments data section below]');
       expect(result.systemPrompt).not.toContain('Follow up in 2 weeks');
       // Each section appears exactly once.
       expect(result.userPrompt.split('--- CLINICIAN NOTES').length - 1).toBe(1);
@@ -717,7 +725,7 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(result.userPrompt).toContain('severe cough');
-      expect(result.systemPrompt).toContain('Highlights: [see the DOCTOR HIGHLIGHTS (clinician-flagged spans) data section below]');
+      expect(result.systemPrompt).toContain('Highlights: [see the doctor_highlights data section below]');
       expect(result.userPrompt.split('--- DOCTOR HIGHLIGHTS').length - 1).toBe(1);
     });
 
@@ -773,7 +781,7 @@ describe('PromptAssemblyService', () => {
       });
 
       expect(result.userPrompt).toContain('S: running soap draft');
-      expect(result.systemPrompt).toContain('Prior: [see the PRIOR DRAFT');
+      expect(result.systemPrompt).toContain('Prior: [see the prior_draft data section below]');
       expect(result.userPrompt.split('--- PRIOR DRAFT').length - 1).toBe(1);
     });
 
@@ -844,8 +852,9 @@ describe('PromptAssemblyService', () => {
       expect(result.systemPrompt).toContain('PINNED v3');
       expect(result.systemPrompt).not.toContain('MUTABLE v5');
       expect(result.systemPrompt).not.toContain('DO NOT SERVE');
-      // Variable substitution runs on the GOVERNED content, not the row.
-      expect(result.systemPrompt).toContain('English');
+      // Variable resolution runs on the GOVERNED content, not the row (TASK-1047: as a pointer + block).
+      expect(result.systemPrompt).toContain('PINNED v3: Summarize for [see the context_conversation_language data section below].');
+      expect(result.userPrompt).toContain('--- context_conversation_language ---\nEnglish');
       expect(result.systemPrompt).not.toContain('{{context.conversation_language}}');
       // Truthful provenance surfaced to callers.
       expect(result.resolvedVersionNumber).toBe(3);
