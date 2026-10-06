@@ -506,9 +506,13 @@ async def test_phi_rendered_into_the_system_prompt_never_reaches_a_cloud_provide
     )
 
     assert resp.status_code == 200, resp.text
-    # No `system_governance`: the system prompt is untrusted and screened (TASK-1047 FC-4).
+    # No `system_governance`: the system prompt is untrusted and screened (TASK-1047 FC-4), as
+    # instruction text that still blocks (FC-5b).
     assert guardrail.inbound_regions == [
-        [{"key": "system", "text": system}, {"key": "user", "text": _PROMPT}]
+        [
+            {"key": "system", "text": system, "trust": "instruction"},
+            {"key": "user", "text": _PROMPT, "trust": "instruction"},
+        ]
     ]
     sent = provider.requests[0]
     assert "Jane Roe" not in sent.system_prompt and "1980-02-03" not in sent.system_prompt

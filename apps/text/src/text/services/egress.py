@@ -38,7 +38,7 @@ from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError
 from text.core.locality import CLOUD, LOCAL, resolve_locality
 from text.core.logging import get_logger
 from text.models.requests import GenerateRequest, TextContentPart, serialize_provider_overrides
-from text.models.responses import EgressSummary
+from text.models.responses import DataFinding, EgressSummary
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.data_blocks import keyed_ranges
 from text.services.external_guardrail import (
@@ -495,7 +495,7 @@ class EgressContext:
             restored=self.restored,
             pii_leak_blocked=self.pii_leak_blocked,
             images_unredacted=self.images_unredacted,
-            guardrail_data_findings=self.data_findings,
+            guardrail_data_findings=[DataFinding.model_validate(f) for f in self.data_findings],
         )
 
     def log(self, where: str) -> None:
