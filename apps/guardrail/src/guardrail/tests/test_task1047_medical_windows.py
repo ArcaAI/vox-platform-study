@@ -357,6 +357,8 @@ async def test_route_a_settings_region_is_not_judged(plan) -> None:
     )
     assert response.is_medical is True
     assert all(OFF_SCOPE not in prompt for prompt in http.prompts)
+    # Skipped by policy is still COVERED: every region sent is echoed, or apps/text fails closed.
+    assert response.screened_regions == ["encounter_1", "context_dna_redaction_rules_text"]
 
 
 async def test_route_an_emptied_config_list_judges_every_region(plan, monkeypatch) -> None:

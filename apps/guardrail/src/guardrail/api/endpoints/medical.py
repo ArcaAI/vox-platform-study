@@ -119,7 +119,7 @@ class MedicalValidationResponse(BaseModel):
     #: and judged, in the order sent. `null` on a legacy `text` request. A caller
     #: fails closed when a key it sent is missing (version-skew guard).
     screened_regions: list[str] | None = Field(
-        default=None, description="Region keys judged (regions requests only), in order"
+        default=None, description="Region keys covered — judged, or skipped as settings by `medicalJudgeConfigRegions` — (regions requests only), in order"
     )
 
 
@@ -225,8 +225,8 @@ async def _validate_regions(
         skip = (
             await resolve_screen_policy(http_request.app.state, tenant_id)
         ).medical_judge_config_regions
-        regions = [(key, text) for key, text in regions if key not in skip]
-        result = await judge_regions(guardian_provider, regions, runner=runner, geometry=geometry)
+        judged = [(key, text) for key, text in regions if key not in skip]
+        result = await judge_regions(guardian_provider, judged, runner=runner, geometry=geometry)
         if not result["is_medical"]:
             # Which regions were off scope — keys and counts only, never text (TASK-1047 V7).
             logger.info(
