@@ -16,7 +16,21 @@ from harness.sensors.base import NEREntity
 
 
 class NlpServiceError(RuntimeError):
-    """The NLP service was unreachable or returned a non-2xx response."""
+    """The NLP service was unreachable or returned a non-2xx response.
+
+    ``status_code`` is the HTTP status when the service answered, ``None`` for
+    timeouts / transport failures.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _status_of(exc: httpx.HTTPError) -> int | None:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
+    return None
 
 
 class NlpClient:
@@ -128,7 +142,9 @@ class NlpClient:
                 resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise NlpServiceError(f"nlp classify/tokens failed: {exc}") from exc
+                raise NlpServiceError(
+                    f"nlp classify/tokens failed: {exc}", status_code=_status_of(exc)
+                ) from exc
             data = resp.json()
         return data if isinstance(data, dict) else {}
 
@@ -165,7 +181,9 @@ class NlpClient:
                 resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise NlpServiceError(f"nlp classify/text failed: {exc}") from exc
+                raise NlpServiceError(
+                    f"nlp classify/text failed: {exc}", status_code=_status_of(exc)
+                ) from exc
             return resp.json()  # type: ignore[no-any-return]
 
     @classmethod
