@@ -46,10 +46,23 @@ def metrics_client() -> Iterator[TestClient]:
     os.environ.pop("ENABLE_METRICS", None)
     _unregister_http_instrumentation()
 
+    # The claim under test is "mounted whenever metrics are ENABLED IN SETTINGS", so enable them
+    # explicitly: a developer's `.env.dev` / `.env.test` sets `OTEL_METRICS_ENABLED=false` (an alias
+    # of `metrics_enabled`), which would otherwise build the app without /metrics on that machine
+    # only. Module-scoped, so restored by hand rather than with monkeypatch.
+    from nlp.core.config import settings
+
+    service = settings.service
+    previous = service.metrics_enabled
+    service.metrics_enabled = True
+
     from nlp.app import get_app
 
-    yield TestClient(get_app())
-    _unregister_http_instrumentation()
+    try:
+        yield TestClient(get_app())
+    finally:
+        service.metrics_enabled = previous
+        _unregister_http_instrumentation()
 
 
 def _unregister_http_instrumentation() -> None:
