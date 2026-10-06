@@ -788,6 +788,26 @@ test expecting pre-FC-5b region dicts (`fae02c183`). **Out of scope, left to the
 `HF_TOKEN` read by the TASK-1049 session's in-progress `apps/nlp/scripts/injection_eval/` (2 env-sync tests), and
 the TASK-1048 null dereference in `AsrAgentResolverService.resolveFallbackAgent` (1 contract test).
 
+### 8.11 V7 — ALaaS → HOPE e2e: three governance defects that only the live path showed
+
+Setup after the reboot: ALaaS `audio-stream-svc` (its own Postgres/Redis containers restarted), web UI, the
+fake mmr agent with regenerated synthetic audio (macOS `say`), HOPE stack on `hope_1045_e2e`; e2e encounters
+drive ALaaS `/ws/consultation` for the ArcaAI tenant, Breast & Endocrine (`arcaai-bren-consultation`).
+Open → RECORDING → pause/resume → stop worked end to end; the note failed (`NOTE_GENERATION_FAILED`) until:
+
+| # | Commit | Defect (found in the live logs) | Fix |
+|---|---|---|---|
+| V7-1 | `8665398e1` | `areGoverned` cached a MISS for the verdict TTL (5 min). A fresh tenant's first call misses while its platform pieces register in the background, so every later call of that consultation — live summaries and the note — went out ungoverned and was screened as untrusted instruction text | Only PASS is cached; a miss is re-read (one indexed lookup) |
+| V7-2 | `d676ef7d7` | The note-plan path dropped the assembly's `platformPieces` (`noteComposedSystem` kept only system + governance), so the note's own CONTRACT / LANGUAGE pieces were never registered and no note plan was ever governed | `noteComposedSystem` carries them; the composer awaits `registerPlatformPieces` (which now resolves when screened) before verifying |
+| V7-3 | `d11a8041f` | The interpreter's note-plan finalizer sends the AGENT's composed system (7,083 chars) but forwarded the plan calls' `systemGovernance`, which describes the plan's system (22,021 chars) — apps/text logged `governance: mismatch`, screened and judged the system as untrusted, and the medical judge refused it | The finalizer sends governance computed for the system it sends (the same FC-6 path as every other `core.agent` call); invariant test: a claim always hashes to the text sent |
+
+Diagnostics added on the way: a governance `mismatch` now logs the received vs claimed digest prefix and the
+received length (`647a1a3d0`, never text). Product behaviour confirmed correct along the way: HOPE refuses a new
+encounter while the patient's previous consultation is still capturing (`HOPE_OPEN_FAILED`), and refuses an
+EMR event id already bound to another patient (`EXTERNAL_REF_CONFLICT`).
+Observation for follow-up: an abandoned consultation left `RECORDING` keeps its harness workflow polling
+`live-handoff` every few seconds until the idle sweep closes it.
+
 ## 9. Change History
 
 | Date | Change |
