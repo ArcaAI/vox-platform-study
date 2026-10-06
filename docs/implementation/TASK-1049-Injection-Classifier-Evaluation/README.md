@@ -203,5 +203,6 @@ _Not started — awaiting approval._
 
 | Date | Change |
 |---|---|
+| 2026-10-06 | **Owner rule: no model is loaded or changed without approval.** Lanes L2 and L3 were stopped. L2 had attempted an LM Studio load of `google/gemma-4-26b-a4b-qat`, which failed to start; nothing was generated. L3 had fetched config and tokenizer files only (13–21 MB each, no weights). Approvals: (1) load the 5 classifiers in-process on CPU in standalone scripts, one at a time, downloading to `/Volumes/aillusion/huggingface`, after a PIGuard remote-code review; (2) generate b2 ONLY with `gemma-4-e2b-it-qat`, already loaded in LM Studio — no load, unload or other model id; (3) measure latency as-is, with background load recorded. |
 | 2026-10-06 | Owner: "go" — plan and all OD recommendations approved (Sentinel v2 not added: gate not accepted). |
 | 2026-10-06 | Ticket created from the TASK-1047 OD-13 follow-up. Exploration (code paths, seed, cluster limits, model access) and research (candidates, benchmarks) done; plan and OD-1…OD-9 written. Status Pending. |
