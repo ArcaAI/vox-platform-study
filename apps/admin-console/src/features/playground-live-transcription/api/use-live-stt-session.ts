@@ -20,6 +20,7 @@ import { createAudioCapture, createStreamingResampler, float32ToInt16, type Audi
 import { SttWebSocketClient } from '@arcaai/vox/core';
 import { publicEnv } from '@/config/public-env';
 import { GatewayError } from '@/shared/api';
+import { useAsrDegradations, type AsrDegradation, type AsrStatusFrame } from '@/shared/sandbox/api/asr-degradation';
 import { buildStreamWsUrl, closeStreamSession, createStreamSession, refreshStreamTicket } from './client';
 import type { WsErrorPayload, WsTranscriptPayload } from './types';
 
@@ -81,6 +82,8 @@ interface SttStreamClient {
    */
   stopAndDrain?(drainTimeoutMs?: number, quietWindowMs?: number): Promise<void>;
   onTranscript(cb: (result: WsTranscriptPayload) => void): void;
+  /** Status frames — TASK-1048 reads `degraded` / `denoise_degraded` off them. Optional so partial test fakes need not stub it. */
+  onStatus?(cb: (status: AsrStatusFrame) => void): void;
   onWsError(cb: (error: WsErrorPayload) => void): void;
   onDisconnect(cb: () => void): void;
   onReconnect(cb: (attempt: number) => void): void;
@@ -144,6 +147,11 @@ export interface UseLiveSttSessionResult {
    * necessarily the 16 kHz that was requested. `null` before capture starts.
    */
   captureSampleRate: number | null;
+  /**
+   * TASK-1048 — optional stages that are OFF for this session (creation-time `warnings` plus
+   * runtime `degraded` / `denoise_degraded` frames), deduped. Kept after stop until the next start.
+   */
+  degradations: AsrDegradation[];
   start: (options: StartLiveSttOptions) => Promise<void>;
   stop: () => Promise<void>;
 }
@@ -166,6 +174,9 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
   const [transcriptGapThisSession, setTranscriptGapThisSession] = useState(false);
   const [lastGapReason, setLastGapReason] = useState<string | null>(null);
   const [captureSampleRate, setCaptureSampleRate] = useState<number | null>(null);
+
+  const asrDegradations = useAsrDegradations();
+  const { addWarnings, addStatusFrame, reset: resetDegradations } = asrDegradations;
 
   const statusRef = useRef<LiveSttStatus>('idle');
   useEffect(() => {
@@ -264,6 +275,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
       setAudioLostThisSession(false);
       setTranscriptGapThisSession(false);
       setLastGapReason(null);
+      resetDegradations();
       rowIdRef.current = 0;
 
       // 1. Microphone first — a denied prompt must not burn a session
@@ -344,6 +356,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
         return;
       }
       sessionIdRef.current = created.sessionId;
+      addWarnings(created.warnings);
       setSession({
         sessionId: created.sessionId,
         voiceProfileSeeded: created.voiceProfileSeeded ?? false,
@@ -374,6 +387,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
       wsClientRef.current = client;
 
       client.onTranscript(handleTranscript);
+      client.onStatus?.(addStatusFrame);
       client.onWsError((wsError) => {
         setError(`${wsError.message} (${wsError.code})`);
       });
@@ -487,7 +501,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
 
       setStatus('streaming');
     },
-    [handleTranscript, releaseAudio],
+    [handleTranscript, releaseAudio, addWarnings, addStatusFrame, resetDegradations],
   );
 
   const stop = useCallback(async () => {
@@ -570,6 +584,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
     transcriptGapThisSession,
     lastGapReason,
     captureSampleRate,
+    degradations: asrDegradations.items,
     start,
     stop,
   };

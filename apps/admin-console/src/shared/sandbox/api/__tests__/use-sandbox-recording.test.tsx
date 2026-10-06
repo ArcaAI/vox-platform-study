@@ -35,6 +35,10 @@ class FakeSttClient {
   async stopAndDrain() {
     this.drained = true;
   }
+  statusCb: ((frame: unknown) => void) | null = null;
+  onStatus(cb: (frame: unknown) => void) {
+    this.statusCb = cb;
+  }
   onTranscript() {}
   onWsError() {}
   onDisconnect() {}
@@ -56,11 +60,13 @@ const { useSandboxRecording } = await import('../use-sandbox-recording');
 
 const trackStop = vi.fn();
 let calls: Array<{ method: string; path: string; body?: unknown }> = [];
+let createExtra: Record<string, unknown> | null = null;
 
 beforeEach(() => {
   wsInstances.length = 0;
   captureCallback = null;
   calls = [];
+  createExtra = null;
   trackStop.mockReset();
   captureDestroy.mockReset();
   vi.stubGlobal(
@@ -83,7 +89,10 @@ beforeEach(() => {
       const url = new URL(String(input), 'http://test.local');
       calls.push({ method: init?.method ?? 'GET', path: url.pathname, body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined });
       if (init?.method === 'DELETE') return new Response(null, { status: 204 });
-      return Response.json({ sessionId: 'stt-1', status: 'active', wsUrl: '/ws/stt/stream', ticket: 'tk-1', ticketExpiresAt: Date.now() + 30_000 }, { status: 201 });
+      return Response.json(
+        { sessionId: 'stt-1', status: 'active', wsUrl: '/ws/stt/stream', ticket: 'tk-1', ticketExpiresAt: Date.now() + 30_000, ...(createExtra ?? {}) },
+        { status: 201 },
+      );
     }),
   );
 });
@@ -127,6 +136,18 @@ describe('useSandboxRecording', () => {
     expect(captureDestroy).toHaveBeenCalled();
     expect(result.current.status).toBe('idle');
     expect(result.current.sessionId).toBeNull();
+  });
+
+  it('collects creation warnings and runtime degraded frames for the Test tab banner (TASK-1048)', async () => {
+    createExtra = { warnings: [{ code: 'VAD_MODEL_MISSING', stage: 'vad', severity: 'WARNING', message: 'm', agentSlug: 'a' }] };
+    const { result } = renderHook(() => useSandboxRecording());
+    await act(async () => {
+      await result.current.start({ tenantId: 't-1' });
+    });
+    expect(result.current.degradations.map((d) => d.key)).toEqual(['VAD_MODEL_MISSING']);
+    act(() => wsInstances[0]!.statusCb?.({ type: 'status', status: 'degraded', reason: 'diarization_unavailable' }));
+    act(() => wsInstances[0]!.statusCb?.({ type: 'status', status: 'degraded', reason: 'diarization_unavailable' }));
+    expect(result.current.degradations.map((d) => d.key)).toEqual(['VAD_MODEL_MISSING', 'diarization_unavailable']);
   });
 
   it('reports a refused microphone and never opens a session', async () => {

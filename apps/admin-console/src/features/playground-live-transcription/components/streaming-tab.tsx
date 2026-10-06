@@ -8,6 +8,7 @@ import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent, CardHeader } from '@arcaai/ui/components/shadcn/card';
 import { EmptyState } from '@/shared/state/empty-state';
+import { AsrDegradationBanner } from '@/shared/sandbox/components/asr-degradation-banner';
 import type { LiveSttStatus, UseLiveSttSessionResult } from '../api';
 
 const STATUS_META: Record<LiveSttStatus, { label: string; role: StatusColorRole }> = {
@@ -243,6 +244,7 @@ export function TranscriptPane({ live }: { live: UseLiveSttSessionResult }) {
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
+        <AsrDegradationBanner items={live.degradations ?? []} />
         <ol
           ref={scrollRef}
           role="log"

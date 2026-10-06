@@ -511,6 +511,40 @@ function asrInheritHints(profile: CatalogueAsrProfile | null): Record<string, st
 }
 
 /**
+ * TASK-1048 — an ASR agent that enables an optional stage without naming its model no longer fails
+ * at session time: the stage degrades (diarization → the platform default speaker model, else
+ * skipped; VAD → loudness-based segmentation) and transcription still runs. Say so while the admin
+ * is configuring. The slug is platform-managed, so the remedy names a platform admin.
+ */
+function AsrPrerequisiteNotices({ value }: { value: Value }) {
+  const diarizationMissing = getPath(value, ['audioFrontEnd', 'diarization', 'enabled']) === true && !getPath(value, ['audioFrontEnd', 'diarization', 'embeddingModelSlug']);
+  const vadMissing = getPath(value, ['audioFrontEnd', 'vad', 'enabled']) === true && !getPath(value, ['audioFrontEnd', 'vad', 'modelSlug']);
+  if (!diarizationMissing && !vadMissing) return null;
+  return (
+    <>
+      {diarizationMissing ? (
+        <Alert role="status" data-testid="asr-prereq-diarization" className="[&>svg]:text-warning">
+          <IconAlertTriangle aria-hidden />
+          <AlertTitle>No speaker model named for diarization</AlertTitle>
+          <AlertDescription>
+            Speaker labels will use the platform default speaker model if one is configured; otherwise diarization is skipped at session time and transcription still runs. A platform admin sets the speaker model.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {vadMissing ? (
+        <Alert role="status" data-testid="asr-prereq-vad" className="[&>svg]:text-warning">
+          <IconAlertTriangle aria-hidden />
+          <AlertTitle>No voice-activity model named</AlertTitle>
+          <AlertDescription>
+            Speech will be split by loudness instead of by a voice-activity model, and transcription still runs. A platform admin sets the voice-activity model.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </>
+  );
+}
+
+/**
  * Schema-driven parameters form over `AGENT_PARAMETER_SCHEMAS[task]` — the same contract the
  * gateway validates against, so a value the form can express is a value the server accepts.
  * Untouched knobs stay ABSENT (the runtime default wins), never written as `undefined`.
@@ -573,6 +607,7 @@ export function ParametersForm({
   return (
     <div className="flex flex-col gap-4">
       {profileSummary ? <p className="text-muted-foreground text-xs">{profileSummary}</p> : null}
+      {isSpeechToText && scope === 'all' ? <AsrPrerequisiteNotices value={value} /> : null}
       <SchemaFields idPrefix={idPrefix} schema={schema} path={[]} value={value} onChange={onChange} fieldHints={fieldHints} reasoningSupport={reasoningSupport} />
     </div>
   );

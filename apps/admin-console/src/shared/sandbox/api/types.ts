@@ -12,6 +12,8 @@
  * its host (the Studio already has the definition open) instead of listing definitions itself.
  */
 
+import type { AsrSessionWarningWire } from './asr-degradation';
+
 /** Contract C (INTERFACES.md §5) — per-node canvas overlay / Run-tab state. Canonical home for
  *  the type; re-exported verbatim from the public `shared/sandbox/index.ts` barrel. */
 export type SandboxNodeRunState = 'pending' | 'running' | 'ok' | 'failed' | 'skipped';
@@ -95,6 +97,8 @@ export interface SttStreamSession {
   ticket: string;
   /** Epoch milliseconds. */
   ticketExpiresAt: number;
+  /** TASK-1048 — optional stages switched off for this session (never an error). */
+  warnings?: AsrSessionWarningWire[];
 }
 
 /** Body of `POST audio/transcription-jobs/stream/session` — selection is an agent slug or nothing (TASK-865). */
