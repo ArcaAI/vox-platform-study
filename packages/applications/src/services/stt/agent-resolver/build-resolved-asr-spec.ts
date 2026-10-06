@@ -33,6 +33,7 @@ import type {
   AsrSpecPostProcessing,
   AsrSpecStreaming,
   AsrSpecStreamingSemantic,
+  AsrSessionWarning,
   ResolvedAgent,
   ResolvedAgentModel,
   ResolvedAsrSpec,
@@ -62,11 +63,17 @@ import { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
  */
 export { AGENT_FALLBACK_DEFAULTS } from '@arcaai/workflow-contract';
 
-/** Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine). */
+/**
+ * Raised when a resolved agent cannot become a runnable spec (fail closed — never a guessed engine).
+ *
+ * TASK-1048 (owner decision OD-1) — CORE only: no primary ASR model, or a primary that is not a
+ * SPEECH_TO_TEXT agent. The three optional-stage codes it used to carry
+ * (`ASR_AGENT_DIARIZATION_MODEL_MISSING`, `…_DIARIZATION_BACKEND_UNSUPPORTED`, `…_VAD_MODEL_MISSING`)
+ * are now DEGRADATIONS reported through {@link BuildResolvedAsrSpecInput.onWarning}; the session runs.
+ */
 export class AsrSpecBuildError extends Error {
   /** Machine-readable cause; the resolver surfaces it as the 409 body's `code`. */
-  readonly code:
-    'ASR_AGENT_UNRUNNABLE' | 'ASR_AGENT_DIARIZATION_MODEL_MISSING' | 'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED' | 'ASR_AGENT_VAD_MODEL_MISSING';
+  readonly code: 'ASR_AGENT_UNRUNNABLE';
 
   constructor(message: string, code: AsrSpecBuildError['code'] = 'ASR_AGENT_UNRUNNABLE') {
     super(message);
@@ -134,6 +141,28 @@ export interface BuildResolvedAsrSpecInput {
    * (`AsrAgentResolverService`) owns the logger.
    */
   onProfileRejection?: (rejection: AsrProfileRejection) => void;
+  /**
+   * TASK-1048 (OD-2) — the platform default speaker-embedding model
+   * (`stt.diarization.defaultEmbeddingModelSlug`, tenant → SYSTEM on absence), already resolved
+   * by the caller as a SPEAKER_EMBEDDING row visible to the tenant. Used ONLY by a chain whose
+   * agent enables diarization and names no `embeddingModelSlug` (see
+   * {@link needsPlatformEmbeddingDefault}); an agent that NAMED a slug never borrows it, because
+   * a different model is a different vector space. Absent/`null` ⇒ such a chain degrades.
+   */
+  defaultEmbeddingModel?: ResolvedAgentModel | null;
+  /**
+   * TASK-1048 (OD-1) — receives each OPTIONAL stage this build switched off instead of refusing.
+   * De-duplicated per build (the model-level fallback chain re-builds the primary's front end).
+   * A callback, like `onProfileRejection`, so this module stays pure and the wire spec is
+   * untouched — the caller decides where warnings go.
+   */
+  onWarning?: (warning: AsrSessionWarning) => void;
+}
+
+/** TASK-1048 — the per-chain degradation inputs `buildAsrSpecCore` threads through. */
+export interface AsrSpecDegradeOptions {
+  defaultEmbeddingModel?: ResolvedAgentModel | null;
+  onWarning?: (warning: AsrSessionWarning) => void;
 }
 
 type Rec = Record<string, unknown>;
@@ -285,9 +314,9 @@ function audioFrontEnd(parameters: Rec): AsrSpecAudioFrontEnd {
     denoise: { enabled: level !== 'off', level },
     diarization: {
       enabled: bool(diarization.enabled, false),
-      // TASK-980 — `embedding` is the only backend left. Anything else an ENABLED stage stored was
-      // already refused by `assertDiarizationBackendSupported`; a disabled stage runs nothing, so
-      // whatever it stored there is nothing to honour.
+      // TASK-980 — `embedding` is the only backend left. Anything else an ENABLED stage stored is
+      // switched OFF by `buildAsrSpecCore` (TASK-1048, `unsupportedDiarizationBackend`); a disabled
+      // stage runs nothing, so whatever it stored there is nothing to honour.
       backend: 'embedding',
       maxSpeakers: num(diarization.maxSpeakers),
       // TASK-887 — replaces the platform key `stt.voiceProfile.minSimilarity`. OMITTED when the
@@ -596,81 +625,84 @@ function instruction(agent: ResolvedAgent, profile: AiModelAsrProfile, sources: 
  * A published agent version is immutable stored content, so one may still declare
  * `backend: 'sortformer'` (or any other value the schema no longer admits). Coercing that to
  * `embedding` — which is what `oneOf(…, 'embedding')` did — would silently run a diarizer the agent
- * never declared, so an ENABLED stage whose stored backend is present and is not `embedding` is
- * REFUSED. A disabled stage runs nothing and is left alone; an absent backend means `embedding`.
+ * never declared. TASK-980 refused the whole session for it; TASK-1048 (OD-1) switches the STAGE
+ * off instead and reports `DIARIZATION_BACKEND_UNSUPPORTED`. A disabled stage runs nothing and is
+ * left alone; an absent backend means `embedding`.
  *
  * Read from the RAW parameters, before `audioFrontEnd` normalises them, because that is the only
- * place the stored value still exists.
+ * place the stored value still exists. Returns the stored backend when it is unsupported.
  */
-function assertDiarizationBackendSupported(agent: ResolvedAgent, parameters: Rec): void {
+function unsupportedDiarizationBackend(parameters: Rec): string | null {
   const diarization = rec(rec(parameters.audioFrontEnd).diarization);
   const backend = diarization.backend;
-  if (!bool(diarization.enabled, false) || backend === undefined || backend === 'embedding') return;
-  const stored = typeof backend === 'string' ? `'${backend}'` : JSON.stringify(backend);
-  throw new AsrSpecBuildError(
-    `Agent '${agent.slug}' v${agent.versionNumber} enables speaker diarization with the ${stored} backend, ` +
-      `which this platform cannot run: the \`sortformer\` backend was retired (TASK-980) and \`embedding\` is the only supported ` +
-      `backend. Publish a new version with \`audioFrontEnd.diarization.backend\` set to \`embedding\` (and an ` +
-      `\`embeddingModelSlug\`), or switch diarization off.`,
-    'ASR_AGENT_DIARIZATION_BACKEND_UNSUPPORTED',
-  );
+  if (!bool(diarization.enabled, false) || backend === undefined || backend === 'embedding') return null;
+  return typeof backend === 'string' ? backend : JSON.stringify(backend);
 }
 
 /**
- * TASK-887 — an agent that turns diarization ON must NAME the embedding model.
+ * TASK-1048 (OD-2) — does `agent` need the PLATFORM default speaker-embedding model?
  *
- * This REPLACES TASK-880's `ASR_AGENT_EMBEDDING_SPACE_MISMATCH`. That guard existed because
- * the platform declared one embedding space (`stt.diarization.hfModelId`) and the
- * `UserVoiceProfile.embedding` column was `vector(256)`, so an agent binding a 192-d row
- * would have written vectors the column could not hold. Under the owner's decision the agent
- * IS the space: a profile is stored with the model that embedded it (`UserVoiceProfile.modelId`)
- * in a dimension-agnostic `vector` column, and matching only ever considers profiles from the
- * SAME model. A width mismatch is therefore impossible by construction, and there is nothing
- * left to refuse on that ground.
+ * True only for an ENABLED, supported (`embedding`) diarization stage whose agent names no
+ * `audioFrontEnd.diarization.embeddingModelSlug` and therefore materialised no `embedding` row.
+ * An agent that NAMED a slug which did not materialise is NOT eligible: the platform default is a
+ * different model, hence a different vector space, and enrolled voices would silently stop matching.
  *
- * What IS refusable is an agent that asks for diarization and names no model. Model
- * SELECTION fails closed (rule 09 §Configuration Tiers): substituting a platform default here
- * is exactly the behaviour this ticket removed, and silently diarizing without one would drop
- * every enrolled label without saying so. Since TASK-980 every enabled stage is an `embedding`
- * stage (any other stored backend is refused first), so there is no backend left to exempt.
+ * This is the successor of TASK-887's "an agent that turns diarization ON must NAME the embedding
+ * model": the agent still names the space whenever it names one; only an agent that named NONE
+ * inherits the platform's, and only because the owner decided so (OD-2) — through a governed,
+ * seeded setting, never a code default. Exported so the resolver reads that setting only when some
+ * chain will actually use it.
  */
-function assertDiarizationRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontEnd, embedding: AsrSpecModel | undefined): void {
-  if (!afe.diarization.enabled || embedding) return;
-  throw new AsrSpecBuildError(
-    `Agent '${agent.slug}' v${agent.versionNumber} enables embedding diarization but binds no speaker-embedding model. ` +
-      `Set \`audioFrontEnd.diarization.embeddingModelSlug\` to a SPEAKER_EMBEDDING model visible to this tenant — ` +
-      `it is the vector space this agent diarizes in and the space its users enrol their voice profiles in.`,
-    'ASR_AGENT_DIARIZATION_MODEL_MISSING',
-  );
+export function needsPlatformEmbeddingDefault(agent: ResolvedAgent): boolean {
+  const parameters = rec(agent.compiledConfig.parameters);
+  const diarization = rec(rec(parameters.audioFrontEnd).diarization);
+  if (!bool(diarization.enabled, false) || unsupportedDiarizationBackend(parameters) !== null) return false;
+  if (str(diarization.embeddingModelSlug) !== null) return false;
+  return !agent.models.some((m) => m.role === 'embedding');
 }
 
 /**
- * TASK-977 (owner decision D-3) — an agent that turns VAD ON must NAME the VAD model.
+ * TASK-1048 — the fixed, PHI-free sentence per degradation. A UI may show it verbatim; the only
+ * variable parts of a warning are the agent identity fields beside it.
  *
- * The guard above, applied to the stage this ticket stopped forcing on. Silero needs
- * weights, and `_load_vad_service` resolves them from the session's own
- * `models.vad.localPath`; with no row it passes `None` and the service falls back to
- * whatever the HuggingFace cache happens to hold. That is a model SELECTION nobody made
- * — the same silent substitution TASK-887 removed from diarization — so it is refused.
- *
- * DENOISE deliberately has no such guard, and that asymmetry is the finding, not an
- * oversight: the denoise engines are RUNTIME-owned. `StreamingDenoiser.initialize()`
- * constructs `pyrnnoise.RNNoise(sample_rate=48000)` and
- * `DeepFilterNet3StreamingDenoiser.initialize()` calls
- * `init_df(default_model='DeepFilterNet3')` — weights shipped inside the wheel — and the
- * engine is chosen by NAME (`DenoiseConfig.engine`, default `rnnoise`), never from
- * `models.denoise`, which is only ever warmed into the model cache and never read back by
- * a denoise call. Requiring an `AiModel` row to denoise would refuse the default working
- * configuration.
+ * DENOISE deliberately has no entry, and that asymmetry is a finding of TASK-977, not an
+ * oversight: the denoise engines are RUNTIME-owned (`pyrnnoise` / `init_df('DeepFilterNet3')` ship
+ * their own weights and are chosen by NAME), so an enabled denoise stage with no `AiModel` row is
+ * the default working configuration, not a missing prerequisite.
  */
-function assertVadRunnable(agent: ResolvedAgent, afe: AsrSpecAudioFrontEnd, vad: AsrSpecModel | undefined): void {
-  if (!afe.vad.enabled || vad) return;
-  throw new AsrSpecBuildError(
-    `Agent '${agent.slug}' v${agent.versionNumber} enables voice-activity detection but binds no VAD model. ` +
-      `Set \`audioFrontEnd.vad.modelSlug\` to a VOICE_ACTIVITY_DETECTION model visible to this tenant, or leave ` +
-      `\`audioFrontEnd.vad.enabled\` off and let the runtime segment on energy.`,
-    'ASR_AGENT_VAD_MODEL_MISSING',
-  );
+const DEGRADATION_MESSAGES: Record<AsrSessionWarning['code'], string> = {
+  DIARIZATION_MODEL_MISSING:
+    'Speaker diarization is off for this session: the agent enables it, but no speaker-embedding model resolves — the agent ' +
+    'names no `audioFrontEnd.diarization.embeddingModelSlug` (or names one this tenant cannot see) and the platform default ' +
+    '`stt.diarization.defaultEmbeddingModelSlug` is unset or unavailable. Transcription runs without speaker labels.',
+  DIARIZATION_BACKEND_UNSUPPORTED:
+    'Speaker diarization is off for this session: the agent declares a diarization backend this platform no longer runs ' +
+    '(the `sortformer` backend was retired; `embedding` is the only supported backend). Transcription runs without speaker labels.',
+  VAD_MODEL_MISSING:
+    'Voice-activity detection is off for this session: the agent enables it but binds no VAD model ' +
+    '(`audioFrontEnd.vad.modelSlug`), so the runtime segments the audio on energy.',
+  FALLBACK_UNRUNNABLE:
+    'A configured speech-to-text fallback was skipped for this session: it cannot be built into a runnable engine ' +
+    '(it is not a speech-to-text agent, or it resolved no ASR model). The primary engine runs without that fallback.',
+};
+
+const STAGE_OF: Record<AsrSessionWarning['code'], AsrSessionWarning['stage']> = {
+  DIARIZATION_MODEL_MISSING: 'diarization',
+  DIARIZATION_BACKEND_UNSUPPORTED: 'diarization',
+  VAD_MODEL_MISSING: 'vad',
+  FALLBACK_UNRUNNABLE: 'fallback',
+};
+
+/** TASK-1048 — one warning for `agent` (the primary, or the fallback that degraded / was skipped). */
+export function asrDegradation(code: AsrSessionWarning['code'], agent: { slug: string; versionNumber?: number | null }): AsrSessionWarning {
+  return {
+    code,
+    stage: STAGE_OF[code],
+    severity: 'WARNING',
+    message: DEGRADATION_MESSAGES[code],
+    agentSlug: agent.slug,
+    ...(typeof agent.versionNumber === 'number' ? { agentVersionNumber: agent.versionNumber } : {}),
+  };
 }
 
 /**
@@ -685,6 +717,7 @@ export function buildAsrSpecCore(
   override?: { asr: ResolvedAgentModel; runtimeKey: string },
   onProfileRejection?: (rejection: AsrProfileRejection) => void,
   connection?: AsrConnectionBinding | null,
+  degrade: AsrSpecDegradeOptions = {},
 ): AsrSpecCore {
   const parameters = rec(agent.compiledConfig.parameters);
   const asrModel = override?.asr ?? primaryOf(agent);
@@ -696,16 +729,35 @@ export function buildAsrSpecCore(
   // TASK-977 — the front end is resolved FIRST and then decides which aux models ship.
   // Before D-2 this ran the other way round (the denoise level was read off the bound
   // model), which is why a disabled stage could not drop its model.
-  // TASK-980 — refused on the STORED backend, before `audioFrontEnd` normalises it away. This core
-  // builds every chain (primary, model-level fallback, fallback agent), so all three are covered.
-  assertDiarizationBackendSupported(agent, parameters);
+  // TASK-980 / TASK-1048 — judged on the STORED backend, before `audioFrontEnd` normalises it away.
+  // This core builds every chain (primary, model-level fallback, fallback agent), so all three are
+  // covered. An unsupported backend switches the STAGE off (OD-1); it never refuses the session.
   const front = audioFrontEnd(parameters);
+  const warn = (code: AsrSessionWarning['code']) => degrade.onWarning?.(asrDegradation(code, agent));
+  if (unsupportedDiarizationBackend(parameters) !== null) {
+    front.diarization.enabled = false;
+    warn('DIARIZATION_BACKEND_UNSUPPORTED');
+  }
   const models: AsrSpecModels = {
     asr: toSpecModel(asrModel, 'asr', profile, specModelMetadata(profile, partialWindowSec)),
     ...auxModels(agent, front),
   };
-  assertVadRunnable(agent, front, models.vad);
-  assertDiarizationRunnable(agent, front, models.embedding);
+  // TASK-977 D-3 → TASK-1048 — VAD ON with no VAD row is switched OFF (the runtime then segments on
+  // energy) rather than resolved from whatever weights a cache holds: still no silent selection.
+  if (front.vad.enabled && !models.vad) {
+    front.vad.enabled = false;
+    warn('VAD_MODEL_MISSING');
+  }
+  // TASK-887 → TASK-1048 — diarization ON with no agent-bound embedding row: the platform default
+  // (OD-2) when the agent named NO slug, else the stage is switched off and reported.
+  if (front.diarization.enabled && !models.embedding) {
+    if (degrade.defaultEmbeddingModel && needsPlatformEmbeddingDefault(agent)) {
+      models.embedding = toSpecModel({ ...degrade.defaultEmbeddingModel, role: 'embedding' }, 'embedding');
+    } else {
+      front.diarization.enabled = false;
+      warn('DIARIZATION_MODEL_MISSING');
+    }
+  }
   const decodingBlock = decoding(parameters, profile, sources);
   const instructionBlock = instruction(agent, profile, sources);
   // TASK-985 (M-14) — provenance last, and per CHAIN: each chain runs its own engine, so the
@@ -778,54 +830,92 @@ function fallbackOf(
   fallbackAgent: ResolvedAgent | null | undefined,
   onProfileRejection?: (rejection: AsrProfileRejection) => void,
   connection?: AsrConnectionBinding | null,
+  degrade: AsrSpecDegradeOptions = {},
 ): AsrSpecFallback {
   const f = rec(rec(agent.compiledConfig.parameters).fallback);
   const governance = {
     autoSwitch: bool(f.autoSwitch, AGENT_FALLBACK_DEFAULTS.autoSwitch),
     switchAfterConsecutiveFailures: num(f.switchAfterConsecutiveFailures) ?? AGENT_FALLBACK_DEFAULTS.switchAfterConsecutiveFailures,
   };
+  // TASK-1048 (OD-1) — a fallback that cannot be BUILT (not a speech-to-text agent, no ASR model) is
+  // SKIPPED and reported; it never refuses the primary session. Its optional stages degrade in place
+  // exactly like the primary's, so only a CORE problem of the fallback lands here.
+  const skip = (who: { slug: string; versionNumber?: number | null }) => degrade.onWarning?.(asrDegradation('FALLBACK_UNRUNNABLE', who));
+  let chainConnection = connection;
   if (fallbackAgent) {
-    const core = buildAsrSpecCore(fallbackAgent, undefined, onProfileRejection, connection);
-    // TASK-985 (M-49) — a named fallback AGENT is the explicit choice and SUPERSEDES the
-    // agent's own `AgentModelFallback` rows; it does not extend them. That precedence is not
-    // new, but until now nothing said so out loud, so report the rows it displaces rather
-    // than discarding them in silence — the same honesty the chain itself buys.
-    const displaced = asrChainModels(agent).fallbackChain;
-    if (displaced.length > 0) {
-      onProfileRejection?.({
-        modelSlug: agent.slug,
-        rejected: displaced.map((m) => `fallback.models[${m.slug}] (superseded by parameters.fallback.agentSlug)`),
-      });
+    let core: AsrSpecCore | null = null;
+    if (fallbackAgent.task !== 'SPEECH_TO_TEXT') skip(fallbackAgent);
+    else {
+      try {
+        core = buildAsrSpecCore(fallbackAgent, undefined, onProfileRejection, connection, degrade);
+      } catch (error) {
+        if (!(error instanceof AsrSpecBuildError)) throw error;
+        skip(fallbackAgent);
+      }
     }
-    return { kind: 'agent', ...governance, chain: [core], spec: core };
+    if (core) {
+      // TASK-985 (M-49) — a named fallback AGENT is the explicit choice and SUPERSEDES the
+      // agent's own `AgentModelFallback` rows; it does not extend them. That precedence is not
+      // new, but until now nothing said so out loud, so report the rows it displaces rather
+      // than discarding them in silence — the same honesty the chain itself buys.
+      const displaced = asrChainModels(agent).fallbackChain;
+      if (displaced.length > 0) {
+        onProfileRejection?.({
+          modelSlug: agent.slug,
+          rejected: displaced.map((m) => `fallback.models[${m.slug}] (superseded by parameters.fallback.agentSlug)`),
+        });
+      }
+      return { kind: 'agent', ...governance, chain: [core], spec: core };
+    }
+    // The skipped agent's credential binding belonged to ITS engine. Lending it to the model chain
+    // below would spend one account on another engine; unbound keeps the pre-958 provider-id read.
+    chainConnection = null;
   }
-  const chain = asrChainModels(agent).fallbackChain.map((model, index) =>
-    buildAsrSpecCore(
-      agent,
-      { asr: model, runtimeKey: `${agent.agentVersionId}:fallback:${model.slug}` },
-      onProfileRejection,
-      // TASK-985 — the caller resolves ONE credential per position, so only the first entry
-      // can claim it. Binding entry 2+ to entry 1's connection would spend the account that
-      // just failed on a different vendor's engine; leaving them unbound keeps the pre-958
-      // provider-id behaviour, which is what an unnamed connection has always meant.
-      index === 0 ? connection : null,
-    ),
-  );
+  const chain: AsrSpecCore[] = [];
+  asrChainModels(agent).fallbackChain.forEach((model, index) => {
+    try {
+      chain.push(
+        buildAsrSpecCore(
+          agent,
+          { asr: model, runtimeKey: `${agent.agentVersionId}:fallback:${model.slug}` },
+          onProfileRejection,
+          // TASK-985 — the caller resolves ONE credential per position, so only the first entry
+          // can claim it. Binding entry 2+ to entry 1's connection would spend the account that
+          // just failed on a different vendor's engine; leaving them unbound keeps the pre-958
+          // provider-id behaviour, which is what an unnamed connection has always meant.
+          index === 0 ? chainConnection : null,
+          degrade,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof AsrSpecBuildError)) throw error;
+      skip(agent);
+    }
+  });
   if (chain.length > 0) return { kind: 'model', ...governance, chain, spec: chain[0] };
   return { kind: 'none', ...governance, chain: [], spec: null };
 }
 
 export function buildResolvedAsrSpec(input: BuildResolvedAsrSpecInput): ResolvedAsrSpec {
-  const { agent, fallbackAgent, onProfileRejection, connections } = input;
+  const { agent, fallbackAgent, onProfileRejection, connections, defaultEmbeddingModel, onWarning } = input;
   if (agent.task !== 'SPEECH_TO_TEXT') {
     throw new AsrSpecBuildError(`Agent '${agent.slug}' is a ${agent.task} agent; an ASR spec needs SPEECH_TO_TEXT.`);
   }
-  if (fallbackAgent && fallbackAgent.task !== 'SPEECH_TO_TEXT') {
-    throw new AsrSpecBuildError(`Fallback agent '${fallbackAgent.slug}' is a ${fallbackAgent.task} agent; an ASR fallback needs SPEECH_TO_TEXT.`);
-  }
+  // TASK-1048 — one report per (code, stage, agent version): the model-level fallback chain is built
+  // from the SAME agent parameters as the primary, so it would otherwise repeat every degradation.
+  const seen = new Set<string>();
+  const degrade: AsrSpecDegradeOptions = {
+    defaultEmbeddingModel: defaultEmbeddingModel ?? null,
+    onWarning: (warning) => {
+      const key = `${warning.code}|${warning.stage}|${warning.agentSlug}|${warning.agentVersionNumber ?? ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      onWarning?.(warning);
+    },
+  };
   return {
     schemaVersion: RESOLVED_ASR_SPEC_SCHEMA_VERSION,
-    ...buildAsrSpecCore(agent, undefined, onProfileRejection, connections?.primary),
-    fallback: fallbackOf(agent, fallbackAgent, onProfileRejection, connections?.fallback),
+    ...buildAsrSpecCore(agent, undefined, onProfileRejection, connections?.primary, degrade),
+    fallback: fallbackOf(agent, fallbackAgent, onProfileRejection, connections?.fallback, degrade),
   };
 }

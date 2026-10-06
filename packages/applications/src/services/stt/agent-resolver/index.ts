@@ -5,3 +5,6 @@ export * from './governing-workflow-asr';
 // The wire contract lives in @arcaai/types; re-exported so apps/api needs no direct dependency on that package (TASK-863 precedent).
 export type { AsrSpecCore, AsrSpecFallback, AsrSpecModel, AsrSpecModels, AsrSpecStreamingSemantic, ResolvedAsrSpec } from '@arcaai/types';
 export { ASR_SPEC_MODEL_ROLES, ASR_SPEC_ROLE_TASK_TYPE, RESOLVED_ASR_SPEC_SCHEMA_VERSION } from '@arcaai/types';
+// TASK-1048 — the session/job creation `warnings` vocabulary, for the same reason.
+export type { AsrDegradationCode, AsrDegradedStage, AsrSessionWarning } from '@arcaai/types';
+export { ASR_DEGRADATION_CODES } from '@arcaai/types';
