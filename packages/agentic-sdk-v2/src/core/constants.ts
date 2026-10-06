@@ -602,7 +602,14 @@ export const POLICY_ENDPOINTS = {
  * tenant's published `TEXT_GENERATION` agent by `agentSlug` with `useAgentInvocation`.
  */
 export const TEXT_ENDPOINTS = {
-  /** Generate text (raw passthrough; sync or streaming) */
+  /**
+   * Generate text (raw passthrough; sync or streaming).
+   *
+   * @deprecated TASK-1047 (OD-3) — sending a raw `system_prompt` here is deprecated: the gateway
+   * answers with `Deprecation`/`Sunset` headers (Sunset 31 Jan 2027, removed in R5) and apps/text
+   * screens the prompt as untrusted because no governance accompanies it. Use
+   * {@link TEXT_ENDPOINTS.GENERATE_ASSEMBLED} (`prompt_template_id`) or invoke an agent by `agentSlug`.
+   */
   GENERATE: '/text-generations/generate',
   /** Generate text with server-side prompt assembly */
   GENERATE_ASSEMBLED: '/text-generations/generate/assembled',

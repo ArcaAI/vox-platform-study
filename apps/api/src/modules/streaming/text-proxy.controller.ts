@@ -81,6 +81,7 @@ import { classifyDownstreamFailure, downstreamStatusFor } from '../../filters/do
 import { recordUsageEmissionFailure } from '../../observability/usage-emission-metric';
 import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
+import { markSystemPromptDeprecated, stripCallerGovernance } from './system-prompt-deprecation';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { RequiredScopes, RequiredSvcScopes } from '../../decorators';
 
@@ -99,6 +100,11 @@ export const MODEL_PINNING_NOT_ALLOWED = 'MODEL_PINNING_NOT_ALLOWED';
 
 export interface TextGenerateRequest {
   prompt: string;
+  /**
+   * @deprecated TASK-1047 (OD-3) — a raw caller system prompt is unscreened-by-governance and is
+   * screened by apps/text as untrusted. Removed in R5 (Sunset 31 Jan 2027); use
+   * `generate/assembled` (`prompt_template_id`) or an agent invocation.
+   */
   system_prompt?: string;
   /**
    * RAW model pinning — honoured ONLY on the admin plane (`admin/text-generations/*`, super admin).
@@ -753,6 +759,8 @@ export class TextProxyController {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: TextGenerateRequest, @Res({ passthrough: true }) res?: Response): Promise<any> {
     assertNoModelPinning(body);
+    // TASK-1047 L9 (OD-3): a raw caller prompt is deprecated — still forwarded, but flagged.
+    if (typeof body.system_prompt === 'string' && body.system_prompt.length > 0) markSystemPromptDeprecated(res);
     return this.proxyGenerate(body, res);
   }
 
@@ -767,6 +775,8 @@ export class TextProxyController {
     // into `buildUpstreamException` ("TEXT service unavailable"), which would
     // disguise a 429 quota refusal as a 502 the caller cannot act on.
     await this.assertLlmAllowance();
+    // TASK-1047 FC-4: governance is attached only by this gateway's composer; never trust a caller's.
+    stripCallerGovernance(body);
     const base = this.getTextBaseUrl();
     await this.applyTextModelSelection(body);
 
