@@ -189,6 +189,26 @@ def _isolate_egress_client_cache():
 
 
 @pytest.fixture
+def capturable_module_loggers(monkeypatch):
+    """Give ``text.services.{egress,external_guardrail}`` loggers that ``capture_logs`` can see.
+
+    With ``cache_logger_on_first_use=True`` (what ``hope_obs`` configures), a module-level
+    logger binds to the processor list that was current at its FIRST use. Any later
+    ``structlog.reset_defaults()`` / ``configure()`` by another test (e.g.
+    ``test_request_logging``) swaps in a new list, and ``capture_logs()`` then edits a list
+    the cached logger no longer holds - the capture comes back empty although the line was
+    emitted. Replacing the module logger with a fresh lazy proxy for the test's duration
+    makes the capture independent of test order; monkeypatch restores the original.
+    """
+    import text.services.egress as egress
+    import text.services.external_guardrail as external_guardrail
+    from text.core.logging import get_logger
+
+    monkeypatch.setattr(egress, "logger", get_logger(egress.__name__))
+    monkeypatch.setattr(external_guardrail, "logger", get_logger(external_guardrail.__name__))
+
+
+@pytest.fixture
 def settings() -> Settings:
     """Default test settings with service auth off.
 
