@@ -15,7 +15,20 @@
  * @see SDK-206 Gap Analysis — Layer 0 Foundation
  */
 
+import type { AsrSessionWarning } from '@arcaai/types';
 import type { LanguageModeId, LanguageResolution } from './language';
+
+/**
+ * A runtime degradation reported mid-session by the STT service: a `status` frame with
+ * `status: 'degraded'` (reason ∈ `ASR_RUNTIME_DEGRADED_REASONS` of `@arcaai/types`) or
+ * `status: 'denoise_degraded'`. De-duplicated by `reason` in the store.
+ */
+export interface AsrDegradation {
+  reason: string;
+  /** Epoch ms the SDK received the frame. */
+  at: number;
+  detail?: string;
+}
 
 // =============================================================================
 // Enums (mirroring packages/domains/src/enums/generated/)
@@ -225,6 +238,12 @@ export interface StreamingSessionResponse {
    * {@link WsStatusMessage.languageResolution} and {@link WsReadyMessage.languageResolution}.
    */
   languageResolution?: LanguageResolution;
+  /**
+   * Non-fatal warnings (TASK-1048): optional ASR stages the gateway switched OFF for this session
+   * instead of refusing it (diarization, VAD, an unrunnable fallback). The session works; show them.
+   * Absent/empty = none, and against a gateway that predates the field.
+   */
+  warnings?: AsrSessionWarning[];
 }
 
 /**
@@ -525,8 +544,16 @@ export interface WsStatusMessage {
   from_pipeline?: string;
   /** Pipeline now transcribing (the fallback). */
   to_pipeline?: string;
-  /** Switch trigger: `auto` (outage/exception) or `user` (clinician-initiated). */
+  /**
+   * Switch trigger for `provider_switched` (`auto` outage/exception, or `user`). On a
+   * `status: 'degraded'` frame (TASK-1048) it is the degradation reason — one of
+   * `ASR_RUNTIME_DEGRADED_REASONS` in `@arcaai/types`; on `denoise_degraded` it is the failure reason.
+   */
   reason?: string;
+  /** `denoise_degraded` only: the failing denoise engine. */
+  engine?: string;
+  /** `denoise_degraded` only: free-text failure detail. */
+  detail?: string;
   /** Utterance ordinal at which the swap happened (string on the wire, coerced by consumers). */
   utterance_index?: number | string;
   /**

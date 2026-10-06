@@ -24,7 +24,8 @@ import type {
   UserPreferences,
 } from '../types';
 import type { SttConnectionState, ProviderSwitchInfo } from '../types/audio';
-import type { WsGapMessage } from '../types/stt';
+import type { AsrSessionWarning } from '@arcaai/types';
+import type { AsrDegradation, WsGapMessage } from '../types/stt';
 import { DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
@@ -152,6 +153,16 @@ export interface PluginEventCallbacks {
    * echo — the consumer then keeps its request-derived value.
    */
   onStreamingSessionCreated?: (info: { pipelineId: string; isFallback: boolean }) => void;
+  /**
+   * The session-creation response's non-fatal ASR `warnings` (TASK-1048). Fires once per session
+   * with `[]` when there are none, so the consumer's previous list is always replaced.
+   */
+  onSttSessionWarnings?: (warnings: AsrSessionWarning[]) => void;
+  /**
+   * An optional stage degraded mid-session — a `status` frame `degraded` (with `reason`) or
+   * `denoise_degraded` (TASK-1048). May fire repeatedly; the store de-duplicates by reason.
+   */
+  onSttDegraded?: (degradation: AsrDegradation) => void;
 }
 
 /**
@@ -599,6 +610,7 @@ export class PluginManager {
     // about a caller that sent no agentSlug, a session opened on the fallback
     // by choice, and one opened there because the primary ASR failed to load.
     sessionManager.onSessionCreated((response) => {
+      this.callbacks.onSttSessionWarnings?.(response.warnings ?? []);
       if (!response.pipelineId) return; // older gateway — consumer keeps its request-derived value
       this.callbacks.onStreamingSessionCreated?.({
         pipelineId: response.pipelineId,
@@ -608,6 +620,20 @@ export class PluginManager {
     // The backend publishes an ASR engine swap as a `status`/`provider_switched`
     // result (zero WS protocol change); route it to the provider-switch callback.
     wsClient.onStatus((status) => {
+      if (status.status === 'degraded' && status.reason) {
+        this.callbacks.onSttDegraded?.({
+          reason: status.reason,
+          at: Date.now(),
+          ...(status.message ? { detail: status.message } : {}),
+        });
+      } else if (status.status === 'denoise_degraded') {
+        const detail = status.detail ?? status.message;
+        this.callbacks.onSttDegraded?.({
+          reason: status.reason ?? 'denoise_degraded',
+          at: Date.now(),
+          ...(detail ? { detail } : {}),
+        });
+      }
       if (status.status === 'provider_switched') {
         this.callbacks.onProviderSwitched?.({
           fromPipeline: status.from_pipeline ?? '',

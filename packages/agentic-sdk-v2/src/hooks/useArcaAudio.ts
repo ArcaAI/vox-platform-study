@@ -7,6 +7,8 @@
 
 import { useMemo, useCallback, useRef } from 'react';
 import { useAgenticStore } from '../store';
+import type { AsrSessionWarning } from '@arcaai/types';
+import type { AsrDegradation } from '../types/stt';
 import type { ContextItem, TranscriptionResult } from '../types';
 import { AgenticError } from '../types';
 import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo, ActivePipelineInfo } from '../types/audio';
@@ -73,6 +75,10 @@ function deriveSpeakerLabel(speakerId?: string | null): string | undefined {
  * the stream has at least one track with `readyState === 'live'`.
  */
 /** Cadence of the live input-level meter (and the watchdog riding its tick). */
+// Stable empties so a store without the TASK-1048 fields does not re-render consumers each tick.
+const EMPTY_WARNINGS: AsrSessionWarning[] = [];
+const EMPTY_DEGRADATIONS: AsrDegradation[] = [];
+
 const LEVEL_METER_INTERVAL_MS = 100;
 /**
  * Sustained zero-level window after which a STREAMING session is declared
@@ -1003,6 +1009,14 @@ export function useArcaAudio() {
             serverPipelineRef.current = { id: pipelineId, name: pipelineId, isFallback };
             store.setActivePipeline(serverPipelineRef.current);
           },
+          // TASK-1048 — optional ASR stages the gateway switched off at session creation, and the
+          // ones the STT service degraded mid-session. The session still runs; surface both.
+          onSttSessionWarnings: (warnings) => {
+            store.setSttSessionWarnings?.(warnings);
+          },
+          onSttDegraded: (degradation) => {
+            store.addSttDegradation?.(degradation);
+          },
           onProviderSwitched: (info) => {
             const raw = info as ProviderSwitchInfo & { active?: 'primary' | 'fallback'; isFallback?: boolean };
             const isFallback =
@@ -1786,6 +1800,8 @@ export function useArcaAudio() {
       // Streaming STT connection health + active pipeline.
       sttConnectionState: store.sttConnectionState,
       activePipeline: store.activePipeline,
+      warnings: store.sttSessionWarnings ?? EMPTY_WARNINGS,
+      degradations: store.sttDegradations ?? EMPTY_DEGRADATIONS,
       start: startAudio,
       startFromPreferences,
       // Runtime source management — mid-session, session-preserving.
@@ -1818,6 +1834,8 @@ export function useArcaAudio() {
       store.audioSourceIds,
       store.sttConnectionState,
       store.activePipeline,
+      store.sttSessionWarnings,
+      store.sttDegradations,
       startAudio,
       startFromPreferences,
       addSource,

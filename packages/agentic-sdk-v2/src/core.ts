@@ -452,6 +452,7 @@ export type {
   WsMetadataSpan,
   WsServerMessage,
   WsStatusMessage,
+  AsrDegradation,
   // TASK-985 M-22/M-43 — the two frames that used to fall into the client's
   // "unknown message type" branch.
   WsReadyMessage,

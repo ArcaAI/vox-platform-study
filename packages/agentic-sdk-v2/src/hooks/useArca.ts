@@ -5,6 +5,8 @@
  */
 
 import { useMemo, useCallback } from 'react';
+import type { AsrSessionWarning } from '@arcaai/types';
+import type { AsrDegradation } from '../types/stt';
 import {
   useAgenticStore,
   selectTranscriptions,
@@ -155,6 +157,17 @@ export interface UseArcaAudio {
    * not streaming on a backend pipeline (local STT / idle).
    */
   activePipeline: ActivePipelineInfo | null;
+  /**
+   * Non-fatal ASR warnings from the current session's creation response (TASK-1048): optional
+   * stages (diarization, VAD, a fallback) the gateway switched off instead of refusing the session.
+   * Replaced on every new session; `[]` when none.
+   */
+  warnings: AsrSessionWarning[];
+  /**
+   * Runtime degradations the STT service reported mid-session (`status: 'degraded'` + reason, or
+   * `denoise_degraded`), de-duplicated by reason, cleared when a new session starts (TASK-1048).
+   */
+  degradations: AsrDegradation[];
   /** @deprecated Use `useConsultation().start()`, which also records the start on the consultation. */
   start: (options?: AudioStartOptions) => Promise<void>;
   /**

@@ -6,6 +6,7 @@
 
 import type { LanguageModeId, LanguageResolution } from './language';
 import type { WorkflowRunEvent } from './workflow';
+import type { AsrSessionWarning } from './stt';
 
 /** The task family a published Agent serves. */
 export type AgentTask = 'SPEECH_TO_TEXT' | 'TEXT_GENERATION' | 'TEXT_TO_SPEECH' | 'NAMED_ENTITY_RECOGNITION';
@@ -135,6 +136,8 @@ export interface TranscriptionJobHandle {
   agentVersionId?: string;
   /** How the effective language mode was resolved for this job (TASK-1004). See {@link StreamSessionResponse.languageResolution}. */
   languageResolution?: LanguageResolution;
+  /** Non-fatal ASR warnings (TASK-1048) — optional stages switched off for this job. See {@link StreamSessionResponse.warnings}. */
+  warnings?: AsrSessionWarning[];
   [extra: string]: unknown;
 }
 
@@ -190,6 +193,8 @@ export interface TranscriptionJobStatus {
   agentVersionId?: string | null;
   /** How the effective language mode was resolved for this job (TASK-1004). See {@link StreamSessionResponse.languageResolution}. */
   languageResolution?: LanguageResolution;
+  /** Non-fatal ASR warnings (TASK-1048) — optional stages switched off for this job. See {@link StreamSessionResponse.warnings}. */
+  warnings?: AsrSessionWarning[];
   [extra: string]: unknown;
 }
 

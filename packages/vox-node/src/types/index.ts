@@ -7,6 +7,7 @@
  * use `hope.consultations.summaries.*` instead.
  */
 
+export { ASR_RUNTIME_DEGRADED_REASONS, isSttDegradedStatus } from './stt';
 export { CONTEXT_CONTENT_MAX_LENGTH } from './consultation';
 
 /** The spoken-language selection contract shared with `apps/stt`, `@arcaai/vox`, and ALaaS (TASK-1004). */
@@ -91,6 +92,9 @@ export type {
   SttTranscriptResult,
   SttWordTimestamp,
   StreamSessionResponse,
+  AsrSessionWarning,
+  AsrRuntimeDegradedReason,
+  SttDegradedStatusMessage,
   StreamTicketRefreshResponse,
   StreamingSessionStatus,
 } from './stt';

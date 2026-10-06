@@ -20,7 +20,9 @@ import type {
   PipelineStateInfo,
   TenantAudioConfig,
 } from '../types';
+import type { AsrSessionWarning } from '@arcaai/types';
 import type { TranscriptSegment, SttConnectionState, ActivePipelineInfo, SttInterim } from '../types/audio';
+import type { AsrDegradation } from '../types/stt';
 import { DEFAULT_AUDIO_PLUGIN_STATES } from '../types';
 import type { AgenticClient } from '../core/AgenticClient';
 import type { PluginManager } from '../core/PluginManager';
@@ -185,6 +187,10 @@ export interface AgenticState {
    * fallback. `null` before any streaming session starts.
    */
   activePipeline: ActivePipelineInfo | null;
+  /** Non-fatal ASR warnings from the current streaming session's creation response (TASK-1048). */
+  sttSessionWarnings: AsrSessionWarning[];
+  /** Runtime ASR degradations reported mid-session, de-duplicated by reason (TASK-1048). */
+  sttDegradations: AsrDegradation[];
 
   // Summary state
   summaries: SummaryResponse[];
@@ -313,6 +319,10 @@ export interface AgenticActions {
   setSttConnectionState: (state: SttConnectionState) => void;
   /** Set (or clear with `null`) the active streaming ASR pipeline descriptor. */
   setActivePipeline: (pipeline: ActivePipelineInfo | null) => void;
+  /** A new session was created: replace the warnings and clear the previous session's degradations. */
+  setSttSessionWarnings: (warnings: AsrSessionWarning[]) => void;
+  /** Record a runtime degradation; a reason already recorded this session is ignored. */
+  addSttDegradation: (degradation: AsrDegradation) => void;
 
   // Summary actions
   setSummaries: (summaries: SummaryResponse[]) => void;
@@ -452,6 +462,8 @@ const initialState: AgenticState = {
   // Streaming STT connection state starts nominal; no active pipeline yet.
   sttConnectionState: 'connected',
   activePipeline: null,
+  sttSessionWarnings: [],
+  sttDegradations: [],
 
   // Summary state
   summaries: [],
@@ -622,6 +634,13 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setAudioSourceIds: (ids) => set({ audioSourceIds: ids }),
   setSttConnectionState: (sttConnectionState) => set({ sttConnectionState }),
   setActivePipeline: (activePipeline) => set({ activePipeline }),
+  setSttSessionWarnings: (sttSessionWarnings) => set({ sttSessionWarnings, sttDegradations: [] }),
+  addSttDegradation: (degradation) =>
+    set((state) =>
+      state.sttDegradations.some((d) => d.reason === degradation.reason)
+        ? {}
+        : { sttDegradations: [...state.sttDegradations, degradation] },
+    ),
 
   // Summary actions
   setSummaries: (summaries) => set({ summaries }),
@@ -696,6 +715,8 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       // signal so the outgoing tenant's fallback/reconnect state can't bleed in.
       sttConnectionState: 'connected',
       activePipeline: null,
+      sttSessionWarnings: [],
+      sttDegradations: [],
       // TTS playback state resets on tenant switch (mirrors activeStream).
       ttsIsPlaying: false,
       ttsIsLoading: false,
