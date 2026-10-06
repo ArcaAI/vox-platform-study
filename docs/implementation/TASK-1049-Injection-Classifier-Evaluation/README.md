@@ -197,12 +197,59 @@ committed only if small (< 1 MB); otherwise it stays regenerable from the prompt
 
 ## 8. Implementation Summary
 
-_Not started — awaiting approval._
+_Interim, 2026-10-06. Scoring paused at the owner's request while another session runs its tests._
+
+### 8.1 What is built (dev-2.2)
+
+| Piece | File | Lane / tier |
+|---|---|---|
+| Core helpers: windows (guardrail parity), 512-token segments, one-sided Clopper-Pearson, dev-only threshold, production region renderer | `apps/nlp/scripts/injection_eval/core.py` | orchestrator |
+| Public sets a / b1 / b3 / c1 | `apps/nlp/scripts/injection_eval/build_public_sets.py` | L1 (sonnet) |
+| Clinical injections c2 (55 payloads × 5 carriers = 275) and hard negatives b2 | `build_adversarial_sets.py`, `payloads.json`, `b2_prompts.json` | L2 (opus) |
+| Scorer adapters for the 5 candidates, revisions pinned | `apps/nlp/scripts/injection_eval/models.py` | L3 (opus) |
+| Bench: score / latency / report, verdict statistics, memory guard | `apps/nlp/scripts/bench_injection_classifiers.py`, `injection_eval/analysis.py` | orchestrator |
+| Tests | `apps/nlp/tests/test_task1049_*.py`: 97 passed, 5 smoke tests skipped by default (opt-in with `TASK1049_SMOKE=1`; passed once on the real weights) | — |
+
+Data (public and synthetic only) lives in `/Volumes/aillusion/task-1049-data/` (sets, scores, logs). `/tmp` was lost in the reboot (§8.4).
+
+| Set | Records | Windows | Notes |
+|---|---|---|---|
+| a | 45 regions | 118 | golden set rendered as production DATA regions (§8.2) |
+| b1 | 486 | 1,509 | ACI-Bench (207 dialogues, 831 windows) + MTS-Dialog (678 windows), CC BY 4.0. 37 ACI dialogues address the AI scribe ("dax") and are reported as their own slice. |
+| b3 | 339 | 339 | NotInject (over-defence reference) |
+| c1 | 1,562 | 1,572 | 863 injections (deepset, gandalf, SPML) + 699 benign prompts |
+| c2 | 275 | — | 55 payloads across 10 classes (en, ml, ml-Latn, hi, es, de) × 5 carriers. Bases are golden regions + b1. |
+| b2 | — | — | pending: owner approved loading `gemma-4-e2b-it-qat` after scoring |
+
+### 8.2 Findings so far
+
+1. **GLiGuard must be scored as production calls it.** Guardrail sends `prompt_safety` + `prompt_toxicity` + `jailbreak_detection` in ONE gliner2 schema, with no top-level threshold (nlp default 0.5). The tasks condition each other: the jailbreak task alone scored 0/75 golden windows, the production schema 1/75. gliner2's argmax fallback also flags windows below 0.4. The adapter reproduces the production flag exactly (0 mismatches on 75 windows).
+2. **TASK-1047's "75 windows" came from a different rendering.** Production DATA regions are per encounter, with a `--- Encounter N transcript (visitType) ---` header and `[S1 E1 Doctor 00:04] text` lines (note-input-composer + labelled-transcript.renderer). Rendered that way, the golden set is 118 windows, and production GLiGuard flags jailbreak **13/118 (11 %)**, safety **16 (14 %)** and toxicity **27 (23 %, mostly `regulated_advice`)**. TASK-1047's pattern is reproduced, and worse.
+3. **GLiGuard's false positives are short-window false positives.** On the 75 windows of 1,500 chars or more it flags jailbreak 0, safety 0, toxicity 2. The flags sit in short regions: one-line results, short encounters, region tails. Production traffic is full of these (the growing transcript tail, results lines), so the report breaks FP down by window length.
+4. **Prompt Guard 2 under transformers 5.** `AutoTokenizer` (5.5.4) drops PG2's anti-obfuscation normaliser: a letter-spaced attack scores 0.004 instead of 0.999. The adapters load the shipped `tokenizer.json` directly, and **a serving ticket must do the same**. PG2-86M needs 2 segments for a typical 2,000-char clinical window.
+5. **PIGuard remote code reviewed.** `modeling_piguard.py` is 29 lines, a DeBERTa-v2 subclass with no network, file or subprocess access, and the executed copy is byte-identical to the reviewed file.
+6. Peer change `fb8e70061` (TASK-1047) made `regulated_advice` benign for toxicity. It does not affect jailbreak scoring.
+
+### 8.3 Memory (owner concern after the 2026-10-06 restart)
+
+| GLiGuard in-process, CPU, 4 threads | Peak RSS |
+|---|---|
+| after load | 2.2 GB |
+| batch 1 / 2 / 4 | 2.2 / 2.6 / 3.4 GB |
+| batch 8 | > 4.6 GB (guard stopped the run) |
+| seq-cls candidates (load + score) | 0.6 – 1.7 GB |
+
+The bench now gates every model load on system free memory (`memory_pressure` ≥ 35 %). It hard-stops itself at 4.5 GiB RSS, or when system available memory falls below 15 % whoever is using it. It scores in chunks of 128 windows with resumable `.partial` progress, and unloads each model before the next. GLiGuard runs at batch 2. The guard has fired twice, correctly both times: once at GLiGuard batch 8, and once when the host's free memory fell to 36 % while the dev stack (OrbStack) came back up.
+
+### 8.4 Incident — host restart during the run
+
+At 17:23 the Mac was force-restarted (`ResetCounter`: `btn_rst, btn_seq_reset`; no panic report). In flight at the time: the unguarded scoring run (GLiGuard at batch 8, so > 4.6 GB), LM Studio with `gemma-4-e2b-it-qat` and `granite-guardian-4.1-8b` (the latter not loaded by this ticket), L2's b2 generation, the dev stack and browsers. Lost: `/tmp` (sets, partial scores, b2 generation). Kept: all committed code and L2's uncommitted worktree, which was then committed and merged. Mitigations: §8.3, and data moved to the persistent volume.
 
 ## 9. Change History
 
 | Date | Change |
 |---|---|
+| 2026-10-06 | Lanes L1/L2/L3 merged. GLiGuard production parity, production region rendering and short-window FP finding (§8.2). Host force-restarted mid-run (§8.4) → memory guard + persistent data dir (§8.3). Scoring paused until a peer session's tests finish (owner). |
 | 2026-10-06 | **Owner rule: no model is loaded or changed without approval.** Lanes L2 and L3 were stopped. L2 had attempted an LM Studio load of `google/gemma-4-26b-a4b-qat`, which failed to start; nothing was generated. L3 had fetched config and tokenizer files only (13–21 MB each, no weights). Approvals: (1) load the 5 classifiers in-process on CPU in standalone scripts, one at a time, downloading to `/Volumes/aillusion/huggingface`, after a PIGuard remote-code review; (2) generate b2 ONLY with `gemma-4-e2b-it-qat`, already loaded in LM Studio — no load, unload or other model id; (3) measure latency as-is, with background load recorded. |
 | 2026-10-06 | Owner: "go" — plan and all OD recommendations approved (Sentinel v2 not added: gate not accepted). |
 | 2026-10-06 | Ticket created from the TASK-1047 OD-13 follow-up. Exploration (code paths, seed, cluster limits, model access) and research (candidates, benchmarks) done; plan and OD-1…OD-9 written. Status Pending. |
