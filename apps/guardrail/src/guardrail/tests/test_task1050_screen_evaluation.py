@@ -268,7 +268,9 @@ async def test_drainer_posts_per_tenant_batches_of_at_most_100_and_acks() -> Non
     assert all(len(p["body"]["evaluations"]) <= 100 for p in gateway.posts)
     assert sum(len(p["body"]["evaluations"]) for p in gateway.posts) == 151
     for post in gateway.posts:
-        assert post["url"] == f"http://gw:8868/api/v1/{GUARDRAIL_EVALUATIONS_PATH}?service=guardrail"
+        assert (
+            post["url"] == f"http://gw:8868/api/v1/{GUARDRAIL_EVALUATIONS_PATH}?service=guardrail"
+        )
         assert post["headers"]["x-service-token"] == "svc-token"
         tenants = {r["tenantId"] for r in post["body"]["evaluations"]}
         assert tenants == {post["headers"]["x-tenant-id"]}
@@ -441,7 +443,9 @@ async def test_inbound_route_writes_the_record_before_answering(monkeypatch: Any
 
 
 @pytest.mark.asyncio
-async def test_an_authoring_screen_is_recorded_but_raises_no_client_notice(monkeypatch: Any) -> None:
+async def test_an_authoring_screen_is_recorded_but_raises_no_client_notice(
+    monkeypatch: Any,
+) -> None:
     """The governed-prompt registry screens authored text with no client waiting on it:
     the evaluation is recorded under its own caller, the verdict is unchanged, and no
     notice is raised (a notice is a CLIENT message — nobody could ever see or resolve it)."""

@@ -180,6 +180,13 @@ def _publish_depths() -> None:
     )
 
 
+#: TASK-1050 — what each batch GROUP runs under, keyed `(slot, verb, group key)`. A batcher is
+#: built once per (slot, verb, lane) and cached for the process's life, so its callback must not
+#: close over the first caller's schema: it reads the args (and the current service) of the group
+#: it was handed. Bounded by the distinct schemas the platform sends (one per policy version).
+_GROUP_ARGS: dict[tuple[str, str, str], tuple[Any, tuple[Any, ...]]] = {}
+
+
 async def _submit_pii(
     service: Any,
     slot_key: str,
@@ -191,8 +198,9 @@ async def _submit_pii(
 ) -> tuple[list[dict[str, Any]], int]:
     """Enqueue one text onto the (slot, pii) batcher and await ITS spans.
 
-    The batch closure captures the labels/threshold that DEFINE the group, so a
-    request can only ever be evaluated under the policy it was grouped by.
+    A batch is evaluated under the labels/threshold of the group it was keyed by
+    (`_GROUP_ARGS`), so a request can only ever be evaluated under the policy it
+    was grouped by — never under whichever request first built the batcher.
 
     Returns the spans alongside this request's SHARE of the batched forward
     pass's wall-clock time (TASK-959 metering): the pass's total time divided
@@ -200,20 +208,21 @@ async def _submit_pii(
     batch is not billed the whole pass.
     """
 
-    async def run_batch(_group: str, texts: list[str]) -> list[tuple[list[dict[str, Any]], int]]:
+    async def run_batch(group: str, texts: list[str]) -> list[tuple[list[dict[str, Any]], int]]:
+        runner, (group_labels, group_threshold) = _GROUP_ARGS[(slot_key, "pii", group)]
         started = time.perf_counter()
-        spans: list[list[dict[str, Any]]] = await service.batch_extract_entities(
-            texts, labels, threshold, batch_size
+        spans: list[list[dict[str, Any]]] = await runner.batch_extract_entities(
+            texts, group_labels, group_threshold, batch_size
         )
         per_item_ms = round((time.perf_counter() - started) * 1000 / len(texts))
         return [(item_spans, per_item_ms) for item_spans in spans]
 
+    group = pii_group_key(labels, threshold)
+    _GROUP_ARGS[(slot_key, "pii", group)] = (service, (labels, threshold))
     batcher = await get_batcher(slot_key, "pii", run_batch, lane)
     started = time.perf_counter()
     try:
-        entities, inference_ms = await batcher.submit(
-            pii_group_key(labels, threshold), text, cost=len(text)
-        )
+        entities, inference_ms = await batcher.submit(group, text, cost=len(text))
         return entities, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
@@ -235,20 +244,21 @@ async def _submit_classify(
     pass's wall-clock time — see `_submit_pii`.
     """
 
-    async def run_batch(_group: str, texts: list[str]) -> list[tuple[dict[str, Any], int]]:
+    async def run_batch(group: str, texts: list[str]) -> list[tuple[dict[str, Any], int]]:
+        runner, (group_tasks, group_threshold) = _GROUP_ARGS[(slot_key, "classify", group)]
         started = time.perf_counter()
-        verdicts: list[dict[str, Any]] = await service.batch_classify_text(
-            texts, tasks, threshold, batch_size
+        verdicts: list[dict[str, Any]] = await runner.batch_classify_text(
+            texts, group_tasks, group_threshold, batch_size
         )
         per_item_ms = round((time.perf_counter() - started) * 1000 / len(texts))
         return [(verdict, per_item_ms) for verdict in verdicts]
 
+    group = classify_group_key(tasks, threshold)
+    _GROUP_ARGS[(slot_key, "classify", group)] = (service, (tasks, threshold))
     batcher = await get_batcher(slot_key, "classify", run_batch, lane)
     started = time.perf_counter()
     try:
-        results, inference_ms = await batcher.submit(
-            classify_group_key(tasks, threshold), text, cost=len(text)
-        )
+        results, inference_ms = await batcher.submit(group, text, cost=len(text))
         return results, inference_ms
     finally:
         observe_queue_wait(batcher.name, time.perf_counter() - started)
