@@ -146,7 +146,7 @@ export function GuardrailPanel() {
       {/* TASK-1050 W3c: this tab stays a read-only view; rules, prompts and parameters are edited on Guardrail control. */}
       <p className="text-muted-foreground text-sm">
         Read-only view of the guardrail service. Edit rules, judge prompts and parameters on{' '}
-        <Link href="/guardrails/control" className="text-primary underline underline-offset-4">
+        <Link href="/guardrails/control" className="underline underline-offset-4">
           Guardrail control
         </Link>
         .

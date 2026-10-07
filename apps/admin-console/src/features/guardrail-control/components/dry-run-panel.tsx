@@ -172,7 +172,7 @@ export function DryRunPanel({
                 </li>
               ))}
             </ul>
-            <Link href={notResident.link ?? '/model-residency'} className="text-primary inline-flex items-center gap-1 underline underline-offset-4">
+            <Link href={notResident.link ?? '/model-residency'} className="inline-flex items-center gap-1 underline underline-offset-4">
               Open Model residency
               <IconExternalLink aria-hidden className="size-3.5" />
             </Link>

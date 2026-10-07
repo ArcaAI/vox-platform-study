@@ -298,7 +298,7 @@ function HealthSection() {
         />
       </div>
       <ResidencyTable models={health.models} />
-      <Link href="/model-residency" className="text-primary text-sm underline underline-offset-4">
+      <Link href="/model-residency" className="text-sm underline underline-offset-4">
         Manage residency on Model residency
       </Link>
     </div>
@@ -404,7 +404,7 @@ function EvaluationsSection({ window }: { window: GuardrailMetricsWindow }) {
                   <TableCell className="font-mono text-xs">{item.caller}</TableCell>
                   <TableCell className="font-mono text-xs">
                     {item.consultationId ? (
-                      <Link href={`/consultations/${encodeURIComponent(item.consultationId)}`} className="text-primary underline underline-offset-4">
+                      <Link href={`/consultations/${encodeURIComponent(item.consultationId)}`} className="underline underline-offset-4">
                         {item.consultationId.slice(0, 8)}
                       </Link>
                     ) : (

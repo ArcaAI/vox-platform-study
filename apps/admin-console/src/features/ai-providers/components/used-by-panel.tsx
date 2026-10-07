@@ -148,7 +148,7 @@ export function UsedByPanel({ scope }: { scope: ResolvedProviderScope }) {
                       {/* TASK-1050 (OD-39): one editor per backend resource — the guardrail lanes are
                           selected on Guardrail control, so this row is read-only here. */}
                       {row.managedBy === 'guardrail-control' ? (
-                        <Link href="/guardrails/control" className="text-primary inline-flex items-center gap-1 font-sans underline underline-offset-4">
+                        <Link href="/guardrails/control" className="inline-flex items-center gap-1 font-sans underline underline-offset-4">
                           Managed by Guardrail control
                           <IconExternalLink aria-hidden className="size-3" />
                         </Link>

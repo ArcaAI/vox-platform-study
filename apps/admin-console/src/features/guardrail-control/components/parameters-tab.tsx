@@ -298,7 +298,7 @@ function ServingSummary({ candidate }: { candidate: GuardrailJudgeLaneCandidate 
           </>
         )}
       </dl>
-      <Link href="/ai-models" className="text-primary inline-flex items-center gap-1 text-xs underline underline-offset-4">
+      <Link href="/ai-models" className="inline-flex items-center gap-1 text-xs underline underline-offset-4">
         Edit serving in AI models
         <IconExternalLink aria-hidden className="size-3" />
       </Link>
@@ -461,7 +461,7 @@ export function ParametersTab() {
           <h2 id="params-residency" className="text-base font-medium">
             Residency
           </h2>
-          <Link href="/model-residency" className="text-primary inline-flex items-center gap-1 text-sm underline underline-offset-4">
+          <Link href="/model-residency" className="inline-flex items-center gap-1 text-sm underline underline-offset-4">
             Load or unload on Model residency
             <IconExternalLink aria-hidden className="size-3.5" />
           </Link>
