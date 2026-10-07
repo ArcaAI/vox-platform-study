@@ -11,7 +11,10 @@ import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { StatusBadge, type StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
 import type { StreamStatus } from '@/shared/streams';
+import { GuardrailBlockPanel } from '@/shared/guardrail/guardrail-block-panel';
+import { GuardrailNoticeBanner } from '@/shared/guardrail/guardrail-notice-banner';
 import type { DnaJobStatus, UseDnaJobProgressResult } from '../api';
+import type { DnaGuardrailState } from './generate-guardrail';
 
 const JOB_STATE_LABELS: Record<DnaJobStatus['status'], string> = {
   queued: 'Queued',
@@ -78,6 +81,7 @@ export function GeneratePane({
   gated,
   activeJobId,
   progress,
+  guardrail = null,
 }: {
   samplesText: string;
   onSamplesTextChange: (value: string) => void;
@@ -86,6 +90,8 @@ export function GeneratePane({
   gated: boolean;
   activeJobId: string | null;
   progress: UseDnaJobProgressResult;
+  /** TASK-1050: the guardrail outcome of the last generation (block panel with retry, or warnings). */
+  guardrail?: DnaGuardrailState | null;
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -125,6 +131,17 @@ export function GeneratePane({
           </div>
         </form>
         {activeJobId ? <JobProgressStrip jobId={activeJobId} progress={progress} /> : null}
+        {guardrail?.block ? (
+          <GuardrailBlockPanel
+            notice={guardrail.block.notice}
+            code={guardrail.block.code}
+            {...(guardrail.block.redaction ? { title: 'Paused: patient details could not be protected' } : {})}
+            onRetry={gated || isPending ? undefined : onGenerate}
+          />
+        ) : null}
+        {guardrail && guardrail.warnings.length > 0 ? (
+          <GuardrailNoticeBanner notices={guardrail.warnings} title="Safety check warning on this style" />
+        ) : null}
         <p aria-hidden className="text-muted-foreground font-mono text-xs">
           SSE: GET /jobs/:jobId/stream
         </p>

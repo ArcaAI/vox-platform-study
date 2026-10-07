@@ -3,10 +3,12 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { IconArrowLeft, IconInbox, IconLock } from '@tabler/icons-react';
+import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { ACTIVITY_KINDS, type ActivityKind, type ActivitySegmentRunEntry, type Aggregates, type EncounterBlock } from '@arcaai/types';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { HistoryTimelineList } from '@arcaai/ui';
 import { GatewayError } from '@/shared/api';
 import { formatNumber } from '@/shared/format';
@@ -15,9 +17,14 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useActivityParams, useConsultationActivity, type ActivityFilters } from '../../api';
+import { guardrailCountsByItem, useConsultationGuardrailNotices, useGuardrailEvaluations } from '../../api/guardrail';
+import { ConsultationGuardrailTab } from '../guardrail/consultation-guardrail-tab';
+import { ConsultationHoldBanner } from '../guardrail/consultation-hold-banner';
 import { ConsultationStatusBadge } from '../consultation-status-badge';
 import { formatRunCost, kindLabel } from './activity-format';
+import { ItemBody } from './activity-item-row';
 import { buildActivityRows, isItemEntry, segmentRunRowId } from './activity-model';
+import { GuardrailStatCard, type GuardrailAggregates } from './guardrail-stat-card';
 import { SegmentRunPanel } from './segment-run-panel';
 import { VersionHistoryPanel } from './version-history-panel';
 
@@ -55,7 +62,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function StatsStrip({ encounters, aggregates }: { encounters: EncounterBlock[]; aggregates: Aggregates }) {
+function StatsStrip({ encounters, aggregates }: { encounters: EncounterBlock[]; aggregates: Aggregates & { guardrail?: GuardrailAggregates } }) {
   return (
     <dl aria-label="Consultation totals" className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
       <Stat label="Encounters">{encounters.length}</Stat>
@@ -64,6 +71,8 @@ function StatsStrip({ encounters, aggregates }: { encounters: EncounterBlock[]; 
       <Stat label="AI cost">{formatRunCost(aggregates.costMicros)}</Stat>
       <Stat label="Edited items">{formatNumber(aggregates.editedItems)}</Stat>
       <Stat label="Feedback">{`${formatNumber(aggregates.feedbackUp)} up / ${formatNumber(aggregates.feedbackDown)} down`}</Stat>
+      {/* TASK-1050 — the guardrail telemetry (counts only), when the gateway recorded it. */}
+      <GuardrailStatCard aggregates={aggregates.guardrail} />
     </dl>
   );
 }
@@ -118,8 +127,19 @@ function FilterToolbar({
  * encounter with the time away between encounters marked, AI runs annotated on the items they
  * produced. Selecting an item opens its version history beside the timeline (non-modal).
  */
+/** TASK-1050: the screen's two panels (Screen Template line tabs); shareable in the URL. */
+const SCREEN_TABS = ['activity', 'guardrail'] as const;
+
 export function ConsultationActivityScreen({ consultationId }: { consultationId: string }) {
   const [params, setParams] = useActivityParams();
+  const [tab, setTab] = useQueryState('tab', parseAsStringLiteral(SCREEN_TABS).withDefault('activity'));
+  // TASK-1050 — per-item guardrail badges: the consultation's notices plus its newest evaluations.
+  const guardrailNotices = useConsultationGuardrailNotices(consultationId);
+  const guardrailEvaluations = useGuardrailEvaluations(consultationId, { limit: 100 });
+  const guardrailByItem = useMemo(
+    () => guardrailCountsByItem(guardrailNotices.data ?? [], guardrailEvaluations.data?.items ?? []),
+    [guardrailNotices.data, guardrailEvaluations.data],
+  );
   const [segmentRun, setSegmentRun] = useState<ActivitySegmentRunEntry | null>(null);
 
   const kinds = useMemo(() => params.kinds ?? [], [params.kinds]);
@@ -139,7 +159,13 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
     return [...merged.values()].sort((a, b) => a.seq - b.seq);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `pages` is rebuilt from `feed.data` every render; keying on the query data keeps the memo stable
   }, [feed.data]);
-  const built = useMemo(() => buildActivityRows({ items: pages.flatMap((page) => page.items), encounters }), [feed.data, encounters]); // eslint-disable-line react-hooks/exhaustive-deps -- `pages` derives from `feed.data` (see above)
+  const built = useMemo(
+    () =>
+      buildActivityRows({ items: pages.flatMap((page) => page.items), encounters }, (entry) => (
+        <ItemBody entry={entry} guardrail={entry.entryType === 'item' ? guardrailByItem.get(entry.id) : undefined} />
+      )),
+    [feed.data, encounters, guardrailByItem], // eslint-disable-line react-hooks/exhaustive-deps -- `pages` derives from `feed.data` (see above)
+  );
 
   const presentKinds = useMemo(() => {
     const present = new Set<ActivityKind>();
@@ -232,43 +258,59 @@ export function ConsultationActivityScreen({ consultationId }: { consultationId:
   }
 
   return (
-    <ScreenTemplate
-      contentMode="fill"
-      header={
-        <PageHeader
-          title="Consultation"
-          meta={
-            <>
-              <span className="font-mono text-xs break-all">{consultationId}</span>
-              {first ? <ConsultationStatusBadge status={first.status} processing={first.processing} processingReason={first.processingReason} /> : null}
-            </>
-          }
-          actions={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/consultations">
-                <IconArrowLeft aria-hidden />
-                Back to consultations
-              </Link>
-            </Button>
-          }
-        />
-      }
-      stats={first?.aggregates ? <StatsStrip encounters={encounters} aggregates={first.aggregates} /> : undefined}
-      toolbar={
-        first ? (
-          <FilterToolbar
-            presentKinds={presentKinds}
-            kinds={kinds}
-            edited={params.edited ?? false}
-            aiRuns={params.aiRuns ?? false}
-            onKinds={(next) => void setParams({ kinds: next.length > 0 ? next : null })}
-            onEdited={(value) => void setParams({ edited: value || null })}
-            onAiRuns={(value) => void setParams({ aiRuns: value || null })}
+    <Tabs value={tab} onValueChange={(value) => void setTab(value === 'guardrail' ? 'guardrail' : null)} className="flex min-h-0 flex-1 flex-col">
+      <ScreenTemplate
+        contentMode="fill"
+        header={
+          <PageHeader
+            title="Consultation"
+            meta={
+              <>
+                <span className="font-mono text-xs break-all">{consultationId}</span>
+                {first ? (
+                  <ConsultationStatusBadge status={first.status} processing={first.processing} processingReason={first.processingReason} />
+                ) : null}
+              </>
+            }
+            actions={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/consultations">
+                  <IconArrowLeft aria-hidden />
+                  Back to consultations
+                </Link>
+              </Button>
+            }
           />
-        ) : undefined
-      }
-    >
-      {body}
-    </ScreenTemplate>
+        }
+        stats={first?.aggregates ? <StatsStrip encounters={encounters} aggregates={first.aggregates} /> : undefined}
+        statusBanner={first ? <ConsultationHoldBanner consultationId={consultationId} processingReason={first.processingReason} /> : undefined}
+        tabs={
+          <TabsList variant="line">
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="guardrail">Guardrail</TabsTrigger>
+          </TabsList>
+        }
+        toolbar={
+          first && tab === 'activity' ? (
+            <FilterToolbar
+              presentKinds={presentKinds}
+              kinds={kinds}
+              edited={params.edited ?? false}
+              aiRuns={params.aiRuns ?? false}
+              onKinds={(next) => void setParams({ kinds: next.length > 0 ? next : null })}
+              onEdited={(value) => void setParams({ edited: value || null })}
+              onAiRuns={(value) => void setParams({ aiRuns: value || null })}
+            />
+          ) : undefined
+        }
+      >
+        <TabsContent value="activity" className="flex min-h-0 flex-1 flex-col">
+          {body}
+        </TabsContent>
+        <TabsContent value="guardrail" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <ConsultationGuardrailTab consultationId={consultationId} />
+        </TabsContent>
+      </ScreenTemplate>
+    </Tabs>
   );
 }

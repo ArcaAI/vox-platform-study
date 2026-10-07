@@ -12,7 +12,7 @@
  * as the pre-emptive override affordance rather than a surprising 409.
  */
 
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import {
   IconAlertTriangle,
   IconCheck,
@@ -42,6 +42,8 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { cn } from '@arcaai/ui';
 import { EmptyState } from '@/shared/state/empty-state';
+import { GuardrailWarningDialog } from '@/shared/guardrail/guardrail-warning-dialog';
+import type { GuardrailNotice } from '@/shared/guardrail/notice';
 import type { LoopActivityEntry } from '../../hooks/use-loop-activity';
 import type { UseNoteEditorResult } from '../../hooks/use-note-editor';
 import {
@@ -489,9 +491,22 @@ export interface CaseNoteColumnProps {
   generateStatus?: string | null;
   /** Cancels the running generation job. Rendered only while one is running. */
   onCancelGenerate?: (() => void) | null;
-  onApprove: (options: { overrideSafetyFlag: boolean }) => void;
+  /** TASK-1050: `acknowledgeGuardrailNotices` — the confirm step showed the outstanding warnings (§9.8.3). */
+  onApprove: (options: { overrideSafetyFlag: boolean; acknowledgeGuardrailNotices?: boolean }) => void;
   approvePending: boolean;
   approved: boolean;
+  /**
+   * TASK-1050 — the open guardrail warnings signing will acknowledge. Non-empty ⇒ Sign & save shows
+   * them in a confirm step first and approves with `acknowledgeGuardrailNotices: true`, in ONE action;
+   * warnings never block signing.
+   */
+  approveWarnings?: readonly GuardrailNotice[];
+  /** TASK-1050 — why signing is unavailable right now (a guardrail hold); shown beside the button. */
+  approveDisabledReason?: string | null;
+  /** TASK-1050 — the guardrail block panel / warning banner, rendered at the top of the note. */
+  guardrailSlot?: ReactNode;
+  /** TASK-1050 — the inline guardrail badge in the note's header (live warnings). */
+  guardrailBadge?: ReactNode;
   /** Cited transcript segments for the delivered draft (evidence panel). Absent/empty renders no panel. */
   citedSegments?: CitedSegment[];
   /** Persisted transcript text — the evidence panel slices it locally for the snippet. */
@@ -571,6 +586,10 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     onApprove,
     approvePending,
     approved,
+    approveWarnings = [],
+    approveDisabledReason = null,
+    guardrailSlot = null,
+    guardrailBadge = null,
     citedSegments = [],
     transcriptText = null,
     selectedCitationId = null,
@@ -585,7 +604,17 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
     onCorrectionsStale,
   } = props;
   const [overrideSafety, setOverrideSafety] = useState(false);
+  const [confirmSignOpen, setConfirmSignOpen] = useState(false);
   const noteFieldId = useId();
+
+  function handleSign() {
+    // TASK-1050 §9.8.3: show the outstanding warnings, then acknowledge-and-approve in one action.
+    if (approveWarnings.length > 0) {
+      setConfirmSignOpen(true);
+      return;
+    }
+    onApprove({ overrideSafetyFlag: overrideSafety });
+  }
   // Editing is only offered on a persisted, unsigned draft: the server locks an
   // approved summary ("Summary is approved and locked", 400), so offering the
   // control after sign-off would promise a write that cannot succeed.
@@ -689,12 +718,14 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
             Note assistant drafting
           </span>
         ) : null}
+        {guardrailBadge}
       </div>
 
       {/* tabIndex: a scrollable region must be reachable by keyboard (axe scrollable-region-focusable).
           No role/aria-label here — the parent <section aria-label="Case note"> already names this area, and a
           nested region with the same name is screen-reader noise. */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" tabIndex={0}>
+        {guardrailSlot}
         <AssuranceStrip progress={progress} assurance={assurance} />
         <PreSummaryPanel preSummary={preSummary} />
 
@@ -1030,16 +1061,32 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
               Override safety flag
             </label>
           ) : null}
+          {approveDisabledReason && !approved ? <span className="text-muted-foreground text-xs">{approveDisabledReason}</span> : null}
           <Button
             size="sm"
-            onClick={() => onApprove({ overrideSafetyFlag: overrideSafety })}
-            disabled={!draft || approvePending || approved || isEditing || (assurance?.safetyFlag === true && !overrideSafety)}
+            onClick={handleSign}
+            disabled={
+              !draft || approvePending || approved || isEditing || !!approveDisabledReason || (assurance?.safetyFlag === true && !overrideSafety)
+            }
           >
             {approvePending ? <Spinner aria-hidden /> : <IconCheck aria-hidden />}
             {approved ? 'Signed' : 'Sign & save'}
           </Button>
         </div>
       </div>
+      <GuardrailWarningDialog
+        open={confirmSignOpen}
+        onOpenChange={setConfirmSignOpen}
+        notices={approveWarnings}
+        title="Sign with safety warnings?"
+        description="Signing acknowledges these warnings on your behalf and records it on the approval. Review the note first if you have not."
+        actionLabel="Acknowledge and sign"
+        cancelLabel="Back to the note"
+        onAcknowledge={() => {
+          setConfirmSignOpen(false);
+          onApprove({ overrideSafetyFlag: overrideSafety, acknowledgeGuardrailNotices: true });
+        }}
+      />
     </section>
   );
 }

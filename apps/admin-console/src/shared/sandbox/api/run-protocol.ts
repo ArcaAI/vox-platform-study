@@ -11,14 +11,22 @@
  * client, so a jump is never loss. Only the server signals loss, with `run.resync`, whose snapshot
  * REPLACES the client's run state.
  */
+import type { GuardrailNotice } from '@arcaai/types';
 
-/** Every event type of the admin trace: the public plane's twelve plus the eleven debug events. */
+/**
+ * Every event type of the admin trace: the public plane's fourteen plus the eleven debug events.
+ * TASK-1050 adds the public `run.paused` (a guardrail hold parks the run at its node) and
+ * `guardrail.notice` (the standard `GuardrailNotice` v1) — frozen by the OVERLAY fixture
+ * `tests/contracts/guardrail-run-events.fixture.json`.
+ */
 export const RUN_TRACE_EVENT_TYPES = [
   'run.started',
   'run.completed',
   'run.failed',
   'run.cancelled',
   'run.resync',
+  'run.paused',
+  'guardrail.notice',
   'node.started',
   'node.completed',
   'node.failed',
@@ -88,13 +96,41 @@ export interface BoundInput {
   phiClass?: PhiClass;
 }
 
+/**
+ * The guardrail action vocabulary on the admin trace. `ALLOW` / `REDACT` / `BLOCK` are TASK-1036's;
+ * TASK-1050 adds `WARN` (a warn violation, the run continued) and `IGNORE` (a violation recorded only).
+ */
+export const RUN_GUARDRAIL_EVENT_ACTIONS = ['ALLOW', 'REDACT', 'BLOCK', 'WARN', 'IGNORE'] as const;
+export type RunGuardrailEventAction = (typeof RUN_GUARDRAIL_EVENT_ACTIONS)[number];
+
+/** One check of a screen on the admin trace — verdict, action and timing; never content or judge reasoning. */
+export interface RunGuardrailCheck {
+  checkId: string;
+  verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
+  actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified';
+  category?: string;
+  score?: number;
+  confidence?: number;
+  model?: string;
+  latencyMs?: number;
+}
+
 export interface GuardrailEventData {
-  action: 'ALLOW' | 'REDACT' | 'BLOCK';
+  action: RunGuardrailEventAction;
   detected: number;
   categories?: string[];
   mode?: 'detect' | 'redact';
   latencyMs?: number;
+  /** TASK-1050: per-check outcomes. Absent on a producer that predates it. */
+  checks?: RunGuardrailCheck[];
 }
+
+/** Why a run paused. Only the guardrail hold today. */
+export const RUN_PAUSED_REASONS = ['guardrail_hold'] as const;
+export type RunPausedReason = (typeof RUN_PAUSED_REASONS)[number];
+
+/** `GuardrailNotice` v1 — the `@arcaai/types` type itself (structurally the contract's `RunGuardrailNotice`). */
+export type RunGuardrailNotice = GuardrailNotice;
 
 export interface PromptComposedData {
   layers: Array<{ name: string; chars: number; tokens?: number }>;
@@ -117,10 +153,22 @@ export interface ModelRequestData {
 
 export interface RunEventDataMap {
   'run.started': { kind: 'workflow' | 'agent'; slug: string; versionNumber: number; mode?: string };
-  'run.completed': { status: 'COMPLETED'; durationMs: number; tokens: RunTokens; result?: RunResult; degraded?: boolean };
+  'run.completed': {
+    status: 'COMPLETED';
+    durationMs: number;
+    tokens: RunTokens;
+    result?: RunResult;
+    degraded?: boolean;
+    /** TASK-1050: every warn / unverified notice the run raised (a block pauses or fails the run instead). */
+    guardrailNotices?: RunGuardrailNotice[];
+  };
   'run.failed': { status: 'FAILED' | 'TIMED_OUT'; durationMs: number; error: RunError; tokens?: RunTokens };
   'run.cancelled': { status: 'CANCELED'; durationMs: number; reason?: string };
   'run.resync': { reason: 'gap' | 'expired' | 'cursor_invalid' | 'unavailable'; snapshot: RunSnapshot };
+  /** TASK-1050: the run waits durably at `nodeId` for a hold resolution (README §9.8.1). Not terminal. */
+  'run.paused': { reason: RunPausedReason; noticeId: string; nodeId: string };
+  /** TASK-1050: the standard client message. Envelope `nodeId` is optional (a consultation-level notice has none). */
+  'guardrail.notice': RunGuardrailNotice;
   'node.started': { kind: string; label?: string; attempt?: number };
   'node.completed': { status: 'COMPLETED' | 'DEGRADED' | 'SKIPPED'; durationMs: number; tokens?: RunTokens; warnings?: number };
   'node.failed': { durationMs: number; error: RunError; attempt?: number; willRetry?: boolean };

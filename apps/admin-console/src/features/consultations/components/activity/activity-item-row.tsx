@@ -1,5 +1,6 @@
 import type { ActivityEntry, ActivityItemEntry, RunSummary } from '@arcaai/types';
 import { formatNumber } from '@/shared/format';
+import { GuardrailItemBadge } from '@/shared/guardrail/guardrail-item-badge';
 import { formatDuration, formatRecordingOffset, formatRunCost, formatTokenPair, humanizeEventType } from './activity-format';
 import { parseRecap, recapPlainText } from './recap-model';
 
@@ -58,10 +59,28 @@ function itemText(entry: ActivityItemEntry): string | null {
   return recap ? recapPlainText(recap) : content;
 }
 
-function ItemContent({ entry }: { entry: ActivityItemEntry }) {
+/** TASK-1050: an item's guardrail warn / block counts (from its notices and evaluations). */
+export interface ItemGuardrailCounts {
+  warn: number;
+  block: number;
+}
+
+/** The item's `guardrailStatus` marker when the feed carries it (README §9.7.4); read defensively. */
+function guardrailStatusOf(entry: ActivityItemEntry): string | null {
+  const status = (entry as ActivityItemEntry & { guardrailStatus?: unknown }).guardrailStatus;
+  return typeof status === 'string' && status.toLowerCase() !== 'clean' ? status : null;
+}
+
+function ItemContent({ entry, guardrail }: { entry: ActivityItemEntry; guardrail?: ItemGuardrailCounts }) {
   const text = itemText(entry);
+  const guardrailStatus = guardrailStatusOf(entry);
   return (
     <>
+      {guardrailStatus || (guardrail && (guardrail.warn > 0 || guardrail.block > 0)) ? (
+        <div className="mb-1.5">
+          <GuardrailItemBadge status={guardrailStatus} warn={guardrail?.warn ?? 0} block={guardrail?.block ?? 0} />
+        </div>
+      ) : null}
       {text ? (
         <p className="line-clamp-4 text-sm whitespace-pre-line">{text}</p>
       ) : (
@@ -86,10 +105,10 @@ function ItemContent({ entry }: { entry: ActivityItemEntry }) {
 }
 
 /** Body of one timeline row, by entry type. */
-export function ItemBody({ entry }: { entry: ActivityEntry }) {
+export function ItemBody({ entry, guardrail }: { entry: ActivityEntry; guardrail?: ItemGuardrailCounts }) {
   switch (entry.entryType) {
     case 'item':
-      return <ItemContent entry={entry} />;
+      return <ItemContent entry={entry} guardrail={guardrail} />;
     case 'segment_run':
       return (
         <div>

@@ -12,13 +12,18 @@ const FIXTURE = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../../../../../../tests/contracts/run-protocol.fixture.json', import.meta.url)), 'utf8'),
 ) as { visibility: Record<string, string>; examples: Array<{ name: string; event: unknown }> };
 
+/** TASK-1050: the guardrail additions ship as an OVERLAY on the base fixture (its `$comment` says how to merge). */
+const GUARDRAIL_OVERLAY = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../../../../../../tests/contracts/guardrail-run-events.fixture.json', import.meta.url)), 'utf8'),
+) as { visibility: Record<string, string> };
+
 function event(partial: Partial<RunEvent> & Pick<RunEvent, 'type'>): RunEvent {
   return { seq: 1, runId: 'r', ts: '2026-10-04T10:00:00.000Z', data: {}, ...partial } as RunEvent;
 }
 
 describe('run protocol v2 mirror', () => {
-  it('declares exactly the frozen catalogue of event types', () => {
-    expect([...RUN_TRACE_EVENT_TYPES].sort()).toEqual(Object.keys(FIXTURE.visibility).sort());
+  it('declares exactly the frozen catalogue of event types (base + the TASK-1050 guardrail overlay)', () => {
+    expect([...RUN_TRACE_EVENT_TYPES].sort()).toEqual(Object.keys({ ...FIXTURE.visibility, ...GUARDRAIL_OVERLAY.visibility }).sort());
   });
 
   it('parses every fixture example', () => {
@@ -50,7 +55,8 @@ describe('run protocol v2 mirror', () => {
     expect(isTerminalRunEvent(event({ type: 'run.cancelled' }))).toBe(true);
     expect(isTerminalRunEvent(event({ type: 'node.completed', nodeId: 'n' }))).toBe(false);
     const resync = (status: string) =>
-      event({ type: 'run.resync', data: { reason: 'expired', snapshot: { status, lastSeq: 4, nodes: {}, outputs: {} } } } as Partial<RunEvent> & Pick<RunEvent, 'type'>);
+      event({ type: 'run.resync', data: { reason: 'expired', snapshot: { status, lastSeq: 4, nodes: {}, outputs: {} } } } as Partial<RunEvent> &
+        Pick<RunEvent, 'type'>);
     expect(isTerminalRunEvent(resync('COMPLETED'))).toBe(true);
     expect(isTerminalRunEvent(resync('RUNNING'))).toBe(false);
   });

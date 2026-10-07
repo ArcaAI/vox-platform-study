@@ -20,9 +20,12 @@ import type {
   RunError,
   RunEvent,
   RunNodeStatus,
+  RunGuardrailNotice,
+  RunPausedReason,
   RunResult,
   RunTokens,
 } from './run-protocol';
+import { mergeGuardrailNotices, toGuardrailNotice, toGuardrailNotices } from '@/shared/guardrail/notice';
 
 export type RunViewStatus = 'IDLE' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'TIMED_OUT';
 
@@ -54,6 +57,19 @@ export interface NodeView {
   modelRequests: ModelRequestData[];
   guardrails: NodeGuardrailView[];
   outputChecks: Array<{ valid: boolean; problems: string[]; field?: string }>;
+  /** TASK-1050: the guardrail notices raised at this node, one per `noticeId`. */
+  guardrailNotices?: RunGuardrailNotice[];
+  /** TASK-1050: the run is paused at this node on a guardrail hold. */
+  paused?: boolean;
+}
+
+/** TASK-1050 (README §9.8.1): the run waits durably at `nodeId` for a resolution of `noticeId`. */
+export interface RunPausedView {
+  reason: RunPausedReason;
+  noticeId: string;
+  nodeId: string;
+  seq: number;
+  ts: string;
 }
 
 export interface ConsultationFieldView {
@@ -100,6 +116,10 @@ export interface RunView {
   lastSeq: number;
   eventCount: number;
   resync?: { reason: string; seq: number };
+  /** TASK-1050: every guardrail notice the run raised (event or `run.completed`), one per `noticeId`. */
+  guardrailNotices?: RunGuardrailNotice[];
+  /** TASK-1050: set while the run is paused on a guardrail hold; cleared when the node re-runs or the run ends. */
+  paused?: RunPausedView | null;
 }
 
 const NODE_STATUSES: ReadonlySet<string> = new Set(['waiting', 'running', 'completed', 'degraded', 'failed', 'skipped']);
@@ -122,7 +142,19 @@ function emptyView(runId: string | null): RunView {
 }
 
 function emptyNode(nodeId: string): NodeView {
-  return { nodeId, status: 'waiting', attempt: 1, warnings: 0, inputs: [], outputs: {}, streaming: [], bindingWarnings: [], modelRequests: [], guardrails: [], outputChecks: [] };
+  return {
+    nodeId,
+    status: 'waiting',
+    attempt: 1,
+    warnings: 0,
+    inputs: [],
+    outputs: {},
+    streaming: [],
+    bindingWarnings: [],
+    modelRequests: [],
+    guardrails: [],
+    outputChecks: [],
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -195,7 +227,9 @@ class Folder {
         if (event.type === 'run.completed') {
           if (isRecord(data.result)) this.view.result = data.result as RunResult;
           if (data.degraded === true) this.view.degraded = true;
+          this.addRunNotices(toGuardrailNotices(data.guardrailNotices));
         }
+        this.clearPause();
         if (event.type === 'run.failed' && isRecord(data.error)) this.view.error = data.error as unknown as RunError;
         if (event.type === 'run.cancelled' && typeof data.reason === 'string') this.view.cancelReason = data.reason;
         // A terminal run has no running step.
@@ -211,6 +245,24 @@ class Folder {
       }
       case 'ping':
         return;
+      case 'guardrail.notice': {
+        this.running();
+        const notice = toGuardrailNotice<RunGuardrailNotice>(data);
+        if (!notice) return;
+        this.addRunNotices([notice]);
+        if (nodeId) {
+          const node = this.node(nodeId);
+          node.guardrailNotices = [...mergeGuardrailNotices(node.guardrailNotices ?? [], [notice])];
+        }
+        return;
+      }
+      case 'run.paused': {
+        this.running();
+        if (typeof data.noticeId !== 'string' || typeof data.nodeId !== 'string') return;
+        this.view.paused = { reason: 'guardrail_hold', noticeId: data.noticeId, nodeId: data.nodeId, seq: event.seq, ts: event.ts };
+        this.node(data.nodeId).paused = true;
+        return;
+      }
       case 'input.validated': {
         this.running();
         const problems = Array.isArray(data.problems) ? data.problems.filter((p): p is string => typeof p === 'string') : [];
@@ -218,7 +270,12 @@ class Folder {
           valid: data.valid === true,
           problems,
           ...(isRecord(data.schema) && typeof data.schema.slug === 'string'
-            ? { schema: { slug: data.schema.slug, ...(typeof data.schema.versionNumber === 'number' ? { versionNumber: data.schema.versionNumber } : {}) } }
+            ? {
+                schema: {
+                  slug: data.schema.slug,
+                  ...(typeof data.schema.versionNumber === 'number' ? { versionNumber: data.schema.versionNumber } : {}),
+                },
+              }
             : {}),
         };
         return;
@@ -265,6 +322,11 @@ class Folder {
         }
         node.attempt = attempt;
         node.status = 'running';
+        // A resumed hold re-executes the paused node: the pause is over.
+        if (node.paused) {
+          node.paused = false;
+          if (this.view.paused?.nodeId === nodeId) this.view.paused = null;
+        }
         node.startedAt = event.ts;
         if (typeof data.label === 'string' && data.label.length > 0) node.label = data.label;
         if (typeof data.kind === 'string') node.kind = data.kind;
@@ -317,7 +379,10 @@ class Folder {
         return;
       }
       case 'binding.warning': {
-        node.bindingWarnings = [...node.bindingWarnings, { input: String(data.input ?? ''), code: String(data.code ?? ''), message: String(data.message ?? '') }];
+        node.bindingWarnings = [
+          ...node.bindingWarnings,
+          { input: String(data.input ?? ''), code: String(data.code ?? ''), message: String(data.message ?? '') },
+        ];
         return;
       }
       case 'consultation.read': {
@@ -350,17 +415,35 @@ class Folder {
       }
       case 'guardrail.inbound':
       case 'guardrail.outbound': {
-        node.guardrails = [...node.guardrails, { ...event.data, direction: event.type === 'guardrail.inbound' ? 'inbound' : 'outbound', seq: event.seq }];
+        node.guardrails = [
+          ...node.guardrails,
+          { ...event.data, direction: event.type === 'guardrail.inbound' ? 'inbound' : 'outbound', seq: event.seq },
+        ];
         return;
       }
       case 'output.validated': {
         const problems = Array.isArray(data.problems) ? data.problems.filter((p): p is string => typeof p === 'string') : [];
-        node.outputChecks = [...node.outputChecks, { valid: data.valid === true, problems, ...(typeof data.field === 'string' ? { field: data.field } : {}) }];
+        node.outputChecks = [
+          ...node.outputChecks,
+          { valid: data.valid === true, problems, ...(typeof data.field === 'string' ? { field: data.field } : {}) },
+        ];
         return;
       }
       default:
         return;
     }
+  }
+
+  private addRunNotices(notices: readonly RunGuardrailNotice[]): void {
+    if (notices.length === 0) return;
+    this.view.guardrailNotices = [...mergeGuardrailNotices(this.view.guardrailNotices ?? [], notices)];
+  }
+
+  private clearPause(): void {
+    if (!this.view.paused) return;
+    const node = this.view.nodes[this.view.paused.nodeId];
+    if (node) node.paused = false;
+    this.view.paused = null;
   }
 
   private resync(event: RunEvent<'run.resync'>): void {

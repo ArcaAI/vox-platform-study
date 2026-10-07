@@ -29,7 +29,6 @@ import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
-import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/components/playground-canvas';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -42,7 +41,7 @@ import type { AssembledGenerateRequest, AssembledGenerateResponse, GenerateTextR
 import { isStreamingAck } from '../api/types';
 import { useTaskStream } from '../api/use-task-stream';
 import type { TaskStreamState } from '../api/use-task-stream';
-import { OutputPane } from './output-pane';
+import { OutputPane, runStateFromGenerateError, runStateFromGenerateResult } from './output-pane';
 import type { RunState } from './output-pane';
 import { PromptEditorCard } from './prompt-editor-card';
 import type { LlmFormState } from './prompt-editor-card';
@@ -176,8 +175,12 @@ function footerStatus(run: RunState, stream: TaskStreamState, isPending: boolean
       return 'Idle — no generation yet';
     case 'fail-closed':
       return `Generation failed closed (422) — ${failClosedSummary(run.code)}`;
+    case 'redaction-unavailable':
+      return 'Paused — patient details could not be protected before an external model; retry';
     case 'sync':
-      return `Run complete — ${run.result.provider} / ${run.result.model}`;
+      return run.notices && run.notices.length > 0
+        ? `Run complete with safety warnings — ${run.result.provider} / ${run.result.model}`
+        : `Run complete — ${run.result.provider} / ${run.result.model}`;
     case 'stream':
       switch (stream.status) {
         case 'connecting':
@@ -263,17 +266,15 @@ function PlaygroundLlmBody() {
     setLastRequest(request);
     const handleSuccess = (outcome: AssembledGenerateResponse) => {
       if (isStreamingAck(outcome)) setRun({ kind: 'stream', taskId: outcome.task_id });
-      else setRun({ kind: 'sync', result: outcome, debug: outcome._debug });
+      // TASK-1050: a warn keeps the generation and carries its notices (banner above the output).
+      else setRun(runStateFromGenerateResult(outcome));
     };
     const handleError = (error: unknown) => {
-      if (error instanceof GatewayError && error.status === 422) {
-        // TASK-969 WS-3: the gateway relays a closed-vocabulary `error_code`
-        // (never the upstream `detail`, which can quote the prompt) inside the
-        // parsed body — `GatewayError.details` — alongside its own fixed
-        // `detail` phrase. Prefer that phrase for the message line and fall
-        // back to `error.message` for a body shaped like a generic Nest error.
-        const details = error.details as { detail?: string; error_code?: string } | undefined;
-        setRun({ kind: 'fail-closed', message: details?.detail ?? error.message, code: details?.error_code });
+      // TASK-969 WS-3 / TASK-1050: a fail-closed 422 (incl. a guardrail block, now with its notice) and
+      // the egress-redaction 503 are designed panels; everything else is a toast.
+      const designed = runStateFromGenerateError(error);
+      if (designed) {
+        setRun(designed);
         return;
       }
       toast.error(error instanceof Error ? error.message : 'Generation failed');

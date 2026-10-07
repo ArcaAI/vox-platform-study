@@ -6,17 +6,58 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@arcaai/ui/components/shadcn/collapsible';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
+import { GatewayError } from '@/shared/api';
 import { CopyButton } from '@/shared/copy-button';
 import { formatNumber } from '@/shared/format';
+import { GuardrailBlockPanel } from '@/shared/guardrail/guardrail-block-panel';
+import { GuardrailCheckList } from '@/shared/guardrail/guardrail-check-list';
+import { classifyGuardrailError } from '@/shared/guardrail/guardrail-error';
+import { GuardrailNoticeBanner } from '@/shared/guardrail/guardrail-notice-banner';
+import { guardrailDirectionLabel } from '@/shared/guardrail/labels';
+import { toGuardrailNotices, type GuardrailNotice } from '@/shared/guardrail/notice';
 import type { TaskStreamState } from '../api/use-task-stream';
 import type { AssembledDebugMeta, GenerateTextResponse, TextTask, TextTokenUsage } from '../api/types';
 
 /** What the output pane is currently showing (screen-owned). */
 export type RunState =
   | { kind: 'idle' }
-  | { kind: 'sync'; result: GenerateTextResponse; debug?: AssembledDebugMeta }
+  /** TASK-1050: `notices` — the warn / unverified notices of the generation (the output stays). */
+  | { kind: 'sync'; result: GenerateTextResponse; debug?: AssembledDebugMeta; notices?: GuardrailNotice[] }
   | { kind: 'stream'; taskId: string }
-  | { kind: 'fail-closed'; message: string; code?: string };
+  /** TASK-1050: `notice` — the block's notice, naming the check and direction (absent on an older gateway). */
+  | { kind: 'fail-closed'; message: string; code?: string; notice?: GuardrailNotice | null }
+  /** TASK-1050: cloud-egress pseudonymisation was down, NOTHING was sent — a retryable privacy pause, not a verdict. */
+  | { kind: 'redaction-unavailable'; notice?: GuardrailNotice | null };
+
+/** A sync generate body → its run state, with the guardrail notices TEXT returned (README §9.7.3). */
+export function runStateFromGenerateResult(result: GenerateTextResponse & { _debug?: AssembledDebugMeta; guardrailNotices?: unknown }): RunState {
+  const notices = toGuardrailNotices(result);
+  return { kind: 'sync', result, ...(result._debug ? { debug: result._debug } : {}), ...(notices.length > 0 ? { notices } : {}) };
+}
+
+/**
+ * A failed generate → the designed run state, or `null` for anything a toast should carry.
+ *
+ * TASK-969 WS-3: the gateway relays a closed-vocabulary code (never the upstream `detail`, which can
+ * quote the prompt) inside the parsed body (`GatewayError.details`), with its own fixed `detail` phrase.
+ * TASK-1050: a guardrail block also carries a validated notice (W2b relay), and the egress-redaction
+ * hold is a 503 of its own.
+ */
+export function runStateFromGenerateError(error: unknown): RunState | null {
+  const guardrail = classifyGuardrailError(error);
+  if (guardrail?.kind === 'redaction_unavailable') return { kind: 'redaction-unavailable', notice: guardrail.notice };
+  if (error instanceof GatewayError && error.status === 422) {
+    const details = error.details as { detail?: string; error_code?: string; code?: string } | undefined;
+    const code = guardrail?.code ?? details?.error_code ?? undefined;
+    return {
+      kind: 'fail-closed',
+      message: details?.detail ?? error.message,
+      ...(code ? { code } : {}),
+      ...(guardrail?.notice ? { notice: guardrail.notice } : {}),
+    };
+  }
+  return null;
+}
 
 interface OutputPaneProps {
   run: RunState;
@@ -182,8 +223,18 @@ const DEFAULT_FAIL_CLOSED_COPY = {
 };
 
 /** Designed 422 error variant: the service failed CLOSED, no toast, a real panel. */
-function FailClosedPanel({ message, code, onRetry }: { message: string; code?: string; onRetry: () => void }) {
-  const copy = (code && FAIL_CLOSED_COPY[code]) || DEFAULT_FAIL_CLOSED_COPY;
+function FailClosedPanel({
+  message,
+  code,
+  notice,
+  onRetry,
+}: {
+  message: string;
+  code?: string;
+  notice?: GuardrailNotice | null;
+  onRetry: () => void;
+}) {
+  const copy = (code && FAIL_CLOSED_COPY[code]) || (notice ? FAIL_CLOSED_COPY.CONTENT_BLOCKED : undefined) || DEFAULT_FAIL_CLOSED_COPY;
   return (
     <div role="alert" className="bg-destructive/5 flex flex-col gap-2 rounded-lg p-4">
       <div className="flex items-center gap-2">
@@ -192,6 +243,13 @@ function FailClosedPanel({ message, code, onRetry }: { message: string; code?: s
       </div>
       <p className="text-sm font-medium">{copy.title}</p>
       <p className="text-muted-foreground text-sm">{message}</p>
+      {notice ? (
+        <div className="flex flex-col gap-1">
+          {/* TASK-1050: which check stopped it, and on which side of the model. Verdicts only, no content. */}
+          <p className="text-muted-foreground text-xs">{guardrailDirectionLabel(notice.direction)}</p>
+          <GuardrailCheckList checks={notice.checks} />
+        </div>
+      ) : null}
       <p className="text-muted-foreground text-xs">{copy.explanation}</p>
       <div>
         <Button variant="outline" size="sm" onClick={onRetry}>
@@ -275,9 +333,18 @@ export function OutputPane({
         ) : run.kind === 'idle' ? (
           <EmptyOutput />
         ) : run.kind === 'fail-closed' ? (
-          <FailClosedPanel message={run.message} code={run.code} onRetry={onRetry} />
+          <FailClosedPanel message={run.message} code={run.code} notice={run.notice} onRetry={onRetry} />
+        ) : run.kind === 'redaction-unavailable' ? (
+          <GuardrailBlockPanel
+            notice={run.notice ?? null}
+            title="Paused: patient details could not be protected"
+            code="EGRESS_REDACTION_UNAVAILABLE"
+            onRetry={onRetry}
+            retryLabel="Retry"
+          />
         ) : run.kind === 'sync' ? (
           <>
+            {run.notices && run.notices.length > 0 ? <GuardrailNoticeBanner notices={run.notices} /> : null}
             {run.result.reasoning ? <ReasoningPanel reasoning={run.result.reasoning} live={false} /> : null}
             <ResponseText content={run.result.content} live={false} onCopy={run.result.content} />
             <ResultSummary
