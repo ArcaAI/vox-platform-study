@@ -102,8 +102,8 @@ describe('GuardrailAvailabilityService', () => {
       );
       const response = await service.getForTenant(TENANT_A);
       expect(response.version).toBe(0);
-      expect(response.policies).toEqual({});
-      expect(response.effective).toEqual({ prompt_safety: { enabled: true } });
+      // TASK-1050 v2: `effective` is a projection over EVERY catalogue check; the SYSTEM row's statement wins.
+      expect((response.effective as Record<string, unknown>).prompt_safety).toMatchObject({ enabled: true });
       expect(response.effectiveSourceTenantId).toBe(SYSTEM_TENANT_ID);
     });
 
@@ -114,7 +114,7 @@ describe('GuardrailAvailabilityService', () => {
           : entity(TENANT_A, { prompt_safety: { enabled: true } }),
       );
       const response = await service.getForTenant(TENANT_A);
-      expect(response.effective).toEqual({ prompt_safety: { enabled: true } });
+      expect((response.effective as Record<string, unknown>).prompt_safety).toMatchObject({ enabled: true });
       expect(response.effectiveSourceTenantId).toBe(TENANT_A);
     });
 
@@ -135,7 +135,8 @@ describe('GuardrailAvailabilityService', () => {
       repository.findByTenantId.mockResolvedValue(null);
       const response = await service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true }, prompt_safety: { enabled: true } }, expectedVersion: 0 });
       expect(repository.create).toHaveBeenCalledOnce();
-      expect(response.policies).toEqual({ jailbreak_detection: { enabled: true }, prompt_safety: { enabled: true } });
+      // TASK-1050: rows are stored in the v2 shape.
+      expect(response.policies).toMatchObject({ checks: { jailbreak_detection: { enabled: true }, prompt_safety: { enabled: true } } });
       expect(eventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.anything());
     });
 
@@ -166,7 +167,7 @@ describe('GuardrailAvailabilityService', () => {
         t === SYSTEM_TENANT_ID ? entity(SYSTEM_TENANT_ID, { pii_leak: { enabled: true, minScore: 0.5 } }) : null,
       );
       await expect(service.putForTenant(TENANT_A, { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.1 } }, expectedVersion: 0 })).resolves.toMatchObject(
-        { policies: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.1 } } },
+        { policies: { checks: { jailbreak_detection: { enabled: true }, pii_leak: { enabled: true, minScore: 0.1 } } } },
       );
     });
 
@@ -174,7 +175,10 @@ describe('GuardrailAvailabilityService', () => {
       // The owner's decision is literal: ALL requests before send, ALL responses
       // after receive. An outbound-only selection is a direction switched off,
       // not a narrowing.
-      await expect(service.putForTenant(TENANT_A, { policies: { response_safety: { enabled: true } }, expectedVersion: 0 })).rejects.toThrow(
+      // TASK-1050 v2: an unnamed check inherits the platform default, so the selection must switch every
+      // unlocked inbound check off explicitly to leave the direction ungated.
+      const offInbound = { jailbreak_detection: { enabled: false }, prompt_safety: { enabled: false }, prompt_toxicity: { enabled: false } };
+      await expect(service.putForTenant(TENANT_A, { policies: { ...offInbound, response_safety: { enabled: true } }, expectedVersion: 0 })).rejects.toThrow(
         /inbound would have no check/,
       );
       expect(repository.create).not.toHaveBeenCalled();
