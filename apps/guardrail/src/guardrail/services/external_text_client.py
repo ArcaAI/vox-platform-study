@@ -165,7 +165,7 @@ class TextJudgeClient:
         provider: str,
         model: str,
         tenant_id: str,
-        criteria: str,
+        criteria: str | None,
         # REQUIRED, like `criteria` and `tenant_id` above and for the same reason
         # (TASK-878): each is configuration with no code default, so a client that
         # cannot be built is a client that cannot render a verdict nobody can
@@ -183,6 +183,7 @@ class TextJudgeClient:
         breaker: CircuitBreaker | None = None,
         enabled: bool = True,
         window_criteria: str | None = None,
+        native_chat: bool = False,
     ) -> None:
         resolved_tenant = (tenant_id or "").strip()
         if not resolved_tenant:
@@ -194,7 +195,11 @@ class TextJudgeClient:
                 "X-Tenant-Id or declare 'tenantless:<reason>'."
             )
         resolved_criteria = (criteria or "").strip()
-        if not resolved_criteria:
+        # TASK-1050 W5: a `native_chat` client (a native-template guard such as Qwen3Guard) sends
+        # the model's own template and NO criteria, so it is the one client built without them.
+        # It can only call `judge_native_chat`; the criteria paths refuse it.
+        self.native_chat = native_chat
+        if not resolved_criteria and not native_chat:
             # Same construction-time invariant as the tenant: a client that cannot
             # be built is a client that cannot render an unattributable or
             # uncriteria'd verdict.
@@ -248,6 +253,29 @@ class TextJudgeClient:
         """
         return await self._judge(prompt, system_prompt, schema=schema)
 
+    async def judge_native_chat(self, *, messages: list[dict[str, str]]) -> dict[str, Any]:
+        """One native-template judgement (TASK-1050 W5): TEXT ``protocol: "native_chat"``.
+
+        ``messages`` are the turns the model's own chat template is applied to — the user turn,
+        plus the assistant turn for response moderation. No system prompt and no
+        ``response_format`` are sent: the engine (LM Studio) applies the GGUF-embedded template.
+        Same transport, retry budget, breaker and fail-closed raise as every other judgement;
+        the raw completion comes back for the caller to parse.
+        """
+        if not self.native_chat:
+            raise ValueError("judge_native_chat needs a client built with native_chat=True")
+        body: dict[str, Any] = {
+            "protocol": "native_chat",
+            "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+            "provider": self.provider,
+            "model": self.model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        if self.provider_overrides:
+            body["provider_overrides"] = self.provider_overrides
+        return await self._send(body)
+
     async def _judge(
         self,
         prompt: str,
@@ -256,6 +284,8 @@ class TextJudgeClient:
         schema: dict[str, Any] = JUDGE_VERDICT_SCHEMA,
     ) -> dict[str, Any]:
         """One judgement, with a bounded retry budget. Raises when exhausted."""
+        if self.native_chat:
+            raise ValueError("a native_chat client has no criteria judgement")
         body: dict[str, Any] = {
             "prompt": prompt,
             "system_prompt": system_prompt,
@@ -274,6 +304,10 @@ class TextJudgeClient:
         }
         if self.provider_overrides:
             body["provider_overrides"] = self.provider_overrides
+        return await self._send(body)
+
+    async def _send(self, body: dict[str, Any]) -> dict[str, Any]:
+        """POST one judge-lane body under the bounded retry budget; raise when exhausted."""
 
         async def _once() -> dict[str, Any]:
             started = time.monotonic()

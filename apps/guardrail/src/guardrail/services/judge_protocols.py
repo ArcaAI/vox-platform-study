@@ -12,9 +12,13 @@ here against the two fixtures under `tests/contracts/`, so the languages cannot 
   verdict. Several lanes on ONE model are ONE call (A2/OD-26): each lane's criteria is a
   ``<section id="<lane>">`` of a combined system prompt, and the schema asks for one verdict per
   lane. Verdict-only (A1): no ``reasoning`` field, because output tokens dominate judge latency.
-* ``qwen3guard_native`` — the model's own chat template (apps/nlp ``/guard/judge``). Its native
-  tier and categories come back raw and are mapped here through the row's
-  ``_metadata.judge.categoryMap`` / ``tiers``. An unmapped native category (``PII``) is ignored.
+* ``qwen3guard_native`` — the model's own chat template. Its native tier and categories are mapped
+  here through the row's ``_metadata.judge.categoryMap`` / ``tiers``. An unmapped native category
+  (``PII``) is ignored. Two transports, chosen by the row's ``servedBy``
+  (:func:`native_judge_transport`, owner 2026-10-07): an LM Studio (TEXT-served) row goes through
+  TEXT's judge lane with ``protocol: "native_chat"`` and its raw completion is parsed here
+  (:func:`parse_qwen3guard_text`, a port of apps/nlp's grammar); an nlp-served row goes to apps/nlp
+  ``/guard/judge``, which parses it there.
 
 Anything unreadable is UNDETERMINED for the lane it concerns — never a pass, never a raise.
 """
@@ -22,6 +26,7 @@ Anything unreadable is UNDETERMINED for the lane it concerns — never a pass, n
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -449,4 +454,106 @@ def map_qwen3guard(
             else ParsedLane("pass", None, NATIVE_TIER_CONFIDENCE, tier_value)
         )
         for lane in lanes
+    }
+
+
+# ── qwen3guard_native over TEXT `native_chat` (TASK-1050 W5) ─────────────────────────
+
+#: The TEXT judge route's request protocol for a native-template guard (`JudgeRequestProtocol`).
+NATIVE_CHAT: Final = "native_chat"
+
+#: `AiModel.servedBy` values whose engine TEXT fronts. `lm-studio` is the provider spelling some
+#: rows and screens use for the same workload (`lifecycle-badge.tsx` accepts both).
+TEXT_SERVED_JUDGE_WORKLOADS: Final[frozenset[str]] = frozenset({"lmstudio", "lm-studio", "text"})
+
+
+def native_judge_transport(served_by: str | None) -> str:
+    """``"text"`` for a TEXT-served row, else ``"nlp"`` (a row that does not say keeps nlp)."""
+    return "text" if (served_by or "").strip().lower() in TEXT_SERVED_JUDGE_WORKLOADS else "nlp"
+
+
+def native_chat_messages(mode: str, prompt_context: str | None, text: str) -> list[dict[str, str]]:
+    """The turns the model's template is applied to: user, or user + assistant (response mode)."""
+    if mode == "response":
+        return [
+            {"role": "user", "content": prompt_context or ""},
+            {"role": "assistant", "content": text},
+        ]
+    return [{"role": "user", "content": text}]
+
+
+#: The tier reported when a generation cannot be read unambiguously (apps/nlp's `UNDETERMINED`).
+QWEN3GUARD_UNDETERMINED: Final = "undetermined"
+
+# The grammar's fixed vocabulary — the PARSER, not configuration (what a tier MEANS is the row's
+# `tiers`). Ported verbatim from `apps/nlp/src/nlp/services/qwen3guard_judge.py`; the two are
+# pinned by `test_task1050_w5_qwen_lmstudio.py` against the nlp parser's own case list.
+_QWEN_TIERS: Final[Mapping[str, str]] = {
+    "safe": "Safe",
+    "controversial": "Controversial",
+    "unsafe": "Unsafe",
+}
+_QWEN_REFUSALS: Final[Mapping[str, bool]] = {"yes": True, "no": False}
+_QWEN_NO_CATEGORIES: Final = "none"
+_QWEN_LINE: Final = re.compile(r"^(Safety|Categories|Refusal):(.*)$", re.IGNORECASE)
+
+
+def _qwen_undetermined(reason: str) -> dict[str, Any]:
+    return {
+        "tier": QWEN3GUARD_UNDETERMINED,
+        "categories": [],
+        "refusal": None,
+        "undetermined_reason": reason,
+    }
+
+
+def parse_qwen3guard_text(output: str, *, mode: str) -> dict[str, Any]:
+    """One raw Qwen3Guard completion → the native fields apps/nlp's ``/guard/judge`` returns.
+
+    ``{tier, categories, refusal, undetermined_reason}``, ready for :func:`map_qwen3guard`.
+    Strict: every non-blank line must be a grammar line; a ``Refusal:`` line is only read in
+    response mode. Anything else is ``undetermined`` with a reason code — never a guessed tier.
+    """
+    fields: dict[str, str] = {}
+    for raw_line in (output or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = _QWEN_LINE.match(line)
+        if match is None:
+            return _qwen_undetermined("unexpected_line")
+        key = match.group(1).lower()
+        if key == "refusal" and mode == "prompt":
+            return _qwen_undetermined("unexpected_line")
+        if key in fields:
+            return _qwen_undetermined("duplicate_line")
+        fields[key] = match.group(2).strip()
+
+    if not fields:
+        return _qwen_undetermined("empty_output")
+    if "safety" not in fields:
+        return _qwen_undetermined("missing_safety")
+    tier = _QWEN_TIERS.get(fields["safety"].lower())
+    if tier is None:
+        return _qwen_undetermined("unknown_tier")
+    categories_line = fields.get("categories", "")
+    if not categories_line:
+        return _qwen_undetermined("missing_categories")
+    categories = (
+        []
+        if categories_line.lower() == _QWEN_NO_CATEGORIES
+        else [part.strip() for part in categories_line.split(",") if part.strip()]
+    )
+    refusal: bool | None = None
+    if mode == "response":
+        if "refusal" not in fields:
+            return _qwen_undetermined("missing_refusal")
+        refusal = _QWEN_REFUSALS.get(fields["refusal"].lower())
+        if refusal is None:
+            return _qwen_undetermined("unknown_refusal")
+    return {
+        "tier": tier,
+        "categories": categories,
+        "refusal": refusal,
+        "undetermined_reason": None,
     }

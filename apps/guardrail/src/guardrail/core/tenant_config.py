@@ -246,6 +246,9 @@ KEY_SOURCE_REVISION = "source-revision"
 #: its serving library (`AiModel.libraryName`) — the judge runner reads both.
 KEY_JUDGE = "judge"
 KEY_LIBRARY_NAME = "library-name"
+#: TASK-1050 W5: `AiModel.servedBy` — the workload that executes the row. The judge runner picks
+#: a `qwen3guard_native` model's transport from it (`lmstudio` → TEXT `native_chat`, else nlp).
+KEY_SERVED_BY = "served-by"
 
 
 class TenantSelectionVetoedError(Exception):
@@ -364,6 +367,8 @@ class AiModelRead(_Base):
     source_revision: Mapped[str | None] = mapped_column("sourceRevision", String)
     #: TASK-1049 Track R / TASK-1050: which loader serves the row (`transformers`, `seq-cls`, …).
     library_name: Mapped[str | None] = mapped_column("libraryName", String)
+    #: TASK-1050 W5: the workload that executes the row (`lmstudio`, `nlp`, `text`, …).
+    served_by: Mapped[str | None] = mapped_column("servedBy", String)
 
 
 class AiProviderConnectionRead(_Base):
@@ -504,6 +509,8 @@ class GuardrailTenantConfig:
     judge: dict[str, Any] | None = None
     #: TASK-1050: `AiModel.libraryName`, forwarded to apps/nlp so it binds the right loader.
     library_name: str | None = None
+    #: TASK-1050 W5: `AiModel.servedBy`. `None` = the row did not say (the nlp judge path).
+    served_by: str | None = None
 
 
 @dataclass
@@ -648,6 +655,7 @@ class TenantConfigResolver:
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
             judge=_decode_taxonomy(keys.get(KEY_JUDGE)),
             library_name=_clean(keys.get(KEY_LIBRARY_NAME)),
+            served_by=_clean(keys.get(KEY_SERVED_BY)),
         )
 
     # `resolve_model_source` / `resolve_model_source_by_slug` are GONE
@@ -846,6 +854,7 @@ class TenantConfigResolver:
                     AiModelRead.source,
                     AiModelRead.source_revision,
                     AiModelRead.library_name,
+                    AiModelRead.served_by,
                 )
                 .select_from(AiRoutingPolicyRead)
                 .join(
@@ -923,6 +932,7 @@ class TenantConfigResolver:
             (KEY_SOURCE, getattr(row, "source", None)),
             (KEY_SOURCE_REVISION, getattr(row, "source_revision", None)),
             (KEY_LIBRARY_NAME, getattr(row, "library_name", None)),
+            (KEY_SERVED_BY, getattr(row, "served_by", None)),
         ):
             if isinstance(value, str) and value.strip():
                 keys[key] = value
