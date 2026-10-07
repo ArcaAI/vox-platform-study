@@ -77,6 +77,8 @@ export interface ApproveConsultationBody {
   overrideSafetyFlag?: boolean;
   /** The confirm step showed the outstanding warnings; they are acknowledged in the approve transaction. */
   acknowledgeGuardrailNotices?: boolean;
+  /** OD-24: resolve an INBOUND hold (`acknowledged` | `item_excluded`) and approve in the same transaction. */
+  resolveHold?: GuardrailHoldResolution;
 }
 
 export interface ApproveConsultationResult {
@@ -89,6 +91,7 @@ export function approveConsultation(consultationId: string, body: ApproveConsult
   return command(consultationId, 'approve', {
     ...(body.overrideSafetyFlag ? { overrideSafetyFlag: true } : {}),
     ...(body.acknowledgeGuardrailNotices ? { acknowledgeGuardrailNotices: true } : {}),
+    ...(body.resolveHold ? { resolveHold: { noticeId: body.resolveHold.noticeId, resolution: body.resolveHold.resolution } } : {}),
   });
 }
 

@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { mergeGuardrailNotices, toGuardrailNotice, toGuardrailNotices, type GuardrailNotice } from '@/shared/guardrail/notice';
 import { useEventStream } from './use-event-stream';
 
 /** TEXT token accounting carried by the terminal `usage` frame. */
@@ -60,6 +61,13 @@ export interface TaskStreamState {
   usage: TextTokenUsage | null;
   finishReason: string | null;
   error: string | null;
+  /**
+   * TASK-1050 — the guardrail notices of this task, one per `noticeId`: every `guardrail.notice` event as
+   * it arrives (the gateway relays the validated notice as the frame's data), plus the `guardrailNotices`
+   * (or a block's `guardrailNotice`) of the terminal `done` / `error` frame. Re-validated: a notice whose
+   * text is not its key's fixed label never surfaces.
+   */
+  guardrailNotices: readonly GuardrailNotice[];
   /** Manual reattach after a transport drop (native auto-retry is disabled). */
   reopen: () => void;
   /** Local stop (the cancel affordance); keeps the accumulated content. */
@@ -73,9 +81,27 @@ interface StreamFields {
   usage: TextTokenUsage | null;
   finishReason: string | null;
   error: string | null;
+  guardrailNotices: readonly GuardrailNotice[];
 }
 
-const EMPTY_FIELDS: StreamFields = { content: '', reasoning: '', chunkCount: 0, usage: null, finishReason: null, error: null };
+const NO_NOTICES: readonly GuardrailNotice[] = Object.freeze([]);
+
+const EMPTY_FIELDS: StreamFields = {
+  content: '',
+  reasoning: '',
+  chunkCount: 0,
+  usage: null,
+  finishReason: null,
+  error: null,
+  guardrailNotices: NO_NOTICES,
+};
+
+/** The notices a terminal frame's `data` carries (camel-cased by the gateway relay). */
+function noticesOfFrameData(data: Record<string, unknown> | null | undefined): GuardrailNotice[] {
+  if (!data) return [];
+  const single = toGuardrailNotice(data.guardrailNotice);
+  return [...toGuardrailNotices(data), ...(single ? [single] : [])];
+}
 
 /** Event-driven slice; `key` ties it to one connection so stale data is ignored. */
 interface StreamEventState extends StreamFields {
@@ -83,7 +109,7 @@ interface StreamEventState extends StreamFields {
   status: Exclude<TaskStreamStatus, 'idle' | 'connecting'> | null;
 }
 
-const TEXT_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error'] as const;
+const TEXT_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error', 'guardrail.notice'] as const;
 
 /** Statuses that end the stream — these outrank the live transport status. */
 const TERMINAL_STATUSES = new Set<TaskStreamStatus>(['done', 'failed', 'closed']);
@@ -118,9 +144,30 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
         // transport Event is handled by useEventStream's own status.
         if (!frame) return;
         const message = typeof frame.data?.error === 'string' ? frame.data.error : 'Generation failed';
-        setEventState((previous) =>
-          previous.key === key ? { ...previous, status: 'failed', error: message } : { key, ...EMPTY_FIELDS, status: 'failed', error: message },
-        );
+        const notices = noticesOfFrameData(frame.data);
+        setEventState((previous) => {
+          const base = previous.key === key ? previous : { key, ...EMPTY_FIELDS };
+          return { ...base, status: 'failed', error: message, guardrailNotices: mergeGuardrailNotices(base.guardrailNotices, notices) };
+        });
+        return;
+      }
+
+      if (type === 'guardrail.notice') {
+        // The relay sends the notice itself as data (an older relay may wrap it as `{ type, data }`).
+        let parsed: unknown = null;
+        try {
+          parsed = JSON.parse(data);
+        } catch {
+          return;
+        }
+        const wrapped = parsed as { type?: unknown; data?: unknown } | null;
+        const notice = toGuardrailNotice(wrapped?.type === 'guardrail.notice' ? wrapped.data : parsed);
+        if (!notice) return;
+        setEventState((previous) => {
+          const base = previous.key === key ? previous : { key, status: 'streaming' as const, ...EMPTY_FIELDS };
+          const merged = mergeGuardrailNotices(base.guardrailNotices, [notice]);
+          return merged === base.guardrailNotices && previous.key === key ? previous : { ...base, guardrailNotices: merged };
+        });
         return;
       }
 
@@ -137,7 +184,12 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
             return frame.data ? { ...base, usage: frame.data as unknown as TextTokenUsage } : base;
           case 'done': {
             const reason = frame.data?.finish_reason;
-            return { ...base, status: 'done', finishReason: typeof reason === 'string' ? reason : base.finishReason };
+            return {
+              ...base,
+              status: 'done',
+              finishReason: typeof reason === 'string' ? reason : base.finishReason,
+              guardrailNotices: mergeGuardrailNotices(base.guardrailNotices, noticesOfFrameData(frame.data)),
+            };
           }
           default:
             return base;
@@ -206,6 +258,7 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
     chunkCount: fields.chunkCount,
     usage: fields.usage,
     finishReason: fields.finishReason,
+    guardrailNotices: fields.guardrailNotices,
     // A transport failure has no frame — surface the shared hook's message.
     error: fields.error ?? (stream.status === 'error' ? (stream.error ?? 'Stream connection lost') : null),
     reopen,

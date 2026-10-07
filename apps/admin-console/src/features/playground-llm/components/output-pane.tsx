@@ -14,7 +14,7 @@ import { GuardrailCheckList } from '@/shared/guardrail/guardrail-check-list';
 import { classifyGuardrailError } from '@/shared/guardrail/guardrail-error';
 import { GuardrailNoticeBanner } from '@/shared/guardrail/guardrail-notice-banner';
 import { guardrailDirectionLabel } from '@/shared/guardrail/labels';
-import { toGuardrailNotices, type GuardrailNotice } from '@/shared/guardrail/notice';
+import { isBlockedNotice, isWarningNotice, toGuardrailNotices, type GuardrailNotice } from '@/shared/guardrail/notice';
 import type { TaskStreamState } from '../api/use-task-stream';
 import type { AssembledDebugMeta, GenerateTextResponse, TextTask, TextTokenUsage } from '../api/types';
 
@@ -294,6 +294,7 @@ export function OutputPane({
   // the post-mortem read supersedes the drop alert and reattach affordance.
   const recovered = isStreamRun && stream.status === 'error' && postMortem?.status === 'completed' ? postMortem : undefined;
   const isActive = isPending || run.kind !== 'idle';
+  const streamBlock = stream.guardrailNotices.find(isBlockedNotice) ?? null;
 
   return (
     <Card className={isActive ? 'border-primary/20 gap-4' : 'gap-4'}>
@@ -357,13 +358,18 @@ export function OutputPane({
           </>
         ) : (
           <>
+            {/* TASK-1050: the stream's own warn / unverified notices (events + the done frame). */}
+            {stream.guardrailNotices.some(isWarningNotice) ? <GuardrailNoticeBanner notices={stream.guardrailNotices} /> : null}
             {stream.reasoning ? <ReasoningPanel reasoning={stream.reasoning} live={streamLive} /> : null}
             <ResponseText
               content={recovered ? recovered.content : stream.content}
               live={streamLive}
               onCopy={streamLive ? undefined : recovered ? recovered.content : stream.content}
             />
-            {stream.status === 'failed' ? (
+            {stream.status === 'failed' && streamBlock ? (
+              // TASK-1050: a guardrail stopped the stream — name the check and direction, offer a retry.
+              <GuardrailBlockPanel notice={streamBlock} onRetry={onRetry} />
+            ) : stream.status === 'failed' ? (
               <div role="alert" className="bg-destructive/10 rounded-lg p-3 text-sm">
                 <p className="text-destructive">{`Upstream failure: ${stream.error ?? 'unknown error'}`}</p>
               </div>

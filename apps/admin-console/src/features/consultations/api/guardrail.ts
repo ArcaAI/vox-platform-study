@@ -11,7 +11,7 @@
  * Every evaluation row is verdicts and ids only — no content, no judge reasoning. The commands read
  * the consultation version fresh before writing (the activity page carries none).
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GuardrailHoldResolution } from '@arcaai/types';
 import { getJson, getWithEtag, request, versionFromEtag } from '@/shared/api';
 import type { GuardrailNoticeWithState } from '@/shared/guardrail/guardrail-notice-list';
@@ -69,6 +69,10 @@ export interface GuardrailEvaluationParams {
   action?: string;
   direction?: string;
   check?: string;
+  /** W2e round 4: only this run's evaluations (the workflow run id). */
+  runId?: string;
+  /** W2e round 4: only this run's evaluations (the `AiActivityRun` run key). */
+  runKey?: string;
   cursor?: string;
   limit?: number;
 }
@@ -156,6 +160,43 @@ export function useGuardrailEvaluations(consultationId: string, params: Guardrai
     queryFn: () => listGuardrailEvaluations(consultationId, params),
     enabled: enabled && !!consultationId,
   });
+}
+
+/**
+ * The evaluations of specific runs. A run summary's id may be the workflow `runId` or the activity
+ * `runKey`, so each id is asked both ways (W2e round 4 filters); the rows are merged by `evaluationId`
+ * and filtered here too, so a gateway that ignores the filter (returns the newest page) still yields
+ * only those runs' rows.
+ */
+export function useRunGuardrailEvaluations(consultationId: string, runIds: readonly string[], limit = 100) {
+  const queries = useQueries({
+    queries: runIds.flatMap((runId) =>
+      (['runId', 'runKey'] as const).map((field) => {
+        const params: GuardrailEvaluationParams = { [field]: runId, limit };
+        return {
+          queryKey: guardrailKeys.evaluations(consultationId, params),
+          queryFn: () => listGuardrailEvaluations(consultationId, params),
+          enabled: !!consultationId,
+        };
+      }),
+    ),
+  });
+  const wanted = new Set(runIds);
+  const seen = new Set<string>();
+  const rows: GuardrailEvaluationRow[] = [];
+  for (const query of queries) {
+    for (const row of query.data?.items ?? []) {
+      if (seen.has(row.evaluationId)) continue;
+      if (!((row.runId && wanted.has(row.runId)) || (row.runKey && wanted.has(row.runKey)))) continue;
+      seen.add(row.evaluationId);
+      rows.push(row);
+    }
+  }
+  return {
+    rows,
+    isPending: queries.length > 0 && queries.some((query) => query.isPending),
+    isError: queries.length > 0 && queries.every((query) => query.isError),
+  };
 }
 
 export function useConsultationGuardrailNotices(consultationId: string, enabled = true) {

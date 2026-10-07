@@ -80,6 +80,20 @@ describe('consultation guardrail api', () => {
     expect(result.acknowledgedNotices).toHaveLength(1);
   });
 
+  it('resolves an inbound hold and approves in ONE action (resolveHold + acknowledgeGuardrailNotices)', async () => {
+    const calls = stub({
+      'GET /api/hope/consultations/c-1': { body: { id: 'c-1', version: 8 }, etag: '"8"' },
+      'POST /api/hope/consultations/c-1/approve': { body: { id: 'c-1', status: 'APPROVED' } },
+    });
+    await approveConsultation('c-1', {
+      acknowledgeGuardrailNotices: true,
+      resolveHold: { noticeId: 'b-1', resolution: 'item_excluded' },
+    });
+    const post = calls.find((call) => call.method === 'POST');
+    expect(post?.ifMatch).toBe('"8"');
+    expect(post?.body).toEqual({ acknowledgeGuardrailNotices: true, resolveHold: { noticeId: 'b-1', resolution: 'item_excluded' } });
+  });
+
   it('resumes a hold with the chosen resolution under a fresh If-Match', async () => {
     const calls = stub({
       'GET /api/hope/consultations/c-1': { body: { id: 'c-1', version: 3 }, etag: '"3"' },

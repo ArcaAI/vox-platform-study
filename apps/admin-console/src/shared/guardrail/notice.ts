@@ -160,3 +160,19 @@ export function allowedHoldResolutions(notice: Pick<GuardrailNotice, 'type' | 'r
   if (notice.messageKey === REDACTION_UNAVAILABLE_KEY) return ['acknowledged'];
   return GUARDRAIL_HOLD_RESOLUTIONS.filter((resolution) => resolution !== 'acknowledged' || !hasBlockFloor(notice));
 }
+
+/** The resolutions approve may carry as `resolveHold` (OD-24): inbound holds only, never `item_edited`. */
+const APPROVE_RESOLUTIONS: readonly HoldResolution[] = ['item_excluded', 'acknowledged'];
+
+/**
+ * README §9.8.3, OD-24 — the resolutions a ONE-ACTION approve (`approve` with `resolveHold`) may offer.
+ * Only an INBOUND safety hold qualifies: an outbound hold withheld the note, so there is nothing to sign
+ * until it is resumed and regenerated; the egress-redaction hold is an outage to retry, not content to
+ * sign over. Within that, the allowed resume resolutions minus `item_edited` (an edit is a resume, not a
+ * sign-off) — so the locked medical check offers `item_excluded` only.
+ */
+export function approveResolutionsFor(notice: Pick<GuardrailNotice, 'type' | 'resumable' | 'messageKey' | 'checks' | 'direction'>): HoldResolution[] {
+  if (notice.direction !== 'inbound' || notice.messageKey === REDACTION_UNAVAILABLE_KEY) return [];
+  const allowed = allowedHoldResolutions(notice);
+  return APPROVE_RESOLUTIONS.filter((resolution) => allowed.includes(resolution));
+}

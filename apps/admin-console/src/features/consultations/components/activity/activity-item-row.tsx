@@ -65,18 +65,24 @@ export interface ItemGuardrailCounts {
   block: number;
 }
 
-/** The item's `guardrailStatus` marker when the feed carries it (README §9.7.4); read defensively. */
-function guardrailStatusOf(entry: ActivityItemEntry): string | null {
+/**
+ * The item's `guardrailStatus` marker (README §9.7.4; on the feed since W2e round 4), or `undefined`
+ * when the feed predates it. The marker is per VERSION and outranks the derived counts: `clean` means
+ * the current version is unmarked (e.g. edited and re-screened), so no badge at all.
+ */
+function guardrailStatusOf(entry: ActivityItemEntry): string | undefined {
   const status = (entry as ActivityItemEntry & { guardrailStatus?: unknown }).guardrailStatus;
-  return typeof status === 'string' && status.toLowerCase() !== 'clean' ? status : null;
+  return typeof status === 'string' && status !== '' ? status.toLowerCase() : undefined;
 }
 
 function ItemContent({ entry, guardrail }: { entry: ActivityItemEntry; guardrail?: ItemGuardrailCounts }) {
   const text = itemText(entry);
   const guardrailStatus = guardrailStatusOf(entry);
+  // The gateway's marker wins when present; the derived counts are detail (or the fallback without it).
+  const showGuardrail = guardrailStatus !== undefined ? guardrailStatus !== 'clean' : !!guardrail && (guardrail.warn > 0 || guardrail.block > 0);
   return (
     <>
-      {guardrailStatus || (guardrail && (guardrail.warn > 0 || guardrail.block > 0)) ? (
+      {showGuardrail ? (
         <div className="mb-1.5">
           <GuardrailItemBadge status={guardrailStatus} warn={guardrail?.warn ?? 0} block={guardrail?.block ?? 0} />
         </div>

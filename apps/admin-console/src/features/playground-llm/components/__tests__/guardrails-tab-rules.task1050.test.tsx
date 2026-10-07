@@ -36,13 +36,21 @@ afterEach(() => {
 });
 
 const SCREEN_RESULT = {
-  direction: 'outbound',
   decision: 'warn',
   policyVersion: 'pv-7',
+  evaluationId: 'ev-42',
   checks: [
-    { checkId: 'response_safety', verdict: 'pass', action: 'block', actionTaken: 'none' },
-    { checkId: 'clinical_safety_judge', verdict: 'flag', action: 'warn', actionTaken: 'warn', category: 'dangerous_dosing', confidence: 0.82 },
-    { checkId: 'leakage_judge', verdict: 'undetermined', action: 'block', actionTaken: 'unverified' },
+    { name: 'response_safety', verdict: 'pass', action: 'block', actionTaken: 'none', score: 0.01 },
+    {
+      name: 'clinical_safety_judge',
+      verdict: 'flag',
+      action: 'warn',
+      actionTaken: 'warn',
+      category: 'dangerous_dosing',
+      score: 0.82,
+      reason: 'dose_exceeds_maximum',
+    },
+    { name: 'leakage_judge', verdict: 'undetermined', action: 'block', actionTaken: 'unverified' },
   ],
   notices: [
     {
@@ -86,6 +94,9 @@ describe('GuardrailsTab — Test my rules', () => {
     expect(within(table).getAllByText('Warned').length).toBeGreaterThan(0);
     expect(within(table).getByText('Unverified')).toBeDefined();
     expect(within(card).getByText(GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.warning.generic'])).toBeDefined();
+    expect(within(table).getByText('82%')).toBeDefined();
+    expect(within(table).getByText(/dose exceeds maximum/)).toBeDefined();
+    expect(within(card).getByText(/ev-42/)).toBeDefined();
 
     await waitFor(() => {
       const call = calls.find((entry) => entry.url === '/api/hope/admin/guardrail/screen');
