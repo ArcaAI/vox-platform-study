@@ -88,8 +88,11 @@ function buildService(cache: ReturnType<typeof cacheMock>, turns: string[], sect
   let call = 0;
   const post = vi.fn(async (url: string, body?: { system_prompt?: string; prompt?: string }) => {
     if (url.includes('/classify/tokens')) return { data: { entities: [] } };
-    if (url.includes('/generate') && body?.system_prompt?.startsWith('Translate')) {
-      translateCalls.push(body.prompt ?? '');
+    // TASK-1050 W2g (TASK-1049 F3) — the translate-only retry is a governed composition now: the rule is
+    // a contract part AFTER the platform rules, and the section text travels as its `section_text` block.
+    if (url.includes('/generate') && body?.system_prompt?.includes('Translate the clinical note text')) {
+      const block = /<<<EXTERNAL_DATA section="section_text">>>\n--- [^\n]* ---\n([\s\S]*?)\n<<<END_EXTERNAL_DATA>>>/.exec(body.prompt ?? '');
+      translateCalls.push(block ? block[1]! : (body.prompt ?? ''));
       return { data: { summary: opts.translation } };
     }
     if (url.includes('/generate')) return { data: { summary: turns[Math.min(call++, turns.length - 1)] } };
