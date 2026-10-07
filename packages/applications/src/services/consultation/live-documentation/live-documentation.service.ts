@@ -35,6 +35,7 @@ import {
   GuardrailItemStatus,
   GuardrailNoticeRepository,
   NamedEntityRepository,
+  generateId,
   PromptTemplateRepository,
   WorkflowDefinitionRepository,
 } from '@arcaai/domains';
@@ -103,6 +104,7 @@ import {
   liveExclusionSet,
   liveNoticeRecord,
   noticeDedupeKeys,
+  redactionUnavailableNotice,
   regionItemsWire,
   textGuardrailStop,
   textResponseNotices,
@@ -114,6 +116,7 @@ import {
 } from './live-guardrail';
 // TASK-1050 W2e — the ONE exclusion rule every composer applies (WITHHELD / BLOCKED resolved `item_excluded`).
 import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
+import { IGuardrailHoldService, type GuardrailHoldService } from '../../guardrail-notice/guardrail-hold.service';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -1851,6 +1854,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // `guardrailKeepFilter` by the composer exclusion (a BLOCKED item is left out once its notice says so). Optional + trailing like every dependency
     // above it; ABSENT ⇒ only WITHHELD items are excluded, BLOCKED ones stay composed (and re-block).
     @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNoticeRepository?: GuardrailNoticeRepository,
+    // TASK-1050 W2g round 3 — W2e's hold entry, for the BLOCKED notices this lane meets (a 422 block, and
+    // the 503 redaction hold no evaluation record carries). Optional + trailing like every dependency
+    // above it; ABSENT ⇒ the lane never enters a hold itself (it still keeps the last good note).
+    @Optional() @Inject(IGuardrailHoldService) private readonly guardrailHolds?: Pick<GuardrailHoldService, 'enterGuardrailHold'>,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -7395,12 +7402,44 @@ return 0`;
       if (turn) turn.notices.push(...textResponseNotices(response.data));
       return response;
     } catch (error) {
-      const stop = textGuardrailStop(error);
+      const found = textGuardrailStop(error);
+      // TASK-1050 W2g round 3 — a redaction hold whose 503 carried no notice still needs one: built per
+      // the frozen type under the redaction key, so the client sees it and the hold has a notice to cite.
+      const stop: LiveGuardrailStop | null =
+        found && !found.notice && found.reason === EGRESS_REDACTION_UNAVAILABLE_REASON && consultationId
+          ? { ...found, notice: redactionUnavailableNotice({ noticeId: generateId(), consultationId, occurredAt: new Date().toISOString() }) }
+          : found;
       if (stop && turn) {
         turn.stop ??= stop;
         if (stop.notice) turn.notices.push(stop.notice);
       }
+      // TASK-1050 W2g round 3 — hand the BLOCKED notice to W2e's hold entry. The evaluation ingest
+      // holds a 422 block too; the call is idempotent per notice id. A redaction hold has NO
+      // evaluation behind it (guardrail's screen was down), so this call is the only way it is held.
+      if (stop?.notice && consultationId) await this.enterLiveGuardrailHold(tenantId, consultationId, stop.notice);
       throw error;
+    }
+  }
+
+  /**
+   * TASK-1050 W2g round 3 — enter the consultation's guardrail hold through W2e's
+   * `GuardrailHoldService.enterGuardrailHold` (idempotent per notice id, never throws, its own tenant
+   * CLS). This lane never writes `processingReason` itself. Unwired ⇒ no hold is entered from here:
+   * the evaluation ingest still holds a 422 block, and a redaction hold retries on each tick.
+   */
+  private async enterLiveGuardrailHold(tenantId: string, consultationId: string, notice: GuardrailNotice): Promise<void> {
+    if (!this.guardrailHolds) return;
+    try {
+      const entered = await this.guardrailHolds.enterGuardrailHold(tenantId, consultationId, notice);
+      if (entered) this.logger.log({ message: 'Live lane entered a guardrail hold', consultationId, noticeId: entered.noticeId, reason: entered.reason });
+    } catch (error) {
+      // swallow-ok: the service is documented never to throw; a failure must not mask the TEXT error re-thrown by the caller.
+      this.logger.warn({
+        message: 'Live lane could not enter the guardrail hold',
+        consultationId,
+        noticeId: notice.noticeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

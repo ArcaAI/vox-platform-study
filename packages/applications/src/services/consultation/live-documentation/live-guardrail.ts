@@ -27,6 +27,7 @@ import {
   GUARDRAIL_CORRELATION_HEADERS,
   GUARDRAIL_HOLD_REASON,
   GUARDRAIL_NOTICE_TYPES,
+  guardrailNoticeDefaultMessage,
   type GuardrailEvaluationItemRef,
   type GuardrailHoldProcessingReason,
   type GuardrailNotice,
@@ -140,6 +141,38 @@ export function textGuardrailStop(error: unknown): LiveGuardrailStop | null {
     return { reason: EGRESS_REDACTION_UNAVAILABLE_REASON, notice, evaluationIds };
   }
   return null;
+}
+
+/** TEXT's own policy-version placeholder for a notice no guardrail decision stands behind. */
+export const LIVE_UNKNOWN_POLICY_VERSION = 'unknown';
+
+/**
+ * The `guardrail.blocked.redaction_unavailable` notice, built when TEXT's 503 carried none — the same
+ * shape TEXT itself synthesises (`redaction_unavailable_notice`): a privacy hold, so no checks, no
+ * acknowledgement, resumable, and the fixed label of its message key.
+ */
+export function redactionUnavailableNotice(input: {
+  noticeId: string;
+  consultationId: string;
+  itemIds?: readonly string[];
+  occurredAt: string;
+}): GuardrailNotice {
+  return {
+    schemaVersion: 1,
+    noticeId: input.noticeId,
+    type: 'guardrail.blocked',
+    direction: 'inbound',
+    action: 'block',
+    checks: [],
+    consultationId: input.consultationId,
+    itemIds: [...(input.itemIds ?? [])],
+    messageKey: 'guardrail.blocked.redaction_unavailable',
+    defaultMessage: guardrailNoticeDefaultMessage('guardrail.blocked.redaction_unavailable'),
+    requiresAcknowledgement: false,
+    resumable: true,
+    policyVersion: LIVE_UNKNOWN_POLICY_VERSION,
+    occurredAt: input.occurredAt,
+  };
 }
 
 /**

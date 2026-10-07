@@ -22,6 +22,7 @@ import {
   liveCorrelationHeaders,
   liveExclusionSet,
   noticeDedupeKeys,
+  redactionUnavailableNotice,
   regionItemsWire,
   textGuardrailStop,
   textResponseNotices,
@@ -207,5 +208,28 @@ describe('degrade codes for the two guardrail stops', () => {
   it('both are in the closed vocabulary', () => {
     expect(LIVE_DEGRADE_CODES).toContain(LIVE_DEGRADE_GUARDRAIL_BLOCKED);
     expect(LIVE_DEGRADE_CODES).toContain(LIVE_DEGRADE_REDACTION_UNAVAILABLE);
+  });
+});
+
+describe('the redaction-hold notice the lane builds when TEXT sent none', () => {
+  it('is a frozen-shape blocked notice under the redaction key, its message the fixed label', () => {
+    expect(
+      redactionUnavailableNotice({ noticeId: 'n-1', consultationId: CID, itemIds: ['seg-1'], occurredAt: '2026-10-07T00:00:00.000Z' }),
+    ).toEqual({
+      schemaVersion: 1,
+      noticeId: 'n-1',
+      type: 'guardrail.blocked',
+      direction: 'inbound',
+      action: 'block',
+      checks: [],
+      consultationId: CID,
+      itemIds: ['seg-1'],
+      messageKey: 'guardrail.blocked.redaction_unavailable',
+      defaultMessage: guardrailNoticeDefaultMessage('guardrail.blocked.redaction_unavailable'),
+      requiresAcknowledgement: false,
+      resumable: true,
+      policyVersion: 'unknown',
+      occurredAt: '2026-10-07T00:00:00.000Z',
+    });
   });
 });
