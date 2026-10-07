@@ -1,12 +1,17 @@
 import {
   CreateModelResidencyPolicyRequest,
+  DismissModelResidencySuggestionResponse,
   IModelResidencyService,
+  LinkModelResidencyRuntimeKeyRequest,
+  LinkModelResidencyRuntimeKeyResponse,
   LoadModelResidencyRequest,
   ModelResidencyCatalogueResponse,
+  ModelResidencyLoadPreviewResponse,
   ModelResidencyLoadResponse,
   ModelResidencyOperationResponse,
   ModelResidencyPinResponse,
   ModelResidencyPolicyResponse,
+  ModelResidencyReadinessResponse,
   ModelResidencyUnloadResponse,
   ModelResidencyViewResponse,
   PinModelResidencyRequest,
@@ -124,6 +129,27 @@ export class ModelResidencyController {
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
+  @Post('load/preview')
+  @HttpCode(HttpStatus.OK)
+  @RequiredSvcScopes(MANAGE_SCOPE)
+  @ApiOperation({
+    summary: 'Preview a model load without doing it (dry-run admission)',
+    description:
+      'Runs EXACTLY the admission arithmetic of `POST load` and changes nothing — no command is sent, no operation, recommendation or audit ' +
+      'record is created. Answers where the model would land, what admission reserves for it (`needBytes`: the measured footprint, else the ' +
+      'catalogue size × 1.2; `null` = no size known), the device`s free memory, the `residency.headroomPercent` reserve, the memory no ' +
+      'resident model accounts for, the shortfall, and what an un-forced load would answer (`refusal`: `ALREADY_LOADED`, `NO_SIZE`, ' +
+      '`OVER_BUDGET`, or `null` = admitted). `evictable` lists the idle, unpinned on-demand models on the same device, largest first; `pinned` ' +
+      'the resident models that will not be offered, with the reason. Same body as `POST load`.',
+  })
+  @ApiResponse({ status: 200, type: ModelResidencyLoadPreviewResponse })
+  @ApiResponse({ status: 400, description: '`OPTIONS_UNSUPPORTED` or an invalid body' })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  async previewLoad(@Body() request: LoadModelResidencyRequest): Promise<ModelResidencyLoadPreviewResponse> {
+    return this.service.previewLoad(request);
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
   @Post('unload')
   @HttpCode(HttpStatus.OK)
   @RequiredSvcScopes(MANAGE_SCOPE)
@@ -157,6 +183,61 @@ export class ModelResidencyController {
   @ApiResponse({ status: 404, description: '`MODEL_UNKNOWN` — the model is not resident on that service' })
   async pin(@Body() request: PinModelResidencyRequest): Promise<ModelResidencyPinResponse> {
     return this.service.pin(request);
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
+  @Post('links')
+  @HttpCode(HttpStatus.OK)
+  @RequiredSvcScopes(MANAGE_SCOPE)
+  @ApiOperation({
+    summary: 'Confirm which catalogue model a runtime key is',
+    description:
+      'Records that the key a service REPORTS for a resident instance (exactly as reported, e.g. LM Studio`s `gemma-4-e2b-it-qat@q4_0`) is ' +
+      'this SYSTEM catalogue model. Stored on the model (`_metadata.residency.runtimeKeys`, de-duplicated) and matched exactly from the next ' +
+      'read on, so the instance stops showing as unknown and is never loaded a second time. Audited. Answers every key the model is now ' +
+      'recognised under (its catalogue ref first).',
+  })
+  @ApiResponse({ status: 200, type: LinkModelResidencyRuntimeKeyResponse })
+  @ApiResponse({ status: 400, description: 'An invalid body, or `SERVICE_MISMATCH` — the model is not run by that service' })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  @ApiResponse({ status: 404, description: '`MODEL_UNKNOWN` — no such SYSTEM catalogue model (or it is deleted)' })
+  async link(@Body() request: LinkModelResidencyRuntimeKeyRequest): Promise<LinkModelResidencyRuntimeKeyResponse> {
+    return this.service.linkRuntimeKey(request);
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
+  @Post('suggestions/:id/dismiss')
+  @HttpCode(HttpStatus.OK)
+  @RequiredSvcScopes(MANAGE_SCOPE)
+  @ApiOperation({
+    summary: 'Dismiss a standing residency recommendation',
+    description:
+      'Hides the recommendation until the controller reaches a DIFFERENT conclusion for that model (then it may show again). Recommendations ' +
+      'and dismissals are kept in the gateway`s memory, per process (shadow mode); a restart clears both. Audited.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, type: DismissModelResidencySuggestionResponse })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  @ApiResponse({ status: 404, description: 'No such standing recommendation in this gateway process (it may have gone stale).' })
+  async dismissSuggestion(@Param('id') id: string): Promise<DismissModelResidencySuggestionResponse> {
+    return this.service.dismissSuggestion(id);
+  }
+
+  // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.
+  @Get('readiness')
+  @RequiredSvcScopes(...READ_SCOPES)
+  @ApiOperation({
+    summary: 'Read the enforce-readiness checklist',
+    description:
+      'Read-only: what must be true before `residency.enforce` is turned on — shadow review recorded (`residency.shadowReviewedAt`), every ' +
+      'resident instance matched to a catalogue model, every GPU inside its headroom, decision state shared across gateway replicas, seven ' +
+      'days of shadow observation, complete usage, budgeted never-measured models, audited actions — each with its evidence, plus the ' +
+      'shadow decision counts since this gateway process started. The switch itself stays the `residency.enforce` setting.',
+  })
+  @ApiResponse({ status: 200, type: ModelResidencyReadinessResponse })
+  @ApiResponse({ status: 403, description: FORBIDDEN })
+  async readiness(): Promise<ModelResidencyReadinessResponse> {
+    return this.service.getReadiness();
   }
 
   // AUTH-NOTE: platform-admin only, imperatively — see the note on `view`.

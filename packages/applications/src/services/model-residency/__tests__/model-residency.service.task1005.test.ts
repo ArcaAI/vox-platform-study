@@ -44,7 +44,16 @@ function agentModel(overrides: Record<string, unknown> = {}) {
 }
 
 function aiModel(overrides: Record<string, unknown>) {
-  return { tenantId: SYSTEM_TENANT_ID, servedBy: 'stt', observedMemoryMb: null, observedLoadSeconds: null, name: 'model', ...overrides };
+  // TASK-1051 F8: a catalogue size, so a never-measured model is admitted against size × 1.2 (no size at all is NO_SIZE).
+  return {
+    tenantId: SYSTEM_TENANT_ID,
+    servedBy: 'stt',
+    observedMemoryMb: null,
+    observedLoadSeconds: null,
+    memorySizeMb: 1_000,
+    name: 'model',
+    ...overrides,
+  };
 }
 
 function deferred<T>() {
@@ -315,14 +324,15 @@ describe('ModelResidencyService (TASK-1005)', () => {
       expect(h.lmStudio.unload).not.toHaveBeenCalled();
 
       const view = await h.service.getView();
+      // TASK-1051 F4: the live-path ASR is already classified PINNED, so "pin it" is already satisfied and not recorded in shadow.
       expect(view.recommendations.map((r) => [r.action, r.modelRef, r.reason, r.mode, r.applied])).toEqual(
         expect.arrayContaining([
           ['unload', NER, 'idle_ttl_expired', 'shadow', false],
           ['load', GEMMA, 'live_path_pin', 'shadow', false],
-          ['pin', LIVE_ASR, 'live_path_pin', 'shadow', false],
         ]),
       );
-      expect(await decisionCount({ mode: 'shadow' })).toBe(before + 3);
+      expect(view.recommendations.some((r) => r.action === 'pin')).toBe(false);
+      expect(await decisionCount({ mode: 'shadow' })).toBe(before + 2);
     });
 
     it('a repeated shadow recommendation is not logged again every tick', async () => {
