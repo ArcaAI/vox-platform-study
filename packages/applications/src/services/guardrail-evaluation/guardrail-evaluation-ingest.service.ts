@@ -2,16 +2,11 @@ import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nest
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import {
-  ConsultationProcessing,
-  ConsultationRepository,
-  ConsultationStatus,
   ContextItemRepository,
   CoreUnitOfWorkService,
   GuardrailEvaluationFactory,
   GuardrailEvaluationRepository,
   GuardrailItemStatus,
-  GuardrailNoticeEntityMapper,
-  GuardrailNoticeFactory,
   GuardrailNoticeRepository,
   ResourceType,
   SysEventType,
@@ -20,28 +15,22 @@ import {
   type JsonValue,
 } from '@arcaai/domains';
 import {
-  EGRESS_REDACTION_UNAVAILABLE_REASON,
   GUARDRAIL_EVALUATION_BATCH_MAX,
-  GUARDRAIL_HOLD_REASON,
   type GuardrailEvaluationBatchRequest,
   type GuardrailEvaluationBatchResponse,
   type GuardrailEvaluationRecord,
-  type GuardrailNotice,
 } from '@arcaai/types';
 import { BaseService } from '../../common';
 import { encryptPhiFields } from '../../common/phi-field-encryption';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { IConsultationLifecycleService, IConsultationLifecycleServiceToken } from '../consultation/lifecycle/IConsultationLifecycleService';
-import { ConsultationLifecycleEventPublisher } from '../consultation/lifecycle/lifecycle-event.publisher';
 import {
-  decisionToRow,
-  directionToRow,
-  itemStatusRank,
-  noticeSeverity,
-  noticeTypeToRow,
-  strongerItemStatus,
-} from '../guardrail-notice/guardrail-wire';
+  GuardrailHoldService,
+  guardrailHoldReasonOf,
+  guardrailNoticeRow,
+  type GuardrailHoldApplied,
+} from '../guardrail-notice/guardrail-hold.service';
+import { decisionToRow, directionToRow, itemStatusRank, strongerItemStatus } from '../guardrail-notice/guardrail-wire';
 
 /** Machine codes of the ingest's 400s (a client — guardrail's drainer — branches on them). */
 export const GUARDRAIL_EVALUATION_ERROR_CODES = Object.freeze({
@@ -49,39 +38,12 @@ export const GUARDRAIL_EVALUATION_ERROR_CODES = Object.freeze({
   tenantMismatch: 'GUARDRAIL_EVALUATION_TENANT_MISMATCH',
 } as const);
 
-/** A consultation in one of these states is past its visit: a block is recorded, never held. */
-const NOT_HOLDABLE: ReadonlySet<string> = new Set([
-  ConsultationStatus.APPROVED,
-  ConsultationStatus.CLOSED_COMPLETE,
-  ConsultationStatus.CLOSED_INCOMPLETE,
-]);
-
 const PHI_TRANSIT_KEY = 'hope-phi';
 
 interface MarkTarget {
   status: GuardrailItemStatus;
   version: number;
   consultationId: string | null;
-}
-
-interface HoldIntent {
-  consultationId: string;
-  noticeId: string;
-  reason: string;
-}
-
-interface HoldApplied extends HoldIntent {
-  pause: boolean;
-  subject: {
-    id: string;
-    tenantId: string;
-    status: string;
-    processing: string;
-    processingReason: string;
-    closedReason: string | null;
-    currentEncounterSeq: number;
-    version: number;
-  };
 }
 
 /** Vault Transit ciphertext is `vault:vN:<b64>`; a malformed shape reads as the bootstrap version 1. */
@@ -109,8 +71,10 @@ function isOutboundBlock(record: GuardrailEvaluationRecord): boolean {
  *     pointing at the STORED notices;
  *  3. the item markers — WARNED / BLOCKED on an item whose CURRENT version is the screened one,
  *     never downgraded, never bumping `_version` (OD-21);
- *  4. a block with a consultation ENTERS THE HOLD: `processing` AWAITING_REVIEW with reason
- *     GUARDRAIL_HOLD (EGRESS_REDACTION_UNAVAILABLE for the egress privacy hold).
+ *  4. a block with a consultation ENTERS THE HOLD through `GuardrailHoldService` (the one hold-entry
+ *     path): `processing` AWAITING_REVIEW with reason GUARDRAIL_HOLD (EGRESS_REDACTION_UNAVAILABLE
+ *     for the egress privacy hold) — only for a NEW notice: an id already stored (entered by the run
+ *     watcher, or resolved by the clinician) holds nothing again.
  * After the commit: capture is paused (a RECORDING consultation → PAUSED), a state-only lifecycle
  * event carries the notice id as a pointer, and the sys-events are broadcast.
  *
@@ -126,14 +90,13 @@ export class GuardrailEvaluationIngestService extends BaseService {
     private readonly evaluations: GuardrailEvaluationRepository,
     private readonly notices: GuardrailNoticeRepository,
     private readonly contextItems: ContextItemRepository,
-    private readonly consultations: ConsultationRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // Unwired ⇒ the writes run in sequence (unit fixtures).
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: Pick<CoreUnitOfWorkService, 'runInTransaction'>,
-    @Optional() private readonly lifecycleEvents?: Pick<ConsultationLifecycleEventPublisher, 'publish'>,
-    // `pause` stops capture on a held RECORDING consultation. Unwired ⇒ processing still holds it.
-    @Optional() @Inject(IConsultationLifecycleServiceToken) private readonly lifecycle?: Pick<IConsultationLifecycleService, 'pause'>,
+    // The ONE hold-entry path (shared with TEXT's redaction hold and the run watcher). Unwired ⇒ a
+    // block is recorded, and no consultation is held.
+    @Optional() @Inject(GuardrailHoldService) private readonly holds?: Pick<GuardrailHoldService, 'holdInTransaction' | 'announce'>,
     @Optional() @Inject(SecretsService) private readonly secrets?: Pick<SecretsService, 'encrypt'> & { getPhiTransitKeyName?(): string | undefined },
   ) {
     super(eventEmitter, clsService, ResourceType.GuardrailEvaluation);
@@ -169,19 +132,22 @@ export class GuardrailEvaluationIngestService extends BaseService {
     const items = targets.size > 0 ? await this.contextItems.findAll({ where: { id: { in: [...targets.keys()] } } as never }) : [];
 
     const createdNotices: GuardrailNoticeEntity[] = [];
-    const holds: HoldApplied[] = [];
+    const holds: GuardrailHoldApplied[] = [];
     const write = async (tx?: unknown) => {
       const storedNoticeIds = new Map<string, string>();
-      const intents: HoldIntent[] = [];
+      const intents: Array<{ consultationId: string; noticeId: string; reason: string }> = [];
       for (const record of fresh) {
         for (const notice of record.notices ?? []) {
           if (!record.noticeIds.includes(notice.noticeId) || storedNoticeIds.has(notice.noticeId)) continue;
-          const { notice: row, created } = await this.notices.upsertByDedupeKey(this.noticeEntity(tenantId, notice), tx);
+          const { notice: row, created } = await this.notices.upsertByDedupeKey(guardrailNoticeRow(tenantId, notice), tx);
           storedNoticeIds.set(notice.noticeId, row.id);
-          if (created) createdNotices.push(row);
+          if (!created) continue;
+          createdNotices.push(row);
+          // A hold is entered for a NEW notice only: the same id seen before (the run watcher, an
+          // earlier batch) is already holding — or was resolved by the clinician.
           const consultationId = record.consultationId ?? notice.consultationId;
-          if (record.decision === 'block' && notice.type === 'guardrail.blocked' && consultationId && String(row.status) !== 'RESOLVED') {
-            intents.push({ consultationId, noticeId: row.id, reason: this.holdReason(notice) });
+          if (record.decision === 'block' && notice.type === 'guardrail.blocked' && consultationId) {
+            intents.push({ consultationId, noticeId: row.id, reason: guardrailHoldReasonOf(notice) });
           }
         }
       }
@@ -189,12 +155,18 @@ export class GuardrailEvaluationIngestService extends BaseService {
       const entities = fresh.map((record) => this.evaluationEntity(record, storedNoticeIds, sealed.get(record.evaluationId)));
       const result = await this.evaluations.createManyIdempotent(entities, tx);
       await this.applyMarkers(tenantId, targets, items as never, tx);
-      holds.push(...(await this.enterHolds(tenantId, intents, tx)));
+      const seen = new Set<string>();
+      for (const intent of intents) {
+        if (!this.holds || seen.has(intent.consultationId)) continue;
+        seen.add(intent.consultationId);
+        const applied = await this.holds.holdInTransaction(tenantId, intent.consultationId, intent.noticeId, intent.reason, tx);
+        if (applied) holds.push(applied);
+      }
       return result;
     };
     const result = this.unitOfWork ? await this.unitOfWork.runInTransaction((tx) => write(tx)) : await write();
 
-    await this.afterCommit(holds);
+    for (const hold of holds) await this.holds?.announce(hold);
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceType: ResourceType.GuardrailEvaluation,
       data: { action: 'guardrail_evaluations_ingested', count: result.inserted, evaluationIds: fresh.map((record) => record.evaluationId) },
@@ -211,34 +183,6 @@ export class GuardrailEvaluationIngestService extends BaseService {
   }
 
   // ── notices and evaluations ───────────────────────────────────────────────────────────────
-
-  /** The stored notice under guardrail's id: the run stream and the record name it by that id. */
-  private noticeEntity(tenantId: string, notice: GuardrailNotice): GuardrailNoticeEntity {
-    const draft = GuardrailNoticeFactory.CreateGuardrailNotice({
-      tenantId,
-      consultationId: notice.consultationId ?? null,
-      runId: notice.runId ?? null,
-      nodeId: notice.nodeId ?? null,
-      type: noticeTypeToRow(notice.type),
-      direction: directionToRow(notice.direction),
-      action: notice.action,
-      checks: notice.checks.map((check) => ({ ...check })) as unknown as JsonValue,
-      itemIds: [...notice.itemIds],
-      messageKey: notice.messageKey,
-      severity: noticeSeverity(notice.checks),
-      requiresAcknowledgement: notice.requiresAcknowledgement,
-      resumable: notice.resumable,
-      policyVersion: notice.policyVersion,
-      // The id IS the dedupe key: guardrail derives it from (tenant, consultation-or-request, check,
-      // item-or-region, policyVersion), so keying the upsert on it dedupes exactly as guardrail did.
-      dedupeKey: notice.noticeId,
-      createdAt: new Date(notice.occurredAt),
-    });
-    // TODO(TASK-1050 W0 follow-up): `GuardrailNoticeFactory` mints its own id; the notice id is
-    // guardrail's (minted before it answered), so the row is re-read through the mapper with it.
-    const mapper = GuardrailNoticeEntityMapper.getInstance();
-    return mapper.toDomainEntity({ ...(mapper.toPersistence(draft) as object), id: notice.noticeId } as never);
-  }
 
   private evaluationEntity(
     record: GuardrailEvaluationRecord,
@@ -266,10 +210,6 @@ export class GuardrailEvaluationIngestService extends BaseService {
       at: new Date(record.occurredAt),
       ...(record.itemId ? { metaData: { itemId: record.itemId } as unknown as JsonValue } : {}),
     });
-  }
-
-  private holdReason(notice: GuardrailNotice): string {
-    return notice.messageKey === 'guardrail.blocked.redaction_unavailable' ? EGRESS_REDACTION_UNAVAILABLE_REASON : GUARDRAIL_HOLD_REASON;
   }
 
   /** Outbound-block withheld text only, sealed under the PHI Transit key. Fail-closed in vault mode. */
@@ -343,69 +283,5 @@ export class GuardrailEvaluationIngestService extends BaseService {
       byStatus.set(target.status, [...(byStatus.get(target.status) ?? []), item.id]);
     }
     for (const [status, ids] of byStatus) await this.contextItems.setGuardrailStatusMany(ids, status, tx);
-  }
-
-  // ── the hold ──────────────────────────────────────────────────────────────────────────────
-
-  private async enterHolds(tenantId: string, intents: readonly HoldIntent[], tx: unknown): Promise<HoldApplied[]> {
-    const applied: HoldApplied[] = [];
-    const seen = new Set<string>();
-    for (const intent of intents) {
-      if (seen.has(intent.consultationId)) continue;
-      seen.add(intent.consultationId);
-      const consultation = await this.consultations.findByIdOrNull(intent.consultationId);
-      if (!consultation || consultation.tenantId !== tenantId || NOT_HOLDABLE.has(String(consultation.status))) continue;
-      await this.consultations.setProcessing(intent.consultationId, ConsultationProcessing.AWAITING_REVIEW, { reason: intent.reason }, tx);
-      applied.push({
-        ...intent,
-        pause: String(consultation.status) === ConsultationStatus.RECORDING,
-        subject: {
-          id: consultation.id,
-          tenantId: consultation.tenantId,
-          status: String(consultation.status),
-          processing: ConsultationProcessing.AWAITING_REVIEW,
-          processingReason: intent.reason,
-          closedReason: consultation.closedReason ?? null,
-          currentEncounterSeq: consultation.currentEncounterSeq,
-          version: consultation.version,
-        },
-      });
-    }
-    return applied;
-  }
-
-  /** Capture stops and clients learn of the hold — best-effort, the hold is already committed. */
-  private async afterCommit(holds: readonly HoldApplied[]): Promise<void> {
-    for (const hold of holds) {
-      let status = hold.subject.status;
-      let version = hold.subject.version;
-      if (hold.pause && this.lifecycle) {
-        try {
-          const state = (await this.lifecycle.pause(hold.consultationId, { reason: 'guardrail_hold' })) as { status?: string; version?: number } | undefined;
-          status = state?.status ?? ConsultationStatus.PAUSED;
-          version = state?.version ?? version;
-        } catch (error) {
-          this.logger.warn({
-            message: 'Guardrail hold entered, but capture could not be paused',
-            consultationId: hold.consultationId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      try {
-        await this.lifecycleEvents?.publish({ ...hold.subject, status, version }, 'processing_changed', { noticeId: hold.noticeId });
-      } catch (error) {
-        this.logger.warn({
-          message: 'Guardrail hold lifecycle event not published (the hold stands)',
-          consultationId: hold.consultationId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        resourceId: hold.consultationId,
-        resourceType: ResourceType.Consultation,
-        data: { action: 'guardrail_hold_entered', noticeId: hold.noticeId, processingReason: hold.reason },
-      });
-    }
   }
 }
