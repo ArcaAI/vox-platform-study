@@ -392,8 +392,9 @@ def cmd_latency_all(a: argparse.Namespace) -> int:
                 "--n",
                 str(a.n),
                 "--batch-size",
-                # GLiGuard's gliner2 runtime exceeds the RSS ceiling at batch 8 (§8.3)
-                "2" if name.startswith("gliguard") else "8",
+                # GLiGuard exceeds the RSS ceiling at batch 8 and Laya (ModernBERT-large,
+                # 2 question rows per window) at batch 2 (§8.3)
+                "2" if name.startswith("gliguard") else "1" if name.startswith("laya") else "8",
                 "--out",
                 str(target),
             ]
