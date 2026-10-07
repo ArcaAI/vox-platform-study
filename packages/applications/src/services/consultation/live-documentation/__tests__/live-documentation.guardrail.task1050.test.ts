@@ -166,6 +166,9 @@ afterEach(async () => {
 function begin(h: Harness): LiveDocumentationService {
   services.push(h.service);
   h.service.start({ consultationId: CID, tenantId: TENANT, sessionId: STT });
+  // The durable-snapshot throttle measures from `start()`; backdate it so the FIRST flush always
+  // writes the snapshot (otherwise a same-millisecond flush skips it and the test is timing-dependent).
+  (h.service as unknown as { sessions: Map<string, { lastDurableAt: number }> }).sessions.get(CID)!.lastDurableAt = 0;
   return h.service;
 }
 
