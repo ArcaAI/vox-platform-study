@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useConsultation } from '../useConsultation';
+import type { GuardrailNotice } from '../../core/guardrail';
 
 const apiClient = { get: vi.fn(), post: vi.fn(), postWithHeaders: vi.fn(), postFormData: vi.fn() };
 const storeValue = { apiClient, logger: undefined, pluginManager: null, setConsultation: vi.fn() };
@@ -15,7 +16,10 @@ const storeValue = { apiClient, logger: undefined, pluginManager: null, setConsu
 vi.mock('../../store', () => ({ useAgenticStore: () => storeValue }));
 
 const session = {
-  consultation: { id: 'c1', status: 'PAUSED', processing: 'AWAITING_REVIEW', processingReason: 'GUARDRAIL_HOLD', version: 6 } as Record<string, unknown> | null,
+  consultation: { id: 'c1', status: 'PAUSED', processing: 'AWAITING_REVIEW', processingReason: 'GUARDRAIL_HOLD', version: 6 } as Record<
+    string,
+    unknown
+  > | null,
   error: null,
   open: vi.fn(),
   close: vi.fn(),
@@ -28,22 +32,23 @@ vi.mock('../useArcaSession', () => ({ useArcaSession: () => session }));
 vi.mock('../useArcaAudio', () => ({ useArcaAudio: () => audio }));
 vi.mock('../useArcaSummary', () => ({ useArcaSummary: () => summary }));
 
-const notice = (id: string, over: Record<string, unknown> = {}) => ({
-  schemaVersion: 1,
-  noticeId: id,
-  type: 'guardrail.blocked',
-  direction: 'inbound',
-  action: 'block',
-  checks: [{ checkId: 'injection_judge', severity: 'high' }],
-  itemIds: ['i1'],
-  messageKey: 'guardrail.blocked.inbound',
-  defaultMessage: 'A safety check stopped this request. Review the flagged input to continue.',
-  requiresAcknowledgement: false,
-  resumable: true,
-  policyVersion: 'pv',
-  occurredAt: 't',
-  ...over,
-});
+const notice = (id: string, over: Record<string, unknown> = {}): GuardrailNotice =>
+  ({
+    schemaVersion: 1,
+    noticeId: id,
+    type: 'guardrail.blocked',
+    direction: 'inbound',
+    action: 'block',
+    checks: [{ checkId: 'injection_judge', severity: 'high' }],
+    itemIds: ['i1'],
+    messageKey: 'guardrail.blocked.inbound',
+    defaultMessage: 'A safety check stopped this request. Review the flagged input to continue.',
+    requiresAcknowledgement: false,
+    resumable: true,
+    policyVersion: 'pv',
+    occurredAt: 't',
+    ...over,
+  }) as unknown as GuardrailNotice;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -124,7 +129,14 @@ describe('useConsultation — guardrail hold', () => {
 
   it('approve sends the acknowledge / resolveHold additions with If-Match and returns acknowledgedNotices', async () => {
     const acknowledged = [{ noticeId: 'n1', acknowledgedBy: 'u1', acknowledgedVia: 'approve', acknowledgedAt: 't' }];
-    apiClient.postWithHeaders.mockResolvedValue({ id: 'c1', status: 'APPROVED', processing: 'IDLE', processingReason: null, version: 7, acknowledgedNotices: acknowledged });
+    apiClient.postWithHeaders.mockResolvedValue({
+      id: 'c1',
+      status: 'APPROVED',
+      processing: 'IDLE',
+      processingReason: null,
+      version: 7,
+      acknowledgedNotices: acknowledged,
+    });
     const { result } = renderHook(() => useConsultation());
 
     let response: { acknowledgedNotices?: unknown } | undefined;
