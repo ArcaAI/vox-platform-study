@@ -624,7 +624,12 @@ class TestPublicGeneratePathUnchanged:
         mock_provider.generate.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_sustained_outage_is_503(self, client_factory, mock_provider):
+    async def test_sustained_outage_degrades_to_unverified_on_the_public_path(
+        self, client_factory, mock_provider
+    ):
+        # The PUBLIC /generate path (the judge lane calls no guardrail at all): since
+        # TASK-1050 §9.8.1 / OD-23 a judge outage continues with a `guardrail.unverified`
+        # notice instead of a 503.
         guardrail = AsyncMock()
         guardrail.validate = AsyncMock(
             return_value={"allowed": False, "reason": "external_guardrail_unavailable"}
@@ -635,8 +640,9 @@ class TestPublicGeneratePathUnchanged:
             "/api/v1/generate", json={"provider": "lm-studio", "prompt": "hello", "model": "m"}
         )
 
-        assert resp.status_code == 503
-        mock_provider.generate.assert_not_called()
+        assert resp.status_code == 200, resp.text
+        mock_provider.generate.assert_called_once()
+        assert [n["type"] for n in resp.json()["guardrail_notices"]] == ["guardrail.unverified"]
 
     @pytest.mark.asyncio
     async def test_missing_allowed_key_fails_closed(self, client_factory, mock_provider):

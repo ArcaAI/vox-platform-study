@@ -5,8 +5,11 @@ Guardrail (L5) answers ``screened_regions: [keys]`` on ``/screen/inbound``,
 ``regions`` / ``source_regions``. A guardrail that predates the regions API ignores
 the unknown field and screens an empty ``text`` — an "allow" that inspected
 nothing. So: field absent, or any key sent but not echoed ⇒ the verdict is
-UNDETERMINED and fails closed exactly like an outage (same reason, same 503), logged
-as ``text.egress.screen_coverage_missing`` with the missing COUNT only, and counted.
+UNDETERMINED and treated exactly like an outage (same reason), logged as
+``text.egress.screen_coverage_missing`` with the missing COUNT only, and counted.
+Since TASK-1050 (§9.8.1) an outage degrades to a ``guardrail.unverified`` notice —
+except the inbound screen before a CLOUD call, which is the
+``EGRESS_REDACTION_UNAVAILABLE`` hold (no spans, nothing sent to the cloud model).
 """
 
 from __future__ import annotations
@@ -25,7 +28,8 @@ from text.services.external_guardrail import (
     GUARDRAIL_UNAVAILABLE_REASON,
     ExternalGuardrailClient,
 )
-from text.services.output_gate import OutputRejectedError, gate_completion
+from text.services.guardrail_notices import GuardrailOutcome
+from text.services.output_gate import gate_completion
 
 pytestmark = pytest.mark.usefixtures("capturable_module_loggers")
 
@@ -150,10 +154,10 @@ async def test_legacy_calls_without_regions_are_not_coverage_checked() -> None:
 # ── the gates map it exactly like an outage ──────────────────────────────────
 
 
-async def test_the_inbound_gate_fails_closed_as_unavailable() -> None:
+async def test_the_inbound_gate_holds_a_cloud_call_on_a_coverage_gap() -> None:
     client = _client(_Http(screened=["transcript"]))
 
-    with pytest.raises(GuardrailUnavailableError):
+    with pytest.raises(GuardrailUnavailableError) as raised:
         await run_inbound_gate(
             client,
             segments=["Rules.", "Patient John Doe reports a cough."],
@@ -162,22 +166,46 @@ async def test_the_inbound_gate_fails_closed_as_unavailable() -> None:
             tenant_id="t",
         )
 
+    assert raised.value.error_code == "EGRESS_REDACTION_UNAVAILABLE"
 
-async def test_the_output_gate_fails_closed_as_retryable_unavailable() -> None:
+
+async def test_the_inbound_gate_degrades_a_local_call_on_a_coverage_gap() -> None:
+    client = _client(_Http(screened=["transcript"]))
+
+    result = await run_inbound_gate(
+        client,
+        segments=["Rules.", "Patient John Doe reports a cough."],
+        prompt="Patient John Doe reports a cough.",
+        system="untrusted",
+        tenant_id="t",
+        locality="local",
+    )
+
+    # Both calls missed a key (the stub echoes `transcript` only): two unverified notices.
+    assert [n["type"] for n in result.outcome.notices] == ["guardrail.unverified"] * 2
+    assert [n["checks"][0]["checkId"] for n in result.outcome.notices] == [
+        "jailbreak_detection",
+        "medical_validation",
+    ]
+
+
+async def test_the_output_gate_degrades_a_coverage_gap_to_unverified() -> None:
     client = _client(_Http())
+    outcome = GuardrailOutcome()
 
-    with pytest.raises(OutputRejectedError) as rejected:
-        await gate_completion(
-            client,
-            completion="note",
-            source_regions=_REGIONS,
-            tenant_id="t",
-            tenant_policy=None,
-            app_state=None,
-            where="test",
-            locality="local",
-        )
+    usage = await gate_completion(
+        client,
+        completion="note",
+        source_regions=_REGIONS,
+        tenant_id="t",
+        tenant_policy=None,
+        app_state=None,
+        where="test",
+        locality="local",
+        outcome=outcome,
+    )
 
-    assert rejected.value.retryable is True
-    assert rejected.value.status_code == 503
-    assert rejected.value.code == "GUARDRAIL_UNAVAILABLE"
+    assert usage is None  # released, not rejected
+    (notice,) = outcome.notices
+    assert notice["type"] == "guardrail.unverified"
+    assert notice["direction"] == "outbound"

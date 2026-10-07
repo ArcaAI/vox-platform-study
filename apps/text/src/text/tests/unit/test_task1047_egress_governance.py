@@ -406,24 +406,35 @@ def test_translate_texts_are_one_user_region() -> None:
 # ── fail closed ──────────────────────────────────────────────────────────────
 
 
-async def test_guardrail_unavailable_fails_closed_even_when_governed() -> None:
+async def test_a_screen_outage_before_a_cloud_call_fails_closed_even_when_governed() -> None:
+    # TASK-1050: the cloud-redaction hold (`EGRESS_REDACTION_UNAVAILABLE`, a
+    # `GuardrailUnavailableError`) — no spans, so nothing goes to the cloud model.
     client = _region_client()
     client.screen_inbound = AsyncMock(
         return_value={"allowed": False, "reason": GUARDRAIL_UNAVAILABLE_REASON, "pii_spans": []}
     )
     request = _request(system_governance=_governance(_GOVERNED_SYSTEM))
 
-    with pytest.raises(GuardrailUnavailableError):
+    with pytest.raises(GuardrailUnavailableError) as raised:
         await _gate(client, request)
 
+    assert raised.value.error_code == "EGRESS_REDACTION_UNAVAILABLE"
 
-async def test_a_judge_outage_fails_closed_too() -> None:
+
+async def test_a_judge_outage_degrades_to_unverified_even_when_governed() -> None:
+    # TASK-1050 §9.8.1 / OD-23: the judge is a safety verdict, not the cloud
+    # redaction — its outage continues with a `guardrail.unverified` notice (the screen
+    # answered, so the spans the pseudonymiser needs are there).
     client = _region_client()
     client.validate = AsyncMock(
         return_value={"allowed": False, "reason": GUARDRAIL_UNAVAILABLE_REASON}
     )
-    with pytest.raises(GuardrailUnavailableError):
-        await _gate(client, _request(system_governance=_governance(_GOVERNED_SYSTEM)))
+
+    _, result = await _gate(client, _request(system_governance=_governance(_GOVERNED_SYSTEM)))
+
+    (notice,) = result.outcome.notices
+    assert notice["type"] == "guardrail.unverified"
+    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "low"}]
 
 
 # ── the client speaks FC-5 on the wire ───────────────────────────────────────
