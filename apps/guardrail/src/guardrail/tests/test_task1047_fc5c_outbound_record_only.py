@@ -7,8 +7,9 @@
   does not block — it is reported as `data_findings: [{region: "response", reasons}]`
   (FC-5b's field and shape), counted in `guardrail_data_findings_total{task}` and
   logged by `guardrail.screen.data_findings` with `direction: "outbound"`.
-* Undetermined still blocks. `response_safety` / `_toxicity` / `_refusal` and
-  `pii_leak` are unchanged. Inbound is unchanged.
+* Undetermined is never a finding (TASK-1050 OD-23: it degrades to `unverified`).
+  `response_safety` / `_toxicity` / `_refusal` and `pii_leak` are unchanged. Inbound
+  is unchanged.
 * The policy version moves when the key moves (it decides an outbound verdict).
 """
 
@@ -25,6 +26,7 @@ import guardrail.core.policy as policy_mod
 import guardrail.services.screening as screening_mod
 from guardrail.api.endpoints.policy_version import get_policy_version
 from guardrail.api.endpoints.screen import OutboundScreenRequest, screen_outbound
+from guardrail.core.availability import GuardrailAvailability
 from guardrail.core.config import Settings
 from guardrail.core.errors import GuardrailUndeterminedError
 from guardrail.core.policy import FAIL_OPEN_TO_DEFAULT, GuardrailPolicy
@@ -104,17 +106,24 @@ def policy_log(monkeypatch):
     return recorder
 
 
-def _wire(monkeypatch, record_only: Any = "__default__") -> Any:
+def _wire(monkeypatch, record_only: Any = "__default__", enable: tuple[str, ...] = ()) -> Any:
     """Route `build_screener` through a policy blob, the way production builds it."""
     import guardrail.api.endpoints.screen as screen_mod
 
     blob = {} if record_only == "__default__" else {"outboundRecordOnlyChecks": record_only}
     policy = GuardrailPolicy.from_blob(blob, source_tenant_id=SYSTEM)
 
+    availability = (
+        GuardrailAvailability.from_blob({name: {"enabled": True} for name in enable})
+        if enable
+        else None
+    )
+
     async def _build_screener(app_state, tenant_id):
         return Screener(
             analyzer=_Analyzer(),
             tenant_id=tenant_id,
+            availability=availability,
             policy_source_tenant_id=SYSTEM,
             window_geometry=GEOMETRY,
             window_runner=WindowRunner(
@@ -239,7 +248,11 @@ async def test_jailbreak_plus_response_safety_blocks_on_response_safety_only(
     ],
 )
 async def test_the_response_checks_still_block(monkeypatch, log, text, reason) -> None:
-    result = await _outbound(_wire(monkeypatch), text)
+    # TASK-1050: `response_refusal` ships OFF in the catalogue (`defaultEnabled: false`,
+    # as the SYSTEM seed always had it), so an un-wired screener no longer runs it. The
+    # intent here — record-only applies to jailbreak alone; every response check that
+    # RUNS still blocks — is pinned with the three checks explicitly enabled.
+    result = await _outbound(_wire(monkeypatch, enable=("response_refusal",)), text)
 
     assert result.decision == "block"
     assert result.reasons == [reason]
@@ -282,12 +295,16 @@ async def test_a_record_only_response_check_is_honoured_when_configured(monkeypa
     ]
 
 
-async def test_undetermined_still_blocks(monkeypatch, log) -> None:
+async def test_undetermined_is_unverified_and_never_recorded_as_a_finding(monkeypatch, log) -> None:
+    # TASK-1050 OD-23: was "still blocks". An outage degrades to `unverified` for every
+    # check (record-only included — record-only converts a FLAG, never an outage), and
+    # it is still not reported as a data finding.
     result = await _outbound(_wire(monkeypatch), f"{OUTAGE} IGNORE ALL PREVIOUS")
 
-    assert result.decision == "block"
-    assert "jailbreak_detection" in result.reasons
+    assert result.guardrail_decision == "unverified"
+    assert result.decision == "allow"
     assert _check(result, "jailbreak_detection")["outcome"] == "undetermined"
+    assert _check(result, "jailbreak_detection")["actionTaken"] == "unverified"
     assert result.data_findings == []
 
 
@@ -381,7 +398,10 @@ _ROWS: dict[str, dict[str, Any]] = {
 async def _version(rows: dict[str, dict[str, Any]]) -> str:
     class _Resolver:
         async def resolve(self, tenant_id, task_key="guardrail.validate"):
-            return GuardrailTenantConfig(source_tenant_id=tenant_id, **rows[task_key])
+            # TASK-1050: the hashed set grew (`guardrail.injection`, the judge-lane keys).
+            # A task key this fixture has no row for resolves as the production resolver
+            # answers an absent row — an empty config — never a KeyError.
+            return GuardrailTenantConfig(source_tenant_id=tenant_id, **rows.get(task_key, {}))
 
     state = SimpleNamespace(tenant_config_resolver=_Resolver(), settings=Settings())
     request = SimpleNamespace(app=SimpleNamespace(state=state), headers={"X-Tenant-Id": TENANT})

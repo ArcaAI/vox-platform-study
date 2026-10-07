@@ -192,11 +192,19 @@ async def test_the_screener_classifies_the_SANITIZED_text() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_nlp_outage_blocks_inbound_it_never_allows() -> None:
+async def test_an_nlp_outage_is_unverified_inbound_never_a_clean_allow() -> None:
+    # TASK-1050 OD-23: an outage degrades to `unverified` (was: block). It still never
+    # reads as a clean allow — the four-valued decision says the content is unverified.
     decision = await _screener(_StubAnalyzer(raises=True)).screen_inbound("anything")
 
-    assert decision.decision == DECISION_BLOCK
+    assert decision.guardrail_decision == "unverified"
+    assert decision.decision != DECISION_BLOCK
     assert any(c.outcome == "undetermined" for c in decision.checks)
+    assert all(
+        c.effective_action_taken == "unverified"
+        for c in decision.checks
+        if c.outcome == "undetermined"
+    )
 
 
 @pytest.mark.asyncio

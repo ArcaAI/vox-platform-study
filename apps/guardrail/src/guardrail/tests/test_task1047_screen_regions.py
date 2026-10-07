@@ -147,9 +147,11 @@ async def test_inbound_regions_spans_carry_region_and_region_relative_offsets(
 
     result = await screen_inbound(
         InboundScreenRequest(
+            # TASK-1049 F8: spans are computed on DATA regions only (instruction text is
+            # governed at authoring), so the patient-data regions are marked as such.
             regions=[
-                {"key": "vitals", "text": vitals},
-                {"key": "transcript", "text": transcript},
+                {"key": "vitals", "text": vitals, "trust": "data"},
+                {"key": "transcript", "text": transcript, "trust": "data"},
             ],
             include_pii_spans=True,
             wrap=False,

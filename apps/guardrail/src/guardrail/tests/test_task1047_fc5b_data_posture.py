@@ -296,7 +296,10 @@ async def test_clean_data_regions_report_an_empty_finding_list(wire, log) -> Non
 # ── fail closed ──────────────────────────────────────────────────────────────
 
 
-async def test_an_undetermined_check_on_a_data_region_still_blocks(wire) -> None:
+async def test_an_undetermined_check_is_unverified_whatever_the_region_trust(wire) -> None:
+    # TASK-1050 OD-23: an outage degrades to `unverified` rather than blocking. The
+    # FC-5b invariant survives in its new form — an outage is never a clean `allow`,
+    # whatever the trust of the region it hit.
     result = await _screen(
         wire,
         [
@@ -304,9 +307,13 @@ async def test_an_undetermined_check_on_a_data_region_still_blocks(wire) -> None
             {"key": "transcript", "text": f"text {OUTAGE} text", "trust": "data"},
         ],
     )
-    assert result.decision == "block"
-    assert set(result.reasons) == set(screening_mod.INBOUND_TASKS)
+    assert result.guardrail_decision == "unverified"
+    assert result.decision == "allow"
+    assert result.reasons == []
     assert all(_check(result, t)["outcome"] == "undetermined" for t in screening_mod.INBOUND_TASKS)
+    assert all(
+        _check(result, t)["actionTaken"] == "unverified" for t in screening_mod.INBOUND_TASKS
+    )
 
 
 # ── PII spans and the window cache are untouched ─────────────────────────────
