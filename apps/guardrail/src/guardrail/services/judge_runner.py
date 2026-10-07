@@ -768,6 +768,12 @@ def region_of(region_key: str) -> str:
     return region_key.rsplit("@", 1)[0] if "@" in region_key else region_key
 
 
+#: Region keys that carry the platform's OWN earlier output (screened by TEXT's output gate
+#: when generated). A protocol name shared with the live lane (`LIVE_SELF_NOTE_REGION_KEY`),
+#: not configuration. TASK-1050 / TASK-1049 F7.
+SELF_OUTPUT_REGIONS: Final[frozenset[str]] = frozenset({"current_note"})
+
+
 def plan_inbound_judge_calls(
     regions: Iterable[tuple[str, str, str]],
     *,
@@ -791,7 +797,10 @@ def plan_inbound_judge_calls(
         wanted: list[str] = []
         if include_medical and key not in medical_skip:
             wanted.append(jp.MEDICAL_LANE)
-        if trust == "data":
+        # F7: the live lane's own previous note is never re-judged by ANY lane (its medical
+        # skip comes from `medicalJudgeConfigRegions`). Other settings regions stay
+        # safety-judged: tenant-authored text can still carry an injection.
+        if trust == "data" and key not in SELF_OUTPUT_REGIONS:
             wanted.extend(safety)
         lanes = jp.canonical_lanes(wanted)
         if not lanes:

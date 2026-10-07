@@ -118,6 +118,10 @@ _CONFIG_VARIABLES: Final = (
 _CONFIG_PREFIXES: Final = ("", "context_", "trigger_context_", "variables_")
 _MEDICAL_JUDGE_CONFIG_REGIONS: Final[tuple[str, ...]] = (
     "style_reference",
+    # TASK-1050 / 1049 F7 — the live lane's own previous note (W2g
+    # `LIVE_SELF_NOTE_REGION_KEY`): already screened by TEXT's output gate when it was
+    # generated, rewritten every flush (a guaranteed cache miss), so never re-judged.
+    "current_note",
     *(f"{prefix}{name}" for name in _CONFIG_VARIABLES for prefix in _CONFIG_PREFIXES),
 )
 
