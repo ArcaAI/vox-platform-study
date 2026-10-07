@@ -48,6 +48,7 @@ from typing import Any
 from text.core.exceptions import ContentBlockedError, GuardrailUnavailableError, TextError
 from text.core.locality import CLOUD, LOCAL
 from text.core.logging import get_logger
+from text.models.requests import ProviderOverride, serialize_provider_overrides
 from text.models.usage import UsageDetail, guardrail_usage_from_verdict
 from text.services.egress import (
     record_outbound_data_findings,
@@ -245,6 +246,11 @@ async def gate_completion(
     where: str,
     locality: str = CLOUD,
     outcome: GuardrailOutcome | None = None,
+    caller: str | None = None,
+    agent_slug: str | None = None,
+    response_items: list[dict[str, Any]] | None = None,
+    prompt_context: str | None = None,
+    provider_overrides: dict[str, ProviderOverride] | None = None,
 ) -> UsageDetail | None:
     """Screen ``completion``; return guardrail's own usage, or raise.
 
@@ -276,6 +282,13 @@ async def gate_completion(
             tenant_id=tenant_id,
             tenant_policy=tenant_policy,
             locality=locality,
+            # TASK-1050 (W2a2 wire): who asked, the generated item(s), the user
+            # prompt the response answers, and a cloud judge's connection.
+            caller=caller,
+            agent_slug=agent_slug,
+            response_items=response_items,
+            prompt_context=prompt_context,
+            provider_overrides=serialize_provider_overrides(provider_overrides),
         )
         collected = outcome if outcome is not None else GuardrailOutcome()
         collected.add_verdict(verdict)

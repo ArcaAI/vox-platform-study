@@ -179,3 +179,42 @@ async def test_an_outbound_outage_releases_the_window_with_an_unverified_notice(
     assert kinds == ["guardrail.notice", "chunk", "done"]
     assert events[0][1]["type"] == "guardrail.unverified"
     assert events[1][1] == "Only sentence."
+
+
+async def test_the_streamed_window_screen_gets_caller_agent_and_the_prompt() -> None:
+    from text.api.endpoints.generate import _run_streaming_generation
+
+    seen: list[dict[str, Any]] = []
+
+    class _Recording:
+        async def screen_output(self, response: str, **kwargs: Any) -> dict[str, Any]:
+            seen.append(kwargs)
+            return {"allowed": True, "decision": "allow"}
+
+    tm = _task_manager()
+    request = GenerateRequest(
+        prompt="Write a note.",
+        provider=_PROVIDER,
+        model="m",
+        stream=True,
+        agent_slug="soap-writer",
+        response_items=[{"itemId": "note-1", "itemVersion": 1}],
+    )
+    egress = prepare_egress(request, spans_by_segment=None)
+    await _run_streaming_generation(
+        tm,
+        _provider("One sentence."),
+        "g-1",
+        egress.provider_request,
+        provider_name=_PROVIDER,
+        model="m",
+        tenant_id="t",
+        guardrail_client=_Recording(),
+        egress=egress,
+    )
+
+    (kwargs,) = seen
+    assert kwargs["caller"] == "text.generate"
+    assert kwargs["agent_slug"] == "soap-writer"
+    assert kwargs["response_items"] == [{"itemId": "note-1", "itemVersion": 1}]
+    assert kwargs["prompt_context"] == "Write a note."

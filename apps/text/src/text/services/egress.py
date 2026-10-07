@@ -452,26 +452,32 @@ def _block_error(
     outcome: GuardrailOutcome,
     item_ids: list[str],
 ) -> ContentBlockedError:
-    """The fixed, non-PHI 422 for a block — guardrail's own notice, or one synthesised."""
-    not_medical = medical and verdict.get("is_medical") is False
+    """The fixed, non-PHI 422 for a block — guardrail's own notice, or one synthesised.
+
+    ``CONTENT_BLOCKED_NOT_MEDICAL`` when the medical judge said "not medical", or (W2a2)
+    when the screen's own blocking check is ``medical_validation``: the combined judge
+    call can now block on medical scope from the screen.
+    """
     notice = next(
         (n for n in valid_notices(verdict.get("notices")) if n["type"] == "guardrail.blocked"),
         None,
     )
+    if medical:
+        checks = [{"checkId": MEDICAL_CHECKS[0], "severity": "high"}]
+        not_medical = verdict.get("is_medical") is False
+    else:
+        raw = verdict.get("raw")
+        checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
+            {"reasons": [verdict.get("reason")]}
+        )
+        # Guardrail blocked but named no check id: the screen as a whole.
+        checks = checks or [
+            {"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS
+        ]
+        named = checks if notice is None else notice["checks"]
+        not_medical = any(check["checkId"] == MEDICAL_CHECKS[0] for check in named)
     if notice is None:
-        if medical:
-            checks = [{"checkId": MEDICAL_CHECKS[0], "severity": "high"}]
-            key = "guardrail.blocked.not_medical" if not_medical else "guardrail.blocked.inbound"
-        else:
-            raw = verdict.get("raw")
-            checks = blocked_checks(raw if isinstance(raw, dict) else verdict) or blocked_checks(
-                {"reasons": [verdict.get("reason")]}
-            )
-            # Guardrail blocked but named no check id: the screen as a whole.
-            checks = checks or [
-                {"checkId": check, "severity": "high"} for check in INBOUND_SCREEN_CHECKS
-            ]
-            key = "guardrail.blocked.inbound"
+        key = "guardrail.blocked.not_medical" if not_medical else "guardrail.blocked.inbound"
         notice = blocked_notice("inbound", key, checks, item_ids, _policy_version(verdict))
     outcome.add_notice(notice)
     if not_medical:
@@ -502,6 +508,8 @@ async def run_inbound_gate(
     locality: str | None = None,
     region_items: RegionItems | None = None,
     outside_trust: str = TRUST_INSTRUCTION,
+    caller: str | None = None,
+    agent_slug: str | None = None,
 ) -> InboundResult:
     """Run the inbound screen and the medical judge CONCURRENTLY; enforce their decisions.
 
@@ -534,6 +542,9 @@ async def run_inbound_gate(
     cloud). PII spans are requested only off LOCAL (TASK-1049 F8: they decide
     nothing on a local call). ``region_items`` ride on the regions; ``outside_trust``
     is the trust of text outside any block (``data`` for ``/translate``, F3).
+    ``caller`` / ``agent_slug`` / the ``medical_internal`` exemption and the injected
+    connection (a cloud judge needs it, as the medical judge always did) go on the
+    screen request (W2a2).
     """
     if guardrail_client is None:
         return InboundResult(None, [[] for _ in segments])
@@ -545,6 +556,10 @@ async def run_inbound_gate(
         tenant_id=tenant_id,
         include_pii_spans=locality != LOCAL,
         locality=locality,
+        caller=caller,
+        agent_slug=agent_slug,
+        exempt="medical_internal" if medical_exempt == "internal" else None,
+        provider_overrides=serialize_provider_overrides(provider_overrides),
     )
     if medical_exempt == "internal":
         screen_verdict = await screen
