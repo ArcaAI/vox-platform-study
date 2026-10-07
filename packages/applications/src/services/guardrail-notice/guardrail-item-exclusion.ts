@@ -15,17 +15,30 @@ import type { GuardrailNoticeRepository } from '@arcaai/domains';
 
 export const GUARDRAIL_EXCLUDED_RESOLUTION = 'item_excluded';
 
-/** The ids of every item a resolved `item_excluded` hold left out of later LLM context. */
+/**
+ * The ids of every item a resolved `item_excluded` hold left out of later LLM context. `tenantId`
+ * may be omitted by a reader that has none in hand: the tenant-scope extension still scopes the read.
+ */
 export async function loadGuardrailExcludedItemIds(
   notices: Pick<GuardrailNoticeRepository, 'findAll'> | undefined,
-  tenantId: string,
+  tenantId: string | null | undefined,
   consultationId: string,
 ): Promise<Set<string>> {
   if (!notices) return new Set();
   const rows = await notices.findAll({
-    where: { tenantId, consultationId, status: 'RESOLVED', resolution: GUARDRAIL_EXCLUDED_RESOLUTION } as never,
+    where: { ...(tenantId ? { tenantId } : {}), consultationId, status: 'RESOLVED', resolution: GUARDRAIL_EXCLUDED_RESOLUTION } as never,
   });
   return new Set(rows.flatMap((row: { itemIds?: string[] | null }) => row.itemIds ?? []));
+}
+
+/** The KEEP predicate of one consultation: `false` for every item an LLM must not see. */
+export async function guardrailKeepFilter(
+  notices: Pick<GuardrailNoticeRepository, 'findAll'> | undefined,
+  tenantId: string | null | undefined,
+  consultationId: string,
+): Promise<(item: { id: string; guardrailStatus?: string | null }) => boolean> {
+  const excluded = await loadGuardrailExcludedItemIds(notices, tenantId, consultationId);
+  return (item) => !isGuardrailExcludedItem(item, excluded);
 }
 
 /** Whether an item must be left out of every LLM context (`excluded` from {@link loadGuardrailExcludedItemIds}). */

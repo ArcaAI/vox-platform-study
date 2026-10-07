@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import {
   ConsultationRepository,
   ContextItemRepository,
+  GuardrailNoticeRepository,
   ContextItemVersionFactory,
   ContextItemVersionRepository,
   DocumentSectionEntity,
@@ -16,6 +17,7 @@ import {
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
 import {
   CONSULTATION_ENDPOINT_METADATA_KEY,
   CORRECTION_CHANGE_REASON,
@@ -87,6 +89,9 @@ export class ConsultationEndpointService extends BaseService {
     private readonly contextItemVersionRepository: ContextItemVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // TASK-1050 — the resolved `item_excluded` holds: corrections are never promoted over a
+    // transcript a guardrail took out. Optional + trailing; unwired ⇒ only WITHHELD is skipped.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -354,8 +359,9 @@ export class ConsultationEndpointService extends BaseService {
    * transcript wins, because that is the one a live proposal surface was reading.
    */
   private async resolveTranscript(tenantId: string, consultationId: string, contextItemId?: string | null) {
+    const keep = await guardrailKeepFilter(this.guardrailNotices, tenantId, consultationId);
     const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-    const scoped = transcripts.filter((item) => item.tenantId === tenantId);
+    const scoped = transcripts.filter((item) => item.tenantId === tenantId && keep(item));
     if (contextItemId) return scoped.find((item) => item.id === contextItemId) ?? null;
     return scoped.length > 0 ? scoped[scoped.length - 1] : null;
   }

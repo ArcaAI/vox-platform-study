@@ -5,10 +5,12 @@ import {
   AiActivityRunStatus,
   ConsultationEncounterRepository,
   ContextItemRepository,
+  GuardrailNoticeRepository,
   ContextItemType,
   type ContextItemEntity,
 } from '@arcaai/domains';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
 import { AgentResolverService } from '../../agent/agent-resolver.service';
 import { AgentInvocationService, type AgentTextInvocationResult } from '../../agent/agent-invocation.service';
 import { IAiActivityRunService, IAiActivityRunServiceToken, type AiActivityRunInput } from '../../ai-activity-run/IAiActivityRunService';
@@ -107,6 +109,10 @@ export class FactLedgerService {
     // When the encounter ended — an uploaded-audio transcript created after it is the recap's
     // "Since then". Absent ⇒ no transcript is treated as late.
     @Optional() @Inject(ConsultationEncounterRepository) private readonly encounterRepository?: ConsultationEncounterRepository,
+    // TASK-1050 — the resolved `item_excluded` holds: a WITHHELD item, or a BLOCKED one its hold
+    // excluded, is never ledgered (nor recapped). The composer excludes the same items from the
+    // digest it expects, so the two stay in agreement. Unwired ⇒ only WITHHELD items are skipped.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
   ) {}
 
   /** The digest the encounter's ledger would be built from now; `null` when there is nothing to ledger. */
@@ -119,8 +125,9 @@ export class FactLedgerService {
    * segment edit or a late uploaded-audio transcript makes stale.
    */
   async staleLedgerEncounters(consultationId: string): Promise<Array<{ encounterSeq: number; inputDigest: string }>> {
-    const segments = await this.contextItemRepository.findSegments(consultationId);
-    const attachments = await this.attachmentTranscripts(consultationId);
+    const keep = await guardrailKeepFilter(this.guardrailNotices, null, consultationId);
+    const segments = (await this.contextItemRepository.findSegments(consultationId)).filter(keep);
+    const attachments = (await this.attachmentTranscripts(consultationId)).filter(keep);
     const seqs = new Set<number>();
     for (const item of [...segments, ...attachments]) if (typeof item.encounterSeq === 'number') seqs.add(item.encounterSeq);
 
@@ -288,10 +295,11 @@ export class FactLedgerService {
   }
 
   private async readEncounterInput(consultationId: string, encounterSeq: number): Promise<EncounterInput> {
-    const segments = [...(await this.contextItemRepository.findSegments(consultationId, { encounterSeq }))].sort(
-      (a, b) => (a.segmentSeq ?? 0) - (b.segmentSeq ?? 0),
-    );
-    const attachments = (await this.attachmentTranscripts(consultationId)).filter((item) => item.encounterSeq === encounterSeq);
+    const keep = await guardrailKeepFilter(this.guardrailNotices, null, consultationId);
+    const segments = [...(await this.contextItemRepository.findSegments(consultationId, { encounterSeq }))]
+      .filter(keep)
+      .sort((a, b) => (a.segmentSeq ?? 0) - (b.segmentSeq ?? 0));
+    const attachments = (await this.attachmentTranscripts(consultationId)).filter((item) => item.encounterSeq === encounterSeq && keep(item));
     return { segments, attachments, inputDigest: digestOf(segments, attachments) };
   }
 

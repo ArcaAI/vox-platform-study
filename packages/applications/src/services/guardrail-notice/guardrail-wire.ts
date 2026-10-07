@@ -1,11 +1,11 @@
 /**
  * TASK-1050 W2e — the lowercase guardrail WIRE vocabulary (`@arcaai/types`) ↔ the W0 Prisma enums,
- * the notice dedupe key, and the notice row → client view mapping. Pure: no I/O.
+ * and the notice row → client view mapping. Pure: no I/O.
  *
  * Resolves the `prismaMappingTodo` of `tests/contracts/guardrail-vocabulary.fixture.json` for the
- * gateway writer: wire values are lowercase, the rows store SCREAMING_CASE enums.
+ * gateway writer: wire values are lowercase, the rows store SCREAMING_CASE enums. Notices are deduped
+ * by guardrail's deterministic `noticeId`, so no gateway-side dedupe key is composed here.
  */
-import { createHash } from 'node:crypto';
 import {
   GuardrailDecision,
   GuardrailDirection,
@@ -90,26 +90,6 @@ export function noticeSeverity(checks: readonly GuardrailNoticeCheck[]): 'low' |
   if (checks.some((check) => check.severity === 'medium')) return 'medium';
   // A check-less notice (the redaction hold) is still a stop: high weight.
   return checks.length === 0 ? 'high' : 'low';
-}
-
-/**
- * One notice per `(consultation, checkId, itemId, policyVersion)` (README §9.7.3): a live summary
- * re-screened every few seconds raises ONE notice. The scope is the consultation, else the run
- * (a standalone workflow run), else the notice itself (nothing to collapse into).
- */
-export function noticeDedupeKey(notice: GuardrailNotice): string {
-  const scope = notice.consultationId ? `c:${notice.consultationId}` : notice.runId ? `r:${notice.runId}` : `n:${notice.noticeId}`;
-  const canonical = JSON.stringify([
-    scope,
-    notice.type,
-    notice.direction,
-    [...notice.checks.map((check) => check.checkId)].sort(),
-    [...notice.itemIds].sort(),
-    notice.policyVersion,
-    // The redaction hold names no check: keep it apart from a check-less safety notice.
-    notice.messageKey,
-  ]);
-  return `v1:${createHash('sha256').update(canonical).digest('hex')}`;
 }
 
 /** The domain's `acknowledgedVia` ('notice' | 'approve') on the wire ('ack' | 'approve' | 'resume'). */

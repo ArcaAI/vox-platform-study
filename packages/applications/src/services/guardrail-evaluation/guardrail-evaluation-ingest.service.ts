@@ -38,7 +38,6 @@ import {
   decisionToRow,
   directionToRow,
   itemStatusRank,
-  noticeDedupeKey,
   noticeSeverity,
   noticeTypeToRow,
   strongerItemStatus,
@@ -102,8 +101,10 @@ function isOutboundBlock(record: GuardrailEvaluationRecord): boolean {
  * guardrail outcomes (§9.7.1): guardrail decides, this records and enforces.
  *
  * One transaction per batch, in this order:
- *  1. the batch's notices, deduped per `(consultation, check, item, policyVersion)`
- *     (`upsertByDedupeKey`; a repeat raise returns the stored row untouched);
+ *  1. the batch's notices, keyed on guardrail's DETERMINISTIC `noticeId` (a UUID of
+ *     sha256(tenantId|dedupeKey), so a re-raise arrives with the same id and is a no-op on the
+ *     stored row; notices with different ids are never collapsed, so every id a client holds
+ *     resolves). TEXT- and harness-minted notices carry their own ids and are stored the same way;
  *  2. the evaluations (`createManyIdempotent`, idempotent on `evaluationId`), their `noticeIds`
  *     pointing at the STORED notices;
  *  3. the item markers — WARNED / BLOCKED on an item whose CURRENT version is the screened one,
@@ -228,7 +229,9 @@ export class GuardrailEvaluationIngestService extends BaseService {
       requiresAcknowledgement: notice.requiresAcknowledgement,
       resumable: notice.resumable,
       policyVersion: notice.policyVersion,
-      dedupeKey: noticeDedupeKey(notice),
+      // The id IS the dedupe key: guardrail derives it from (tenant, consultation-or-request, check,
+      // item-or-region, policyVersion), so keying the upsert on it dedupes exactly as guardrail did.
+      dedupeKey: notice.noticeId,
       createdAt: new Date(notice.occurredAt),
     });
     // TODO(TASK-1050 W0 follow-up): `GuardrailNoticeFactory` mints its own id; the notice id is

@@ -5,11 +5,11 @@
  */
 import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException, type ExecutionContext } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { InternalServiceTokenGuard } from '../../internal/internal-service-token.guard';
 import { InternalTenantLockGuard } from '../../../guards/internal-tenant-lock.guard';
-import { GuardrailEvaluationInternalController } from '../guardrail-evaluation-internal.controller';
+import { GUARDRAIL_INGEST_SERVICE, GuardrailEvaluationInternalController } from '../guardrail-evaluation-internal.controller';
 
 function build() {
   const store = new Map<string, unknown>();
@@ -42,5 +42,24 @@ describe('GuardrailEvaluationInternalController', () => {
     const result = await h.controller.ingest(body, ' t-1 ');
     expect(h.ingest.ingest).toHaveBeenCalledWith('t-1', body);
     expect(result).toMatchObject({ accepted: 1, duplicates: 0, seenTenant: 't-1' });
+  });
+});
+
+describe('GuardrailEvaluationInternalController — the drainer`s service selector (c72130ab8)', () => {
+  const secrets = { getSecretOptional: vi.fn(async (name: string) => (name === 'GUARDRAIL_SERVICE_TOKEN' ? 'guardrail-token' : name === 'INTERNAL_ACCESS_TOKEN' ? 'shared-token' : undefined)) };
+  const context = (query: Record<string, string>, token?: string) =>
+    ({ switchToHttp: () => ({ getRequest: () => ({ query, headers: token ? { 'x-service-token': token } : {} }) }) }) as unknown as ExecutionContext;
+
+  it('authenticates the drainer`s `?service=guardrail` with the shared or the guardrail token', async () => {
+    expect(GUARDRAIL_INGEST_SERVICE).toBe('guardrail');
+    const guard = new InternalServiceTokenGuard(secrets as never);
+    await expect(guard.canActivate(context({ service: GUARDRAIL_INGEST_SERVICE }, 'shared-token'))).resolves.toBe(true);
+    await expect(guard.canActivate(context({ service: GUARDRAIL_INGEST_SERVICE }, 'guardrail-token'))).resolves.toBe(true);
+  });
+
+  it('refuses a call without the selector, or with a wrong token (401)', async () => {
+    const guard = new InternalServiceTokenGuard(secrets as never);
+    await expect(guard.canActivate(context({}, 'shared-token'))).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(guard.canActivate(context({ service: GUARDRAIL_INGEST_SERVICE }, 'wrong'))).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

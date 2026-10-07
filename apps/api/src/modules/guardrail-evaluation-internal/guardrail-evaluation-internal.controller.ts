@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Headers, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
-import { ApiExcludeController, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiExcludeController, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import {
   GuardrailEvaluationBatchRequestDto,
@@ -11,6 +11,12 @@ import {
 import { Public } from '../../decorators';
 import { InternalTenantLockGuard } from '../../guards/internal-tenant-lock.guard';
 import { InternalServiceTokenGuard } from '../internal/internal-service-token.guard';
+
+/**
+ * The `?service=` selector guardrail's drainer sends (apps/guardrail, c72130ab8):
+ * `InternalServiceTokenGuard` checks the token against that service's secret (or the shared one).
+ */
+export const GUARDRAIL_INGEST_SERVICE = 'guardrail';
 
 /**
  * TASK-1050 W2e — `POST /api/v1/internal/guardrail/evaluations?service=guardrail`: guardrail's
@@ -45,6 +51,7 @@ export class GuardrailEvaluationInternalController {
     description:
       'At most 100 records. One transaction per batch: notices (deduped), evaluations (idempotent on evaluationId), item markers and, on a block, the consultation`s resumable guardrail hold.',
   })
+  @ApiQuery({ name: 'service', required: true, enum: [GUARDRAIL_INGEST_SERVICE], description: 'The calling service; selects the token the guard checks.' })
   @ApiResponse({ status: 200, type: GuardrailEvaluationBatchResponseDto })
   @ApiResponse({ status: 400, description: 'Missing X-Tenant-Id, a record of another tenant, or an invalid / oversized batch.' })
   @ApiResponse({ status: 401, description: 'Missing or wrong X-Service-Token.' })

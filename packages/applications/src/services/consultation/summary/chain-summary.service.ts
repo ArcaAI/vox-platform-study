@@ -6,6 +6,7 @@ import {
   AiActivityKind,
   AiDeploymentKind,
   ContextItemRepository,
+  GuardrailNoticeRepository,
   ConsultationRepository,
   CoreUnitOfWorkService,
   SummaryMetaRepository,
@@ -18,6 +19,7 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { assembleTranscriptFragments, readSpeakerId } from './transcript-assembly.util';
+import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
 import {
   buildLlmUsageBatches,
   buildTextActivityRun,
@@ -118,6 +120,9 @@ export class ChainSummaryService extends BaseService {
     // The per-activity run record of this generation, written in the usage transaction so the run
     // and the bill agree. Optional + trailing; unwired ⇒ the summary is metered without a run record.
     @Optional() @Inject(IAiActivityRunServiceToken) private readonly activityRuns?: IAiActivityRunService,
+    // TASK-1050 — the resolved `item_excluded` holds, so a chain summary never reads an item a
+    // guardrail took out. Optional + trailing; unwired ⇒ only WITHHELD items are skipped.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -343,8 +348,11 @@ export class ChainSummaryService extends BaseService {
       const departmentName = consultation.Department?.name ?? consultation.departmentId ?? undefined;
       const doctorName = consultation.Doctor?.username ?? consultation.doctorId ?? undefined;
 
+      // TASK-1050 — a WITHHELD item, or a BLOCKED one its hold excluded, never reaches the model.
+      const keep = await guardrailKeepFilter(this.guardrailNotices, consultation.tenantId, consultation.id);
+
       // Get latest summary (preferred over raw transcripts)
-      const summaries = await this.contextItemRepository.findSummaries(consultation.id);
+      const summaries = (await this.contextItemRepository.findSummaries(consultation.id)).filter(keep);
       if (summaries.length > 0) {
         const latestSummary = summaries[summaries.length - 1];
         if (latestSummary.content?.trim()) {
@@ -366,7 +374,7 @@ export class ChainSummaryService extends BaseService {
         // Assemble adjacent utterances into real paragraphs first (TASK-998,
         // see transcript-assembly.util.ts) so a consultation with 200
         // utterances becomes a handful of sections instead of 200.
-        const transcripts = await this.contextItemRepository.findTranscripts(consultation.id);
+        const transcripts = (await this.contextItemRepository.findTranscripts(consultation.id)).filter(keep);
         const paragraphs = assembleTranscriptFragments(
           transcripts.map((t) => ({ content: t.content, createdAt: t.createdAt, speakerId: readSpeakerId(t) })),
         );
@@ -383,7 +391,7 @@ export class ChainSummaryService extends BaseService {
       }
 
       // Case notes (always include — they provide historical context)
-      const caseNotes = await this.contextItemRepository.findCaseNotes(consultation.id);
+      const caseNotes = (await this.contextItemRepository.findCaseNotes(consultation.id)).filter(keep);
       for (const note of caseNotes) {
         if (note.content?.trim()) {
           sections.push({
@@ -398,7 +406,7 @@ export class ChainSummaryService extends BaseService {
       }
 
       // Pre-summaries (AI-generated case note summaries — provide condensed history)
-      const preSummaries = await this.contextItemRepository.findPreSummaries(consultation.id);
+      const preSummaries = (await this.contextItemRepository.findPreSummaries(consultation.id)).filter(keep);
       for (const preSummary of preSummaries) {
         if (preSummary.content?.trim()) {
           sections.push({
@@ -443,9 +451,10 @@ export class ChainSummaryService extends BaseService {
 
     for (const consultationId of consultationIds) {
       // Get all summaries and transcripts from this consultation
+      const keep = await guardrailKeepFilter(this.guardrailNotices, null, consultationId);
       const summaries = await this.contextItemRepository.findSummaries(consultationId);
       const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
-      const contextItems = [...summaries, ...transcripts];
+      const contextItems = [...summaries, ...transcripts].filter(keep);
 
       for (const item of contextItems) {
         const entities = await this.namedEntityRepository.findByContextItem(item.id);

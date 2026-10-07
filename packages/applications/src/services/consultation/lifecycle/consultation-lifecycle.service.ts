@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import type { CaptureState, StopResult } from '@arcaai/types';
+import { isGuardrailHoldReason, type CaptureState, type StopResult } from '@arcaai/types';
 import {
   ConsultationClosedReason,
   ConsultationEncounterRepository,
@@ -119,6 +119,15 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
         LifecycleConflictCode.CONSULTATION_NOT_RECORDABLE,
         `Consultation ${consultationId} is ${consultation.status} and cannot be recorded. Reopen it, or open a new consultation.`,
         { status: consultation.status },
+      );
+    }
+    // TASK-1050 §9.7.5 — a guardrail hold is resolved through `guardrail-hold/resume` (or approve's
+    // `resolveHold`); recording again around it would make the hold bypassable.
+    if (consultation.processing === ConsultationProcessing.AWAITING_REVIEW && isGuardrailHoldReason(consultation.processingReason)) {
+      throw lifecycleConflict(
+        LifecycleConflictCode.GUARDRAIL_HOLD,
+        'The consultation is in a guardrail hold: resume it (`POST consultations/:id/guardrail-hold/resume`) before recording again.',
+        { processingReason: consultation.processingReason },
       );
     }
     if (options.sttSessionId) {

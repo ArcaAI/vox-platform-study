@@ -202,7 +202,8 @@ describe('GuardrailEvaluationIngestService.ingest — persistence', () => {
     // The notice keeps guardrail's id: clients address it by the id the run stream carried.
     const [stored] = h.notices.upsertByDedupeKey.mock.calls[0] as unknown as [Record<string, unknown>];
     expect(stored).toMatchObject({ id: notice().noticeId, type: 'WARNING', direction: 'INBOUND', status: 'OPEN', messageKey: 'guardrail.warning.generic' });
-    expect(typeof stored.dedupeKey).toBe('string');
+    // Guardrail mints a DETERMINISTIC noticeId (sha256(tenantId|dedupeKey)): the upsert is keyed on it.
+    expect(stored.dedupeKey).toBe(notice().noticeId);
   });
 
   it('is idempotent on redrive: an evaluation already stored is a duplicate and drives nothing', async () => {
@@ -220,11 +221,35 @@ describe('GuardrailEvaluationIngestService.ingest — persistence', () => {
     expect(result).toEqual({ accepted: 1, duplicates: 1 });
   });
 
-  it('maps a collapsed (deduped) notice onto the stored id in the evaluation`s noticeIds', async () => {
-    const h = makeHarness({ storedNotice: (entity) => ({ id: 'stored-notice', status: entity.status }) });
+  it('never collapses notices that carry different ids, even with the same checks and items', async () => {
+    const h = makeHarness();
+    const a = notice();
+    const b = notice({ noticeId: '01927f6e-9999-7000-8000-0000000000cc' });
+    await h.service.ingest(TENANT, { evaluations: [record({ noticeIds: [a.noticeId, b.noticeId], notices: [a, b] })] });
+    const keys = h.notices.upsertByDedupeKey.mock.calls.map(([entity]) => [(entity as { id: string }).id, (entity as { dedupeKey: string }).dedupeKey]);
+    expect(keys).toEqual([
+      [a.noticeId, a.noticeId],
+      [b.noticeId, b.noticeId],
+    ]);
+    const [entities] = h.evaluations.createManyIdempotent.mock.calls[0] as unknown as [Array<{ noticeIds: string[] }>];
+    expect(entities[0].noticeIds).toEqual([a.noticeId, b.noticeId]);
+  });
+
+  it('a re-raise arrives with the same id and is a no-op on the stored notice', async () => {
+    const h = makeHarness({ storedNotice: (entity) => ({ id: entity.id, status: 'ACKNOWLEDGED' }) });
     await h.service.ingest(TENANT, { evaluations: [record()] });
     const [entities] = h.evaluations.createManyIdempotent.mock.calls[0] as unknown as [Array<{ noticeIds: string[] }>];
-    expect(entities[0].noticeIds).toEqual(['stored-notice']);
+    expect(entities[0].noticeIds).toEqual([notice().noticeId]);
+    const created = h.eventEmitter.emit.mock.calls.map(([, p]) => p as { data?: { action?: string } }).filter((p) => p.data?.action === 'guardrail_notice_raised');
+    expect(created).toHaveLength(0);
+  });
+
+  it('accepts a TEXT- or harness-minted notice (its own id, no checks) the same way', async () => {
+    const h = makeHarness();
+    const n = blockNotice({ noticeId: 'text-minted-redaction-1', checks: [], messageKey: 'guardrail.blocked.redaction_unavailable', direction: 'outbound' });
+    await h.service.ingest(TENANT, { evaluations: [record({ direction: 'outbound', decision: 'block', checks: [], noticeIds: [n.noticeId], notices: [n] })] });
+    const [stored] = h.notices.upsertByDedupeKey.mock.calls[0] as unknown as [{ id: string; dedupeKey: string }];
+    expect([stored.id, stored.dedupeKey]).toEqual(['text-minted-redaction-1', 'text-minted-redaction-1']);
   });
 
   it('broadcasts a sys-event for the stored evaluations (ids and counts only)', async () => {
