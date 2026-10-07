@@ -205,3 +205,37 @@ export interface NerResult {
   entities: NerEntity[];
   model_version: string;
 }
+
+// ─── TASK-1050: "Test my rules" (screen under the tenant's EFFECTIVE rules) ───
+
+/** One check of an effective-rules screen. Verdicts and ids only — never content or judge reasoning. */
+export interface EffectiveRulesCheck {
+  checkId: string;
+  verdict: 'pass' | 'flag' | 'undetermined' | 'skipped';
+  /** The action the tenant's effective rules configure for a violation of this check. */
+  action?: 'ignore' | 'warn' | 'block';
+  /** What the platform would actually do with this verdict. */
+  actionTaken: 'none' | 'ignore' | 'warn' | 'block' | 'unverified';
+  category?: string;
+  score?: number;
+  confidence?: number;
+  model?: string;
+  latencyMs?: number;
+}
+
+/**
+ * Response of the effective-rules screen. ASSUMED shape (TODO seam, see `screenWithEffectiveRules`):
+ * guardrail's `/guardrail/screen/{direction}` decision, relayed by the gateway in camelCase.
+ */
+export interface EffectiveRulesScreenResult {
+  direction: 'inbound' | 'outbound';
+  decision: 'allow' | 'warn' | 'block' | 'unverified';
+  policyVersion?: string;
+  checks: EffectiveRulesCheck[];
+  notices?: unknown[];
+}
+
+export interface EffectiveRulesScreenRequest {
+  direction: 'inbound' | 'outbound';
+  text: string;
+}

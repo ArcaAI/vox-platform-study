@@ -2,6 +2,7 @@
  * TASK-1050 W3b — display labels for the guardrail vocabulary (`@arcaai/types` guardrail-vocabulary).
  * Machine values stay on the wire; these are the words a clinician or an admin reads.
  */
+import { GUARDRAIL_NOTICE_DEFAULT_MESSAGES } from '@arcaai/types';
 import type { GuardrailActionTaken, GuardrailCheckVerdict, GuardrailDecision, GuardrailDirection, HoldResolution } from '@arcaai/types';
 import type { StatusColorRole } from '@arcaai/ui/components/shared/status-badge';
 
@@ -102,6 +103,8 @@ export function legacyBlockCopy(code: string | null | undefined): string {
       return 'The content was not classified as clinical, so it was not processed.';
     case 'CONTENT_BLOCKED':
       return 'A safety check stopped this request.';
+    case 'EGRESS_REDACTION_UNAVAILABLE':
+      return GUARDRAIL_NOTICE_DEFAULT_MESSAGES['guardrail.blocked.redaction_unavailable'];
     default:
       return 'A safety check stopped this request.';
   }

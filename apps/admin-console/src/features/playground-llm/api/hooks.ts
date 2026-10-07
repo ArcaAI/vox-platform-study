@@ -2,9 +2,10 @@
 
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listPromptTemplates, listProviders } from './client';
+import { screenWithEffectiveRules } from './guardrail-screen-client';
 import { analyzeGuardrail, extractEntities } from './inference-client';
 import { playgroundLlmKeys } from './keys';
-import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType, ListPromptTemplatesParams } from './types';
+import type { AssembledGenerateRequest, EffectiveRulesScreenRequest, GenerateTextRequest, GuardrailType, ListPromptTemplatesParams } from './types';
 
 export function useTextProviders(tenantKey?: string) {
   return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
@@ -70,4 +71,9 @@ export function useAnalyzeGuardrail() {
 /** NER tab: medical entity extraction (token classification). */
 export function useExtractEntities() {
   return useMutation({ mutationFn: (body: { text: string; aggregationStrategy?: string; language?: string }) => extractEntities(body) });
+}
+
+/** TASK-1050: Guardrails tab → "Test my rules" (screen under the tenant's effective rules; TODO-seam route). */
+export function useScreenWithEffectiveRules() {
+  return useMutation({ mutationFn: (body: EffectiveRulesScreenRequest) => screenWithEffectiveRules(body) });
 }
