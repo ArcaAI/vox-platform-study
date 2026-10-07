@@ -311,6 +311,8 @@ def get_job_processor(request: Request) -> JobProcessor:
 # SYSTEM as the platform fallback, both FAIL-CLOSED:
 #
 #   `guardrail.safety` — the LLM-safety moderation model (six tasks)
+#   `guardrail.injection` — OPTIONAL: answers `jailbreak_detection` in place of the
+#       safety model when a row resolves (TASK-1049 R1); absent = unchanged
 #   `guardrail.pii` — the PII span model (English only)
 #   `guardrail.groundedness` — the NLI entailment model
 #
@@ -497,6 +499,7 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
     deadline_s = _row_policy(safety_cfg).nlp_deadline_seconds
     return SafetyAnalyzer(
         policy,
+        injection=await _resolve_injection_route(app_state, tenant_id),
         safety_client=_nlp_client(
             app_state,
             tenant_id,
@@ -511,6 +514,80 @@ async def build_safety_analyzer(app_state: Any, tenant_id: str) -> SafetyAnalyze
             labels=policy.pii_labels,
             threshold=policy.pii_threshold,
             deadline_s=_row_policy(pii_cfg).nlp_deadline_seconds,
+        ),
+    )
+
+
+async def _resolve_injection_route(app_state: Any, tenant_id: str) -> Any:
+    """The `guardrail.injection` route for ``tenant_id`` (TASK-1049 R1), or ``None``.
+
+    ``None`` ONLY when no row resolves at either tier — `jailbreak_detection` then stays
+    on the `guardrail.safety` model, byte-identical to before the key existed. A row
+    that resolved but cannot answer is a route marked ``unavailable`` — a tenant VETO,
+    an unreadable row, or a row whose `labelTaxonomy.tasks` declares no injection task —
+    so the task is UNDETERMINED (→ `unverified`). It never folds back to GLiGuard: that
+    would serve a tenant the model it vetoed, or hide a broken row behind a working one.
+    NEVER raises — the other checks of the screen do not depend on this row.
+    """
+    from guardrail.core.tenant_config import (
+        TASK_KEY_GUARDRAIL_INJECTION,
+        TenantConfigUnavailableError,
+        TenantSelectionVetoedError,
+    )
+    from guardrail.services.safety_analyzer import (
+        _DEFAULT_BENIGN,
+        INJECTION_TASKS,
+        InjectionRoute,
+        SafetyPolicy,
+    )
+
+    resolver = getattr(app_state, "tenant_config_resolver", None)
+    if resolver is None:
+        return None
+    try:
+        cfg = await resolver.resolve(tenant_id, TASK_KEY_GUARDRAIL_INJECTION)
+    except TenantSelectionVetoedError:
+        logger.info("guardrail.injection.vetoed", tenant_id=tenant_id)
+        return InjectionRoute(unavailable="vetoed")
+    except TenantConfigUnavailableError as exc:
+        logger.warning("guardrail.injection.unreadable", tenant_id=tenant_id, error=str(exc))
+        return InjectionRoute(unavailable="unreadable")
+    if cfg is None or not getattr(cfg, "model", None):
+        return None
+
+    taxonomy = _taxonomy(cfg)
+    declared = taxonomy.get("tasks")
+    tasks = {
+        str(name): dict(spec)
+        for name, spec in (declared.items() if isinstance(declared, dict) else ())
+        if name in INJECTION_TASKS and isinstance(spec, dict) and spec.get("labels")
+    }
+    if not tasks:
+        logger.warning(
+            "guardrail.injection.no_task_spec",
+            tenant_id=tenant_id,
+            source_tenant_id=getattr(cfg, "source_tenant_id", None),
+        )
+        return InjectionRoute(unavailable="no_task_spec")
+    benign = taxonomy.get("benignLabels")
+    threshold = taxonomy.get("threshold")
+    return InjectionRoute(
+        tasks=tasks,
+        benign_labels=(
+            frozenset(str(b).lower() for b in benign)
+            if isinstance(benign, list) and benign
+            else _DEFAULT_BENIGN
+        ),
+        client=_nlp_client(
+            app_state,
+            tenant_id,
+            cfg,
+            threshold=(
+                float(threshold)
+                if isinstance(threshold, (int, float)) and not isinstance(threshold, bool)
+                else SafetyPolicy.classification_threshold
+            ),
+            deadline_s=_row_policy(cfg).nlp_deadline_seconds,
         ),
     )
 
@@ -833,6 +910,20 @@ async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
     )
 
     benign = taxonomy.get("benignLabels")
+    realtime_benign = (
+        frozenset(str(b).casefold() for b in benign)
+        if isinstance(benign, list) and benign
+        else frozenset()
+    )
+    classifier_version = str(getattr(safety_cfg, "model", "") or "")
+    injection = getattr(analyzer, "_injection", None)
+    if injection is not None:
+        # TASK-1049 R1: `jailbreak_detection` answers from the injection row, so its
+        # benign labels count as clean and its model is part of the verdict identity.
+        if realtime_benign:
+            realtime_benign = realtime_benign | injection.benign_labels
+        injection_model = getattr(injection.client, "model_id", "") or injection.unavailable
+        classifier_version = f"{classifier_version}+{injection_model}"
     realtime_policy = RealtimePolicy(
         axes=AxisTasks.from_declaration(realtime.get("axes")),
         rules=DeterministicRuleSet.from_declaration(realtime.get("deterministicPatterns")),
@@ -845,11 +936,7 @@ async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
             min_windows_for_mean=int(policy_blob.number("realtimeMinWindowsForMean")),
         ),
         lexicons=realtime.get("protectedLexicons") or {},
-        benign_labels=(
-            frozenset(str(b).casefold() for b in benign)
-            if isinstance(benign, list) and benign
-            else frozenset()
-        ),
+        benign_labels=realtime_benign,
         window_chars=policy_blob.realtime_window_chars,
         overlap_chars=policy_blob.realtime_window_overlap_chars,
         ceiling_chars=policy_blob.realtime_cumulative_ceiling_chars,
@@ -857,7 +944,7 @@ async def build_realtime_validator(app_state: Any, tenant_id: str) -> Any:
         # The verdict must die when any of these change ( condition 3): the
         # stamp is a cache entry, and it dies when its key components do.
         policy_version=int(getattr(safety_cfg, "version", 0) or 0),
-        classifier_version=str(getattr(safety_cfg, "model", "") or ""),
+        classifier_version=classifier_version,
         taxonomy_version=str(realtime.get("version") or taxonomy.get("version") or ""),
         threshold_set=str(realtime.get("thresholdSet") or "default"),
         source_tenant_id=policy_blob.source_tenant_id,

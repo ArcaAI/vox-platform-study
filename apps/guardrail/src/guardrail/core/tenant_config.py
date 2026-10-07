@@ -130,6 +130,13 @@ TASK_KEY_GUARDRAIL_VALIDATE = "guardrail.validate"
 # belongs to, which is what makes it configuration rather than a Python literal.
 # The models themselves run in `apps/nlp` ( Phases 3 & 6).
 TASK_KEY_GUARDRAIL_SAFETY = "guardrail.safety"
+#: TASK-1049 R1 / TASK-1050 §10.3 — the prompt-injection classifier (Prompt Guard 2 86M)
+#: that answers `jailbreak_detection` in place of the `guardrail.safety` model. Same
+#: tenant → SYSTEM cascade and the same veto semantics as `guardrail.safety`. ABSENT at
+#: both tiers = no opinion: `jailbreak_detection` stays on the `guardrail.safety` model,
+#: exactly as before this key existed. A tenant VETO makes it undetermined (never a
+#: fold-through to GLiGuard).
+TASK_KEY_GUARDRAIL_INJECTION = "guardrail.injection"
 TASK_KEY_GUARDRAIL_PII = "guardrail.pii"
 #: TASK-1035 — the PII span model `apps/text`'s egress pipeline pseudonymizes from,
 #: returned by `/guardrail/screen/inbound` when `include_pii_spans` is set.

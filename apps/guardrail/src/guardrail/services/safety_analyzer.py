@@ -18,8 +18,16 @@ Two DIFFERENT models back it, deliberately (owner directive 2026-08-19):
 |---------------------|----------------------------------------------|--------------------------|
 | `guardrail.safety`  | `gliguard-LLMGuardrails-300M`-class          | six moderation tasks     |
 | `guardrail.pii`     | `gliner2-privacy-filter-PII-multi`-class     | PII entity spans (en)    |
+| `guardrail.injection` | `llama-prompt-guard-2-86m`-class (optional) | `jailbreak_detection`    |
 
 Neither slug appears here: they are seeded SYSTEM rows a platform admin owns.
+
+`guardrail.injection` (TASK-1049 R1) is OPTIONAL: when a row resolves, the
+`jailbreak_detection` task is asked of THAT model (its own task spec, benign labels,
+threshold and serving library) and never of the `guardrail.safety` model; when no row
+resolves, nothing changes. A route that resolved but cannot answer (tenant veto, an
+unreadable row, no task spec) makes the task UNDETERMINED — it never folds back to
+`guardrail.safety`, which would serve a tenant the model it vetoed.
 
 Fail posture — FAIL-CLOSED and never fabricating. Every delegation failure
 raises `GuardrailUndeterminedError`, which the routes map to 503 (single-item)
@@ -49,6 +57,9 @@ logger = get_logger(__name__)
 PROMPT_SAFETY_TASKS = ("prompt_safety", "prompt_toxicity")
 ADVERSARIAL_TASKS = ("jailbreak_detection",)
 RESPONSE_TASKS = ("response_safety", "response_toxicity", "response_refusal")
+#: The tasks the optional `guardrail.injection` model answers (TASK-1049 R1). Only
+#: these: a taxonomy on that row that declares more does not move them off GLiGuard.
+INJECTION_TASKS = ADVERSARIAL_TASKS
 
 #: Labels that mean "nothing detected" in a multi-label result — they are not
 #: issues. Sourced from the taxonomy itself, not assumed: the registry row's
@@ -73,17 +84,38 @@ class SafetyPolicy:
 
     def tasks_for(self, guardrail_type: str) -> dict[str, dict[str, Any]]:
         """The subset of the declared task schema a `guardrail_type` runs."""
-        if guardrail_type == "prompt_injection":
-            wanted = set(ADVERSARIAL_TASKS)
-        elif guardrail_type == "content_safety":
-            wanted = set(PROMPT_SAFETY_TASKS)
-        elif guardrail_type == "pii_detection":
-            wanted = set()
-        else:  # comprehensive
-            wanted = set(PROMPT_SAFETY_TASKS) | set(ADVERSARIAL_TASKS) | set(RESPONSE_TASKS)
+        wanted = _wanted_task_names(guardrail_type)
         # Intersect with what the registry actually DECLARED: a taxonomy that
         # omits a task simply does not run it — guardrail never invents one.
         return {name: spec for name, spec in self.tasks.items() if name in wanted}
+
+
+def _wanted_task_names(guardrail_type: str) -> set[str]:
+    """Which moderation task NAMES a legacy `guardrail_type` consults."""
+    if guardrail_type == "prompt_injection":
+        return set(ADVERSARIAL_TASKS)
+    if guardrail_type == "content_safety":
+        return set(PROMPT_SAFETY_TASKS)
+    if guardrail_type == "pii_detection":
+        return set()
+    return set(PROMPT_SAFETY_TASKS) | set(ADVERSARIAL_TASKS) | set(RESPONSE_TASKS)
+
+
+@dataclass(frozen=True)
+class InjectionRoute:
+    """`jailbreak_detection` on the `guardrail.injection` model (TASK-1049 R1).
+
+    Every field is the injection ROW's own declaration — its task spec, its benign
+    labels, its client (which carries its model id, threshold and `libraryName`). Exists
+    only when a row RESOLVED; "no row" is no route at all (the task stays on
+    `guardrail.safety`). ``unavailable`` names why a resolved route cannot answer
+    (`vetoed` / `unreadable` / `no_task_spec`) — the task is then undetermined.
+    """
+
+    tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
+    benign_labels: frozenset[str] = _DEFAULT_BENIGN
+    client: NlpGuardClient | None = None
+    unavailable: str = ""
 
 
 class SafetyAnalyzer:
@@ -95,10 +127,95 @@ class SafetyAnalyzer:
         *,
         safety_client: NlpGuardClient | None = None,
         pii_client: NlpGuardClient | None = None,
+        injection: InjectionRoute | None = None,
     ) -> None:
         self.policy = policy
         self._safety_client = safety_client
         self._pii_client = pii_client
+        self._injection = injection
+
+    # ── task routing (TASK-1049 R1) ──────────────────────────────────────
+
+    def _routed(self, task: str) -> bool:
+        """True when ``task`` is answered by the `guardrail.injection` route."""
+        return self._injection is not None and task in INJECTION_TASKS
+
+    def route_groups(self, task_names: Sequence[str]) -> list[tuple[str, ...]]:
+        """Split ``task_names`` by the model that answers them, in caller order.
+
+        One group (today's single call) when no injection route resolved; otherwise the
+        `guardrail.safety` tasks and the injection tasks, so each is one classify call
+        with its own window-cache entries and its own outage.
+        """
+        safety = tuple(name for name in task_names if not self._routed(name))
+        injection = tuple(name for name in task_names if self._routed(name))
+        return [group for group in (safety, injection) if group]
+
+    def benign_labels_for(self, task: str) -> frozenset[str]:
+        """The labels that mean "clean" for ``task`` — read off the model that answers it."""
+        if self._routed(task) and self._injection is not None:
+            return self._injection.benign_labels
+        return self.policy.benign_labels
+
+    async def _ask_safety(
+        self, task_names: Sequence[str], text: str, *, scored: bool
+    ) -> ClassifiedTasks:
+        wanted = {name: spec for name, spec in self.policy.tasks.items() if name in task_names}
+        if not wanted:
+            return ClassifiedTasks(labels={}, scores={})
+        if self._safety_client is None:
+            raise GuardrailUndeterminedError(
+                REASON_ENGINE_ERROR,
+                "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
+            )
+        if scored:
+            return await self._safety_client.classify_scored(wanted, text)
+        return ClassifiedTasks(labels=await self._safety_client.classify(wanted, text), scores={})
+
+    async def _ask_injection(
+        self, task_names: Sequence[str], text: str, *, scored: bool
+    ) -> ClassifiedTasks:
+        route = self._injection
+        if route is None or route.unavailable or route.client is None:
+            reason = route.unavailable if route is not None else "absent"
+            raise GuardrailUndeterminedError(
+                REASON_ENGINE_ERROR,
+                f"the guardrail.injection selection is unavailable ({reason}) — "
+                "jailbreak_detection does not fall back to guardrail.safety",
+            )
+        wanted = {name: spec for name, spec in route.tasks.items() if name in task_names}
+        if not wanted:
+            return ClassifiedTasks(labels={}, scores={})
+        if scored:
+            return await route.client.classify_scored(wanted, text)
+        return ClassifiedTasks(labels=await route.client.classify(wanted, text), scores={})
+
+    async def _ask(self, task_names: Sequence[str], text: str, *, scored: bool) -> ClassifiedTasks:
+        """One call per model the tasks route to (concurrently); results merged.
+
+        Fail-CLOSED as a whole for a MIXED call: either half failing raises. The
+        screener asks per `route_groups` group, so there an outage of one model leaves
+        the other model's checks decided.
+        """
+        groups = self.route_groups(task_names)
+        if not groups:
+            return ClassifiedTasks(labels={}, scores={})
+        answers = await asyncio.gather(
+            *(
+                (self._ask_injection if self._routed(group[0]) else self._ask_safety)(
+                    group, text, scored=scored
+                )
+                for group in groups
+            )
+        )
+        if len(answers) == 1:
+            return answers[0]
+        labels: dict[str, Any] = {}
+        scores: dict[str, dict[str, float]] = {}
+        for answer in answers:
+            labels.update(answer.labels)
+            scores.update(answer.scores)
+        return ClassifiedTasks(labels=labels, scores=scores)
 
     # ── the seam `services/screening.py` composes over ───────────────────
 
@@ -111,15 +228,7 @@ class SafetyAnalyzer:
         the same registry-sourced task schema — a task the taxonomy does not
         declare is simply absent from the result, never invented.
         """
-        wanted = {name: spec for name, spec in self.policy.tasks.items() if name in task_names}
-        if not wanted:
-            return {}
-        if self._safety_client is None:
-            raise GuardrailUndeterminedError(
-                REASON_ENGINE_ERROR,
-                "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
-            )
-        results: dict[str, Any] = await self._safety_client.classify(wanted, text)
+        results: dict[str, Any] = (await self._ask(task_names, text, scored=False)).labels
         return results
 
     async def classify_tasks_scored(self, task_names: Sequence[str], text: str) -> ClassifiedTasks:
@@ -130,15 +239,7 @@ class SafetyAnalyzer:
         deliberately left on the label-only seam. One peer call either way — the
         confidences ride with the labels rather than costing a second pass.
         """
-        wanted = {name: spec for name, spec in self.policy.tasks.items() if name in task_names}
-        if not wanted:
-            return ClassifiedTasks(labels={}, scores={})
-        if self._safety_client is None:
-            raise GuardrailUndeterminedError(
-                REASON_ENGINE_ERROR,
-                "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
-            )
-        return await self._safety_client.classify_scored(wanted, text)
+        return await self._ask(task_names, text, scored=True)
 
     def usage_detail(self) -> dict[str, Any] | None:
         """The delegated executors' own per-call usage, when one reported it.
@@ -150,7 +251,8 @@ class SafetyAnalyzer:
         `None` rather than a zeroed block, because a zero row says the call was
         free rather than that it never happened.
         """
-        for client in (self._safety_client, self._pii_client):
+        injection_client = self._injection.client if self._injection is not None else None
+        for client in (self._safety_client, injection_client, self._pii_client):
             usage = getattr(client, "last_usage_detail", None)
             if isinstance(usage, dict) and usage:
                 return usage
@@ -158,7 +260,10 @@ class SafetyAnalyzer:
 
     def model_for(self, check: str) -> str:
         """Which model answers a given check — part of every attributable verdict."""
-        client = self._pii_client if check == "pii_leak" else self._safety_client
+        if self._routed(check) and self._injection is not None:
+            client = self._injection.client
+        else:
+            client = self._pii_client if check == "pii_leak" else self._safety_client
         return str(getattr(client, "model_id", "") or "")
 
     # ── PII spans (the `/guardrail/redact` path) ─────────────────────────
@@ -182,23 +287,32 @@ class SafetyAnalyzer:
         safe = True
         ran_something = False
 
-        tasks = self.policy.tasks_for(guardrail_type)
+        tasks: Any = self.policy.tasks_for(guardrail_type)
+        if self._injection is not None:
+            # TASK-1049 R1: the injection task is the injection row's, not GLiGuard's.
+            wanted = _wanted_task_names(guardrail_type)
+            tasks = [name for name in tasks if not self._routed(name)] + [
+                name for name in INJECTION_TASKS if name in wanted
+            ]
         if tasks:
-            if self._safety_client is None:
+            if self._safety_client is None and any(not self._routed(name) for name in tasks):
                 raise GuardrailUndeterminedError(
                     REASON_ENGINE_ERROR,
                     "no safety model is selected (guardrail.safety) — refusing to report 'safe'",
                 )
-            results = await self._safety_client.classify(tasks, text)
+            results = (
+                await self._safety_client.classify(tasks, text)  # type: ignore[union-attr]
+                if self._injection is None
+                else await self.classify_tasks(tasks, text)
+            )
             ran_something = True
             for name in tasks:
                 value = results.get(name)
                 if value is None:
                     continue
                 labels = [value] if isinstance(value, str) else [str(v) for v in value]
-                flagged = [
-                    label for label in labels if label.lower() not in self.policy.benign_labels
-                ]
+                benign = self.benign_labels_for(name)
+                flagged = [label for label in labels if label.lower() not in benign]
                 if flagged:
                     safe = False
                     issues.extend(f"{name}:{label}" for label in flagged)
