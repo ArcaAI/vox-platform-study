@@ -318,3 +318,79 @@ async def test_an_unreadable_payload_from_the_real_client_degrades_end_to_end() 
     result = await _gate(client, locality="local")
 
     assert [n["type"] for n in result.outcome.notices] == ["guardrail.unverified"]
+
+
+# ── round 2: medical blocks from the screen; caller / agent / exemption ──────
+
+
+async def test_a_screen_block_on_medical_validation_is_content_blocked_not_medical() -> None:
+    screen = {
+        "allowed": False,
+        "decision": "block",
+        "reason": "medical_validation",
+        "pii_spans": [],
+        "raw": {
+            "reasons": ["medical_validation"],
+            "checks": [{"name": "medical_validation", "actionTaken": "block"}],
+        },
+    }
+
+    with pytest.raises(ContentBlockedError) as raised:
+        await _gate(_client(screen), locality="local")
+
+    assert raised.value.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
+    notice = raised.value.extra_body["guardrailNotice"]
+    assert notice["messageKey"] == "guardrail.blocked.not_medical"
+    assert notice["checks"] == [{"checkId": "medical_validation", "severity": "high"}]
+
+
+async def test_guardrails_own_medical_block_notice_keeps_the_not_medical_code() -> None:
+    blocked = gn.blocked_notice(
+        "inbound",
+        "guardrail.blocked.not_medical",
+        [{"checkId": "medical_validation", "severity": "high"}],
+    )
+    screen = {
+        "allowed": False,
+        "decision": "block",
+        "reason": "medical_validation",
+        "pii_spans": [],
+        "notices": [blocked],
+    }
+
+    with pytest.raises(ContentBlockedError) as raised:
+        await _gate(_client(screen), locality="local")
+
+    assert raised.value.error_code == "CONTENT_BLOCKED_NOT_MEDICAL"
+    assert raised.value.extra_body["guardrailNotice"] == blocked
+
+
+async def test_caller_agent_exemption_and_connection_reach_the_screen() -> None:
+    from text.models.requests import ProviderOverride
+
+    client = _client(_ALLOW)
+
+    await _gate(
+        client,
+        locality="cloud",
+        caller="text.generate",
+        agent_slug="soap-writer",
+        medical_exempt="internal",
+        provider_overrides={"openai": ProviderOverride(api_key="k")},
+    )
+
+    kwargs = client.screen_inbound.await_args.kwargs
+    assert kwargs["caller"] == "text.generate"
+    assert kwargs["agent_slug"] == "soap-writer"
+    assert kwargs["exempt"] == "medical_internal"
+    assert kwargs["provider_overrides"]["openai"]["api_key"] == "k"
+
+
+async def test_no_exemption_is_sent_when_the_judge_runs() -> None:
+    client = _client(_ALLOW)
+
+    await _gate(client, locality="local", caller="text.translate")
+
+    kwargs = client.screen_inbound.await_args.kwargs
+    assert kwargs["exempt"] is None
+    assert kwargs["caller"] == "text.translate"

@@ -199,6 +199,13 @@ class RegionItemRef(BaseModel):
     item_version: int = Field(..., alias="itemVersion", ge=0)
 
 
+def item_refs_wire(refs: list[RegionItemRef] | None) -> list[dict[str, Any]] | None:
+    """Item refs as guardrail takes them: ``[{itemId, itemVersion}]``; ``None`` if none."""
+    if not refs:
+        return None
+    return [{"itemId": ref.item_id, "itemVersion": ref.item_version} for ref in refs]
+
+
 def region_items_wire(
     region_items: dict[str, list[RegionItemRef]] | None,
 ) -> dict[str, list[dict[str, Any]]] | None:
@@ -407,6 +414,10 @@ class GenerateRequest(BaseModel):
     # (an ``EXTERNAL_DATA`` section name, ``user`` or ``system``). Passed through on the
     # screen / validate regions; absent ⇒ regions carry no items.
     region_items: dict[str, list[RegionItemRef]] | None = Field(default=None, max_length=256)
+    # TASK-1050 (W2a2 wire) — the agent the call runs for, and the context item(s) the
+    # response becomes; both ride to guardrail's evaluation record. Absent ⇒ not sent.
+    agent_slug: str | None = Field(default=None, max_length=200)
+    response_items: list[RegionItemRef] | None = Field(default=None, max_length=64)
 
     @field_validator("system_governance", mode="wrap")
     @classmethod

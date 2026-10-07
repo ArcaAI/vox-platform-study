@@ -168,3 +168,35 @@ async def test_a_malformed_outbound_verdict_degrades_to_unverified_and_releases(
     (notice,) = outcome.notices
     assert notice["type"] == "guardrail.unverified"
     assert notice["direction"] == "outbound"
+
+
+# ── round 2: the outbound request fields ─────────────────────────────────────
+
+
+async def test_the_outbound_screen_gets_caller_agent_items_prompt_and_connection() -> None:
+    from text.models.requests import ProviderOverride
+
+    client = _client({"allowed": True, "decision": "allow"})
+
+    await gate_completion(
+        client,
+        completion="The note.",
+        source_regions=[{"key": "transcript", "text": "x"}],
+        tenant_id="t",
+        tenant_policy=None,
+        app_state=None,
+        where="test",
+        locality="cloud",
+        caller="text.generate",
+        agent_slug="soap-writer",
+        response_items=[{"itemId": "note-1", "itemVersion": 2}],
+        prompt_context="Write the note.",
+        provider_overrides={"openai": ProviderOverride(api_key="k")},
+    )
+
+    kwargs = client.screen_output.await_args.kwargs
+    assert kwargs["caller"] == "text.generate"
+    assert kwargs["agent_slug"] == "soap-writer"
+    assert kwargs["response_items"] == [{"itemId": "note-1", "itemVersion": 2}]
+    assert kwargs["prompt_context"] == "Write the note."
+    assert kwargs["provider_overrides"]["openai"]["api_key"] == "k"

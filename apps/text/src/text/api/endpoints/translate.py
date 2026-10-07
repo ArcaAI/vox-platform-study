@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from text.core.dependencies import get_app_state, get_guardrail_client, get_translate_registry
 from text.core.locality import resolve_locality
 from text.core.logging import get_logger
-from text.models.requests import region_items_wire
+from text.models.requests import item_refs_wire, region_items_wire
 from text.models.responses import ErrorResponse
 from text.models.translate import TranslateRequest, TranslateResponse
 from text.services.egress import TRUST_DATA, prepare_text_egress, run_inbound_gate
@@ -69,6 +69,8 @@ async def translate(
         locality=locality,
         region_items=region_items,
         outside_trust=TRUST_DATA,
+        caller="text.translate",
+        agent_slug=request_body.agent_slug,
     )
     egress, outgoing = prepare_text_egress(
         list(request_body.texts),
@@ -125,6 +127,11 @@ async def translate(
             where="translate.post_receive_gate",
             locality=egress.locality,
             outcome=egress.guardrail,
+            caller="text.translate",
+            agent_slug=request_body.agent_slug,
+            response_items=item_refs_wire(request_body.response_items),
+            # The source texts are this call's prompt, as the provider received them.
+            prompt_context="\n\n".join(outgoing),
         )
     except OutputRejectedError as rejected:
         egress.pii_leak_blocked = rejected.pii_leak

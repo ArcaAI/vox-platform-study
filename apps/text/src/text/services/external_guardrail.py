@@ -120,6 +120,21 @@ def _data_findings(payload: dict[str, Any], sent: set[str]) -> list[dict[str, An
 _DECISIONS = frozenset({"allow", "warn", "block", "unverified"})
 
 
+def _four_way(payload: dict[str, Any]) -> str | None:
+    """The decision of a verdict: guardrail's four-way ``guardrail_decision`` (W2a2)
+    when readable, else the binary ``decision`` older callers read; ``None`` if neither."""
+    for key in ("guardrail_decision", "decision"):
+        value = payload.get(key)
+        if value in _DECISIONS:
+            return str(value)
+    return None
+
+
+def _put(body: dict[str, Any], **fields: Any) -> None:
+    """Add each field that is known; an unknown one stays absent from the wire."""
+    body.update({key: value for key, value in fields.items() if value})
+
+
 def _decision_fields(payload: dict[str, Any]) -> dict[str, Any]:
     """``decision`` + the PHI-free ``notices`` and ``evaluation_id`` of a verdict."""
     evaluation_id = payload.get("evaluation_id", payload.get("evaluationId"))
@@ -309,9 +324,7 @@ class ExternalGuardrailClient:
                         "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
                     }
             is_medical = bool(payload.get("is_medical", False))
-            decision = payload.get("decision")
-            if decision not in _DECISIONS:
-                decision = "allow" if is_medical else "block"
+            decision = _four_way(payload) or ("allow" if is_medical else "block")
             return {
                 "allowed": decision != "block",
                 "decision": decision,
@@ -357,8 +370,19 @@ class ExternalGuardrailClient:
         tenant_id: str | None = None,
         tenant_policy: Any = None,
         locality: str | None = None,
+        caller: str | None = None,
+        agent_slug: str | None = None,
+        response_items: list[dict[str, Any]] | None = None,
+        prompt_context: str | None = None,
+        provider_overrides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Screen a model RESPONSE under the resolved posture (TASK-871).
+
+        TASK-1050 (W2a2 wire): ``caller``, ``agent_slug``, ``response_items`` (the
+        generated item(s)), ``prompt_context`` (the user prompt — a native response
+        judge moderates the pair) and ``provider_overrides`` (a cloud judge's
+        connection, opaque as on :meth:`validate`) are sent when known. The verdict's
+        decision is the four-way ``guardrail_decision`` when present, else ``decision``.
 
         The post-receive half of the moderation gate. Posts the assembled
         completion to guardrail's outbound screen
@@ -396,8 +420,8 @@ class ExternalGuardrailClient:
                         "reason": GUARDRAIL_UNAVAILABLE_REASON,
                         "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
                     }
-            decision = payload.get("decision")
-            if decision not in _DECISIONS:
+            decision = _four_way(payload)
+            if decision is None:
                 return {"allowed": False, "reason": GUARDRAIL_MALFORMED_REASON, "raw": payload}
             reasons = payload.get("reasons")
             first = reasons[0] if isinstance(reasons, list) and reasons else None
@@ -417,6 +441,14 @@ class ExternalGuardrailClient:
         outbound_body: dict[str, Any] = {"response": response, "source_regions": source_regions}
         if locality:
             outbound_body["locality"] = locality
+        _put(
+            outbound_body,
+            caller=caller,
+            agent_slug=agent_slug,
+            response_items=response_items,
+            prompt_context=prompt_context,
+            provider_overrides=provider_overrides,
+        )
         verdict, last_error = await self._post_verdict(
             "/api/v1/guardrail/screen/outbound",
             outbound_body,
@@ -439,6 +471,10 @@ class ExternalGuardrailClient:
         tenant_id: str | None = None,
         include_pii_spans: bool = True,
         locality: str | None = None,
+        caller: str | None = None,
+        agent_slug: str | None = None,
+        exempt: str | None = None,
+        provider_overrides: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Screen inbound REGIONS AND return their PII spans (TASK-1035 §5.0, TASK-1047 FC-5).
 
@@ -463,6 +499,10 @@ class ExternalGuardrailClient:
         F8) — and ``locality`` is sent when known. A ``warn`` / ``unverified``
         decision (W2a2) is allowed; ``notices`` / ``evaluation_id`` ride on the
         verdict. Without spans requested, an absent ``pii_spans`` is ``[]``.
+        ``caller``, ``agent_slug``, ``exempt`` (``medical_internal``) and
+        ``provider_overrides`` (the connection a cloud judge needs, opaque, as on
+        :meth:`validate`) are sent when known; the decision is ``guardrail_decision``
+        when present, else ``decision``.
         """
         posture = self._platform_posture()
 
@@ -477,7 +517,7 @@ class ExternalGuardrailClient:
                     "data_findings": [],
                     "error": GUARDRAIL_COVERAGE_MISSING_ERROR,
                 }
-            decision = payload.get("decision")
+            decision = _four_way(payload)
             spans = payload.get("pii_spans")
             if spans is None and not include_pii_spans:
                 spans = []
@@ -512,6 +552,13 @@ class ExternalGuardrailClient:
         }
         if locality:
             inbound_body["locality"] = locality
+        _put(
+            inbound_body,
+            caller=caller,
+            agent_slug=agent_slug,
+            exempt=exempt,
+            provider_overrides=provider_overrides,
+        )
         verdict, last_error = await self._post_verdict(
             "/api/v1/guardrail/screen/inbound",
             inbound_body,
