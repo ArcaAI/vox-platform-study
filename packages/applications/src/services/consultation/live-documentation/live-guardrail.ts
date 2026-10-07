@@ -11,8 +11,9 @@
  *     `guardrailNotice`, a 503 redaction hold's `guardrailNotice`) on the live-summary channel as a
  *     `guardrail.notice` frame, ONCE per `(consultation, checkId, itemId, policyVersion)` (§9.7.3,
  *     OD-15) — a 20 s flush cadence re-screens the same windows and must not repeat a popup;
- *   - it EXCLUDES from its composer what the record says must not reach a model again: a WITHHELD
- *     item always, a BLOCKED item once its notice was resolved `item_excluded` (§9.7.5).
+ *   - it EXCLUDES from its composer what the record says must not reach a model again, through the
+ *     SHARED keep predicate `guardrailKeepFilter` (W2e): a WITHHELD item always, a BLOCKED item once
+ *     its notice was resolved `item_excluded` (§9.7.5).
  *
  * It never WRITES the hold or an item's `guardrailStatus` marker: both are the gateway ingest's
  * (lane W2e), written from the guardrail evaluation. The lane only READS the consultation's
@@ -177,23 +178,6 @@ export function liveNoticeRecord(notice: GuardrailNotice): LiveNoticeRecord {
   };
 }
 
-/**
- * The composer exclusion rule (README §9.7.5 `item_excluded`, §9.7.6 WITHHELD):
- *
- *   - WITHHELD is ALWAYS skipped — an outbound-blocked output never feeds a later run;
- *   - BLOCKED is skipped when its notice was resolved `item_excluded` (`resolvedExcluded`);
- *   - anything else (CLEAN, WARNED, absent) is composed as before.
- *
- * TODO(TASK-1050 W2e seam): replace with the predicate W2e exposes from its enforcement module once
- * merged; the rule above is the exact one to keep. Either Prisma (`WITHHELD`) or wire (`withheld`)
- * spelling is accepted.
- */
-export function liveContextExcluded(item: { readonly guardrailStatus?: string | null }, resolvedExcluded: boolean): boolean {
-  const status = typeof item.guardrailStatus === 'string' ? item.guardrailStatus.toUpperCase() : '';
-  if (status === 'WITHHELD') return true;
-  return status === 'BLOCKED' && resolvedExcluded;
-}
-
 export interface LiveExclusionSet {
   /** Context item ids the composer must leave out. */
   readonly itemIds: ReadonlySet<string>;
@@ -203,15 +187,19 @@ export interface LiveExclusionSet {
 
 export const EMPTY_LIVE_EXCLUSION: LiveExclusionSet = Object.freeze({ itemIds: new Set<string>(), segmentKeys: new Set<string>() });
 
-/** Apply {@link liveContextExcluded} to the consultation's flagged items. */
+/**
+ * The composer exclusion of one flush: the flagged items the SHARED keep predicate rejects
+ * (`guardrailKeepFilter`, `guardrail-notice/guardrail-item-exclusion.ts` — WITHHELD always, BLOCKED once
+ * resolved `item_excluded`), as item ids and, for transcript segments, their `segmentKey`s.
+ */
 export function liveExclusionSet(
   items: readonly { readonly id: string; readonly guardrailStatus?: string | null; readonly segmentKey?: string | null }[],
-  excludedByResolution: ReadonlySet<string>,
+  keep: (item: { id: string; guardrailStatus?: string | null }) => boolean,
 ): LiveExclusionSet {
   const itemIds = new Set<string>();
   const segmentKeys = new Set<string>();
   for (const item of items) {
-    if (!liveContextExcluded(item, excludedByResolution.has(item.id))) continue;
+    if (keep({ id: item.id, guardrailStatus: item.guardrailStatus ?? null })) continue;
     itemIds.add(item.id);
     if (item.segmentKey) segmentKeys.add(item.segmentKey);
   }
