@@ -6,7 +6,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from structlog.testing import capture_logs
 
 from nlp.api.v1.rest import classify as classify_module
@@ -23,6 +23,12 @@ class _NoopBound:
 
     async def __aexit__(self, *exc: object) -> None:
         return None
+
+
+def _http_request() -> Request:
+    """The handler reads ``X-Tenant-Id`` off the request (TASK-1049 F10 NER cache)."""
+    tenant = b"11111111-1111-1111-1111-111111111111"
+    return Request({"type": "http", "headers": [(b"x-tenant-id", tenant)]})
 
 
 def _boom(text: str, **kwargs: object) -> list[dict]:
@@ -65,6 +71,7 @@ async def test_classify_tokens_handler_logs_stable_event_and_returns_generic_500
         with pytest.raises(HTTPException) as info:
             await classify_module.classify_tokens(
                 TokenClassificationRequest(text=SECRET, model_name="m"),
+                http_request=_http_request(),
                 inference_bound=_NoopBound(),  # type: ignore[arg-type]
             )
 
@@ -93,6 +100,7 @@ async def test_classify_tokens_model_unavailable_is_logged_at_error(
         with pytest.raises(HTTPException) as info:
             await classify_module.classify_tokens(
                 TokenClassificationRequest(text="x", model_name="m"),
+                http_request=_http_request(),
                 inference_bound=_NoopBound(),  # type: ignore[arg-type]
             )
 

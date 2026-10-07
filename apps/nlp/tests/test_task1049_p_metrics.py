@@ -200,21 +200,22 @@ def test_restore_round_trip_is_exact_for_clean_text():
     assert stats == {"documents": 1, "exact": 1, "rate": 1.0}
 
 
-def test_restore_round_trip_breaks_on_case_variants_of_one_value():
-    # the Pseudonymizer keys on casefolded values and restores the FIRST spelling seen
+def test_restore_round_trip_survives_case_variants_of_one_value():
+    # P-F1 fixed (TASK-1050 W2c): each spelling restores as written, not the FIRST one seen
     text = "ANIL KUMAR came. later anil kumar left."
     second = text.index("anil kumar")
     res = mask_consultation(
         [text], [[Detection("PERSON", 0, 10), Detection("PERSON", second, second + 10)]]
     )
-    assert restore_stats([text], res)["exact"] == 0
+    assert restore_stats([text], res) == {"documents": 1, "exact": 1, "rate": 1.0}
 
 
-def test_restore_round_trip_breaks_when_text_already_contains_a_token_shape():
+def test_restore_round_trip_survives_text_that_already_contains_a_token_shape():
+    # P-F1 fixed (TASK-1050 W2c): a "[PERSON_1]" already in the source is not taken for a
+    # minted token, so it survives the round trip verbatim
     text = "Ref [PERSON_1] is Anil."
     res = mask_consultation([text], [[Detection("PERSON", 18, 22)]])
-    # "[PERSON_1]" in the source is indistinguishable from a minted token
-    assert restore_stats([text], res)["exact"] == 0
+    assert restore_stats([text], res) == {"documents": 1, "exact": 1, "rate": 1.0}
 
 
 def test_surrogate_consistency_alias_of_one_entity_gets_two_tokens():
