@@ -56,6 +56,21 @@ export class ConsultationApprovalResponse {
   itemCount: number;
 }
 
+/** TASK-1050 §9.8.3 — one guardrail notice the approve acknowledged (`GuardrailNoticeAcknowledgement`). */
+export class GuardrailNoticeAcknowledgementResponse {
+  @ApiProperty({ description: 'The acknowledged guardrail notice.' })
+  noticeId: string;
+
+  @ApiProperty({ description: 'The clinician the acknowledgement is attributed to (the approver).' })
+  acknowledgedBy: string;
+
+  @ApiProperty({ enum: ['ack', 'approve', 'resume'], description: 'How it was acknowledged.' })
+  acknowledgedVia: 'ack' | 'approve' | 'resume';
+
+  @ApiProperty({ description: 'When (ISO-8601).' })
+  acknowledgedAt: string;
+}
+
 /** The lifecycle pair: where the consultation is, and what the platform is doing for it. */
 export class ConsultationLifecycleState {
   @ApiProperty({ enum: ConsultationStatus, example: ConsultationStatus.OPEN })
@@ -181,6 +196,13 @@ export class ConsultationResponse {
     type: () => ConsultationLifecycleState,
   })
   lifecycle: ConsultationLifecycleState;
+
+  @ApiPropertyOptional({
+    description:
+      'On `approve` (TASK-1050): every outstanding guardrail warning the approve acknowledged, in the same transaction. Approve is never refused because of warnings.',
+    type: () => [GuardrailNoticeAcknowledgementResponse],
+  })
+  acknowledgedNotices?: GuardrailNoticeAcknowledgementResponse[];
 
   @ApiPropertyOptional({
     description: 'On `open`: whether this call appended a new encounter to an existing consultation.',

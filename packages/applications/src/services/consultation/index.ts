@@ -56,3 +56,9 @@ export * from './encounter';
 export * from './lifecycle';
 export * from './transcript-record';
 export * from './note-composition';
+
+// TASK-1050 W2e — the guardrail outcome plane the consultation surfaces enforce: the evaluation
+// ingest + admin read, and the notices / hold resume. Re-exported here (not from the services
+// barrel, which this lane does not own) so `@arcaai/applications` carries them.
+export * from '../guardrail-evaluation';
+export * from '../guardrail-notice';

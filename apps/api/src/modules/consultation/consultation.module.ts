@@ -7,6 +7,9 @@ import {
   ConsultationEncounterServiceModule,
   MediaServiceModule,
   TenantLockModule,
+  // TASK-1050 W2e — guardrail notices / hold resume and the evaluation admin read.
+  GuardrailNoticeServiceModule,
+  GuardrailEvaluationServiceModule,
 } from '@arcaai/applications';
 import {
   ConsultationServiceModule,
@@ -65,6 +68,9 @@ import { ConsultationLifecycleEventsController } from './consultation-lifecycle-
 import { ConsultationAccessHelper } from './consultation-access.helper';
 import { ConsultationAttachmentController } from './consultation-attachment.controller';
 import { ConsultationFeedbackController } from './consultation-feedback.controller';
+import { GuardrailEvaluationInternalModule } from '../guardrail-evaluation-internal/guardrail-evaluation-internal.module';
+import { AdminGuardrailEvaluationController } from '../guardrail-notice/admin-guardrail-evaluation.controller';
+import { GuardrailNoticeController } from '../guardrail-notice/guardrail-notice.controller';
 
 @Module({
   imports: [
@@ -136,6 +142,12 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     ConsultationLifecycleModule,
     ConsultationEncounterServiceModule,
     MediaServiceModule,
+    // TASK-1050 W2e — `GET consultations/:id/guardrail-notices`, `…/:noticeId/ack`,
+    // `…/guardrail-hold/resume`, `GET admin/consultations/:id/guardrail-evaluations[/:evaluationId/withheld]`,
+    // and the internal ingest `POST internal/guardrail/evaluations` (its own module, guard provider).
+    GuardrailNoticeServiceModule,
+    GuardrailEvaluationServiceModule,
+    GuardrailEvaluationInternalModule,
   ],
   controllers: [
     ConsultationController,
@@ -155,6 +167,10 @@ import { ConsultationFeedbackController } from './consultation-feedback.controll
     ConsultationFeedbackController,
     AdminFeedbackRollupController,
     ConsultationLifecycleEventsController,
+    // TASK-1050 W2e — two- and four-segment paths under `consultations/:id/…` and
+    // `admin/consultations/:id/…`: never captured by the `:id` routes of the controllers above.
+    GuardrailNoticeController,
+    AdminGuardrailEvaluationController,
   ],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's

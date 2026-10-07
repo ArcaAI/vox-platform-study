@@ -1,4 +1,5 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import type { NotePlanRef } from '../../note-composition/note-plan.types';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -252,6 +253,24 @@ export const HARNESS_DRAFT_PHASE = {
 } as const;
 export type HarnessDraftPhase = (typeof HARNESS_DRAFT_PHASE)[keyof typeof HARNESS_DRAFT_PHASE];
 
+/**
+ * TASK-1050 §9.7.6 — the generation this delivery carries was BLOCKED outbound: the gateway stores a
+ * WITHHELD placeholder (no content) instead of a note. The withheld text itself reaches the gateway
+ * only through the guardrail evaluation record (`POST internal/guardrail/evaluations`), encrypted.
+ * TODO(TASK-1050 W2f): the harness sets this when its outbound guardrail node blocks.
+ */
+export class HarnessGuardrailWithheldRequest {
+  @ApiProperty({ description: 'The guardrail.blocked notice the outbound block raised.' })
+  @IsString()
+  @IsNotEmpty()
+  noticeId: string;
+
+  @ApiPropertyOptional({ description: 'The guardrail evaluation that holds the withheld output (encrypted).' })
+  @IsOptional()
+  @IsString()
+  evaluationId?: string;
+}
+
 export class HarnessDraftRequest {
   @ApiProperty({ description: 'Tenant the harness is acting on behalf of' })
   @IsString()
@@ -375,6 +394,16 @@ export class HarnessDraftRequest {
   @IsOptional()
   @IsObject()
   coverage?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'TASK-1050 — the generation was blocked outbound: store a WITHHELD placeholder (no content, no SummaryMeta) instead of the note. `content` is ignored and never stored.',
+    type: () => HarnessGuardrailWithheldRequest,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HarnessGuardrailWithheldRequest)
+  guardrailWithheld?: HarnessGuardrailWithheldRequest;
 }
 
 export interface HarnessDraftResponse {

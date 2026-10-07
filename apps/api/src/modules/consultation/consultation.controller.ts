@@ -1071,7 +1071,8 @@ export class ConsultationController {
   @ApiResponse({
     status: 409,
     description:
-      '`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set.',
+      '`CONSULTATION_PROCESSING_IN_FLIGHT` — the transcript is finalizing or the note is being written; `CONSULTATION_TRANSITION_ILLEGAL` — not yet stopped; the safety-flag stop when the note carries an open flag and `overrideSafetyFlag` is not set; ' +
+      '`GUARDRAIL_HOLD` — a guardrail hold that `resolveHold` did not (or, for an outbound hold, cannot) resolve; `GUARDRAIL_OVERRIDE_NOT_ALLOWED` — `acknowledged` on a block-floor check. Guardrail WARNINGS never block approve.',
   })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -1089,6 +1090,8 @@ export class ConsultationController {
       expectedVersion: requireExpectedVersion(expectedVersion),
       ...(body?.clinicianUserId !== undefined ? { clinicianUserId: body.clinicianUserId } : {}),
       ...(body?.overrideSafetyFlag !== undefined ? { overrideSafetyFlag: body.overrideSafetyFlag } : {}),
+      ...(body?.acknowledgeGuardrailNotices !== undefined ? { acknowledgeGuardrailNotices: body.acknowledgeGuardrailNotices } : {}),
+      ...(body?.resolveHold ? { resolveHold: { noticeId: body.resolveHold.noticeId, resolution: body.resolveHold.resolution } } : {}),
       caller: toLifecycleCaller(this.callerOf(req)),
     });
   }

@@ -389,6 +389,10 @@ const CLINICAL: CheckpointModelDescriptor[] = [
   }),
   rec('Notification', 'CLINICAL', true),
   rec('ResourceSubscription', 'CLINICAL', true),
+  rec('GuardrailNotice', 'CLINICAL', false, {
+    notes:
+      'TASK-1050: the standard guardrail notice and its acknowledgement / hold resolution — restored with its consultation (the hold state is part of the clinical record). No soft delete: absent rows are hard-deleted. GuardrailNotice_tenantId_dedupeKey_key is a plain unique on a writer-composed key; a claimant is skipped.',
+  }),
 ];
 
 // ============================================================================================
@@ -425,6 +429,13 @@ const LOGS: CheckpointModelDescriptor[] = [
   log('AgentAssignmentChange', false, TENANT, { notes: 'WORM: agent_assignment_change_worm_guard refuses every UPDATE/DELETE.' }),
   log('WorkflowAssignmentChange', false, TENANT, { notes: 'WORM change log.' }),
   log('AgentPromotion', false, TENANT, { notes: 'WORM change log.' }),
+  log('GuardrailEvaluation', false, TENANT, {
+    notes:
+      'TASK-1050: one row per guardrail evaluation (verdicts, no content; outbound-block withheld text as Transit ciphertext). Audit-class: captured, never restored — a restored verdict could outlive the policy it was decided under.',
+  }),
+  log('GuardrailPolicyRevision', false, TENANT, {
+    notes: 'TASK-1050: append-only history of platform guardrail policy values (SYSTEM rows). Captured for the record, never restored.',
+  }),
 ];
 
 // ============================================================================================

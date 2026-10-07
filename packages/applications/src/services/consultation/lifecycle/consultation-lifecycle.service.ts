@@ -149,7 +149,7 @@ export class ConsultationLifecycleService extends IConsultationLifecycleService 
     return toCaptureState(current, options.sttSessionId);
   }
 
-  async pause(consultationId: string, options: { reason?: 'user' | 'stale_recording' } = {}): Promise<CaptureState> {
+  async pause(consultationId: string, options: { reason?: 'user' | 'stale_recording' | 'guardrail_hold' } = {}): Promise<CaptureState> {
     const consultation = await this.load(consultationId, { allowTenantless: options.reason === 'stale_recording' });
     const changed = applyLifecycleTransition(consultation, ConsultationStatus.PAUSED, this.actor(), options.reason ?? 'user');
     if (!changed) return toCaptureState(consultation);

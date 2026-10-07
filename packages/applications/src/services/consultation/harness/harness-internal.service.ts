@@ -17,6 +17,9 @@ import {
   ConsultationEntity,
   ContextItemRepository,
   ContextItemFactory,
+  ContextItemSource,
+  GuardrailItemStatus,
+  GuardrailNoticeRepository,
   ContextItemVersionRepository,
   ContextItemVersionFactory,
   NamedEntityRepository,
@@ -123,7 +126,8 @@ import type {
   HarnessSegmentCitationRef,
   HarnessNotePlanSummary,
 } from './dto';
-import { HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
+import { GUARDRAIL_WITHHELD_SUBTYPE, HARNESS_DRAFT_SUBTYPE } from './harness-draft.constants';
+import { isGuardrailExcludedItem, loadGuardrailExcludedItemIds } from '../../guardrail-notice/guardrail-item-exclusion';
 import { IConsultationLifecycleGate, IConsultationLifecycleGateToken } from '../lifecycle/IConsultationLifecycleService';
 import { NOTE_READY_REASON } from '../lifecycle/legacy-status-projection';
 import { noteComposedSystem, styleReferenceBackground } from './note-plan-governance';
@@ -433,6 +437,9 @@ export class HarnessInternalService extends BaseService {
     // model's window, and caches the plan for the harness. Optional + trailing so every positional
     // fixture keeps its arity; absent ⇒ no plan, and assembly sends the per-section prompt.
     @Optional() @Inject(NoteInputComposerService) private readonly noteComposer?: NoteInputComposerService,
+    // TASK-1050 — the resolved `item_excluded` holds, so assembly leaves those items out. Optional +
+    // trailing so every positional fixture keeps its arity; absent ⇒ only WITHHELD items are skipped.
+    @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNotices?: Pick<GuardrailNoticeRepository, 'findAll'>,
   ) {
     super(eventEmitter as EventEmitter2, cls, ResourceType.Consultation);
   }
@@ -1765,7 +1772,11 @@ export class HarnessInternalService extends BaseService {
     const consultation = await this.consultationRepository.findById(consultationId);
     assertEqualTenants(consultation, { tenantId });
 
-    const transcripts = await this.contextItemRepository.findTranscripts(consultationId);
+    // TASK-1050 — a WITHHELD item, or a BLOCKED one its hold excluded, never reaches the prompt.
+    const guardrailExcluded = await loadGuardrailExcludedItemIds(this.guardrailNotices, tenantId, consultationId);
+    const keep = <T extends { id: string; guardrailStatus?: string | null }>(item: T): boolean => !isGuardrailExcludedItem(item, guardrailExcluded);
+
+    const transcripts = (await this.contextItemRepository.findTranscripts(consultationId)).filter(keep);
     const transcript = transcripts.map((t) => t.content).join('\n\n');
 
     const nerEntities = await this.loadNerEntities(consultationId);
@@ -1775,11 +1786,13 @@ export class HarnessInternalService extends BaseService {
     // repository (reads already filter resourceStatus = ENABLED, so soft-deleted
     // items drop out). Work notes are labeled `[work note]`; attachments use the
     // extracted text when present (GAP #5), else the stored filename label.
-    const [caseNotes, workNotes, attachmentItems] = await Promise.all([
-      this.contextItemRepository.findCaseNotes(consultationId),
-      this.contextItemRepository.findWorknotes(consultationId),
-      this.contextItemRepository.findAttachments(consultationId),
-    ]);
+    const [caseNotes, workNotes, attachmentItems] = (
+      await Promise.all([
+        this.contextItemRepository.findCaseNotes(consultationId),
+        this.contextItemRepository.findWorknotes(consultationId),
+        this.contextItemRepository.findAttachments(consultationId),
+      ])
+    ).map((items) => items.filter(keep));
 
     const clinicianNotes = [
       ...caseNotes.filter((n) => n.content?.trim()).map((n) => `[case note] ${n.content!.trim()}`),
@@ -1965,6 +1978,41 @@ export class HarnessInternalService extends BaseService {
    *     guard treats legacy drafts as assured), processing becomes `IDLE`,
    *     and GENERATE + SENSOR_RUN (+ REDUCED_ASSURANCE) are written.
    */
+  /**
+   * TASK-1050 §9.7.6 / OD-19 — the WITHHELD placeholder of an outbound-blocked generation: a
+   * RAW_SUMMARY row with NO content (nothing is encrypted, no SummaryMeta), `guardrailStatus`
+   * WITHHELD, and a `GUARDRAIL_WITHHELD` subType so it is never adopted as the harness draft. It
+   * points at its notice and evaluation; the withheld text exists only encrypted on that evaluation.
+   */
+  private async persistWithheldPlaceholder(
+    consultationId: string,
+    tenantId: string,
+    userId: string,
+    withheld: { noticeId: string; evaluationId?: string },
+  ): Promise<HarnessDraftResponse> {
+    const placeholder = ContextItemFactory.CreateContextItem({
+      tenantId,
+      consultationId,
+      type: ContextItemType.RAW_SUMMARY,
+      source: ContextItemSource.AI,
+      content: '',
+      createdBy: userId,
+      guardrailStatus: GuardrailItemStatus.WITHHELD,
+      metaData: {
+        subType: GUARDRAIL_WITHHELD_SUBTYPE,
+        guardrail: { noticeId: withheld.noticeId, ...(withheld.evaluationId ? { evaluationId: withheld.evaluationId } : {}) },
+      } as never,
+    });
+    const saved = await this.contextItemRepository.create(placeholder);
+    this.logger.warn({
+      message: 'Outbound guardrail block — a WITHHELD placeholder was stored instead of the note',
+      consultationId,
+      contextItemId: saved.id,
+      noticeId: withheld.noticeId,
+    });
+    return { contextItemId: saved.id };
+  }
+
   async persistDraft(consultationId: string, dto: HarnessDraftRequest, idempotencyKey?: string): Promise<HarnessDraftResponse> {
     const tenantId = dto.tenantId;
     if (!tenantId) {
@@ -1982,6 +2030,11 @@ export class HarnessInternalService extends BaseService {
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
         this.assertConsultationWritable(consultation);
+
+        // TASK-1050 §9.7.6 — an outbound-blocked generation is never stored as a note.
+        if (dto.guardrailWithheld) {
+          return this.persistWithheldPlaceholder(consultationId, tenantId, userId, dto.guardrailWithheld);
+        }
 
         // 0. Strip `[[seg:<id>]]` StrictCitations markers out of the generated note
         // BEFORE it ever becomes the persisted/delivered ContextItem content — the
