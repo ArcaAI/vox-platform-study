@@ -15,7 +15,13 @@ describe('guardrail.judge.timeoutSeconds', () => {
   const descriptor = () => HOPE_SETTINGS_REGISTRY.getOrThrow(GUARDRAIL_JUDGE_TIMEOUT_KEY);
 
   it('is registered in the assembled catalog', () => {
-    expect(GUARDRAIL_JUDGE_SETTINGS.map((d) => d.key)).toEqual([GUARDRAIL_JUDGE_TIMEOUT_KEY]);
+    // TASK-1050 added the hold timeout and the reconciler window to this file (none is a `guardrail.judge.*` key).
+    expect(GUARDRAIL_JUDGE_SETTINGS.map((d) => d.key)).toEqual([
+      GUARDRAIL_JUDGE_TIMEOUT_KEY,
+      'guardrail.hold.timeoutSeconds',
+      'guardrail.evaluations.reconcileGraceMinutes',
+      'guardrail.evaluations.reconcileLookbackHours',
+    ]);
     expect(descriptor()).toBeDefined();
   });
 

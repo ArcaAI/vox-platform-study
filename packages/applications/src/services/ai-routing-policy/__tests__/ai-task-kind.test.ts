@@ -41,6 +41,12 @@ const RECLASSIFIED_SINCE_SQL: Record<string, string> = {
 };
 
 /**
+ * Keys registered AFTER the task_843 backfill. No row could carry them when it ran, so the SQL has no arm
+ * for them and no data migration follows. TASK-1050 (README §12.2): the four safety-judge lanes.
+ */
+const ADDED_SINCE_SQL = ['guardrail.judge.injection', 'guardrail.judge.unsafe_content', 'guardrail.judge.clinical_safety', 'guardrail.judge.leakage'] as const;
+
+/**
  * Reads the `CASE` arms of the migration's first backfill UPDATE back into a
  * `taskKey → AiTaskKind` map. Both UPDATE statements carry an identical CASE,
  * which the "both backfills agree" test below pins.
@@ -107,7 +113,10 @@ describe('AI task taxonomy', () => {
     const sql = readFileSync(MIGRATION_SQL, 'utf8');
     const fromSql = parseMigrationCase(sql);
 
-    const fromTs: Record<string, string> = { ...AI_TASK_KIND_BY_TASK_KEY, ...RECLASSIFIED_SINCE_SQL };
+    const fromTs: Record<string, string> = Object.fromEntries(
+      Object.entries({ ...AI_TASK_KIND_BY_TASK_KEY, ...RECLASSIFIED_SINCE_SQL }).filter(([key]) => !(ADDED_SINCE_SQL as readonly string[]).includes(key)),
+    );
+    for (const key of ADDED_SINCE_SQL) expect(fromSql, `${key} postdates the backfill`).not.toHaveProperty(key);
 
     const surviving = Object.fromEntries(Object.entries(fromSql).filter(([key]) => !(RETIRED_IN_SQL as readonly string[]).includes(key)));
     expect(surviving).toEqual(fromTs);

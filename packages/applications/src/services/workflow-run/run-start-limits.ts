@@ -6,6 +6,7 @@ import {
   WORKFLOW_RUNS_NODE_OUTPUT_CLAIM_CHECK_MIN_BYTES_KEY,
   WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY,
 } from '../settings-registry/descriptors/workflow-runs.descriptors';
+import { GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY, GUARDRAIL_JUDGE_DEFAULTS } from '../settings-registry/descriptors/guardrail-judge.descriptors';
 
 /** The payload-size limits a run start carries (lane B1 reads exactly these names). */
 export interface RunStartPayloadLimits {
@@ -19,6 +20,11 @@ export interface RunStartLimits {
   /** `workflowRuns.eventRetentionHours × 3600` — the TTL the harness puts on a terminal append (OD-25). */
   retentionSeconds: number;
   limits: RunStartPayloadLimits;
+  /**
+   * TASK-1050 (README §9.8.1) — `guardrail.hold.timeoutSeconds`: how long a node held on a guardrail block waits
+   * for a resolution before the run ends `GUARDRAIL_BLOCKED` (lane W2f reads exactly this name).
+   */
+  guardrailHoldTimeoutSeconds: number;
 }
 
 /**
@@ -42,5 +48,6 @@ export function resolveRunStartLimits(settings: Pick<TenantSettingsService, 'res
       resultInlineMaxBytes: read(WORKFLOW_RUNS_RESULT_INLINE_MAX_BYTES_KEY, WORKFLOW_RUNS_DEFAULTS.resultInlineMaxBytes),
       activityInputMaxBytes: read(WORKFLOW_RUNS_ACTIVITY_INPUT_MAX_BYTES_KEY, WORKFLOW_RUNS_DEFAULTS.activityInputMaxBytes),
     },
+    guardrailHoldTimeoutSeconds: read(GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY, GUARDRAIL_JUDGE_DEFAULTS[GUARDRAIL_HOLD_TIMEOUT_SECONDS_KEY]),
   };
 }
