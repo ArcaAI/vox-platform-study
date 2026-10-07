@@ -60,14 +60,14 @@ describe('NAV_ENTRIES (TASK-932 §3.1 — Platform Ops regrouped, feature gates 
   // (the prose above predates the later additions; the asserts below are current).
   // The tier-30-49 Quick start was added after that: 61 total, 22/13/21/5.
   it('covers the full rail map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(61);
+    expect(NAV_ENTRIES).toHaveLength(62);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(13);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(21);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(22);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
     // The two routes moved to the user menu, plus the new /developer/invoke
     // entry (TASK-971 lane E), are accounted for, not lost.
-    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(64);
+    expect(NAV_ENTRIES.length + USER_MENU_ENTRIES.length).toBe(65);
   });
 
   it('gates the credential policy on manage:all — every backing key is a globalOnly descriptor', () => {
@@ -651,6 +651,7 @@ const EXPECTED_NAV_ENTRIES: readonly PinnedEntry[] = [
       ['manage', 'TenantAllowedOrigin'],
     ],
   ],
+  ['/guardrails', 'identity-access', '30-49', 3, [['read', 'TenantGuardrailPolicy']]],
   // Playground — unchanged.
   ['/playground/consultation', 'playground', '50-59', 1, []],
   ['/playground/live-transcription', 'playground', '50-59', 2, []],
@@ -995,7 +996,7 @@ describe('nav inventory (TASK-932 §3.1) — rendered per domain, per tier', () 
       'identity-access': {
         '10-19': ['Security policy'],
         '20-29': ['Users', 'Roles', 'Policies', 'API keys'],
-        '30-49': ['Identity providers', 'Allowed origins'],
+        '30-49': ['Identity providers', 'Allowed origins', 'Guardrail rules'],
       },
       playground: {
         '50-59': ['Consultation Scribe', 'Live Transcription', 'My Voice Enrollment & Profiles', 'My DNA Writing Style', 'LLM Playground'],

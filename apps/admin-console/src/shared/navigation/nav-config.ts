@@ -52,6 +52,7 @@ import {
   IconServerCog,
   IconSettings,
   IconShieldBolt,
+  IconShieldCheck,
   IconShieldCog,
   IconShieldLock,
   IconSitemap,
@@ -951,6 +952,17 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
     order: 2,
+  },
+  {
+    // TASK-1050 W3a — tenant guardrail rules (on/off only; actions and locks stay platform-owned).
+    route: '/guardrails',
+    domain: 'identity-access',
+    label: 'Guardrail rules',
+    tier: '30-49',
+    icon: IconShieldCheck,
+    required: [['read', 'TenantGuardrailPolicy']],
+    implemented: true,
+    order: 3,
   },
 
   // ---------------------------------------------------------------------
