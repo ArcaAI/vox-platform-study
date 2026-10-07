@@ -4,7 +4,7 @@
  *   - correlation headers (`X-Hope-*`) and the `region_items` wire;
  *   - reading TEXT's notices off a 200 body, and its two STOPS off an error (422 block, 503 redaction hold);
  *   - the per-(consultation, checkId, itemId, policyVersion) dedupe key;
- *   - the composer exclusion predicate (WITHHELD always; BLOCKED once resolved `item_excluded`);
+ *   - the composer exclusion, applied through W2e's shared keep predicate;
  *   - F7: the live lane's own previous note travels under ONE region key;
  *   - the two new degrade codes.
  */
@@ -19,7 +19,6 @@ import {
 import {
   LIVE_GUARDRAIL_NOTICE_EVENT,
   LIVE_SELF_NOTE_REGION_KEY,
-  liveContextExcluded,
   liveCorrelationHeaders,
   liveExclusionSet,
   noticeDedupeKeys,
@@ -27,6 +26,7 @@ import {
   textGuardrailStop,
   textResponseNotices,
 } from '../live-guardrail';
+import { isGuardrailExcludedItem } from '../../../guardrail-notice/guardrail-item-exclusion';
 import {
   degradeCode,
   LIVE_DEGRADE_CODES,
@@ -158,29 +158,23 @@ describe('notice dedupe — one per (consultation, checkId, itemId, policyVersio
   });
 });
 
-describe('composer exclusion predicate', () => {
-  it('WITHHELD is always skipped, either spelling', () => {
-    expect(liveContextExcluded({ guardrailStatus: 'WITHHELD' }, false)).toBe(true);
-    expect(liveContextExcluded({ guardrailStatus: 'withheld' }, false)).toBe(true);
+describe('composer exclusion — the SHARED W2e keep predicate', () => {
+  it('the live lane carries no predicate of its own', async () => {
+    const live = (await import('../live-guardrail')) as Record<string, unknown>;
+    expect(live.liveContextExcluded, 'use guardrailKeepFilter (guardrail-notice/guardrail-item-exclusion.ts)').toBeUndefined();
   });
 
-  it('BLOCKED is skipped only once its notice was resolved item_excluded', () => {
-    expect(liveContextExcluded({ guardrailStatus: 'BLOCKED' }, false)).toBe(false);
-    expect(liveContextExcluded({ guardrailStatus: 'BLOCKED' }, true)).toBe(true);
-  });
-
-  it('CLEAN / WARNED / absent are never skipped', () => {
-    for (const status of ['CLEAN', 'WARNED', undefined, null]) expect(liveContextExcluded({ guardrailStatus: status }, true)).toBe(false);
-  });
-
-  it('the exclusion set names item ids and the segment keys of excluded transcript segments', () => {
+  it('applies a keep predicate: excluded ids, and the segment keys of excluded transcript segments', () => {
+    const excluded = new Set(['seg-b']);
+    const keep = (item: { id: string; guardrailStatus?: string | null }) => !isGuardrailExcludedItem(item, excluded);
     const set = liveExclusionSet(
       [
         { id: 'note-w', guardrailStatus: 'WITHHELD' },
         { id: 'seg-b', guardrailStatus: 'BLOCKED', segmentKey: 'stt-1:4' },
         { id: 'seg-open', guardrailStatus: 'BLOCKED', segmentKey: 'stt-1:5' },
+        { id: 'note-warned', guardrailStatus: 'WARNED' },
       ],
-      new Set(['seg-b']),
+      keep,
     );
     expect([...set.itemIds].sort()).toEqual(['note-w', 'seg-b']);
     expect([...set.segmentKeys]).toEqual(['stt-1:4']);

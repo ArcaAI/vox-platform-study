@@ -140,7 +140,14 @@ function harness(
     findFirst: vi.fn(async () => ({ id: CID, tenantId: TENANT, processingReason })),
   };
   if (opts.promptTemplate) args[19] = { findById: vi.fn().mockResolvedValue(opts.promptTemplate) };
-  args[34] = { findAll: vi.fn(async () => [{ itemIds: opts.excludedNoticeItemIds ?? [], resolution: 'item_excluded' }]) };
+  // The SHARED resolved-notice lookup (`loadGuardrailExcludedItemIds`): RESOLVED + item_excluded, by `where`.
+  args[34] = {
+    findAll: vi.fn(async (props: { where?: Record<string, unknown> }) =>
+      props.where?.status === 'RESOLVED' && props.where?.resolution === 'item_excluded' && props.where?.consultationId === CID
+        ? [{ itemIds: opts.excludedNoticeItemIds ?? [], resolution: 'item_excluded' }]
+        : [],
+    ),
+  };
   const service = new (LiveDocumentationService as unknown as new (...a: unknown[]) => LiveDocumentationService)(...args);
   return {
     service,

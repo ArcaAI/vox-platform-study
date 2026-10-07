@@ -112,6 +112,8 @@ import {
   type LiveNoticeRecord,
   type LiveRegionItems,
 } from './live-guardrail';
+// TASK-1050 W2e — the ONE exclusion rule every composer applies (WITHHELD / BLOCKED resolved `item_excluded`).
+import { guardrailKeepFilter } from '../../guardrail-notice/guardrail-item-exclusion';
 import { unwrapSingleKindContextPayload } from '../../consultation-context-schema/context-schema-definition';
 // TASK-890 §3.13 (OD-E) — this lane posts straight to `apps/text` and recorded nothing.
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
@@ -1845,8 +1847,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     private readonly notePlanComposer?: Pick<HarnessInternalService, 'composeNotePlan'>,
     // TASK-1045 — a plan that cannot be composed fails the consultation's processing by name.
     @Optional() @Inject(IConsultationLifecycleGateToken) private readonly lifecycleGate?: IConsultationLifecycleGate,
-    // TASK-1050 W2g — the notices a clinician resolved `item_excluded`, read by the composer exclusion
-    // (a BLOCKED item is left out once its notice says so). Optional + trailing like every dependency
+    // TASK-1050 W2g — the notices a clinician resolved `item_excluded`, read through W2e's shared
+    // `guardrailKeepFilter` by the composer exclusion (a BLOCKED item is left out once its notice says so). Optional + trailing like every dependency
     // above it; ABSENT ⇒ only WITHHELD items are excluded, BLOCKED ones stay composed (and re-block).
     @Optional() @Inject(GuardrailNoticeRepository) private readonly guardrailNoticeRepository?: GuardrailNoticeRepository,
   ) {
@@ -7435,12 +7437,10 @@ return 0`;
   }
 
   /**
-   * TASK-1050 W2g — the consultation's items the composer must leave out: WITHHELD always, BLOCKED once
-   * its notice was resolved `item_excluded` (`liveContextExcluded`). One read of the flagged items
-   * (usually none), and a notice read only when one of them is BLOCKED.
-   *
-   * TODO(TASK-1050 W2e seam): when W2e's enforcement module exposes the exclusion read (its predicate +
-   * the resolved-notice lookup), call it here instead of these two repository reads.
+   * TASK-1050 W2g — the consultation's items the composer must leave out, decided by the SHARED W2e
+   * predicate (`guardrailKeepFilter`: WITHHELD always, BLOCKED once its notice was resolved
+   * `item_excluded`, read through W2e's resolved-notice lookup). One read of the flagged items
+   * (usually none); the notice lookup only runs when there is something flagged to decide.
    *
    * Fails OPEN to "nothing excluded" on a read error: the blocked text then meets the guardrail again
    * and re-blocks; it never reaches a model unscreened.
@@ -7457,17 +7457,10 @@ return 0`;
         } as never,
       });
       if (!Array.isArray(flagged) || flagged.length === 0) return EMPTY_LIVE_EXCLUSION;
-      const resolved = new Set<string>();
-      const anyBlocked = flagged.some((item) => String(item.guardrailStatus).toUpperCase() === GuardrailItemStatus.BLOCKED);
-      if (anyBlocked && typeof this.guardrailNoticeRepository?.findAll === 'function') {
-        const notices = await this.guardrailNoticeRepository.findAll({
-          filters: { tenantId: session.tenantId, consultationId: session.consultationId, resolution: 'item_excluded' } as never,
-        });
-        for (const notice of notices ?? []) for (const id of notice.itemIds ?? []) resolved.add(id);
-      }
+      const keep = await guardrailKeepFilter(this.guardrailNoticeRepository, session.tenantId, session.consultationId);
       return liveExclusionSet(
         flagged.map((item) => ({ id: item.id, guardrailStatus: item.guardrailStatus, segmentKey: item.segmentKey ?? null })),
-        resolved,
+        keep,
       );
     } catch (error) {
       this.logger.warn({
