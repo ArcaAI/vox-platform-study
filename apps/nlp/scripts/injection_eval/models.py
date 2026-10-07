@@ -507,6 +507,7 @@ class LineMaxScorer:
 # the isolated venv ~/.cache/task-1049/laya-venv — never in `arcaenv`.
 
 LAYA_MODELS: dict[str, str] = {
+    "laya": "convaiinnovations/laya",  # base; the variant the vendor positions for guardrails
     "laya-typed-decisions": "convaiinnovations/laya-typed-decisions",
     "laya-multilingual": "convaiinnovations/laya-multilingual",
 }
