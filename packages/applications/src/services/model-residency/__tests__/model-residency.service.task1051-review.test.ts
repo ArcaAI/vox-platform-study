@@ -348,8 +348,8 @@ describe('finding 5 — preview', () => {
     const pending = deferred<unknown>();
     h.lmStudio.load.mockImplementationOnce(() => pending.promise as never);
     await h.service.load({ service: 'lm-studio', modelRef: GEMMA });
-    // The DTO's `refusal` enum has no LOAD_IN_PROGRESS: the preview says it cannot be admitted through `fits`.
-    expect(await h.service.previewLoad({ service: 'lm-studio', modelRef: GEMMA })).toMatchObject({ fits: false, refusal: null });
+    // TASK-1051 integration: the refusal enum now names the blocker (LOAD_IN_PROGRESS / IN_FLIGHT).
+    expect(await h.service.previewLoad({ service: 'lm-studio', modelRef: GEMMA })).toMatchObject({ fits: false, refusal: 'LOAD_IN_PROGRESS' });
     expect(await httpBody(h.service.load({ service: 'lm-studio', modelRef: GEMMA }))).toMatchObject({ body: { code: 'LOAD_IN_PROGRESS' } });
     pending.resolve({ outcome: 'loaded', model: { modelRef: GEMMA, instanceId: GEMMA, loadSeconds: 1, cache: 'llm' } });
     await h.service.drain();
@@ -361,7 +361,7 @@ describe('finding 5 — preview', () => {
     const pending = deferred<unknown>();
     h.agents.load.mockImplementationOnce(() => pending.promise as never);
     await h.service.load({ service: 'stt', modelRef: LIVE_ASR });
-    expect(await h.service.previewLoad({ service: 'stt', modelRef: RAD_ASR })).toMatchObject({ fits: false, refusal: null });
+    expect(await h.service.previewLoad({ service: 'stt', modelRef: RAD_ASR })).toMatchObject({ fits: false, refusal: 'LOAD_IN_PROGRESS' });
     expect(await httpBody(h.service.load({ service: 'stt', modelRef: RAD_ASR }))).toMatchObject({ body: { code: 'LOAD_IN_PROGRESS' } });
     pending.resolve({ outcome: 'loaded', model: agentModel() });
     await h.service.drain();
@@ -370,7 +370,7 @@ describe('finding 5 — preview', () => {
   it('a replace of a model serving requests does not fit (load() answers IN_FLIGHT without force)', async () => {
     const h = build();
     h.state.sttModels = [agentModel({ inFlight: 2 })];
-    expect(await h.service.previewLoad({ service: 'stt', modelRef: LIVE_ASR, replace: true })).toMatchObject({ fits: false, refusal: null });
+    expect(await h.service.previewLoad({ service: 'stt', modelRef: LIVE_ASR, replace: true })).toMatchObject({ fits: false, refusal: 'IN_FLIGHT' });
     expect(await httpBody(h.service.load({ service: 'stt', modelRef: LIVE_ASR, replace: true }))).toMatchObject({ body: { code: 'IN_FLIGHT' } });
   });
 });

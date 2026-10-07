@@ -91,7 +91,8 @@
       "SERVICE_UNREACHABLE",
       "NO_SIZE",
       "SERVICE_MISMATCH",
-      "RUNTIME_KEY_TAKEN"
+      "RUNTIME_KEY_TAKEN",
+      "SUGGESTION_UNKNOWN"
     ],
     "loadOutcome": ["accepted", "already_loaded"],
     "operationStatus": ["running", "succeeded", "failed"],
@@ -105,7 +106,7 @@
       "unmeasured_budgeted",
       "actions_audited"
     ],
-    "previewRefusal": ["NO_SIZE", "OVER_BUDGET", "ALREADY_LOADED"]
+    "previewRefusal": ["NO_SIZE", "OVER_BUDGET", "ALREADY_LOADED", "LOAD_IN_PROGRESS", "IN_FLIGHT"]
   },
   "load": {
     "path": "POST /api/v1/admin/model-residency/load",

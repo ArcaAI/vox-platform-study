@@ -45,10 +45,10 @@ export class ModelResidencyLoadPreviewResponse {
   @ApiProperty({ description: 'Admission would accept it without force.' }) fits!: boolean;
   @ApiProperty({
     nullable: true,
-    enum: ['NO_SIZE', 'OVER_BUDGET', 'ALREADY_LOADED'],
+    enum: ['NO_SIZE', 'OVER_BUDGET', 'ALREADY_LOADED', 'LOAD_IN_PROGRESS', 'IN_FLIGHT'],
     description: 'What an un-forced load would answer; `null` when it would be admitted.',
   })
-  refusal!: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | null;
+  refusal!: 'NO_SIZE' | 'OVER_BUDGET' | 'ALREADY_LOADED' | 'LOAD_IN_PROGRESS' | 'IN_FLIGHT' | null;
   @ApiProperty({
     type: [ModelResidencyPreviewModel],
     description: 'ON_DEMAND resident models on the same device that could be unloaded to make room, largest first.',

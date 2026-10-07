@@ -163,6 +163,14 @@ export function LoadPreviewDialog({ open, onOpenChange, service, model, onAdmitt
           Neither a measurement nor a catalogue size exists, so HOPE cannot tell whether it fits.
         </Callout>
       );
+    if (d.refusal === 'LOAD_IN_PROGRESS' || d.refusal === 'IN_FLIGHT')
+      return (
+        <Callout tone="warn" title={d.refusal === 'IN_FLIGHT' ? 'Serving requests right now' : 'Another load is in progress'}>
+          {d.refusal === 'IN_FLIGHT'
+            ? 'Replacing it would drop requests in flight; loading anyway needs a reason.'
+            : 'Wait for the running load on this device to finish, or load anyway with a reason.'}
+        </Callout>
+      );
     if (fitsAfter)
       return (
         <Callout tone="ok" title={selected.size > 0 ? 'Fits once the selected models are unloaded' : 'Fits'}>

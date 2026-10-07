@@ -897,9 +897,9 @@ export class ModelResidencyService extends BaseService implements IModelResidenc
       shortfallBytes: admission.shortfallBytes,
       // Review finding 5 — `fits` is what an un-forced load() would answer: besides the budget, a running load of the
       // same model and a card another load holds are LOAD_IN_PROGRESS, and a replace of a serving model is IN_FLIGHT.
-      // `refusal` stays the budget answer — its enum (the DTO) has no value for those three.
+      // `refusal` names the FIRST reason an un-forced load would be refused: the budget answer, else the blocker.
       fits: admission.refusal === null && blocked === null,
-      refusal: admission.refusal,
+      refusal: admission.refusal ?? blocked,
       evictable: evictable.sort((a, b) => b.sortBytes - a.sortBytes).map(({ sortBytes: _sortBytes, ...model }) => model),
       pinned,
     };
