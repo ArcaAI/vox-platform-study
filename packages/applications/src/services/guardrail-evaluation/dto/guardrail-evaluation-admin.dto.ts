@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { GUARDRAIL_CHECK_IDS, GUARDRAIL_DECISIONS, GUARDRAIL_DIRECTIONS } from '@arcaai/types';
 import { MAX_CURSOR_LIMIT } from '../../../common/cursorPagination';
 
@@ -33,6 +33,18 @@ export class GuardrailEvaluationListQuery {
   @IsOptional()
   @IsIn(GUARDRAIL_CHECK_IDS as unknown as string[])
   check?: string;
+
+  @ApiPropertyOptional({ description: 'Only the evaluations of this workflow run.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  runId?: string;
+
+  @ApiPropertyOptional({ description: 'Only the evaluations of this AI activity run (`AiActivityRun.runKey`).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  runKey?: string;
 }
 
 export class GuardrailEvaluationItemRefResponse {

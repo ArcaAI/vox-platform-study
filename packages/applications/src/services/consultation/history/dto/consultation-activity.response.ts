@@ -109,7 +109,8 @@ export class ConsultationActivityPageResponse implements ConsultationActivityPag
     type: 'array',
     items: { type: 'object' },
     description:
-      'Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`.',
+      'Oldest first. Each entry is discriminated by `entryType`: `item` (a context item with its latest version), `segment_run` (consecutive transcript segments of one encounter), `feedback`, or `lifecycle`. ' +
+      'An `item` carries `guardrailStatus` (`CLEAN` | `WARNED` | `BLOCKED` | `WITHHELD`, TASK-1050).',
   })
   items!: ActivityEntry[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;

@@ -22,6 +22,8 @@ export const GUARDRAIL_CONFLICT_CODES = Object.freeze({
   overrideNotAllowed: 'GUARDRAIL_OVERRIDE_NOT_ALLOWED',
   /** `item_edited` asked, but no flagged item has a version newer than the one that was blocked. */
   itemNotEdited: 'GUARDRAIL_ITEM_NOT_EDITED',
+  /** An item resolution on the egress-redaction hold: it names no item — `acknowledged` (retry) only. */
+  resolutionNotApplicable: 'GUARDRAIL_RESOLUTION_NOT_APPLICABLE',
 } as const);
 export type GuardrailConflictCode = (typeof GUARDRAIL_CONFLICT_CODES)[keyof typeof GUARDRAIL_CONFLICT_CODES];
 
@@ -30,6 +32,15 @@ export function guardrailConflict(code: GuardrailConflictCode, message: string, 
 }
 
 const NOT_MEDICAL_KEY = 'guardrail.blocked.not_medical';
+const REDACTION_UNAVAILABLE_KEY = 'guardrail.blocked.redaction_unavailable';
+
+/**
+ * The egress-redaction hold (EGRESS_REDACTION_UNAVAILABLE): a PRIVACY hold — the pseudonymiser was
+ * down before a cloud call — not a safety verdict. Its `acknowledged` means RETRY, never an override.
+ */
+export function isRedactionHoldNotice(notice: { messageKey: string }): boolean {
+  return notice.messageKey === REDACTION_UNAVAILABLE_KEY;
+}
 
 function checkIdsOf(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -49,6 +60,14 @@ export function hasBlockFloor(notice: { messageKey: string; checks: unknown }): 
 
 /** 409 `GUARDRAIL_OVERRIDE_NOT_ALLOWED` for an `acknowledged` override of a block-floor check. */
 export function assertResolutionAllowed(notice: { id: string; messageKey: string; checks: unknown }, resolution: HoldResolution): void {
+  if (isRedactionHoldNotice(notice)) {
+    if (resolution === 'acknowledged') return;
+    throw guardrailConflict(
+      GUARDRAIL_CONFLICT_CODES.resolutionNotApplicable,
+      'This hold names no item (patient details could not be protected before an external call): retry with `acknowledged`.',
+      { noticeId: notice.id, allowedResolutions: ['acknowledged'] },
+    );
+  }
   if (resolution === 'acknowledged' && hasBlockFloor(notice)) {
     throw guardrailConflict(
       GUARDRAIL_CONFLICT_CODES.overrideNotAllowed,

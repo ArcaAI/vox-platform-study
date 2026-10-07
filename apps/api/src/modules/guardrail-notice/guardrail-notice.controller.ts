@@ -124,6 +124,7 @@ export class GuardrailNoticeController {
     description:
       'Resolve the guardrail.blocked notice that holds the consultation: `item_excluded` (the flagged items leave every later LLM context), `item_edited` (an item was corrected since the block), ' +
       'or `acknowledged` (proceed once at warn weight, recorded as a SAFETY_OVERRIDE — not offered for a check whose platform floor is block). ' +
+      'On the egress-redaction hold (EGRESS_REDACTION_UNAVAILABLE) `acknowledged` is the only resolution and means RETRY — no override is recorded. ' +
       'Processing returns to IDLE when no other block remains; the run paused on the notice re-executes its node, or a fresh governing run is dispatched. The client then sends `start`. ' +
       'Answers the consultation (status / processing / processingReason / version, like the other lifecycle verbs) plus `resolvedNoticeId`. ' +
       'Idempotent for the same resolution. The `If-Match` header carries the consultation version.',
@@ -138,7 +139,8 @@ export class GuardrailNoticeController {
     status: 409,
     description:
       '`GUARDRAIL_OVERRIDE_NOT_ALLOWED` — `acknowledged` on a block-floor check; `GUARDRAIL_ITEM_NOT_EDITED` — no flagged item changed; ' +
-      '`GUARDRAIL_NOTICE_NOT_RESUMABLE` — not a block notice; `GUARDRAIL_NOTICE_RESOLVED` — resolved with another resolution.',
+      '`GUARDRAIL_NOTICE_NOT_RESUMABLE` — not a block notice; `GUARDRAIL_NOTICE_RESOLVED` — resolved with another resolution; ' +
+      '`GUARDRAIL_RESOLUTION_NOT_APPLICABLE` — an item resolution on the egress-redaction hold (EGRESS_REDACTION_UNAVAILABLE names no item: `acknowledged` retries).',
   })
   @ApiResponse({ status: 412, description: 'The consultation changed since the client read it.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

@@ -35,7 +35,7 @@ import { IConsultationWorkflowDispatchService } from '../consultation/workflow-d
 import { ConsultationDtoMapper } from '../consultation/consultation/consultation.dto.mapper';
 import type { ConsultationResponse } from '../consultation/consultation/dto/consultation.response';
 import { IConsultationEncounterService, IConsultationEncounterServiceToken } from '../consultation/encounter/IConsultationEncounterService';
-import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict, screenedVersionsFor } from './guardrail-hold.rules';
+import { GUARDRAIL_CONFLICT_CODES, assertResolutionAllowed, guardrailConflict, isRedactionHoldNotice, screenedVersionsFor } from './guardrail-hold.rules';
 import { acknowledgementOf, isBlockNotice, toNoticeView, type GuardrailNoticeView } from './guardrail-wire';
 import type { IGuardrailNoticeService } from './IGuardrailNoticeService';
 
@@ -199,6 +199,7 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       } as never,
     });
     const held = consultation.processing === ConsultationProcessing.AWAITING_REVIEW && isGuardrailHoldReason(consultation.processingReason);
+    const retry = isRedactionHoldNotice(notice);
     const release = held && otherBlocks.length === 0;
 
     const write = async (tx?: unknown) => {
@@ -206,7 +207,8 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       await this.notices.updateWithVersion(notice.id, notice, notice.version, tx);
       if (edited.length > 0) await this.contextItems.setGuardrailStatusMany(edited, GuardrailItemStatus.CLEAN, tx);
       if (release) await this.consultations.setProcessing(consultation.id, ConsultationProcessing.IDLE, { reason: null }, tx);
-      if (body.resolution === 'acknowledged') await this.appendOverride(consultation, notice, clinicianId, submittedBy);
+      // The egress-redaction hold's `acknowledged` is a RETRY, not a safety override (round 4).
+      if (body.resolution === 'acknowledged' && !retry) await this.appendOverride(consultation, notice, clinicianId, submittedBy);
     };
     if (this.unitOfWork) await this.unitOfWork.runInTransaction((tx) => write(tx));
     else await write();
@@ -216,7 +218,15 @@ export class GuardrailNoticeService extends BaseService implements IGuardrailNot
       resourceId: notice.id,
       resourceType: ResourceType.GuardrailNotice,
       forceAuditLog: true,
-      data: { action: 'guardrail_hold_resumed', consultationId: consultation.id, resolution: body.resolution, clinicianId, submittedBy, released: release },
+      data: {
+        action: retry ? 'guardrail_hold_retried' : 'guardrail_hold_resumed',
+        consultationId: consultation.id,
+        resolution: body.resolution,
+        ...(retry ? { processingReason: 'EGRESS_REDACTION_UNAVAILABLE' } : {}),
+        clinicianId,
+        submittedBy,
+        released: release,
+      },
     });
     const dispatch = await this.dispatchAfterResume(consultation, notice, body.resolution, clinicianId);
     this.logger.log({ message: 'Guardrail hold resumed', consultationId: consultation.id, noticeId: notice.id, resolution: body.resolution, released: release, dispatch });
