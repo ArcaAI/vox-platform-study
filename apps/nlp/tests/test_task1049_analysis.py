@@ -167,3 +167,64 @@ def test_report_ignores_appledouble_sidecars(tmp_path: Path) -> None:
     (tmp_path / "m.meta.json").write_text(json.dumps({"name": "m", "default_threshold": 0.5}))
     (tmp_path / "._m.meta.json").write_bytes(b"\x00\x05\x16\x07\xb0 binary resource fork")
     assert list(bench._load_scores(tmp_path)) == ["m"]
+
+
+def test_task_report_for_safety_and_scope(tmp_path: Path) -> None:
+    import json
+
+    import bench_injection_classifiers as bench
+
+    rows = []
+    for i in range(100):
+        rows.append(
+            {
+                "id": f"b1:{i}",
+                "set": "b1",
+                "split": "dev" if i < 30 else "test",
+                "label": 0,
+                "meta": {},
+                "scores": [i / 1000],
+                "lengths": [2000],
+            }
+        )
+    for i in range(20):
+        rows.append(
+            {
+                "id": f"s:p{i}",
+                "set": "s",
+                "split": "test",
+                "label": 1,
+                "meta": {"medical_topic": i < 5},
+                "scores": [0.9 if i < 15 else 0.1],
+            }
+        )
+        rows.append(
+            {
+                "id": f"s:n{i}",
+                "set": "s",
+                "split": "test",
+                "label": 0,
+                "meta": {},
+                "scores": [0.6 if i < 2 else 0.05],
+            }
+        )
+    (tmp_path / "m@safety.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    (tmp_path / "m@safety.meta.json").write_text(
+        json.dumps({"name": "m@safety", "default_threshold": 0.5})
+    )
+    out = tmp_path / "r.json"
+    assert (
+        bench.main(
+            ["report-tasks", "--scores", str(tmp_path), "--positive-set", "s", "--out", str(out)]
+        )
+        == 0
+    )
+    m = json.loads(out.read_text())["models"]["m@safety"]
+    v = m["at"]["vendor_default"]
+    assert v["fp_clinical"]["total"] == 70 and v["fp_clinical"]["flagged"] == 0
+    assert (v["recall"]["caught"], v["recall"]["total"]) == (15, 20)
+    assert (v["fp_positive_set_negatives"]["flagged"], v["fp_positive_set_negatives"]["total"]) == (
+        2,
+        20,
+    )
+    assert v["recall_by"]["medical_topic"]["True"]["caught"] == 5
